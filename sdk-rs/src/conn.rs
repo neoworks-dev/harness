@@ -41,7 +41,9 @@ pub(crate) struct Request {
     pub effect: Effect,
 }
 
-/// What a request changes in the state kept for reconnecting.
+/// What a request changes in the state kept for reconnecting. One per request, so the size of
+/// the presence variant doesn't matter.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Effect {
     None,
     Subscribe { session: String, from_seq: i64 },
@@ -52,6 +54,7 @@ pub(crate) enum Effect {
 }
 
 /// How to take an effect back when the daemon refuses the request.
+#[allow(clippy::large_enum_variant)]
 enum Undo {
     None,
     Unsubscribe(String),
