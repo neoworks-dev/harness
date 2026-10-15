@@ -1,9 +1,11 @@
 // Where the daemon keeps its socket and data. The Go CLI resolves the socket the same way.
 import { homedir, userInfo } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export interface DaemonPaths {
   socket: string;
+  /** Discovery file for clients that can't use the socket: TCP url + token. */
+  info: string;
   dataDir: string;
   db: string;
 }
@@ -17,5 +19,10 @@ export function resolvePaths(env: Record<string, string | undefined> = process.e
   if (!dataDir && env.XDG_DATA_HOME) dataDir = join(env.XDG_DATA_HOME, "suite");
   if (!dataDir) dataDir = join(homedir(), ".local", "share", "suite");
 
-  return { socket, dataDir, db: join(dataDir, "sessions.db") };
+  return {
+    socket,
+    info: join(dirname(socket), "daemon.json"),
+    dataDir,
+    db: join(dataDir, "sessions.db"),
+  };
 }

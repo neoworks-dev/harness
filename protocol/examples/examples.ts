@@ -89,14 +89,52 @@ export const examples: Record<string, Envelope> = {
   },
   "app-presence": {
     topic: "app.presence",
+    id: "9",
     payload: {
       app: "browser",
       kind: "app",
-      v: 2,
+      title: "Browser",
       open: true,
       context: { url: "https://example.com" },
-      tools: ["navigate", "read", "screenshot", "download"],
+      mcp: { url: "http://127.0.0.1:7841/mcp", headers: { authorization: "Bearer t0k3n" } },
+      launch: { command: ["browser", "--new-window"], cwd: "/home/user" },
     },
+  },
+  "app-presence-closing": {
+    topic: "app.presence",
+    payload: { app: "lsp", kind: "service", open: false },
+  },
+  "connectors-list": { topic: "connectors.list", id: "10" },
+  "connectors-list-result": {
+    topic: "connectors.list_result",
+    id: "10",
+    payload: {
+      connectors: [
+        {
+          app: "browser",
+          kind: "app",
+          title: "Browser",
+          connected: true,
+          v: 2,
+          tools: [
+            { name: "browser.download", description: "Download a URL into the asset store." },
+          ],
+        },
+        {
+          app: "photo-editor",
+          kind: "app",
+          connected: false,
+          v: 3,
+          tools: [],
+          error: "connection refused",
+        },
+      ],
+    },
+  },
+  "session-input-images": {
+    topic: "session.input",
+    id: "11",
+    payload: { session, app: "overlay", text: "What is this?", images: ["/tmp/shot-1.png"] },
   },
   "event-user-message": {
     topic: "session.events",
@@ -105,6 +143,15 @@ export const examples: Record<string, Envelope> = {
       seq: 1,
       ts: 1760565600100,
       event: { type: "user_message", app: "cli", text: "Create hello.txt" },
+    },
+  },
+  "event-user-message-images": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 12,
+      ts: 1760565601100,
+      event: { type: "user_message", app: "overlay", text: "This?", images: ["/tmp/shot-1.png"] },
     },
   },
   "event-agent-thought-chunk": {

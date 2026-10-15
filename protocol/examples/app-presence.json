@@ -1,11 +1,13 @@
 {
   "topic": "app.presence",
+  "id": "9",
   "payload": {
     "app": "browser",
     "kind": "app",
-    "v": 2,
+    "title": "Browser",
     "open": true,
     "context": { "url": "https://example.com" },
-    "tools": ["navigate", "read", "screenshot", "download"]
+    "mcp": { "url": "http://127.0.0.1:7841/mcp", "headers": { "authorization": "Bearer t0k3n" } },
+    "launch": { "command": ["browser", "--new-window"], "cwd": "/home/user" }
   }
 }

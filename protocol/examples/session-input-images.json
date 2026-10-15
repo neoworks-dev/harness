@@ -1,0 +1,10 @@
+{
+  "topic": "session.input",
+  "id": "11",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "app": "overlay",
+    "text": "What is this?",
+    "images": ["/tmp/shot-1.png"]
+  }
+}

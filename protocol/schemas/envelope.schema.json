@@ -51,6 +51,12 @@
         },
         {
           "$ref": "#/$defs/AppPresenceMessage"
+        },
+        {
+          "$ref": "#/$defs/ConnectorsList"
+        },
+        {
+          "$ref": "#/$defs/ConnectorsListResult"
         }
       ],
       "discriminator": {
@@ -396,7 +402,7 @@
       "additionalProperties": false
     },
     "AppPresenceMessage": {
-      "description": "Client → daemon: connector registration. Wired up in Phase 2.",
+      "description": "Client → daemon: connector registration. Acked when it has an id; invalid registrations get bus.error.",
       "type": "object",
       "properties": {
         "topic": {
@@ -404,9 +410,55 @@
         },
         "payload": {
           "$ref": "presence.schema.json#/$defs/AppPresence"
+        },
+        "id": {
+          "type": "string"
         }
       },
       "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "ConnectorsList": {
+      "description": "Client → daemon. Replied to with connectors.list_result.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "connectors.list"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": ["topic", "id"],
+      "additionalProperties": false
+    },
+    "ConnectorsListResult": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "connectors.list_result"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/ConnectorsListPayload"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "ConnectorsListPayload": {
+      "type": "object",
+      "properties": {
+        "connectors": {
+          "type": "array",
+          "items": {
+            "$ref": "presence.schema.json#/$defs/ConnectorInfo"
+          }
+        }
+      },
+      "required": ["connectors"],
       "additionalProperties": false
     }
   }

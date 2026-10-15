@@ -2,27 +2,126 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "presence.schema.json",
   "title": "Presence",
-  "description": "Connector registration (app.presence topic). Phase 4 adds templates and actions.",
+  "description": "Connector registration (app.presence topic) and the daemon's view of connectors. Phase 4 adds templates and actions.",
   "$defs": {
     "AppPresence": {
+      "description": "Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.",
       "type": "object",
       "properties": {
-        "app": { "type": "string" },
-        "kind": { "$ref": "session.schema.json#/$defs/ConnectorKind" },
-        "v": { "type": "integer" },
-        "open": { "type": "boolean", "description": "false when the app is closing." },
+        "app": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$",
+          "description": "Connector name; prefixes its tools (app.tool)."
+        },
+        "kind": {
+          "$ref": "session.schema.json#/$defs/ConnectorKind"
+        },
+        "title": {
+          "type": "string",
+          "description": "Human-readable name, e.g. Photo editor."
+        },
+        "open": {
+          "type": "boolean",
+          "description": "false when the app is closing."
+        },
         "context": {
           "type": "object",
           "description": "Current app context, e.g. url or project.",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "mcp": {
+          "$ref": "#/$defs/McpEndpoint"
+        },
+        "launch": {
+          "$ref": "#/$defs/LaunchSpec"
+        }
+      },
+      "required": ["app", "kind", "open"],
+      "additionalProperties": false
+    },
+    "McpEndpoint": {
+      "description": "The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it.",
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["url"],
+      "additionalProperties": false
+    },
+    "LaunchSpec": {
+      "description": "How to start the app when it is closed (apps_launch). Remembered by the daemon.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "argv; the first entry is the program."
+        },
+        "cwd": {
+          "type": "string"
+        }
+      },
+      "required": ["command"],
+      "additionalProperties": false
+    },
+    "ConnectorInfo": {
+      "description": "A connector the daemon knows, open or not.",
+      "type": "object",
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "session.schema.json#/$defs/ConnectorKind"
+        },
+        "title": {
+          "type": "string"
+        },
+        "connected": {
+          "type": "boolean"
+        },
+        "v": {
+          "type": "integer",
+          "description": "Bumped by the daemon whenever the connector's tool schemas change."
         },
         "tools": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Tool names only; schemas are served by the MCP gateway."
+          "items": {
+            "$ref": "#/$defs/ConnectorTool"
+          }
+        },
+        "error": {
+          "type": "string",
+          "description": "Why the gateway can't reach its MCP server, if it can't."
         }
       },
-      "required": ["app", "kind", "v", "open", "tools"],
+      "required": ["app", "kind", "connected", "v", "tools"],
+      "additionalProperties": false
+    },
+    "ConnectorTool": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Full name, app.tool."
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "description"],
       "additionalProperties": false
     }
   }

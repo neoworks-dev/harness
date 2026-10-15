@@ -1,0 +1,73 @@
+{
+  "$comment": "The connector-facing core tools. The harness defines them natively from this file (its tool list never changes) and the MCP gateway serves them; both read the same definitions. Descriptions are prompt text: changing them invalidates every session's prompt cache.",
+  "tools": [
+    {
+      "name": "tools_search",
+      "description": "Find tools of connectors (apps and services). Returns matching tools with their full JSON input schemas, plus any usage notes from the connector. Search before calling a tool you haven't seen a schema for in this conversation, and again when a connector's version (v=) changes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "What you want to do, or a tool name, e.g. \"crop image\" or \"browser.download\". Empty with app set: list all of that connector's tools."
+          },
+          "app": {
+            "type": "string",
+            "description": "Only search this connector's tools."
+          }
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "tools_call",
+      "description": "Run a connector tool found with tools_search. Arguments are validated against the tool's schema; a closed connector returns an error saying how to open it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Full tool name, app.tool, e.g. \"browser.download\"."
+          },
+          "args": {
+            "type": "object",
+            "description": "Arguments matching the tool's input schema."
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "apps_launch",
+      "description": "Open an app that is not running, then wait until its tools are available.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "app": {
+            "type": "string",
+            "description": "Connector name, e.g. \"photo-editor\"."
+          }
+        },
+        "required": ["app"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "apps_focus",
+      "description": "Move yourself into an app: its chat pane opens with this conversation and you continue there.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "app": {
+            "type": "string",
+            "description": "Connector name of an open app."
+          }
+        },
+        "required": ["app"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

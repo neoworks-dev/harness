@@ -1,12 +1,12 @@
 // Daemon entry point: `bun run daemon` (or `bun run daemon/src/main.ts`).
 //
-// Env: SUITE_SOCKET, SUITE_DATA_DIR (see paths.ts); SUITE_AGENT=pi|echo (default pi); model and
+// Env: SUITE_SOCKET, SUITE_DATA_DIR (see paths.ts), SUITE_PORT (TCP, default: any free port); SUITE_AGENT=pi|echo (default pi); model and
 // API key settings are read by the harness (see harness/src/config.ts).
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import type { Agent } from "@suite/harness/agent";
 import { createEchoAgent } from "./echo-agent.ts";
-import { Hub } from "./hub.ts";
+import { Hub, PROTOCOL_VERSION } from "./hub.ts";
 import { createLogger, type Logger } from "./log.ts";
 import { resolvePaths } from "./paths.ts";
 import { startServer } from "./server.ts";
@@ -41,8 +41,12 @@ async function main(): Promise<void> {
     { version: VERSION, pid: process.pid, startedAt: Date.now() },
     log,
   );
-  const server = await startServer(hub, paths.socket);
-  log.info(`listening on ${paths.socket}, data in ${paths.dataDir}`);
+  const server = await startServer(hub, {
+    paths,
+    port: Number(process.env.SUITE_PORT ?? 0),
+    protocol: PROTOCOL_VERSION,
+  });
+  log.info(`listening on ${paths.socket} and ${server.info.url}, data in ${paths.dataDir}`);
 
   let stopping = false;
   const stop = async (signal: string): Promise<void> => {

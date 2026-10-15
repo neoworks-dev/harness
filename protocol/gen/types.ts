@@ -15,7 +15,9 @@ export type Envelope =
   | SessionInfoMessage
   | SessionEvents
   | SessionInputMessage
-  | AppPresenceMessage;
+  | AppPresenceMessage
+  | ConnectorsList
+  | ConnectorsListResult;
 
 export type EnvelopeTag = Envelope["topic"];
 
@@ -158,22 +160,74 @@ export interface SessionInputMessage {
   payload: SessionInput;
 }
 
-/** Client → daemon: connector registration. Wired up in Phase 2. */
+/** Client → daemon: connector registration. Acked when it has an id; invalid registrations get bus.error. */
 export interface AppPresenceMessage {
   topic: "app.presence";
   payload: AppPresence;
+  id?: string;
 }
 
+/** Client → daemon. Replied to with connectors.list_result. */
+export interface ConnectorsList {
+  topic: "connectors.list";
+  id: string;
+}
+
+export interface ConnectorsListResult {
+  topic: "connectors.list_result";
+  id: string;
+  payload: ConnectorsListPayload;
+}
+
+export interface ConnectorsListPayload {
+  connectors: ConnectorInfo[];
+}
+
+/** Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update. */
 export interface AppPresence {
+  /** Connector name; prefixes its tools (app.tool). */
   app: string;
   kind: ConnectorKind;
-  v: number;
+  /** Human-readable name, e.g. Photo editor. */
+  title?: string;
   /** false when the app is closing. */
   open: boolean;
   /** Current app context, e.g. url or project. */
   context?: Record<string, string>;
-  /** Tool names only; schemas are served by the MCP gateway. */
-  tools: string[];
+  mcp?: McpEndpoint;
+  launch?: LaunchSpec;
+}
+
+/** The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it. */
+export interface McpEndpoint {
+  url: string;
+  headers?: Record<string, string>;
+}
+
+/** How to start the app when it is closed (apps_launch). Remembered by the daemon. */
+export interface LaunchSpec {
+  /** argv; the first entry is the program. */
+  command: string[];
+  cwd?: string;
+}
+
+/** A connector the daemon knows, open or not. */
+export interface ConnectorInfo {
+  app: string;
+  kind: ConnectorKind;
+  title?: string;
+  connected: boolean;
+  /** Bumped by the daemon whenever the connector's tool schemas change. */
+  v: number;
+  tools: ConnectorTool[];
+  /** Why the gateway can't reach its MCP server, if it can't. */
+  error?: string;
+}
+
+export interface ConnectorTool {
+  /** Full name, app.tool. */
+  name: string;
+  description: string;
 }
 
 /** Payload of the session.events topic: one row of the session event log. */
@@ -208,6 +262,8 @@ export interface UserMessage {
   /** App the input came from. */
   app: string;
   text: string;
+  /** Absolute paths of attached images (PNG, JPEG, GIF, WebP). */
+  images?: string[];
 }
 
 /** Streamed piece of the agent's visible reply. */
@@ -321,6 +377,8 @@ export interface SessionInput {
   /** App the input came from. */
   app: string;
   text: string;
+  /** Absolute paths of attached images (PNG, JPEG, GIF, WebP). */
+  images?: string[];
 }
 
 export type SessionState = "idle" | "running";

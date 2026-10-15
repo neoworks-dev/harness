@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     "./types": "./gen/types.ts",
-    "./validate": "./src/validate.ts"
+    "./validate": "./src/validate.ts",
+    "./core-tools": "./src/core-tools.ts"
   },
   "scripts": {
     "codegen": "bun run codegen/main.ts"

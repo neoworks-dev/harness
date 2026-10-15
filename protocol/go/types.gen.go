@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -137,6 +137,18 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "app.presence":
 		var v AppPresenceMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "connectors.list":
+		var v ConnectorsList
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "connectors.list_result":
+		var v ConnectorsListResult
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -433,9 +445,10 @@ func (v SessionInputMessage) MarshalJSON() ([]byte, error) {
 	}{"session.input", plain(v)})
 }
 
-// AppPresenceMessage: Client → daemon: connector registration. Wired up in Phase 2.
+// AppPresenceMessage: Client → daemon: connector registration. Acked when it has an id; invalid registrations get bus.error.
 type AppPresenceMessage struct {
 	Payload AppPresence `json:"payload"`
+	ID      *string     `json:"id,omitempty"`
 }
 
 func (AppPresenceMessage) isEnvelope() {}
@@ -449,16 +462,87 @@ func (v AppPresenceMessage) MarshalJSON() ([]byte, error) {
 	}{"app.presence", plain(v)})
 }
 
+// ConnectorsList: Client → daemon. Replied to with connectors.list_result.
+type ConnectorsList struct {
+	ID string `json:"id"`
+}
+
+func (ConnectorsList) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v ConnectorsList) MarshalJSON() ([]byte, error) {
+	type plain ConnectorsList
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"connectors.list", plain(v)})
+}
+
+type ConnectorsListResult struct {
+	ID      string                `json:"id"`
+	Payload ConnectorsListPayload `json:"payload"`
+}
+
+func (ConnectorsListResult) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v ConnectorsListResult) MarshalJSON() ([]byte, error) {
+	type plain ConnectorsListResult
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"connectors.list_result", plain(v)})
+}
+
+type ConnectorsListPayload struct {
+	Connectors []ConnectorInfo `json:"connectors"`
+}
+
+// AppPresence: Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.
 type AppPresence struct {
+	// Connector name; prefixes its tools (app.tool).
 	App  string        `json:"app"`
 	Kind ConnectorKind `json:"kind"`
-	V    int64         `json:"v"`
+	// Human-readable name, e.g. Photo editor.
+	Title *string `json:"title,omitempty"`
 	// false when the app is closing.
 	Open bool `json:"open"`
 	// Current app context, e.g. url or project.
 	Context map[string]string `json:"context,omitempty"`
-	// Tool names only; schemas are served by the MCP gateway.
-	Tools []string `json:"tools"`
+	Mcp     *McpEndpoint      `json:"mcp,omitempty"`
+	Launch  *LaunchSpec       `json:"launch,omitempty"`
+}
+
+// McpEndpoint: The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it.
+type McpEndpoint struct {
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+// LaunchSpec: How to start the app when it is closed (apps_launch). Remembered by the daemon.
+type LaunchSpec struct {
+	// argv; the first entry is the program.
+	Command []string `json:"command"`
+	Cwd     *string  `json:"cwd,omitempty"`
+}
+
+// ConnectorInfo: A connector the daemon knows, open or not.
+type ConnectorInfo struct {
+	App       string        `json:"app"`
+	Kind      ConnectorKind `json:"kind"`
+	Title     *string       `json:"title,omitempty"`
+	Connected bool          `json:"connected"`
+	// Bumped by the daemon whenever the connector's tool schemas change.
+	V     int64           `json:"v"`
+	Tools []ConnectorTool `json:"tools"`
+	// Why the gateway can't reach its MCP server, if it can't.
+	Error *string `json:"error,omitempty"`
+}
+
+type ConnectorTool struct {
+	// Full name, app.tool.
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 // SessionEventRecord: Payload of the session.events topic: one row of the session event log.
@@ -587,6 +671,8 @@ type UserMessage struct {
 	// App the input came from.
 	App  string `json:"app"`
 	Text string `json:"text"`
+	// Absolute paths of attached images (PNG, JPEG, GIF, WebP).
+	Images []string `json:"images,omitempty"`
 }
 
 func (UserMessage) isSessionEvent() {}
@@ -910,6 +996,8 @@ type SessionInput struct {
 	// App the input came from.
 	App  string `json:"app"`
 	Text string `json:"text"`
+	// Absolute paths of attached images (PNG, JPEG, GIF, WebP).
+	Images []string `json:"images,omitempty"`
 }
 
 type SessionState string

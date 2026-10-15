@@ -1,0 +1,26 @@
+{
+  "topic": "connectors.list_result",
+  "id": "10",
+  "payload": {
+    "connectors": [
+      {
+        "app": "browser",
+        "kind": "app",
+        "title": "Browser",
+        "connected": true,
+        "v": 2,
+        "tools": [
+          { "name": "browser.download", "description": "Download a URL into the asset store." }
+        ]
+      },
+      {
+        "app": "photo-editor",
+        "kind": "app",
+        "connected": false,
+        "v": 3,
+        "tools": [],
+        "error": "connection refused"
+      }
+    ]
+  }
+}

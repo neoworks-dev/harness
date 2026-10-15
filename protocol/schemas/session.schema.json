@@ -80,6 +80,13 @@
         },
         "text": {
           "type": "string"
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Absolute paths of attached images (PNG, JPEG, GIF, WebP)."
         }
       },
       "required": ["type", "app", "text"],
@@ -348,6 +355,13 @@
         },
         "text": {
           "type": "string"
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Absolute paths of attached images (PNG, JPEG, GIF, WebP)."
         }
       },
       "required": ["session", "app", "text"],

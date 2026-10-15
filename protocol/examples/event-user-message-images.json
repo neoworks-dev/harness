@@ -1,0 +1,14 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 12,
+    "ts": 1760565601100,
+    "event": {
+      "type": "user_message",
+      "app": "overlay",
+      "text": "This?",
+      "images": ["/tmp/shot-1.png"]
+    }
+  }
+}

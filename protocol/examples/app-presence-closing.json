@@ -1,0 +1,1 @@
+{ "topic": "app.presence", "payload": { "app": "lsp", "kind": "service", "open": false } }
