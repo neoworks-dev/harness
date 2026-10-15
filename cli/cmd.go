@@ -30,11 +30,15 @@ type cliEnv struct {
 const usage = `usage: suite <command> [flags]
 
 commands:
-  status                        show daemon info and session counts
+  status                        show daemon info, session counts and where the agent is
   sessions                      list sessions, most recently active first
-  attach <id|prefix>            follow a session and send it input
+  attach [id|prefix]            follow a session and send it input; without an
+                                id, the agent's current session
   attach --new [--cwd DIR] [--title T]
                                 create a session and attach to it
+  focus                         show where the agent is (session and app)
+  move [app] [--session ID]     move the agent to an open app (default: home);
+                                --session makes that session current
   tools [query...]              list connectors and their tools; with a query,
                                 only tools matching all words
 
@@ -58,6 +62,10 @@ func run(ctx context.Context, args []string, e cliEnv) int {
 		return runAttach(ctx, args, e)
 	case "tools":
 		return runTools(ctx, args, e)
+	case "focus":
+		return runFocus(ctx, args, e)
+	case "move":
+		return runMove(ctx, args, e)
 	case "help", "-h", "--help":
 		fmt.Fprint(e.Stdout, usage)
 		return 0
@@ -135,6 +143,97 @@ func runStatus(ctx context.Context, args []string, e cliEnv) int {
 	fmt.Fprintf(e.Stdout, "protocol:  %d\n", w.Protocol)
 	fmt.Fprintf(e.Stdout, "socket:    %s\n", path)
 	fmt.Fprintf(e.Stdout, "sessions:  %d total, %d running\n", len(sessions), running)
+	if focus, err := waitFocus(ctx, c); err == nil {
+		fmt.Fprintf(e.Stdout, "agent:     %s\n", describeFocus(focus))
+	}
+	return 0
+}
+
+// focusWait bounds how long a command waits for the daemon's first agent.focus,
+// which it sends right after the handshake.
+const focusWait = 3 * time.Second
+
+func waitFocus(ctx context.Context, c *sdk.Client) (protocol.AgentFocus, error) {
+	ctx, cancel := context.WithTimeout(ctx, focusWait)
+	defer cancel()
+	return c.WaitFocus(ctx)
+}
+
+// describeFocus says where the agent is, e.g. "session s1, app editor".
+func describeFocus(f protocol.AgentFocus) string {
+	if f.App == nil {
+		return fmt.Sprintf("session %s, no app", f.Session)
+	}
+	return fmt.Sprintf("session %s, app %s", f.Session, *f.App)
+}
+
+func runFocus(ctx context.Context, args []string, e cliEnv) int {
+	fs, socket := commandFlags("focus", e)
+	positional, err := parseFlags(fs, args)
+	if err != nil {
+		return 2
+	}
+	if len(positional) > 0 {
+		fmt.Fprint(e.Stderr, "usage: suite focus\n")
+		return 2
+	}
+	c, _, ok := connect(ctx, *socket, e)
+	if !ok {
+		return 1
+	}
+	defer c.Close()
+
+	focus, err := waitFocus(ctx, c)
+	if err != nil {
+		fmt.Fprintf(e.Stderr, "suite: no agent.focus from the daemon: %v\n", err)
+		return 1
+	}
+	fmt.Fprintln(e.Stdout, describeFocus(focus))
+	return 0
+}
+
+func runMove(ctx context.Context, args []string, e cliEnv) int {
+	fs, socket := commandFlags("move", e)
+	session := fs.String("session", "", "make this session (id or prefix) the current one")
+	positional, err := parseFlags(fs, args)
+	if err != nil {
+		return 2
+	}
+	if len(positional) > 1 {
+		fmt.Fprint(e.Stderr, "usage: suite move [app] [--session ID]\n")
+		return 2
+	}
+	c, _, ok := connect(ctx, *socket, e)
+	if !ok {
+		return 1
+	}
+	defer c.Close()
+
+	var move protocol.AgentMove
+	if len(positional) == 1 {
+		move.App = &positional[0]
+	}
+	if *session != "" {
+		sessions, err := c.ListSessions(ctx)
+		if err == nil {
+			var s protocol.SessionInfo
+			if s, err = resolveSession(sessions, *session); err == nil {
+				move.Session = &s.ID
+			}
+		}
+		if err != nil {
+			fmt.Fprintf(e.Stderr, "suite: %v\n", err)
+			return 1
+		}
+	}
+	if err := c.MoveAgent(ctx, move); err != nil {
+		fmt.Fprintf(e.Stderr, "suite: move: %v\n", err)
+		return 1
+	}
+	// The daemon sends the initial focus right after the handshake and broadcasts the new one
+	// before it acks, so the latest focus is the result.
+	focus, _ := c.Focus()
+	fmt.Fprintf(e.Stdout, "agent moved: %s\n", describeFocus(focus))
 	return 0
 }
 

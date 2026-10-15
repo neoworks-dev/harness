@@ -14,6 +14,7 @@ import (
 	"time"
 
 	protocol "neoworks.dev/suite/protocol/go"
+	sdk "neoworks.dev/suite/sdk-go"
 	"neoworks.dev/suite/sdk-go/sdktest"
 )
 
@@ -98,7 +99,7 @@ func TestStatus(t *testing.T) {
 	if code != 0 || stderr != "" {
 		t.Fatalf("code %d, stderr %q", code, stderr)
 	}
-	for _, want := range []string{"pid 4242", "version test", "uptime:    1h 30m", "protocol:  1", "socket:    " + d.Socket, "3 total, 1 running"} {
+	for _, want := range []string{"agent:     session s3, no app", "pid 4242", "version test", "uptime:    1h 30m", "protocol:  1", "socket:    " + d.Socket, "3 total, 1 running"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("status output missing %q:\n%s", want, stdout)
 		}
@@ -217,7 +218,7 @@ func TestAttachErrors(t *testing.T) {
 	}{
 		{[]string{"attach", "abc"}, 1, "ambiguous"},
 		{[]string{"attach", "nope"}, 1, "no session matches"},
-		{[]string{"attach"}, 2, "usage"},
+		{[]string{"attach", "a", "b"}, 2, "usage"},
 		{[]string{"attach", "--new", "abc1"}, 2, "usage"},
 		{[]string{"attach", "--cwd", "/x", "abc1"}, 2, "only apply with --new"},
 		{[]string{"bogus"}, 2, "unknown command"},
@@ -301,7 +302,7 @@ func TestDaemonNotRunning(t *testing.T) {
 	l.Close()
 
 	for _, sock := range []string{filepath.Join(dir, "missing.sock"), stale} {
-		for _, cmd := range []string{"status", "sessions", "attach"} {
+		for _, cmd := range []string{"status", "sessions", "attach", "focus", "move"} {
 			args := []string{cmd}
 			if cmd == "attach" {
 				args = append(args, "x")
@@ -312,5 +313,86 @@ func TestDaemonNotRunning(t *testing.T) {
 				t.Errorf("%v: code %d stdout %q stderr %q", args, code, stdout, stderr)
 			}
 		}
+	}
+}
+
+// openApp registers an app (the overlay-like home one if home) for the test.
+func openApp(t *testing.T, d *sdktest.Daemon, app string, home bool) {
+	t.Helper()
+	c, err := sdk.Dial(context.Background(), sdk.Options{Socket: d.Socket, Client: app})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	p := protocol.AppPresence{App: app, Kind: protocol.ConnectorKindApp, Open: true}
+	if home {
+		yes := true
+		p.Home = &yes
+	}
+	if err := c.SetPresence(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAttachWithoutIDUsesCurrentSession(t *testing.T) {
+	d := sdktest.New(t)
+	d.AddSession("old", "", time.Now().Add(-time.Hour), protocol.UserMessage{App: "cli", Text: "older"})
+	d.AddSession("cur", "", time.Now(), protocol.UserMessage{App: "overlay", Text: "hi"})
+
+	code, stdout, stderr := exec(t, d.Socket, "", "attach")
+	if code != 0 || stderr != "" {
+		t.Fatalf("code %d, stderr %q", code, stderr)
+	}
+	if want := "\n» overlay: hi\n\n-- attached to cur --\n"; stdout != want {
+		t.Errorf("stdout:\n%q\nwant:\n%q", stdout, want)
+	}
+
+	// Moving the current session changes what a bare attach follows.
+	if code, _, stderr := exec(t, d.Socket, "", "move", "--session", "ol"); code != 0 {
+		t.Fatalf("move: code %d, stderr %q", code, stderr)
+	}
+	_, stdout, _ = exec(t, d.Socket, "", "attach")
+	if !strings.Contains(stdout, "-- attached to old --") {
+		t.Errorf("stdout:\n%s", stdout)
+	}
+	if code, _, stderr := exec(t, d.Socket, "", "attach", "a", "b"); code != 2 || !strings.Contains(stderr, "usage") {
+		t.Errorf("two ids: code %d, stderr %q", code, stderr)
+	}
+}
+
+func TestFocusAndMove(t *testing.T) {
+	d := sdktest.New(t)
+	d.AddSession("s1", "", time.Now().Add(-time.Hour))
+	d.AddSession("s2", "", time.Now())
+	openApp(t, d, "overlay", true)
+	openApp(t, d, "editor", false)
+
+	check := func(wantOut string, args ...string) {
+		t.Helper()
+		code, stdout, stderr := exec(t, d.Socket, "", args...)
+		if code != 0 || stderr != "" || stdout != wantOut {
+			t.Errorf("%v: code %d stdout %q stderr %q, want %q", args, code, stdout, stderr, wantOut)
+		}
+	}
+	check("session s2, app overlay\n", "focus")
+	check("agent moved: session s2, app editor\n", "move", "editor")
+	check("session s2, app editor\n", "focus")
+	check("agent moved: session s1, app editor\n", "move", "editor", "--session", "s1")
+	check("agent moved: session s2, app overlay\n", "move", "--session", "s2")
+	check("session s2, app overlay\n", "focus")
+
+	code, _, stderr := exec(t, d.Socket, "", "move", "nope")
+	if code != 1 || !strings.Contains(stderr, "nope is not open") {
+		t.Errorf("move to missing app: code %d, stderr %q", code, stderr)
+	}
+	code, _, stderr = exec(t, d.Socket, "", "move", "--session", "zzz")
+	if code != 1 || !strings.Contains(stderr, `no session matches "zzz"`) {
+		t.Errorf("move to missing session: code %d, stderr %q", code, stderr)
+	}
+	if code, _, _ := exec(t, d.Socket, "", "move", "a", "b"); code != 2 {
+		t.Errorf("two apps: code %d", code)
+	}
+	if code, _, _ := exec(t, d.Socket, "", "focus", "x"); code != 2 {
+		t.Errorf("focus with an argument: code %d", code)
 	}
 }

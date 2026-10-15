@@ -6,6 +6,7 @@ import (
 	"net"
 	"path/filepath"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -372,5 +373,150 @@ func TestReconnectEndsSubscriptionOfVanishedSession(t *testing.T) {
 	var apiErr *sdk.Error
 	if !errors.As(sub.Err(), &apiErr) {
 		t.Errorf("sub.Err = %v", sub.Err())
+	}
+}
+
+// register opens a connector from its own client.
+func register(t *testing.T, d *sdktest.Daemon, app string, home bool, pid int64) *sdk.Client {
+	t.Helper()
+	c := dial(t, d, sdk.Options{Client: app})
+	p := protocol.AppPresence{App: app, Kind: protocol.ConnectorKindApp, Open: true, PID: &pid}
+	if home {
+		p.Home = ptr(true)
+	}
+	if err := c.SetPresence(ctxT(t), p); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func TestFocus(t *testing.T) {
+	d := sdktest.New(t)
+	d.AddSession("s1", "", time.Now())
+	register(t, d, "home", true, 100)
+	register(t, d, "editor", false, 200)
+
+	var got []protocol.AgentFocus
+	var mu sync.Mutex
+	c := dial(t, d, sdk.Options{OnFocus: func(f protocol.AgentFocus) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, f)
+	}})
+	ctx := ctxT(t)
+	f, err := c.WaitFocus(ctx)
+	if err != nil || f.Session != "s1" || f.Reason != protocol.FocusReasonInitial || f.App == nil || *f.App != "home" {
+		t.Fatalf("initial focus = %+v, %v", f, err)
+	}
+	if cur, ok := c.Focus(); !ok || cur.Session != "s1" {
+		t.Errorf("Focus = %+v, %v", cur, ok)
+	}
+
+	if err := c.MoveAgent(ctx, protocol.AgentMove{App: ptr("editor")}); err != nil {
+		t.Fatal(err)
+	}
+	// The broadcast precedes the ack, so the latest focus is already there.
+	if cur, _ := c.Focus(); cur.App == nil || *cur.App != "editor" || *cur.From != "home" || cur.Reason != protocol.FocusReasonUser {
+		t.Errorf("after move to editor: %+v", cur)
+	}
+	if err := c.MoveAgent(ctx, protocol.AgentMove{}); err != nil {
+		t.Fatal(err)
+	}
+	if cur, _ := c.Focus(); *cur.App != "home" {
+		t.Errorf("after move home: %+v", cur)
+	}
+	sdktest.Eventually(t, "OnFocus calls", func() bool { mu.Lock(); defer mu.Unlock(); return len(got) == 3 })
+	mu.Lock()
+	if *got[1].App != "editor" || *got[2].App != "home" {
+		t.Errorf("callbacks = %+v", got)
+	}
+	mu.Unlock()
+
+	var apiErr *sdk.Error
+	if err := c.MoveAgent(ctx, protocol.AgentMove{App: ptr("nope")}); !errors.As(err, &apiErr) || apiErr.Code != protocol.ErrorCodeNotFound {
+		t.Errorf("move to missing app: %v", err)
+	}
+	if err := c.MoveAgent(ctx, protocol.AgentMove{Session: ptr("nope")}); !errors.As(err, &apiErr) || apiErr.Code != protocol.ErrorCodeNotFound {
+		t.Errorf("move to missing session: %v", err)
+	}
+}
+
+func TestFocusFollowsClosingAndSession(t *testing.T) {
+	d := sdktest.New(t)
+	d.AddSession("s1", "", time.Now().Add(-time.Hour))
+	d.AddSession("s2", "", time.Now())
+	register(t, d, "home", true, 100)
+	editor := register(t, d, "editor", false, 200)
+	c := dial(t, d, sdk.Options{})
+	ctx := ctxT(t)
+	if f, _ := c.WaitFocus(ctx); f.Session != "s2" {
+		t.Fatalf("current session = %q, want the most recent", f.Session)
+	}
+
+	if err := c.MoveAgent(ctx, protocol.AgentMove{App: ptr("editor"), Session: ptr("s1")}); err != nil {
+		t.Fatal(err)
+	}
+	if f, _ := c.Focus(); f.Session != "s1" || *f.App != "editor" || f.Reason != protocol.FocusReasonSession {
+		t.Errorf("after session move: %+v", f)
+	}
+	editor.Close()
+	sdktest.Eventually(t, "fall back home", func() bool {
+		f, _ := c.Focus()
+		return f.App != nil && *f.App == "home" && f.Reason == protocol.FocusReasonClosed
+	})
+}
+
+func TestConnectorsNotifications(t *testing.T) {
+	d := sdktest.New(t)
+	register(t, d, "home", true, 100)
+
+	lists := make(chan []protocol.ConnectorInfo, 16)
+	c := dial(t, d, sdk.Options{OnConnectors: func(l []protocol.ConnectorInfo) { lists <- l }})
+	sdktest.Eventually(t, "the initial list", func() bool { return len(c.Connectors()) == 1 })
+	if h := c.Connectors()[0]; h.Home == nil || !*h.Home || h.PID == nil || *h.PID != 100 {
+		t.Errorf("home connector = %+v", h)
+	}
+
+	editor := register(t, d, "editor", false, 200)
+	sdktest.Eventually(t, "editor listed", func() bool {
+		for _, i := range c.Connectors() {
+			if i.App == "editor" && i.Connected {
+				return true
+			}
+		}
+		return false
+	})
+	editor.Close()
+	sdktest.Eventually(t, "editor closed", func() bool {
+		for _, i := range c.Connectors() {
+			if i.App == "editor" && !i.Connected {
+				return true
+			}
+		}
+		return false
+	})
+	if len(lists) == 0 {
+		t.Error("OnConnectors was never called")
+	}
+}
+
+func TestFocusAfterReconnect(t *testing.T) {
+	d := sdktest.New(t)
+	d.AddSession("s1", "", time.Now())
+	calls := make(chan protocol.AgentFocus, 8)
+	c := dial(t, d, sdk.Options{Reconnect: true, OnFocus: func(f protocol.AgentFocus) { calls <- f }})
+	<-calls
+	d.MoveAgentTo("", protocol.FocusReasonAgent) // no-op: it is nowhere already
+	d.DropConnections()
+	select {
+	case f := <-calls:
+		if f.Reason != protocol.FocusReasonInitial {
+			t.Errorf("focus after reconnect = %+v", f)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no agent.focus after reconnect")
+	}
+	if _, ok := c.Focus(); !ok {
+		t.Error("Focus lost")
 	}
 }

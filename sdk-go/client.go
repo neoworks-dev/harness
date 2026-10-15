@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"sync"
 
@@ -39,6 +40,15 @@ type Options struct {
 	Reconnect bool
 	// Logf receives reconnect diagnostics; nil discards them.
 	Logf func(format string, args ...any)
+	// OnFocus is called for every agent.focus the daemon sends: once after
+	// each (re)connect and again on every change. Calls come in order from
+	// one goroutine, so a slow callback delays later notifications (not the
+	// connection) and may itself call the client.
+	OnFocus func(protocol.AgentFocus)
+	// OnConnectors is called with the full connector list whenever it changes,
+	// and with the list fetched after each (re)connect. Same delivery as
+	// OnFocus.
+	OnConnectors func([]protocol.ConnectorInfo)
 }
 
 // Client is a connection to the daemon.
@@ -57,8 +67,12 @@ type Client struct {
 	pending  map[string]chan reply
 	subs     map[string]*Subscription // by session id
 	presence *protocol.AppPresence    // re-sent after a reconnect
-	closed   bool                     // Close was called
-	finished bool                     // done is closed; err says why
+	focus    *protocol.AgentFocus     // latest agent.focus
+	focused  chan struct{}            // closed by the first agent.focus
+	conns    []protocol.ConnectorInfo // latest connector list
+	notes    *notifier
+	closed   bool // Close was called
+	finished bool // done is closed; err says why
 	err      error
 }
 
@@ -92,12 +106,67 @@ func Dial(ctx context.Context, opts Options) (*Client, error) {
 		welcome: welcome,
 		pending: map[string]chan reply{},
 		subs:    map[string]*Subscription{},
+		focused: make(chan struct{}),
+		notes:   newNotifier(),
 	}
 	close(c.up)
 	// Detached from ctx on purpose: ctx bounds the dial, Close ends the client.
 	c.ctx, c.cancel = context.WithCancel(context.Background())
+	go c.notes.run(c.ctx)
 	go c.supervise(ws)
+	go c.seedConnectors()
 	return c, nil
+}
+
+// Focus returns the latest agent.focus: the daemon's current session and the
+// app hosting the agent. The daemon sends one right after the handshake, so
+// ok is false only for a moment after Dial; WaitFocus waits for it.
+func (c *Client) Focus() (focus protocol.AgentFocus, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.focus == nil {
+		return protocol.AgentFocus{}, false
+	}
+	return *c.focus, true
+}
+
+// WaitFocus returns the current focus, waiting for the first agent.focus if
+// it has not arrived yet.
+func (c *Client) WaitFocus(ctx context.Context) (protocol.AgentFocus, error) {
+	select {
+	case <-c.focused:
+	case <-c.done:
+		return protocol.AgentFocus{}, c.Err()
+	case <-ctx.Done():
+		return protocol.AgentFocus{}, ctx.Err()
+	}
+	focus, _ := c.Focus()
+	return focus, nil
+}
+
+// Connectors returns the latest connector list: fetched after each
+// (re)connect and kept current from connectors.changed.
+func (c *Client) Connectors() []protocol.ConnectorInfo {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Clone(c.conns)
+}
+
+// MoveAgent moves the agent to app (an open connector of kind app), or home
+// when app is nil. A non-nil session makes that session current for every
+// client. It returns once the daemon has broadcast the resulting agent.focus.
+func (c *Client) MoveAgent(ctx context.Context, move protocol.AgentMove) error {
+	_, err := request[protocol.BusAck](ctx, c, func(id string) protocol.EnvelopeVariant {
+		return protocol.AgentMoveMessage{ID: id, Payload: move}
+	})
+	return err
+}
+
+// seedConnectors asks for the connector list; dispatch records the reply.
+func (c *Client) seedConnectors() {
+	ctx, cancel := context.WithTimeout(c.ctx, dialTimeout)
+	defer cancel()
+	c.ListConnectors(ctx) // a failure only means the list stays as it was
 }
 
 // Welcome is the daemon's handshake reply (from the latest connection).

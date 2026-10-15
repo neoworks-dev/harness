@@ -20,10 +20,14 @@ async function rig(): Promise<{ daemon: TestDaemon; client: SuiteClient }> {
 describe("sessions", () => {
   test("create, list, subscribe replays then follows live, input gets an echo", async () => {
     const { client } = await rig();
-    expect(await client.listSessions()).toEqual([]);
+    // The daemon always has a current session.
+    const initial = (await client.listSessions()).map((s) => s.id);
+    expect(initial).toHaveLength(1);
     const created = await client.createSession({ title: "t" });
     expect(created.title).toBe("t");
-    expect((await client.listSessions()).map((s) => s.id)).toEqual([created.id]);
+    expect((await client.listSessions()).map((s) => s.id).sort()).toEqual(
+      [...initial, created.id].sort(),
+    );
 
     await client.input(created.id, "one");
     const first = new Recorder();
@@ -117,7 +121,7 @@ describe("connecting", () => {
     cleanups.push(() => daemon.stop(200));
     const client = await connecting;
     cleanups.push(() => client.close());
-    expect(await client.listSessions()).toEqual([]);
+    expect(await client.listSessions()).toHaveLength(1);
   });
 });
 

@@ -8,6 +8,8 @@ import { readFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import type {
+  AgentFocus,
+  AgentMove,
   AppPresence,
   ConnectorInfo,
   Envelope,
@@ -159,6 +161,10 @@ export class SuiteClient {
   private readonly subscriptions = new Set<Subscription>();
   private readonly listeners = new Set<(connected: boolean) => void>();
   private presence?: AppPresence;
+  private latestFocus?: AgentFocus;
+  private latestConnectors: ConnectorInfo[] = [];
+  private readonly focusListeners = new Set<(focus: AgentFocus) => void>();
+  private readonly connectorListeners = new Set<(connectors: ConnectorInfo[]) => void>();
   private welcome?: { resolve: () => void; reject: (error: Error) => void };
   /** Aborted by close() to cut short any backoff sleep. */
   private readonly stop = new AbortController();
@@ -196,6 +202,61 @@ export class SuiteClient {
   onConnectionChange(cb: (connected: boolean) => void): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
+  }
+
+  /**
+   * Where the agent lives: the latest `agent.focus` from the daemon, which sends one after each
+   * (re)connect and another on every change. Undefined until the first one arrives; see
+   * `waitForFocus`.
+   */
+  get focus(): AgentFocus | undefined {
+    return this.latestFocus;
+  }
+
+  /** Called with every `agent.focus` frame, including the one the daemon sends after a reconnect. */
+  onFocus(cb: (focus: AgentFocus) => void): () => void {
+    this.focusListeners.add(cb);
+    return () => this.focusListeners.delete(cb);
+  }
+
+  /** Resolves with the current focus, waiting for the first one if it hasn't arrived yet. */
+  async waitForFocus(timeoutMs = REQUEST_TIMEOUT_MS): Promise<AgentFocus> {
+    const known = this.latestFocus;
+    if (known) return known;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        off();
+        reject(new Error("no agent.focus from the daemon"));
+      }, timeoutMs);
+      const off = this.onFocus((focus) => {
+        clearTimeout(timer);
+        off();
+        resolve(focus);
+      });
+    });
+  }
+
+  /**
+   * Every connector the daemon knows, as of the latest `connectors.changed` (or connectors.list
+   * reply). Fetched once after each (re)connect, so it is empty only until that reply arrives.
+   */
+  get connectors(): ConnectorInfo[] {
+    return this.latestConnectors;
+  }
+
+  /** Called with the full connector list whenever it changes (and after the first fetch). */
+  onConnectors(cb: (connectors: ConnectorInfo[]) => void): () => void {
+    this.connectorListeners.add(cb);
+    return () => this.connectorListeners.delete(cb);
+  }
+
+  /**
+   * Moves the agent: to `app` (an open connector of kind app), or home when `app` is omitted.
+   * With `session`, that session becomes the current one for everybody. Resolves once the daemon
+   * has broadcast the resulting `agent.focus`.
+   */
+  async moveAgent(move: AgentMove = {}): Promise<void> {
+    await this.call((id) => ({ topic: "agent.move", id, payload: move }));
   }
 
   /** Sets the presence now (if connected) and on every reconnect. Use `open: false` on close. */
@@ -300,6 +361,7 @@ export class SuiteClient {
     }
     this.connected = true;
     for (const sub of this.subscriptions) this.sendSubscribe(sub);
+    this.seedConnectors();
     this.emit(true);
   }
 
@@ -370,6 +432,33 @@ export class SuiteClient {
     await this.call((id) => ({ topic: "app.presence", id, payload: presence }));
   }
 
+  /** Asks for the connector list; the reply is picked up in receive like any other snapshot. */
+  private seedConnectors(): void {
+    this.listConnectors().catch(() => {});
+  }
+
+  private setConnectors(connectors: ConnectorInfo[]): void {
+    this.latestConnectors = connectors;
+    for (const cb of [...this.connectorListeners]) {
+      try {
+        cb(connectors);
+      } catch (err) {
+        this.options.onError?.(asError(err));
+      }
+    }
+  }
+
+  private setFocus(focus: AgentFocus): void {
+    this.latestFocus = focus;
+    for (const cb of [...this.focusListeners]) {
+      try {
+        cb(focus);
+      } catch (err) {
+        this.options.onError?.(asError(err));
+      }
+    }
+  }
+
   private sendSubscribe(sub: Subscription): void {
     const { session, next } = sub;
     this.call((id) => ({ topic: "session.subscribe", id, payload: { session, fromSeq: next } }))
@@ -427,6 +516,17 @@ export class SuiteClient {
         return;
       case "session.events":
         this.deliver(msg.payload);
+        return;
+      case "agent.focus":
+        this.setFocus(msg.payload);
+        return;
+      case "connectors.changed":
+        this.setConnectors(msg.payload.connectors);
+        return;
+      case "connectors.list_result":
+        // A fresh snapshot, in wire order with the broadcasts, so the latest one is the truth.
+        this.setConnectors(msg.payload.connectors);
+        this.settle(msg.id, msg);
         return;
       case "bus.error":
         if (msg.id === undefined) {

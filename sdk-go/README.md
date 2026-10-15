@@ -40,6 +40,24 @@ The app stays registered while the connection lives. Call `SetPresence` again to
 
 **Out of scope:** an MCP server helper for registering tools. A Go MCP server needs a large dependency; run any Streamable HTTP MCP server and point `Mcp.URL` at it.
 
+## Where the agent is
+
+The daemon owns the current session and tells every client where the agent lives (`agent.focus`: session, hosting app, reason) right after the handshake and on every change.
+
+```go
+c, _ := sdk.Dial(ctx, sdk.Options{
+    Client:       "my-app",
+    OnFocus:      func(f protocol.AgentFocus) { /* every agent.focus, in order */ },
+    OnConnectors: func(l []protocol.ConnectorInfo) { /* full list, on every change */ },
+})
+focus, err := c.WaitFocus(ctx) // the first agent.focus; c.Focus() is the latest, if any yet
+err = c.MoveAgent(ctx, protocol.AgentMove{App: &app})       // to an open app
+err = c.MoveAgent(ctx, protocol.AgentMove{Session: &id})    // no App: home; Session: make it current
+list := c.Connectors()  // fetched after each (re)connect, then kept current (home, pid, context)
+```
+
+Callbacks run one at a time on their own goroutine, so they may call the client; a slow one delays later notifications, not the connection. `MoveAgent` returns after the resulting `agent.focus` was broadcast. After a reconnect the daemon sends the focus again (`Reason: initial`).
+
 ## Sessions
 
 ```go
@@ -74,7 +92,7 @@ Requests in flight when the connection drops fail with `ErrConnectionLost` and a
 
 ## Testing
 
-`sdk-go/sdktest` is an in-process fake daemon (sessions, replay/live subscriptions, a scripted agent, presence and connector listing, request recording) that the SDK's and the CLI's tests share:
+`sdk-go/sdktest` is an in-process fake daemon (sessions, replay/live subscriptions, a scripted agent, presence and connector listing, `agent.focus` / `agent.move` / `connectors.changed` with a home app, request recording) that the SDK's and the CLI's tests share:
 
 ```go
 d := sdktest.New(t)

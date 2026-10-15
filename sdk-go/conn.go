@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"slices"
 	"syscall"
 	"time"
 
@@ -151,6 +152,15 @@ func (c *Client) dispatch(v protocol.EnvelopeVariant) {
 			sub.push(m.Payload)
 		}
 		return
+	case protocol.AgentFocusMessage:
+		c.setFocus(m.Payload)
+		return
+	case protocol.ConnectorsChanged:
+		c.setConnectors(m.Payload.Connectors)
+		return
+	case protocol.ConnectorsListResult:
+		// A fresh snapshot, in wire order with the broadcasts: the latest wins.
+		c.setConnectors(m.Payload.Connectors)
 	case protocol.SessionSubscribed:
 		// Flip to live before the waiter wakes, so the next frame is not
 		// mistaken for replay.
@@ -180,6 +190,28 @@ func (c *Client) dispatch(v protocol.EnvelopeVariant) {
 		return
 	}
 	ch <- reply{v: v}
+}
+
+func (c *Client) setFocus(f protocol.AgentFocus) {
+	c.mu.Lock()
+	first := c.focus == nil
+	c.focus = &f
+	c.mu.Unlock()
+	if first {
+		close(c.focused)
+	}
+	if c.opts.OnFocus != nil {
+		c.notes.push(func() { c.opts.OnFocus(f) })
+	}
+}
+
+func (c *Client) setConnectors(list []protocol.ConnectorInfo) {
+	c.mu.Lock()
+	c.conns = list
+	c.mu.Unlock()
+	if c.opts.OnConnectors != nil {
+		c.notes.push(func() { c.opts.OnConnectors(slices.Clone(list)) })
+	}
 }
 
 // connLost marks the connection gone and fails the requests waiting on it.
@@ -245,6 +277,9 @@ func (c *Client) restore(ws *websocket.Conn) {
 	}
 	c.mu.Unlock()
 
+	c.resend(ws, func(id string) protocol.EnvelopeVariant {
+		return protocol.ConnectorsList{ID: id}
+	}, func(err error) { c.logf("fetching connectors: %v", err) })
 	if presence != nil {
 		c.resend(ws, func(id string) protocol.EnvelopeVariant {
 			return protocol.AppPresenceMessage{ID: &id, Payload: *presence}

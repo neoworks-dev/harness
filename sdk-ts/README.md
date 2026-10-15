@@ -47,6 +47,9 @@ await tools.close();
 - `onConnectionChange(cb)` is called with `true` once a (re)connect is fully set up and `false` when it drops. `isConnected` is the current state.
 - `setPresence(presence)` is sent now and on every reconnect.
 - `listSessions()`, `createSession({ cwd?, title? })`, `input(session, text, { app?, images? })`, `cancel(session)`, `listConnectors()`.
+- `focus` is the latest `agent.focus` (`{ session, app?, from?, reason }`): the daemon-owned current session and the app hosting the agent (absent: nowhere). The daemon sends it after every (re)connect and broadcasts every change. `onFocus(cb)` fires on each one; `waitForFocus()` resolves with the current focus once there is one.
+- `moveAgent({ app?, session? })` moves the agent to an open app, or home without `app`; with `session` that session becomes current for everybody. It resolves after the resulting `agent.focus` was broadcast; `not_found` / `bad_request` reject as `SuiteError`.
+- `connectors` is the latest connector list (fetched after every (re)connect, then kept current from `connectors.changed`; entries carry `home`, `pid`, `context`); `onConnectors(cb)` fires on each update.
 - `subscribe(session, { fromSeq?, onEvent, onLive?, onError? })` returns `{ close() }`. `onLive` fires when the replay is over (again after each reconnect).
 - `close()` unregisters the presence, then closes for good.
 - Daemon-side failures reject with `SuiteError` (`code` from the protocol); an unavailable connection with `DisconnectedError`.

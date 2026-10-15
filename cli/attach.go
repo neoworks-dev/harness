@@ -30,8 +30,8 @@ func runAttach(ctx context.Context, args []string, e cliEnv) int {
 		return 2
 	}
 	switch {
-	case *create && len(positional) > 0, !*create && len(positional) != 1:
-		fmt.Fprint(e.Stderr, "usage: suite attach [flags] <id|prefix>\n       suite attach --new [--cwd DIR] [--title T] [flags]\n")
+	case *create && len(positional) > 0, !*create && len(positional) > 1:
+		fmt.Fprint(e.Stderr, "usage: suite attach [flags] [id|prefix]\n       suite attach --new [--cwd DIR] [--title T] [flags]\n")
 		return 2
 	case !*create && (*cwd != "" || *title != ""):
 		fmt.Fprintln(e.Stderr, "suite: --cwd and --title only apply with --new")
@@ -64,6 +64,13 @@ func runAttach(ctx context.Context, args []string, e cliEnv) int {
 		}
 		id = info.ID
 		fmt.Fprintf(e.Stdout, "created session %s\n", id)
+	} else if len(positional) == 0 {
+		focus, err := waitFocus(ctx, c)
+		if err != nil {
+			fmt.Fprintf(e.Stderr, "suite: no agent.focus from the daemon: %v\n", err)
+			return 1
+		}
+		id = focus.Session
 	} else {
 		sessions, err := c.ListSessions(ctx)
 		if err == nil {

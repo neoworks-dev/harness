@@ -42,6 +42,9 @@ type Daemon struct {
 	conns      map[*websocket.Conn]*connState
 	connectors map[string]*protocol.ConnectorInfo
 	presences  map[string]protocol.AppPresence // open connectors only
+	moves      []protocol.AgentMove
+	current    string // the current session; empty until first needed
+	focusApp   string // app hosting the agent; empty when none
 }
 
 type session struct {
@@ -182,6 +185,35 @@ func (d *Daemon) SetConnector(c protocol.ConnectorInfo) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.connectors[c.App] = &c
+	d.broadcastConnectorsLocked()
+}
+
+// Focus returns where the agent is: the current session (created on demand,
+// like the real daemon's) and the hosting app, if any.
+func (d *Daemon) Focus() (session string, app *string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	session = d.ensureCurrentLocked()
+	if d.focusApp != "" {
+		app = &d.focusApp
+	}
+	return session, app
+}
+
+// MoveAgentTo moves the agent as if it had called apps_focus (reason "agent")
+// or otherwise changed on its own, and broadcasts agent.focus. An empty app
+// means no app.
+func (d *Daemon) MoveAgentTo(app string, reason protocol.FocusReason) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.setFocusLocked(app, reason)
+}
+
+// Moves returns the payload of every agent.move received.
+func (d *Daemon) Moves() []protocol.AgentMove {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return slices.Clone(d.moves)
 }
 
 // Presence returns the registration of an open connector.
@@ -307,6 +339,87 @@ func (d *Daemon) unregisterLocked(app string) {
 	if info := d.connectors[app]; info != nil {
 		info.Connected = false
 	}
+	if d.focusApp == app {
+		d.setFocusLocked(d.homeLocked(), protocol.FocusReasonClosed)
+	}
+	d.broadcastConnectorsLocked()
+}
+
+// homeLocked returns the open connector registered with home, or "".
+func (d *Daemon) homeLocked() string {
+	for app, p := range d.presences {
+		if p.Home != nil && *p.Home {
+			return app
+		}
+	}
+	return ""
+}
+
+// ensureCurrentLocked returns the current session, picking the most recently
+// active one or creating one, as the real daemon always has one.
+func (d *Daemon) ensureCurrentLocked() string {
+	if _, ok := d.sessions[d.current]; ok {
+		return d.current
+	}
+	var best *session
+	for _, s := range d.sessions {
+		// Ties go to the greater id, so the choice is stable.
+		if best == nil || s.info.LastActivity > best.info.LastActivity ||
+			s.info.LastActivity == best.info.LastActivity && s.info.ID > best.info.ID {
+			best = s
+		}
+	}
+	if best == nil {
+		id := "main"
+		now := time.Now().UnixMilli()
+		best = &session{info: protocol.SessionInfo{ID: id, CreatedAt: now, LastActivity: now, State: protocol.SessionStateIdle}}
+		d.sessions[id] = best
+	}
+	d.current = best.info.ID
+	return d.current
+}
+
+func (d *Daemon) focusLocked(reason protocol.FocusReason, from string) protocol.AgentFocus {
+	f := protocol.AgentFocus{Session: d.ensureCurrentLocked(), Reason: reason}
+	if d.focusApp != "" {
+		f.App = &d.focusApp
+	}
+	if from != "" && from != d.focusApp {
+		f.From = &from
+	}
+	return f
+}
+
+// setFocusLocked moves the agent to app ("" for none) and broadcasts it. A
+// move to where it already is sends nothing.
+func (d *Daemon) setFocusLocked(app string, reason protocol.FocusReason) {
+	if app == d.focusApp {
+		return
+	}
+	from := d.focusApp
+	d.focusApp = app
+	d.broadcastLocked(protocol.AgentFocusMessage{Payload: d.focusLocked(reason, from)})
+}
+
+func (d *Daemon) broadcastLocked(v protocol.EnvelopeVariant) {
+	for c, st := range d.conns {
+		if st.hello {
+			d.write(c, v)
+		}
+	}
+}
+
+func (d *Daemon) broadcastConnectorsLocked() {
+	d.broadcastLocked(protocol.ConnectorsChanged{Payload: protocol.ConnectorsListPayload{Connectors: d.connectorListLocked()}})
+}
+
+func (d *Daemon) connectorListLocked() []protocol.ConnectorInfo {
+	list := []protocol.ConnectorInfo{}
+	for _, info := range d.connectors {
+		list = append(list, *info)
+	}
+	slices.SortFunc(list, func(a, b protocol.ConnectorInfo) int { return strings.Compare(a.App, b.App) })
+	return list
 }
 
 func (d *Daemon) handle(c *websocket.Conn, v protocol.EnvelopeVariant) {
@@ -331,6 +444,7 @@ func (d *Daemon) handle(c *websocket.Conn, v protocol.EnvelopeVariant) {
 		d.write(c, protocol.BusWelcome{Payload: protocol.Welcome{
 			Protocol: 1, DaemonVersion: "test", PID: 4242, StartedAt: d.StartedAt.UnixMilli(),
 		}})
+		d.write(c, protocol.AgentFocusMessage{Payload: d.focusLocked(protocol.FocusReasonInitial, "")})
 	case protocol.SessionCreate:
 		d.nextID++
 		id := fmt.Sprintf("new%d", d.nextID)
@@ -401,13 +515,44 @@ func (d *Daemon) handle(c *websocket.Conn, v protocol.EnvelopeVariant) {
 	case protocol.AppPresenceMessage:
 		d.presence(c, st, m)
 	case protocol.ConnectorsList:
-		list := []protocol.ConnectorInfo{}
-		for _, info := range d.connectors {
-			list = append(list, *info)
-		}
-		slices.SortFunc(list, func(a, b protocol.ConnectorInfo) int { return strings.Compare(a.App, b.App) })
-		d.write(c, protocol.ConnectorsListResult{ID: m.ID, Payload: protocol.ConnectorsListPayload{Connectors: list}})
+		d.write(c, protocol.ConnectorsListResult{ID: m.ID, Payload: protocol.ConnectorsListPayload{Connectors: d.connectorListLocked()}})
+	case protocol.AgentMoveMessage:
+		d.move(c, m)
 	}
+}
+
+// move handles agent.move: the focus broadcast goes out before the ack.
+func (d *Daemon) move(c *websocket.Conn, m protocol.AgentMoveMessage) {
+	d.moves = append(d.moves, m.Payload)
+	app := d.homeLocked()
+	if m.Payload.App != nil {
+		app = *m.Payload.App
+		p, open := d.presences[app]
+		switch {
+		case !open:
+			d.fail(c, &m.ID, protocol.ErrorCodeNotFound, app+" is not open")
+			return
+		case p.Kind != protocol.ConnectorKindApp:
+			d.fail(c, &m.ID, protocol.ErrorCodeBadRequest, app+" is not an app")
+			return
+		}
+	}
+	if sid := m.Payload.Session; sid != nil {
+		if d.sessions[*sid] == nil {
+			d.fail(c, &m.ID, protocol.ErrorCodeNotFound, "no session "+*sid)
+			return
+		}
+		if *sid != d.ensureCurrentLocked() {
+			from := d.focusApp
+			d.current = *sid
+			d.focusApp = app
+			d.broadcastLocked(protocol.AgentFocusMessage{Payload: d.focusLocked(protocol.FocusReasonSession, from)})
+			d.write(c, protocol.BusAck{ID: m.ID})
+			return
+		}
+	}
+	d.setFocusLocked(app, protocol.FocusReasonUser)
+	d.write(c, protocol.BusAck{ID: m.ID})
 }
 
 // presence registers or unregisters a connector. A connection holds at most
@@ -439,9 +584,15 @@ func (d *Daemon) presence(c *websocket.Conn, st *connState, m protocol.AppPresen
 		d.connectors[p.App] = info
 	}
 	info.Kind, info.Title, info.Connected = p.Kind, p.Title, true
+	info.Home, info.PID, info.Context = p.Home, p.PID, p.Context
 	info.V++
 	d.presences[p.App] = p
 	st.app = p.App
+	// The home app takes an agent that has nowhere to be.
+	if d.focusApp == "" && p.Home != nil && *p.Home {
+		d.setFocusLocked(p.App, protocol.FocusReasonOpened)
+	}
+	d.broadcastConnectorsLocked()
 	ack()
 }
 
