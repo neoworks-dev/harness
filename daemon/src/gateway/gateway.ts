@@ -18,6 +18,8 @@ const LAUNCH_TIMEOUT_MS = 20_000;
 
 export interface GatewayOptions {
   log: Logger;
+  /** Moves the agent for apps_focus; returns an error message or undefined. */
+  focus?: (app: string, session: string | undefined) => string | undefined;
   launchTimeoutMs?: number;
 }
 
@@ -70,7 +72,13 @@ export class Gateway {
     private readonly options: GatewayOptions,
   ) {}
 
-  async call(name: CoreToolName, args: unknown, signal?: AbortSignal): Promise<CallToolResult> {
+  /** `session` is the calling agent's session (sent by the harness as x-suite-session). */
+  async call(
+    name: CoreToolName,
+    args: unknown,
+    signal?: AbortSignal,
+    session?: string,
+  ): Promise<CallToolResult> {
     if (!isRecord(args)) return text(`${name}: arguments must be an object`, true);
     switch (name) {
       case "tools_search":
@@ -86,8 +94,8 @@ export class Gateway {
         if (typeof args.app !== "string") return text("apps_launch: app is required", true);
         return this.launch(args as unknown as AppArgs);
       case "apps_focus":
-        // Moving the agent between apps arrives with handoff (Phase 3).
-        return text("Moving into apps isn't available yet; keep working from here.", true);
+        if (typeof args.app !== "string") return text("apps_focus: app is required", true);
+        return this.moveInto(args.app, session);
     }
   }
 
@@ -207,6 +215,18 @@ export class Gateway {
     }
     const tools = this.registry.connector(app)?.tools.map((t) => t.name) ?? [];
     return text(`${displayName(connector)} is open. Tools: ${tools.join(", ")}.`);
+  }
+
+  private moveInto(app: string, session: string | undefined): CallToolResult {
+    const connector = this.registry.connector(app);
+    if (!connector) return text(`No connector named "${app}". Known: ${this.knownApps()}.`, true);
+    if (!this.registry.isOpen(app)) return text(closedMessage(connector), true);
+    if (!this.options.focus) return text("Moving between apps isn't available here.", true);
+    const problem = this.options.focus(app, session);
+    if (problem !== undefined) return text(problem, true);
+    return text(
+      `You're now in ${displayName(connector)}: its pane shows this conversation and the user continues there.`,
+    );
   }
 
   private knownApps(): string {

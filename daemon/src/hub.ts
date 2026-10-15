@@ -6,6 +6,7 @@ import type { Logger } from "./log.ts";
 import { NotFoundError, type SessionManager } from "./sessions.ts";
 import type { SessionStore } from "./store.ts";
 import type { ConnectorRegistry } from "./gateway/registry.ts";
+import { BadRequestError, type FocusManager } from "./focus.ts";
 
 export const PROTOCOL_VERSION = 1;
 
@@ -45,7 +46,22 @@ export class Hub {
     private readonly info: DaemonInfo,
     private readonly log: Logger,
     private readonly connectors?: ConnectorRegistry,
+    private readonly focus?: FocusManager,
   ) {
+    focus?.onChange((payload) => this.broadcastAll({ topic: "agent.focus", payload }));
+    // Coalesce bursts (an app registering, then listing its tools) into one broadcast.
+    let scheduled = false;
+    connectors?.onChange(() => {
+      if (scheduled) return;
+      scheduled = true;
+      queueMicrotask(() => {
+        scheduled = false;
+        this.broadcastAll({
+          topic: "connectors.changed",
+          payload: { connectors: connectors.list() },
+        });
+      });
+    });
     // Appends are synchronous and so is subscribe's replay, so a subscriber either got an event
     // in its replay or gets it here — never both, never neither.
     store.onAppend((record) => this.broadcast(record));
@@ -73,6 +89,11 @@ export class Hub {
         this.send(client, { topic: "session.events", payload: record });
       }
     }
+  }
+
+  /** To every client that has said hello. */
+  private broadcastAll(envelope: Envelope): void {
+    for (const client of this.clients) if (client.name !== undefined) this.send(client, envelope);
   }
 
   private send(client: Client, envelope: Envelope): void {
@@ -112,6 +133,7 @@ export class Hub {
     } catch (err) {
       const id = "id" in msg ? msg.id : undefined;
       if (err instanceof NotFoundError) this.fail(client, id, "not_found", err.message);
+      else if (err instanceof BadRequestError) this.fail(client, id, "bad_request", err.message);
       else {
         this.log.error(`handling ${msg.topic}: ${String(err)}`);
         this.fail(client, id, "internal", String(err));
@@ -137,6 +159,7 @@ export class Hub {
             startedAt: this.info.startedAt,
           },
         });
+        if (this.focus) this.send(client, { topic: "agent.focus", payload: this.focus.current() });
         return;
       case "session.create":
         this.send(client, {
@@ -195,6 +218,14 @@ export class Hub {
         );
         return;
       }
+      case "agent.move":
+        if (!this.focus) {
+          this.fail(client, msg.id, "bad_request", "this daemon doesn't track the agent's focus");
+          return;
+        }
+        this.focus.move(msg.payload, "user");
+        this.send(client, { topic: "bus.ack", id: msg.id });
+        return;
       case "connectors.list":
         this.send(client, {
           topic: "connectors.list_result",
@@ -210,6 +241,8 @@ export class Hub {
       case "session.subscribed":
       case "session.events":
       case "connectors.list_result":
+      case "connectors.changed":
+      case "agent.focus":
         this.fail(
           client,
           "id" in msg ? msg.id : undefined,

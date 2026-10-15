@@ -87,6 +87,18 @@ export class ConnectorRegistry {
     await Promise.all(owned.map(([app, live]) => this.drop(app, live)));
   }
 
+  /** The presence an open connector registered with. */
+  presenceOf(app: string): AppPresence | undefined {
+    return this.live.get(app)?.presence;
+  }
+
+  /** The open app that hosts the agent when no other app has it (the overlay), if any. */
+  home(): string | undefined {
+    for (const [app, live] of this.live)
+      if (live.presence.home && live.presence.kind === "app") return app;
+    return undefined;
+  }
+
   isOpen(app: string): boolean {
     return this.live.has(app);
   }
@@ -123,8 +135,11 @@ export class ConnectorRegistry {
         })),
       };
       if (connector.title !== undefined) info.title = connector.title;
-      const error = this.live.get(connector.app)?.error;
-      if (error !== undefined) info.error = error;
+      const live = this.live.get(connector.app);
+      if (live?.error !== undefined) info.error = live.error;
+      if (live?.presence.home) info.home = true;
+      if (live?.presence.pid !== undefined) info.pid = live.presence.pid;
+      if (live?.presence.context !== undefined) info.context = live.presence.context;
       return info;
     });
   }

@@ -114,7 +114,8 @@ describe.skipIf(!existsSync(suiteBin))("daemon + CLI end to end", () => {
     expect(out).toContain("echo #1: make a file [tool]");
 
     const status = await suite(env, ["status"]);
-    expect(status.out).toContain("1 total, 0 running");
+    // The daemon created the current session at startup; --new made a second one.
+    expect(status.out).toContain("2 total, 0 running");
   });
 
   test("two attached clients see the same live output and both can send input", async () => {

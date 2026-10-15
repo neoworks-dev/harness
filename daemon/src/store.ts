@@ -72,6 +72,10 @@ const SCHEMA = `
     PRIMARY KEY (session, seq)
   ) STRICT, WITHOUT ROWID;
   CREATE INDEX IF NOT EXISTS events_by_type ON events (session, type, seq);
+  CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  ) STRICT;
   CREATE TABLE IF NOT EXISTS connectors (
     app  TEXT PRIMARY KEY,
     data TEXT NOT NULL
@@ -202,6 +206,17 @@ export class SessionStore {
         const connector: StoredConnector = JSON.parse(r.data);
         return connector;
       });
+  }
+
+  getMeta(key: string): string | undefined {
+    const row = this.db
+      .query<{ value: string }, [string]>("SELECT value FROM meta WHERE key = ?")
+      .get(key);
+    return row?.value;
+  }
+
+  setMeta(key: string, value: string): void {
+    this.db.query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(key, value);
   }
 
   onAppend(listener: AppendListener): () => void {

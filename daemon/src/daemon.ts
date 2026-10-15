@@ -1,6 +1,7 @@
 // Wires the daemon's parts together. Used by main.ts and by tests (startTestDaemon).
 import { mkdirSync } from "node:fs";
 import type { Agent } from "@suite/harness/agent";
+import { FocusManager } from "./focus.ts";
 import { Gateway } from "./gateway/gateway.ts";
 import { mcpHandler } from "./gateway/mcp-server.ts";
 import { ConnectorRegistry } from "./gateway/registry.ts";
@@ -32,6 +33,7 @@ export interface Daemon {
   hub: Hub;
   connectors: ConnectorRegistry;
   gateway: Gateway;
+  focus: FocusManager;
   /** Cancels running turns (waiting up to timeoutMs), closes listeners and the database. */
   stop(timeoutMs?: number): Promise<void>;
 }
@@ -41,12 +43,24 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   mkdirSync(paths.dataDir, { recursive: true, mode: 0o700 });
   const store = new SessionStore(paths.db);
   const connectors = new ConnectorRegistry(store, options.connectUpstream ?? connectMcp, log);
-  const gateway = new Gateway(connectors, { log });
+  let focus: FocusManager | undefined;
+  const gateway = new Gateway(connectors, {
+    log,
+    focus: (app, session) => {
+      try {
+        focus?.move({ app, session }, "agent");
+        return undefined;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+  });
   let server: BusServer | undefined;
   const sessions = new SessionManager(store, agent, {
     defaultCwd: options.defaultCwd,
     log,
     connectors: () => connectors.snapshot(),
+    focus: (sessionId) => focus?.focusOf(sessionId),
     mcpServers: (sessionId) => {
       if (!server) return [];
       const { url, token } = server.info;
@@ -63,12 +77,14 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     },
   });
   sessions.recoverInterruptedTurns();
+  focus = new FocusManager(store, sessions, connectors, log);
   const hub = new Hub(
     store,
     sessions,
     { version: VERSION, pid: process.pid, startedAt: Date.now() },
     log,
     connectors,
+    focus,
   );
   try {
     server = await startServer(hub, {
@@ -89,6 +105,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     hub,
     connectors,
     gateway,
+    focus,
     async stop(timeoutMs = 2000) {
       await started.stop();
       await sessions.shutdown(timeoutMs);

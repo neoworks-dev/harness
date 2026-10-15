@@ -31,6 +31,8 @@ interface Runtime {
   pending: ContextEvent[];
   /** What this session's log says is open: app → version it was told about. */
   told: Map<string, number>;
+  /** The last focus_changed in this session's log. */
+  toldFocus?: FocusTarget;
   /** Resolves when the current drain loop finishes. */
   drained: Promise<void>;
 }
@@ -43,6 +45,12 @@ const CONTEXT_TYPES = new Set<SessionEvent["type"]>([
 
 function isContextEvent(event: SessionEvent): event is ContextEvent {
   return CONTEXT_TYPES.has(event.type);
+}
+
+function toFocus(event: { app: string; context?: Record<string, string> }): FocusTarget {
+  return event.context === undefined
+    ? { app: event.app }
+    : { app: event.app, context: event.context };
 }
 
 function userMessage(input: QueuedInput): SessionEvent {
@@ -62,8 +70,19 @@ export interface SessionManagerOptions {
   log: Logger;
   /** Open connectors right now; each turn starts by telling the session what changed. */
   connectors?: () => ConnectorSnapshot[];
+  /** Where the agent is, if `sessionId` is the current session; announced as focus_changed. */
+  focus?: (sessionId: string) => FocusTarget | undefined;
   /** MCP servers handed to the agent for a session (the gateway). */
   mcpServers?: (sessionId: string) => McpServer[];
+}
+
+export interface FocusTarget {
+  app: string;
+  context?: Record<string, string>;
+}
+
+function sameFocus(a: FocusTarget | undefined, b: FocusTarget | undefined): boolean {
+  return a?.app === b?.app && JSON.stringify(a?.context ?? {}) === JSON.stringify(b?.context ?? {});
 }
 
 function applyTold(told: Map<string, number>, event: SessionEvent): void {
@@ -83,8 +102,10 @@ export class SessionManager {
     store.onAppend((record) => {
       if (!isContextEvent(record.event)) return;
       const rt = this.runtimes.get(record.session);
-      rt?.pending.push(record.event);
-      if (rt) applyTold(rt.told, record.event);
+      if (!rt) return;
+      rt.pending.push(record.event);
+      applyTold(rt.told, record.event);
+      if (record.event.type === "focus_changed") rt.toldFocus = toFocus(record.event);
     });
   }
 
@@ -174,12 +195,14 @@ export class SessionManager {
     for (const r of this.store.readTypes(sessionId, ["app_connected", "app_disconnected"])) {
       applyTold(told, r.event);
     }
+    const lastFocus = this.store.readTypes(sessionId, ["focus_changed"]).at(-1)?.event;
     const rt: Runtime = {
       queue: [],
       running: false,
       cancelRequested: false,
       pending,
       told,
+      toldFocus: lastFocus?.type === "focus_changed" ? toFocus(lastFocus) : undefined,
       drained: Promise.resolve(),
     };
     this.runtimes.set(sessionId, rt);
@@ -264,6 +287,11 @@ export class SessionManager {
     }
     for (const app of [...rt.told.keys()]) {
       if (!open.has(app)) this.store.append(sessionId, { type: "app_disconnected", app });
+    }
+    // <focus> goes last and only when the agent's app or that app's context changed.
+    const focus = this.options.focus?.(sessionId);
+    if (focus && !sameFocus(focus, rt.toldFocus)) {
+      this.store.append(sessionId, { type: "focus_changed", ...focus });
     }
   }
 

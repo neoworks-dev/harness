@@ -25,7 +25,13 @@ function createServer(gateway: Gateway): Server {
     if (!isCoreToolName(name)) {
       return { content: [{ type: "text", text: `Unknown tool ${name}.` }], isError: true };
     }
-    return gateway.call(name, args, extra.signal);
+    const session = extra.requestInfo?.headers["x-suite-session"];
+    return gateway.call(
+      name,
+      args,
+      extra.signal,
+      typeof session === "string" ? session : undefined,
+    );
   });
   return server;
 }
