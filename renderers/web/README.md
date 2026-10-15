@@ -1,3 +1,3 @@
 # renderers/web
 
-TS renderer that draws resolved view components with DOM/CSS. Filled in **Phase 4**.
+TS renderer: draws resolved view items with DOM/CSS. See ../README.md for the conventions.

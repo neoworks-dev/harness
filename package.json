@@ -6,7 +6,8 @@
     "protocol",
     "daemon",
     "harness",
-    "sdk-ts"
+    "sdk-ts",
+    "renderers/web"
   ],
   "scripts": {
     "codegen": "bun run --cwd protocol codegen",

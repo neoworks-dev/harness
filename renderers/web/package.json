@@ -1,0 +1,15 @@
+{
+  "name": "@suite/renderer-web",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/render.ts"
+  },
+  "dependencies": {
+    "@suite/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@suite/sdk": "workspace:*",
+    "happy-dom": "^21.0.2"
+  }
+}
