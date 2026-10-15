@@ -7,8 +7,8 @@ One agent session shared across every app in the suite. The design is in [docs/d
 | `protocol/`          | JSON Schemas (source of truth) + generated TS and Go types | 0     |
 | `daemon/`            | TS on Bun: session store, bus hub, turn queue              | 1     |
 | `harness/`           | TS on Bun: pi-based agent, core tools, system prompt       | 1     |
-| `cli/`               | Go: `suite status / sessions / attach`                     | 1     |
-| `sdk-ts/`, `sdk-go/` | Bus clients                                                | 2     |
+| `cli/`               | Go: `suite status / sessions / attach / tools`             | 1, 2  |
+| `sdk-ts/`, `sdk-go/` | Bus clients (sessions, presence; TS: tool server helper)   | 2     |
 | `sdk-rs/`            | Rust bus client for GPUI apps                              | 3     |
 | `renderers/`         | web (TS), gpui (Rust), tui (Go)                            | 4     |
 | `fixtures/`          | View fixtures + renderer snapshot tests                    | 4     |
@@ -24,6 +24,7 @@ make build                 # bin/suite
 bun run daemon             # starts the daemon in the foreground (Ctrl-C stops it)
 bin/suite attach --new     # new session in the current directory; type to chat
 bin/suite status           # daemon info + session counts
+bin/suite tools [query]    # connectors (open or closed) and their tools
 bin/suite sessions         # sessions by last activity
 bin/suite attach <id>      # id or unique prefix; replays history, then follows live
 ```
@@ -38,8 +39,13 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits. Pi
 | `SUITE_THINKING`                      | `off` (`minimal`…`xhigh`)                                   |
 | `<PROVIDER>_API_KEY`, `SUITE_API_KEY` | falls back to API-key entries in `~/.pi/agent/auth.json`    |
 | `SUITE_AGENT`                         | `pi`; `echo` is an offline scripted agent for tests         |
+| `SUITE_PORT`                          | 127.0.0.1 port for `/bus` + `/mcp` (default: any free port) |
 
 `model` and `thinkingLevel` can also be set in `~/.config/suite/config.json`; env wins.
+
+## Connecting an app
+
+Apps register with `app.presence` and bring their own MCP server; the daemon's gateway lists and calls its tools, and the agent finds them with `tools_search` / `tools_call`. Clients that can't use the Unix socket (Bun, browsers, MCP clients) read `daemon.json` next to the socket for the loopback URL and token. A complete example app: `bun run sdk-ts/examples/notes-app.ts`, then ask the agent to use the notes app. See [sdk-ts](sdk-ts/README.md) and [sdk-go](sdk-go/README.md).
 
 ## Commands
 

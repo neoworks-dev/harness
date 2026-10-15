@@ -237,16 +237,16 @@ The session lives in the daemon; every chat UI is a view of it.
 
 ### Topics
 
-| Topic            | Payload                                                    | Purpose                                            |
-| ---------------- | ---------------------------------------------------------- | -------------------------------------------------- |
-| `session.events` | ACP-style `session/update` events + seq                    | Stream to every view                               |
-| `session.input`  | `{session, app, text}`                                     | Any pane can submit input                          |
-| `agent.focus`    | `{session, app}`                                           | Where the agent lives; matching app opens its pane |
-| `app.presence`   | `{app, kind, v, open, context, tools, templates, actions}` | Registration                                       |
-| `tool.result`    | `{ref, type, data}`                                        | Typed results for views                            |
-| `view.patch`     | `{ref, patch}`                                             | Live updates to a rendered view                    |
-| `ui.action`      | `{ref, action, args}`                                      | Button presses, routed to an app or the agent      |
-| `file.changed`   | `{path}`                                                   | Open apps reload or show a diff                    |
+| Topic            | Payload                                                                                | Purpose                                                                 |
+| ---------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `session.events` | ACP-style `session/update` events + seq                                                | Stream to every view                                                    |
+| `session.input`  | `{session, app, text}`                                                                 | Any pane can submit input                                               |
+| `agent.focus`    | `{session, app}`                                                                       | Where the agent lives; matching app opens its pane                      |
+| `app.presence`   | `{app, kind, title, open, context, mcp, launch}` (Phase 4 adds `templates`, `actions`) | Registration; the gateway reads tools and `v` from the app's MCP server |
+| `tool.result`    | `{ref, type, data}`                                                                    | Typed results for views                                                 |
+| `view.patch`     | `{ref, patch}`                                                                         | Live updates to a rendered view                                         |
+| `ui.action`      | `{ref, action, args}`                                                                  | Button presses, routed to an app or the agent                           |
+| `file.changed`   | `{path}`                                                                               | Open apps reload or show a diff                                         |
 
 ### Moving the agent between apps
 
@@ -381,7 +381,7 @@ Each phase ends with something that works on its own.
 - **Approvals.** `bash` and file writes need a permission flow. Approval requests should be bus events rendered as a view component in whichever pane has focus (and in the TUI with key bindings).
 - **Long sessions.** A shared session grows fast. Decide how compaction works and who owns it (harness vs daemon), and how guests' histories relate to the main log.
 - **Concurrent sessions.** Can two sessions be active at once, and how does focus work then?
-- **Local security.** Auth on the bus socket and the MCP endpoint, and which apps may register tools. (Phase 1: the bus socket is mode 0600 in a 0700 directory, so only the user's own processes can connect.)
+- **Local security.** Auth on the bus socket and the MCP endpoint, and which apps may register tools. (Phase 1: the bus socket is mode 0600 in a 0700 directory, so only the user's own processes can connect. Phase 2 adds a 127.0.0.1 listener for `/bus` and `/mcp`, because Bun and browsers can't open WebSockets on Unix sockets and MCP clients need HTTP; it takes a random per-start bearer token published in `daemon.json` (0600) next to the socket. App MCP servers are expected to check a token too. Any local process of the user can still register any app name.)
 - **pi-agent-core state.** Confirm the session log can own the history without forking.
 - **pi on Bun.** Confirm pi-ai and pi-agent-core run cleanly under Bun (provider SDKs, streaming).
 - **Tool names (resolved in Phase 1).** Anthropic and OpenAI only accept `[a-zA-Z0-9_-]` in tool names, so the core tools are `tools_search`, `tools_call`, `apps_focus` (and the system prompt says `apps_launch`). Connector tool names like `browser.download` are unaffected: they are arguments to `tools_call`, not tool definitions.
@@ -391,3 +391,10 @@ Each phase ends with something that works on its own.
 - **Crash mid-turn.** On restart the daemon appends `turn_ended {stopReason: "error"}` to any turn without one, and the harness answers interrupted tool calls with a synthetic error result. A bash command that was running is not re-run, and its side effects are unknown to the model beyond "interrupted".
 - **Queued input visibility.** `user_message` is logged when its turn starts, not when it's queued, so other panes don't see a queued input until it runs. A `session.input_queued` event (or queue state in `SessionInfo` updates) may be wanted once several apps share a session.
 - **Model credentials.** pi-ai's built-in model list lags new releases (the harness clones a known model of the same provider for unknown ids). API keys come from env or pi's `~/.pi/agent/auth.json`; OAuth logins (Codex, Claude subscriptions) stored there aren't used, because refreshing rotates the token underneath pi. Needs either our own login flow or a shared lock with pi.
+- **Presence carries an MCP endpoint, not tool names (Phase 2).** Apps bring their own MCP server and announce its URL; the gateway lists the tools, caches the schemas (SQLite) so search and "isn't open" errors work while the app is closed, and owns `v`: it bumps it whenever the schemas or the server's `instructions` change. Apps never need to manage a version.
+- **When connect/disconnect events are written.** They are computed per session at the start of each turn, as the difference between what is open now and what that session's log last said. Idle sessions get no writes, and an app that closes and reopens between two prompts produces nothing. The consequence: an app that opens mid-turn is only announced on the next prompt.
+- **Connector instructions.** An MCP server's `instructions` are shown with that connector's tools in `tools_search` results (the overlay uses this for its ramble skill). They live in the history as tool results, so the cache is untouched, but they are repeated on every search that hits that connector.
+- **Approvals are now urgent.** Without a permission flow the overlay confirms `click` and `type_text` with Return in its own UI before running them. Any other app with side effects has to do the same until the suite has approvals.
+- **Which session do apps follow?** There is no "current session" yet: the overlay follows the most recently active one, and its reset creates a new session that other apps don't know to follow. Phase 3's `agent.focus {session, app}` needs a daemon-owned answer.
+- **Missing for the overlay's UI.** Usage/context-size events, daemon settings (model, effort, cwd) and a list of models, and subagent parent ids on tool calls. All were shown by the overlay under the old companion daemon.
+- **Daemon restarts are invisible to clients.** Clients resume subscriptions from the last seq they saw, which is correct as long as the log is append-only. Once compaction or log truncation exists, `bus.welcome` should carry a daemon/log instance id so clients can tell they need a full replay.
