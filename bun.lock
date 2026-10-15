@@ -36,6 +36,16 @@
         "ajv": "^8.20.0",
       },
     },
+    "sdk-ts": {
+      "name": "@suite/sdk",
+      "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.32.1",
+        "@suite/protocol": "workspace:*",
+      },
+      "devDependencies": {
+        "@suite/daemon": "workspace:*",
+      },
+    },
   },
   "packages": {
     "@anthropic-ai/sdk": ["@anthropic-ai/sdk@0.91.1", "", { "dependencies": { "json-schema-to-ts": "^3.1.1" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-LAmu761tSN9r66ixvmciswUj/ZC+1Q4iAfpedTfSVLeswRwnY3n2Nb6Tsk+cLPP28aLOPWeMgIuTuCcMC6W/iw=="],
@@ -179,6 +189,8 @@
     "@suite/harness": ["@suite/harness@workspace:harness"],
 
     "@suite/protocol": ["@suite/protocol@workspace:protocol"],
+
+    "@suite/sdk": ["@suite/sdk@workspace:sdk-ts"],
 
     "@tootallnate/quickjs-emscripten": ["@tootallnate/quickjs-emscripten@0.23.0", "", {}, "sha512-C5Mc6rdnsaJDjO3UpGW/CQTHtCKaYlScZTly4JIu97Jxo/odCiH0ITnDXSJPTOrEKk/ycSZ0AOgTmkDtkOsvIA=="],
 

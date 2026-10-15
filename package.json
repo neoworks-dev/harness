@@ -5,7 +5,8 @@
   "workspaces": [
     "protocol",
     "daemon",
-    "harness"
+    "harness",
+    "sdk-ts"
   ],
   "scripts": {
     "codegen": "bun run --cwd protocol codegen",

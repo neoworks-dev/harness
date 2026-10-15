@@ -1,19 +1,14 @@
 // Daemon entry point: `bun run daemon` (or `bun run daemon/src/main.ts`).
 //
-// Env: SUITE_SOCKET, SUITE_DATA_DIR (see paths.ts), SUITE_PORT (TCP, default: any free port); SUITE_AGENT=pi|echo (default pi); model and
-// API key settings are read by the harness (see harness/src/config.ts).
-import { mkdirSync } from "node:fs";
+// Env: SUITE_SOCKET, SUITE_DATA_DIR (see paths.ts), SUITE_PORT (TCP, default: any free port);
+// SUITE_AGENT=pi|echo (default pi); model and API key settings are read by the harness (see
+// harness/src/config.ts).
 import { homedir } from "node:os";
 import type { Agent } from "@suite/harness/agent";
+import { createDaemon } from "./daemon.ts";
 import { createEchoAgent } from "./echo-agent.ts";
-import { Hub, PROTOCOL_VERSION } from "./hub.ts";
 import { createLogger, type Logger } from "./log.ts";
 import { resolvePaths } from "./paths.ts";
-import { startServer } from "./server.ts";
-import { SessionManager } from "./sessions.ts";
-import { SessionStore } from "./store.ts";
-
-const VERSION = "0.1.0";
 
 async function createAgent(name: string, log: Logger): Promise<Agent> {
   if (name === "echo") return createEchoAgent();
@@ -28,34 +23,21 @@ async function createAgent(name: string, log: Logger): Promise<Agent> {
 async function main(): Promise<void> {
   const log = createLogger();
   const paths = resolvePaths();
-  mkdirSync(paths.dataDir, { recursive: true, mode: 0o700 });
-
-  const store = new SessionStore(paths.db);
-  const agent = await createAgent(process.env.SUITE_AGENT ?? "pi", log);
-  const sessions = new SessionManager(store, agent, { defaultCwd: homedir(), log });
-  sessions.recoverInterruptedTurns();
-
-  const hub = new Hub(
-    store,
-    sessions,
-    { version: VERSION, pid: process.pid, startedAt: Date.now() },
-    log,
-  );
-  const server = await startServer(hub, {
+  const daemon = await createDaemon({
     paths,
+    agent: await createAgent(process.env.SUITE_AGENT ?? "pi", log),
+    log,
     port: Number(process.env.SUITE_PORT ?? 0),
-    protocol: PROTOCOL_VERSION,
+    defaultCwd: homedir(),
   });
-  log.info(`listening on ${paths.socket} and ${server.info.url}, data in ${paths.dataDir}`);
+  log.info(`listening on ${paths.socket} and ${daemon.info.url}, data in ${paths.dataDir}`);
 
   let stopping = false;
   const stop = async (signal: string): Promise<void> => {
     if (stopping) return;
     stopping = true;
     log.info(`${signal}: shutting down`);
-    await server.stop();
-    await sessions.shutdown(2000);
-    store.close();
+    await daemon.stop();
     process.exit(0);
   };
   process.on("SIGINT", () => void stop("SIGINT"));

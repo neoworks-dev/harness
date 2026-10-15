@@ -1,0 +1,16 @@
+{
+  "name": "@suite/sdk",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/client.ts",
+    "./tools": "./src/tool-server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@suite/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@suite/daemon": "workspace:*"
+  }
+}

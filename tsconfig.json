@@ -14,6 +14,6 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["protocol", "daemon", "harness", "tools"],
+  "include": ["protocol", "daemon", "harness", "sdk-ts", "tools"],
   "exclude": ["**/node_modules"]
 }
