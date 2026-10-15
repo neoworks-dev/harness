@@ -6,7 +6,14 @@
     "title": "Exporting {{data.name}}",
     "tone": "accent",
     "children": [
-      { "type": "kv", "items": { "Format": "{{data.format}}", "Size": "{{data.w}}×{{data.h}}", "Quality": "{{data.quality}}%" } },
+      {
+        "type": "kv",
+        "items": {
+          "Format": "{{data.format}}",
+          "Size": "{{data.w}}×{{data.h}}",
+          "Quality": "{{data.quality}}%"
+        }
+      },
       { "type": "progress", "value": "{{data.progress}}", "label": "{{data.step}}" },
       { "type": "file", "path": "{{data.path}}" },
       { "type": "link", "url": "{{data.docs}}", "text": "Export settings" }

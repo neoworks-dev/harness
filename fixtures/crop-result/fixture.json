@@ -5,11 +5,23 @@
     "type": "card",
     "title": "Cropped image",
     "children": [
-      { "type": "image", "src": "{{data.asset}}", "caption": "{{data.w}}×{{data.h}}", "width": "{{data.w}}", "height": "{{data.h}}" },
+      {
+        "type": "image",
+        "src": "{{data.asset}}",
+        "caption": "{{data.w}}×{{data.h}}",
+        "width": "{{data.w}}",
+        "height": "{{data.h}}"
+      },
       {
         "type": "row",
         "children": [
-          { "type": "button", "label": "Open as layer", "action": "photo-editor.open_layer", "args": { "asset": "{{data.asset}}" }, "key": "o" },
+          {
+            "type": "button",
+            "label": "Open as layer",
+            "action": "photo-editor.open_layer",
+            "args": { "asset": "{{data.asset}}" },
+            "key": "o"
+          },
           { "type": "button", "label": "Copy handle", "action": "copy:{{data.asset}}", "key": "c" }
         ]
       }

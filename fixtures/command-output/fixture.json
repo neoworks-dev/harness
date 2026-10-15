@@ -8,5 +8,8 @@
       { "type": "text", "tone": "danger", "markdown": "Exit code **{{data.code}}**" }
     ]
   },
-  "data": { "output": "> site@1.0.0 test\n> vitest run\n\n ✓ src/header.test.ts (3)\n ✗ src/logo.test.ts (1)\n   AssertionError: expected 'logo.svg' to be 'logo.png'\n\nTests  1 failed | 3 passed (4)", "code": 1 }
+  "data": {
+    "output": "> site@1.0.0 test\n> vitest run\n\n ✓ src/header.test.ts (3)\n ✗ src/logo.test.ts (1)\n   AssertionError: expected 'logo.svg' to be 'logo.png'\n\nTests  1 failed | 3 passed (4)",
+    "code": 1
+  }
 }

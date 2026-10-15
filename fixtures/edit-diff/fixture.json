@@ -1,7 +1,12 @@
 {
   "description": "A file edit as a diff, computed by the daemon from old and new text.",
   "item": { "kind": "tool", "label": "edit src/Header.tsx", "state": "done" },
-  "template": { "type": "diff", "path": "{{data.path}}", "oldText": "{{data.oldText}}", "newText": "{{data.newText}}" },
+  "template": {
+    "type": "diff",
+    "path": "{{data.path}}",
+    "oldText": "{{data.oldText}}",
+    "newText": "{{data.newText}}"
+  },
   "data": {
     "path": "src/Header.tsx",
     "oldText": "import React from \"react\";\n\nexport function Header() {\n  return (\n    <header>\n      <h1>Site</h1>\n    </header>\n  );\n}\n",

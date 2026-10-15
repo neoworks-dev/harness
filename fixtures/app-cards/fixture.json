@@ -13,14 +13,26 @@
         "children": [
           { "type": "link", "url": "{{tab.url}}" },
           { "type": "text", "if": "tab.pinned", "tone": "accent", "markdown": "Pinned" },
-          { "type": "button", "label": "Switch", "action": "browser.activate", "args": { "tab": "{{tab.id}}" }, "key": "{{tab.key}}" }
+          {
+            "type": "button",
+            "label": "Switch",
+            "action": "browser.activate",
+            "args": { "tab": "{{tab.id}}" },
+            "key": "{{tab.key}}"
+          }
         ]
       }
     ]
   },
   "data": {
     "tabs": [
-      { "id": 3, "key": "1", "title": "Site preview", "url": "http://localhost:5173/", "pinned": true },
+      {
+        "id": 3,
+        "key": "1",
+        "title": "Site preview",
+        "url": "http://localhost:5173/",
+        "pinned": true
+      },
       { "id": 7, "key": "2", "title": "Logo ideas", "url": "https://example.com/logos" }
     ]
   }
