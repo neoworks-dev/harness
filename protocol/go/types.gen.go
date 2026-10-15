@@ -2067,7 +2067,7 @@ type ThemeColors struct {
 	Danger  string `json:"danger"`
 }
 
-// ThemeSpacing: Pixels (TUIs use 0/1/2 cells).
+// ThemeSpacing: Pixels. TUIs use 0/0/1 blank lines for s/m/l (see renderers/README.md).
 type ThemeSpacing struct {
 	S int64 `json:"s"`
 	M int64 `json:"m"`

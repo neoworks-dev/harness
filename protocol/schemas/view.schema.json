@@ -425,7 +425,7 @@
       "additionalProperties": false
     },
     "ThemeSpacing": {
-      "description": "Pixels (TUIs use 0/1/2 cells).",
+      "description": "Pixels. TUIs use 0/0/1 blank lines for s/m/l (see renderers/README.md).",
       "type": "object",
       "properties": {
         "s": { "type": "integer" },

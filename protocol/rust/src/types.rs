@@ -2156,7 +2156,7 @@ pub struct ThemeColors {
     pub danger: String,
 }
 
-/// Pixels (TUIs use 0/1/2 cells).
+/// Pixels. TUIs use 0/0/1 blank lines for s/m/l (see renderers/README.md).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ThemeSpacing {
     #[serde(rename = "s")]

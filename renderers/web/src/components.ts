@@ -356,9 +356,8 @@ export function renderItem(doc: Document, item: ViewItem): RenderedItem {
   switch (item.kind) {
     case "user": {
       root = el(doc, "article", "suite-item", attrs);
-      if (item.label !== undefined) {
-        root.append(el(doc, "header", "suite-item-header", {}, `» ${item.label}`));
-      }
+      const header = item.label === undefined || item.label === "" ? "»" : `» ${item.label}`;
+      root.append(el(doc, "header", "suite-item-header", {}, header));
       break;
     }
     case "tool": {
