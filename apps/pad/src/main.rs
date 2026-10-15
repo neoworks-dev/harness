@@ -18,6 +18,7 @@ const FONT_DATA: &[u8] = include_bytes!("../assets/Geist-400.ttf");
 
 fn presence(open: bool) -> AppPresence {
     AppPresence {
+        templates: None,
         app: pad::APP.into(),
         kind: ConnectorKind::App,
         title: Some("Pad".into()),

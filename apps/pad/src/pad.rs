@@ -161,7 +161,12 @@ impl Pad {
                 }
             }
             Event::Connection(up) => self.connected = up,
-            Event::Subscribed { .. } | Event::Connectors(_) => {}
+            // Pad still draws from raw session events; the GPUI renderer takes over the view.
+            Event::Subscribed { .. }
+            | Event::Connectors(_)
+            | Event::Theme(_)
+            | Event::ViewSnapshot(_)
+            | Event::ViewPatch(_) => {}
         }
         cx.notify();
     }
@@ -549,6 +554,7 @@ mod tests {
 
     fn presence(app: &str, home: bool) -> AppPresence {
         AppPresence {
+            templates: None,
             app: app.into(),
             kind: ConnectorKind::App,
             title: None,

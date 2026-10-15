@@ -7,6 +7,7 @@
 
 mod conn;
 mod socket;
+mod view;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -22,8 +23,10 @@ use suite_protocol::{
     AgentFocus, AgentMove, AgentMoveMessage, AppPresence, AppPresenceMessage, ConnectorInfo,
     ConnectorsList, Envelope, ErrorInfo, SessionCancel, SessionCreate, SessionCreateParams,
     SessionEventRecord, SessionInfo, SessionInput, SessionInputMessage, SessionList, SessionRef,
-    SessionSubscribe, SessionUnsubscribe, SubscribeParams, SubscribedPayload,
+    SessionSubscribe, SessionUnsubscribe, SubscribeParams, SubscribedPayload, Theme, UiAction,
+    UiActionMessage, ViewPatch, ViewSnapshot, ViewSubscribe, ViewUnsubscribe,
 };
+pub use view::ViewState;
 
 /// How long a request waits for its reply.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -113,6 +116,13 @@ pub enum Event {
     },
     /// The connection came up (`true`, also once right after `connect`) or went down.
     Connection(bool),
+    /// `theme`: sent after every hello and when it changes.
+    Theme(Theme),
+    /// The full view of a followed session: after [`Client::subscribe_view`] and again after
+    /// each reconnect. Replace what you have.
+    ViewSnapshot(ViewSnapshot),
+    /// Changes to a followed session's view, to apply in order (see [`ViewState`]).
+    ViewPatch(ViewPatch),
 }
 
 /// A connection to the daemon. Cheap to share behind an `Arc`; dropping it disconnects.
@@ -276,6 +286,53 @@ impl Client {
             Envelope::ConnectorsListResult(reply) => Ok(reply.payload.connectors),
             _ => Err(Error::Unexpected),
         }
+    }
+
+    /// Follows the session's resolved view: returns the snapshot (also sent as
+    /// [`Event::ViewSnapshot`]), then [`Event::ViewPatch`]es arrive on [`Client::events`].
+    pub fn subscribe_view(&self, session: &str) -> Result<ViewSnapshot> {
+        let effect = Effect::ViewSubscribe(session.into());
+        let subscribe = |id| {
+            Envelope::ViewSubscribe(ViewSubscribe {
+                id,
+                payload: session_ref(session),
+            })
+        };
+        match self.call(effect, subscribe)? {
+            Envelope::ViewSnapshotMessage(reply) => Ok(reply.payload),
+            _ => Err(Error::Unexpected),
+        }
+    }
+
+    pub fn unsubscribe_view(&self, session: &str) -> Result<()> {
+        let effect = Effect::ViewUnsubscribe(session.into());
+        self.ack(effect, |id| {
+            Envelope::ViewUnsubscribe(ViewUnsubscribe {
+                id,
+                payload: session_ref(session),
+            })
+        })
+    }
+
+    /// A button in item `item_ref` was pressed. `copy:` actions are the caller's to handle.
+    pub fn action(
+        &self,
+        session: &str,
+        item_ref: &str,
+        action: &str,
+        args: Option<serde_json::Value>,
+    ) -> Result<()> {
+        self.ack(Effect::None, |id| {
+            Envelope::UiActionMessage(UiActionMessage {
+                id,
+                payload: UiAction {
+                    session: session.into(),
+                    r#ref: item_ref.into(),
+                    action: action.into(),
+                    args,
+                },
+            })
+        })
     }
 
     fn ack(&self, effect: Effect, build: impl FnOnce(String) -> Envelope) -> Result<()> {

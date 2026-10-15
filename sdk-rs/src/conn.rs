@@ -9,8 +9,11 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use std::collections::HashSet;
+
 use suite_protocol::{
-    AppPresence, AppPresenceMessage, BusHello, Envelope, Hello, SessionSubscribe, SubscribeParams,
+    AppPresence, AppPresenceMessage, BusHello, Envelope, Hello, SessionRef, SessionSubscribe,
+    SubscribeParams, ViewSubscribe,
 };
 use tungstenite::client::IntoClientRequest;
 use tungstenite::{Message, WebSocket};
@@ -44,6 +47,8 @@ pub(crate) enum Effect {
     Subscribe { session: String, from_seq: i64 },
     Unsubscribe(String),
     Presence(AppPresence),
+    ViewSubscribe(String),
+    ViewUnsubscribe(String),
 }
 
 /// How to take an effect back when the daemon refuses the request.
@@ -51,6 +56,7 @@ enum Undo {
     None,
     Unsubscribe(String),
     Presence(Option<AppPresence>),
+    ViewUnsubscribe(String),
 }
 
 struct Pending {
@@ -73,6 +79,8 @@ pub(crate) struct Io {
     /// Subscribed sessions and the last seq seen of each. Replays after a resubscription
     /// start at the next one; anything at or below it is dropped as a repeat.
     subs: HashMap<String, i64>,
+    /// Sessions whose view is followed; resubscribed (fresh snapshot) after a reconnect.
+    views: HashSet<String>,
     presence: Option<AppPresence>,
     next_internal: u64,
 }
@@ -142,6 +150,7 @@ fn reply_id(envelope: &Envelope) -> Option<&str> {
         Envelope::SessionListResult(m) => Some(&m.id),
         Envelope::SessionSubscribed(m) => Some(&m.id),
         Envelope::ConnectorsListResult(m) => Some(&m.id),
+        Envelope::ViewSnapshotMessage(m) => Some(&m.id),
         _ => None,
     }
 }
@@ -159,6 +168,7 @@ impl Io {
             events,
             pending: HashMap::new(),
             subs: HashMap::new(),
+            views: HashSet::new(),
             presence,
             next_internal: 0,
         }
@@ -259,6 +269,14 @@ impl Io {
                 self.presence = presence.open.then_some(presence);
                 Undo::Presence(previous)
             }
+            Effect::ViewSubscribe(session) => {
+                self.views.insert(session.clone());
+                Undo::ViewUnsubscribe(session)
+            }
+            Effect::ViewUnsubscribe(session) => {
+                self.views.remove(&session);
+                Undo::None
+            }
         }
     }
 
@@ -269,6 +287,9 @@ impl Io {
                 self.subs.remove(&session);
             }
             Undo::Presence(previous) => self.presence = previous,
+            Undo::ViewUnsubscribe(session) => {
+                self.views.remove(&session);
+            }
         }
     }
 
@@ -291,6 +312,12 @@ impl Io {
             Envelope::ConnectorsChanged(message) => {
                 self.emit(Event::Connectors(message.payload.connectors));
             }
+            Envelope::ThemeMessage(message) => self.emit(Event::Theme(message.payload)),
+            Envelope::ViewPatchMessage(message) => {
+                if self.views.contains(&message.payload.session) {
+                    self.emit(Event::ViewPatch(message.payload));
+                }
+            }
             reply => self.on_reply(reply),
         }
     }
@@ -302,6 +329,10 @@ impl Io {
                 session: message.payload.session.clone(),
                 replayed_through: message.payload.replayed_through,
             });
+        }
+        if let Envelope::ViewSnapshotMessage(message) = &envelope {
+            // Also on resubscription after a reconnect, where nobody waits for the reply.
+            self.emit(Event::ViewSnapshot(message.payload.clone()));
         }
         let Some(id) = reply_id(&envelope) else {
             return;
@@ -357,6 +388,17 @@ impl Io {
                 },
             });
             self.send_internal(socket, id, message, Undo::Unsubscribe(session));
+        }
+        let views: Vec<String> = self.views.iter().cloned().collect();
+        for session in views {
+            let id = self.internal_id();
+            let message = Envelope::ViewSubscribe(ViewSubscribe {
+                id: id.clone(),
+                payload: SessionRef {
+                    session: session.clone(),
+                },
+            });
+            self.send_internal(socket, id, message, Undo::ViewUnsubscribe(session));
         }
     }
 
@@ -416,6 +458,9 @@ fn request_id(envelope: &Envelope) -> Option<String> {
         Envelope::AppPresenceMessage(m) => m.id.clone(),
         Envelope::ConnectorsList(m) => Some(m.id.clone()),
         Envelope::AgentMoveMessage(m) => Some(m.id.clone()),
+        Envelope::ViewSubscribe(m) => Some(m.id.clone()),
+        Envelope::ViewUnsubscribe(m) => Some(m.id.clone()),
+        Envelope::UiActionMessage(m) => Some(m.id.clone()),
         _ => None,
     }
 }
