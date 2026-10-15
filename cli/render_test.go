@@ -23,6 +23,11 @@ func TestRender(t *testing.T) {
 			want:   "\n» overlay: hi\n\n",
 		},
 		{
+			name:   "user message with images",
+			events: []protocol.SessionEventVariant{protocol.UserMessage{App: "overlay", Text: "look", Images: []string{"/tmp/a.png", "/tmp/b b.jpg"}}},
+			want:   "\n» overlay: look\n  [image: /tmp/a.png]\n  [image: /tmp/b b.jpg]\n\n",
+		},
+		{
 			name: "user message after unfinished line starts on a fresh line",
 			events: []protocol.SessionEventVariant{
 				protocol.AgentMessageChunk{MessageID: "m", Text: "partial"},

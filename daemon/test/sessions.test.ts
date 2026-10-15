@@ -178,7 +178,7 @@ describe("agent sessions", () => {
     await agent.started(1);
     agent.release();
     await sessions.idle(id);
-    expect(agent.created).toEqual([{ sessionId: id, cwd: "/work" }]);
+    expect(agent.created).toEqual([{ sessionId: id, cwd: "/work", mcpServers: [] }]);
     expect(sessions.info(id)?.cwd).toBe("/work");
   });
 

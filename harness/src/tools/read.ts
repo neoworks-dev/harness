@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { ImageContent } from "@mariozechner/pi-ai";
 import { Type } from "typebox";
 import { resolvePath } from "./paths.ts";
 import { MAX_BYTES, MAX_LINES, splitLines, truncateHead } from "./truncate.ts";
@@ -12,6 +13,18 @@ const IMAGE_TYPES: Record<string, string> = {
   ".gif": "image/gif",
   ".webp": "image/webp",
 };
+
+/** Reads attached images for a prompt. Unknown types and unreadable files are skipped. */
+export async function loadImages(paths: string[]): Promise<ImageContent[]> {
+  const images: ImageContent[] = [];
+  for (const path of paths) {
+    const mimeType = IMAGE_TYPES[extname(path).toLowerCase()];
+    if (!mimeType) continue;
+    const data = await readFile(path).catch(() => undefined);
+    if (data) images.push({ type: "image", data: data.toString("base64"), mimeType });
+  }
+  return images;
+}
 
 const parameters = Type.Object({
   path: Type.String({

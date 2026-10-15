@@ -54,7 +54,11 @@ func (r *renderer) Render(ev protocol.SessionEvent) {
 	switch e := ev.Value.(type) {
 	case protocol.UserMessage:
 		r.freshLine()
-		r.printf("\n» %s: %s\n\n", e.App, e.Text)
+		r.printf("\n» %s: %s\n", e.App, e.Text)
+		for _, img := range e.Images {
+			r.printf("  [image: %s]\n", img)
+		}
+		r.write("\n")
 	case protocol.AgentMessageChunk:
 		r.stream("message", e.MessageID, "", e.Text)
 	case protocol.AgentThoughtChunk:

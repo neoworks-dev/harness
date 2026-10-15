@@ -13,6 +13,7 @@ import (
 	"time"
 
 	protocol "neoworks.dev/suite/protocol/go"
+	sdk "neoworks.dev/suite/sdk-go"
 )
 
 // cliEnv is everything the commands take from the process, so tests can call
@@ -34,6 +35,8 @@ commands:
   attach <id|prefix>            follow a session and send it input
   attach --new [--cwd DIR] [--title T]
                                 create a session and attach to it
+  tools [query...]              list connectors and their tools; with a query,
+                                only tools matching all words
 
 flags (all commands): --socket PATH
 attach flags: --app NAME (default cli), --thoughts
@@ -53,6 +56,8 @@ func run(ctx context.Context, args []string, e cliEnv) int {
 		return runSessions(ctx, args, e)
 	case "attach":
 		return runAttach(ctx, args, e)
+	case "tools":
+		return runTools(ctx, args, e)
 	case "help", "-h", "--help":
 		fmt.Fprint(e.Stdout, usage)
 		return 0
@@ -85,18 +90,18 @@ func parseFlags(fs *flag.FlagSet, args []string) ([]string, error) {
 	}
 }
 
-// connect dials the daemon, reporting failure to stderr. It returns the bus
+// connect dials the daemon, reporting failure to stderr. It returns the client
 // and the socket path used.
-func connect(ctx context.Context, socketFlag string, e cliEnv) (*bus, string, bool) {
-	path := socketPath(socketFlag, e.Getenv, e.UID)
-	b, err := dialBus(ctx, path)
+func connect(ctx context.Context, socketFlag string, e cliEnv) (*sdk.Client, string, bool) {
+	path := sdk.SocketPath(socketFlag, e.Getenv, e.UID)
+	c, err := sdk.Dial(ctx, sdk.Options{Socket: path, Client: "cli"})
 	switch {
-	case errors.Is(err, errDaemonDown):
+	case errors.Is(err, sdk.ErrDaemonDown):
 		fmt.Fprintf(e.Stderr, "suite: daemon not running (socket %s); start it with: bun run daemon\n", path)
 	case err != nil:
 		fmt.Fprintf(e.Stderr, "suite: cannot connect to daemon (socket %s): %v\n", path, err)
 	default:
-		return b, path, true
+		return c, path, true
 	}
 	return nil, path, false
 }
@@ -106,13 +111,13 @@ func runStatus(ctx context.Context, args []string, e cliEnv) int {
 	if _, err := parseFlags(fs, args); err != nil {
 		return 2
 	}
-	b, path, ok := connect(ctx, *socket, e)
+	c, path, ok := connect(ctx, *socket, e)
 	if !ok {
 		return 1
 	}
-	defer b.close()
+	defer c.Close()
 
-	sessions, err := b.listSessions(ctx)
+	sessions, err := c.ListSessions(ctx)
 	if err != nil {
 		fmt.Fprintf(e.Stderr, "suite: %v\n", err)
 		return 1
@@ -123,7 +128,7 @@ func runStatus(ctx context.Context, args []string, e cliEnv) int {
 			running++
 		}
 	}
-	w := b.welcome
+	w := c.Welcome()
 	uptime := e.Now().Sub(time.UnixMilli(w.StartedAt))
 	fmt.Fprintf(e.Stdout, "daemon:    pid %d, version %s\n", w.PID, w.DaemonVersion)
 	fmt.Fprintf(e.Stdout, "uptime:    %s\n", formatDuration(uptime))
@@ -138,13 +143,13 @@ func runSessions(ctx context.Context, args []string, e cliEnv) int {
 	if _, err := parseFlags(fs, args); err != nil {
 		return 2
 	}
-	b, _, ok := connect(ctx, *socket, e)
+	c, _, ok := connect(ctx, *socket, e)
 	if !ok {
 		return 1
 	}
-	defer b.close()
+	defer c.Close()
 
-	sessions, err := b.listSessions(ctx)
+	sessions, err := c.ListSessions(ctx)
 	if err != nil {
 		fmt.Fprintf(e.Stderr, "suite: %v\n", err)
 		return 1

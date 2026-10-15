@@ -24,10 +24,19 @@ export type AgentUpdate =
 /** Connector events that get prepended to the next user message. */
 export type ContextEvent = AppConnected | AppDisconnected | FocusChanged;
 
+/** An MCP server for the agent (ACP's McpServerHttp shape). */
+export interface McpServer {
+  name: string;
+  url: string;
+  headers: { name: string; value: string }[];
+}
+
 export interface NewSessionParams {
   sessionId: string;
   /** Working directory for the core tools. */
   cwd: string;
+  /** The daemon's MCP gateway; the agent reaches connector tools through it. */
+  mcpServers: McpServer[];
 }
 
 export interface LoadSessionParams extends NewSessionParams {
@@ -44,6 +53,8 @@ export interface PromptParams {
   text: string;
   /** App the input came from. */
   app: string;
+  /** Absolute paths of attached images. */
+  images?: string[];
   /** Connect/disconnect/focus events since the previous prompt, oldest first. May be empty. */
   pendingEvents: ContextEvent[];
   /** Called synchronously for each update, in order. */

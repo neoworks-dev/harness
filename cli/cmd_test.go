@@ -8,28 +8,6 @@ import (
 	protocol "neoworks.dev/suite/protocol/go"
 )
 
-func TestSocketPath(t *testing.T) {
-	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
-	tests := []struct {
-		name string
-		flag string
-		env  map[string]string
-		want string
-	}{
-		{"flag wins", "/f.sock", map[string]string{"SUITE_SOCKET": "/e.sock", "XDG_RUNTIME_DIR": "/run/user/1"}, "/f.sock"},
-		{"env over runtime dir", "", map[string]string{"SUITE_SOCKET": "/e.sock", "XDG_RUNTIME_DIR": "/run/user/1"}, "/e.sock"},
-		{"runtime dir", "", map[string]string{"XDG_RUNTIME_DIR": "/run/user/1"}, "/run/user/1/suite/bus.sock"},
-		{"tmp fallback", "", nil, "/tmp/suite-1000/bus.sock"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := socketPath(tc.flag, env(tc.env), 1000); got != tc.want {
-				t.Errorf("got %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestResolveSession(t *testing.T) {
 	sessions := []protocol.SessionInfo{{ID: "abc123"}, {ID: "abd456"}, {ID: "xyz"}, {ID: "xyz2"}}
 	tests := []struct {

@@ -28,6 +28,18 @@ function describeToolCall(name: string, args: unknown): { title: string; kind: T
     case "write":
     case "edit":
       return { title: `${name} ${stringArg(args, "path")}`, kind: "edit" };
+    case "tools_search": {
+      const app = stringArg(args, "app");
+      let title = `search tools: ${stringArg(args, "query")}`;
+      if (app) title += ` in ${app}`;
+      return { title, kind: "search" };
+    }
+    case "tools_call":
+      return { title: stringArg(args, "name"), kind: "other" };
+    case "apps_launch":
+      return { title: `launch ${stringArg(args, "app")}`, kind: "other" };
+    case "apps_focus":
+      return { title: `focus ${stringArg(args, "app")}`, kind: "other" };
     default:
       return { title: name, kind: "other" };
   }

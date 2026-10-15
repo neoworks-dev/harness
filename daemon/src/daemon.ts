@@ -1,6 +1,10 @@
 // Wires the daemon's parts together. Used by main.ts and by tests (startTestDaemon).
 import { mkdirSync } from "node:fs";
 import type { Agent } from "@suite/harness/agent";
+import { Gateway } from "./gateway/gateway.ts";
+import { mcpHandler } from "./gateway/mcp-server.ts";
+import { ConnectorRegistry } from "./gateway/registry.ts";
+import { type ConnectUpstream, connectMcp } from "./gateway/upstream.ts";
 import { Hub, PROTOCOL_VERSION } from "./hub.ts";
 import type { Logger } from "./log.ts";
 import type { DaemonPaths } from "./paths.ts";
@@ -8,7 +12,7 @@ import { type BusServer, type DaemonInfoFile, startServer } from "./server.ts";
 import { SessionManager } from "./sessions.ts";
 import { SessionStore } from "./store.ts";
 
-export const VERSION = "0.2.0";
+import { VERSION } from "./version.ts";
 
 export interface DaemonOptions {
   paths: DaemonPaths;
@@ -17,6 +21,8 @@ export interface DaemonOptions {
   /** TCP port on 127.0.0.1; 0 picks a free one. */
   port: number;
   defaultCwd: string;
+  /** Replaces the MCP client used to reach apps; for tests. */
+  connectUpstream?: ConnectUpstream;
 }
 
 export interface Daemon {
@@ -24,6 +30,8 @@ export interface Daemon {
   store: SessionStore;
   sessions: SessionManager;
   hub: Hub;
+  connectors: ConnectorRegistry;
+  gateway: Gateway;
   /** Cancels running turns (waiting up to timeoutMs), closes listeners and the database. */
   stop(timeoutMs?: number): Promise<void>;
 }
@@ -32,29 +40,59 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   const { paths, agent, log } = options;
   mkdirSync(paths.dataDir, { recursive: true, mode: 0o700 });
   const store = new SessionStore(paths.db);
-  const sessions = new SessionManager(store, agent, { defaultCwd: options.defaultCwd, log });
+  const connectors = new ConnectorRegistry(store, options.connectUpstream ?? connectMcp, log);
+  const gateway = new Gateway(connectors, { log });
+  let server: BusServer | undefined;
+  const sessions = new SessionManager(store, agent, {
+    defaultCwd: options.defaultCwd,
+    log,
+    connectors: () => connectors.snapshot(),
+    mcpServers: (sessionId) => {
+      if (!server) return [];
+      const { url, token } = server.info;
+      return [
+        {
+          name: "suite",
+          url: `${url}/mcp`,
+          headers: [
+            { name: "authorization", value: `Bearer ${token}` },
+            { name: "x-suite-session", value: sessionId },
+          ],
+        },
+      ];
+    },
+  });
   sessions.recoverInterruptedTurns();
   const hub = new Hub(
     store,
     sessions,
     { version: VERSION, pid: process.pid, startedAt: Date.now() },
     log,
+    connectors,
   );
-  let server: BusServer;
   try {
-    server = await startServer(hub, { paths, port: options.port, protocol: PROTOCOL_VERSION });
+    server = await startServer(hub, {
+      paths,
+      port: options.port,
+      protocol: PROTOCOL_VERSION,
+      mcp: mcpHandler(gateway),
+    });
   } catch (err) {
     store.close();
     throw err;
   }
+  const started = server;
   return {
-    info: server.info,
+    info: started.info,
     store,
     sessions,
     hub,
+    connectors,
+    gateway,
     async stop(timeoutMs = 2000) {
-      await server.stop();
+      await started.stop();
       await sessions.shutdown(timeoutMs);
+      await connectors.close();
       store.close();
     },
   };

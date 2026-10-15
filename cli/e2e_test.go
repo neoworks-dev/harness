@@ -7,12 +7,14 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	protocol "neoworks.dev/suite/protocol/go"
+	"neoworks.dev/suite/sdk-go/sdktest"
 )
 
 // syncBuffer is a bytes.Buffer that a test can read while run is writing.
@@ -82,32 +84,21 @@ func exec(t *testing.T, socket, stdin string, args ...string) (code int, stdout,
 
 func eventually(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for !cond() {
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for %s", what)
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-}
-
-func (d *fakeDaemon) inputsReceived() []protocol.SessionInput {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return append([]protocol.SessionInput(nil), d.inputs...)
+	sdktest.Eventually(t, what, cond)
 }
 
 func TestStatus(t *testing.T) {
-	d := newFakeDaemon(t)
-	d.addSession("s1", "one", time.Now())
-	d.addSession("s2", "two", time.Now()).info.State = protocol.SessionStateRunning
-	d.addSession("s3", "three", time.Now())
+	d := sdktest.New(t)
+	d.AddSession("s1", "one", time.Now())
+	d.AddSession("s2", "two", time.Now())
+	d.SetSessionState("s2", protocol.SessionStateRunning, 0)
+	d.AddSession("s3", "three", time.Now())
 
-	code, stdout, stderr := exec(t, d.socket, "", "status")
+	code, stdout, stderr := exec(t, d.Socket, "", "status")
 	if code != 0 || stderr != "" {
 		t.Fatalf("code %d, stderr %q", code, stderr)
 	}
-	for _, want := range []string{"pid 4242", "version test", "uptime:    1h 30m", "protocol:  1", "socket:    " + d.socket, "3 total, 1 running"} {
+	for _, want := range []string{"pid 4242", "version test", "uptime:    1h 30m", "protocol:  1", "socket:    " + d.Socket, "3 total, 1 running"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("status output missing %q:\n%s", want, stdout)
 		}
@@ -115,14 +106,14 @@ func TestStatus(t *testing.T) {
 }
 
 func TestSessionsTable(t *testing.T) {
-	d := newFakeDaemon(t)
+	d := sdktest.New(t)
 	now := time.Now()
-	d.addSession("old", "", now.Add(-3*time.Hour), protocol.UserMessage{App: "cli", Text: "x"})
-	d.addSession("recent", "Fix the bug", now.Add(-2*time.Minute), protocol.UserMessage{App: "cli", Text: "x"}, protocol.TurnEnded{StopReason: protocol.StopReasonEndTurn})
-	busy := d.addSession("busy", "Busy one", now.Add(-10*time.Second))
-	busy.info.State, busy.info.Queued = protocol.SessionStateRunning, 2
+	d.AddSession("old", "", now.Add(-3*time.Hour), protocol.UserMessage{App: "cli", Text: "x"})
+	d.AddSession("recent", "Fix the bug", now.Add(-2*time.Minute), protocol.UserMessage{App: "cli", Text: "x"}, protocol.TurnEnded{StopReason: protocol.StopReasonEndTurn})
+	d.AddSession("busy", "Busy one", now.Add(-10*time.Second))
+	d.SetSessionState("busy", protocol.SessionStateRunning, 2)
 
-	code, stdout, stderr := exec(t, d.socket, "", "sessions")
+	code, stdout, stderr := exec(t, d.Socket, "", "sessions")
 	if code != 0 || stderr != "" {
 		t.Fatalf("code %d, stderr %q", code, stderr)
 	}
@@ -144,9 +135,9 @@ func TestSessionsTable(t *testing.T) {
 }
 
 func TestAttachNew(t *testing.T) {
-	d := newFakeDaemon(t)
+	d := sdktest.New(t)
 	// Blank lines are skipped; the second input is queued behind the first.
-	code, stdout, stderr := exec(t, d.socket, "hello\n\nworld\n", "attach", "--new", "--cwd", "/tmp/proj", "--title", "T", "--app", "tester")
+	code, stdout, stderr := exec(t, d.Socket, "hello\n\nworld\n", "attach", "--new", "--cwd", "/tmp/proj", "--title", "T", "--app", "tester")
 	if code != 0 || stderr != "" {
 		t.Fatalf("code %d, stderr %q", code, stderr)
 	}
@@ -158,27 +149,27 @@ func TestAttachNew(t *testing.T) {
 		t.Errorf("stdout:\n%q\nwant:\n%q", stdout, want)
 	}
 
-	inputs := d.inputsReceived()
-	if len(inputs) != 2 || inputs[0] != (protocol.SessionInput{Session: "new1", App: "tester", Text: "hello"}) || inputs[1].Text != "world" {
+	inputs := d.Inputs()
+	if len(inputs) != 2 || inputs[0].Session != "new1" || inputs[0].App != "tester" || inputs[0].Text != "hello" || inputs[1].Text != "world" {
 		t.Errorf("inputs = %+v", inputs)
 	}
-	s := d.sessions["new1"].info
+	s, _ := d.Session("new1")
 	if s.Cwd != "/tmp/proj" || s.Title == nil || *s.Title != "T" {
 		t.Errorf("session created as %+v", s)
 	}
 }
 
 func TestAttachExistingReplaysHistory(t *testing.T) {
-	d := newFakeDaemon(t)
-	d.addSession("abc123", "", time.Now(),
+	d := sdktest.New(t)
+	d.AddSession("abc123", "", time.Now(),
 		protocol.UserMessage{App: "overlay", Text: "hi"},
 		protocol.AgentThoughtChunk{MessageID: "t", Text: "thinking"},
 		protocol.AgentMessageChunk{MessageID: "m", Text: "hello there"},
 		protocol.TurnEnded{StopReason: protocol.StopReasonEndTurn},
 	)
-	d.addSession("zzz", "", time.Now())
+	d.AddSession("zzz", "", time.Now())
 
-	code, stdout, stderr := exec(t, d.socket, "", "attach", "abc")
+	code, stdout, stderr := exec(t, d.Socket, "", "attach", "abc")
 	if code != 0 || stderr != "" {
 		t.Fatalf("code %d, stderr %q", code, stderr)
 	}
@@ -187,27 +178,25 @@ func TestAttachExistingReplaysHistory(t *testing.T) {
 		t.Errorf("stdout:\n%q\nwant:\n%q", stdout, want)
 	}
 
-	_, stdout, _ = exec(t, d.socket, "", "attach", "--thoughts", "abc123")
+	_, stdout, _ = exec(t, d.Socket, "", "attach", "--thoughts", "abc123")
 	if !strings.Contains(stdout, "… thinking\n") {
 		t.Errorf("--thoughts output missing reasoning:\n%s", stdout)
 	}
 	// Flags may follow the id.
-	_, stdout, _ = exec(t, d.socket, "", "attach", "abc123", "--thoughts")
+	_, stdout, _ = exec(t, d.Socket, "", "attach", "abc123", "--thoughts")
 	if !strings.Contains(stdout, "… thinking\n") {
 		t.Errorf("trailing --thoughts ignored:\n%s", stdout)
 	}
 }
 
 func TestAttachPrintsOtherClientsInput(t *testing.T) {
-	d := newFakeDaemon(t)
-	s := d.addSession("s1", "", time.Now())
+	d := sdktest.New(t)
+	d.AddSession("s1", "", time.Now())
 	stdin, stdinW := io.Pipe()
-	c := start(t, d.socket, stdin, "attach", "s1")
+	c := start(t, d.Socket, stdin, "attach", "s1")
 	eventually(t, "attach", func() bool { return strings.Contains(c.stdout.String(), "-- attached to s1 --") })
 
-	d.mu.Lock()
-	d.appendLocked(s, protocol.UserMessage{App: "browser", Text: "from elsewhere"})
-	d.mu.Unlock()
+	d.Append("s1", protocol.UserMessage{App: "browser", Text: "from elsewhere"})
 	eventually(t, "live user_message", func() bool { return strings.Contains(c.stdout.String(), "» browser: from elsewhere") })
 
 	stdinW.Close()
@@ -217,9 +206,9 @@ func TestAttachPrintsOtherClientsInput(t *testing.T) {
 }
 
 func TestAttachErrors(t *testing.T) {
-	d := newFakeDaemon(t)
-	d.addSession("abc1", "", time.Now())
-	d.addSession("abc2", "", time.Now())
+	d := sdktest.New(t)
+	d.AddSession("abc1", "", time.Now())
+	d.AddSession("abc2", "", time.Now())
 
 	tests := []struct {
 		args   []string
@@ -234,7 +223,7 @@ func TestAttachErrors(t *testing.T) {
 		{[]string{"bogus"}, 2, "unknown command"},
 	}
 	for _, tc := range tests {
-		code, stdout, stderr := exec(t, d.socket, "", tc.args...)
+		code, stdout, stderr := exec(t, d.Socket, "", tc.args...)
 		if code != tc.code || !strings.Contains(stderr, tc.stderr) || stdout != "" {
 			t.Errorf("%v: code %d stdout %q stderr %q", tc.args, code, stdout, stderr)
 		}
@@ -242,37 +231,31 @@ func TestAttachErrors(t *testing.T) {
 }
 
 func TestInterrupt(t *testing.T) {
-	d := newFakeDaemon(t)
-	d.stepDelay = 300 * time.Millisecond
-	s := d.addSession("s1", "", time.Now())
+	d := sdktest.New(t)
+	d.StepDelay = 300 * time.Millisecond
+	d.AddSession("s1", "", time.Now())
 	stdin, stdinW := io.Pipe()
-	c := start(t, d.socket, stdin, "attach", "s1")
+	c := start(t, d.Socket, stdin, "attach", "s1")
 	eventually(t, "attach", func() bool { return strings.Contains(c.stdout.String(), "-- attached") })
 
 	// Idle: Ctrl-C exits without cancelling anything.
 	idleIn, idleInW := io.Pipe()
 	defer idleInW.Close()
-	c2 := start(t, d.socket, idleIn, "attach", "s1")
+	c2 := start(t, d.Socket, idleIn, "attach", "s1")
 	eventually(t, "second attach", func() bool { return strings.Contains(c2.stdout.String(), "-- attached") })
 	c2.interrupt <- os.Interrupt
 	if code := c2.wait(t); code != 0 {
 		t.Errorf("idle Ctrl-C exit %d", code)
 	}
-	d.mu.Lock()
-	if len(d.cancels) != 0 {
-		t.Errorf("idle Ctrl-C sent cancel: %v", d.cancels)
+	if cancels := d.Cancels(); len(cancels) != 0 {
+		t.Errorf("idle Ctrl-C sent cancel: %v", cancels)
 	}
-	d.mu.Unlock()
 
 	// Running: Ctrl-C cancels the turn and keeps the client attached.
 	stdinW.Write([]byte("work\n"))
 	eventually(t, "turn start", func() bool { return strings.Contains(c.stdout.String(), "» cli: work") })
 	c.interrupt <- os.Interrupt
-	eventually(t, "cancel", func() bool {
-		d.mu.Lock()
-		defer d.mu.Unlock()
-		return len(d.cancels) == 1 && d.cancels[0] == s.info.ID
-	})
+	eventually(t, "cancel", func() bool { return slices.Equal(d.Cancels(), []string{"s1"}) })
 	select {
 	case code := <-c.done:
 		t.Fatalf("exited with %d after cancel", code)
@@ -285,14 +268,14 @@ func TestInterrupt(t *testing.T) {
 }
 
 func TestConnectionLost(t *testing.T) {
-	d := newFakeDaemon(t)
-	d.addSession("s1", "", time.Now())
+	d := sdktest.New(t)
+	d.AddSession("s1", "", time.Now())
 	stdin, stdinW := io.Pipe()
 	defer stdinW.Close()
-	c := start(t, d.socket, stdin, "attach", "s1")
+	c := start(t, d.Socket, stdin, "attach", "s1")
 	eventually(t, "attach", func() bool { return strings.Contains(c.stdout.String(), "-- attached") })
 
-	d.dropConnections()
+	d.DropConnections()
 	if code := c.wait(t); code != 1 {
 		t.Errorf("exit %d, want 1", code)
 	}

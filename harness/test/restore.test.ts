@@ -53,7 +53,7 @@ function expectValid(messages: Message[]): void {
 
 async function load(history: SessionEvent[], model: FakeModel): Promise<AgentSession> {
   const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
-  return agent.loadSession({ sessionId: "s1", cwd: await tempDir(), history });
+  return agent.loadSession({ sessionId: "s1", cwd: await tempDir(), history, mcpServers: [] });
 }
 
 async function prompt(session: AgentSession, text: string): Promise<AgentUpdate[]> {
@@ -72,7 +72,7 @@ test("a completed session continues exactly where it left off", async () => {
   // First run: a real session produces the log.
   const first = fakeModel([reply([call("c1")], "toolUse"), reply("all done")]);
   const agent = createPiAgent({ config: TEST_CONFIG, streamFn: first.streamFn });
-  const session = await agent.newSession({ sessionId: "s1", cwd: await tempDir() });
+  const session = await agent.newSession({ sessionId: "s1", cwd: await tempDir(), mcpServers: [] });
   const history: SessionEvent[] = [];
   const updates = await prompt(session, "first");
   for (const update of updates) history.push(update);

@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Subprocess } from "bun";
+import { startMcpApp } from "./mcp-app.ts";
 
 const repo = resolve(import.meta.dir, "..", "..");
 const suiteBin = join(repo, "bin", "suite");
@@ -166,6 +167,50 @@ describe.skipIf(!existsSync(suiteBin))("daemon + CLI end to end", () => {
     expect(replay).toContain("[turn error: Interrupted: the daemon stopped during this turn.]");
     // The agent was rebuilt from the log: this is its third turn.
     expect(out.slice(out.indexOf("-- attached to"))).toContain("echo #3: after restart");
+  });
+
+  test("an app registered over the TCP bus shows up in suite tools until it disconnects", async () => {
+    const env = testEnv();
+    await startDaemon(env);
+    const app = startMcpApp({
+      tools: [
+        {
+          name: "greet",
+          description: "Say hello to someone",
+          inputSchema: { type: "object", properties: { name: { type: "string" } } },
+          handler: () => ({ content: [{ type: "text", text: "hi" }] }),
+        },
+      ],
+    });
+    const info: { url: string; token: string } = await Bun.file(
+      join(env.SUITE_SOCKET ?? "", "..", "daemon.json"),
+    ).json();
+    const ws = new WebSocket(`${info.url.replace("http", "ws")}/bus?token=${info.token}`);
+    const frames: string[] = [];
+    ws.onmessage = (e) => frames.push(String(e.data));
+    await new Promise((resolve) => (ws.onopen = resolve));
+    ws.send(JSON.stringify({ topic: "bus.hello", payload: { protocol: 1, client: "test-app" } }));
+    ws.send(
+      JSON.stringify({
+        topic: "app.presence",
+        id: "p1",
+        payload: { app: "greeter", kind: "app", title: "Greeter", open: true, mcp: app.endpoint },
+      }),
+    );
+    await until(() => frames.some((f) => f.includes('"bus.ack"')), "presence ack");
+
+    const listed = await suite(env, ["tools", "hello"]);
+    expect(listed.code).toBe(0);
+    expect(listed.out).toContain("greeter.greet");
+    expect(listed.out).toContain("connected");
+
+    ws.close();
+    for (let i = 0; i < 50; i++) {
+      if ((await suite(env, ["tools"])).out.includes("closed")) break;
+      await Bun.sleep(20);
+    }
+    expect((await suite(env, ["tools"])).out).toContain("closed");
+    await app.close();
   });
 
   test("piped inputs are queued and run in order", async () => {

@@ -11,7 +11,7 @@ import { ofType, tempDir } from "./helpers.ts";
 async function newSession(model: FakeModel): Promise<{ session: AgentSession; cwd: string }> {
   const cwd = await tempDir();
   const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
-  return { session: await agent.newSession({ sessionId: "s1", cwd }), cwd };
+  return { session: await agent.newSession({ sessionId: "s1", cwd, mcpServers: [] }), cwd };
 }
 
 async function run(
@@ -188,7 +188,19 @@ test("the system prompt and tools are sent unchanged on every request", async ()
   const { session } = await newSession(fakeModel([spy(), spy()]));
   await run(session, "one");
   await run(session, "two", [{ type: "app_disconnected", app: "x" }]);
-  expect(seen[0]).toEqual({ prompt: SYSTEM_PROMPT, tools: ["bash", "read", "write", "edit"] });
+  expect(seen[0]).toEqual({
+    prompt: SYSTEM_PROMPT,
+    tools: [
+      "bash",
+      "read",
+      "write",
+      "edit",
+      "tools_search",
+      "tools_call",
+      "apps_launch",
+      "apps_focus",
+    ],
+  });
   expect(seen[1]).toEqual(seen[0]);
 });
 
@@ -219,7 +231,11 @@ test("a missing API key resolves with an error naming the env var, without calli
   const saved = process.env.DEEPSEEK_API_KEY;
   delete process.env.DEEPSEEK_API_KEY;
   try {
-    const session = await agent.newSession({ sessionId: "s", cwd: await tempDir() });
+    const session = await agent.newSession({
+      sessionId: "s",
+      cwd: await tempDir(),
+      mcpServers: [],
+    });
     const { updates, result } = await run(session, "x");
     expect(result.stopReason).toBe("error");
     expect(result.error).toContain("DEEPSEEK_API_KEY");

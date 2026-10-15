@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	protocol "neoworks.dev/suite/protocol/go"
+	sdk "neoworks.dev/suite/sdk-go"
 )
 
 // pollInterval is how often we ask whether the session went idle after stdin
@@ -36,11 +38,11 @@ func runAttach(ctx context.Context, args []string, e cliEnv) int {
 		return 2
 	}
 
-	b, _, ok := connect(ctx, *socket, e)
+	c, _, ok := connect(ctx, *socket, e)
 	if !ok {
 		return 1
 	}
-	defer b.close()
+	defer c.Close()
 
 	var id string
 	if *create {
@@ -55,22 +57,15 @@ func runAttach(ctx context.Context, args []string, e cliEnv) int {
 		if *title != "" {
 			params.Title = title
 		}
-		reply, err := b.call(ctx, func(id string) protocol.EnvelopeVariant {
-			return protocol.SessionCreate{ID: id, Payload: params}
-		})
+		info, err := c.CreateSession(ctx, params)
 		if err != nil {
 			fmt.Fprintf(e.Stderr, "suite: create session: %v\n", err)
 			return 1
 		}
-		info, ok := reply.(protocol.SessionInfoMessage)
-		if !ok {
-			fmt.Fprintf(e.Stderr, "suite: unexpected reply %T to session.create\n", reply)
-			return 1
-		}
-		id = info.Payload.ID
+		id = info.ID
 		fmt.Fprintf(e.Stdout, "created session %s\n", id)
 	} else {
-		sessions, err := b.listSessions(ctx)
+		sessions, err := c.ListSessions(ctx)
 		if err == nil {
 			var s protocol.SessionInfo
 			if s, err = resolveSession(sessions, positional[0]); err == nil {
@@ -83,14 +78,19 @@ func runAttach(ctx context.Context, args []string, e cliEnv) int {
 		}
 	}
 
+	sub, err := c.Subscribe(ctx, id, 1)
+	if err != nil {
+		fmt.Fprintf(e.Stderr, "suite: attach %s: %v\n", id, err)
+		return 1
+	}
 	a := &attachment{
-		b:           b,
+		c:           c,
+		sub:         sub,
 		id:          id,
 		app:         *app,
 		r:           newRenderer(e.Stdout, *thoughts),
 		stderr:      e.Stderr,
 		interactive: isTerminal(e.Stdin),
-		pending:     map[string]func(protocol.EnvelopeVariant){},
 	}
 	return a.run(ctx, e)
 }
@@ -106,22 +106,18 @@ func isTerminal(r io.Reader) bool {
 }
 
 // attachment is the state of one attached session. Everything runs on the
-// goroutine in run, so there is no locking; replies are matched to requests
-// through pending.
+// goroutine in run, so there is no locking. Requests are synchronous: events
+// queue up in the subscription meanwhile.
 type attachment struct {
-	b           *bus
+	c           *sdk.Client
+	sub         *sdk.Subscription
 	id, app     string
 	r           *renderer
 	stderr      io.Writer
 	interactive bool // stdin is a terminal
 
-	pending map[string]func(protocol.EnvelopeVariant) // request id -> reply handler
-
-	subscribed    bool // replay is done
-	running       bool // a turn is in progress, from user_message/turn_ended
-	unackedInputs int
-	pollInFlight  bool
-	draining      bool // stdin closed; waiting for the session to go idle
+	running  bool // a turn is in progress, from user_message/turn_ended
+	draining bool // stdin closed; waiting for the session to go idle
 
 	done bool
 	code int
@@ -133,40 +129,36 @@ func (a *attachment) warnf(format string, args ...any) {
 	fmt.Fprintf(a.stderr, "suite: "+format+"\n", args...)
 }
 
-// request sends a message built for a fresh id and registers onReply for the
-// reply, which may be an ack, a bus.error or a typed result.
-func (a *attachment) request(ctx context.Context, build func(id string) protocol.EnvelopeVariant, onReply func(protocol.EnvelopeVariant)) {
-	id := a.b.newID()
-	a.pending[id] = onReply
-	if err := a.b.send(ctx, build(id)); err != nil {
-		a.warnf("connection to daemon lost: %v", err)
+// failed reports a failed request. A refusal from the daemon is only a
+// warning; anything else means the connection is gone, which ends the session.
+func (a *attachment) failed(err error) {
+	a.warnf("%v", err)
+	var refused *sdk.Error
+	if !errors.As(err, &refused) {
 		a.finish(1)
 	}
 }
 
 func (a *attachment) run(ctx context.Context, e cliEnv) int {
-	a.request(ctx, func(id string) protocol.EnvelopeVariant {
-		from := int64(1)
-		return protocol.SessionSubscribe{ID: id, Payload: protocol.SubscribeParams{Session: a.id, FromSeq: &from}}
-	}, a.onSubscribed)
+	for _, rec := range a.sub.Replay {
+		a.render(rec)
+	}
+	a.running = a.sub.Info.State == protocol.SessionStateRunning
+	a.r.line("-- attached to %s --", a.id)
 
-	lines := readLines(e.Stdin)
-	var stdinC <-chan string // stays nil until the replay is printed
+	stdinC := readLines(e.Stdin)
 	var tick <-chan time.Time
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
 	for !a.done {
 		select {
-		case f, ok := <-a.b.in:
-			if !ok || f.err != nil {
-				a.warnf("connection to daemon lost")
+		case rec, ok := <-a.sub.Events():
+			if !ok {
+				a.warnf("%v", a.sub.Err())
 				return 1
 			}
-			a.handle(f.value)
-			if a.subscribed && !a.draining && stdinC == nil {
-				stdinC = lines
-			}
+			a.render(rec)
 		case line, ok := <-stdinC:
 			switch {
 			case ok:
@@ -181,12 +173,10 @@ func (a *attachment) run(ctx context.Context, e cliEnv) int {
 		case <-tick:
 			a.poll(ctx)
 		case <-e.Interrupt:
-			if a.running {
-				a.request(ctx, func(id string) protocol.EnvelopeVariant {
-					return protocol.SessionCancel{ID: id, Payload: protocol.SessionRef{Session: a.id}}
-				}, a.onResult)
-			} else {
+			if !a.running {
 				a.finish(0)
+			} else if err := a.c.Cancel(ctx, a.id); err != nil {
+				a.failed(err)
 			}
 		case <-ctx.Done():
 			return 1
@@ -195,92 +185,49 @@ func (a *attachment) run(ctx context.Context, e cliEnv) int {
 	return a.code
 }
 
-func (a *attachment) handle(v protocol.EnvelopeVariant) {
-	if id, ok := replyID(v); ok {
-		if onReply := a.pending[id]; onReply != nil {
-			delete(a.pending, id)
-			onReply(v)
-		}
-		return
+func (a *attachment) render(rec protocol.SessionEventRecord) {
+	switch rec.Event.Value.(type) {
+	case protocol.UserMessage:
+		a.running = true
+	case protocol.TurnEnded:
+		a.running = false
 	}
-	switch m := v.(type) {
-	case protocol.SessionEvents:
-		rec := m.Payload
-		if rec.Session != a.id {
-			return
-		}
-		switch rec.Event.Value.(type) {
-		case protocol.UserMessage:
-			a.running = true
-		case protocol.TurnEnded:
-			a.running = false
-		}
-		a.r.Render(rec.Event)
-	case protocol.BusError: // without an id
-		a.warnf("daemon error: %s", m.Payload.Message)
-	}
-}
-
-func (a *attachment) onSubscribed(v protocol.EnvelopeVariant) {
-	switch m := v.(type) {
-	case protocol.SessionSubscribed:
-		a.subscribed = true
-		a.running = m.Payload.Session.State == protocol.SessionStateRunning
-		a.r.line("-- attached to %s --", a.id)
-	case protocol.BusError:
-		a.warnf("attach %s: %s", a.id, m.Payload.Message)
-		a.finish(1)
-	}
-}
-
-// onResult reports a failed request; successful acks need no handling.
-func (a *attachment) onResult(v protocol.EnvelopeVariant) {
-	if m, ok := v.(protocol.BusError); ok {
-		a.warnf("%s", m.Payload.Message)
-	}
+	a.r.Render(rec.Event)
 }
 
 func (a *attachment) sendInput(ctx context.Context, line string) {
 	if strings.TrimSpace(line) == "" {
 		return
 	}
-	a.unackedInputs++
-	a.request(ctx, func(id string) protocol.EnvelopeVariant {
-		return protocol.SessionInputMessage{ID: &id, Payload: protocol.SessionInput{Session: a.id, App: a.app, Text: line}}
-	}, func(v protocol.EnvelopeVariant) {
-		a.unackedInputs--
-		a.onResult(v)
-	})
+	if err := a.c.Input(ctx, protocol.SessionInput{Session: a.id, App: a.app, Text: line}); err != nil {
+		a.failed(err)
+	}
 }
 
 // poll finishes the attachment once stdin is closed and the session has
-// nothing left to do. It waits for input acks first: after an ack, the list
-// already shows the session running or queued, and the daemon sends turn_ended
+// nothing left to do. Inputs are acked before poll runs, and an ack means the
+// session already shows as running or queued; the daemon sends turn_ended
 // before reporting idle, so all output has been printed by then.
 func (a *attachment) poll(ctx context.Context) {
-	if !a.draining || a.unackedInputs > 0 || a.pollInFlight {
+	if !a.draining {
 		return
 	}
-	a.pollInFlight = true
-	a.request(ctx, func(id string) protocol.EnvelopeVariant { return protocol.SessionList{ID: id} }, func(v protocol.EnvelopeVariant) {
-		a.pollInFlight = false
-		res, ok := v.(protocol.SessionListResult)
-		if !ok {
-			a.onResult(v)
-			a.finish(1)
+	sessions, err := a.c.ListSessions(ctx)
+	if err != nil {
+		a.warnf("%v", err)
+		a.finish(1)
+		return
+	}
+	for _, s := range sessions {
+		if s.ID == a.id {
+			if s.State == protocol.SessionStateIdle && s.Queued == 0 {
+				a.finish(0)
+			}
 			return
 		}
-		for _, s := range res.Payload.Sessions {
-			if s.ID == a.id {
-				if s.State == protocol.SessionStateIdle && s.Queued == 0 {
-					a.finish(0)
-				}
-				return
-			}
-		}
-		a.warnf("session %s disappeared", a.id)
-		a.finish(1)
-	})
+	}
+	a.warnf("session %s disappeared", a.id)
+	a.finish(1)
 }
 
 // readLines delivers stdin lines on the returned channel and closes it at

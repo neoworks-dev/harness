@@ -5,6 +5,7 @@ import { validateEnvelope } from "@suite/protocol/validate";
 import type { Logger } from "./log.ts";
 import { NotFoundError, type SessionManager } from "./sessions.ts";
 import type { SessionStore } from "./store.ts";
+import type { ConnectorRegistry } from "./gateway/registry.ts";
 
 export const PROTOCOL_VERSION = 1;
 
@@ -43,6 +44,7 @@ export class Hub {
     private readonly sessions: SessionManager,
     private readonly info: DaemonInfo,
     private readonly log: Logger,
+    private readonly connectors?: ConnectorRegistry,
   ) {
     // Appends are synchronous and so is subscribe's replay, so a subscriber either got an event
     // in its replay or gets it here — never both, never neither.
@@ -54,7 +56,10 @@ export class Hub {
     this.clients.add(client);
     return {
       receive: (frame) => this.receive(client, frame),
-      closed: () => this.clients.delete(client),
+      closed: () => {
+        this.clients.delete(client);
+        void this.connectors?.disconnect(client);
+      },
     };
   }
 
@@ -171,14 +176,31 @@ export class Hub {
         this.send(client, { topic: "bus.ack", id: msg.id });
         return;
       case "session.input": {
-        const { session, app, text } = msg.payload;
-        this.sessions.input(session, app, text);
+        const { session, app, text, images } = msg.payload;
+        this.sessions.input(session, app, text, images);
         if (msg.id !== undefined) this.send(client, { topic: "bus.ack", id: msg.id });
         return;
       }
-      case "app.presence":
-        // Registration arrives with the MCP gateway in Phase 2.
-        this.fail(client, undefined, "bad_request", "app.presence is not supported yet");
+      case "app.presence": {
+        if (!this.connectors) {
+          this.fail(client, msg.id, "bad_request", "this daemon has no connector registry");
+          return;
+        }
+        const { id } = msg;
+        this.connectors.presence(client, msg.payload).then(
+          () => {
+            if (id !== undefined) this.send(client, { topic: "bus.ack", id });
+          },
+          (err: unknown) => this.fail(client, id, "internal", String(err)),
+        );
+        return;
+      }
+      case "connectors.list":
+        this.send(client, {
+          topic: "connectors.list_result",
+          id: msg.id,
+          payload: { connectors: this.connectors?.list() ?? [] },
+        });
         return;
       case "bus.welcome":
       case "bus.ack":
@@ -187,6 +209,7 @@ export class Hub {
       case "session.list_result":
       case "session.subscribed":
       case "session.events":
+      case "connectors.list_result":
         this.fail(
           client,
           "id" in msg ? msg.id : undefined,

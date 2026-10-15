@@ -1,6 +1,11 @@
 // Session store: SQLite event log, one row per event, gap-free per-session sequence numbers.
 import { Database } from "bun:sqlite";
-import type { SessionEvent, SessionEventRecord } from "@suite/protocol/types";
+import type {
+  ConnectorKind,
+  LaunchSpec,
+  SessionEvent,
+  SessionEventRecord,
+} from "@suite/protocol/types";
 
 export interface SessionRow {
   id: string;
@@ -27,6 +32,26 @@ interface EventDbRow {
   data: string;
 }
 
+/** What the gateway remembers about a connector between runs (schemas, version, launch). */
+export interface StoredConnector {
+  app: string;
+  kind: ConnectorKind;
+  title?: string;
+  v: number;
+  schemaHash: string;
+  tools: StoredTool[];
+  instructions?: string;
+  launch?: LaunchSpec;
+}
+
+export interface StoredTool {
+  /** Name as the connector's MCP server knows it (without the app prefix). */
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+}
+
 export type AppendListener = (record: SessionEventRecord) => void;
 
 const SCHEMA = `
@@ -47,6 +72,10 @@ const SCHEMA = `
     PRIMARY KEY (session, seq)
   ) STRICT, WITHOUT ROWID;
   CREATE INDEX IF NOT EXISTS events_by_type ON events (session, type, seq);
+  CREATE TABLE IF NOT EXISTS connectors (
+    app  TEXT PRIMARY KEY,
+    data TEXT NOT NULL
+  ) STRICT;
 `;
 
 function toRow(r: SessionDbRow): SessionRow {
@@ -146,6 +175,33 @@ export class SessionStore {
       )
       .get(session, type);
     return r?.seq ?? 0;
+  }
+
+  /** Events of the given types, in seq order. */
+  readTypes(session: string, types: SessionEvent["type"][]): SessionEventRecord[] {
+    const placeholders = types.map(() => "?").join(", ");
+    return this.db
+      .query<EventDbRow, string[]>(
+        `SELECT session, seq, ts, data FROM events WHERE session = ? AND type IN (${placeholders}) ORDER BY seq`,
+      )
+      .all(session, ...types)
+      .map(toRecord);
+  }
+
+  saveConnector(connector: StoredConnector): void {
+    this.db
+      .query("INSERT OR REPLACE INTO connectors (app, data) VALUES (?, ?)")
+      .run(connector.app, JSON.stringify(connector));
+  }
+
+  loadConnectors(): StoredConnector[] {
+    return this.db
+      .query<{ data: string }, []>("SELECT data FROM connectors ORDER BY app")
+      .all()
+      .map((r) => {
+        const connector: StoredConnector = JSON.parse(r.data);
+        return connector;
+      });
   }
 
   onAppend(listener: AppendListener): () => void {

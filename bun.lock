@@ -18,6 +18,10 @@
         "@modelcontextprotocol/sdk": "^1.32.1",
         "@suite/harness": "workspace:*",
         "@suite/protocol": "workspace:*",
+        "ajv": "^8.20.0",
+      },
+      "devDependencies": {
+        "@mariozechner/pi-ai": "0.73.1",
       },
     },
     "harness": {

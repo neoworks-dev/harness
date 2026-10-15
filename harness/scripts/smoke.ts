@@ -30,7 +30,11 @@ const logger = {
 };
 process.stdout.write(`model ${config.provider}/${config.modelId}, cwd ${cwd}\n`);
 
-const session = await createPiAgent({ config, logger }).newSession({ sessionId: "smoke", cwd });
+const session = await createPiAgent({ config, logger }).newSession({
+  sessionId: "smoke",
+  cwd,
+  mcpServers: [],
+});
 let messages = 0;
 const result = await session.prompt({
   text: "Create hello.txt containing hi, then change hi to hello with the edit tool",

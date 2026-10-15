@@ -1,0 +1,239 @@
+// Connector registry: which connectors are open (presence over the bus), their MCP connections,
+// and what we remember about every connector ever seen (tool schemas, version, launch command), so
+// tools_search and "isn't open" errors work while an app is closed and after a daemon restart.
+import { createHash } from "node:crypto";
+import type { AppPresence, ConnectorInfo, ConnectorKind, McpEndpoint } from "@suite/protocol/types";
+import type { Logger } from "../log.ts";
+import type { SessionStore, StoredConnector, StoredTool } from "../store.ts";
+import type { ConnectUpstream, Upstream } from "./upstream.ts";
+
+/** An open connector as sessions are told about it. */
+export interface ConnectorSnapshot {
+  app: string;
+  kind: ConnectorKind;
+  v: number;
+  /** Tool names without the app prefix. */
+  tools: string[];
+}
+
+interface Live {
+  /** The bus client that registered it; only that client can unregister it. */
+  owner: object;
+  presence: AppPresence;
+  upstream?: Upstream;
+  /** Why its MCP server can't be used, if it can't. */
+  error?: string;
+  /** Resolves once the first tool listing finished (or failed). */
+  ready: Promise<void>;
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function hashOf(tools: StoredTool[], instructions: string | undefined): string {
+  const sorted = [...tools].sort((a, b) => a.name.localeCompare(b.name));
+  return createHash("sha256")
+    .update(JSON.stringify({ tools: sorted, instructions }))
+    .digest("hex");
+}
+
+function sameEndpoint(a: McpEndpoint | undefined, b: McpEndpoint | undefined): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export class ConnectorRegistry {
+  private readonly stored = new Map<string, StoredConnector>();
+  private readonly live = new Map<string, Live>();
+  private readonly listeners = new Set<() => void>();
+
+  constructor(
+    private readonly store: SessionStore,
+    private readonly connect: ConnectUpstream,
+    private readonly log: Logger,
+  ) {
+    for (const connector of store.loadConnectors()) this.stored.set(connector.app, connector);
+  }
+
+  /**
+   * Registers, updates or (open: false) unregisters a connector. Resolves once its tools are
+   * listed, or listing failed (then the connector is open with an error).
+   */
+  async presence(owner: object, presence: AppPresence): Promise<void> {
+    const { app } = presence;
+    const existing = this.live.get(app);
+    if (!presence.open) {
+      if (existing?.owner === owner) await this.drop(app, existing);
+      return;
+    }
+    this.remember(presence);
+    if (existing?.owner === owner && sameEndpoint(existing.presence.mcp, presence.mcp)) {
+      existing.presence = presence; // title/context/launch update
+      this.notify();
+      return existing.ready;
+    }
+    if (existing) await this.drop(app, existing); // re-registered by another client or endpoint
+    let markReady = (): void => {};
+    const live: Live = { owner, presence, ready: new Promise((resolve) => (markReady = resolve)) };
+    this.live.set(app, live);
+    this.notify();
+    if (presence.mcp) await this.attach(app, live, presence.mcp);
+    markReady();
+  }
+
+  /** Unregisters everything a bus client registered (its connection closed). */
+  async disconnect(owner: object): Promise<void> {
+    const owned = [...this.live].filter(([, live]) => live.owner === owner);
+    await Promise.all(owned.map(([app, live]) => this.drop(app, live)));
+  }
+
+  isOpen(app: string): boolean {
+    return this.live.has(app);
+  }
+
+  connector(app: string): StoredConnector | undefined {
+    return this.stored.get(app);
+  }
+
+  upstream(app: string): { upstream?: Upstream; error?: string } | undefined {
+    const live = this.live.get(app);
+    if (!live) return undefined;
+    return { upstream: live.upstream, error: live.error };
+  }
+
+  /** Every connector we know of, open ones first. */
+  all(): { connector: StoredConnector; open: boolean }[] {
+    return [...this.stored.values()]
+      .map((connector) => ({ connector, open: this.live.has(connector.app) }))
+      .sort(
+        (a, b) => Number(b.open) - Number(a.open) || a.connector.app.localeCompare(b.connector.app),
+      );
+  }
+
+  list(): ConnectorInfo[] {
+    return this.all().map(({ connector, open }) => {
+      const info: ConnectorInfo = {
+        app: connector.app,
+        kind: connector.kind,
+        connected: open,
+        v: connector.v,
+        tools: connector.tools.map((t) => ({
+          name: `${connector.app}.${t.name}`,
+          description: t.description,
+        })),
+      };
+      if (connector.title !== undefined) info.title = connector.title;
+      const error = this.live.get(connector.app)?.error;
+      if (error !== undefined) info.error = error;
+      return info;
+    });
+  }
+
+  /** Open connectors, as announced to sessions. */
+  snapshot(): ConnectorSnapshot[] {
+    const out: ConnectorSnapshot[] = [];
+    for (const { connector, open } of this.all()) {
+      if (!open) continue;
+      const { app, kind, v, tools } = connector;
+      out.push({ app, kind, v, tools: tools.map((t) => t.name) });
+    }
+    return out;
+  }
+
+  /** Resolves true once the app is open and its tools are listed, false on timeout. */
+  async waitForOpen(app: string, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const live = this.live.get(app);
+      if (live) {
+        await Promise.race([live.ready, Bun.sleep(deadline - Date.now())]);
+        return this.live.has(app);
+      }
+      await new Promise<void>((resolve) => {
+        const unsubscribe = this.onChange(() => {
+          unsubscribe();
+          resolve();
+        });
+        setTimeout(resolve, Math.max(0, deadline - Date.now()));
+      });
+    }
+    return this.live.has(app);
+  }
+
+  onChange(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  /** Closes every MCP connection (daemon shutdown). */
+  async close(): Promise<void> {
+    await Promise.all([...this.live].map(([app, live]) => this.drop(app, live)));
+  }
+
+  private remember(presence: AppPresence): void {
+    const record: StoredConnector = this.stored.get(presence.app) ?? {
+      app: presence.app,
+      kind: presence.kind,
+      v: 0,
+      schemaHash: "",
+      tools: [],
+    };
+    record.kind = presence.kind;
+    if (presence.title !== undefined) record.title = presence.title;
+    if (presence.launch !== undefined) record.launch = presence.launch;
+    this.stored.set(presence.app, record);
+    this.store.saveConnector(record);
+  }
+
+  private async attach(app: string, live: Live, endpoint: McpEndpoint): Promise<void> {
+    try {
+      const upstream = await this.connect(endpoint);
+      if (this.live.get(app) !== live) {
+        await upstream.close(); // unregistered while connecting
+        return;
+      }
+      live.upstream = upstream;
+      upstream.onToolsChanged(() => void this.refresh(app, live));
+      await this.refresh(app, live);
+    } catch (err) {
+      live.error = `can't reach its MCP server: ${errorText(err)}`;
+      this.log.warn(`${app}: ${live.error}`);
+      this.notify();
+    }
+  }
+
+  private async refresh(app: string, live: Live): Promise<void> {
+    if (!live.upstream) return;
+    try {
+      const tools = await live.upstream.listTools();
+      const record = this.stored.get(app);
+      if (this.live.get(app) !== live || !record) return;
+      const instructions = live.upstream.instructions();
+      const hash = hashOf(tools, instructions);
+      if (record.schemaHash !== hash) {
+        record.v += 1;
+        record.schemaHash = hash;
+        record.tools = tools;
+        if (instructions === undefined) delete record.instructions;
+        else record.instructions = instructions;
+        this.store.saveConnector(record);
+        this.log.info(`${app}: ${tools.length} tools, v${record.v}`);
+      }
+      delete live.error;
+    } catch (err) {
+      live.error = `listing its tools failed: ${errorText(err)}`;
+      this.log.warn(`${app}: ${live.error}`);
+    }
+    this.notify();
+  }
+
+  private async drop(app: string, live: Live): Promise<void> {
+    if (this.live.get(app) === live) this.live.delete(app);
+    this.notify();
+    await live.upstream?.close();
+  }
+
+  private notify(): void {
+    for (const listener of this.listeners) listener();
+  }
+}

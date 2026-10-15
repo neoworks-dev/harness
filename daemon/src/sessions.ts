@@ -1,7 +1,14 @@
 // Session manager: one turn at a time per session, inputs queued behind it. Talks to the agent only
 // through the ACP-style interface in @suite/harness/agent.
-import type { Agent, AgentSession, AgentUpdate, ContextEvent } from "@suite/harness/agent";
+import type {
+  Agent,
+  AgentSession,
+  AgentUpdate,
+  ContextEvent,
+  McpServer,
+} from "@suite/harness/agent";
 import type { SessionEvent, SessionInfo, TurnEnded } from "@suite/protocol/types";
+import type { ConnectorSnapshot } from "./gateway/registry.ts";
 import type { Logger } from "./log.ts";
 import type { SessionRow, SessionStore } from "./store.ts";
 
@@ -10,6 +17,7 @@ export class NotFoundError extends Error {}
 interface QueuedInput {
   app: string;
   text: string;
+  images?: string[];
 }
 
 /** In-memory state of a session that has been used since the daemon started. */
@@ -21,6 +29,8 @@ interface Runtime {
   cancelRequested: boolean;
   /** Connector events not yet delivered to the agent. */
   pending: ContextEvent[];
+  /** What this session's log says is open: app → version it was told about. */
+  told: Map<string, number>;
   /** Resolves when the current drain loop finishes. */
   drained: Promise<void>;
 }
@@ -35,6 +45,12 @@ function isContextEvent(event: SessionEvent): event is ContextEvent {
   return CONTEXT_TYPES.has(event.type);
 }
 
+function userMessage(input: QueuedInput): SessionEvent {
+  const event: SessionEvent = { type: "user_message", app: input.app, text: input.text };
+  if (input.images) event.images = input.images;
+  return event;
+}
+
 export function newSessionId(): string {
   const alphabet = "0123456789abcdefghjkmnpqrstvwxyz";
   const bytes = crypto.getRandomValues(new Uint8Array(10));
@@ -44,6 +60,15 @@ export function newSessionId(): string {
 export interface SessionManagerOptions {
   defaultCwd: string;
   log: Logger;
+  /** Open connectors right now; each turn starts by telling the session what changed. */
+  connectors?: () => ConnectorSnapshot[];
+  /** MCP servers handed to the agent for a session (the gateway). */
+  mcpServers?: (sessionId: string) => McpServer[];
+}
+
+function applyTold(told: Map<string, number>, event: SessionEvent): void {
+  if (event.type === "app_connected") told.set(event.app, event.v);
+  else if (event.type === "app_disconnected") told.delete(event.app);
 }
 
 export class SessionManager {
@@ -57,7 +82,9 @@ export class SessionManager {
     // Connector events can be appended by anyone (Phase 2: presence); collect them for the next prompt.
     store.onAppend((record) => {
       if (!isContextEvent(record.event)) return;
-      this.runtimes.get(record.session)?.pending.push(record.event);
+      const rt = this.runtimes.get(record.session);
+      rt?.pending.push(record.event);
+      if (rt) applyTold(rt.told, record.event);
     });
   }
 
@@ -80,9 +107,9 @@ export class SessionManager {
   }
 
   /** Queues input. When this returns, info() already shows the session running or queued. */
-  input(sessionId: string, app: string, text: string): void {
+  input(sessionId: string, app: string, text: string, images?: string[]): void {
     const rt = this.runtime(sessionId);
-    rt.queue.push({ app, text });
+    rt.queue.push(images?.length ? { app, text, images } : { app, text });
     if (!rt.running) {
       rt.running = true;
       rt.drained = this.drain(sessionId, rt);
@@ -143,11 +170,16 @@ export class SessionManager {
       .read(sessionId, lastInput + 1)
       .map((r) => r.event)
       .filter(isContextEvent);
+    const told = new Map<string, number>();
+    for (const r of this.store.readTypes(sessionId, ["app_connected", "app_disconnected"])) {
+      applyTold(told, r.event);
+    }
     const rt: Runtime = {
       queue: [],
       running: false,
       cancelRequested: false,
       pending,
+      told,
       drained: Promise.resolve(),
     };
     this.runtimes.set(sessionId, rt);
@@ -170,8 +202,9 @@ export class SessionManager {
     try {
       const agentSession = rt.agentSession ?? (await this.loadAgentSession(sessionId));
       rt.agentSession = agentSession;
+      this.announceConnectors(sessionId, rt);
       const pendingEvents = rt.pending.splice(0);
-      this.store.append(sessionId, { type: "user_message", app: input.app, text: input.text });
+      this.store.append(sessionId, userMessage(input));
       userLogged = true;
       if (rt.cancelRequested) {
         ended.stopReason = "cancelled";
@@ -182,9 +215,7 @@ export class SessionManager {
       // prompt() never rejects by contract, but loading the agent session can fail.
       ended.error = err instanceof Error ? err.message : String(err);
       this.options.log.error(`${sessionId}: turn failed: ${ended.error}`);
-      if (!userLogged) {
-        this.store.append(sessionId, { type: "user_message", app: input.app, text: input.text });
-      }
+      if (!userLogged) this.store.append(sessionId, userMessage(input));
     } finally {
       rt.cancelRequested = false;
     }
@@ -212,12 +243,38 @@ export class SessionManager {
     }
   }
 
+  /**
+   * Appends app_connected / app_disconnected for whatever changed since this session was last
+   * told (by version), so the next prompt carries exactly the difference. Idle sessions get no
+   * writes; a quick close-and-reopen between two prompts produces nothing.
+   */
+  private announceConnectors(sessionId: string, rt: Runtime): void {
+    const current = this.options.connectors?.();
+    if (!current) return;
+    const open = new Set(current.map((c) => c.app));
+    for (const c of current) {
+      if (rt.told.get(c.app) === c.v) continue;
+      this.store.append(sessionId, {
+        type: "app_connected",
+        app: c.app,
+        kind: c.kind,
+        v: c.v,
+        tools: c.tools,
+      });
+    }
+    for (const app of [...rt.told.keys()]) {
+      if (!open.has(app)) this.store.append(sessionId, { type: "app_disconnected", app });
+    }
+  }
+
   private async loadAgentSession(sessionId: string): Promise<AgentSession> {
     const row = this.store.getSession(sessionId);
     if (!row) throw new NotFoundError(`no session ${sessionId}`);
-    if (row.lastSeq === 0) return this.agent.newSession({ sessionId, cwd: row.cwd });
+    const mcpServers = this.options.mcpServers?.(sessionId) ?? [];
+    const params = { sessionId, cwd: row.cwd, mcpServers };
+    if (row.lastSeq === 0) return this.agent.newSession(params);
     const history = this.store.read(sessionId).map((r) => r.event);
-    return this.agent.loadSession({ sessionId, cwd: row.cwd, history });
+    return this.agent.loadSession({ ...params, history });
   }
 
   private toInfo(row: SessionRow): SessionInfo {
