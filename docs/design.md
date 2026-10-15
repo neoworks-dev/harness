@@ -331,6 +331,15 @@ Results with no template fall back to a generic card built from ACP's base data 
 - **Keyboard first.** Every action has a key hint; focus moves through actions in a defined order.
 - **Live updates.** Views are patched by `ref` via `view.patch`.
 
+### As built (Phase 4)
+
+- **Wire format.** `view.subscribe {session}` → `view.snapshot {seq, items}`, then `view.patch {seq, ops}` with ops `set` (replace or append an item by `ref`), `blocks` (replace the tail of a text component's blocks — streaming) and `remove`. Items have a `kind` (user, agent, thought, tool, notice), an optional `label` and tool `state`, and one component. `session.events` stays for raw consumers.
+- **The daemon resolves more than templates.** Markdown is parsed into blocks and spans, and diffs into numbered lines, before anything is sent, so no renderer parses markdown or diffs text. Streaming text is re-parsed per chunk; only blocks from the first changed one are sent.
+- **Templates** are registered in `app.presence.templates`, keyed by tool name, and kept after the app closes. A result's data is the tool's `structuredContent`. Template language: `{{path}}` in strings, whole-value substitution when the string is just `{{path}}`, `if`, and `each`/`as` (protocol/README.md). A template that doesn't resolve to valid components falls back to the generic card instead of failing the view.
+- **Actions.** An `app.tool` action runs that tool through the gateway when the app is open; the result appears in the chat as a tool call rendered with the app's template. Otherwise the agent gets it as input ("The user pressed …"). `copy:` stays in the client.
+- **Theme** comes from `~/.config/suite/theme.json` (or `SUITE_THEME`), else `protocol/themes/default.json`, and is sent after `bus.welcome`.
+- Renderer conventions (item headers, tool state icons, per-component rules, keys) are in `renderers/README.md`; every fixture in `fixtures/` is snapshot-tested by every renderer.
+
 ### Theme tokens
 
 Tokens describe meaning, not exact colors: `accent`, `muted`, `success`, `danger`; spacing `s`/`m`/`l`; text roles `title`/`body`/`code`. Web maps them to CSS variables, GPUI to its theme, TUIs to the closest 16-color, 256-color or true-color value. The daemon serves the active theme.
@@ -403,3 +412,6 @@ Each phase ends with something that works on its own.
 - **One current session.** Phase 3 answers "concurrent sessions" with one current session that every app follows; other sessions remain reachable from the CLI (`suite attach <id>`), get no `<focus>`, and an `apps_focus` call from one of them makes it current. Several agents active in different apps at once would need per-app sessions.
 - **Focus is the agent's location, not the user's.** `<focus>` follows the agent (moved by the user or by itself). The user switching windows without moving the agent isn't reported; if the model should know where the user is looking, apps need to report window focus separately.
 - **Pad is a stand-in.** No suite app is GPUI yet (Grove will be), so Phase 3's GPUI app is `apps/pad`, a window with a chat pane. It has no tools: a Rust MCP server needs `rmcp` (large), to be decided when Grove is ported.
+- **Actions the agent doesn't see.** A button that runs an open app's tool directly shows its result in the chat, but the result is not in the agent's history (only in the session log). If the agent should know, actions need to reach the harness as context (like connector events) at the next prompt.
+- **App-side live updates.** The design's `view.patch {ref, patch}` from apps (e.g. an export's progress) isn't built: apps can't address a result they returned, because MCP gives them no id for the call. Options: the gateway passes the tool call id in `_meta`, or apps return a progress token the daemon maps to the item.
+- **Pixel snapshots.** Renderer snapshots are text (TUI), HTML (web) and a layout model (GPUI). Screenshot tests need a headless browser and offscreen GPUI rendering; not set up yet.
