@@ -27,12 +27,12 @@ bin/suite attach --new     # new session in the current directory; type to chat
 bin/suite status           # daemon info + session counts + where the agent is
 bin/suite tools [query]    # connectors (open or closed) and their tools
 bin/suite sessions         # sessions by last activity
-bin/suite attach [id]      # id or unique prefix (default: the agent's current session); replays history, then follows live
+bin/suite attach [id]      # id or unique prefix (default: the agent's current session); draws the chat, then follows live (--raw: event dump)
 bin/suite focus            # where the agent is: its session and app (or no app)
 bin/suite move [app]       # move the agent to an open app; no app = home. --session ID also makes that session current
 ```
 
-In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits. Piped stdin sends one input per line and exits once the session is idle.
+In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/<key>` presses a button on the latest result (`/help` lists them). Piped stdin sends one input per line and exits once the session is idle.
 
 | Env                                   | Default                                                     |
 | ------------------------------------- | ----------------------------------------------------------- |
@@ -63,6 +63,10 @@ The agent can move itself with `apps_focus`, and Pad's buttons move it too. Clos
 ## Connecting an app
 
 Apps register with `app.presence` and bring their own MCP server; the daemon's gateway lists and calls its tools, and the agent finds them with `tools_search` / `tools_call`. Clients that can't use the Unix socket (Bun, browsers, MCP clients) read `daemon.json` next to the socket for the loopback URL and token. A complete example app: `bun run sdk-ts/examples/notes-app.ts`, then ask the agent to use the notes app. See [sdk-ts](sdk-ts/README.md) and [sdk-go](sdk-go/README.md).
+
+## The chat view
+
+Every pane draws the same thing: the daemon turns session events into view items (markdown parsed, diffs computed, tool results filled into the app's template) and streams them as `view.snapshot` + `view.patch`. Three renderers draw them — `renderers/tui` (Go, used by `suite attach`), `renderers/web` (TS/DOM; try `bun run renderers/web/demo/serve.ts`) and `renderers/gpui` (Rust, used by Pad). Apps register templates for their tools in `app.presence.templates`; see [protocol/README.md](protocol/README.md) and [renderers/README.md](renderers/README.md). Every fixture in `fixtures/` is snapshot-tested by all three.
 
 ## Commands
 
