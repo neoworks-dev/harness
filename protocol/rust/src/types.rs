@@ -1105,6 +1105,9 @@ pub struct AgentThoughtChunk {
 pub struct ToolCall {
     #[serde(rename = "toolCallId")]
     pub tool_call_id: String,
+    /// The tool's name; for tools_call, the connector tool (app.tool). Picks the result's view template.
+    #[serde(rename = "tool", default, skip_serializing_if = "Option::is_none")]
+    pub tool: Option<String>,
     /// Short human-readable summary.
     #[serde(rename = "title")]
     pub title: String,

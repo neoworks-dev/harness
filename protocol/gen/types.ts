@@ -392,6 +392,8 @@ export interface AgentThoughtChunk {
 export interface ToolCall {
   type: "tool_call";
   toolCallId: string;
+  /** The tool's name; for tools_call, the connector tool (app.tool). Picks the result's view template. */
+  tool?: string;
   /** Short human-readable summary. */
   title: string;
   kind: ToolKind;

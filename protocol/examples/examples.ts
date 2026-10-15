@@ -211,6 +211,7 @@ export const examples: Record<string, Envelope> = {
       event: {
         type: "tool_call",
         toolCallId: "call_1",
+        tool: "write",
         title: "write hello.txt",
         kind: "edit",
         status: "pending",

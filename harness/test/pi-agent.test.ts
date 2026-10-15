@@ -109,6 +109,7 @@ test("a tool call produces tool_call, updates and a diff in order", async () => 
   expect(updates.find((u) => u.type === "tool_call")).toEqual({
     type: "tool_call",
     toolCallId: "call-1",
+    tool: "write",
     title: "write hello.txt",
     kind: "edit",
     status: "pending",

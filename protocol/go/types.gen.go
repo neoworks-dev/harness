@@ -975,6 +975,8 @@ func (v AgentThoughtChunk) MarshalJSON() ([]byte, error) {
 // ToolCall: The agent started a tool call.
 type ToolCall struct {
 	ToolCallID string `json:"toolCallId"`
+	// The tool's name; for tools_call, the connector tool (app.tool). Picks the result's view template.
+	Tool *string `json:"tool,omitempty"`
 	// Short human-readable summary.
 	Title  string         `json:"title"`
 	Kind   ToolKind       `json:"kind"`

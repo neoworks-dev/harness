@@ -137,6 +137,10 @@
         "toolCallId": {
           "type": "string"
         },
+        "tool": {
+          "type": "string",
+          "description": "The tool's name; for tools_call, the connector tool (app.tool). Picks the result's view template."
+        },
         "title": {
           "type": "string",
           "description": "Short human-readable summary."

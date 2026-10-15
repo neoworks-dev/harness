@@ -88,7 +88,17 @@ export function createUpdateMapper(
         } else if (ev.type === "toolcall_end") {
           const { id, name, arguments: rawInput } = ev.toolCall;
           const { title, kind } = describeToolCall(name, rawInput);
-          emit({ type: "tool_call", toolCallId: id, title, kind, status: "pending", rawInput });
+          // tools_call results render with the connector tool's template, so name that tool.
+          const tool = name === "tools_call" ? stringArg(rawInput, "name") || name : name;
+          emit({
+            type: "tool_call",
+            toolCallId: id,
+            tool,
+            title,
+            kind,
+            status: "pending",
+            rawInput,
+          });
         }
         break;
       }
