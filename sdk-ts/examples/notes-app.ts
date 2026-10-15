@@ -1,6 +1,7 @@
 // A tiny connector: a notes app with two tools, registered with the suite until Ctrl-C.
 //   bun run sdk-ts/examples/notes-app.ts
-// Then ask the agent (e.g. `suite attach --new`) to use the notes app.
+// Then ask the agent (e.g. `suite attach --new`) to use the notes app. Its results are drawn with
+// the templates below (buttons included) in every pane.
 import { SuiteClient } from "@suite/sdk";
 import { createToolServer } from "@suite/sdk/tools";
 
@@ -19,8 +20,12 @@ const tools = createToolServer({
         required: ["text"],
       },
       handler: (args) => {
-        notes.push(String(args.text));
-        return Promise.resolve(`Added note #${notes.length}.`);
+        const text = String(args.text);
+        notes.push(text);
+        return Promise.resolve({
+          content: [{ type: "text", text: `Added note #${notes.length}.` }],
+          structuredContent: { text, total: notes.length },
+        });
       },
     },
     {
@@ -40,13 +45,63 @@ const tools = createToolServer({
           structuredContent: { notes },
         }),
     },
+    {
+      name: "clear_notes",
+      description: "Delete all notes",
+      inputSchema: { type: "object", properties: {} },
+      handler: () => {
+        const removed = notes.splice(0).length;
+        return Promise.resolve({
+          content: [{ type: "text", text: `Removed ${removed} notes.` }],
+          structuredContent: { removed },
+        });
+      },
+    },
   ],
 });
+
+const buttons = {
+  type: "row",
+  children: [
+    { type: "button", label: "Show all", action: "notes.list_notes", key: "l" },
+    { type: "button", label: "Clear", action: "notes.clear_notes", key: "x" },
+  ],
+};
+
+const templates = {
+  add_note: {
+    type: "card",
+    title: "Note #{{data.total}}",
+    children: [
+      { type: "text", markdown: "{{data.text}}" },
+      {
+        type: "row",
+        children: [
+          ...buttons.children,
+          { type: "button", label: "Copy", action: "copy:{{data.text}}", key: "c" },
+        ],
+      },
+    ],
+  },
+  list_notes: {
+    type: "card",
+    title: "Notes",
+    children: [{ type: "text", markdown: "- {{item}}", each: "data.notes", as: "item" }, buttons],
+  },
+  clear_notes: { type: "text", markdown: "Removed **{{data.removed}}** notes.", tone: "muted" },
+};
 
 const suite = await SuiteClient.connect({
   client: "notes",
   waitForDaemon: true,
-  presence: { app: "notes", kind: "app", title: "Notes", open: true, mcp: tools.endpoint },
+  presence: {
+    app: "notes",
+    kind: "app",
+    title: "Notes",
+    open: true,
+    mcp: tools.endpoint,
+    templates,
+  },
 });
 process.stderr.write("notes app registered; Ctrl-C to quit\n");
 
