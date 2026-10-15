@@ -49,6 +49,9 @@ type Options struct {
 	// and with the list fetched after each (re)connect. Same delivery as
 	// OnFocus.
 	OnConnectors func([]protocol.ConnectorInfo)
+	// OnTheme is called with every theme the daemon sends: once after each
+	// (re)connect and again when it changes. Same delivery as OnFocus.
+	OnTheme func(protocol.Theme)
 }
 
 // Client is a connection to the daemon.
@@ -66,10 +69,13 @@ type Client struct {
 	nextID   int
 	pending  map[string]chan reply
 	subs     map[string]*Subscription // by session id
+	views    map[string]*ViewSubscription
 	presence *protocol.AppPresence    // re-sent after a reconnect
 	focus    *protocol.AgentFocus     // latest agent.focus
 	focused  chan struct{}            // closed by the first agent.focus
 	conns    []protocol.ConnectorInfo // latest connector list
+	theme    *protocol.Theme          // latest theme
+	themed   chan struct{}            // closed by the first theme
 	notes    *notifier
 	closed   bool // Close was called
 	finished bool // done is closed; err says why
@@ -106,7 +112,9 @@ func Dial(ctx context.Context, opts Options) (*Client, error) {
 		welcome: welcome,
 		pending: map[string]chan reply{},
 		subs:    map[string]*Subscription{},
+		views:   map[string]*ViewSubscription{},
 		focused: make(chan struct{}),
+		themed:  make(chan struct{}),
 		notes:   newNotifier(),
 	}
 	close(c.up)
@@ -231,6 +239,20 @@ func (c *Client) CreateSession(ctx context.Context, params protocol.SessionCreat
 // the boundary needs no in-band marker. Subscribing to a session twice on one
 // client is an error.
 func (c *Client) Subscribe(ctx context.Context, session string, fromSeq int64) (*Subscription, error) {
+	return c.subscribe(ctx, session, fromSeq, false)
+}
+
+// SubscribeLive follows a session without replaying its history: sub.Replay
+// is empty and sub.Info says where the log stands. For clients that only need
+// to know what happens from now on (a session's running state, say).
+func (c *Client) SubscribeLive(ctx context.Context, session string) (*Subscription, error) {
+	return c.subscribe(ctx, session, 0, true)
+}
+
+// beyondLog is a from_seq past any real log: the daemon replays nothing.
+const beyondLog = 1<<53 - 1
+
+func (c *Client) subscribe(ctx context.Context, session string, fromSeq int64, live bool) (*Subscription, error) {
 	c.mu.Lock()
 	if c.subs[session] != nil {
 		c.mu.Unlock()
@@ -242,7 +264,10 @@ func (c *Client) Subscribe(ctx context.Context, session string, fromSeq int64) (
 	c.mu.Unlock()
 
 	params := protocol.SubscribeParams{Session: session}
-	if fromSeq > 1 {
+	if live {
+		from := int64(beyondLog)
+		params.FromSeq = &from
+	} else if fromSeq > 1 {
 		params.FromSeq = &fromSeq
 	}
 	res, err := request[protocol.SessionSubscribed](ctx, c, func(id string) protocol.EnvelopeVariant {
@@ -260,6 +285,10 @@ func (c *Client) Subscribe(ctx context.Context, session string, fromSeq int64) (
 	}
 	sub.Info = res.Payload.Session
 	sub.Replay = sub.takeReplay()
+	if live {
+		// A resubscribe must resume after what the log held now, not replay it.
+		sub.skipThrough(sub.Info.LastSeq)
+	}
 	return sub, nil
 }
 

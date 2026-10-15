@@ -25,6 +25,11 @@ type cliEnv struct {
 	UID            int
 	Interrupt      <-chan os.Signal // SIGINT notifications
 	Now            func() time.Time
+	// StdoutTTY says whether Stdout is a terminal, which turns on color and
+	// the live tail. Size returns its width and height in cells (zeros if
+	// unknown); it may be nil.
+	StdoutTTY bool
+	Size      func() (cols, rows int)
 }
 
 const usage = `usage: suite <command> [flags]
@@ -43,7 +48,10 @@ commands:
                                 only tools matching all words
 
 flags (all commands): --socket PATH
-attach flags: --app NAME (default cli), --thoughts
+attach flags: --app NAME (default cli), --thoughts, --raw (print raw session
+events instead of the rendered view)
+while attached: /<key> presses the button with that key on the latest item
+that has buttons; /help lists them
 `
 
 // run executes one CLI invocation and returns the process exit code.

@@ -100,6 +100,13 @@ func (s *Subscription) push(rec protocol.SessionEventRecord) {
 	s.signal()
 }
 
+// skipThrough marks events up to seq as seen without delivering them.
+func (s *Subscription) skipThrough(seq int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastSeq = max(s.lastSeq, seq)
+}
+
 // markReady is called by the reader goroutine on session.subscribed: from the
 // next frame on, events are live.
 func (s *Subscription) markReady() {

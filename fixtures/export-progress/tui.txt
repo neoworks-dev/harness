@@ -1,0 +1,9 @@
+◐ photo-editor.export
+  ╭─ Exporting logo ───────────────────────────────────────────────────────────╮
+  │ Format   PNG                                                               │
+  │ Size     512×512                                                           │
+  │ Quality  90%                                                               │
+  │ ▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░ 60% Compressing                                       │
+  │ 📄 /home/user/site/public/logo.png                                         │
+  │ Export settings (https://example.com/docs/export)                          │
+  ╰────────────────────────────────────────────────────────────────────────────╯

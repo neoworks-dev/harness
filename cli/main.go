@@ -19,5 +19,7 @@ func main() {
 		UID:       os.Getuid(),
 		Interrupt: interrupt,
 		Now:       time.Now,
+		StdoutTTY: isTerminal(os.Stdout),
+		Size:      func() (int, int) { return terminalSize(os.Stdout) },
 	}))
 }

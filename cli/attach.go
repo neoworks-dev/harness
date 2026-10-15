@@ -25,6 +25,7 @@ func runAttach(ctx context.Context, args []string, e cliEnv) int {
 	title := fs.String("title", "", "title for --new")
 	app := fs.String("app", "cli", "app name sent with each input")
 	thoughts := fs.Bool("thoughts", false, "show the agent's reasoning")
+	raw := fs.Bool("raw", false, "print the raw session events instead of the rendered view")
 	positional, err := parseFlags(fs, args)
 	if err != nil {
 		return 2
@@ -85,6 +86,12 @@ func runAttach(ctx context.Context, args []string, e cliEnv) int {
 		}
 	}
 
+	if !*raw {
+		if code, ok := attachView(ctx, c, id, *app, *thoughts, e); ok {
+			return code
+		}
+	}
+
 	sub, err := c.Subscribe(ctx, id, 1)
 	if err != nil {
 		fmt.Fprintf(e.Stderr, "suite: attach %s: %v\n", id, err)
@@ -100,6 +107,41 @@ func runAttach(ctx context.Context, args []string, e cliEnv) int {
 		interactive: isTerminal(e.Stdin),
 	}
 	return a.run(ctx, e)
+}
+
+// attachView follows the session's resolved view and draws it with the TUI
+// renderer. ok is false when the daemon refuses to serve views, so the caller
+// can fall back to the raw events.
+func attachView(ctx context.Context, c *sdk.Client, id, app string, thoughts bool, e cliEnv) (code int, ok bool) {
+	view, err := c.SubscribeView(ctx, id)
+	var refused *sdk.Error
+	if errors.As(err, &refused) && refused.Code != protocol.ErrorCodeNotFound {
+		fmt.Fprintf(e.Stderr, "suite: the daemon does not serve views (%v); showing raw events\n", err)
+		return 0, false
+	}
+	if err != nil {
+		fmt.Fprintf(e.Stderr, "suite: attach %s: %v\n", id, err)
+		return 1, true
+	}
+	// The view says nothing of turns; the events do, and only their end matters.
+	events, err := c.SubscribeLive(ctx, id)
+	if err != nil {
+		fmt.Fprintf(e.Stderr, "suite: attach %s: %v\n", id, err)
+		return 1, true
+	}
+	// Give the theme a moment; it comes right after the handshake.
+	themeCtx, cancel := context.WithTimeout(ctx, time.Second)
+	c.WaitTheme(themeCtx)
+	cancel()
+
+	a := &viewAttachment{
+		c: c, id: id, app: app,
+		view: view, state: view.State(), events: events,
+		out: e.Stdout, stderr: e.Stderr, getenv: e.Getenv, size: e.Size, now: e.Now,
+		tty: e.StdoutTTY, interactive: isTerminal(e.Stdin), thoughts: thoughts,
+		color: colorMode(e.Getenv, e.StdoutTTY),
+	}
+	return a.run(ctx, e), true
 }
 
 // isTerminal reports whether r is a character device such as a tty.
@@ -246,7 +288,10 @@ func readLines(r io.Reader) <-chan string {
 		br := bufio.NewReader(r)
 		for {
 			line, err := br.ReadString('\n')
-			if line = strings.TrimRight(line, "\r\n"); line != "" {
+			line = strings.TrimRight(line, "\r\n")
+			// A blank line is kept (the view needs it to count rows the
+			// terminal echoed); only the empty remainder at EOF is not a line.
+			if line != "" || err == nil {
 				lines <- line
 			}
 			if err != nil {

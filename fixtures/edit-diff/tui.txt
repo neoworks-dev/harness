@@ -1,0 +1,10 @@
+✓ edit src/Header.tsx
+  src/Header.tsx
+  @@ -3,6 +3,7 @@
+   export function Header() {
+     return (
+       <header>
+  +      <img src="/logo.png" alt="Logo" />
+         <h1>Site</h1>
+       </header>
+     );

@@ -114,8 +114,8 @@ describe.skipIf(!existsSync(suiteBin))("daemon + CLI end to end", () => {
     await startDaemon(env);
     const { code, out } = await suite(env, ["attach", "--new"], "make a file [tool]\n");
     expect(code).toBe(0);
-    expect(out).toContain("» cli: make a file [tool]");
-    expect(out).toContain("⚙ echo tool");
+    expect(out).toContain("» cli\nmake a file [tool]");
+    expect(out).toContain("✓ echo tool\n    tool output");
     expect(out).toContain("echo #1: make a file [tool]");
 
     const status = await suite(env, ["status"]);
@@ -136,7 +136,7 @@ describe.skipIf(!existsSync(suiteBin))("daemon + CLI end to end", () => {
     await Promise.all([a.waitFor("echo #1: from a"), b.waitFor("echo #1: from a")]);
     b.send("from b");
     await Promise.all([a.waitFor("echo #2: from b"), b.waitFor("echo #2: from b")]);
-    expect(a.output()).toContain("» overlay: from b");
+    expect(a.output()).toContain("» overlay\nfrom b");
 
     // Same events in the same order on both sides (b attached before anything happened).
     const live = (s: string): string => s.slice(s.indexOf("-- attached to"));
@@ -155,7 +155,7 @@ describe.skipIf(!existsSync(suiteBin))("daemon + CLI end to end", () => {
     a.send("first turn");
     await a.waitFor("echo #1: first turn");
     a.send("wait:60000 slow turn");
-    await a.waitFor("» cli: wait:60000 slow turn");
+    await a.waitFor("» cli\nwait:60000 slow turn");
 
     first.kill("SIGKILL");
     expect(await a.proc.exited).toBe(1); // connection lost
@@ -169,8 +169,8 @@ describe.skipIf(!existsSync(suiteBin))("daemon + CLI end to end", () => {
     expect(code).toBe(0);
     const replay = out.slice(0, out.indexOf("-- attached to"));
     expect(replay).toContain("echo #1: first turn");
-    expect(replay).toContain("» cli: wait:60000 slow turn");
-    expect(replay).toContain("[turn error: Interrupted: the daemon stopped during this turn.]");
+    expect(replay).toContain("» cli\nwait:60000 slow turn");
+    expect(replay).toContain("Interrupted: the daemon stopped during this turn.");
     // The agent was rebuilt from the log: this is its third turn.
     expect(out.slice(out.indexOf("-- attached to"))).toContain("echo #3: after restart");
   });

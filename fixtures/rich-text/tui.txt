@@ -1,0 +1,23 @@
+Logo added
+
+I copied the image to public/logo.png and used it in Header, styled as before.
+Old favicon stays. See the docs (https://example.com/logo).
+
+1. Copied the asset
+2. Edited src/Header.tsx:
+   • added the <img>
+   • kept the title
+
+[x] build passes
+[ ] update the favicon
+
+│ The image is 512×512; browsers scale it down.
+
+  <img src="/logo.png" alt="Logo" />
+
+────────────────────────────────────────────────────────────────────────────────
+
+Anything else?
+Summary
+All checks passed.
+took 1.2s

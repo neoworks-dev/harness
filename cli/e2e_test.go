@@ -135,10 +135,10 @@ func TestSessionsTable(t *testing.T) {
 	}
 }
 
-func TestAttachNew(t *testing.T) {
+func TestAttachNewRaw(t *testing.T) {
 	d := sdktest.New(t)
 	// Blank lines are skipped; the second input is queued behind the first.
-	code, stdout, stderr := exec(t, d.Socket, "hello\n\nworld\n", "attach", "--new", "--cwd", "/tmp/proj", "--title", "T", "--app", "tester")
+	code, stdout, stderr := exec(t, d.Socket, "hello\n\nworld\n", "attach", "--raw", "--new", "--cwd", "/tmp/proj", "--title", "T", "--app", "tester")
 	if code != 0 || stderr != "" {
 		t.Fatalf("code %d, stderr %q", code, stderr)
 	}
@@ -160,7 +160,7 @@ func TestAttachNew(t *testing.T) {
 	}
 }
 
-func TestAttachExistingReplaysHistory(t *testing.T) {
+func TestAttachExistingReplaysHistoryRaw(t *testing.T) {
 	d := sdktest.New(t)
 	d.AddSession("abc123", "", time.Now(),
 		protocol.UserMessage{App: "overlay", Text: "hi"},
@@ -170,7 +170,7 @@ func TestAttachExistingReplaysHistory(t *testing.T) {
 	)
 	d.AddSession("zzz", "", time.Now())
 
-	code, stdout, stderr := exec(t, d.Socket, "", "attach", "abc")
+	code, stdout, stderr := exec(t, d.Socket, "", "attach", "--raw", "abc")
 	if code != 0 || stderr != "" {
 		t.Fatalf("code %d, stderr %q", code, stderr)
 	}
@@ -179,22 +179,22 @@ func TestAttachExistingReplaysHistory(t *testing.T) {
 		t.Errorf("stdout:\n%q\nwant:\n%q", stdout, want)
 	}
 
-	_, stdout, _ = exec(t, d.Socket, "", "attach", "--thoughts", "abc123")
+	_, stdout, _ = exec(t, d.Socket, "", "attach", "--raw", "--thoughts", "abc123")
 	if !strings.Contains(stdout, "… thinking\n") {
 		t.Errorf("--thoughts output missing reasoning:\n%s", stdout)
 	}
 	// Flags may follow the id.
-	_, stdout, _ = exec(t, d.Socket, "", "attach", "abc123", "--thoughts")
+	_, stdout, _ = exec(t, d.Socket, "", "attach", "--raw", "abc123", "--thoughts")
 	if !strings.Contains(stdout, "… thinking\n") {
 		t.Errorf("trailing --thoughts ignored:\n%s", stdout)
 	}
 }
 
-func TestAttachPrintsOtherClientsInput(t *testing.T) {
+func TestAttachPrintsOtherClientsInputRaw(t *testing.T) {
 	d := sdktest.New(t)
 	d.AddSession("s1", "", time.Now())
 	stdin, stdinW := io.Pipe()
-	c := start(t, d.Socket, stdin, "attach", "s1")
+	c := start(t, d.Socket, stdin, "attach", "--raw", "s1")
 	eventually(t, "attach", func() bool { return strings.Contains(c.stdout.String(), "-- attached to s1 --") })
 
 	d.Append("s1", protocol.UserMessage{App: "browser", Text: "from elsewhere"})
@@ -254,7 +254,7 @@ func TestInterrupt(t *testing.T) {
 
 	// Running: Ctrl-C cancels the turn and keeps the client attached.
 	stdinW.Write([]byte("work\n"))
-	eventually(t, "turn start", func() bool { return strings.Contains(c.stdout.String(), "» cli: work") })
+	eventually(t, "turn start", func() bool { return strings.Contains(c.stdout.String(), "» cli\nwork") })
 	c.interrupt <- os.Interrupt
 	eventually(t, "cancel", func() bool { return slices.Equal(d.Cancels(), []string{"s1"}) })
 	select {
@@ -343,7 +343,7 @@ func TestAttachWithoutIDUsesCurrentSession(t *testing.T) {
 	if code != 0 || stderr != "" {
 		t.Fatalf("code %d, stderr %q", code, stderr)
 	}
-	if want := "\n» overlay: hi\n\n-- attached to cur --\n"; stdout != want {
+	if want := "» overlay\nhi\n\n-- attached to cur --\n"; stdout != want {
 		t.Errorf("stdout:\n%q\nwant:\n%q", stdout, want)
 	}
 

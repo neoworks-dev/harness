@@ -1,0 +1,36 @@
+photo-editor connected (v3): crop,
+export
+
+now in overlay
+
+» overlay
+Crop this to a square logo and add it to
+the header.
+[image /tmp/shot-1.png]
+
+… thinking
+
+I'll crop the image to 512×512 first.
+
+✓ photo-editor.crop
+  ╭─ Cropped image ────────────────────╮
+  │ [image 512×512 · asset://img-7f3]  │
+  │ 512×512                            │
+  │ [c] Copy handle                    │
+  ╰────────────────────────────────────╯
+
+✓ edit src/Header.tsx
+    Applied 1 edit(s) to src/Header.tsx.
+  src/Header.tsx
+  @@ -1,3 +1,4 @@
+   <header>
+  +  <img src="/logo.png" alt="Logo" />
+     <h1>Site</h1>
+   </header>
+
+◐ bash: npm run build
+    vite v6.0.0 building for production.
+    ..
+
+Rate limited by the provider; try again
+in a minute.

@@ -133,6 +133,8 @@ func replyID(v protocol.EnvelopeVariant) (string, bool) {
 		return m.ID, true
 	case protocol.SessionListResult:
 		return m.ID, true
+	case protocol.ViewSnapshotMessage:
+		return m.ID, true
 	case protocol.SessionSubscribed:
 		return m.ID, true
 	case protocol.ConnectorsListResult:
@@ -152,6 +154,17 @@ func (c *Client) dispatch(v protocol.EnvelopeVariant) {
 			sub.push(m.Payload)
 		}
 		return
+	case protocol.ViewPatchMessage:
+		c.mu.Lock()
+		sub := c.views[m.Payload.Session]
+		c.mu.Unlock()
+		if sub != nil {
+			sub.patch(m.Payload)
+		}
+		return
+	case protocol.ThemeMessage:
+		c.setTheme(m.Payload)
+		return
 	case protocol.AgentFocusMessage:
 		c.setFocus(m.Payload)
 		return
@@ -161,6 +174,15 @@ func (c *Client) dispatch(v protocol.EnvelopeVariant) {
 	case protocol.ConnectorsListResult:
 		// A fresh snapshot, in wire order with the broadcasts: the latest wins.
 		c.setConnectors(m.Payload.Connectors)
+	case protocol.ViewSnapshotMessage:
+		// In wire order with the patches that follow it; the first one is
+		// also the reply SubscribeView waits for (routed below).
+		c.mu.Lock()
+		sub := c.views[m.Payload.Session]
+		c.mu.Unlock()
+		if sub != nil {
+			sub.snapshot(m.Payload)
+		}
 	case protocol.SessionSubscribed:
 		// Flip to live before the waiter wakes, so the next frame is not
 		// mistaken for replay.
@@ -202,6 +224,19 @@ func (c *Client) setFocus(f protocol.AgentFocus) {
 	}
 	if c.opts.OnFocus != nil {
 		c.notes.push(func() { c.opts.OnFocus(f) })
+	}
+}
+
+func (c *Client) setTheme(t protocol.Theme) {
+	c.mu.Lock()
+	first := c.theme == nil
+	c.theme = &t
+	c.mu.Unlock()
+	if first {
+		close(c.themed)
+	}
+	if c.opts.OnTheme != nil {
+		c.notes.push(func() { c.opts.OnTheme(t) })
 	}
 }
 
@@ -275,6 +310,10 @@ func (c *Client) restore(ws *websocket.Conn) {
 	for _, s := range c.subs {
 		subs = append(subs, s)
 	}
+	views := make([]*ViewSubscription, 0, len(c.views))
+	for _, v := range c.views {
+		views = append(views, v)
+	}
 	c.mu.Unlock()
 
 	c.resend(ws, func(id string) protocol.EnvelopeVariant {
@@ -305,6 +344,26 @@ func (c *Client) restore(ws *websocket.Conn) {
 			}
 		})
 	}
+	// A view has no seq to resume from: ask for a fresh snapshot, which the
+	// subscription delivers as an update.
+	for _, v := range views {
+		if !v.isReady() {
+			continue // its SubscribeView call failed with the old connection
+		}
+		c.resend(ws, func(id string) protocol.EnvelopeVariant {
+			return protocol.ViewSubscribe{ID: id, Payload: protocol.SessionRef{Session: v.session}}
+		}, func(err error) {
+			var rejected *Error
+			if errors.As(err, &rejected) { // e.g. the session is gone
+				c.mu.Lock()
+				if c.views[v.session] == v {
+					delete(c.views, v.session)
+				}
+				c.mu.Unlock()
+				v.finish(err)
+			}
+		})
+	}
 }
 
 // resend sends a request nobody is waiting on and passes a failed reply to
@@ -329,12 +388,16 @@ func (c *Client) shutdown(cause error) {
 	c.mu.Lock()
 	c.finished, c.err = true, cause
 	err := cause
-	subs := c.subs
+	subs, views := c.subs, c.views
 	c.subs = map[string]*Subscription{}
+	c.views = map[string]*ViewSubscription{}
 	c.mu.Unlock()
 
 	for _, s := range subs {
 		s.finish(err)
+	}
+	for _, v := range views {
+		v.finish(err)
 	}
 	close(c.done)
 }

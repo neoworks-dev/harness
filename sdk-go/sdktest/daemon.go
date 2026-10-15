@@ -18,6 +18,24 @@ import (
 	protocol "neoworks.dev/suite/protocol/go"
 )
 
+// DefaultTheme is what the fake daemon serves unless SetTheme changes it
+// (the same values as protocol/themes/default.json).
+func DefaultTheme() protocol.Theme {
+	return protocol.Theme{
+		Name: "default-dark",
+		Colors: protocol.ThemeColors{
+			Fg: "#e6e6e6", Bg: "#16181d", Surface: "#1f2229", Border: "#343844",
+			Accent: "#7aa2f7", Muted: "#8a8f9c", Success: "#9ece6a", Danger: "#f7768e",
+		},
+		Spacing: protocol.ThemeSpacing{S: 4, M: 8, L: 16},
+		Text: protocol.ThemeText{
+			Title: protocol.TextStyle{Size: 15, Weight: 600},
+			Body:  protocol.TextStyle{Size: 14, Weight: 400},
+			Code:  protocol.TextStyle{Size: 13, Weight: 400, Mono: true},
+		},
+	}
+}
+
 // Daemon is a fake daemon listening on a Unix socket.
 type Daemon struct {
 	// Socket is the path clients dial.
@@ -26,6 +44,9 @@ type Daemon struct {
 	StartedAt time.Time
 	// StepDelay separates the events of a scripted agent turn.
 	StepDelay time.Duration
+	// NoViews makes the daemon refuse view.subscribe, like one without a
+	// view resolver.
+	NoViews bool
 	// AgentReply scripts the agent's events for an input.
 	AgentReply func(text string) []protocol.SessionEventVariant
 
@@ -43,6 +64,9 @@ type Daemon struct {
 	connectors map[string]*protocol.ConnectorInfo
 	presences  map[string]protocol.AppPresence // open connectors only
 	moves      []protocol.AgentMove
+	viewSubs   []string // sessions view.subscribe was called for
+	actions    []protocol.UiAction
+	theme      protocol.Theme
 	current    string // the current session; empty until first needed
 	focusApp   string // app hosting the agent; empty when none
 }
@@ -51,6 +75,8 @@ type session struct {
 	info    protocol.SessionInfo
 	log     []protocol.SessionEventRecord
 	subs    []*websocket.Conn
+	view    *viewModel
+	viewers []*websocket.Conn // view.subscribe subscribers
 	queue   []protocol.SessionInput
 	working bool
 }
@@ -69,13 +95,15 @@ func New(t testing.TB) *Daemon {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
+	replies := 0
 	d := &Daemon{
 		Socket:    filepath.Join(dir, "bus.sock"),
 		StartedAt: time.Now().Add(-90 * time.Minute),
 		StepDelay: 30 * time.Millisecond,
 		AgentReply: func(text string) []protocol.SessionEventVariant {
+			replies++ // runTurns holds d.mu when it calls this
 			return []protocol.SessionEventVariant{
-				protocol.AgentMessageChunk{MessageID: "m1", Text: "you said: " + text},
+				protocol.AgentMessageChunk{MessageID: fmt.Sprintf("m%d", replies), Text: "you said: " + text},
 				protocol.TurnEnded{StopReason: protocol.StopReasonEndTurn},
 			}
 		},
@@ -84,6 +112,7 @@ func New(t testing.TB) *Daemon {
 		conns:      map[*websocket.Conn]*connState{},
 		connectors: map[string]*protocol.ConnectorInfo{},
 		presences:  map[string]protocol.AppPresence{},
+		theme:      DefaultTheme(),
 	}
 	d.Start()
 	t.Cleanup(d.Stop)
@@ -166,6 +195,48 @@ func (d *Daemon) Append(id string, ev protocol.SessionEventVariant) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.appendLocked(d.sessions[id], ev)
+}
+
+// PatchView applies ops to a session's view and sends them to its view
+// subscribers, as if the daemon's resolver had produced them. The patch
+// carries the seq of the session's last event.
+func (d *Daemon) PatchView(id string, ops ...protocol.ViewOp) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	s := d.sessions[id]
+	if s.view == nil {
+		s.view = newViewModel(id)
+	}
+	d.patchViewLocked(s, s.info.LastSeq, ops)
+}
+
+// ViewItems returns a session's view as the daemon holds it.
+func (d *Daemon) ViewItems(id string) []protocol.ViewItem {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.snapshotLocked(d.sessions[id]).Items
+}
+
+// ViewSubscribes returns the session of every view.subscribe received.
+func (d *Daemon) ViewSubscribes() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return slices.Clone(d.viewSubs)
+}
+
+// Actions returns the payload of every ui.action received.
+func (d *Daemon) Actions() []protocol.UiAction {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return slices.Clone(d.actions)
+}
+
+// SetTheme changes the theme and sends it to every client.
+func (d *Daemon) SetTheme(t protocol.Theme) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.theme = t
+	d.broadcastLocked(protocol.ThemeMessage{Payload: t})
 }
 
 // Session returns a session's current info.
@@ -275,6 +346,34 @@ func (d *Daemon) appendLocked(s *session, ev protocol.SessionEventVariant) {
 	for _, c := range s.subs {
 		d.write(c, protocol.SessionEvents{Payload: rec})
 	}
+	if s.view == nil {
+		s.view = newViewModel(s.info.ID)
+	}
+	if ops := s.view.opsFor(rec); len(ops) > 0 {
+		d.patchViewLocked(s, rec.Seq, ops)
+	}
+}
+
+// snapshotLocked is the session's view as of its last event.
+func (d *Daemon) snapshotLocked(s *session) protocol.ViewSnapshot {
+	if s.view == nil {
+		s.view = newViewModel(s.info.ID)
+	}
+	items := append([]protocol.ViewItem{}, s.view.state.Items()...)
+	return protocol.ViewSnapshot{Session: s.info.ID, Seq: s.info.LastSeq, Items: items}
+}
+
+// patchViewLocked applies ops to the session's view and sends them to its
+// subscribers as one view.patch.
+func (d *Daemon) patchViewLocked(s *session, seq int64, ops []protocol.ViewOp) {
+	patch := protocol.ViewPatch{Session: s.info.ID, Seq: seq, Ops: ops}
+	if err := s.view.state.Apply(patch); err != nil {
+		d.t.Errorf("fake daemon: bad view patch: %v", err)
+		return
+	}
+	for _, c := range s.viewers {
+		d.write(c, protocol.ViewPatchMessage{Payload: patch})
+	}
 }
 
 func (d *Daemon) write(c *websocket.Conn, v protocol.EnvelopeVariant) {
@@ -327,6 +426,7 @@ func (d *Daemon) disconnect(c *websocket.Conn) {
 	defer d.mu.Unlock()
 	for _, s := range d.sessions {
 		s.subs = slices.DeleteFunc(s.subs, func(sc *websocket.Conn) bool { return sc == c })
+		s.viewers = slices.DeleteFunc(s.viewers, func(sc *websocket.Conn) bool { return sc == c })
 	}
 	if st := d.conns[c]; st != nil && st.app != "" {
 		d.unregisterLocked(st.app)
@@ -445,6 +545,34 @@ func (d *Daemon) handle(c *websocket.Conn, v protocol.EnvelopeVariant) {
 			Protocol: 1, DaemonVersion: "test", PID: 4242, StartedAt: d.StartedAt.UnixMilli(),
 		}})
 		d.write(c, protocol.AgentFocusMessage{Payload: d.focusLocked(protocol.FocusReasonInitial, "")})
+		d.write(c, protocol.ThemeMessage{Payload: d.theme})
+	case protocol.ViewSubscribe:
+		if d.NoViews {
+			d.fail(c, &m.ID, protocol.ErrorCodeBadRequest, "this daemon has no view resolver")
+			return
+		}
+		d.viewSubs = append(d.viewSubs, m.Payload.Session)
+		s := d.sessions[m.Payload.Session]
+		if s == nil {
+			d.fail(c, &m.ID, protocol.ErrorCodeNotFound, "no session "+m.Payload.Session)
+			return
+		}
+		d.write(c, protocol.ViewSnapshotMessage{ID: m.ID, Payload: d.snapshotLocked(s)})
+		if !slices.Contains(s.viewers, c) {
+			s.viewers = append(s.viewers, c)
+		}
+	case protocol.ViewUnsubscribe:
+		if s := d.sessions[m.Payload.Session]; s != nil {
+			s.viewers = slices.DeleteFunc(s.viewers, func(sc *websocket.Conn) bool { return sc == c })
+		}
+		d.write(c, protocol.BusAck{ID: m.ID})
+	case protocol.UiActionMessage:
+		if d.sessions[m.Payload.Session] == nil {
+			d.fail(c, &m.ID, protocol.ErrorCodeNotFound, "no session "+m.Payload.Session)
+			return
+		}
+		d.actions = append(d.actions, m.Payload)
+		d.write(c, protocol.BusAck{ID: m.ID})
 	case protocol.SessionCreate:
 		d.nextID++
 		id := fmt.Sprintf("new%d", d.nextID)
