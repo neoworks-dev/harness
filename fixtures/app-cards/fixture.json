@@ -1,0 +1,27 @@
+{
+  "description": "Several cards from a list (each/as), side by side in a row, each with a keyed button.",
+  "item": { "kind": "tool", "label": "browser.tabs", "state": "done" },
+  "template": {
+    "type": "row",
+    "gap": "m",
+    "children": [
+      {
+        "type": "card",
+        "each": "data.tabs",
+        "as": "tab",
+        "title": "{{tab.title}}",
+        "children": [
+          { "type": "link", "url": "{{tab.url}}" },
+          { "type": "text", "if": "tab.pinned", "tone": "accent", "markdown": "Pinned" },
+          { "type": "button", "label": "Switch", "action": "browser.activate", "args": { "tab": "{{tab.id}}" }, "key": "{{tab.key}}" }
+        ]
+      }
+    ]
+  },
+  "data": {
+    "tabs": [
+      { "id": 3, "key": "1", "title": "Site preview", "url": "http://localhost:5173/", "pinned": true },
+      { "id": 7, "key": "2", "title": "Logo ideas", "url": "https://example.com/logos" }
+    ]
+  }
+}

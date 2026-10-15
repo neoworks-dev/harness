@@ -1,0 +1,41 @@
+# renderers
+
+Three renderers draw the same resolved view (`protocol/schemas/view.schema.json`): `web/` (TS, DOM), `gpui/` (Rust), `tui/` (Go). They never parse markdown, diff text or fill templates: the daemon did that. Their input is a list of `ViewItem`s plus a `Theme` (`protocol/themes/default.json` is the default the daemon serves), kept current by `view.snapshot` + `view.patch`.
+
+## Conventions every renderer follows
+
+So the chat behaves the same everywhere (consistent structure and behavior, not identical pixels):
+
+**Items**
+
+| kind      | Drawn as                                                                                               |
+| --------- | ------------------------------------------------------------------------------------------------------ |
+| `user`    | Header `» <label>` (label = the app it came from), then the component. Web/GPUI: right-leaning bubble. |
+| `agent`   | The component, no header.                                                                              |
+| `thought` | Collapsed to one muted line `… thinking` (expandable where the UI can; TUI: collapsed).                |
+| `tool`    | Header `<state> <label>`, then the component indented / inside the card.                               |
+| `notice`  | One muted line (danger tone for errors).                                                               |
+
+Tool states: `pending` ○ (muted), `running` ◐ (accent; animated where possible), `done` ✓ (success), `failed` ✗ (danger).
+
+**Components** (TUI column per the design §8)
+
+- `card`: box with optional title; `tone` colors the border/title. TUI: box-drawn frame (`╭─ title ─╮`), or indentation when narrower than 20 columns.
+- `row`: side by side, wrapping to a stack when it doesn't fit. TUI: always stacked unless every child is a button (then on one line).
+- `stack`: top to bottom; `gap` s/m/l = theme spacing (TUI: 0/0/1 blank lines).
+- `text`: blocks in order. Headings bold (`title` role style for level ≤ 2); lists with `•` / `1.` and `[x]`/`[ ]` for tasks, nested items indented 2; `code_block` like a `code` component; quote with a `│ ` bar, muted; rule `───`. Spans: bold, italic, strike, inline code (code style / TUI: reverse or dim backtick-free), links underlined (TUI: `text (url)` unless text == url). `role` picks the theme text style; `tone` colors the text.
+- `image`: web/GPUI draw it (`asset://` resolves in Phase 5; until then show the fallback). TUI: `[image W×H · src]` (W×H omitted when unknown) and the caption on the next line.
+- `file`: chip `📄 name` (name = `name` or the path's base name); web/GPUI tooltip/full path, TUI `📄 path`.
+- `code`: monospace on the surface color, no wrapping in web/GPUI (scroll), TUI hard-wraps at the width.
+- `diff`: TUI colored unified diff (`+` success, `-` danger, hunk headers muted, `path` as a header line); web/GPUI may show side by side.
+- `table`: grid with a header row. TUI: box-drawn, columns cut to fit (cut cells end in `…`), widest columns shrink first.
+- `kv`: aligned `key  value` lines, keys muted.
+- `progress`: bar + percent (`▓▓▓░░ 60%` in TUI, 20 cells) + label.
+- `button`: web/GPUI button; TUI `[k] Label` (k = `key`, else its 1-based index among the item's buttons). Pressing sends `ui.action {session, ref, action, args}` — except `copy:<text>`, which copies `<text>` locally. A button is triggered by its key while its item has keyboard focus; focus moves through items with buttons in order.
+- `link`: underlined text, URL in TUI as `text (url)`.
+
+**Theme**: colors are meanings (`accent`, `muted`, `success`, `danger` plus `fg`/`bg`/`surface`/`border`); web maps them to CSS variables, GPUI to its colors, the TUI to the nearest color the terminal supports (true color, 256, 16, or none when `NO_COLOR` is set or output isn't a terminal).
+
+## Snapshot tests
+
+Every fixture in `fixtures/<name>/resolved.json` is drawn by every renderer and compared with a snapshot next to it: `tui.txt` (80 columns, no color), `tui-40.txt` (40 columns), `web.html`, `gpui.txt` (the GPUI renderer's layout model). `UPDATE_SNAPSHOTS=1` rewrites them; review the diff like code. Pixel screenshots for web and GPUI are not set up yet (see the design's open questions).

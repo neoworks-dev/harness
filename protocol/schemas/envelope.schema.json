@@ -66,6 +66,24 @@
         },
         {
           "$ref": "#/$defs/ConnectorsChanged"
+        },
+        {
+          "$ref": "#/$defs/ViewSubscribe"
+        },
+        {
+          "$ref": "#/$defs/ViewUnsubscribe"
+        },
+        {
+          "$ref": "#/$defs/ViewSnapshotMessage"
+        },
+        {
+          "$ref": "#/$defs/ViewPatchMessage"
+        },
+        {
+          "$ref": "#/$defs/ThemeMessage"
+        },
+        {
+          "$ref": "#/$defs/UiActionMessage"
         }
       ],
       "discriminator": {
@@ -552,6 +570,122 @@
         }
       },
       "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "ViewSubscribe": {
+      "description": "Client → daemon: follow the resolved view of a session. Replied to with view.snapshot, then view.patch for every later change. Re-subscribing sends a fresh snapshot.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "view.subscribe"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/SessionRef"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "ViewUnsubscribe": {
+      "description": "Client → daemon (acked).",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "view.unsubscribe"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/SessionRef"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "ViewSnapshotMessage": {
+      "description": "Daemon → client: reply to view.subscribe.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "view.snapshot"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "view.schema.json#/$defs/ViewSnapshot"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "ViewPatchMessage": {
+      "description": "Daemon → view subscribers: changes in order; apply to the latest snapshot.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "view.patch"
+        },
+        "payload": {
+          "$ref": "view.schema.json#/$defs/ViewPatch"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "ThemeMessage": {
+      "description": "Daemon → every client after bus.welcome and when the theme changes.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "theme"
+        },
+        "payload": {
+          "$ref": "view.schema.json#/$defs/Theme"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "UiActionMessage": {
+      "description": "Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "ui.action"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/UiAction"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "UiAction": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string",
+          "description": "The view item the button is in."
+        },
+        "action": {
+          "type": "string"
+        },
+        "args": {
+          "description": "The button's args."
+        }
+      },
+      "required": ["session", "ref", "action"],
       "additionalProperties": false
     }
   }

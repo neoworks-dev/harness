@@ -1,0 +1,26 @@
+{
+  "description": "Key-value details, a progress bar, a file chip and a link.",
+  "item": { "kind": "tool", "label": "photo-editor.export", "state": "running" },
+  "template": {
+    "type": "card",
+    "title": "Exporting {{data.name}}",
+    "tone": "accent",
+    "children": [
+      { "type": "kv", "items": { "Format": "{{data.format}}", "Size": "{{data.w}}×{{data.h}}", "Quality": "{{data.quality}}%" } },
+      { "type": "progress", "value": "{{data.progress}}", "label": "{{data.step}}" },
+      { "type": "file", "path": "{{data.path}}" },
+      { "type": "link", "url": "{{data.docs}}", "text": "Export settings" }
+    ]
+  },
+  "data": {
+    "name": "logo",
+    "format": "PNG",
+    "w": 512,
+    "h": 512,
+    "quality": 90,
+    "progress": 0.6,
+    "step": "Compressing",
+    "path": "/home/user/site/public/logo.png",
+    "docs": "https://example.com/docs/export"
+  }
+}

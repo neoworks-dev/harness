@@ -1,0 +1,19 @@
+{
+  "name": "default-dark",
+  "colors": {
+    "fg": "#e6e6e6",
+    "bg": "#16181d",
+    "surface": "#1f2229",
+    "border": "#343844",
+    "accent": "#7aa2f7",
+    "muted": "#8a8f9c",
+    "success": "#9ece6a",
+    "danger": "#f7768e"
+  },
+  "spacing": { "s": 4, "m": 8, "l": 16 },
+  "text": {
+    "title": { "size": 15, "weight": 600, "mono": false },
+    "body": { "size": 14, "weight": 400, "mono": false },
+    "code": { "size": 13, "weight": 400, "mono": true }
+  }
+}

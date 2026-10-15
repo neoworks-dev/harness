@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "presence.schema.json",
   "title": "Presence",
-  "description": "Connector registration (app.presence topic) and the daemon's view of connectors. Phase 4 adds templates and actions.",
+  "description": "Connector registration (app.presence topic) and the daemon's view of connectors.",
   "$defs": {
     "AppPresence": {
       "description": "Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.",
@@ -44,6 +44,11 @@
         "pid": {
           "type": "integer",
           "description": "Process that owns the app's windows, so other apps can map a window to it (e.g. the overlay's drop targets)."
+        },
+        "templates": {
+          "type": "object",
+          "description": "View templates for this app's tool results, keyed by tool name (without the app prefix). Format: protocol/README.md#templates. Kept by the daemon so results still render after the app closes.",
+          "additionalProperties": {}
         }
       },
       "required": ["app", "kind", "open"],

@@ -41,6 +41,12 @@ pub enum Envelope {
     AgentFocusMessage(AgentFocusMessage),
     AgentMoveMessage(AgentMoveMessage),
     ConnectorsChanged(ConnectorsChanged),
+    ViewSubscribe(ViewSubscribe),
+    ViewUnsubscribe(ViewUnsubscribe),
+    ViewSnapshotMessage(ViewSnapshotMessage),
+    ViewPatchMessage(ViewPatchMessage),
+    ThemeMessage(ThemeMessage),
+    UiActionMessage(UiActionMessage),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -128,6 +134,29 @@ impl Serialize for Envelope {
                 "connectors.changed",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            Envelope::ViewSubscribe(v) => (
+                "view.subscribe",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::ViewUnsubscribe(v) => (
+                "view.unsubscribe",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::ViewSnapshotMessage(v) => (
+                "view.snapshot",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::ViewPatchMessage(v) => (
+                "view.patch",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::ThemeMessage(v) => {
+                ("theme", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            Envelope::UiActionMessage(v) => (
+                "ui.action",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             Envelope::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("topic", tag, value).serialize(serializer)
@@ -201,6 +230,24 @@ impl<'de> Deserialize<'de> for Envelope {
                 .map_err(D::Error::custom),
             "connectors.changed" => serde_json::from_value(value)
                 .map(Envelope::ConnectorsChanged)
+                .map_err(D::Error::custom),
+            "view.subscribe" => serde_json::from_value(value)
+                .map(Envelope::ViewSubscribe)
+                .map_err(D::Error::custom),
+            "view.unsubscribe" => serde_json::from_value(value)
+                .map(Envelope::ViewUnsubscribe)
+                .map_err(D::Error::custom),
+            "view.snapshot" => serde_json::from_value(value)
+                .map(Envelope::ViewSnapshotMessage)
+                .map_err(D::Error::custom),
+            "view.patch" => serde_json::from_value(value)
+                .map(Envelope::ViewPatchMessage)
+                .map_err(D::Error::custom),
+            "theme" => serde_json::from_value(value)
+                .map(Envelope::ThemeMessage)
+                .map_err(D::Error::custom),
+            "ui.action" => serde_json::from_value(value)
+                .map(Envelope::UiActionMessage)
                 .map_err(D::Error::custom),
             _ => Ok(Envelope::Unknown(value)),
         }
@@ -324,6 +371,42 @@ impl From<AgentMoveMessage> for Envelope {
 impl From<ConnectorsChanged> for Envelope {
     fn from(v: ConnectorsChanged) -> Self {
         Envelope::ConnectorsChanged(v)
+    }
+}
+
+impl From<ViewSubscribe> for Envelope {
+    fn from(v: ViewSubscribe) -> Self {
+        Envelope::ViewSubscribe(v)
+    }
+}
+
+impl From<ViewUnsubscribe> for Envelope {
+    fn from(v: ViewUnsubscribe) -> Self {
+        Envelope::ViewUnsubscribe(v)
+    }
+}
+
+impl From<ViewSnapshotMessage> for Envelope {
+    fn from(v: ViewSnapshotMessage) -> Self {
+        Envelope::ViewSnapshotMessage(v)
+    }
+}
+
+impl From<ViewPatchMessage> for Envelope {
+    fn from(v: ViewPatchMessage) -> Self {
+        Envelope::ViewPatchMessage(v)
+    }
+}
+
+impl From<ThemeMessage> for Envelope {
+    fn from(v: ThemeMessage) -> Self {
+        Envelope::ThemeMessage(v)
+    }
+}
+
+impl From<UiActionMessage> for Envelope {
+    fn from(v: UiActionMessage) -> Self {
+        Envelope::UiActionMessage(v)
     }
 }
 
@@ -636,6 +719,76 @@ pub struct ConnectorsChanged {
     pub payload: ConnectorsListPayload,
 }
 
+/// Client → daemon: follow the resolved view of a session. Replied to with view.snapshot, then view.patch for every later change. Re-subscribing sends a fresh snapshot.
+/// Tagged `topic: "view.subscribe"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewSubscribe {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: SessionRef,
+}
+
+/// Client → daemon (acked).
+/// Tagged `topic: "view.unsubscribe"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewUnsubscribe {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: SessionRef,
+}
+
+/// Daemon → client: reply to view.subscribe.
+/// Tagged `topic: "view.snapshot"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewSnapshotMessage {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: ViewSnapshot,
+}
+
+/// Daemon → view subscribers: changes in order; apply to the latest snapshot.
+/// Tagged `topic: "view.patch"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewPatchMessage {
+    #[serde(rename = "payload")]
+    pub payload: ViewPatch,
+}
+
+/// Daemon → every client after bus.welcome and when the theme changes.
+/// Tagged `topic: "theme"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ThemeMessage {
+    #[serde(rename = "payload")]
+    pub payload: Theme,
+}
+
+/// Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon.
+/// Tagged `topic: "ui.action"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UiActionMessage {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: UiAction,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UiAction {
+    #[serde(rename = "session")]
+    pub session: String,
+    /// The view item the button is in.
+    #[serde(rename = "ref")]
+    pub r#ref: String,
+    #[serde(rename = "action")]
+    pub action: String,
+    /// The button's args.
+    #[serde(rename = "args", default, skip_serializing_if = "Option::is_none")]
+    pub args: Option<serde_json::Value>,
+}
+
 /// Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppPresence {
@@ -663,6 +816,9 @@ pub struct AppPresence {
     /// Process that owns the app's windows, so other apps can map a window to it (e.g. the overlay's drop targets).
     #[serde(rename = "pid", default, skip_serializing_if = "Option::is_none")]
     pub pid: Option<i64>,
+    /// View templates for this app's tool results, keyed by tool name (without the app prefix). Format: protocol/README.md#templates. Kept by the daemon so results still render after the app closes.
+    #[serde(rename = "templates", default, skip_serializing_if = "Option::is_none")]
+    pub templates: Option<BTreeMap<String, serde_json::Value>>,
 }
 
 /// The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it.
@@ -1210,4 +1366,821 @@ pub struct SessionInfo {
     /// Inputs waiting behind the running turn.
     #[serde(rename = "queued")]
     pub queued: i64,
+}
+
+/// The fixed component set. Apps combine these; they never add new ones.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Component {
+    CardComponent(CardComponent),
+    RowComponent(RowComponent),
+    StackComponent(StackComponent),
+    TextComponent(TextComponent),
+    ImageComponent(ImageComponent),
+    FileComponent(FileComponent),
+    CodeComponent(CodeComponent),
+    DiffComponent(DiffComponent),
+    TableComponent(TableComponent),
+    KvComponent(KvComponent),
+    ProgressComponent(ProgressComponent),
+    ButtonComponent(ButtonComponent),
+    LinkComponent(LinkComponent),
+    /// A variant this version doesn't know; re-serializes unchanged.
+    Unknown(serde_json::Value),
+}
+
+impl Serialize for Component {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let (tag, value) = match self {
+            Component::CardComponent(v) => {
+                ("card", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            Component::RowComponent(v) => {
+                ("row", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            Component::StackComponent(v) => {
+                ("stack", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            Component::TextComponent(v) => {
+                ("text", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            Component::ImageComponent(v) => {
+                ("image", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            Component::FileComponent(v) => {
+                ("file", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            Component::CodeComponent(v) => {
+                ("code", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            Component::DiffComponent(v) => {
+                ("diff", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            Component::TableComponent(v) => {
+                ("table", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            Component::KvComponent(v) => ("kv", serde_json::to_value(v).map_err(S::Error::custom)?),
+            Component::ProgressComponent(v) => (
+                "progress",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Component::ButtonComponent(v) => {
+                ("button", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            Component::LinkComponent(v) => {
+                ("link", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            Component::Unknown(v) => return v.serialize(serializer),
+        };
+        with_tag("type", tag, value).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Component {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let tag = value
+            .get("type")
+            .and_then(|t| t.as_str())
+            .ok_or_else(|| D::Error::missing_field("type"))?;
+        match tag {
+            "card" => serde_json::from_value(value)
+                .map(Component::CardComponent)
+                .map_err(D::Error::custom),
+            "row" => serde_json::from_value(value)
+                .map(Component::RowComponent)
+                .map_err(D::Error::custom),
+            "stack" => serde_json::from_value(value)
+                .map(Component::StackComponent)
+                .map_err(D::Error::custom),
+            "text" => serde_json::from_value(value)
+                .map(Component::TextComponent)
+                .map_err(D::Error::custom),
+            "image" => serde_json::from_value(value)
+                .map(Component::ImageComponent)
+                .map_err(D::Error::custom),
+            "file" => serde_json::from_value(value)
+                .map(Component::FileComponent)
+                .map_err(D::Error::custom),
+            "code" => serde_json::from_value(value)
+                .map(Component::CodeComponent)
+                .map_err(D::Error::custom),
+            "diff" => serde_json::from_value(value)
+                .map(Component::DiffComponent)
+                .map_err(D::Error::custom),
+            "table" => serde_json::from_value(value)
+                .map(Component::TableComponent)
+                .map_err(D::Error::custom),
+            "kv" => serde_json::from_value(value)
+                .map(Component::KvComponent)
+                .map_err(D::Error::custom),
+            "progress" => serde_json::from_value(value)
+                .map(Component::ProgressComponent)
+                .map_err(D::Error::custom),
+            "button" => serde_json::from_value(value)
+                .map(Component::ButtonComponent)
+                .map_err(D::Error::custom),
+            "link" => serde_json::from_value(value)
+                .map(Component::LinkComponent)
+                .map_err(D::Error::custom),
+            _ => Ok(Component::Unknown(value)),
+        }
+    }
+}
+
+impl From<CardComponent> for Component {
+    fn from(v: CardComponent) -> Self {
+        Component::CardComponent(v)
+    }
+}
+
+impl From<RowComponent> for Component {
+    fn from(v: RowComponent) -> Self {
+        Component::RowComponent(v)
+    }
+}
+
+impl From<StackComponent> for Component {
+    fn from(v: StackComponent) -> Self {
+        Component::StackComponent(v)
+    }
+}
+
+impl From<TextComponent> for Component {
+    fn from(v: TextComponent) -> Self {
+        Component::TextComponent(v)
+    }
+}
+
+impl From<ImageComponent> for Component {
+    fn from(v: ImageComponent) -> Self {
+        Component::ImageComponent(v)
+    }
+}
+
+impl From<FileComponent> for Component {
+    fn from(v: FileComponent) -> Self {
+        Component::FileComponent(v)
+    }
+}
+
+impl From<CodeComponent> for Component {
+    fn from(v: CodeComponent) -> Self {
+        Component::CodeComponent(v)
+    }
+}
+
+impl From<DiffComponent> for Component {
+    fn from(v: DiffComponent) -> Self {
+        Component::DiffComponent(v)
+    }
+}
+
+impl From<TableComponent> for Component {
+    fn from(v: TableComponent) -> Self {
+        Component::TableComponent(v)
+    }
+}
+
+impl From<KvComponent> for Component {
+    fn from(v: KvComponent) -> Self {
+        Component::KvComponent(v)
+    }
+}
+
+impl From<ProgressComponent> for Component {
+    fn from(v: ProgressComponent) -> Self {
+        Component::ProgressComponent(v)
+    }
+}
+
+impl From<ButtonComponent> for Component {
+    fn from(v: ButtonComponent) -> Self {
+        Component::ButtonComponent(v)
+    }
+}
+
+impl From<LinkComponent> for Component {
+    fn from(v: LinkComponent) -> Self {
+        Component::LinkComponent(v)
+    }
+}
+
+/// Meaning, not color: renderers map it through the theme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Tone {
+    #[serde(rename = "accent")]
+    Accent,
+    #[serde(rename = "muted")]
+    Muted,
+    #[serde(rename = "success")]
+    Success,
+    #[serde(rename = "danger")]
+    Danger,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Space {
+    #[serde(rename = "s")]
+    S,
+    #[serde(rename = "m")]
+    M,
+    #[serde(rename = "l")]
+    L,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TextRole {
+    #[serde(rename = "title")]
+    Title,
+    #[serde(rename = "body")]
+    Body,
+    #[serde(rename = "code")]
+    Code,
+}
+
+/// A titled box. TUI: a box or indented block.
+/// Tagged `type: "card"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CardComponent {
+    #[serde(rename = "title", default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(rename = "tone", default, skip_serializing_if = "Option::is_none")]
+    pub tone: Option<Tone>,
+    #[serde(rename = "children")]
+    pub children: Vec<Component>,
+}
+
+/// Children side by side; renderers may wrap them when space runs out.
+/// Tagged `type: "row"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RowComponent {
+    #[serde(rename = "gap", default, skip_serializing_if = "Option::is_none")]
+    pub gap: Option<Space>,
+    #[serde(rename = "children")]
+    pub children: Vec<Component>,
+}
+
+/// Children top to bottom.
+/// Tagged `type: "stack"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StackComponent {
+    #[serde(rename = "gap", default, skip_serializing_if = "Option::is_none")]
+    pub gap: Option<Space>,
+    #[serde(rename = "children")]
+    pub children: Vec<Component>,
+}
+
+/// Rich text, already parsed from markdown by the daemon.
+/// Tagged `type: "text"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TextComponent {
+    #[serde(rename = "role", default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<TextRole>,
+    #[serde(rename = "tone", default, skip_serializing_if = "Option::is_none")]
+    pub tone: Option<Tone>,
+    #[serde(rename = "blocks")]
+    pub blocks: Vec<Block>,
+}
+
+/// TUI fallback (no Kitty/Sixel): [image W×H · src].
+/// Tagged `type: "image"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ImageComponent {
+    /// asset:// handle, file path or data: URL.
+    #[serde(rename = "src")]
+    pub src: String,
+    #[serde(rename = "alt", default, skip_serializing_if = "Option::is_none")]
+    pub alt: Option<String>,
+    #[serde(rename = "caption", default, skip_serializing_if = "Option::is_none")]
+    pub caption: Option<String>,
+    #[serde(rename = "width", default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<i64>,
+    #[serde(rename = "height", default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<i64>,
+}
+
+/// A file chip. TUI: 📄 path.
+/// Tagged `type: "file"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FileComponent {
+    #[serde(rename = "path")]
+    pub path: String,
+    /// Display name; defaults to the path's base name.
+    #[serde(rename = "name", default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+/// A code or output block, monospace. Highlighting is optional and renderer-local.
+/// Tagged `type: "code"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CodeComponent {
+    #[serde(rename = "code")]
+    pub code: String,
+    #[serde(rename = "language", default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+}
+
+/// A change to a file as lines, already diffed by the daemon. Web/GPUI may show it side by side; TUI as a colored unified diff.
+/// Tagged `type: "diff"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DiffComponent {
+    #[serde(rename = "path", default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(rename = "lines")]
+    pub lines: Vec<DiffLine>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DiffLine {
+    #[serde(rename = "kind")]
+    pub kind: DiffLineKind,
+    #[serde(rename = "text")]
+    pub text: String,
+    /// Line number in the old text (context, remove).
+    #[serde(rename = "old", default, skip_serializing_if = "Option::is_none")]
+    pub old: Option<i64>,
+    /// Line number in the new text (context, add).
+    #[serde(rename = "new", default, skip_serializing_if = "Option::is_none")]
+    pub new: Option<i64>,
+}
+
+/// hunk lines carry the @@ header text and separate distant changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum DiffLineKind {
+    #[serde(rename = "context")]
+    Context,
+    #[serde(rename = "add")]
+    Add,
+    #[serde(rename = "remove")]
+    Remove,
+    #[serde(rename = "hunk")]
+    Hunk,
+}
+
+/// A grid. TUI: box-drawn, columns cut to fit.
+/// Tagged `type: "table"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TableComponent {
+    #[serde(rename = "columns")]
+    pub columns: Vec<String>,
+    #[serde(rename = "rows")]
+    pub rows: Vec<Vec<String>>,
+}
+
+/// A key–value list. TUI: aligned lines.
+/// Tagged `type: "kv"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct KvComponent {
+    #[serde(rename = "items")]
+    pub items: Vec<KvItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct KvItem {
+    #[serde(rename = "key")]
+    pub key: String,
+    #[serde(rename = "value")]
+    pub value: String,
+}
+
+/// A bar. TUI: ▓▓▓░░ 60%.
+/// Tagged `type: "progress"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProgressComponent {
+    #[serde(rename = "value")]
+    pub value: f64,
+    #[serde(rename = "label", default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+/// Sends ui.action when pressed. Actions starting with copy: are handled by the client (copy the rest to the clipboard). TUI: [k] Label.
+/// Tagged `type: "button"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ButtonComponent {
+    #[serde(rename = "label")]
+    pub label: String,
+    /// app.tool, or copy:<text>.
+    #[serde(rename = "action")]
+    pub action: String,
+    /// Arguments for the action.
+    #[serde(rename = "args", default, skip_serializing_if = "Option::is_none")]
+    pub args: Option<serde_json::Value>,
+    /// Single-key hint; renderers bind it while the item has keyboard focus.
+    #[serde(rename = "key", default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+}
+
+/// TUI: underlined text plus the URL.
+/// Tagged `type: "link"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LinkComponent {
+    #[serde(rename = "url")]
+    pub url: String,
+    #[serde(rename = "text", default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+/// A block of parsed markdown.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Block {
+    ParagraphBlock(ParagraphBlock),
+    HeadingBlock(HeadingBlock),
+    ListBlock(ListBlock),
+    CodeBlock(CodeBlock),
+    QuoteBlock(QuoteBlock),
+    RuleBlock(RuleBlock),
+    /// A variant this version doesn't know; re-serializes unchanged.
+    Unknown(serde_json::Value),
+}
+
+impl Serialize for Block {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let (tag, value) = match self {
+            Block::ParagraphBlock(v) => (
+                "paragraph",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Block::HeadingBlock(v) => (
+                "heading",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Block::ListBlock(v) => ("list", serde_json::to_value(v).map_err(S::Error::custom)?),
+            Block::CodeBlock(v) => (
+                "code_block",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Block::QuoteBlock(v) => ("quote", serde_json::to_value(v).map_err(S::Error::custom)?),
+            Block::RuleBlock(v) => ("rule", serde_json::to_value(v).map_err(S::Error::custom)?),
+            Block::Unknown(v) => return v.serialize(serializer),
+        };
+        with_tag("type", tag, value).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Block {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let tag = value
+            .get("type")
+            .and_then(|t| t.as_str())
+            .ok_or_else(|| D::Error::missing_field("type"))?;
+        match tag {
+            "paragraph" => serde_json::from_value(value)
+                .map(Block::ParagraphBlock)
+                .map_err(D::Error::custom),
+            "heading" => serde_json::from_value(value)
+                .map(Block::HeadingBlock)
+                .map_err(D::Error::custom),
+            "list" => serde_json::from_value(value)
+                .map(Block::ListBlock)
+                .map_err(D::Error::custom),
+            "code_block" => serde_json::from_value(value)
+                .map(Block::CodeBlock)
+                .map_err(D::Error::custom),
+            "quote" => serde_json::from_value(value)
+                .map(Block::QuoteBlock)
+                .map_err(D::Error::custom),
+            "rule" => serde_json::from_value(value)
+                .map(Block::RuleBlock)
+                .map_err(D::Error::custom),
+            _ => Ok(Block::Unknown(value)),
+        }
+    }
+}
+
+impl From<ParagraphBlock> for Block {
+    fn from(v: ParagraphBlock) -> Self {
+        Block::ParagraphBlock(v)
+    }
+}
+
+impl From<HeadingBlock> for Block {
+    fn from(v: HeadingBlock) -> Self {
+        Block::HeadingBlock(v)
+    }
+}
+
+impl From<ListBlock> for Block {
+    fn from(v: ListBlock) -> Self {
+        Block::ListBlock(v)
+    }
+}
+
+impl From<CodeBlock> for Block {
+    fn from(v: CodeBlock) -> Self {
+        Block::CodeBlock(v)
+    }
+}
+
+impl From<QuoteBlock> for Block {
+    fn from(v: QuoteBlock) -> Self {
+        Block::QuoteBlock(v)
+    }
+}
+
+impl From<RuleBlock> for Block {
+    fn from(v: RuleBlock) -> Self {
+        Block::RuleBlock(v)
+    }
+}
+
+/// Tagged `type: "paragraph"` inside [`Block`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ParagraphBlock {
+    #[serde(rename = "spans")]
+    pub spans: Vec<Span>,
+}
+
+/// Tagged `type: "heading"` inside [`Block`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HeadingBlock {
+    #[serde(rename = "level")]
+    pub level: i64,
+    #[serde(rename = "spans")]
+    pub spans: Vec<Span>,
+}
+
+/// Tagged `type: "list"` inside [`Block`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ListBlock {
+    #[serde(rename = "ordered")]
+    pub ordered: bool,
+    /// First number of an ordered list.
+    #[serde(rename = "start", default, skip_serializing_if = "Option::is_none")]
+    pub start: Option<i64>,
+    #[serde(rename = "items")]
+    pub items: Vec<ListItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ListItem {
+    /// Set for task list items.
+    #[serde(rename = "checked", default, skip_serializing_if = "Option::is_none")]
+    pub checked: Option<bool>,
+    #[serde(rename = "blocks")]
+    pub blocks: Vec<Block>,
+}
+
+/// Tagged `type: "code_block"` inside [`Block`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CodeBlock {
+    #[serde(rename = "code")]
+    pub code: String,
+    #[serde(rename = "language", default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+}
+
+/// Tagged `type: "quote"` inside [`Block`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct QuoteBlock {
+    #[serde(rename = "blocks")]
+    pub blocks: Vec<Block>,
+}
+
+/// Tagged `type: "rule"` inside [`Block`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RuleBlock {}
+
+/// A run of inline text with uniform style.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Span {
+    #[serde(rename = "text")]
+    pub text: String,
+    #[serde(rename = "bold", default, skip_serializing_if = "Option::is_none")]
+    pub bold: Option<bool>,
+    #[serde(rename = "italic", default, skip_serializing_if = "Option::is_none")]
+    pub italic: Option<bool>,
+    #[serde(rename = "code", default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<bool>,
+    #[serde(rename = "strike", default, skip_serializing_if = "Option::is_none")]
+    pub strike: Option<bool>,
+    #[serde(rename = "href", default, skip_serializing_if = "Option::is_none")]
+    pub href: Option<String>,
+}
+
+/// One entry of the chat as drawn: a user message, the agent's reply, a tool call, a notice.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewItem {
+    /// Stable id; patches and ui.action address items by it.
+    #[serde(rename = "ref")]
+    pub r#ref: String,
+    #[serde(rename = "kind")]
+    pub kind: ItemKind,
+    /// Who it's from (user items: the app) or the tool call's title.
+    #[serde(rename = "label", default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(rename = "state", default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<ItemState>,
+    #[serde(rename = "component")]
+    pub component: Component,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ItemKind {
+    #[serde(rename = "user")]
+    User,
+    #[serde(rename = "agent")]
+    Agent,
+    #[serde(rename = "thought")]
+    Thought,
+    #[serde(rename = "tool")]
+    Tool,
+    #[serde(rename = "notice")]
+    Notice,
+}
+
+/// For tool items. Renderers show it the same way everywhere (spinner, ✓, ✗).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ItemState {
+    #[serde(rename = "pending")]
+    Pending,
+    #[serde(rename = "running")]
+    Running,
+    #[serde(rename = "done")]
+    Done,
+    #[serde(rename = "failed")]
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ViewOp {
+    SetViewOp(SetViewOp),
+    BlocksViewOp(BlocksViewOp),
+    RemoveViewOp(RemoveViewOp),
+    /// A variant this version doesn't know; re-serializes unchanged.
+    Unknown(serde_json::Value),
+}
+
+impl Serialize for ViewOp {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let (tag, value) = match self {
+            ViewOp::SetViewOp(v) => ("set", serde_json::to_value(v).map_err(S::Error::custom)?),
+            ViewOp::BlocksViewOp(v) => {
+                ("blocks", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            ViewOp::RemoveViewOp(v) => {
+                ("remove", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            ViewOp::Unknown(v) => return v.serialize(serializer),
+        };
+        with_tag("op", tag, value).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ViewOp {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let tag = value
+            .get("op")
+            .and_then(|t| t.as_str())
+            .ok_or_else(|| D::Error::missing_field("op"))?;
+        match tag {
+            "set" => serde_json::from_value(value)
+                .map(ViewOp::SetViewOp)
+                .map_err(D::Error::custom),
+            "blocks" => serde_json::from_value(value)
+                .map(ViewOp::BlocksViewOp)
+                .map_err(D::Error::custom),
+            "remove" => serde_json::from_value(value)
+                .map(ViewOp::RemoveViewOp)
+                .map_err(D::Error::custom),
+            _ => Ok(ViewOp::Unknown(value)),
+        }
+    }
+}
+
+impl From<SetViewOp> for ViewOp {
+    fn from(v: SetViewOp) -> Self {
+        ViewOp::SetViewOp(v)
+    }
+}
+
+impl From<BlocksViewOp> for ViewOp {
+    fn from(v: BlocksViewOp) -> Self {
+        ViewOp::BlocksViewOp(v)
+    }
+}
+
+impl From<RemoveViewOp> for ViewOp {
+    fn from(v: RemoveViewOp) -> Self {
+        ViewOp::RemoveViewOp(v)
+    }
+}
+
+/// Replace the item with this ref, or append it if it's new.
+/// Tagged `op: "set"` inside [`ViewOp`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetViewOp {
+    #[serde(rename = "item")]
+    pub item: ViewItem,
+}
+
+/// Streaming text: in the text component at `path` (child indexes from the item's component; [] is the component itself), replace blocks[from..] with these.
+/// Tagged `op: "blocks"` inside [`ViewOp`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BlocksViewOp {
+    #[serde(rename = "ref")]
+    pub r#ref: String,
+    #[serde(rename = "path")]
+    pub path: Vec<i64>,
+    #[serde(rename = "from")]
+    pub from: i64,
+    #[serde(rename = "blocks")]
+    pub blocks: Vec<Block>,
+}
+
+/// Tagged `op: "remove"` inside [`ViewOp`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RemoveViewOp {
+    #[serde(rename = "ref")]
+    pub r#ref: String,
+}
+
+/// Everything in the session as drawn, as of seq.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewSnapshot {
+    #[serde(rename = "session")]
+    pub session: String,
+    #[serde(rename = "seq")]
+    pub seq: i64,
+    #[serde(rename = "items")]
+    pub items: Vec<ViewItem>,
+}
+
+/// Changes caused by the session event with this seq, applied in order.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewPatch {
+    #[serde(rename = "session")]
+    pub session: String,
+    #[serde(rename = "seq")]
+    pub seq: i64,
+    #[serde(rename = "ops")]
+    pub ops: Vec<ViewOp>,
+}
+
+/// Theme tokens served by the daemon. Web maps them to CSS variables, GPUI to its theme, TUIs to the nearest 16/256/true color.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Theme {
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(rename = "colors")]
+    pub colors: ThemeColors,
+    #[serde(rename = "spacing")]
+    pub spacing: ThemeSpacing,
+    #[serde(rename = "text")]
+    pub text: ThemeText,
+}
+
+/// #rrggbb colors.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ThemeColors {
+    #[serde(rename = "fg")]
+    pub fg: String,
+    #[serde(rename = "bg")]
+    pub bg: String,
+    /// Card and code backgrounds.
+    #[serde(rename = "surface")]
+    pub surface: String,
+    #[serde(rename = "border")]
+    pub border: String,
+    #[serde(rename = "accent")]
+    pub accent: String,
+    #[serde(rename = "muted")]
+    pub muted: String,
+    #[serde(rename = "success")]
+    pub success: String,
+    #[serde(rename = "danger")]
+    pub danger: String,
+}
+
+/// Pixels (TUIs use 0/1/2 cells).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ThemeSpacing {
+    #[serde(rename = "s")]
+    pub s: i64,
+    #[serde(rename = "m")]
+    pub m: i64,
+    #[serde(rename = "l")]
+    pub l: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ThemeText {
+    #[serde(rename = "title")]
+    pub title: TextStyle,
+    #[serde(rename = "body")]
+    pub body: TextStyle,
+    #[serde(rename = "code")]
+    pub code: TextStyle,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TextStyle {
+    /// Pixels.
+    #[serde(rename = "size")]
+    pub size: i64,
+    #[serde(rename = "weight")]
+    pub weight: i64,
+    #[serde(rename = "mono")]
+    pub mono: bool,
 }

@@ -1,0 +1,19 @@
+{
+  "description": "The design's example: an image result with action buttons (photo-editor.crop).",
+  "item": { "kind": "tool", "label": "photo-editor.crop", "state": "done" },
+  "template": {
+    "type": "card",
+    "title": "Cropped image",
+    "children": [
+      { "type": "image", "src": "{{data.asset}}", "caption": "{{data.w}}×{{data.h}}", "width": "{{data.w}}", "height": "{{data.h}}" },
+      {
+        "type": "row",
+        "children": [
+          { "type": "button", "label": "Open as layer", "action": "photo-editor.open_layer", "args": { "asset": "{{data.asset}}" }, "key": "o" },
+          { "type": "button", "label": "Copy handle", "action": "copy:{{data.asset}}", "key": "c" }
+        ]
+      }
+    ]
+  },
+  "data": { "asset": "asset://img-7f3", "w": 1920, "h": 1080 }
+}

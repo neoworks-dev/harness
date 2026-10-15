@@ -1,0 +1,26 @@
+[
+  {
+    "ref": "export-progress",
+    "kind": "tool",
+    "component": {
+      "type": "card",
+      "title": "Exporting logo",
+      "tone": "accent",
+      "children": [
+        {
+          "type": "kv",
+          "items": [
+            { "key": "Format", "value": "PNG" },
+            { "key": "Size", "value": "512×512" },
+            { "key": "Quality", "value": "90%" }
+          ]
+        },
+        { "type": "progress", "value": 0.6, "label": "Compressing" },
+        { "type": "file", "path": "/home/user/site/public/logo.png" },
+        { "type": "link", "url": "https://example.com/docs/export", "text": "Export settings" }
+      ]
+    },
+    "label": "photo-editor.export",
+    "state": "running"
+  }
+]

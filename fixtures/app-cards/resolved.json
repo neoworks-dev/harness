@@ -1,0 +1,47 @@
+[
+  {
+    "ref": "app-cards",
+    "kind": "tool",
+    "component": {
+      "type": "row",
+      "gap": "m",
+      "children": [
+        {
+          "type": "card",
+          "title": "Site preview",
+          "children": [
+            { "type": "link", "url": "http://localhost:5173/" },
+            {
+              "type": "text",
+              "tone": "accent",
+              "blocks": [{ "type": "paragraph", "spans": [{ "text": "Pinned" }] }]
+            },
+            {
+              "type": "button",
+              "label": "Switch",
+              "action": "browser.activate",
+              "args": { "tab": 3 },
+              "key": "1"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "Logo ideas",
+          "children": [
+            { "type": "link", "url": "https://example.com/logos" },
+            {
+              "type": "button",
+              "label": "Switch",
+              "action": "browser.activate",
+              "args": { "tab": 7 },
+              "key": "2"
+            }
+          ]
+        }
+      ]
+    },
+    "label": "browser.tabs",
+    "state": "done"
+  }
+]

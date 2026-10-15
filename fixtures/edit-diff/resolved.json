@@ -1,0 +1,22 @@
+[
+  {
+    "ref": "edit-diff",
+    "kind": "tool",
+    "component": {
+      "type": "diff",
+      "path": "src/Header.tsx",
+      "lines": [
+        { "kind": "hunk", "text": "@@ -3,6 +3,7 @@" },
+        { "kind": "context", "text": "export function Header() {", "old": 3, "new": 3 },
+        { "kind": "context", "text": "  return (", "old": 4, "new": 4 },
+        { "kind": "context", "text": "    <header>", "old": 5, "new": 5 },
+        { "kind": "add", "text": "      <img src=\"/logo.png\" alt=\"Logo\" />", "new": 6 },
+        { "kind": "context", "text": "      <h1>Site</h1>", "old": 6, "new": 7 },
+        { "kind": "context", "text": "    </header>", "old": 7, "new": 8 },
+        { "kind": "context", "text": "  );", "old": 8, "new": 9 }
+      ]
+    },
+    "label": "edit src/Header.tsx",
+    "state": "done"
+  }
+]

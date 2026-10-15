@@ -1,0 +1,39 @@
+[
+  {
+    "ref": "crop-result",
+    "kind": "tool",
+    "component": {
+      "type": "card",
+      "title": "Cropped image",
+      "children": [
+        {
+          "type": "image",
+          "src": "asset://img-7f3",
+          "caption": "1920×1080",
+          "width": 1920,
+          "height": 1080
+        },
+        {
+          "type": "row",
+          "children": [
+            {
+              "type": "button",
+              "label": "Open as layer",
+              "action": "photo-editor.open_layer",
+              "args": { "asset": "asset://img-7f3" },
+              "key": "o"
+            },
+            {
+              "type": "button",
+              "label": "Copy handle",
+              "action": "copy:asset://img-7f3",
+              "key": "c"
+            }
+          ]
+        }
+      ]
+    },
+    "label": "photo-editor.crop",
+    "state": "done"
+  }
+]

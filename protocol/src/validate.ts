@@ -3,10 +3,11 @@ import Ajv2020, { type ErrorObject } from "ajv/dist/2020.js";
 import envelopeSchema from "../schemas/envelope.schema.json";
 import presenceSchema from "../schemas/presence.schema.json";
 import sessionSchema from "../schemas/session.schema.json";
+import viewSchema from "../schemas/view.schema.json";
 import type { Envelope } from "../gen/types.ts";
 
 const ajv = new Ajv2020({ discriminator: true, allErrors: false, strict: true });
-ajv.addSchema([sessionSchema, presenceSchema, envelopeSchema]);
+ajv.addSchema([viewSchema, sessionSchema, presenceSchema, envelopeSchema]);
 
 const envelopeValidator = ajv.getSchema("envelope.schema.json#/$defs/Envelope");
 if (!envelopeValidator) throw new Error("protocol: Envelope schema missing");

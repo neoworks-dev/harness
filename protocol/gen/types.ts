@@ -20,7 +20,13 @@ export type Envelope =
   | ConnectorsListResult
   | AgentFocusMessage
   | AgentMoveMessage
-  | ConnectorsChanged;
+  | ConnectorsChanged
+  | ViewSubscribe
+  | ViewUnsubscribe
+  | ViewSnapshotMessage
+  | ViewPatchMessage
+  | ThemeMessage
+  | UiActionMessage;
 
 export type EnvelopeTag = Envelope["topic"];
 
@@ -223,6 +229,55 @@ export interface ConnectorsChanged {
   payload: ConnectorsListPayload;
 }
 
+/** Client → daemon: follow the resolved view of a session. Replied to with view.snapshot, then view.patch for every later change. Re-subscribing sends a fresh snapshot. */
+export interface ViewSubscribe {
+  topic: "view.subscribe";
+  id: string;
+  payload: SessionRef;
+}
+
+/** Client → daemon (acked). */
+export interface ViewUnsubscribe {
+  topic: "view.unsubscribe";
+  id: string;
+  payload: SessionRef;
+}
+
+/** Daemon → client: reply to view.subscribe. */
+export interface ViewSnapshotMessage {
+  topic: "view.snapshot";
+  id: string;
+  payload: ViewSnapshot;
+}
+
+/** Daemon → view subscribers: changes in order; apply to the latest snapshot. */
+export interface ViewPatchMessage {
+  topic: "view.patch";
+  payload: ViewPatch;
+}
+
+/** Daemon → every client after bus.welcome and when the theme changes. */
+export interface ThemeMessage {
+  topic: "theme";
+  payload: Theme;
+}
+
+/** Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon. */
+export interface UiActionMessage {
+  topic: "ui.action";
+  id: string;
+  payload: UiAction;
+}
+
+export interface UiAction {
+  session: string;
+  /** The view item the button is in. */
+  ref: string;
+  action: string;
+  /** The button's args. */
+  args?: unknown;
+}
+
 /** Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update. */
 export interface AppPresence {
   /** Connector name; prefixes its tools (app.tool). */
@@ -240,6 +295,8 @@ export interface AppPresence {
   home?: boolean;
   /** Process that owns the app's windows, so other apps can map a window to it (e.g. the overlay's drop targets). */
   pid?: number;
+  /** View templates for this app's tool results, keyed by tool name (without the app prefix). Format: protocol/README.md#templates. Kept by the daemon so results still render after the app closes. */
+  templates?: Record<string, unknown>;
 }
 
 /** The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it. */
@@ -448,4 +505,298 @@ export interface SessionInfo {
   state: SessionState;
   /** Inputs waiting behind the running turn. */
   queued: number;
+}
+
+/** The fixed component set. Apps combine these; they never add new ones. */
+export type Component =
+  | CardComponent
+  | RowComponent
+  | StackComponent
+  | TextComponent
+  | ImageComponent
+  | FileComponent
+  | CodeComponent
+  | DiffComponent
+  | TableComponent
+  | KvComponent
+  | ProgressComponent
+  | ButtonComponent
+  | LinkComponent;
+
+export type ComponentTag = Component["type"];
+
+/** Meaning, not color: renderers map it through the theme. */
+export type Tone = "accent" | "muted" | "success" | "danger";
+
+export type Space = "s" | "m" | "l";
+
+export type TextRole = "title" | "body" | "code";
+
+/** A titled box. TUI: a box or indented block. */
+export interface CardComponent {
+  type: "card";
+  title?: string;
+  tone?: Tone;
+  children: Component[];
+}
+
+/** Children side by side; renderers may wrap them when space runs out. */
+export interface RowComponent {
+  type: "row";
+  gap?: Space;
+  children: Component[];
+}
+
+/** Children top to bottom. */
+export interface StackComponent {
+  type: "stack";
+  gap?: Space;
+  children: Component[];
+}
+
+/** Rich text, already parsed from markdown by the daemon. */
+export interface TextComponent {
+  type: "text";
+  role?: TextRole;
+  tone?: Tone;
+  blocks: Block[];
+}
+
+/** TUI fallback (no Kitty/Sixel): [image W×H · src]. */
+export interface ImageComponent {
+  type: "image";
+  /** asset:// handle, file path or data: URL. */
+  src: string;
+  alt?: string;
+  caption?: string;
+  width?: number;
+  height?: number;
+}
+
+/** A file chip. TUI: 📄 path. */
+export interface FileComponent {
+  type: "file";
+  path: string;
+  /** Display name; defaults to the path's base name. */
+  name?: string;
+}
+
+/** A code or output block, monospace. Highlighting is optional and renderer-local. */
+export interface CodeComponent {
+  type: "code";
+  code: string;
+  language?: string;
+}
+
+/** A change to a file as lines, already diffed by the daemon. Web/GPUI may show it side by side; TUI as a colored unified diff. */
+export interface DiffComponent {
+  type: "diff";
+  path?: string;
+  lines: DiffLine[];
+}
+
+export interface DiffLine {
+  kind: DiffLineKind;
+  text: string;
+  /** Line number in the old text (context, remove). */
+  old?: number;
+  /** Line number in the new text (context, add). */
+  new?: number;
+}
+
+/** hunk lines carry the @@ header text and separate distant changes. */
+export type DiffLineKind = "context" | "add" | "remove" | "hunk";
+
+/** A grid. TUI: box-drawn, columns cut to fit. */
+export interface TableComponent {
+  type: "table";
+  columns: string[];
+  rows: string[][];
+}
+
+/** A key–value list. TUI: aligned lines. */
+export interface KvComponent {
+  type: "kv";
+  items: KvItem[];
+}
+
+export interface KvItem {
+  key: string;
+  value: string;
+}
+
+/** A bar. TUI: ▓▓▓░░ 60%. */
+export interface ProgressComponent {
+  type: "progress";
+  value: number;
+  label?: string;
+}
+
+/** Sends ui.action when pressed. Actions starting with copy: are handled by the client (copy the rest to the clipboard). TUI: [k] Label. */
+export interface ButtonComponent {
+  type: "button";
+  label: string;
+  /** app.tool, or copy:<text>. */
+  action: string;
+  /** Arguments for the action. */
+  args?: unknown;
+  /** Single-key hint; renderers bind it while the item has keyboard focus. */
+  key?: string;
+}
+
+/** TUI: underlined text plus the URL. */
+export interface LinkComponent {
+  type: "link";
+  url: string;
+  text?: string;
+}
+
+/** A block of parsed markdown. */
+export type Block = ParagraphBlock | HeadingBlock | ListBlock | CodeBlock | QuoteBlock | RuleBlock;
+
+export type BlockTag = Block["type"];
+
+export interface ParagraphBlock {
+  type: "paragraph";
+  spans: Span[];
+}
+
+export interface HeadingBlock {
+  type: "heading";
+  level: number;
+  spans: Span[];
+}
+
+export interface ListBlock {
+  type: "list";
+  ordered: boolean;
+  /** First number of an ordered list. */
+  start?: number;
+  items: ListItem[];
+}
+
+export interface ListItem {
+  /** Set for task list items. */
+  checked?: boolean;
+  blocks: Block[];
+}
+
+export interface CodeBlock {
+  type: "code_block";
+  code: string;
+  language?: string;
+}
+
+export interface QuoteBlock {
+  type: "quote";
+  blocks: Block[];
+}
+
+export interface RuleBlock {
+  type: "rule";
+}
+
+/** A run of inline text with uniform style. */
+export interface Span {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  code?: boolean;
+  strike?: boolean;
+  href?: string;
+}
+
+/** One entry of the chat as drawn: a user message, the agent's reply, a tool call, a notice. */
+export interface ViewItem {
+  /** Stable id; patches and ui.action address items by it. */
+  ref: string;
+  kind: ItemKind;
+  /** Who it's from (user items: the app) or the tool call's title. */
+  label?: string;
+  state?: ItemState;
+  component: Component;
+}
+
+export type ItemKind = "user" | "agent" | "thought" | "tool" | "notice";
+
+/** For tool items. Renderers show it the same way everywhere (spinner, ✓, ✗). */
+export type ItemState = "pending" | "running" | "done" | "failed";
+
+export type ViewOp = SetViewOp | BlocksViewOp | RemoveViewOp;
+
+export type ViewOpTag = ViewOp["op"];
+
+/** Replace the item with this ref, or append it if it's new. */
+export interface SetViewOp {
+  op: "set";
+  item: ViewItem;
+}
+
+/** Streaming text: in the text component at `path` (child indexes from the item's component; [] is the component itself), replace blocks[from..] with these. */
+export interface BlocksViewOp {
+  op: "blocks";
+  ref: string;
+  path: number[];
+  from: number;
+  blocks: Block[];
+}
+
+export interface RemoveViewOp {
+  op: "remove";
+  ref: string;
+}
+
+/** Everything in the session as drawn, as of seq. */
+export interface ViewSnapshot {
+  session: string;
+  seq: number;
+  items: ViewItem[];
+}
+
+/** Changes caused by the session event with this seq, applied in order. */
+export interface ViewPatch {
+  session: string;
+  seq: number;
+  ops: ViewOp[];
+}
+
+/** Theme tokens served by the daemon. Web maps them to CSS variables, GPUI to its theme, TUIs to the nearest 16/256/true color. */
+export interface Theme {
+  name: string;
+  colors: ThemeColors;
+  spacing: ThemeSpacing;
+  text: ThemeText;
+}
+
+/** #rrggbb colors. */
+export interface ThemeColors {
+  fg: string;
+  bg: string;
+  /** Card and code backgrounds. */
+  surface: string;
+  border: string;
+  accent: string;
+  muted: string;
+  success: string;
+  danger: string;
+}
+
+/** Pixels (TUIs use 0/1/2 cells). */
+export interface ThemeSpacing {
+  s: number;
+  m: number;
+  l: number;
+}
+
+export interface ThemeText {
+  title: TextStyle;
+  body: TextStyle;
+  code: TextStyle;
+}
+
+export interface TextStyle {
+  /** Pixels. */
+  size: number;
+  weight: number;
+  mono: boolean;
 }

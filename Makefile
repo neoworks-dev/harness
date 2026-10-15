@@ -52,10 +52,12 @@ format:
 format-check:
 	bunx prettier --check .
 
-# Regenerates protocol types from the JSON Schemas (output is checked in).
+# Regenerates protocol types from the JSON Schemas and resolves fixtures (output is checked in).
 codegen:
 	bun run protocol/codegen/main.ts
+	bun run daemon/scripts/fixtures.ts
 
 # Fails if the checked-in generated types are stale.
 codegen-check:
 	bun run protocol/codegen/main.ts --check
+	bun run daemon/scripts/fixtures.ts --check

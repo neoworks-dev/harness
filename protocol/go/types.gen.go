@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -167,6 +167,42 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "connectors.changed":
 		var v ConnectorsChanged
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "view.subscribe":
+		var v ViewSubscribe
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "view.unsubscribe":
+		var v ViewUnsubscribe
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "view.snapshot":
+		var v ViewSnapshotMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "view.patch":
+		var v ViewPatchMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "theme":
+		var v ThemeMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "ui.action":
+		var v UiActionMessage
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -592,6 +628,115 @@ func (v ConnectorsChanged) MarshalJSON() ([]byte, error) {
 	}{"connectors.changed", plain(v)})
 }
 
+// ViewSubscribe: Client → daemon: follow the resolved view of a session. Replied to with view.snapshot, then view.patch for every later change. Re-subscribing sends a fresh snapshot.
+type ViewSubscribe struct {
+	ID      string     `json:"id"`
+	Payload SessionRef `json:"payload"`
+}
+
+func (ViewSubscribe) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v ViewSubscribe) MarshalJSON() ([]byte, error) {
+	type plain ViewSubscribe
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"view.subscribe", plain(v)})
+}
+
+// ViewUnsubscribe: Client → daemon (acked).
+type ViewUnsubscribe struct {
+	ID      string     `json:"id"`
+	Payload SessionRef `json:"payload"`
+}
+
+func (ViewUnsubscribe) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v ViewUnsubscribe) MarshalJSON() ([]byte, error) {
+	type plain ViewUnsubscribe
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"view.unsubscribe", plain(v)})
+}
+
+// ViewSnapshotMessage: Daemon → client: reply to view.subscribe.
+type ViewSnapshotMessage struct {
+	ID      string       `json:"id"`
+	Payload ViewSnapshot `json:"payload"`
+}
+
+func (ViewSnapshotMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v ViewSnapshotMessage) MarshalJSON() ([]byte, error) {
+	type plain ViewSnapshotMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"view.snapshot", plain(v)})
+}
+
+// ViewPatchMessage: Daemon → view subscribers: changes in order; apply to the latest snapshot.
+type ViewPatchMessage struct {
+	Payload ViewPatch `json:"payload"`
+}
+
+func (ViewPatchMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v ViewPatchMessage) MarshalJSON() ([]byte, error) {
+	type plain ViewPatchMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"view.patch", plain(v)})
+}
+
+// ThemeMessage: Daemon → every client after bus.welcome and when the theme changes.
+type ThemeMessage struct {
+	Payload Theme `json:"payload"`
+}
+
+func (ThemeMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v ThemeMessage) MarshalJSON() ([]byte, error) {
+	type plain ThemeMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"theme", plain(v)})
+}
+
+// UiActionMessage: Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon.
+type UiActionMessage struct {
+	ID      string   `json:"id"`
+	Payload UiAction `json:"payload"`
+}
+
+func (UiActionMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v UiActionMessage) MarshalJSON() ([]byte, error) {
+	type plain UiActionMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"ui.action", plain(v)})
+}
+
+type UiAction struct {
+	Session string `json:"session"`
+	// The view item the button is in.
+	Ref    string `json:"ref"`
+	Action string `json:"action"`
+	// The button's args.
+	Args json.RawMessage `json:"args,omitempty"`
+}
+
 // AppPresence: Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.
 type AppPresence struct {
 	// Connector name; prefixes its tools (app.tool).
@@ -609,6 +754,8 @@ type AppPresence struct {
 	Home *bool `json:"home,omitempty"`
 	// Process that owns the app's windows, so other apps can map a window to it (e.g. the overlay's drop targets).
 	PID *int64 `json:"pid,omitempty"`
+	// View templates for this app's tool results, keyed by tool name (without the app prefix). Format: protocol/README.md#templates. Kept by the daemon so results still render after the app closes.
+	Templates map[string]json.RawMessage `json:"templates,omitempty"`
 }
 
 // McpEndpoint: The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it.
@@ -1126,4 +1273,814 @@ type SessionInfo struct {
 	State SessionState `json:"state"`
 	// Inputs waiting behind the running turn.
 	Queued int64 `json:"queued"`
+}
+
+// Component: The fixed component set. Apps combine these; they never add new ones.
+// Value is one of: CardComponent, RowComponent, StackComponent, TextComponent, ImageComponent, FileComponent, CodeComponent, DiffComponent, TableComponent, KvComponent, ProgressComponent, ButtonComponent, LinkComponent, UnknownComponent.
+type Component struct {
+	Value ComponentVariant
+}
+
+// ComponentVariant is implemented by every Component variant.
+type ComponentVariant interface {
+	isComponent()
+}
+
+// UnknownComponent holds a variant this version doesn't know. It re-encodes unchanged.
+type UnknownComponent struct {
+	Tag string
+	Raw json.RawMessage
+}
+
+func (UnknownComponent) isComponent() {}
+
+// MarshalJSON returns the original JSON.
+func (v UnknownComponent) MarshalJSON() ([]byte, error) {
+	return v.Raw, nil
+}
+
+// MarshalJSON encodes the variant, including its tag.
+func (u Component) MarshalJSON() ([]byte, error) {
+	if u.Value == nil {
+		return nil, errors.New("protocol: Component has no value")
+	}
+	return json.Marshal(u.Value)
+}
+
+// UnmarshalJSON picks the variant from the "type" field.
+func (u *Component) UnmarshalJSON(data []byte) error {
+	var head struct {
+		Tag *string `json:"type"`
+	}
+	if err := json.Unmarshal(data, &head); err != nil {
+		return err
+	}
+	if head.Tag == nil {
+		return errors.New("protocol: Component is missing \"type\"")
+	}
+	switch *head.Tag {
+	case "card":
+		var v CardComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "row":
+		var v RowComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "stack":
+		var v StackComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "text":
+		var v TextComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "image":
+		var v ImageComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "file":
+		var v FileComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "code":
+		var v CodeComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "diff":
+		var v DiffComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "table":
+		var v TableComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "kv":
+		var v KvComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "progress":
+		var v ProgressComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "button":
+		var v ButtonComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "link":
+		var v LinkComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	default:
+		u.Value = UnknownComponent{Tag: *head.Tag, Raw: append(json.RawMessage(nil), data...)}
+	}
+	return nil
+}
+
+// Tone: Meaning, not color: renderers map it through the theme.
+type Tone string
+
+const (
+	ToneAccent  Tone = "accent"
+	ToneMuted   Tone = "muted"
+	ToneSuccess Tone = "success"
+	ToneDanger  Tone = "danger"
+)
+
+type Space string
+
+const (
+	SpaceS Space = "s"
+	SpaceM Space = "m"
+	SpaceL Space = "l"
+)
+
+type TextRole string
+
+const (
+	TextRoleTitle TextRole = "title"
+	TextRoleBody  TextRole = "body"
+	TextRoleCode  TextRole = "code"
+)
+
+// CardComponent: A titled box. TUI: a box or indented block.
+type CardComponent struct {
+	Title    *string     `json:"title,omitempty"`
+	Tone     *Tone       `json:"tone,omitempty"`
+	Children []Component `json:"children"`
+}
+
+func (CardComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v CardComponent) MarshalJSON() ([]byte, error) {
+	type plain CardComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"card", plain(v)})
+}
+
+// RowComponent: Children side by side; renderers may wrap them when space runs out.
+type RowComponent struct {
+	Gap      *Space      `json:"gap,omitempty"`
+	Children []Component `json:"children"`
+}
+
+func (RowComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v RowComponent) MarshalJSON() ([]byte, error) {
+	type plain RowComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"row", plain(v)})
+}
+
+// StackComponent: Children top to bottom.
+type StackComponent struct {
+	Gap      *Space      `json:"gap,omitempty"`
+	Children []Component `json:"children"`
+}
+
+func (StackComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v StackComponent) MarshalJSON() ([]byte, error) {
+	type plain StackComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"stack", plain(v)})
+}
+
+// TextComponent: Rich text, already parsed from markdown by the daemon.
+type TextComponent struct {
+	Role   *TextRole `json:"role,omitempty"`
+	Tone   *Tone     `json:"tone,omitempty"`
+	Blocks []Block   `json:"blocks"`
+}
+
+func (TextComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v TextComponent) MarshalJSON() ([]byte, error) {
+	type plain TextComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"text", plain(v)})
+}
+
+// ImageComponent: TUI fallback (no Kitty/Sixel): [image W×H · src].
+type ImageComponent struct {
+	// asset:// handle, file path or data: URL.
+	Src     string  `json:"src"`
+	Alt     *string `json:"alt,omitempty"`
+	Caption *string `json:"caption,omitempty"`
+	Width   *int64  `json:"width,omitempty"`
+	Height  *int64  `json:"height,omitempty"`
+}
+
+func (ImageComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v ImageComponent) MarshalJSON() ([]byte, error) {
+	type plain ImageComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"image", plain(v)})
+}
+
+// FileComponent: A file chip. TUI: 📄 path.
+type FileComponent struct {
+	Path string `json:"path"`
+	// Display name; defaults to the path's base name.
+	Name *string `json:"name,omitempty"`
+}
+
+func (FileComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v FileComponent) MarshalJSON() ([]byte, error) {
+	type plain FileComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"file", plain(v)})
+}
+
+// CodeComponent: A code or output block, monospace. Highlighting is optional and renderer-local.
+type CodeComponent struct {
+	Code     string  `json:"code"`
+	Language *string `json:"language,omitempty"`
+}
+
+func (CodeComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v CodeComponent) MarshalJSON() ([]byte, error) {
+	type plain CodeComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"code", plain(v)})
+}
+
+// DiffComponent: A change to a file as lines, already diffed by the daemon. Web/GPUI may show it side by side; TUI as a colored unified diff.
+type DiffComponent struct {
+	Path  *string    `json:"path,omitempty"`
+	Lines []DiffLine `json:"lines"`
+}
+
+func (DiffComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v DiffComponent) MarshalJSON() ([]byte, error) {
+	type plain DiffComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"diff", plain(v)})
+}
+
+type DiffLine struct {
+	Kind DiffLineKind `json:"kind"`
+	Text string       `json:"text"`
+	// Line number in the old text (context, remove).
+	Old *int64 `json:"old,omitempty"`
+	// Line number in the new text (context, add).
+	New *int64 `json:"new,omitempty"`
+}
+
+// DiffLineKind: hunk lines carry the @@ header text and separate distant changes.
+type DiffLineKind string
+
+const (
+	DiffLineKindContext DiffLineKind = "context"
+	DiffLineKindAdd     DiffLineKind = "add"
+	DiffLineKindRemove  DiffLineKind = "remove"
+	DiffLineKindHunk    DiffLineKind = "hunk"
+)
+
+// TableComponent: A grid. TUI: box-drawn, columns cut to fit.
+type TableComponent struct {
+	Columns []string   `json:"columns"`
+	Rows    [][]string `json:"rows"`
+}
+
+func (TableComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v TableComponent) MarshalJSON() ([]byte, error) {
+	type plain TableComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"table", plain(v)})
+}
+
+// KvComponent: A key–value list. TUI: aligned lines.
+type KvComponent struct {
+	Items []KvItem `json:"items"`
+}
+
+func (KvComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v KvComponent) MarshalJSON() ([]byte, error) {
+	type plain KvComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"kv", plain(v)})
+}
+
+type KvItem struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// ProgressComponent: A bar. TUI: ▓▓▓░░ 60%.
+type ProgressComponent struct {
+	Value float64 `json:"value"`
+	Label *string `json:"label,omitempty"`
+}
+
+func (ProgressComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v ProgressComponent) MarshalJSON() ([]byte, error) {
+	type plain ProgressComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"progress", plain(v)})
+}
+
+// ButtonComponent: Sends ui.action when pressed. Actions starting with copy: are handled by the client (copy the rest to the clipboard). TUI: [k] Label.
+type ButtonComponent struct {
+	Label string `json:"label"`
+	// app.tool, or copy:<text>.
+	Action string `json:"action"`
+	// Arguments for the action.
+	Args json.RawMessage `json:"args,omitempty"`
+	// Single-key hint; renderers bind it while the item has keyboard focus.
+	Key *string `json:"key,omitempty"`
+}
+
+func (ButtonComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v ButtonComponent) MarshalJSON() ([]byte, error) {
+	type plain ButtonComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"button", plain(v)})
+}
+
+// LinkComponent: TUI: underlined text plus the URL.
+type LinkComponent struct {
+	URL  string  `json:"url"`
+	Text *string `json:"text,omitempty"`
+}
+
+func (LinkComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v LinkComponent) MarshalJSON() ([]byte, error) {
+	type plain LinkComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"link", plain(v)})
+}
+
+// Block: A block of parsed markdown.
+// Value is one of: ParagraphBlock, HeadingBlock, ListBlock, CodeBlock, QuoteBlock, RuleBlock, UnknownBlock.
+type Block struct {
+	Value BlockVariant
+}
+
+// BlockVariant is implemented by every Block variant.
+type BlockVariant interface {
+	isBlock()
+}
+
+// UnknownBlock holds a variant this version doesn't know. It re-encodes unchanged.
+type UnknownBlock struct {
+	Tag string
+	Raw json.RawMessage
+}
+
+func (UnknownBlock) isBlock() {}
+
+// MarshalJSON returns the original JSON.
+func (v UnknownBlock) MarshalJSON() ([]byte, error) {
+	return v.Raw, nil
+}
+
+// MarshalJSON encodes the variant, including its tag.
+func (u Block) MarshalJSON() ([]byte, error) {
+	if u.Value == nil {
+		return nil, errors.New("protocol: Block has no value")
+	}
+	return json.Marshal(u.Value)
+}
+
+// UnmarshalJSON picks the variant from the "type" field.
+func (u *Block) UnmarshalJSON(data []byte) error {
+	var head struct {
+		Tag *string `json:"type"`
+	}
+	if err := json.Unmarshal(data, &head); err != nil {
+		return err
+	}
+	if head.Tag == nil {
+		return errors.New("protocol: Block is missing \"type\"")
+	}
+	switch *head.Tag {
+	case "paragraph":
+		var v ParagraphBlock
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "heading":
+		var v HeadingBlock
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "list":
+		var v ListBlock
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "code_block":
+		var v CodeBlock
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "quote":
+		var v QuoteBlock
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "rule":
+		var v RuleBlock
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	default:
+		u.Value = UnknownBlock{Tag: *head.Tag, Raw: append(json.RawMessage(nil), data...)}
+	}
+	return nil
+}
+
+type ParagraphBlock struct {
+	Spans []Span `json:"spans"`
+}
+
+func (ParagraphBlock) isBlock() {}
+
+// MarshalJSON adds the "type" tag.
+func (v ParagraphBlock) MarshalJSON() ([]byte, error) {
+	type plain ParagraphBlock
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"paragraph", plain(v)})
+}
+
+type HeadingBlock struct {
+	Level int64  `json:"level"`
+	Spans []Span `json:"spans"`
+}
+
+func (HeadingBlock) isBlock() {}
+
+// MarshalJSON adds the "type" tag.
+func (v HeadingBlock) MarshalJSON() ([]byte, error) {
+	type plain HeadingBlock
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"heading", plain(v)})
+}
+
+type ListBlock struct {
+	Ordered bool `json:"ordered"`
+	// First number of an ordered list.
+	Start *int64     `json:"start,omitempty"`
+	Items []ListItem `json:"items"`
+}
+
+func (ListBlock) isBlock() {}
+
+// MarshalJSON adds the "type" tag.
+func (v ListBlock) MarshalJSON() ([]byte, error) {
+	type plain ListBlock
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"list", plain(v)})
+}
+
+type ListItem struct {
+	// Set for task list items.
+	Checked *bool   `json:"checked,omitempty"`
+	Blocks  []Block `json:"blocks"`
+}
+
+type CodeBlock struct {
+	Code     string  `json:"code"`
+	Language *string `json:"language,omitempty"`
+}
+
+func (CodeBlock) isBlock() {}
+
+// MarshalJSON adds the "type" tag.
+func (v CodeBlock) MarshalJSON() ([]byte, error) {
+	type plain CodeBlock
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"code_block", plain(v)})
+}
+
+type QuoteBlock struct {
+	Blocks []Block `json:"blocks"`
+}
+
+func (QuoteBlock) isBlock() {}
+
+// MarshalJSON adds the "type" tag.
+func (v QuoteBlock) MarshalJSON() ([]byte, error) {
+	type plain QuoteBlock
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"quote", plain(v)})
+}
+
+type RuleBlock struct {
+}
+
+func (RuleBlock) isBlock() {}
+
+// MarshalJSON adds the "type" tag.
+func (v RuleBlock) MarshalJSON() ([]byte, error) {
+	type plain RuleBlock
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"rule", plain(v)})
+}
+
+// Span: A run of inline text with uniform style.
+type Span struct {
+	Text   string  `json:"text"`
+	Bold   *bool   `json:"bold,omitempty"`
+	Italic *bool   `json:"italic,omitempty"`
+	Code   *bool   `json:"code,omitempty"`
+	Strike *bool   `json:"strike,omitempty"`
+	Href   *string `json:"href,omitempty"`
+}
+
+// ViewItem: One entry of the chat as drawn: a user message, the agent's reply, a tool call, a notice.
+type ViewItem struct {
+	// Stable id; patches and ui.action address items by it.
+	Ref  string   `json:"ref"`
+	Kind ItemKind `json:"kind"`
+	// Who it's from (user items: the app) or the tool call's title.
+	Label     *string    `json:"label,omitempty"`
+	State     *ItemState `json:"state,omitempty"`
+	Component Component  `json:"component"`
+}
+
+type ItemKind string
+
+const (
+	ItemKindUser    ItemKind = "user"
+	ItemKindAgent   ItemKind = "agent"
+	ItemKindThought ItemKind = "thought"
+	ItemKindTool    ItemKind = "tool"
+	ItemKindNotice  ItemKind = "notice"
+)
+
+// ItemState: For tool items. Renderers show it the same way everywhere (spinner, ✓, ✗).
+type ItemState string
+
+const (
+	ItemStatePending ItemState = "pending"
+	ItemStateRunning ItemState = "running"
+	ItemStateDone    ItemState = "done"
+	ItemStateFailed  ItemState = "failed"
+)
+
+// ViewOp
+// Value is one of: SetViewOp, BlocksViewOp, RemoveViewOp, UnknownViewOp.
+type ViewOp struct {
+	Value ViewOpVariant
+}
+
+// ViewOpVariant is implemented by every ViewOp variant.
+type ViewOpVariant interface {
+	isViewOp()
+}
+
+// UnknownViewOp holds a variant this version doesn't know. It re-encodes unchanged.
+type UnknownViewOp struct {
+	Tag string
+	Raw json.RawMessage
+}
+
+func (UnknownViewOp) isViewOp() {}
+
+// MarshalJSON returns the original JSON.
+func (v UnknownViewOp) MarshalJSON() ([]byte, error) {
+	return v.Raw, nil
+}
+
+// MarshalJSON encodes the variant, including its tag.
+func (u ViewOp) MarshalJSON() ([]byte, error) {
+	if u.Value == nil {
+		return nil, errors.New("protocol: ViewOp has no value")
+	}
+	return json.Marshal(u.Value)
+}
+
+// UnmarshalJSON picks the variant from the "op" field.
+func (u *ViewOp) UnmarshalJSON(data []byte) error {
+	var head struct {
+		Tag *string `json:"op"`
+	}
+	if err := json.Unmarshal(data, &head); err != nil {
+		return err
+	}
+	if head.Tag == nil {
+		return errors.New("protocol: ViewOp is missing \"op\"")
+	}
+	switch *head.Tag {
+	case "set":
+		var v SetViewOp
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "blocks":
+		var v BlocksViewOp
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "remove":
+		var v RemoveViewOp
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	default:
+		u.Value = UnknownViewOp{Tag: *head.Tag, Raw: append(json.RawMessage(nil), data...)}
+	}
+	return nil
+}
+
+// SetViewOp: Replace the item with this ref, or append it if it's new.
+type SetViewOp struct {
+	Item ViewItem `json:"item"`
+}
+
+func (SetViewOp) isViewOp() {}
+
+// MarshalJSON adds the "op" tag.
+func (v SetViewOp) MarshalJSON() ([]byte, error) {
+	type plain SetViewOp
+	return json.Marshal(struct {
+		Tag string `json:"op"`
+		plain
+	}{"set", plain(v)})
+}
+
+// BlocksViewOp: Streaming text: in the text component at `path` (child indexes from the item's component; [] is the component itself), replace blocks[from..] with these.
+type BlocksViewOp struct {
+	Ref    string  `json:"ref"`
+	Path   []int64 `json:"path"`
+	From   int64   `json:"from"`
+	Blocks []Block `json:"blocks"`
+}
+
+func (BlocksViewOp) isViewOp() {}
+
+// MarshalJSON adds the "op" tag.
+func (v BlocksViewOp) MarshalJSON() ([]byte, error) {
+	type plain BlocksViewOp
+	return json.Marshal(struct {
+		Tag string `json:"op"`
+		plain
+	}{"blocks", plain(v)})
+}
+
+type RemoveViewOp struct {
+	Ref string `json:"ref"`
+}
+
+func (RemoveViewOp) isViewOp() {}
+
+// MarshalJSON adds the "op" tag.
+func (v RemoveViewOp) MarshalJSON() ([]byte, error) {
+	type plain RemoveViewOp
+	return json.Marshal(struct {
+		Tag string `json:"op"`
+		plain
+	}{"remove", plain(v)})
+}
+
+// ViewSnapshot: Everything in the session as drawn, as of seq.
+type ViewSnapshot struct {
+	Session string     `json:"session"`
+	Seq     int64      `json:"seq"`
+	Items   []ViewItem `json:"items"`
+}
+
+// ViewPatch: Changes caused by the session event with this seq, applied in order.
+type ViewPatch struct {
+	Session string   `json:"session"`
+	Seq     int64    `json:"seq"`
+	Ops     []ViewOp `json:"ops"`
+}
+
+// Theme: Theme tokens served by the daemon. Web maps them to CSS variables, GPUI to its theme, TUIs to the nearest 16/256/true color.
+type Theme struct {
+	Name    string       `json:"name"`
+	Colors  ThemeColors  `json:"colors"`
+	Spacing ThemeSpacing `json:"spacing"`
+	Text    ThemeText    `json:"text"`
+}
+
+// ThemeColors: #rrggbb colors.
+type ThemeColors struct {
+	Fg string `json:"fg"`
+	Bg string `json:"bg"`
+	// Card and code backgrounds.
+	Surface string `json:"surface"`
+	Border  string `json:"border"`
+	Accent  string `json:"accent"`
+	Muted   string `json:"muted"`
+	Success string `json:"success"`
+	Danger  string `json:"danger"`
+}
+
+// ThemeSpacing: Pixels (TUIs use 0/1/2 cells).
+type ThemeSpacing struct {
+	S int64 `json:"s"`
+	M int64 `json:"m"`
+	L int64 `json:"l"`
+}
+
+type ThemeText struct {
+	Title TextStyle `json:"title"`
+	Body  TextStyle `json:"body"`
+	Code  TextStyle `json:"code"`
+}
+
+type TextStyle struct {
+	// Pixels.
+	Size   int64 `json:"size"`
+	Weight int64 `json:"weight"`
+	Mono   bool  `json:"mono"`
 }

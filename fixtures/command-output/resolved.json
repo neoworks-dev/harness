@@ -1,0 +1,28 @@
+[
+  {
+    "ref": "command-output",
+    "kind": "tool",
+    "component": {
+      "type": "stack",
+      "children": [
+        {
+          "type": "code",
+          "code": "> site@1.0.0 test\n> vitest run\n\n ✓ src/header.test.ts (3)\n ✗ src/logo.test.ts (1)\n   AssertionError: expected 'logo.svg' to be 'logo.png'\n\nTests  1 failed | 3 passed (4)",
+          "language": "text"
+        },
+        {
+          "type": "text",
+          "tone": "danger",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "spans": [{ "text": "Exit code " }, { "text": "1", "bold": true }]
+            }
+          ]
+        }
+      ]
+    },
+    "label": "bash: npm test",
+    "state": "failed"
+  }
+]

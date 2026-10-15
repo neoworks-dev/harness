@@ -1,0 +1,24 @@
+{
+  "description": "A table from an array of objects, with a fallback line when it's empty (if/each).",
+  "item": { "kind": "tool", "label": "files.list", "state": "done" },
+  "template": {
+    "type": "stack",
+    "gap": "s",
+    "children": [
+      { "type": "text", "role": "title", "markdown": "{{data.dir}}" },
+      { "type": "table", "if": "data.files", "columns": ["name", "size", "modified"], "rows": "{{data.files}}" },
+      { "type": "text", "if": "data.empty", "tone": "muted", "markdown": "_No files._" },
+      { "type": "text", "tone": "muted", "markdown": "{{data.count}} files, {{data.total}} total" }
+    ]
+  },
+  "data": {
+    "dir": "~/site/public",
+    "files": [
+      { "name": "logo.png", "size": "48 KB", "modified": "2026-10-14 09:12" },
+      { "name": "favicon.ico", "size": "4 KB", "modified": "2026-09-30 17:40" },
+      { "name": "a-very-long-file-name-that-will-need-cutting-in-narrow-terminals.svg", "size": "1.2 MB", "modified": "2026-10-01 11:03" }
+    ],
+    "count": 3,
+    "total": "1.25 MB"
+  }
+}

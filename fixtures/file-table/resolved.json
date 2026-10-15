@@ -1,0 +1,37 @@
+[
+  {
+    "ref": "file-table",
+    "kind": "tool",
+    "component": {
+      "type": "stack",
+      "gap": "s",
+      "children": [
+        {
+          "type": "text",
+          "role": "title",
+          "blocks": [{ "type": "paragraph", "spans": [{ "text": "~/site/public" }] }]
+        },
+        {
+          "type": "table",
+          "columns": ["name", "size", "modified"],
+          "rows": [
+            ["logo.png", "48 KB", "2026-10-14 09:12"],
+            ["favicon.ico", "4 KB", "2026-09-30 17:40"],
+            [
+              "a-very-long-file-name-that-will-need-cutting-in-narrow-terminals.svg",
+              "1.2 MB",
+              "2026-10-01 11:03"
+            ]
+          ]
+        },
+        {
+          "type": "text",
+          "tone": "muted",
+          "blocks": [{ "type": "paragraph", "spans": [{ "text": "3 files, 1.25 MB total" }] }]
+        }
+      ]
+    },
+    "label": "files.list",
+    "state": "done"
+  }
+]

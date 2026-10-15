@@ -6,7 +6,9 @@
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@suite/harness": "workspace:*",
     "@suite/protocol": "workspace:*",
-    "ajv": "^8.20.0"
+    "ajv": "^8.20.0",
+    "diff": "^9.0.0",
+    "marked": "^18.1.1"
   },
   "exports": {
     "./testing": "./src/testing.ts"

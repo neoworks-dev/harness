@@ -1,0 +1,119 @@
+[
+  {
+    "ref": "rich-text",
+    "kind": "agent",
+    "component": {
+      "type": "stack",
+      "gap": "m",
+      "children": [
+        {
+          "type": "text",
+          "blocks": [
+            { "type": "heading", "level": 2, "spans": [{ "text": "Logo added" }] },
+            {
+              "type": "paragraph",
+              "spans": [
+                { "text": "I copied the image to " },
+                { "text": "public/logo.png", "code": true },
+                { "text": " and used it in " },
+                { "text": "Header", "bold": true },
+                { "text": ", " },
+                { "text": "styled", "italic": true },
+                { "text": " as before. " },
+                { "text": "Old favicon", "strike": true },
+                { "text": " stays. See " },
+                { "text": "the docs", "href": "https://example.com/logo" },
+                { "text": "." }
+              ]
+            },
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                { "blocks": [{ "type": "paragraph", "spans": [{ "text": "Copied the asset" }] }] },
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "spans": [
+                        { "text": "Edited " },
+                        { "text": "src/Header.tsx", "code": true },
+                        { "text": ":" }
+                      ]
+                    },
+                    {
+                      "type": "list",
+                      "ordered": false,
+                      "items": [
+                        {
+                          "blocks": [
+                            {
+                              "type": "paragraph",
+                              "spans": [{ "text": "added the " }, { "text": "<img>", "code": true }]
+                            }
+                          ]
+                        },
+                        {
+                          "blocks": [
+                            { "type": "paragraph", "spans": [{ "text": "kept the title" }] }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "start": 1
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                {
+                  "blocks": [{ "type": "paragraph", "spans": [{ "text": "build passes" }] }],
+                  "checked": true
+                },
+                {
+                  "blocks": [{ "type": "paragraph", "spans": [{ "text": "update the favicon" }] }],
+                  "checked": false
+                }
+              ]
+            },
+            {
+              "type": "quote",
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "spans": [{ "text": "The image is 512×512; browsers scale it down." }]
+                }
+              ]
+            },
+            {
+              "type": "code_block",
+              "code": "<img src=\"/logo.png\" alt=\"Logo\" />",
+              "language": "tsx"
+            },
+            { "type": "rule" },
+            { "type": "paragraph", "spans": [{ "text": "Anything else?" }] }
+          ]
+        },
+        {
+          "type": "text",
+          "role": "title",
+          "blocks": [{ "type": "paragraph", "spans": [{ "text": "Summary" }] }]
+        },
+        {
+          "type": "text",
+          "tone": "success",
+          "blocks": [{ "type": "paragraph", "spans": [{ "text": "All checks passed." }] }]
+        },
+        {
+          "type": "text",
+          "tone": "muted",
+          "role": "code",
+          "blocks": [{ "type": "paragraph", "spans": [{ "text": "took 1.2s" }] }]
+        }
+      ]
+    }
+  }
+]
