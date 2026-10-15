@@ -4,18 +4,19 @@ One agent session shared across every app in the suite. The design is in [docs/d
 
 | Path                 | What                                                          | Phase |
 | -------------------- | ------------------------------------------------------------- | ----- |
-| `protocol/`          | JSON Schemas (source of truth) + generated TS and Go types    | 0     |
+| `protocol/`          | JSON Schemas (source of truth) + generated TS, Go, Rust types | 0     |
 | `daemon/`            | TS on Bun: session store, bus hub, turn queue                 | 1     |
 | `harness/`           | TS on Bun: pi-based agent, core tools, system prompt          | 1     |
 | `cli/`               | Go: `suite status / sessions / attach / tools / focus / move` | 1-3   |
 | `sdk-ts/`, `sdk-go/` | Bus clients (sessions, presence; TS: tool server helper)      | 2     |
 | `sdk-rs/`            | Rust bus client for GPUI apps                                 | 3     |
+| `apps/pad/`          | Small GPUI app hosting the chat pane (stand-in for Grove)     | 3     |
 | `renderers/`         | web (TS), gpui (Rust), tui (Go)                               | 4     |
 | `fixtures/`          | View fixtures + renderer snapshot tests                       | 4     |
 
 ## Requirements
 
-Bun ≥ 1.3, Go ≥ 1.27.
+Bun ≥ 1.3, Go ≥ 1.27, Rust ≥ 1.85 (edition 2024; Pad needs GPUI's Linux build deps: Wayland/X11, xkbcommon, Vulkan).
 
 ## Running it
 
@@ -44,6 +45,20 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits. Pi
 | `SUITE_PORT`                          | 127.0.0.1 port for `/bus` + `/mcp` (default: any free port) |
 
 `model` and `thinkingLevel` can also be set in `~/.config/suite/config.json`; env wins.
+
+## Moving the agent between apps
+
+The daemon owns where the agent is: one current session and the app whose pane shows it. The overlay is the home app. Try it with Pad:
+
+```sh
+bun run daemon                              # terminal 1
+cargo run --release -p suite-pad            # terminal 2: a window; the agent is still home
+bin/suite move pad                          # Pad's pane opens on the conversation
+bin/suite attach                            # follow the same session from the terminal
+bin/suite move                              # back home (the overlay, if it's running)
+```
+
+The agent can move itself with `apps_focus`, and Pad's buttons move it too. Closing the focused app sends the agent home.
 
 ## Connecting an app
 

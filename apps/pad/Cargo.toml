@@ -1,0 +1,20 @@
+[package]
+name = "suite-pad"
+description = "Pad: a small GPUI app that hosts the agent's chat pane (a stand-in for Grove)"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "suite-pad"
+path = "src/main.rs"
+
+[dependencies]
+async-channel = "2"
+gpui = "0.2.2"
+suite-protocol = { path = "../../protocol/rust" }
+suite-sdk = { path = "../../sdk-rs" }
+
+[dev-dependencies]
+gpui = { version = "0.2.2", features = ["test-support"] }
+serde_json = "1"

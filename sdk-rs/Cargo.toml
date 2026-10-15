@@ -1,0 +1,13 @@
+[package]
+name = "suite-sdk"
+description = "Rust client for the suite bus, kept minimal for GPUI apps"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-channel = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+suite-protocol = { path = "../protocol/rust" }
+tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
