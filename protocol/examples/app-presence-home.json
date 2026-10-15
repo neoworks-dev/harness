@@ -1,0 +1,5 @@
+{
+  "topic": "app.presence",
+  "id": "14",
+  "payload": { "app": "overlay", "kind": "app", "open": true, "home": true, "pid": 4711 }
+}

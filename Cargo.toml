@@ -1,0 +1,9 @@
+# Rust pieces: generated protocol types, the Rust bus client, and GPUI apps.
+[workspace]
+resolver = "3"
+members = ["protocol/rust"]
+
+[workspace.package]
+edition = "2024"
+version = "0.3.0"
+publish = false

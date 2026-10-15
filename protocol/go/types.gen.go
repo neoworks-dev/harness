@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -149,6 +149,24 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "connectors.list_result":
 		var v ConnectorsListResult
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "agent.focus":
+		var v AgentFocusMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "agent.move":
+		var v AgentMoveMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "connectors.changed":
+		var v ConnectorsChanged
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -498,6 +516,82 @@ type ConnectorsListPayload struct {
 	Connectors []ConnectorInfo `json:"connectors"`
 }
 
+// AgentFocusMessage: Daemon → every client after bus.welcome and on every change: where the agent lives. The app named here opens its chat pane on the session (replay, then live); others collapse theirs.
+type AgentFocusMessage struct {
+	Payload AgentFocus `json:"payload"`
+}
+
+func (AgentFocusMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v AgentFocusMessage) MarshalJSON() ([]byte, error) {
+	type plain AgentFocusMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"agent.focus", plain(v)})
+}
+
+type AgentFocus struct {
+	// The current session: the one the agent is working in.
+	Session string `json:"session"`
+	// App whose pane has the agent. Absent when no app can host it (nothing open).
+	App *string `json:"app,omitempty"`
+	// Where it was before, if it was in an app.
+	From   *string     `json:"from,omitempty"`
+	Reason FocusReason `json:"reason"`
+}
+
+// FocusReason: initial: sent after bus.welcome; user: an app or the CLI moved it; agent: the agent called apps_focus; closed: its app went away; opened: an app opened while the agent had none; session: the current session changed.
+type FocusReason string
+
+const (
+	FocusReasonInitial FocusReason = "initial"
+	FocusReasonUser    FocusReason = "user"
+	FocusReasonAgent   FocusReason = "agent"
+	FocusReasonClosed  FocusReason = "closed"
+	FocusReasonOpened  FocusReason = "opened"
+	FocusReasonSession FocusReason = "session"
+)
+
+// AgentMoveMessage: Client → daemon: move the agent (acked). app must be an open connector of kind app; without app it goes home. With session, that session becomes the current one.
+type AgentMoveMessage struct {
+	ID      string    `json:"id"`
+	Payload AgentMove `json:"payload"`
+}
+
+func (AgentMoveMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v AgentMoveMessage) MarshalJSON() ([]byte, error) {
+	type plain AgentMoveMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"agent.move", plain(v)})
+}
+
+type AgentMove struct {
+	App     *string `json:"app,omitempty"`
+	Session *string `json:"session,omitempty"`
+}
+
+// ConnectorsChanged: Daemon → every client when a connector opens, closes or changes.
+type ConnectorsChanged struct {
+	Payload ConnectorsListPayload `json:"payload"`
+}
+
+func (ConnectorsChanged) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v ConnectorsChanged) MarshalJSON() ([]byte, error) {
+	type plain ConnectorsChanged
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"connectors.changed", plain(v)})
+}
+
 // AppPresence: Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.
 type AppPresence struct {
 	// Connector name; prefixes its tools (app.tool).
@@ -511,6 +605,10 @@ type AppPresence struct {
 	Context map[string]string `json:"context,omitempty"`
 	Mcp     *McpEndpoint      `json:"mcp,omitempty"`
 	Launch  *LaunchSpec       `json:"launch,omitempty"`
+	// The always-on app that hosts the agent when no other app has it (the overlay). Focus falls back to it.
+	Home *bool `json:"home,omitempty"`
+	// Process that owns the app's windows, so other apps can map a window to it (e.g. the overlay's drop targets).
+	PID *int64 `json:"pid,omitempty"`
 }
 
 // McpEndpoint: The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it.
@@ -537,6 +635,12 @@ type ConnectorInfo struct {
 	Tools []ConnectorTool `json:"tools"`
 	// Why the gateway can't reach its MCP server, if it can't.
 	Error *string `json:"error,omitempty"`
+	// The always-on app that hosts the agent when no other app has it (the overlay). Focus falls back to it.
+	Home *bool `json:"home,omitempty"`
+	// Process that owns the app's windows, so other apps can map a window to it (e.g. the overlay's drop targets).
+	PID *int64 `json:"pid,omitempty"`
+	// The app's current context from its presence.
+	Context map[string]string `json:"context,omitempty"`
 }
 
 type ConnectorTool struct {

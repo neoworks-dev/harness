@@ -4,13 +4,14 @@ Source of truth for everything on the bus. `schemas/*.schema.json` are JSON Sche
 
 - `gen/types.ts` (TS, import as `@suite/protocol/types`)
 - `go/types.gen.go` (Go, package `neoworks.dev/suite/protocol/go`)
+- `rust/src/types.rs` (Rust, crate `suite-protocol`)
 - `examples/*.json` from the typed `examples/examples.ts`
 
 Generated files are checked in; `make check` fails if they are stale. Runtime validation: `@suite/protocol/validate` (ajv).
 
 ## Why a custom generator
 
-Off-the-shelf Go generators flatten `oneOf` tagged unions into one struct of optional fields. `codegen/` is small and only accepts a restricted subset, which gives real tagged unions in TS and Go and maps 1:1 onto serde's `#[serde(tag = "…")]` enums when Rust is added in Phase 3.
+Off-the-shelf Go generators flatten `oneOf` tagged unions into one struct of optional fields. `codegen/` is small and only accepts a restricted subset, which gives real tagged unions in all three languages. In Rust a union is an enum with one newtype variant per schema variant plus `Unknown(serde_json::Value)`; its serde impls are generated so unknown tags round-trip, as in Go.
 
 ## Schema conventions
 
@@ -20,7 +21,7 @@ Off-the-shelf Go generators flatten `oneOf` tagged unions into one struct of opt
 - Tagged unions: `{"type": "object", "oneOf": [$refs…], "discriminator": {"propertyName": "type"}}`. Each variant declares the tag as a required string `const` and belongs to exactly one union. The bus envelope is tagged by `topic`; everything else by `type`.
 - Optional means "not in `required`" — never `null`. Optional arrays/maps: absent and empty are equivalent.
 - `{}` (only a description) is opaque JSON: `unknown` in TS, `json.RawMessage` in Go.
-- Readers must tolerate unknown union tags: Go decodes them into `Unknown<Union>` (re-encoded unchanged); TS consumers should ignore them.
+- Readers must tolerate unknown union tags: Go decodes them into `Unknown<Union>`, Rust into `Union::Unknown(value)` (both re-encode unchanged); TS consumers should ignore them. String enums are strict in Rust: a new enum value needs regenerated types.
 
 ## Go usage
 

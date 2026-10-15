@@ -1,0 +1,18 @@
+{
+  "topic": "connectors.changed",
+  "payload": {
+    "connectors": [
+      {
+        "app": "overlay",
+        "kind": "app",
+        "title": "Desktop overlay",
+        "connected": true,
+        "home": true,
+        "pid": 4711,
+        "context": { "monitor": "DP-1" },
+        "v": 4,
+        "tools": [{ "name": "overlay.point", "description": "Point at something on screen." }]
+      }
+    ]
+  }
+}

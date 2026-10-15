@@ -136,6 +136,36 @@ export const examples: Record<string, Envelope> = {
     id: "11",
     payload: { session, app: "overlay", text: "What is this?", images: ["/tmp/shot-1.png"] },
   },
+  "agent-focus": {
+    topic: "agent.focus",
+    payload: { session, app: "pad", from: "overlay", reason: "user" },
+  },
+  "agent-focus-nowhere": { topic: "agent.focus", payload: { session, reason: "initial" } },
+  "agent-move": { topic: "agent.move", id: "12", payload: { app: "pad" } },
+  "agent-move-home-new-session": { topic: "agent.move", id: "13", payload: { session } },
+  "connectors-changed": {
+    topic: "connectors.changed",
+    payload: {
+      connectors: [
+        {
+          app: "overlay",
+          kind: "app",
+          title: "Desktop overlay",
+          connected: true,
+          home: true,
+          pid: 4711,
+          context: { monitor: "DP-1" },
+          v: 4,
+          tools: [{ name: "overlay.point", description: "Point at something on screen." }],
+        },
+      ],
+    },
+  },
+  "app-presence-home": {
+    topic: "app.presence",
+    id: "14",
+    payload: { app: "overlay", kind: "app", open: true, home: true, pid: 4711 },
+  },
   "event-user-message": {
     topic: "session.events",
     payload: {

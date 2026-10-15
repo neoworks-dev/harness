@@ -36,6 +36,14 @@
         },
         "launch": {
           "$ref": "#/$defs/LaunchSpec"
+        },
+        "home": {
+          "type": "boolean",
+          "description": "The always-on app that hosts the agent when no other app has it (the overlay). Focus falls back to it."
+        },
+        "pid": {
+          "type": "integer",
+          "description": "Process that owns the app's windows, so other apps can map a window to it (e.g. the overlay's drop targets)."
         }
       },
       "required": ["app", "kind", "open"],
@@ -105,6 +113,21 @@
         "error": {
           "type": "string",
           "description": "Why the gateway can't reach its MCP server, if it can't."
+        },
+        "home": {
+          "type": "boolean",
+          "description": "The always-on app that hosts the agent when no other app has it (the overlay). Focus falls back to it."
+        },
+        "pid": {
+          "type": "integer",
+          "description": "Process that owns the app's windows, so other apps can map a window to it (e.g. the overlay's drop targets)."
+        },
+        "context": {
+          "type": "object",
+          "description": "The app's current context from its presence.",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "required": ["app", "kind", "connected", "v", "tools"],

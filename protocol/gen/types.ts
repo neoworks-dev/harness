@@ -17,7 +17,10 @@ export type Envelope =
   | SessionInputMessage
   | AppPresenceMessage
   | ConnectorsList
-  | ConnectorsListResult;
+  | ConnectorsListResult
+  | AgentFocusMessage
+  | AgentMoveMessage
+  | ConnectorsChanged;
 
 export type EnvelopeTag = Envelope["topic"];
 
@@ -183,6 +186,43 @@ export interface ConnectorsListPayload {
   connectors: ConnectorInfo[];
 }
 
+/** Daemon → every client after bus.welcome and on every change: where the agent lives. The app named here opens its chat pane on the session (replay, then live); others collapse theirs. */
+export interface AgentFocusMessage {
+  topic: "agent.focus";
+  payload: AgentFocus;
+}
+
+export interface AgentFocus {
+  /** The current session: the one the agent is working in. */
+  session: string;
+  /** App whose pane has the agent. Absent when no app can host it (nothing open). */
+  app?: string;
+  /** Where it was before, if it was in an app. */
+  from?: string;
+  reason: FocusReason;
+}
+
+/** initial: sent after bus.welcome; user: an app or the CLI moved it; agent: the agent called apps_focus; closed: its app went away; opened: an app opened while the agent had none; session: the current session changed. */
+export type FocusReason = "initial" | "user" | "agent" | "closed" | "opened" | "session";
+
+/** Client → daemon: move the agent (acked). app must be an open connector of kind app; without app it goes home. With session, that session becomes the current one. */
+export interface AgentMoveMessage {
+  topic: "agent.move";
+  id: string;
+  payload: AgentMove;
+}
+
+export interface AgentMove {
+  app?: string;
+  session?: string;
+}
+
+/** Daemon → every client when a connector opens, closes or changes. */
+export interface ConnectorsChanged {
+  topic: "connectors.changed";
+  payload: ConnectorsListPayload;
+}
+
 /** Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update. */
 export interface AppPresence {
   /** Connector name; prefixes its tools (app.tool). */
@@ -196,6 +236,10 @@ export interface AppPresence {
   context?: Record<string, string>;
   mcp?: McpEndpoint;
   launch?: LaunchSpec;
+  /** The always-on app that hosts the agent when no other app has it (the overlay). Focus falls back to it. */
+  home?: boolean;
+  /** Process that owns the app's windows, so other apps can map a window to it (e.g. the overlay's drop targets). */
+  pid?: number;
 }
 
 /** The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it. */
@@ -222,6 +266,12 @@ export interface ConnectorInfo {
   tools: ConnectorTool[];
   /** Why the gateway can't reach its MCP server, if it can't. */
   error?: string;
+  /** The always-on app that hosts the agent when no other app has it (the overlay). Focus falls back to it. */
+  home?: boolean;
+  /** Process that owns the app's windows, so other apps can map a window to it (e.g. the overlay's drop targets). */
+  pid?: number;
+  /** The app's current context from its presence. */
+  context?: Record<string, string>;
 }
 
 export interface ConnectorTool {

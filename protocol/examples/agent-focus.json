@@ -1,0 +1,4 @@
+{
+  "topic": "agent.focus",
+  "payload": { "session": "s_7k2m9q4x1c", "app": "pad", "from": "overlay", "reason": "user" }
+}

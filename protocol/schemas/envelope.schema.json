@@ -57,6 +57,15 @@
         },
         {
           "$ref": "#/$defs/ConnectorsListResult"
+        },
+        {
+          "$ref": "#/$defs/AgentFocusMessage"
+        },
+        {
+          "$ref": "#/$defs/AgentMoveMessage"
+        },
+        {
+          "$ref": "#/$defs/ConnectorsChanged"
         }
       ],
       "discriminator": {
@@ -459,6 +468,90 @@
         }
       },
       "required": ["connectors"],
+      "additionalProperties": false
+    },
+    "AgentFocusMessage": {
+      "description": "Daemon → every client after bus.welcome and on every change: where the agent lives. The app named here opens its chat pane on the session (replay, then live); others collapse theirs.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "agent.focus"
+        },
+        "payload": {
+          "$ref": "#/$defs/AgentFocus"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "AgentFocus": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string",
+          "description": "The current session: the one the agent is working in."
+        },
+        "app": {
+          "type": "string",
+          "description": "App whose pane has the agent. Absent when no app can host it (nothing open)."
+        },
+        "from": {
+          "type": "string",
+          "description": "Where it was before, if it was in an app."
+        },
+        "reason": {
+          "$ref": "#/$defs/FocusReason"
+        }
+      },
+      "required": ["session", "reason"],
+      "additionalProperties": false
+    },
+    "FocusReason": {
+      "description": "initial: sent after bus.welcome; user: an app or the CLI moved it; agent: the agent called apps_focus; closed: its app went away; opened: an app opened while the agent had none; session: the current session changed.",
+      "type": "string",
+      "enum": ["initial", "user", "agent", "closed", "opened", "session"]
+    },
+    "AgentMoveMessage": {
+      "description": "Client → daemon: move the agent (acked). app must be an open connector of kind app; without app it goes home. With session, that session becomes the current one.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "agent.move"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/AgentMove"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "AgentMove": {
+      "type": "object",
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConnectorsChanged": {
+      "description": "Daemon → every client when a connector opens, closes or changes.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "connectors.changed"
+        },
+        "payload": {
+          "$ref": "#/$defs/ConnectorsListPayload"
+        }
+      },
+      "required": ["topic", "payload"],
       "additionalProperties": false
     }
   }

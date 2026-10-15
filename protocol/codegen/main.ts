@@ -1,10 +1,9 @@
-// Generates TS and Go types from protocol/schemas/*.schema.json, plus the JSON example files.
+// Generates TS, Go and Rust types from protocol/schemas/*.schema.json, plus the JSON example files.
 //
 //   bun run protocol/codegen/main.ts           write generated files
 //   bun run protocol/codegen/main.ts --check   fail if any generated file is stale
 //
-// Supported schema subset (anything else is an error, so the Rust generator in Phase 3 sees the
-// same shapes):
+// Supported schema subset (anything else is an error, so all three languages see the same shapes):
 //   - every named type lives in `$defs`; names are globally unique across files
 //   - objects: `properties` + `required`, `additionalProperties: false`; no inline objects
 //   - maps: `type: object` with `additionalProperties: <schema>` and no properties
@@ -17,6 +16,7 @@ import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import * as prettier from "prettier";
 import { generateGo } from "./go.ts";
+import { generateRust } from "./rust.ts";
 import { generateTs } from "./ts.ts";
 import { loadSchemas } from "./model.ts";
 import { examples } from "../examples/examples.ts";
@@ -40,6 +40,16 @@ function formatGo(src: string): string {
   return res.stdout.toString();
 }
 
+function formatRust(src: string): string {
+  const res = Bun.spawnSync(["rustfmt", "--edition", "2024", "--emit", "stdout"], {
+    stdin: new TextEncoder().encode(src),
+  });
+  if (res.exitCode !== 0) {
+    throw new Error(`rustfmt failed:\n${res.stderr.toString()}`);
+  }
+  return res.stdout.toString();
+}
+
 async function formatJson(value: unknown): Promise<string> {
   return prettier.format(JSON.stringify(value), { ...prettierConfig, parser: "json" });
 }
@@ -47,6 +57,7 @@ async function formatJson(value: unknown): Promise<string> {
 const outputs = new Map<string, string>();
 outputs.set(join(root, "gen", "types.ts"), await formatTs(generateTs(model)));
 outputs.set(join(root, "go", "types.gen.go"), formatGo(generateGo(model)));
+outputs.set(join(root, "rust", "src", "types.rs"), formatRust(generateRust(model)));
 for (const [name, value] of Object.entries(examples)) {
   outputs.set(join(root, "examples", `${name}.json`), await formatJson(value));
 }
