@@ -1,0 +1,386 @@
+# Shared Agent Sessions Across the App Suite
+
+One agent session that follows the user across every app (overlay, browser, file explorer, code editor, photo editor) instead of a separate chat per app. Apps are built with different toolkits (web, GPUI, TUI), so the chat is defined once as data and rendered natively by each toolkit.
+
+## Goals
+
+- One conversation history shared by all apps.
+- Move the agent between apps; the target app opens its own chat UI with the same session.
+- Apps can open and close at any time without breaking the session.
+- Prompt caching stays intact: the cached prefix (tools + system prompt) never changes.
+- The chat looks and behaves consistently in web, GPUI and terminal apps.
+- Standard MCP throughout, so external harnesses can join as guests.
+
+---
+
+## 1. Overview
+
+```
+                ┌──────────────────────── daemon (always running) ────────────────────────┐
+                │                                                                          │
+ apps ◄─ bus ─► │  session store ── harness (pi) ── MCP gateway ── asset store ── services │
+ (web/GPUI/TUI) │        │                               │                       (LSP…)    │
+                │        └──── ACP bridge ── guests (Claude Code, Codex) ──────────┘         │
+                └──────────────────────────────────────────────────────────────────────────┘
+```
+
+| Layer       | Role                                                                    |
+| ----------- | ----------------------------------------------------------------------- |
+| ACP         | Daemon ↔ agents (your harness and guests): sessions, prompts, streaming |
+| MCP         | Agents ↔ connectors: tools, typed results                               |
+| Bus         | Session sharing, focus, presence, file sync, UI actions                 |
+| View format | How everything in the chat is described and rendered                    |
+
+---
+
+## 2. Repository structure
+
+```
+suite/
+  protocol/         Source of truth: JSON Schemas for bus topics, events,
+                    view format and theme tokens. Generates TS, Go and Rust types.
+  daemon/           TS on Bun. Session store, bus hub, MCP gateway, asset store,
+                    service manager, ACP bridge, view resolver.
+  harness/          TS on Bun. pi-ai + pi-agent-core, core tools, static system
+                    prompt, event injection, ACP-style interface.
+  sdk-ts/           TS client: bus connection, presence, tool registration,
+                    session attach.
+  sdk-go/           Go client: same API, for TUI apps and the CLI.
+  sdk-rs/           Rust client: same API, kept minimal, only for GPUI apps.
+  renderers/
+    web/            TS. Draws resolved components with DOM/CSS.
+    gpui/           Rust. Draws resolved components with GPUI.
+    tui/            Go. Draws resolved components in the terminal.
+  cli/              Go. suite status / sessions / attach / logs / tools.
+                    attach uses the TUI renderer.
+  fixtures/         Example view JSON + resolved output + snapshot tests
+                    for every renderer.
+
+apps/ (existing)    overlay, browser, file explorer, code editor, photo editor
+```
+
+**Language split:** the daemon and harness are TypeScript on Bun because pi is TypeScript. The CLI, TUI renderer and Go SDK are Go. GPUI is a Rust-only framework, so GPUI apps need a Rust client and renderer; both stay thin because all view logic runs in the daemon (section 8). `protocol/` generates matching types for all three languages.
+
+**Tooling:** Bun workspaces for the TS packages, a Go module (or `go.work`) for the Go side, a small Cargo workspace for the GPUI pieces.
+
+---
+
+## 3. Daemon
+
+A long-running user service, started at login (launchd / systemd / Windows service). One process to start with; parts can be split out later if one needs isolation (LSP is the most likely).
+
+| Part              | What it is                                                                                    |
+| ----------------- | --------------------------------------------------------------------------------------------- |
+| Session store     | SQLite event log with sequence numbers (`bun:sqlite`)                                         |
+| Bus hub           | WebSocket over a Unix socket (or localhost plus an auth token)                                |
+| View resolver     | Fills templates, applies patches, merges streaming text; sends resolved components to clients |
+| MCP gateway       | Streamable HTTP endpoint; every connector's tools, tool search, errors for closed apps        |
+| Asset store       | Folder of files named by content hash, served as `asset://` handles                           |
+| Service manager   | Starts and supervises background services (LSP, indexes)                                      |
+| ACP bridge        | Starts guest harnesses and connects them to sessions                                          |
+| Template registry | View templates registered by apps for their result types                                      |
+
+The overlay is **not** hosted in the daemon. It's an app like the others, with an always-on flag, so a UI crash never takes sessions down.
+
+---
+
+## 4. Harness
+
+A general-purpose agent with a minimal core. Its own package, running in-process behind an ACP-style interface, so the daemon treats it the same as Claude Code or Codex. It can be tested standalone and used by other ACP clients.
+
+**Built on pi (as dependencies, not a fork)**
+
+- `@mariozechner/pi-ai`: model calls across providers
+- `@mariozechner/pi-agent-core`: agent loop, tool calling, state
+- `bash`/`read`/`write`/`edit` implementations from pi's coding agent if they import cleanly; otherwise rewritten (they're small)
+- Check early: the session log must own the history, so pi-agent-core's state handling has to allow that.
+
+**Fixed tool list** (full native definitions, never changes)
+
+| Tool                        | Purpose                                         |
+| --------------------------- | ----------------------------------------------- |
+| `bash`                      | Run shell commands                              |
+| `read`                      | Read files                                      |
+| `write`                     | Write files                                     |
+| `edit`                      | Edit files                                      |
+| `tools.search(query, app?)` | Find connector tools; returns full JSON schemas |
+| `tools.call(name, args)`    | Run a connector tool (validated by the gateway) |
+| `apps.focus(app)`           | Move the agent into an app                      |
+
+**Other responsibilities**
+
+- Add connect, disconnect and focus events to each prompt.
+- Publish `file.changed {path}` whenever a core tool changes a file.
+- Resolve `asset://` handles to file paths.
+- Act as an MCP client of the gateway; read `structuredContent` directly.
+
+### System prompt (static, identical for every session)
+
+```
+You're an AI agent working across a suite of apps and services on the user's system.
+
+Connectors (apps and services) announce themselves with <app connected=…/>
+and <app disconnected=…/> events. Each event lists tool names only; use
+tools.search to get a connector's tool schemas and tools.call to run them.
+
+The most recent <focus> event says where the user is now.
+
+When a connector disconnects, its tools stop working until it reconnects;
+earlier schemas and results in this conversation stay valid as history.
+If you need a disconnected app, ask the user to open it or use apps.launch.
+After a reconnect, earlier schemas still apply unless the event shows a new version.
+
+Tools that produce files or media return handles like asset://img-7f3.
+Pass these handles to other tools to move results between apps.
+```
+
+---
+
+## 5. Connectors
+
+Everything beyond the core tools is a connector. Two kinds, one registration mechanism:
+
+- **Apps** (have a UI, come and go): browser, photo editor, code editor, file explorer, overlay
+- **Background services** (no UI, connected when the daemon starts): LSP, asset store, search indexes
+
+Only `apps.focus` cares about the difference.
+
+### MCP gateway
+
+- Exposes every connector's tools all the time, so no agent's tool list ever changes.
+- Forwards each call to the connected app or service.
+- If the target isn't connected, returns a normal tool result:
+
+```json
+{
+  "isError": true,
+  "content": [
+    {
+      "type": "text",
+      "text": "Photo editor isn't open. Ask the user to open it, or call apps.launch('photo-editor')."
+    }
+  ]
+}
+```
+
+- Validates arguments; on a bad call returns `isError` with the schema so the model can correct itself.
+- Tools declare `outputSchema` and return `structuredContent` next to the text.
+- Optionally auto-launches an app, waits for it to register, then runs the call.
+
+### Tool search
+
+- The index updates live from `app.presence`.
+- Matching on names + descriptions is enough to start with; add embeddings only if the tool count gets large.
+- Schemas arrive as tool results, so they're appended to the history (no cache invalidation).
+
+### Asset store
+
+- Holds anything apps produce (images, downloads, exports).
+- Handles stay valid after the producing app disconnects.
+- Needed because the model can see an image but can't hand the pixels to another tool.
+
+### LSP
+
+- Language servers run as a background service, not inside the code editor.
+- Diagnostics and definitions work with the editor closed; the editor attaches to the same servers.
+
+---
+
+## 6. Transcript
+
+Events go at the start of the next user message. Mid-conversation system messages aren't portable across providers (Anthropic only accepts a system prompt at the start).
+
+```
+[system: static prompt above]
+
+[user]
+<app connected="lsp" kind="service" v="1" tools="diagnostics, definition, references, rename"/>
+<app connected="photo-editor" kind="app" v="3" tools="crop, resize, layers, filters, export"/>
+<app connected="browser" kind="app" v="2" tools="navigate, read, screenshot, download"/>
+<focus app="browser" url="https://…"/>
+Can you pull this image and edit it?
+
+[assistant]
+→ tools.search("download image")         ← schemas appended to history
+→ tools.call("browser.download", …)      → asset://img-7f2
+→ tools.call("photo.crop", { asset: "asset://img-7f2", … }) → asset://img-7f3
+
+[user]
+<app connected="code-editor" kind="app" v="1" tools="open, reveal, selection"/>
+<app disconnected="photo-editor"/>
+<focus app="code-editor" project="~/site"/>
+Add that image as a logo to my project
+
+[assistant]
+→ bash: cp <resolved asset://img-7f3> ~/site/public/logo.png
+→ edit: ~/site/src/Header.tsx
+```
+
+**Rules**
+
+- The system prompt never contains session state, not even the apps open at startup.
+- Events carry tool names only; schemas come from `tools.search`.
+- Send `<focus>` only when focus changes.
+- Log disconnects so later "app isn't open" errors make sense.
+- Version connect events (`v=`); the model re-searches only when the version changes.
+
+---
+
+## 7. Bus
+
+The session lives in the daemon; every chat UI is a view of it.
+
+### Session
+
+- Event log with sequence numbers. Late subscribers replay, then follow live events.
+- Turns are queued one at a time; each input is tagged with the app it came from.
+
+### Topics
+
+| Topic            | Payload                                                    | Purpose                                            |
+| ---------------- | ---------------------------------------------------------- | -------------------------------------------------- |
+| `session.events` | ACP-style `session/update` events + seq                    | Stream to every view                               |
+| `session.input`  | `{session, app, text}`                                     | Any pane can submit input                          |
+| `agent.focus`    | `{session, app}`                                           | Where the agent lives; matching app opens its pane |
+| `app.presence`   | `{app, kind, v, open, context, tools, templates, actions}` | Registration                                       |
+| `tool.result`    | `{ref, type, data}`                                        | Typed results for views                            |
+| `view.patch`     | `{ref, patch}`                                             | Live updates to a rendered view                    |
+| `ui.action`      | `{ref, action, args}`                                      | Button presses, routed to an app or the agent      |
+| `file.changed`   | `{path}`                                                   | Open apps reload or show a diff                    |
+
+### Moving the agent between apps
+
+1. User drags the agent onto another app, or the agent calls `apps.focus`.
+2. Daemon publishes `agent.focus`.
+3. The target app opens its chat pane, replays the history, then follows live events. A handoff mid-turn keeps streaming into the new pane.
+4. The previous pane collapses, or stays open as a second view.
+5. The next prompt carries the new `<focus>`.
+
+If the focused app closes, focus falls back to the overlay. The session never closes.
+
+---
+
+## 8. View format
+
+The whole chat is described as data and rendered natively by each toolkit. The goal is consistent structure and behavior, not pixel-identical output.
+
+### Everything in the chat is a component
+
+Session events map to standard components: user message, agent message, tool-call card, plan, diff, result view. Rich tool results use the same components.
+
+### Components (fixed set; apps combine them, never add new ones)
+
+| Component              | Web / GPUI        | TUI fallback (required)                                        |
+| ---------------------- | ----------------- | -------------------------------------------------------------- |
+| `card`, `row`, `stack` | Layout containers | Boxes / indentation                                            |
+| `text` (markdown)      | Styled text       | Styled text                                                    |
+| `image`                | Image             | Kitty/Sixel if supported, else `[image 1920×1080 · asset://…]` |
+| `file`                 | File chip         | `📄 path`                                                      |
+| `code`                 | Highlighted block | Highlighted block                                              |
+| `diff`                 | Side-by-side      | Colored unified diff                                           |
+| `table`                | Grid              | Box-drawn table, columns cut to fit                            |
+| `kv`                   | Key–value list    | Aligned lines                                                  |
+| `progress`             | Bar               | `▓▓▓░░ 60%`                                                    |
+| `button`               | Button            | `[1] Label` + key binding                                      |
+| `link`                 | Link              | Underlined text + URL                                          |
+
+The text fallback also gives guests' plain-text results a consistent format.
+
+### Templates
+
+Data and view are separate. Each result type registers a template when its app announces itself; the daemon stores it. Results carry only data, so they render correctly in any pane, even after the producing app has closed.
+
+```json
+{
+  "type": "card",
+  "title": "Cropped image",
+  "children": [
+    {
+      "type": "image",
+      "src": "{{data.asset}}",
+      "caption": "{{data.w}}×{{data.h}}"
+    },
+    {
+      "type": "row",
+      "children": [
+        {
+          "type": "button",
+          "label": "Open as layer",
+          "action": "photo.open_layer",
+          "key": "o"
+        },
+        {
+          "type": "button",
+          "label": "Copy handle",
+          "action": "copy:{{data.asset}}",
+          "key": "c"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Results with no template fall back to a generic card built from ACP's base data (`kind`, text, diff, terminal output).
+
+### Behavior
+
+- **Actions send events, not code.** A button publishes `ui.action`; the daemon routes it to the right app, or to the agent as input if the app isn't open.
+- **Keyboard first.** Every action has a key hint; focus moves through actions in a defined order.
+- **Live updates.** Views are patched by `ref` via `view.patch`.
+
+### Theme tokens
+
+Tokens describe meaning, not exact colors: `accent`, `muted`, `success`, `danger`; spacing `s`/`m`/`l`; text roles `title`/`body`/`code`. Web maps them to CSS variables, GPUI to its theme, TUIs to the closest 16-color, 256-color or true-color value. The daemon serves the active theme.
+
+### Rendering pipeline
+
+```
+templates + data ─► daemon view resolver ─► resolved components (over the bus) ─┬─► web renderer  (TS)
+                                                                                ├─► GPUI renderer (Rust)
+                                                                                └─► TUI renderer  (Go)
+```
+
+The daemon's view resolver does the shared logic once: filling templates, applying `view.patch`, merging streaming text. Clients receive fully resolved component trees and only draw them. Local UI state (expanded/collapsed, scroll, focused action) stays in each client, since it's per-view and simple.
+
+This keeps all three renderers thin without a shared library across three languages. Every component is added to `fixtures/` first (template + data + expected resolved output), with snapshot tests in each renderer (screenshots for web and GPUI, text output for the TUI), so the three can't drift apart.
+
+---
+
+## 9. Guest agents
+
+Claude Code, Codex and other ACP harnesses can join for heavy coding.
+
+- Started by the ACP bridge as a sub-session (from the code editor, or by the main agent via a `delegate` tool); output streams onto the same bus.
+- Connect to the same MCP gateway and see the same tools.
+- **System prompt: add to it, don't replace it.** Their built-in prompts explain their own tools and are what make them good at coding. Append a short block covering the gateway, `asset://` handles and the event tags (`--append-system-prompt` for the Claude Code CLI, the `claude_code` preset + `append` in the Agent SDK, Codex's own custom-instruction config).
+- The daemon adds the same connect, disconnect and focus events to their prompts.
+- Guests usually reduce tool results to text, so the gateway publishes `tool.result {ref, …}` on the bus and returns text with the ref (`"Cropped → [result:a1f3]"`). Panes match the ref to the stored result and render it with its template; with no match they show the text.
+
+---
+
+## 10. Build plan
+
+Each phase ends with something that works on its own.
+
+| Phase             | Build                                                                                                   | Done when                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| 0. Protocol       | Schemas for bus topics, events, view format, tokens; TS + Go codegen (Rust added in Phase 3)            | Both sides compile against the same types                                          |
+| 1. Core loop      | Daemon (session store, bus hub), harness with core tools only, Go CLI with a text-only `attach`         | You can chat with the agent from a terminal, and sessions survive a daemon restart |
+| 2. Connectors     | MCP gateway, presence, tool search, closed-app errors; `sdk-ts` and `sdk-go`; overlay as the first app  | An app's tools appear in search and work from the overlay                          |
+| 3. Handoff        | `agent.focus`, replay + live follow, event injection; `sdk-rs` and a second app (one GPUI app)          | One conversation moves between the overlay and another app — the core goal         |
+| 4. View format    | Daemon view resolver, the three renderers, fixtures, templates, `ui.action`, `view.patch`, theme tokens | The same tool result looks consistent in web, GPUI and TUI                         |
+| 5. Cross-app work | Asset store, LSP service, `file.changed` sync                                                           | The browser → photo editor → code editor logo flow works end to end                |
+| 6. Guests         | ACP bridge, appended prompts, `[result:ref]` matching                                                   | A coding task handed to Claude Code streams into the same session                  |
+| 7. Hardening      | See open questions                                                                                      | Safe to leave running all day                                                      |
+
+---
+
+## 11. Open questions
+
+- **Approvals.** `bash` and file writes need a permission flow. Approval requests should be bus events rendered as a view component in whichever pane has focus (and in the TUI with key bindings).
+- **Long sessions.** A shared session grows fast. Decide how compaction works and who owns it (harness vs daemon), and how guests' histories relate to the main log.
+- **Concurrent sessions.** Can two sessions be active at once, and how does focus work then?
+- **Local security.** Auth on the bus socket and the MCP endpoint, and which apps may register tools.
+- **pi-agent-core state.** Confirm the session log can own the history without forking.
+- **pi on Bun.** Confirm pi-ai and pi-agent-core run cleanly under Bun (provider SDKs, streaming).

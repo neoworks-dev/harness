@@ -1,0 +1,5 @@
+{
+  "name": "@suite/harness",
+  "private": true,
+  "type": "module"
+}
