@@ -1,0 +1,1 @@
+{ "topic": "bus.hello", "payload": { "protocol": 1, "client": "cli" } }

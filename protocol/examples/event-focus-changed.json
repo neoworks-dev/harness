@@ -1,0 +1,9 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 10,
+    "ts": 1760565600900,
+    "event": { "type": "focus_changed", "app": "code-editor", "context": { "project": "~/site" } }
+  }
+}

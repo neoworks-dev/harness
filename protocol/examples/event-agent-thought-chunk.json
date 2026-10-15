@@ -1,0 +1,9 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 2,
+    "ts": 1760565600200,
+    "event": { "type": "agent_thought_chunk", "messageId": "m1", "text": "The user wants a file." }
+  }
+}

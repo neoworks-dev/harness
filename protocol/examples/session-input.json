@@ -1,0 +1,5 @@
+{
+  "topic": "session.input",
+  "id": "8",
+  "payload": { "session": "s_7k2m9q4x1c", "app": "cli", "text": "Create hello.txt" }
+}

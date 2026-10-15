@@ -1,0 +1,4 @@
+{
+  "topic": "bus.welcome",
+  "payload": { "protocol": 1, "daemonVersion": "0.1.0", "pid": 4242, "startedAt": 1760565600000 }
+}

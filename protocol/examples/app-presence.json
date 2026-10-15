@@ -1,0 +1,11 @@
+{
+  "topic": "app.presence",
+  "payload": {
+    "app": "browser",
+    "kind": "app",
+    "v": 2,
+    "open": true,
+    "context": { "url": "https://example.com" },
+    "tools": ["navigate", "read", "screenshot", "download"]
+  }
+}

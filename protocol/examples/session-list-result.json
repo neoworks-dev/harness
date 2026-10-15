@@ -1,0 +1,17 @@
+{
+  "topic": "session.list_result",
+  "id": "2",
+  "payload": {
+    "sessions": [
+      {
+        "id": "s_7k2m9q4x1c",
+        "cwd": "/home/user/site",
+        "createdAt": 1760565600000,
+        "lastActivity": 1760565712345,
+        "lastSeq": 17,
+        "state": "running",
+        "queued": 1
+      }
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 6,
+    "ts": 1760565600550,
+    "event": { "type": "tool_call_update", "toolCallId": "call_1", "status": "in_progress" }
+  }
+}

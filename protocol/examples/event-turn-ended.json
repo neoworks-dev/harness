@@ -1,0 +1,9 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 7,
+    "ts": 1760565600600,
+    "event": { "type": "turn_ended", "stopReason": "error", "error": "rate limited" }
+  }
+}

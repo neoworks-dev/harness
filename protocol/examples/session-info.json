@@ -1,0 +1,14 @@
+{
+  "topic": "session.info",
+  "id": "1",
+  "payload": {
+    "id": "s_7k2m9q4x1c",
+    "title": "Logo work",
+    "cwd": "/home/user/site",
+    "createdAt": 1760565600000,
+    "lastActivity": 1760565600000,
+    "lastSeq": 0,
+    "state": "idle",
+    "queued": 0
+  }
+}

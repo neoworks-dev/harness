@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "presence.schema.json",
+  "title": "Presence",
+  "description": "Connector registration (app.presence topic). Phase 4 adds templates and actions.",
+  "$defs": {
+    "AppPresence": {
+      "type": "object",
+      "properties": {
+        "app": { "type": "string" },
+        "kind": { "$ref": "session.schema.json#/$defs/ConnectorKind" },
+        "v": { "type": "integer" },
+        "open": { "type": "boolean", "description": "false when the app is closing." },
+        "context": {
+          "type": "object",
+          "description": "Current app context, e.g. url or project.",
+          "additionalProperties": { "type": "string" }
+        },
+        "tools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tool names only; schemas are served by the MCP gateway."
+        }
+      },
+      "required": ["app", "kind", "v", "open", "tools"],
+      "additionalProperties": false
+    }
+  }
+}

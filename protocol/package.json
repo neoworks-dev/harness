@@ -1,5 +1,15 @@
 {
   "name": "@suite/protocol",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    "./types": "./gen/types.ts",
+    "./validate": "./src/validate.ts"
+  },
+  "scripts": {
+    "codegen": "bun run codegen/main.ts"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0"
+  }
 }

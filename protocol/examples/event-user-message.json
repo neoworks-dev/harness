@@ -1,0 +1,9 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 1,
+    "ts": 1760565600100,
+    "event": { "type": "user_message", "app": "cli", "text": "Create hello.txt" }
+  }
+}

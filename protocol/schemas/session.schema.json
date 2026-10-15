@@ -1,0 +1,397 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "session.schema.json",
+  "title": "Session",
+  "description": "Session events (ACP-style session/update), session input and session metadata.",
+  "$defs": {
+    "SessionEventRecord": {
+      "description": "Payload of the session.events topic: one row of the session event log.",
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string",
+          "description": "Session id."
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Per-session sequence number, starting at 1, gap-free."
+        },
+        "ts": {
+          "type": "integer",
+          "description": "Unix time in milliseconds."
+        },
+        "event": {
+          "$ref": "#/$defs/SessionEvent"
+        }
+      },
+      "required": ["session", "seq", "ts", "event"],
+      "additionalProperties": false
+    },
+    "SessionEvent": {
+      "description": "Everything that happens in a session. Views must ignore types they don't know.",
+      "type": "object",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/UserMessage"
+        },
+        {
+          "$ref": "#/$defs/AgentMessageChunk"
+        },
+        {
+          "$ref": "#/$defs/AgentThoughtChunk"
+        },
+        {
+          "$ref": "#/$defs/ToolCall"
+        },
+        {
+          "$ref": "#/$defs/ToolCallUpdate"
+        },
+        {
+          "$ref": "#/$defs/TurnEnded"
+        },
+        {
+          "$ref": "#/$defs/AppConnected"
+        },
+        {
+          "$ref": "#/$defs/AppDisconnected"
+        },
+        {
+          "$ref": "#/$defs/FocusChanged"
+        },
+        {
+          "$ref": "#/$defs/HarnessMessage"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "type"
+      }
+    },
+    "UserMessage": {
+      "description": "User input as typed, without injected event tags. Starts a turn.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "user_message"
+        },
+        "app": {
+          "type": "string",
+          "description": "App the input came from."
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "app", "text"],
+      "additionalProperties": false
+    },
+    "AgentMessageChunk": {
+      "description": "Streamed piece of the agent's visible reply.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "agent_message_chunk"
+        },
+        "messageId": {
+          "type": "string",
+          "description": "Groups chunks of one assistant message."
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "messageId", "text"],
+      "additionalProperties": false
+    },
+    "AgentThoughtChunk": {
+      "description": "Streamed piece of the agent's reasoning.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "agent_thought_chunk"
+        },
+        "messageId": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "messageId", "text"],
+      "additionalProperties": false
+    },
+    "ToolCall": {
+      "description": "The agent started a tool call.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "tool_call"
+        },
+        "toolCallId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "description": "Short human-readable summary."
+        },
+        "kind": {
+          "$ref": "#/$defs/ToolKind"
+        },
+        "status": {
+          "$ref": "#/$defs/ToolCallStatus"
+        },
+        "rawInput": {
+          "description": "Tool arguments as sent by the model."
+        }
+      },
+      "required": ["type", "toolCallId", "title", "kind", "status"],
+      "additionalProperties": false
+    },
+    "ToolCallUpdate": {
+      "description": "Progress or result of a tool call. Fields that are present replace earlier values.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "tool_call_update"
+        },
+        "toolCallId": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/ToolCallStatus"
+        },
+        "content": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ToolCallContent"
+          }
+        },
+        "rawOutput": {
+          "description": "Harness-specific result details."
+        }
+      },
+      "required": ["type", "toolCallId"],
+      "additionalProperties": false
+    },
+    "ToolKind": {
+      "description": "ACP tool kinds; lets views pick an icon or layout.",
+      "type": "string",
+      "enum": ["read", "edit", "delete", "move", "search", "execute", "think", "fetch", "other"]
+    },
+    "ToolCallStatus": {
+      "type": "string",
+      "enum": ["pending", "in_progress", "completed", "failed"]
+    },
+    "ToolCallContent": {
+      "type": "object",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/TextContent"
+        },
+        {
+          "$ref": "#/$defs/DiffContent"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "type"
+      }
+    },
+    "TextContent": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "text"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "text"],
+      "additionalProperties": false
+    },
+    "DiffContent": {
+      "description": "A file change. oldText is absent for new files.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "diff"
+        },
+        "path": {
+          "type": "string"
+        },
+        "oldText": {
+          "type": "string"
+        },
+        "newText": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "path", "newText"],
+      "additionalProperties": false
+    },
+    "StopReason": {
+      "type": "string",
+      "enum": ["end_turn", "max_tokens", "cancelled", "refusal", "error"]
+    },
+    "TurnEnded": {
+      "description": "The turn started by the last user_message is over.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "turn_ended"
+        },
+        "stopReason": {
+          "$ref": "#/$defs/StopReason"
+        },
+        "error": {
+          "type": "string",
+          "description": "Set when stopReason is error."
+        }
+      },
+      "required": ["type", "stopReason"],
+      "additionalProperties": false
+    },
+    "ConnectorKind": {
+      "type": "string",
+      "enum": ["app", "service"]
+    },
+    "AppConnected": {
+      "description": "A connector registered. Rendered to the model as <app connected=…/>.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "app_connected"
+        },
+        "app": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ConnectorKind"
+        },
+        "v": {
+          "type": "integer",
+          "description": "Connector version; bumps when its tools change."
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["type", "app", "kind", "v", "tools"],
+      "additionalProperties": false
+    },
+    "AppDisconnected": {
+      "description": "A connector went away. Rendered to the model as <app disconnected=…/>.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "app_disconnected"
+        },
+        "app": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "app"],
+      "additionalProperties": false
+    },
+    "FocusChanged": {
+      "description": "The user's focus moved. Rendered to the model as <focus app=… …context/>.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "focus_changed"
+        },
+        "app": {
+          "type": "string"
+        },
+        "context": {
+          "type": "object",
+          "description": "Extra attributes, e.g. url or project.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["type", "app"],
+      "additionalProperties": false
+    },
+    "HarnessMessage": {
+      "description": "A complete message in the harness's native format. Views ignore it; the harness rebuilds its context from these after a restart.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "harness_message"
+        },
+        "harness": {
+          "type": "string",
+          "description": "Which harness wrote it, e.g. pi."
+        },
+        "message": {
+          "description": "Opaque to everyone but that harness."
+        }
+      },
+      "required": ["type", "harness", "message"],
+      "additionalProperties": false
+    },
+    "SessionInput": {
+      "description": "Payload of the session.input topic.",
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string"
+        },
+        "app": {
+          "type": "string",
+          "description": "App the input came from."
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["session", "app", "text"],
+      "additionalProperties": false
+    },
+    "SessionState": {
+      "type": "string",
+      "enum": ["idle", "running"]
+    },
+    "SessionInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Working directory for the core tools."
+        },
+        "createdAt": {
+          "type": "integer",
+          "description": "Unix time in milliseconds."
+        },
+        "lastActivity": {
+          "type": "integer",
+          "description": "Unix time in milliseconds."
+        },
+        "lastSeq": {
+          "type": "integer",
+          "description": "0 if the session has no events yet."
+        },
+        "state": {
+          "$ref": "#/$defs/SessionState"
+        },
+        "queued": {
+          "type": "integer",
+          "description": "Inputs waiting behind the running turn."
+        }
+      },
+      "required": ["id", "cwd", "createdAt", "lastActivity", "lastSeq", "state", "queued"],
+      "additionalProperties": false
+    }
+  }
+}

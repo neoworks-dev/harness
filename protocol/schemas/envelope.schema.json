@@ -1,0 +1,413 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "envelope.schema.json",
+  "title": "Envelope",
+  "description": "Every bus frame (one JSON text frame per WebSocket message). Tagged by topic; id correlates requests with replies.",
+  "$defs": {
+    "Envelope": {
+      "type": "object",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/BusHello"
+        },
+        {
+          "$ref": "#/$defs/BusWelcome"
+        },
+        {
+          "$ref": "#/$defs/BusAck"
+        },
+        {
+          "$ref": "#/$defs/BusError"
+        },
+        {
+          "$ref": "#/$defs/SessionCreate"
+        },
+        {
+          "$ref": "#/$defs/SessionList"
+        },
+        {
+          "$ref": "#/$defs/SessionListResult"
+        },
+        {
+          "$ref": "#/$defs/SessionSubscribe"
+        },
+        {
+          "$ref": "#/$defs/SessionUnsubscribe"
+        },
+        {
+          "$ref": "#/$defs/SessionSubscribed"
+        },
+        {
+          "$ref": "#/$defs/SessionCancel"
+        },
+        {
+          "$ref": "#/$defs/SessionInfoMessage"
+        },
+        {
+          "$ref": "#/$defs/SessionEvents"
+        },
+        {
+          "$ref": "#/$defs/SessionInputMessage"
+        },
+        {
+          "$ref": "#/$defs/AppPresenceMessage"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "topic"
+      }
+    },
+    "BusHello": {
+      "description": "Client → daemon, first frame.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "bus.hello"
+        },
+        "payload": {
+          "$ref": "#/$defs/Hello"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "Hello": {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "integer",
+          "description": "Protocol version; currently 1."
+        },
+        "client": {
+          "type": "string",
+          "description": "Client name, e.g. cli or overlay."
+        }
+      },
+      "required": ["protocol", "client"],
+      "additionalProperties": false
+    },
+    "BusWelcome": {
+      "description": "Daemon → client, reply to bus.hello.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "bus.welcome"
+        },
+        "payload": {
+          "$ref": "#/$defs/Welcome"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "Welcome": {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "type": "integer"
+        },
+        "daemonVersion": {
+          "type": "string"
+        },
+        "pid": {
+          "type": "integer"
+        },
+        "startedAt": {
+          "type": "integer",
+          "description": "Unix time in milliseconds."
+        }
+      },
+      "required": ["protocol", "daemonVersion", "pid", "startedAt"],
+      "additionalProperties": false
+    },
+    "BusAck": {
+      "description": "Daemon → client: the request with this id was accepted.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "bus.ack"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": ["topic", "id"],
+      "additionalProperties": false
+    },
+    "BusError": {
+      "description": "Daemon → client: a request failed, or (without id) a frame could not be handled.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "bus.error"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/ErrorInfo"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "ErrorInfo": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": false
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": ["bad_request", "not_found", "internal"]
+    },
+    "SessionCreate": {
+      "description": "Client → daemon. Replied to with session.info.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.create"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/SessionCreateParams"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "SessionCreateParams": {
+      "type": "object",
+      "properties": {
+        "cwd": {
+          "type": "string",
+          "description": "Working directory; defaults to the daemon's home dir."
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SessionList": {
+      "description": "Client → daemon. Replied to with session.list_result.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.list"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": ["topic", "id"],
+      "additionalProperties": false
+    },
+    "SessionListResult": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.list_result"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/SessionListPayload"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "SessionListPayload": {
+      "type": "object",
+      "properties": {
+        "sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "session.schema.json#/$defs/SessionInfo"
+          }
+        }
+      },
+      "required": ["sessions"],
+      "additionalProperties": false
+    },
+    "SessionSubscribe": {
+      "description": "Client → daemon. The daemon replays session.events from fromSeq, sends session.subscribed, then streams live events with no gaps or duplicates.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.subscribe"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/SubscribeParams"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "SubscribeParams": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string"
+        },
+        "fromSeq": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "First seq to replay (inclusive). Defaults to 1."
+        }
+      },
+      "required": ["session"],
+      "additionalProperties": false
+    },
+    "SessionUnsubscribe": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.unsubscribe"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/SessionRef"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "SessionRef": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string"
+        }
+      },
+      "required": ["session"],
+      "additionalProperties": false
+    },
+    "SessionSubscribed": {
+      "description": "Daemon → client, after the replay for subscription id. Everything after this is live.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.subscribed"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/SubscribedPayload"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "SubscribedPayload": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "$ref": "session.schema.json#/$defs/SessionInfo"
+        },
+        "replayedThrough": {
+          "type": "integer",
+          "description": "Last seq included in the replay (0 if none)."
+        }
+      },
+      "required": ["session", "replayedThrough"],
+      "additionalProperties": false
+    },
+    "SessionCancel": {
+      "description": "Client → daemon: cancel the running turn. Queued inputs still run.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.cancel"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/SessionRef"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "SessionInfoMessage": {
+      "description": "Daemon → client: reply to session.create.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.info"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "session.schema.json#/$defs/SessionInfo"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "SessionEvents": {
+      "description": "Daemon → client: one session event (replayed or live).",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.events"
+        },
+        "payload": {
+          "$ref": "session.schema.json#/$defs/SessionEventRecord"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "SessionInputMessage": {
+      "description": "Client → daemon: submit input. Acked once queued; the turn runs when the session is free.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.input"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "session.schema.json#/$defs/SessionInput"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "AppPresenceMessage": {
+      "description": "Client → daemon: connector registration. Wired up in Phase 2.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "app.presence"
+        },
+        "payload": {
+          "$ref": "presence.schema.json#/$defs/AppPresence"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    }
+  }
+}

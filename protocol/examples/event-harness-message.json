@@ -1,0 +1,13 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 11,
+    "ts": 1760565601000,
+    "event": {
+      "type": "harness_message",
+      "harness": "pi",
+      "message": { "role": "user", "content": "Create hello.txt", "timestamp": 1760565600100 }
+    }
+  }
+}

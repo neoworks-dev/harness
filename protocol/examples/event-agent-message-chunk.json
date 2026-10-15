@@ -1,0 +1,9 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 3,
+    "ts": 1760565600300,
+    "event": { "type": "agent_message_chunk", "messageId": "m1", "text": "Creating it now." }
+  }
+}

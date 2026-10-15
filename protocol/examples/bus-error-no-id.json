@@ -1,0 +1,1 @@
+{ "topic": "bus.error", "payload": { "code": "bad_request", "message": "frame is not valid JSON" } }
