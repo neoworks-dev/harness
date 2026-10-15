@@ -4,16 +4,16 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use gpui::{
-    App, Bounds, ClickEvent, Context, Entity, EntityInputHandler, FocusHandle, Focusable,
-    HighlightStyle, InteractiveElement, IntoElement, KeyBinding, MouseButton, MouseDownEvent,
-    ParentElement, Pixels, Render, ScrollHandle, StatefulInteractiveElement, Styled, StyledText,
+    App, AppContext as _, Bounds, ClickEvent, Context, Entity, EntityInputHandler, FocusHandle,
+    Focusable, HighlightStyle, InteractiveElement, IntoElement, KeyBinding, MouseButton,
+    MouseDownEvent, ParentElement, Pixels, Render, StatefulInteractiveElement, Styled, StyledText,
     UTF16Selection, Window, actions, canvas, div, hsla, px, rgb,
 };
+use suite_renderer_gpui::{ChatEvent, ChatFonts, ChatView};
 use suite_sdk::{Client, Event};
 
 use crate::field::Field;
 use crate::focus::{Change, Follower};
-use crate::transcript::{Kind, Transcript};
 
 /// This app's name on the bus: its presence, and the `app` of the input it sends.
 pub const APP: &str = "pad";
@@ -27,7 +27,7 @@ const KEY_CONTEXT: &str = "PadInput";
 actions!(
     pad,
     [
-        Submit, CancelTurn, Backspace, Delete, Left, Right, Home, End, Paste
+        Submit, CancelTurn, FocusChat, Backspace, Delete, Left, Right, Home, End, Paste
     ]
 );
 
@@ -35,6 +35,8 @@ pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("enter", Submit, Some(KEY_CONTEXT)),
         KeyBinding::new("escape", CancelTurn, Some(KEY_CONTEXT)),
+        // Up from the input moves into the chat's items with buttons.
+        KeyBinding::new("up", FocusChat, Some(KEY_CONTEXT)),
         KeyBinding::new("backspace", Backspace, Some(KEY_CONTEXT)),
         KeyBinding::new("delete", Delete, Some(KEY_CONTEXT)),
         KeyBinding::new("left", Left, Some(KEY_CONTEXT)),
@@ -50,21 +52,40 @@ pub fn bind_keys(cx: &mut App) {
 
 /// A bus call the view wants made. They run one after another on a worker (blocking calls
 /// belong on a background thread), so a quick open, close, open can't reorder.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 enum Op {
-    Subscribe(String),
-    Unsubscribe(String),
-    Input { session: String, text: String },
+    SubscribeView(String),
+    UnsubscribeView(String),
+    Input {
+        session: String,
+        text: String,
+    },
+    /// A button in the chat: `ui.action`.
+    Action {
+        session: String,
+        item: String,
+        action: String,
+        args: Option<serde_json::Value>,
+    },
     Cancel(String),
-    Move { app: Option<&'static str> },
+    Move {
+        app: Option<&'static str>,
+    },
 }
 
 impl Op {
     fn run(&self, client: &Client) -> suite_sdk::Result<()> {
         match self {
-            Op::Subscribe(session) => client.subscribe(session, 1).map(drop),
-            Op::Unsubscribe(session) => client.unsubscribe(session),
+            // The snapshot also arrives as an event, which is what the chat is fed from.
+            Op::SubscribeView(session) => client.subscribe_view(session).map(drop),
+            Op::UnsubscribeView(session) => client.unsubscribe_view(session),
             Op::Input { session, text } => client.input(session, APP, text, &[]),
+            Op::Action {
+                session,
+                item,
+                action,
+                args,
+            } => client.action(session, item, action, args.clone()),
             Op::Cancel(session) => client.cancel(session),
             Op::Move { app } => client.move_agent(*app, None),
         }
@@ -76,17 +97,16 @@ pub struct Pad {
     follower: Follower,
     /// The app the agent is in right now (`None`: no app can host it, or not known yet).
     agent_at: Option<String>,
-    transcript: Transcript,
+    chat: Entity<ChatView>,
     field: Field,
     focus: FocusHandle,
-    scroll: ScrollHandle,
     connected: bool,
     /// The last failed call, shown until the next focus change.
     notice: Option<String>,
 }
 
 impl Pad {
-    pub fn new(client: Arc<Client>, cx: &mut Context<Self>) -> Pad {
+    pub fn new(client: Arc<Client>, window: &mut Window, cx: &mut Context<Self>) -> Pad {
         let (ops, queue) = async_channel::unbounded::<Op>();
 
         // Pushed events: focus, session events, connection state.
@@ -121,14 +141,26 @@ impl Pad {
         })
         .detach();
 
+        let chat = cx.new(|cx| {
+            let mut chat = ChatView::new(cx);
+            chat.set_fonts(
+                ChatFonts {
+                    sans: FONT.into(),
+                    ..ChatFonts::default()
+                },
+                cx,
+            );
+            chat
+        });
+        cx.subscribe_in(&chat, window, Pad::on_chat).detach();
+
         Pad {
             ops,
             follower: Follower::new(APP),
             agent_at: None,
-            transcript: Transcript::default(),
+            chat,
             field: Field::default(),
             focus: cx.focus_handle(),
-            scroll: ScrollHandle::new(),
             connected: true,
             notice: None,
         }
@@ -145,30 +177,61 @@ impl Pad {
                 self.agent_at = focus.app.clone();
                 self.notice = None;
                 for change in self.follower.on_focus(&focus) {
-                    // Both start from an empty transcript: opening replays from seq 1.
-                    self.transcript.clear();
                     match change {
-                        Change::Open(session) => self.do_op(Op::Subscribe(session)),
-                        Change::Close(session) => self.do_op(Op::Unsubscribe(session)),
+                        Change::Open(session) => self.do_op(Op::SubscribeView(session)),
+                        Change::Close(session) => {
+                            self.chat.update(cx, |chat, cx| chat.clear(cx));
+                            self.do_op(Op::UnsubscribeView(session));
+                        }
                     }
                 }
             }
-            Event::Session(record) => {
-                // Events of a session we just left can still be queued.
-                if self.follower.pane() == Some(record.session.as_str()) {
-                    self.transcript.push(&record.event);
-                    self.scroll.scroll_to_bottom();
+            // Views of a session we just left can still be queued.
+            Event::ViewSnapshot(snapshot) => {
+                if self.follower.pane() == Some(snapshot.session.as_str()) {
+                    self.chat
+                        .update(cx, |chat, cx| chat.apply_snapshot(snapshot, cx));
                 }
             }
+            Event::ViewPatch(patch) => {
+                if self.follower.pane() == Some(patch.session.as_str()) {
+                    self.chat.update(cx, |chat, cx| chat.apply_patch(patch, cx));
+                }
+            }
+            Event::Theme(theme) => self.chat.update(cx, |chat, cx| chat.set_theme(&theme, cx)),
             Event::Connection(up) => self.connected = up,
-            // Pad still draws from raw session events; the GPUI renderer takes over the view.
-            Event::Subscribed { .. }
-            | Event::Connectors(_)
-            | Event::Theme(_)
-            | Event::ViewSnapshot(_)
-            | Event::ViewPatch(_) => {}
+            Event::Session(_) | Event::Subscribed { .. } | Event::Connectors(_) => {}
         }
         cx.notify();
+    }
+
+    fn on_chat(
+        &mut self,
+        _: &Entity<ChatView>,
+        event: &ChatEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            ChatEvent::Action { item, action, args } => {
+                if let Some(session) = self.follower.pane() {
+                    self.do_op(Op::Action {
+                        session: session.into(),
+                        item: item.clone(),
+                        action: action.clone(),
+                        args: args.clone(),
+                    });
+                }
+            }
+            ChatEvent::Copied(_) => {}
+            ChatEvent::Leave => window.focus(&self.focus),
+        }
+        cx.notify();
+    }
+
+    fn focus_chat(&mut self, _: &FocusChat, window: &mut Window, cx: &mut Context<Self>) {
+        self.chat
+            .update(cx, |chat, cx| chat.focus_last_actionable(window, cx));
     }
 
     fn submit(&mut self, _: &Submit, _: &mut Window, cx: &mut Context<Self>) {
@@ -351,7 +414,7 @@ impl Pad {
     /// The chat: transcript on top, the input line below.
     fn pane(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let notice = self.notice.clone().unwrap_or_default();
-        let working = if self.transcript.running() {
+        let working = if self.chat.read(cx).busy() {
             "working…"
         } else {
             ""
@@ -373,27 +436,7 @@ impl Pad {
                         cx.listener(|pad, _: &ClickEvent, _, _| pad.do_op(Op::Move { app: None })),
                     )),
             )
-            .child(
-                div()
-                    .id("transcript")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.scroll)
-                    .px_3()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .children(self.transcript.lines().iter().map(|line| {
-                        let colour = match line.kind {
-                            Kind::User => rgb(0x9cdcfe),
-                            Kind::Agent => rgb(0xd4d4d4),
-                            Kind::Tool => rgb(0xce9178),
-                            Kind::Note => rgb(0x808080),
-                        };
-                        div().text_color(colour).child(line.text.clone())
-                    })),
-            )
+            .child(div().flex_1().min_h_0().child(self.chat.clone()))
             .child(div().px_3().text_color(rgb(0xf48771)).child(notice))
             .child(self.input_line(window, cx))
     }
@@ -407,6 +450,7 @@ impl Pad {
             .track_focus(&self.focus)
             .on_action(cx.listener(Self::submit))
             .on_action(cx.listener(Self::cancel_turn))
+            .on_action(cx.listener(Self::focus_chat))
             .on_action(cx.listener(Self::paste))
             .on_action(cx.listener(|pad, _: &Backspace, _, cx| pad.edit(cx, Field::backspace)))
             .on_action(cx.listener(|pad, _: &Delete, _, cx| pad.edit(cx, Field::delete)))
@@ -496,7 +540,7 @@ mod tests {
     use std::process::{Child, Command, Stdio};
     use std::time::{Duration, Instant};
 
-    use gpui::{AppContext as _, TestAppContext};
+    use gpui::TestAppContext;
     use suite_protocol::{AppPresence, ConnectorKind};
     use suite_sdk::Options;
 
@@ -593,18 +637,21 @@ mod tests {
         };
         let home = daemon.client("home", presence("test-home", true));
         let client = daemon.client("pad", presence(APP, false));
-        let window = cx.add_window(|_, cx| Pad::new(client, cx));
+        let window = cx.add_window(|window, cx| Pad::new(client, window, cx));
         let pad = window.root(cx).expect("root view");
         let state = |cx: &mut TestAppContext| {
-            pad.read_with(cx, |pad, _| {
+            pad.read_with(cx, |pad, cx| {
                 (
                     pad.agent_at.clone(),
                     pad.follower.pane().map(String::from),
-                    pad.transcript
-                        .lines()
-                        .iter()
-                        .map(|l| l.text.clone())
-                        .collect::<Vec<_>>(),
+                    // The chat as the layout model's text, one entry per line.
+                    pad.chat.read_with(cx, |chat, _| {
+                        if chat.items().is_empty() {
+                            Vec::new()
+                        } else {
+                            chat.dump().lines().map(String::from).collect::<Vec<_>>()
+                        }
+                    }),
                 )
             })
         };
@@ -634,6 +681,15 @@ mod tests {
         });
 
         draw(cx);
+        // The user's input is a bubble headed with the app it came from.
+        assert!(
+            state(cx)
+                .2
+                .iter()
+                .any(|line| line.contains("\"» test-home\"")),
+            "{:?}",
+            state(cx).2
+        );
 
         // Typing in the pane sends input tagged as pad's.
         pad.update(cx, |pad, cx| {
@@ -647,7 +703,7 @@ mod tests {
                 .any(|line| line.contains("echo #2: from pad"))
         });
 
-        // Send it home: the pane collapses and forgets the transcript.
+        // Send it home: the pane collapses and forgets the chat.
         home.move_agent(None, None).expect("move home");
         wait_until(cx, "the pane to collapse", |cx| state(cx).1.is_none());
         assert!(state(cx).2.is_empty());

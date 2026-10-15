@@ -5179,6 +5179,7 @@ dependencies = [
  "gpui",
  "serde_json",
  "suite-protocol",
+ "suite-renderer-gpui",
  "suite-sdk",
 ]
 
@@ -5188,6 +5189,16 @@ version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "suite-renderer-gpui"
+version = "0.3.0"
+dependencies = [
+ "gpui",
+ "serde_json",
+ "suite-protocol",
+ "suite-sdk",
 ]
 
 [[package]]

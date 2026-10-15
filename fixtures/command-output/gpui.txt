@@ -1,0 +1,24 @@
+theme default-dark spacing s=4 m=8 l=16
+
+item command-output kind=tool state=failed
+  frame body-indent=16
+  header
+    icon text 12.6/400 fg=danger
+      "✗"
+    text 12.6/400 fg=muted
+      "bash: npm test"
+  body
+    stack column gap=4
+      code 13/400 mono fg=fg bg=surface pad=8 radius=6 scroll-x lang=text
+        | > site@1.0.0 test
+        | > vitest run
+        | 
+        |  ✓ src/header.test.ts (3)
+        |  ✗ src/logo.test.ts (1)
+        |    AssertionError: expected 'logo.svg' to be 'logo.png'
+        | 
+        | Tests  1 failed | 3 passed (4)
+      text column gap=4
+        text 14/400 fg=danger
+          "Exit code "
+          "1" bold

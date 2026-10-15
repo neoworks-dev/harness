@@ -4,7 +4,6 @@
 mod field;
 mod focus;
 mod pad;
-mod transcript;
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -60,7 +59,7 @@ fn main() {
                 ..Default::default()
             },
             |window, cx| {
-                let view = cx.new(|cx| pad::Pad::new(client.clone(), cx));
+                let view = cx.new(|cx| pad::Pad::new(client.clone(), window, cx));
                 window.focus(&gpui::Focusable::focus_handle(&view, cx));
                 view
             },

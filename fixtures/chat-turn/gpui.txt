@@ -1,0 +1,104 @@
+theme default-dark spacing s=4 m=8 l=16
+
+item n1 kind=notice
+  body
+    text column gap=4
+      text 12.6/400 fg=muted
+        "photo-editor connected (v3): crop, export"
+
+item n2 kind=notice
+  body
+    text column gap=4
+      text 12.6/400 fg=muted
+        "now in overlay"
+
+item u3 kind=user
+  frame align=end max-width=85% bg=surface border=border radius=12 pad=8/16
+  header
+    text 12.6/400 fg=muted
+      "» overlay"
+  body
+    stack column gap=4
+      text column gap=4
+        text 14/400 fg=fg
+          "Crop this to a square logo and add it to the header."
+      image "/tmp/shot-1.png" source=fallback border=border dashed radius=6 pad=4/8
+        fallback text 13/400 mono fg=muted
+          "[image · /tmp/shot-1.png]"
+
+item t-m1 kind=thought collapsed
+  header
+    text 12.6/400 fg=muted
+      "… thinking"
+  body
+    text column gap=4
+      text 14/400 fg=muted
+        "Crop first, then edit Header.tsx." italic
+
+item m-m2 kind=agent
+  body
+    text column gap=4
+      text 14/400 fg=fg
+        "I'll crop the image to "
+        "512×512" bold
+        " first."
+
+item c-c1 kind=tool state=done
+  frame body-indent=16
+  header
+    icon text 12.6/400 fg=success
+      "✓"
+    text 12.6/400 fg=muted
+      "photo-editor.crop"
+  button 0 [c] "Copy handle" -> "copy:asset://img-7f3"
+  body
+    card column gap=4 pad=8/16 bg=surface border=border radius=8
+      text 15/600 fg=fg
+        "Cropped image"
+      image "asset://img-7f3" source=fallback size=512x512 border=border dashed radius=6 pad=4/8
+        fallback text 13/400 mono fg=muted
+          "[image 512×512 · asset://img-7f3]"
+        caption text 12.6/400 fg=muted
+          "512×512"
+      button #0 bg=bg border=border hover=accent copied=success radius=6 pad=4/8 gap=4
+        label text 14/400 fg=fg nowrap
+          "Copy handle"
+        hint text 11.1/400 mono fg=muted nowrap
+          "c"
+
+item c-c2 kind=tool state=done
+  frame body-indent=16
+  header
+    icon text 12.6/400 fg=success
+      "✓"
+    text 12.6/400 fg=muted
+      "edit src/Header.tsx"
+  body
+    stack column gap=4
+      code 13/400 mono fg=fg bg=surface pad=8 radius=6 scroll-x
+        | Applied 1 edit(s) to src/Header.tsx.
+      diff 13/400 mono border=border radius=6 num-width=32.2 scroll-x
+        path text 13/400 mono fg=muted nowrap
+          "src/Header.tsx"
+        hunk "@@ -1,3 +1,4 @@" fg=muted bg=surface
+        context old="1" new="1" sign=" " "<header>" fg=fg num=muted
+        add old="" new="2" sign="+" "  <img src=\"/logo.png\" alt=\"Logo\" />" fg=success num=muted
+        context old="2" new="3" sign=" " "  <h1>Site</h1>" fg=fg num=muted
+        context old="3" new="4" sign=" " "</header>" fg=fg num=muted
+
+item c-c3 kind=tool state=running
+  frame body-indent=16
+  header
+    icon text 12.6/400 fg=accent
+      "◐"
+    text 12.6/400 fg=muted
+      "bash: npm run build"
+  body
+    code 13/400 mono fg=fg bg=surface pad=8 radius=6 scroll-x
+      | vite v6.0.0 building for production...
+
+item e14 kind=notice
+  body
+    text column gap=4
+      text 12.6/400 fg=danger
+        "Rate limited by the provider; try again in a minute."

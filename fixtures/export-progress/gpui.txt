@@ -1,0 +1,28 @@
+theme default-dark spacing s=4 m=8 l=16
+
+item export-progress kind=tool state=running
+  frame body-indent=16
+  header
+    icon text 12.6/400 fg=accent
+      "◐"
+    text 12.6/400 fg=muted
+      "photo-editor.export"
+  body
+    card column gap=4 pad=8/16 bg=surface border=accent radius=8
+      text 15/600 fg=accent
+        "Exporting logo"
+      kv gap=16
+        "Format" fg=muted = "PNG" fg=fg
+        "Size" fg=muted = "512×512" fg=fg
+        "Quality" fg=muted = "90%" fg=fg
+        style 14/400
+      progress 0.6 track=border fill=accent height=8 gap=8
+        percent text 14/400 fg=fg nowrap
+          "60%"
+        label text 14/400 fg=muted
+          "Compressing"
+      file "/home/user/site/public/logo.png" bg=bg border=border radius=12 pad=0/8
+        text 14/400 fg=fg
+          "📄 logo.png"
+      text 14/400 fg=accent
+        "Export settings" underline href=https://example.com/docs/export

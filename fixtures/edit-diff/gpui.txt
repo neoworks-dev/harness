@@ -1,0 +1,21 @@
+theme default-dark spacing s=4 m=8 l=16
+
+item edit-diff kind=tool state=done
+  frame body-indent=16
+  header
+    icon text 12.6/400 fg=success
+      "✓"
+    text 12.6/400 fg=muted
+      "edit src/Header.tsx"
+  body
+    diff 13/400 mono border=border radius=6 num-width=32.2 scroll-x
+      path text 13/400 mono fg=muted nowrap
+        "src/Header.tsx"
+      hunk "@@ -3,6 +3,7 @@" fg=muted bg=surface
+      context old="3" new="3" sign=" " "export function Header() {" fg=fg num=muted
+      context old="4" new="4" sign=" " "  return (" fg=fg num=muted
+      context old="5" new="5" sign=" " "    <header>" fg=fg num=muted
+      add old="" new="6" sign="+" "      <img src=\"/logo.png\" alt=\"Logo\" />" fg=success num=muted
+      context old="6" new="7" sign=" " "      <h1>Site</h1>" fg=fg num=muted
+      context old="7" new="8" sign=" " "    </header>" fg=fg num=muted
+      context old="8" new="9" sign=" " "  );" fg=fg num=muted

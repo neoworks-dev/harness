@@ -12,9 +12,10 @@ path = "src/main.rs"
 [dependencies]
 async-channel = "2"
 gpui = "0.2.2"
+serde_json = "1"
 suite-protocol = { path = "../../protocol/rust" }
+suite-renderer-gpui = { path = "../../renderers/gpui" }
 suite-sdk = { path = "../../sdk-rs" }
 
 [dev-dependencies]
 gpui = { version = "0.2.2", features = ["test-support"] }
-serde_json = "1"

@@ -1,0 +1,31 @@
+theme default-dark spacing s=4 m=8 l=16
+
+item crop-result kind=tool state=done
+  frame body-indent=16
+  header
+    icon text 12.6/400 fg=success
+      "✓"
+    text 12.6/400 fg=muted
+      "photo-editor.crop"
+  button 0 [o] "Open as layer" -> "photo-editor.open_layer" args={"asset":"asset://img-7f3"}
+  button 1 [c] "Copy handle" -> "copy:asset://img-7f3"
+  body
+    card column gap=4 pad=8/16 bg=surface border=border radius=8
+      text 15/600 fg=fg
+        "Cropped image"
+      image "asset://img-7f3" source=fallback size=1920x1080 border=border dashed radius=6 pad=4/8
+        fallback text 13/400 mono fg=muted
+          "[image 1920×1080 · asset://img-7f3]"
+        caption text 12.6/400 fg=muted
+          "1920×1080"
+      row row-wrap gap=4
+        button #0 bg=bg border=border hover=accent copied=success radius=6 pad=4/8 gap=4
+          label text 14/400 fg=fg nowrap
+            "Open as layer"
+          hint text 11.1/400 mono fg=muted nowrap
+            "o"
+        button #1 bg=bg border=border hover=accent copied=success radius=6 pad=4/8 gap=4
+          label text 14/400 fg=fg nowrap
+            "Copy handle"
+          hint text 11.1/400 mono fg=muted nowrap
+            "c"

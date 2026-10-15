@@ -1,0 +1,36 @@
+theme default-dark spacing s=4 m=8 l=16
+
+item app-cards kind=tool state=done
+  frame body-indent=16
+  header
+    icon text 12.6/400 fg=success
+      "✓"
+    text 12.6/400 fg=muted
+      "browser.tabs"
+  button 0 [1] "Switch" -> "browser.activate" args={"tab":3}
+  button 1 [2] "Switch" -> "browser.activate" args={"tab":7}
+  body
+    row row-wrap gap=8
+      card column gap=4 pad=8/16 bg=surface border=border radius=8
+        text 15/600 fg=fg
+          "Site preview"
+        text 14/400 fg=accent
+          "http://localhost:5173/" underline href=http://localhost:5173/
+        text column gap=4
+          text 14/400 fg=accent
+            "Pinned"
+        button #0 bg=bg border=border hover=accent copied=success radius=6 pad=4/8 gap=4
+          label text 14/400 fg=fg nowrap
+            "Switch"
+          hint text 11.1/400 mono fg=muted nowrap
+            "1"
+      card column gap=4 pad=8/16 bg=surface border=border radius=8
+        text 15/600 fg=fg
+          "Logo ideas"
+        text 14/400 fg=accent
+          "https://example.com/logos" underline href=https://example.com/logos
+        button #1 bg=bg border=border hover=accent copied=success radius=6 pad=4/8 gap=4
+          label text 14/400 fg=fg nowrap
+            "Switch"
+          hint text 11.1/400 mono fg=muted nowrap
+            "2"

@@ -1,0 +1,24 @@
+theme default-dark spacing s=4 m=8 l=16
+
+item file-table kind=tool state=done
+  frame body-indent=16
+  header
+    icon text 12.6/400 fg=success
+      "✓"
+    text 12.6/400 fg=muted
+      "files.list"
+  body
+    stack column gap=4
+      text column gap=4
+        text 15/600 fg=fg
+          "~/site/public"
+      table border=border cell-pad=4/8 scroll-x
+        header "name" | "size" | "modified"
+        row "logo.png" | "48 KB" | "2026-10-14 09:12"
+        row "favicon.ico" | "4 KB" | "2026-09-30 17:40"
+        row "a-very-long-file-name-that-will-need-cutting-in-narrow-terminals.svg" | "1.2 MB" | "2026-10-01 11:03"
+        header style 14/600 fg=muted
+        cell style 14/400 fg=fg
+      text column gap=4
+        text 14/400 fg=muted
+          "3 files, 1.25 MB total"

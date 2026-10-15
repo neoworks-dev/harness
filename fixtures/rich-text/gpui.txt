@@ -1,0 +1,79 @@
+theme default-dark spacing s=4 m=8 l=16
+
+item rich-text kind=agent
+  body
+    stack column gap=8
+      text column gap=4
+        text 15/600 fg=fg
+          "Logo added"
+        text 14/400 fg=fg
+          "I copied the image to "
+          "public/logo.png" mono bg=surface
+          " and used it in "
+          "Header" bold
+          ", "
+          "styled" italic
+          " as before. "
+          "Old favicon" strike
+          " stays. See "
+          "the docs" underline fg=accent href=https://example.com/logo
+          "."
+        list column gap=2
+          list-item row gap=4
+            text 14/400 fg=fg min-width=16.8
+              "1."
+            item-body column gap=4
+              text 14/400 fg=fg
+                "Copied the asset"
+          list-item row gap=4
+            text 14/400 fg=fg min-width=16.8
+              "2."
+            item-body column gap=4
+              text 14/400 fg=fg
+                "Edited "
+                "src/Header.tsx" mono bg=surface
+                ":"
+              list column gap=2
+                list-item row gap=4
+                  text 14/400 fg=fg min-width=16.8
+                    "•"
+                  item-body column gap=4
+                    text 14/400 fg=fg
+                      "added the "
+                      "<img>" mono bg=surface
+                list-item row gap=4
+                  text 14/400 fg=fg min-width=16.8
+                    "•"
+                  item-body column gap=4
+                    text 14/400 fg=fg
+                      "kept the title"
+        list column gap=2
+          list-item row gap=4
+            text 14/400 fg=fg min-width=25.2
+              "[x]"
+            item-body column gap=4
+              text 14/400 fg=fg
+                "build passes"
+          list-item row gap=4
+            text 14/400 fg=fg min-width=25.2
+              "[ ]"
+            item-body column gap=4
+              text 14/400 fg=fg
+                "update the favicon"
+        quote column gap=4 pad=0/0/0/8 bar=border:3
+          text 14/400 fg=muted
+            "The image is 512×512; browsers scale it down."
+        code 13/400 mono fg=fg bg=surface pad=8 radius=6 scroll-x lang=tsx
+          | <img src="/logo.png" alt="Logo" />
+        rule border
+        text 14/400 fg=fg
+          "Anything else?"
+      text column gap=4
+        text 15/600 fg=fg
+          "Summary"
+      text column gap=4
+        text 14/400 fg=success
+          "All checks passed."
+      text column gap=4
+        text 13/400 mono fg=muted
+          "took 1.2s"
