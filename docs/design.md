@@ -258,6 +258,8 @@ The session lives in the daemon; every chat UI is a view of it.
 
 If the focused app closes, focus falls back to the overlay. The session never closes.
 
+**As built (Phase 3).** The daemon owns the agent's location: the _current session_ (persisted; created at startup if none exists) and the app whose pane hosts it. `agent.focus {session, app?, from?, reason}` goes to every client after `bus.welcome` and on every change; clients ask with `agent.move {app?, session?}` (no app = home). The overlay registers with `home: true`: it takes the agent when no app has it and gets it back when the agent's app closes. `apps_focus` moves the calling session's agent and makes that session current. `<focus>` means where the agent is (app plus that app's presence `context`); it's added at the start of the current session's turns when either changed.
+
 ---
 
 ## 8. View format
@@ -398,3 +400,6 @@ Each phase ends with something that works on its own.
 - **Which session do apps follow?** There is no "current session" yet: the overlay follows the most recently active one, and its reset creates a new session that other apps don't know to follow. Phase 3's `agent.focus {session, app}` needs a daemon-owned answer.
 - **Missing for the overlay's UI.** Usage/context-size events, daemon settings (model, effort, cwd) and a list of models, and subagent parent ids on tool calls. All were shown by the overlay under the old companion daemon.
 - **Daemon restarts are invisible to clients.** Clients resume subscriptions from the last seq they saw, which is correct as long as the log is append-only. Once compaction or log truncation exists, `bus.welcome` should carry a daemon/log instance id so clients can tell they need a full replay.
+- **One current session.** Phase 3 answers "concurrent sessions" with one current session that every app follows; other sessions remain reachable from the CLI (`suite attach <id>`), get no `<focus>`, and an `apps_focus` call from one of them makes it current. Several agents active in different apps at once would need per-app sessions.
+- **Focus is the agent's location, not the user's.** `<focus>` follows the agent (moved by the user or by itself). The user switching windows without moving the agent isn't reported; if the model should know where the user is looking, apps need to report window focus separately.
+- **Pad is a stand-in.** No suite app is GPUI yet (Grove will be), so Phase 3's GPUI app is `apps/pad`, a window with a chat pane. It has no tools: a Rust MCP server needs `rmcp` (large), to be decided when Grove is ported.
