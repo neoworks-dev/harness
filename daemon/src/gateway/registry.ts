@@ -99,6 +99,13 @@ export class ConnectorRegistry {
     return undefined;
   }
 
+  /** The view template for a tool's results (`app.tool`), kept after the app closes. */
+  template(tool: string): unknown {
+    const dot = tool.indexOf(".");
+    if (dot <= 0) return undefined;
+    return this.stored.get(tool.slice(0, dot))?.templates?.[tool.slice(dot + 1)];
+  }
+
   isOpen(app: string): boolean {
     return this.live.has(app);
   }
@@ -196,6 +203,7 @@ export class ConnectorRegistry {
     record.kind = presence.kind;
     if (presence.title !== undefined) record.title = presence.title;
     if (presence.launch !== undefined) record.launch = presence.launch;
+    if (presence.templates !== undefined) record.templates = presence.templates;
     this.stored.set(presence.app, record);
     this.store.saveConnector(record);
   }

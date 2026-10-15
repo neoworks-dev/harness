@@ -168,14 +168,10 @@ describe("over the bus and the gateway", () => {
         }
       },
     });
-    const hub = new Hub(
-      s.store,
-      s.sessions,
-      { version: "t", pid: 1, startedAt: 0 },
-      silentLogger,
-      s.registry,
-      s.focus,
-    );
+    const hub = new Hub(s.store, s.sessions, { version: "t", pid: 1, startedAt: 0 }, silentLogger, {
+      connectors: s.registry,
+      focus: s.focus,
+    });
     return { ...s, hub, gateway };
   }
 

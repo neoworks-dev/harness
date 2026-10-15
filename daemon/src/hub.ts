@@ -1,11 +1,18 @@
 // Bus hub: protocol handling for one daemon, independent of the transport (server.ts adapts it to
 // WebSocket-over-Unix-socket; tests drive it directly).
-import type { Envelope, ErrorCode, SessionEventRecord } from "@suite/protocol/types";
+import type {
+  Envelope,
+  ErrorCode,
+  SessionEventRecord,
+  Theme,
+  UiAction,
+} from "@suite/protocol/types";
 import { validateEnvelope } from "@suite/protocol/validate";
 import type { Logger } from "./log.ts";
 import { NotFoundError, type SessionManager } from "./sessions.ts";
 import type { SessionStore } from "./store.ts";
 import type { ConnectorRegistry } from "./gateway/registry.ts";
+import type { ViewManager } from "./view/views.ts";
 import { BadRequestError, type FocusManager } from "./focus.ts";
 
 export const PROTOCOL_VERSION = 1;
@@ -19,6 +26,15 @@ export interface ClientHandle {
   closed(): void;
 }
 
+export interface HubParts {
+  connectors?: ConnectorRegistry;
+  focus?: FocusManager;
+  views?: ViewManager;
+  theme?: Theme;
+  /** Runs a ui.action; rejects with NotFoundError/BadRequestError for impossible ones. */
+  action?: (action: UiAction, from: string) => Promise<void>;
+}
+
 export interface DaemonInfo {
   version: string;
   pid: number;
@@ -29,6 +45,7 @@ interface Client {
   transport: Transport;
   name?: string;
   subscriptions: Set<string>;
+  views: Set<string>;
 }
 
 /** Best-effort id of an invalid frame, so the error can still be correlated. */
@@ -45,9 +62,14 @@ export class Hub {
     private readonly sessions: SessionManager,
     private readonly info: DaemonInfo,
     private readonly log: Logger,
-    private readonly connectors?: ConnectorRegistry,
-    private readonly focus?: FocusManager,
+    private readonly parts: HubParts = {},
   ) {
+    const { connectors, focus, views } = parts;
+    views?.onPatch((payload) => {
+      for (const client of this.clients) {
+        if (client.views.has(payload.session)) this.send(client, { topic: "view.patch", payload });
+      }
+    });
     focus?.onChange((payload) => this.broadcastAll({ topic: "agent.focus", payload }));
     // Coalesce bursts (an app registering, then listing its tools) into one broadcast.
     let scheduled = false;
@@ -68,13 +90,13 @@ export class Hub {
   }
 
   connect(transport: Transport): ClientHandle {
-    const client: Client = { transport, subscriptions: new Set() };
+    const client: Client = { transport, subscriptions: new Set(), views: new Set() };
     this.clients.add(client);
     return {
       receive: (frame) => this.receive(client, frame),
       closed: () => {
         this.clients.delete(client);
-        void this.connectors?.disconnect(client);
+        void this.parts.connectors?.disconnect(client);
       },
     };
   }
@@ -159,7 +181,10 @@ export class Hub {
             startedAt: this.info.startedAt,
           },
         });
-        if (this.focus) this.send(client, { topic: "agent.focus", payload: this.focus.current() });
+        if (this.parts.focus) {
+          this.send(client, { topic: "agent.focus", payload: this.parts.focus.current() });
+        }
+        if (this.parts.theme) this.send(client, { topic: "theme", payload: this.parts.theme });
         return;
       case "session.create":
         this.send(client, {
@@ -205,12 +230,13 @@ export class Hub {
         return;
       }
       case "app.presence": {
-        if (!this.connectors) {
+        const { connectors } = this.parts;
+        if (!connectors) {
           this.fail(client, msg.id, "bad_request", "this daemon has no connector registry");
           return;
         }
         const { id } = msg;
-        this.connectors.presence(client, msg.payload).then(
+        connectors.presence(client, msg.payload).then(
           () => {
             if (id !== undefined) this.send(client, { topic: "bus.ack", id });
           },
@@ -219,18 +245,56 @@ export class Hub {
         return;
       }
       case "agent.move":
-        if (!this.focus) {
+        if (!this.parts.focus) {
           this.fail(client, msg.id, "bad_request", "this daemon doesn't track the agent's focus");
           return;
         }
-        this.focus.move(msg.payload, "user");
+        this.parts.focus.move(msg.payload, "user");
         this.send(client, { topic: "bus.ack", id: msg.id });
         return;
+      case "view.subscribe": {
+        const { session } = msg.payload;
+        if (!this.parts.views) {
+          this.fail(client, msg.id, "bad_request", "this daemon has no view resolver");
+          return;
+        }
+        if (!this.sessions.info(session)) throw new NotFoundError(`no session ${session}`);
+        // Synchronous, like session.subscribe: no patch can slip between snapshot and live.
+        const snapshot = this.parts.views.get(session).snapshot();
+        client.views.add(session);
+        this.send(client, { topic: "view.snapshot", id: msg.id, payload: snapshot });
+        return;
+      }
+      case "view.unsubscribe":
+        client.views.delete(msg.payload.session);
+        this.send(client, { topic: "bus.ack", id: msg.id });
+        return;
+      case "ui.action": {
+        const { action } = this.parts;
+        if (!action) {
+          this.fail(client, msg.id, "bad_request", "this daemon doesn't handle actions");
+          return;
+        }
+        if (!this.sessions.info(msg.payload.session)) {
+          throw new NotFoundError(`no session ${msg.payload.session}`);
+        }
+        const { id } = msg;
+        action(msg.payload, client.name ?? "ui").then(
+          () => this.send(client, { topic: "bus.ack", id }),
+          (err: unknown) => {
+            if (err instanceof NotFoundError) this.fail(client, id, "not_found", err.message);
+            else if (err instanceof BadRequestError)
+              this.fail(client, id, "bad_request", err.message);
+            else this.fail(client, id, "internal", String(err));
+          },
+        );
+        return;
+      }
       case "connectors.list":
         this.send(client, {
           topic: "connectors.list_result",
           id: msg.id,
-          payload: { connectors: this.connectors?.list() ?? [] },
+          payload: { connectors: this.parts.connectors?.list() ?? [] },
         });
         return;
       case "bus.welcome":
@@ -243,6 +307,9 @@ export class Hub {
       case "connectors.list_result":
       case "connectors.changed":
       case "agent.focus":
+      case "view.snapshot":
+      case "view.patch":
+      case "theme":
         this.fail(
           client,
           "id" in msg ? msg.id : undefined,

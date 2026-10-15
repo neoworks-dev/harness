@@ -1,7 +1,11 @@
 // Wires the daemon's parts together. Used by main.ts and by tests (startTestDaemon).
 import { mkdirSync } from "node:fs";
 import type { Agent } from "@suite/harness/agent";
+import type { Theme } from "@suite/protocol/types";
+import defaultTheme from "../../protocol/themes/default.json";
+import { ActionRunner } from "./actions.ts";
 import { FocusManager } from "./focus.ts";
+import { ViewManager } from "./view/views.ts";
 import { Gateway } from "./gateway/gateway.ts";
 import { mcpHandler } from "./gateway/mcp-server.ts";
 import { ConnectorRegistry } from "./gateway/registry.ts";
@@ -22,6 +26,8 @@ export interface DaemonOptions {
   /** TCP port on 127.0.0.1; 0 picks a free one. */
   port: number;
   defaultCwd: string;
+  /** Served to every client; the built-in default when absent. */
+  theme?: Theme;
   /** Replaces the MCP client used to reach apps; for tests. */
   connectUpstream?: ConnectUpstream;
 }
@@ -34,6 +40,7 @@ export interface Daemon {
   connectors: ConnectorRegistry;
   gateway: Gateway;
   focus: FocusManager;
+  views: ViewManager;
   /** Cancels running turns (waiting up to timeoutMs), closes listeners and the database. */
   stop(timeoutMs?: number): Promise<void>;
 }
@@ -78,13 +85,20 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   });
   sessions.recoverInterruptedTurns();
   focus = new FocusManager(store, sessions, connectors, log);
+  const views = new ViewManager(store, (tool) => connectors.template(tool), log);
+  const actions = new ActionRunner({ store, sessions, connectors, gateway, views });
   const hub = new Hub(
     store,
     sessions,
     { version: VERSION, pid: process.pid, startedAt: Date.now() },
     log,
-    connectors,
-    focus,
+    {
+      connectors,
+      focus,
+      views,
+      theme: options.theme ?? defaultTheme,
+      action: (action, from) => actions.run(action, from),
+    },
   );
   try {
     server = await startServer(hub, {
@@ -106,6 +120,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     connectors,
     gateway,
     focus,
+    views,
     async stop(timeoutMs = 2000) {
       await started.stop();
       await sessions.shutdown(timeoutMs);

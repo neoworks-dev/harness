@@ -42,6 +42,8 @@ export interface StoredConnector {
   tools: StoredTool[];
   instructions?: string;
   launch?: LaunchSpec;
+  /** View templates by tool name (without the app prefix). */
+  templates?: Record<string, unknown>;
 }
 
 export interface StoredTool {

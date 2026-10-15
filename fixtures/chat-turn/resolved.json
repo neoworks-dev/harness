@@ -1,0 +1,136 @@
+[
+  {
+    "ref": "n1",
+    "kind": "notice",
+    "component": {
+      "type": "text",
+      "tone": "muted",
+      "blocks": [
+        { "type": "paragraph", "spans": [{ "text": "photo-editor connected (v3): crop, export" }] }
+      ]
+    }
+  },
+  {
+    "ref": "n2",
+    "kind": "notice",
+    "component": {
+      "type": "text",
+      "tone": "muted",
+      "blocks": [{ "type": "paragraph", "spans": [{ "text": "now in overlay" }] }]
+    }
+  },
+  {
+    "ref": "u3",
+    "kind": "user",
+    "label": "overlay",
+    "component": {
+      "type": "stack",
+      "gap": "s",
+      "children": [
+        {
+          "type": "text",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "spans": [{ "text": "Crop this to a square logo and add it to the header." }]
+            }
+          ]
+        },
+        { "type": "image", "src": "/tmp/shot-1.png" }
+      ]
+    }
+  },
+  {
+    "ref": "t-m1",
+    "kind": "thought",
+    "component": {
+      "type": "text",
+      "tone": "muted",
+      "blocks": [
+        { "type": "paragraph", "spans": [{ "text": "Crop first, then edit Header.tsx." }] }
+      ]
+    }
+  },
+  {
+    "ref": "m-m2",
+    "kind": "agent",
+    "component": {
+      "type": "text",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "spans": [
+            { "text": "I'll crop the image to " },
+            { "text": "512×512", "bold": true },
+            { "text": " first." }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "ref": "c-c1",
+    "kind": "tool",
+    "label": "photo-editor.crop",
+    "state": "done",
+    "component": {
+      "type": "card",
+      "title": "Cropped image",
+      "children": [
+        {
+          "type": "image",
+          "src": "asset://img-7f3",
+          "caption": "512×512",
+          "width": 512,
+          "height": 512
+        },
+        { "type": "button", "label": "Copy handle", "action": "copy:asset://img-7f3", "key": "c" }
+      ]
+    }
+  },
+  {
+    "ref": "c-c2",
+    "kind": "tool",
+    "label": "edit src/Header.tsx",
+    "state": "done",
+    "component": {
+      "type": "stack",
+      "gap": "s",
+      "children": [
+        { "type": "code", "code": "Applied 1 edit(s) to src/Header.tsx." },
+        {
+          "type": "diff",
+          "path": "src/Header.tsx",
+          "lines": [
+            { "kind": "hunk", "text": "@@ -1,3 +1,4 @@" },
+            { "kind": "context", "text": "<header>", "old": 1, "new": 1 },
+            { "kind": "add", "text": "  <img src=\"/logo.png\" alt=\"Logo\" />", "new": 2 },
+            { "kind": "context", "text": "  <h1>Site</h1>", "old": 2, "new": 3 },
+            { "kind": "context", "text": "</header>", "old": 3, "new": 4 }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "ref": "c-c3",
+    "kind": "tool",
+    "label": "bash: npm run build",
+    "state": "running",
+    "component": { "type": "code", "code": "vite v6.0.0 building for production..." }
+  },
+  {
+    "ref": "e14",
+    "kind": "notice",
+    "component": {
+      "type": "text",
+      "tone": "danger",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "spans": [{ "text": "Rate limited by the provider; try again in a minute." }]
+        }
+      ]
+    }
+  }
+]

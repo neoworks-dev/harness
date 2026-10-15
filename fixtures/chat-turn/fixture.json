@@ -1,0 +1,103 @@
+{
+  "description": "A whole turn as session events: connector notices, a user message with an image, a thought, streamed reply text, a running tool, a templated result, an edit diff and a failed turn.",
+  "templates": {
+    "photo-editor.crop": {
+      "type": "card",
+      "title": "Cropped image",
+      "children": [
+        {
+          "type": "image",
+          "src": "{{data.asset}}",
+          "caption": "{{data.w}}×{{data.h}}",
+          "width": "{{data.w}}",
+          "height": "{{data.h}}"
+        },
+        { "type": "button", "label": "Copy handle", "action": "copy:{{data.asset}}", "key": "c" }
+      ]
+    }
+  },
+  "events": [
+    {
+      "type": "app_connected",
+      "app": "photo-editor",
+      "kind": "app",
+      "v": 3,
+      "tools": ["crop", "export"]
+    },
+    { "type": "focus_changed", "app": "overlay" },
+    {
+      "type": "user_message",
+      "app": "overlay",
+      "text": "Crop this to a square logo and add it to the header.",
+      "images": ["/tmp/shot-1.png"]
+    },
+    {
+      "type": "agent_thought_chunk",
+      "messageId": "m1",
+      "text": "Crop first, then edit Header.tsx."
+    },
+    { "type": "agent_message_chunk", "messageId": "m2", "text": "I'll crop the image " },
+    { "type": "agent_message_chunk", "messageId": "m2", "text": "to **512×512** first." },
+    {
+      "type": "tool_call",
+      "toolCallId": "c1",
+      "tool": "photo-editor.crop",
+      "title": "photo-editor.crop",
+      "kind": "other",
+      "status": "pending",
+      "rawInput": {
+        "name": "photo-editor.crop",
+        "args": { "asset": "/tmp/shot-1.png", "w": 512, "h": 512 }
+      }
+    },
+    { "type": "tool_call_update", "toolCallId": "c1", "status": "in_progress" },
+    {
+      "type": "tool_call_update",
+      "toolCallId": "c1",
+      "status": "completed",
+      "content": [{ "type": "text", "text": "Cropped to 512×512 → asset://img-7f3" }],
+      "rawOutput": { "asset": "asset://img-7f3", "w": 512, "h": 512 }
+    },
+    {
+      "type": "tool_call",
+      "toolCallId": "c2",
+      "tool": "edit",
+      "title": "edit src/Header.tsx",
+      "kind": "edit",
+      "status": "pending"
+    },
+    {
+      "type": "tool_call_update",
+      "toolCallId": "c2",
+      "status": "completed",
+      "content": [
+        { "type": "text", "text": "Applied 1 edit(s) to src/Header.tsx." },
+        {
+          "type": "diff",
+          "path": "src/Header.tsx",
+          "oldText": "<header>\n  <h1>Site</h1>\n</header>\n",
+          "newText": "<header>\n  <img src=\"/logo.png\" alt=\"Logo\" />\n  <h1>Site</h1>\n</header>\n"
+        }
+      ]
+    },
+    {
+      "type": "tool_call",
+      "toolCallId": "c3",
+      "tool": "bash",
+      "title": "bash: npm run build",
+      "kind": "execute",
+      "status": "pending"
+    },
+    {
+      "type": "tool_call_update",
+      "toolCallId": "c3",
+      "status": "in_progress",
+      "content": [{ "type": "text", "text": "vite v6.0.0 building for production...\n" }]
+    },
+    {
+      "type": "turn_ended",
+      "stopReason": "error",
+      "error": "Rate limited by the provider; try again in a minute."
+    }
+  ]
+}

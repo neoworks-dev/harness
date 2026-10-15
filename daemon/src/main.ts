@@ -9,6 +9,7 @@ import { createDaemon } from "./daemon.ts";
 import { createEchoAgent } from "./echo-agent.ts";
 import { createLogger, type Logger } from "./log.ts";
 import { resolvePaths } from "./paths.ts";
+import { loadTheme } from "./theme.ts";
 
 async function createAgent(name: string, log: Logger): Promise<Agent> {
   if (name === "echo") return createEchoAgent();
@@ -29,6 +30,7 @@ async function main(): Promise<void> {
     log,
     port: Number(process.env.SUITE_PORT ?? 0),
     defaultCwd: homedir(),
+    theme: loadTheme(process.env, log),
   });
   log.info(`listening on ${paths.socket} and ${daemon.info.url}, data in ${paths.dataDir}`);
 
