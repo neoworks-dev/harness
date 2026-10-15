@@ -1,7 +1,7 @@
 // End to end: the real daemon (with the scripted echo agent) and the real Go CLI over the Unix
 // socket. Needs bin/suite (`make build`; `make check` builds before testing).
-import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync } from "node:fs";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Subprocess } from "bun";
@@ -23,12 +23,17 @@ interface Attached {
 }
 
 const running: Subprocess[] = [];
+const dirs: string[] = [];
+afterAll(() => {
+  for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+});
 afterEach(() => {
   for (const p of running.splice(0)) p.kill("SIGKILL");
 });
 
 function testEnv(): Env {
   const dir = mkdtempSync(join(tmpdir(), "suite-e2e-"));
+  dirs.push(dir);
   return {
     ...(process.env as Env),
     SUITE_SOCKET: join(dir, "bus.sock"),
