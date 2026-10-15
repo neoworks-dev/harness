@@ -3,13 +3,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/render.ts"
+    ".": "./src/render.ts",
+    "./styles": "./src/styles.ts"
   },
   "dependencies": {
-    "@suite/protocol": "workspace:*"
+    "@suite/protocol": "workspace:*",
+    "@suite/sdk": "workspace:*"
   },
   "devDependencies": {
-    "@suite/sdk": "workspace:*",
     "happy-dom": "^21.0.2"
   }
 }

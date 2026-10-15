@@ -1,0 +1,51 @@
+<article class="suite-item" data-ref="rich-text" data-kind="agent">
+  <div class="suite-item-body">
+    <div class="suite-stack" data-gap="m">
+      <div class="suite-text">
+        <h2 class="suite-heading">Logo added</h2>
+        <p>I copied the image to <code class="suite-inline-code">public/logo.png</code> and used it in <strong>Header</strong>, <em>styled</em> as before. <del>Old favicon</del> stays. See <a class="suite-link" href="https://example.com/logo" target="_blank" rel="noopener noreferrer">the docs</a>.</p>
+        <ol class="suite-list" start="1">
+          <li>
+            <p>Copied the asset</p>
+          </li>
+          <li>
+            <p>Edited <code class="suite-inline-code">src/Header.tsx</code>:</p>
+            <ul class="suite-list">
+              <li>
+                <p>added the <code class="suite-inline-code">&lt;img&gt;</code></p>
+              </li>
+              <li>
+                <p>kept the title</p>
+              </li>
+            </ul>
+          </li>
+        </ol>
+        <ul class="suite-list">
+          <li class="suite-task">
+            <input class="suite-checkbox" type="checkbox" disabled="" aria-label="done" checked="">
+            <p>build passes</p>
+          </li>
+          <li class="suite-task">
+            <input class="suite-checkbox" type="checkbox" disabled="" aria-label="not done">
+            <p>update the favicon</p>
+          </li>
+        </ul>
+        <blockquote class="suite-quote">
+          <p>The image is 512×512; browsers scale it down.</p>
+        </blockquote>
+        <pre class="suite-code" data-language="tsx"><code>&lt;img src="/logo.png" alt="Logo" /&gt;</code></pre>
+        <hr class="suite-rule">
+        <p>Anything else?</p>
+      </div>
+      <div class="suite-text" data-role="title">
+        <p>Summary</p>
+      </div>
+      <div class="suite-text" data-tone="success">
+        <p>All checks passed.</p>
+      </div>
+      <div class="suite-text" data-role="code" data-tone="muted">
+        <p>took 1.2s</p>
+      </div>
+    </div>
+  </div>
+</article>

@@ -3,3 +3,4 @@ bun.lock
 bin
 *.go
 go.work.sum
+fixtures/*/web.html

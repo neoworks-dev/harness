@@ -4,6 +4,9 @@
   "type": "module",
   "exports": {
     ".": "./src/client.ts",
+    "./bus": "./src/bus-client.ts",
+    "./browser": "./src/browser.ts",
+    "./view": "./src/view-state.ts",
     "./tools": "./src/tool-server.ts"
   },
   "dependencies": {

@@ -1,6 +1,6 @@
 # sdk-ts
 
-TS client for the suite bus (`@suite/sdk`): connection, presence, tool hosting, session attach. Bun only.
+TS client for the suite bus (`@suite/sdk`): connection, presence, tool hosting, session attach, and the resolved view. The Bun entry (`@suite/sdk`) reads `daemon.json`; the browser entry (`@suite/sdk/browser`) is told the address.
 
 Bun's WebSocket can't dial Unix sockets, so the client uses the daemon's loopback listener. It finds the URL and token in `daemon.json` next to the socket (`SUITE_SOCKET`, else `$XDG_RUNTIME_DIR/suite/bus.sock`, else `/tmp/suite-<uid>/bus.sock`) and re-reads it on every reconnect, since both change on each daemon start.
 
@@ -51,9 +51,25 @@ await tools.close();
 - `moveAgent({ app?, session? })` moves the agent to an open app, or home without `app`; with `session` that session becomes current for everybody. It resolves after the resulting `agent.focus` was broadcast; `not_found` / `bad_request` reject as `SuiteError`.
 - `connectors` is the latest connector list (fetched after every (re)connect, then kept current from `connectors.changed`; entries carry `home`, `pid`, `context`); `onConnectors(cb)` fires on each update.
 - `subscribe(session, { fromSeq?, onEvent, onLive?, onError? })` returns `{ close() }`. `onLive` fires when the replay is over (again after each reconnect).
+- `theme` / `onTheme(cb)` / `waitForTheme()`: the daemon's `theme` frame, sent after every (re)connect and on change.
+- `subscribeView(session, { onSnapshot, onPatch, onError? })` returns `{ close() }`. A `view.snapshot` comes first (replace your state with it), then a `view.patch` per change. After a reconnect the client re-subscribes and a fresh snapshot arrives; patches are never delivered before the snapshot.
+- `action(session, ref, action, args?)` sends `ui.action` for a pressed button (`copy:` actions are the renderer's to handle).
 - `close()` unregisters the presence, then closes for good.
 - Daemon-side failures reject with `SuiteError` (`code` from the protocol); an unavailable connection with `DisconnectedError`.
 
 ## `createToolServer` (`@suite/sdk/tools`)
 
 An MCP Streamable HTTP server on `127.0.0.1` (random port) behind a random bearer token. Returns `{ url, headers, endpoint, setTools(tools), close() }`; pass `endpoint` as `presence.mcp`. A tool is `{ name, description, inputSchema, outputSchema?, handler(args) }`; the handler returns a string or `{ content?, structuredContent?, isError? }`, and a thrown error becomes an `isError` text result. `setTools` swaps the list and sends `tools/list_changed`.
+
+## `ViewState` (`@suite/sdk/view`)
+
+The client-side copy of a view, shared by renderers: `applySnapshot(snapshot)`, `applyPatch(patch)` (returns what changed: `added` / `replaced` / `removed` / `blocks`, for incremental rendering), `items`, `get(ref)`. Updates are copy-on-write. `set` replaces by ref or appends; `blocks` replaces `blocks[from:]` of the text component at `path` (child indexes from the item's component); `remove` drops the ref. Patches for another session or with a `seq` below the snapshot's are ignored, and ops that do not fit (unknown ref, path not leading to a text component) are skipped.
+
+## Browser (`@suite/sdk/browser`)
+
+```ts
+import { BrowserClient } from "@suite/sdk/browser";
+const client = await BrowserClient.connect({ client: "web", url: "http://127.0.0.1:PORT", token });
+```
+
+Same API as `SuiteClient` (both extend `BusClient` in `src/bus-client.ts`, which imports nothing from node). `url` is the daemon's loopback URL from `daemon.json` (a page gets it from its server); `refreshAddress` is asked for a fresh `{ url, token }` on every reconnect, since a restarted daemon has a new port and token.

@@ -46,9 +46,9 @@
       "name": "@suite/renderer-web",
       "dependencies": {
         "@suite/protocol": "workspace:*",
+        "@suite/sdk": "workspace:*",
       },
       "devDependencies": {
-        "@suite/sdk": "workspace:*",
         "happy-dom": "^21.0.2",
       },
     },
