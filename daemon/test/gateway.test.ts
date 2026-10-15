@@ -448,6 +448,46 @@ describe("over real MCP", () => {
     expect(app.calls).toEqual([{ name: "greet", args: { name: "Ada" } }]);
   });
 
+  test("apps_focus from the pi harness moves the agent mid-turn; the next turn carries <focus>", async () => {
+    const model = fakeModel([
+      reply([fauxToolCall("apps_focus", { app: "pad" }, { id: "f1" })], "toolUse"),
+      reply("Moved."),
+      reply("Hi from the pad."),
+    ]);
+    const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+    const daemon = await startTestDaemon({ agent });
+    cleanups.push(() => daemon.stop());
+    const moves: string[] = [];
+    daemon.focus.onChange((f) => moves.push(`${f.app ?? "-"} (${f.reason})`));
+    await daemon.connectors.presence({}, { app: "overlay", kind: "app", open: true, home: true });
+    await daemon.connectors.presence(
+      {},
+      {
+        app: "pad",
+        kind: "app",
+        open: true,
+        context: { file: "notes.txt" },
+      },
+    );
+
+    const id = daemon.focus.current().session;
+    daemon.sessions.input(id, "overlay", "go to the pad");
+    await daemon.sessions.idle(id);
+    expect(moves).toEqual(["overlay (opened)", "pad (agent)"]);
+    expect(JSON.stringify(model.requests[1])).toContain("You're now in pad");
+
+    daemon.sessions.input(id, "pad", "hello");
+    await daemon.sessions.idle(id);
+    const focusEvents = daemon.store.readTypes(id, ["focus_changed"]).map((r) => r.event);
+    expect(focusEvents).toEqual([
+      { type: "focus_changed", app: "overlay" },
+      { type: "focus_changed", app: "pad", context: { file: "notes.txt" } },
+    ]);
+    expect(JSON.stringify(model.requests[2])).toContain(
+      '<focus app=\\"pad\\" file=\\"notes.txt\\"/>',
+    );
+  });
+
   test("unreachable app servers are reported, not fatal", async () => {
     const dir = mkdtempSync(join(tmpdir(), "suite-gw-"));
     const store = new SessionStore(join(dir, "s.db"));
