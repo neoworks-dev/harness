@@ -1,5 +1,16 @@
 {
   "name": "@suite/harness",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    "./agent": "./src/agent.ts",
+    "./config": "./src/config.ts",
+    "./pi": "./src/pi-agent.ts"
+  },
+  "dependencies": {
+    "@mariozechner/pi-agent-core": "0.73.1",
+    "@mariozechner/pi-ai": "0.73.1",
+    "@suite/protocol": "workspace:*",
+    "typebox": "^1.3.37"
+  }
 }

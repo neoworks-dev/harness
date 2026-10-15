@@ -383,7 +383,8 @@
           "description": "0 if the session has no events yet."
         },
         "state": {
-          "$ref": "#/$defs/SessionState"
+          "$ref": "#/$defs/SessionState",
+          "description": "running from the user_message that starts a turn until after its turn_ended is sent."
         },
         "queued": {
           "type": "integer",

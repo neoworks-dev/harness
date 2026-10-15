@@ -19,7 +19,7 @@ export type Envelope =
 
 export type EnvelopeTag = Envelope["topic"];
 
-/** Client → daemon, first frame. */
+/** Client → daemon, first frame. A protocol the daemon doesn't speak gets bus.error unsupported_protocol. */
 export interface BusHello {
   topic: "bus.hello";
   payload: Hello;
@@ -64,7 +64,7 @@ export interface ErrorInfo {
   message: string;
 }
 
-export type ErrorCode = "bad_request" | "not_found" | "internal";
+export type ErrorCode = "bad_request" | "not_found" | "unsupported_protocol" | "internal";
 
 /** Client → daemon. Replied to with session.info. */
 export interface SessionCreate {
@@ -127,11 +127,11 @@ export interface SessionSubscribed {
 
 export interface SubscribedPayload {
   session: SessionInfo;
-  /** Last seq included in the replay (0 if none). */
+  /** Last seq in the log when the subscription started. Events up to it (from fromSeq) were replayed; everything after it arrives live. */
   replayedThrough: number;
 }
 
-/** Client → daemon: cancel the running turn. Queued inputs still run. */
+/** Client → daemon: cancel the running turn (acked). The turn ends with turn_ended cancelled; queued inputs still run. When idle it is acked and nothing else happens. */
 export interface SessionCancel {
   topic: "session.cancel";
   id: string;
@@ -141,7 +141,7 @@ export interface SessionCancel {
 /** Daemon → client: reply to session.create. */
 export interface SessionInfoMessage {
   topic: "session.info";
-  id?: string;
+  id: string;
   payload: SessionInfo;
 }
 
@@ -151,7 +151,7 @@ export interface SessionEvents {
   payload: SessionEventRecord;
 }
 
-/** Client → daemon: submit input. Acked once queued; the turn runs when the session is free. */
+/** Client → daemon: submit input. With an id it is acked once queued; from then on session.list shows the session running or queued > 0. The user_message event is logged when the turn starts, not when it is queued. */
 export interface SessionInputMessage {
   topic: "session.input";
   id?: string;
@@ -336,6 +336,7 @@ export interface SessionInfo {
   lastActivity: number;
   /** 0 if the session has no events yet. */
   lastSeq: number;
+  /** running from the user_message that starts a turn until after its turn_ended is sent. */
   state: SessionState;
   /** Inputs waiting behind the running turn. */
   queued: number;

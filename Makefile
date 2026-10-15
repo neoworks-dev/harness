@@ -5,7 +5,7 @@ GO_MODULES := cli sdk-go renderers/tui protocol/go
 
 .PHONY: check install build test test-ts test-go lint lint-ts lint-go typecheck format format-check codegen codegen-check
 
-check: install codegen-check format-check lint typecheck test build
+check: install codegen-check format-check lint typecheck build test
 
 install:
 	bun install --frozen-lockfile

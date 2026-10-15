@@ -1,5 +1,9 @@
 {
   "name": "@suite/daemon",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@suite/harness": "workspace:*",
+    "@suite/protocol": "workspace:*"
+  }
 }

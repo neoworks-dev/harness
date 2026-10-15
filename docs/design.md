@@ -103,9 +103,9 @@ A general-purpose agent with a minimal core. Its own package, running in-process
 | `read`                      | Read files                                      |
 | `write`                     | Write files                                     |
 | `edit`                      | Edit files                                      |
-| `tools.search(query, app?)` | Find connector tools; returns full JSON schemas |
-| `tools.call(name, args)`    | Run a connector tool (validated by the gateway) |
-| `apps.focus(app)`           | Move the agent into an app                      |
+| `tools_search(query, app?)` | Find connector tools; returns full JSON schemas |
+| `tools_call(name, args)`    | Run a connector tool (validated by the gateway) |
+| `apps_focus(app)`           | Move the agent into an app                      |
 
 **Other responsibilities**
 
@@ -121,13 +121,13 @@ You're an AI agent working across a suite of apps and services on the user's sys
 
 Connectors (apps and services) announce themselves with <app connected=…/>
 and <app disconnected=…/> events. Each event lists tool names only; use
-tools.search to get a connector's tool schemas and tools.call to run them.
+tools_search to get a connector's tool schemas and tools_call to run them.
 
 The most recent <focus> event says where the user is now.
 
 When a connector disconnects, its tools stop working until it reconnects;
 earlier schemas and results in this conversation stay valid as history.
-If you need a disconnected app, ask the user to open it or use apps.launch.
+If you need a disconnected app, ask the user to open it or use apps_launch.
 After a reconnect, earlier schemas still apply unless the event shows a new version.
 
 Tools that produce files or media return handles like asset://img-7f3.
@@ -143,7 +143,7 @@ Everything beyond the core tools is a connector. Two kinds, one registration mec
 - **Apps** (have a UI, come and go): browser, photo editor, code editor, file explorer, overlay
 - **Background services** (no UI, connected when the daemon starts): LSP, asset store, search indexes
 
-Only `apps.focus` cares about the difference.
+Only `apps_focus` cares about the difference.
 
 ### MCP gateway
 
@@ -157,7 +157,7 @@ Only `apps.focus` cares about the difference.
   "content": [
     {
       "type": "text",
-      "text": "Photo editor isn't open. Ask the user to open it, or call apps.launch('photo-editor')."
+      "text": "Photo editor isn't open. Ask the user to open it, or call apps_launch('photo-editor')."
     }
   ]
 }
@@ -201,9 +201,9 @@ Events go at the start of the next user message. Mid-conversation system message
 Can you pull this image and edit it?
 
 [assistant]
-→ tools.search("download image")         ← schemas appended to history
-→ tools.call("browser.download", …)      → asset://img-7f2
-→ tools.call("photo.crop", { asset: "asset://img-7f2", … }) → asset://img-7f3
+→ tools_search("download image")         ← schemas appended to history
+→ tools_call("browser.download", …)      → asset://img-7f2
+→ tools_call("photo.crop", { asset: "asset://img-7f2", … }) → asset://img-7f3
 
 [user]
 <app connected="code-editor" kind="app" v="1" tools="open, reveal, selection"/>
@@ -219,7 +219,7 @@ Add that image as a logo to my project
 **Rules**
 
 - The system prompt never contains session state, not even the apps open at startup.
-- Events carry tool names only; schemas come from `tools.search`.
+- Events carry tool names only; schemas come from `tools_search`.
 - Send `<focus>` only when focus changes.
 - Log disconnects so later "app isn't open" errors make sense.
 - Version connect events (`v=`); the model re-searches only when the version changes.
@@ -250,7 +250,7 @@ The session lives in the daemon; every chat UI is a view of it.
 
 ### Moving the agent between apps
 
-1. User drags the agent onto another app, or the agent calls `apps.focus`.
+1. User drags the agent onto another app, or the agent calls `apps_focus`.
 2. Daemon publishes `agent.focus`.
 3. The target app opens its chat pane, replays the history, then follows live events. A handoff mid-turn keeps streaming into the new pane.
 4. The previous pane collapses, or stays open as a second view.
@@ -381,6 +381,13 @@ Each phase ends with something that works on its own.
 - **Approvals.** `bash` and file writes need a permission flow. Approval requests should be bus events rendered as a view component in whichever pane has focus (and in the TUI with key bindings).
 - **Long sessions.** A shared session grows fast. Decide how compaction works and who owns it (harness vs daemon), and how guests' histories relate to the main log.
 - **Concurrent sessions.** Can two sessions be active at once, and how does focus work then?
-- **Local security.** Auth on the bus socket and the MCP endpoint, and which apps may register tools.
+- **Local security.** Auth on the bus socket and the MCP endpoint, and which apps may register tools. (Phase 1: the bus socket is mode 0600 in a 0700 directory, so only the user's own processes can connect.)
 - **pi-agent-core state.** Confirm the session log can own the history without forking.
 - **pi on Bun.** Confirm pi-ai and pi-agent-core run cleanly under Bun (provider SDKs, streaming).
+- **Tool names (resolved in Phase 1).** Anthropic and OpenAI only accept `[a-zA-Z0-9_-]` in tool names, so the core tools are `tools_search`, `tools_call`, `apps_focus` (and the system prompt says `apps_launch`). Connector tool names like `browser.download` are unaffected: they are arguments to `tools_call`, not tool definitions.
+- **`apps_launch`.** The system prompt and the closed-app error tell the model to call `apps_launch`, but it isn't in the fixed tool list. Either add it as a core tool or make it a connector tool reached through `tools_call` (and reword the prompt), before Phase 2.
+- **Tool list grows after Phase 1.** Phase 1 ships exactly four tools; Phase 2 adds `tools_search`/`tools_call`/`apps_focus`. Sessions created before that get one prompt-cache miss when the list changes. Harmless during development, but the "never changes" rule only holds from Phase 2 on.
+- **What the log stores.** Phase 1 persists every streaming chunk as its own row (so a pane attaching mid-turn replays exactly what others saw), plus a `harness_message` event per complete model message, which is what the harness rebuilds its context from (provider fields like thinking signatures can't be rebuilt from chunks). That roughly doubles the text stored per turn. Coalescing chunks after a turn ends belongs with the compaction question above.
+- **Crash mid-turn.** On restart the daemon appends `turn_ended {stopReason: "error"}` to any turn without one, and the harness answers interrupted tool calls with a synthetic error result. A bash command that was running is not re-run, and its side effects are unknown to the model beyond "interrupted".
+- **Queued input visibility.** `user_message` is logged when its turn starts, not when it's queued, so other panes don't see a queued input until it runs. A `session.input_queued` event (or queue state in `SessionInfo` updates) may be wanted once several apps share a session.
+- **Model credentials.** pi-ai's built-in model list lags new releases (the harness clones a known model of the same provider for unknown ids). API keys come from env or pi's `~/.pi/agent/auth.json`; OAuth logins (Codex, Claude subscriptions) stored there aren't used, because refreshing rotates the token underneath pi. Needs either our own login flow or a shared lock with pi.

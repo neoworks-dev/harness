@@ -147,7 +147,7 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// BusHello: Client → daemon, first frame.
+// BusHello: Client → daemon, first frame. A protocol the daemon doesn't speak gets bus.error unsupported_protocol.
 type BusHello struct {
 	Payload Hello `json:"payload"`
 }
@@ -235,9 +235,10 @@ type ErrorInfo struct {
 type ErrorCode string
 
 const (
-	ErrorCodeBadRequest ErrorCode = "bad_request"
-	ErrorCodeNotFound   ErrorCode = "not_found"
-	ErrorCodeInternal   ErrorCode = "internal"
+	ErrorCodeBadRequest          ErrorCode = "bad_request"
+	ErrorCodeNotFound            ErrorCode = "not_found"
+	ErrorCodeUnsupportedProtocol ErrorCode = "unsupported_protocol"
+	ErrorCodeInternal            ErrorCode = "internal"
 )
 
 // SessionCreate: Client → daemon. Replied to with session.info.
@@ -361,11 +362,11 @@ func (v SessionSubscribed) MarshalJSON() ([]byte, error) {
 
 type SubscribedPayload struct {
 	Session SessionInfo `json:"session"`
-	// Last seq included in the replay (0 if none).
+	// Last seq in the log when the subscription started. Events up to it (from fromSeq) were replayed; everything after it arrives live.
 	ReplayedThrough int64 `json:"replayedThrough"`
 }
 
-// SessionCancel: Client → daemon: cancel the running turn. Queued inputs still run.
+// SessionCancel: Client → daemon: cancel the running turn (acked). The turn ends with turn_ended cancelled; queued inputs still run. When idle it is acked and nothing else happens.
 type SessionCancel struct {
 	ID      string     `json:"id"`
 	Payload SessionRef `json:"payload"`
@@ -384,7 +385,7 @@ func (v SessionCancel) MarshalJSON() ([]byte, error) {
 
 // SessionInfoMessage: Daemon → client: reply to session.create.
 type SessionInfoMessage struct {
-	ID      *string     `json:"id,omitempty"`
+	ID      string      `json:"id"`
 	Payload SessionInfo `json:"payload"`
 }
 
@@ -415,7 +416,7 @@ func (v SessionEvents) MarshalJSON() ([]byte, error) {
 	}{"session.events", plain(v)})
 }
 
-// SessionInputMessage: Client → daemon: submit input. Acked once queued; the turn runs when the session is free.
+// SessionInputMessage: Client → daemon: submit input. With an id it is acked once queued; from then on session.list shows the session running or queued > 0. The user_message event is logged when the turn starts, not when it is queued.
 type SessionInputMessage struct {
 	ID      *string      `json:"id,omitempty"`
 	Payload SessionInput `json:"payload"`
@@ -928,8 +929,9 @@ type SessionInfo struct {
 	// Unix time in milliseconds.
 	LastActivity int64 `json:"lastActivity"`
 	// 0 if the session has no events yet.
-	LastSeq int64        `json:"lastSeq"`
-	State   SessionState `json:"state"`
+	LastSeq int64 `json:"lastSeq"`
+	// running from the user_message that starts a turn until after its turn_ended is sent.
+	State SessionState `json:"state"`
 	// Inputs waiting behind the running turn.
 	Queued int64 `json:"queued"`
 }

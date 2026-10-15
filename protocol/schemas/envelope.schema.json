@@ -58,7 +58,7 @@
       }
     },
     "BusHello": {
-      "description": "Client → daemon, first frame.",
+      "description": "Client → daemon, first frame. A protocol the daemon doesn't speak gets bus.error unsupported_protocol.",
       "type": "object",
       "properties": {
         "topic": {
@@ -166,7 +166,7 @@
     },
     "ErrorCode": {
       "type": "string",
-      "enum": ["bad_request", "not_found", "internal"]
+      "enum": ["bad_request", "not_found", "unsupported_protocol", "internal"]
     },
     "SessionCreate": {
       "description": "Client → daemon. Replied to with session.info.",
@@ -324,14 +324,14 @@
         },
         "replayedThrough": {
           "type": "integer",
-          "description": "Last seq included in the replay (0 if none)."
+          "description": "Last seq in the log when the subscription started. Events up to it (from fromSeq) were replayed; everything after it arrives live."
         }
       },
       "required": ["session", "replayedThrough"],
       "additionalProperties": false
     },
     "SessionCancel": {
-      "description": "Client → daemon: cancel the running turn. Queued inputs still run.",
+      "description": "Client → daemon: cancel the running turn (acked). The turn ends with turn_ended cancelled; queued inputs still run. When idle it is acked and nothing else happens.",
       "type": "object",
       "properties": {
         "topic": {
@@ -361,7 +361,7 @@
           "$ref": "session.schema.json#/$defs/SessionInfo"
         }
       },
-      "required": ["topic", "payload"],
+      "required": ["topic", "id", "payload"],
       "additionalProperties": false
     },
     "SessionEvents": {
@@ -379,7 +379,7 @@
       "additionalProperties": false
     },
     "SessionInputMessage": {
-      "description": "Client → daemon: submit input. Acked once queued; the turn runs when the session is free.",
+      "description": "Client → daemon: submit input. With an id it is acked once queued; from then on session.list shows the session running or queued > 0. The user_message event is logged when the turn starts, not when it is queued.",
       "type": "object",
       "properties": {
         "topic": {

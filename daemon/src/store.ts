@@ -1,0 +1,159 @@
+// Session store: SQLite event log, one row per event, gap-free per-session sequence numbers.
+import { Database } from "bun:sqlite";
+import type { SessionEvent, SessionEventRecord } from "@suite/protocol/types";
+
+export interface SessionRow {
+  id: string;
+  title?: string;
+  cwd: string;
+  createdAt: number;
+  lastActivity: number;
+  lastSeq: number;
+}
+
+interface SessionDbRow {
+  id: string;
+  title: string | null;
+  cwd: string;
+  created_at: number;
+  last_activity: number;
+  last_seq: number;
+}
+
+interface EventDbRow {
+  session: string;
+  seq: number;
+  ts: number;
+  data: string;
+}
+
+export type AppendListener = (record: SessionEventRecord) => void;
+
+const SCHEMA = `
+  CREATE TABLE IF NOT EXISTS sessions (
+    id            TEXT PRIMARY KEY,
+    title         TEXT,
+    cwd           TEXT NOT NULL,
+    created_at    INTEGER NOT NULL,
+    last_activity INTEGER NOT NULL,
+    last_seq      INTEGER NOT NULL DEFAULT 0
+  ) STRICT;
+  CREATE TABLE IF NOT EXISTS events (
+    session TEXT NOT NULL REFERENCES sessions(id),
+    seq     INTEGER NOT NULL,
+    ts      INTEGER NOT NULL,
+    type    TEXT NOT NULL,
+    data    TEXT NOT NULL,
+    PRIMARY KEY (session, seq)
+  ) STRICT, WITHOUT ROWID;
+  CREATE INDEX IF NOT EXISTS events_by_type ON events (session, type, seq);
+`;
+
+function toRow(r: SessionDbRow): SessionRow {
+  const row: SessionRow = {
+    id: r.id,
+    cwd: r.cwd,
+    createdAt: r.created_at,
+    lastActivity: r.last_activity,
+    lastSeq: r.last_seq,
+  };
+  if (r.title !== null) row.title = r.title;
+  return row;
+}
+
+function toRecord(r: EventDbRow): SessionEventRecord {
+  const event: SessionEvent = JSON.parse(r.data);
+  return { session: r.session, seq: r.seq, ts: r.ts, event };
+}
+
+export class SessionStore {
+  private readonly db: Database;
+  private readonly listeners = new Set<AppendListener>();
+  private readonly appendTx: (session: string, event: SessionEvent, ts: number) => number;
+
+  /** `path` is a file path, or ":memory:" for tests. */
+  constructor(path: string) {
+    this.db = new Database(path, { create: true, strict: true });
+    this.db.exec(
+      "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;",
+    );
+    this.db.exec(SCHEMA);
+
+    // The counter lives on the session row, so the next seq is derived inside the same
+    // transaction that inserts the event: no gaps or reuse, also across restarts.
+    const bump = this.db.query<{ last_seq: number }, [number, string]>(
+      "UPDATE sessions SET last_seq = last_seq + 1, last_activity = ? WHERE id = ? RETURNING last_seq",
+    );
+    const insert = this.db.query(
+      "INSERT INTO events (session, seq, ts, type, data) VALUES (?, ?, ?, ?, ?)",
+    );
+    this.appendTx = this.db.transaction((session: string, event: SessionEvent, ts: number) => {
+      const bumped = bump.get(ts, session);
+      if (!bumped) throw new Error(`unknown session ${session}`);
+      insert.run(session, bumped.last_seq, ts, event.type, JSON.stringify(event));
+      return bumped.last_seq;
+    });
+  }
+
+  createSession(params: { id: string; cwd: string; title?: string; now?: number }): SessionRow {
+    const now = params.now ?? Date.now();
+    this.db
+      .query(
+        "INSERT INTO sessions (id, title, cwd, created_at, last_activity) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run(params.id, params.title ?? null, params.cwd, now, now);
+    const row = this.getSession(params.id);
+    if (!row) throw new Error(`failed to create session ${params.id}`);
+    return row;
+  }
+
+  getSession(id: string): SessionRow | undefined {
+    const r = this.db.query<SessionDbRow, [string]>("SELECT * FROM sessions WHERE id = ?").get(id);
+    return r ? toRow(r) : undefined;
+  }
+
+  /** Most recently active first. */
+  listSessions(): SessionRow[] {
+    return this.db
+      .query<SessionDbRow, []>("SELECT * FROM sessions ORDER BY last_activity DESC, id")
+      .all()
+      .map(toRow);
+  }
+
+  /** Appends one event and notifies listeners synchronously, after the commit. */
+  append(session: string, event: SessionEvent, ts = Date.now()): SessionEventRecord {
+    const seq = this.appendTx(session, event, ts);
+    const record: SessionEventRecord = { session, seq, ts, event };
+    for (const listener of this.listeners) listener(record);
+    return record;
+  }
+
+  /** Events with seq ≥ fromSeq, in order. */
+  read(session: string, fromSeq = 1): SessionEventRecord[] {
+    return this.db
+      .query<EventDbRow, [string, number]>(
+        "SELECT session, seq, ts, data FROM events WHERE session = ? AND seq >= ? ORDER BY seq",
+      )
+      .all(session, fromSeq)
+      .map(toRecord);
+  }
+
+  /** Highest seq of an event of the given type, or 0. */
+  lastSeqOfType(session: string, type: SessionEvent["type"]): number {
+    const r = this.db
+      .query<{ seq: number | null }, [string, string]>(
+        "SELECT MAX(seq) AS seq FROM events WHERE session = ? AND type = ?",
+      )
+      .get(session, type);
+    return r?.seq ?? 0;
+  }
+
+  onAppend(listener: AppendListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  close(): void {
+    this.db.close();
+  }
+}

@@ -17,6 +17,30 @@ One agent session shared across every app in the suite. The design is in [docs/d
 
 Bun ≥ 1.3, Go ≥ 1.27.
 
+## Running it
+
+```sh
+make build                 # bin/suite
+bun run daemon             # starts the daemon in the foreground (Ctrl-C stops it)
+bin/suite attach --new     # new session in the current directory; type to chat
+bin/suite status           # daemon info + session counts
+bin/suite sessions         # sessions by last activity
+bin/suite attach <id>      # id or unique prefix; replays history, then follows live
+```
+
+In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits. Piped stdin sends one input per line and exits once the session is idle.
+
+| Env                                   | Default                                                     |
+| ------------------------------------- | ----------------------------------------------------------- |
+| `SUITE_SOCKET`                        | `$XDG_RUNTIME_DIR/suite/bus.sock` (else `/tmp/suite-$UID/`) |
+| `SUITE_DATA_DIR`                      | `$XDG_DATA_HOME/suite` (else `~/.local/share/suite`)        |
+| `SUITE_MODEL`                         | `deepseek/deepseek-v4-flash` (`provider/model-id`)          |
+| `SUITE_THINKING`                      | `off` (`minimal`…`xhigh`)                                   |
+| `<PROVIDER>_API_KEY`, `SUITE_API_KEY` | falls back to API-key entries in `~/.pi/agent/auth.json`    |
+| `SUITE_AGENT`                         | `pi`; `echo` is an offline scripted agent for tests         |
+
+`model` and `thinkingLevel` can also be set in `~/.config/suite/config.json`; env wins.
+
 ## Commands
 
 ```sh
