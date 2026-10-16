@@ -2,6 +2,8 @@
 .NOTPARALLEL:
 
 GO_MODULES := cli sdk-go renderers/tui protocol/go apps/photo
+# Named, so rustfmt leaves path dependencies outside this repo (svelte-gpui's host) alone.
+RUST_FMT := cargo fmt -p suite-protocol -p suite-sdk -p suite-renderer-gpui -p suite-renderer-ratatui -p suite-pad -p suite-term -p suite-gui
 
 .PHONY: check install build test test-ts test-go test-rust lint lint-ts lint-go lint-rust typecheck format format-check codegen codegen-check
 
@@ -10,7 +12,7 @@ check: install codegen-check format-check lint typecheck build test
 install:
 	bun install --frozen-lockfile
 
-build: bin/suite bin/photo bin/suite-term
+build: bin/suite bin/photo bin/suite-term bin/suite-gui
 
 bin/suite: FORCE
 	go build -o bin/suite ./cli
@@ -23,6 +25,13 @@ bin/photo: FORCE
 bin/suite-term: FORCE
 	cargo build --release -p suite-term
 	cp target/release/suite-term bin/suite-term.tmp && mv bin/suite-term.tmp bin/suite-term
+
+# The desktop app (apps/gui): its Svelte UI as a bundle, run by the binary (`suite gui`).
+# Needs svelte-gpui checked out next to this repo.
+bin/suite-gui: FORCE
+	bun apps/gui/build.mjs
+	cargo build --release -p suite-gui
+	cp target/release/suite-gui bin/suite-gui.tmp && mv bin/suite-gui.tmp bin/suite-gui
 
 FORCE:
 
@@ -47,16 +56,17 @@ test-rust:
 	cargo test --workspace --quiet
 
 lint-rust:
-	cargo fmt --all --check
+	$(RUST_FMT) --check
 	cargo clippy --workspace --all-targets --quiet -- -D warnings
 
 typecheck:
 	bunx tsc -p tsconfig.json --noEmit
+	cd apps/gui && bunx svelte-check --tsconfig ./tsconfig.json --fail-on-warnings
 
 format:
 	bunx prettier --write .
 	gofmt -w $(GO_MODULES)
-	cargo fmt --all
+	$(RUST_FMT)
 
 format-check:
 	bunx prettier --check .

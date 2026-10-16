@@ -4,3 +4,4 @@ bin/
 *.db-*
 .env
 target/
+apps/gui/dist/

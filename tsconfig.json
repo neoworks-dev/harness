@@ -23,6 +23,7 @@
     "renderers/web",
     "services",
     "apps/browser",
+    "apps/gui/test",
     "tools"
   ],
   "exclude": ["**/node_modules"]

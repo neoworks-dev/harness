@@ -1,0 +1,16 @@
+[package]
+name = "suite-gui"
+description = "The suite's desktop app: the shared conversation in a native window, drawn by svelte-gpui"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "suite-gui"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+suite-sdk = { path = "../../sdk-rs" }
+# svelte-gpui is checked out next to this repo.
+svelte_gpui_host = { path = "../../../svelte-gpui/host" }

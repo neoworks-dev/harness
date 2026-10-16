@@ -10,7 +10,8 @@
     "sdk-ts-tools",
     "renderers/web",
     "services/lsp",
-    "apps/browser"
+    "apps/browser",
+    "apps/gui"
   ],
   "scripts": {
     "codegen": "bun run --cwd protocol codegen",
