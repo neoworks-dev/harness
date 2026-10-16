@@ -244,6 +244,173 @@ fn tools_with_buttons_are_always_drawn_in_full() {
     );
 }
 
+// ---- permission previews and review cards ----
+
+/// What the daemon's session view builds for a permission request that previews an edit: the
+/// diff, then one button per option.
+fn permission(diff_lines: usize) -> suite_protocol::ViewItem {
+    let mut lines = vec![json!({"kind":"hunk","text":"@@ -1,3 +1,3 @@"})];
+    for i in 0..diff_lines {
+        lines.push(
+            json!({"kind": if i % 2 == 0 {"remove"} else {"add"}, "text": format!("line {i}")}),
+        );
+    }
+    let options = [
+        ("allow", "Allow once"),
+        ("always", "Always allow"),
+        ("reject", "Reject"),
+    ];
+    let buttons: Vec<_> = options
+        .iter()
+        .enumerate()
+        .map(|(i, (id, name))| {
+            json!({"type":"button","label":name,"action":"suite.permit",
+                   "args":{"id":"7","option":id},"key":(i + 1).to_string()})
+        })
+        .collect();
+    item(
+        &json!({"ref":"p-7","kind":"tool","label":"pi asks: Edit src/app.ts","state":"pending",
+            "component":{"type":"stack","gap":"s","children":[
+                {"type":"diff","path":"src/app.ts","lines":lines},
+                {"type":"row","gap":"s","children":buttons}]}})
+        .to_string(),
+    )
+}
+
+#[test]
+fn a_permission_shows_its_diff_colored_and_the_buttons_below_a_gap() {
+    let it = permission(2);
+    assert_eq!(
+        lines(&it, 60),
+        [
+            "● pi asks: Edit src/app.ts",
+            "  src/app.ts",
+            "  @@ -1,3 +1,3 @@",
+            "  -line 0",
+            "  +line 1",
+            "",
+            "  [1 Allow once]  [2 Always allow]  [3 Reject]",
+        ]
+    );
+    let rendered = render_item(&it, 60, &Options::default());
+    assert_eq!(
+        rendered[3].spans.last().unwrap().style.fg,
+        Some(pal().danger)
+    );
+    assert_eq!(
+        rendered[4].spans.last().unwrap().style.fg,
+        Some(pal().success)
+    );
+    assert_eq!(
+        rendered[2].spans.last().unwrap().style.fg,
+        Some(pal().muted)
+    );
+    let keys: Vec<_> = buttons(&it).iter().map(|b| b.key.clone()).collect();
+    assert_eq!(keys, ["1", "2", "3"]);
+    // Narrow: long diff lines wrap under their mark and the buttons stack, nothing overflows.
+    let narrow = render_item(&it, 14, &Options::default());
+    assert_fits(&narrow, 14);
+    assert_eq!(plain_lines(&narrow).last().unwrap(), "  [3 Reject]");
+}
+
+#[test]
+fn a_long_diff_is_cut_before_the_buttons_unless_expanded() {
+    let it = permission(40);
+    let opts = Options {
+        preview_lines: Some(6),
+        ..Options::default()
+    };
+    let got = lines_of(&it, 60, &opts);
+    // The limit counts the path line: title, 6 lines of diff, the count, a gap, the buttons.
+    assert_eq!(got.len(), 1 + 6 + 1 + 1 + 1, "{got:#?}");
+    assert_eq!(got[2], "  @@ -1,3 +1,3 @@");
+    assert_eq!(got[6], "  +line 3");
+    assert_eq!(got[7], "  … 36 more lines (expand to see all)");
+    assert_eq!(got[8], "");
+    assert!(got[9].starts_with("  [1 Allow once]"));
+    // Expanded, or without a limit, it is all there.
+    let all = |opts: &Options| lines_of(&it, 60, opts).len();
+    let full = 1 + 42 + 1 + 1;
+    let expanded = Options {
+        expanded: true,
+        ..opts.clone()
+    };
+    assert_eq!(all(&expanded), full);
+    assert_eq!(all(&Options::default()), full);
+    // One line over the limit is shown rather than replaced by a hint that takes the same room.
+    assert_eq!(lines_of(&permission(5), 60, &opts).len(), 1 + 7 + 1 + 1);
+    assert_eq!(lines_of(&permission(6), 60, &opts).len(), 1 + 6 + 1 + 1 + 1);
+}
+
+#[test]
+fn the_line_limit_is_shared_by_all_previews_of_an_item() {
+    let it = item(
+        &json!({"ref":"p","kind":"tool","label":"asks","state":"pending",
+            "component":{"type":"stack","children":[
+                {"type":"diff","path":"a","lines":[
+                    {"kind":"add","text":"1"},{"kind":"add","text":"2"},{"kind":"add","text":"3"}]},
+                {"type":"code","code":"a\nb\nc\nd\ne"},
+                {"type":"row","children":[{"type":"button","label":"Go","action":"x.y"}]}]}})
+        .to_string(),
+    );
+    let opts = Options {
+        preview_lines: Some(5),
+        ..Options::default()
+    };
+    let got = lines_of(&it, 40, &opts);
+    // The diff takes 4 (path and 3 lines), the code gets 1 and a count.
+    assert_eq!(&got[1..5], ["  a", "  +1", "  +2", "  +3"]);
+    assert_eq!(got[5].trim_end(), "    a");
+    assert_eq!(got[6], "  … 4 more lines (expand to see all)");
+}
+
+#[test]
+fn a_review_card_offers_keep_and_reverts_as_buttons() {
+    // The daemon's choice item after a turn in edits mode.
+    let option = |i: usize, id: &str, name: &str| {
+        json!({"type":"button","label":name,"action":"suite.choose",
+               "args":{"id":"r1","option":id},"key":(i + 1).to_string()})
+    };
+    let it = item(
+        &json!({"ref":"q-r1","kind":"tool","label":"The agent changed 2 files: keep them?",
+            "state":"pending","component":{"type":"stack","gap":"s","children":[
+                option(0, "keep", "Keep"),
+                option(1, "revert", "Revert all"),
+                option(2, "revert:a.ts", "Revert a.ts"),
+                option(3, "revert:b.ts", "Revert b.ts")]}})
+        .to_string(),
+    );
+    assert_eq!(
+        lines(&it, 50),
+        [
+            "● The agent changed 2 files: keep them?",
+            "  [1 Keep]",
+            "  [2 Revert all]",
+            "  [3 Revert a.ts]",
+            "  [4 Revert b.ts]",
+        ]
+    );
+    let b = buttons(&it);
+    assert_eq!(b[3].args, Some(json!({"id":"r1","option":"revert:b.ts"})));
+    assert_eq!(b[3].action, "suite.choose");
+    // The third button is the focused one.
+    let focused = render_item(
+        &it,
+        50,
+        &Options {
+            focused_button: Some(2),
+            ..Options::default()
+        },
+    );
+    let reversed = |l: &Line<'_>| {
+        l.spans
+            .iter()
+            .any(|s| s.style.add_modifier.contains(Modifier::REVERSED))
+    };
+    assert!(reversed(&focused[3]));
+    assert!(!reversed(&focused[2]) && !reversed(&focused[4]));
+}
+
 // ---- buttons ----
 
 fn two_buttons() -> suite_protocol::ViewItem {

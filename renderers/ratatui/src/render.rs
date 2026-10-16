@@ -18,6 +18,8 @@ pub(crate) struct Cx<'a> {
     pub(crate) o: &'a Options,
     pub(crate) p: Palette,
     pub(crate) next_button: usize,
+    /// Lines of diffs and code still allowed in the item being drawn (None: no limit).
+    budget: Option<usize>,
 }
 
 impl<'a> Cx<'a> {
@@ -26,6 +28,7 @@ impl<'a> Cx<'a> {
             o,
             p: o.theme,
             next_button: 0,
+            budget: None,
         }
     }
 
@@ -136,7 +139,9 @@ impl<'a> Cx<'a> {
             }
             None => vec![Line::from(bullet)],
         };
-        if self.o.expanded || has_buttons(&it.component) {
+        let prompt = has_buttons(&it.component);
+        if self.o.expanded || prompt {
+            self.budget = self.o.preview_lines.filter(|_| prompt && !self.o.expanded);
             let body = self.comp(&it.component, w.saturating_sub(2).max(1));
             out.extend(indented(body, 2));
         } else {
@@ -154,15 +159,18 @@ impl<'a> Cx<'a> {
         match c {
             pb::Component::CardComponent(v) => self.card(v, w),
             pb::Component::RowComponent(v) => self.row(v, w),
-            pb::Component::StackComponent(v) => {
-                let parts = self.children(&v.children, w);
-                stack(parts, v.gap)
-            }
+            pb::Component::StackComponent(v) => self.stack(v, w),
             pb::Component::TextComponent(v) => self.text(v, w),
             pb::Component::ImageComponent(v) => self.image(v, w),
             pb::Component::FileComponent(v) => self.file(v, w),
-            pb::Component::CodeComponent(v) => self.code(&v.code, w),
-            pb::Component::DiffComponent(v) => self.diff(v, w),
+            pb::Component::CodeComponent(v) => {
+                let lines = self.code(&v.code, w);
+                self.preview(lines)
+            }
+            pb::Component::DiffComponent(v) => {
+                let lines = self.diff(v, w);
+                self.preview(lines)
+            }
             pb::Component::TableComponent(v) => self.table(v, w),
             pb::Component::KvComponent(v) => self.kv(v, w),
             pb::Component::ProgressComponent(v) => self.progress(v, w),
@@ -186,6 +194,49 @@ impl<'a> Cx<'a> {
             .map(|c| self.comp(c, w))
             .filter(|l| !l.is_empty())
             .collect()
+    }
+
+    /// Children top to bottom. Buttons that follow content (a diff to approve) get a blank line
+    /// above them, so they read as the question and not as part of the diff.
+    fn stack(&mut self, v: &pb::StackComponent, w: usize) -> Lines {
+        let mut parts: Vec<Lines> = Vec::new();
+        let mut content_above = false;
+        for c in &v.children {
+            let lines = self.comp(c, w);
+            if lines.is_empty() {
+                continue;
+            }
+            if has_buttons(c) {
+                if content_above && v.gap != Some(pb::Space::L) {
+                    parts.push(vec![Line::default()]);
+                }
+                content_above = false;
+            } else {
+                content_above = true;
+            }
+            parts.push(lines);
+        }
+        stack(parts, v.gap)
+    }
+
+    /// Cuts a diff or code block to what is left of the item's line budget.
+    fn preview(&mut self, mut lines: Lines) -> Lines {
+        let Some(left) = self.budget else {
+            return lines;
+        };
+        // A hint takes a line itself: cutting a single line would save nothing.
+        if lines.len() <= left + 1 {
+            self.budget = Some(left.saturating_sub(lines.len()));
+            return lines;
+        }
+        let hidden = lines.len() - left;
+        lines.truncate(left);
+        lines.push(sline(
+            format!("… {hidden} more lines (expand to see all)"),
+            self.p.muted_style(),
+        ));
+        self.budget = Some(0);
+        lines
     }
 
     /// Side by side when every child is a single line and they all fit, else stacked.

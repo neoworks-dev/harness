@@ -10,6 +10,9 @@ use suite_protocol::{ItemState, ViewItem, ViewPatch, ViewSnapshot};
 use suite_renderer_ratatui::{ButtonRef, Options, Palette, buttons, render_item};
 use suite_sdk::ViewState;
 
+/// Lines of diff or code a prompt shows before the buttons (Ctrl-O shows all of it).
+const PREVIEW_LINES: usize = 20;
+
 /// What the pane draws besides the items.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChatOpts {
@@ -361,6 +364,7 @@ fn render(item: &ViewItem, width: u16, key: &CacheKey) -> Vec<Line<'static>> {
         expanded: key.expanded,
         show_thoughts: key.thoughts,
         focused_button: key.focused,
+        preview_lines: Some(PREVIEW_LINES),
         theme: key.palette,
     };
     if key.focused.is_none() {

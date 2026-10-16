@@ -218,11 +218,34 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
     assert!(me.connected);
     assert_eq!(me.context.as_ref().and_then(|c| c.get("cwd")), Some(&cwd));
 
-    // Approvals: the toggle goes through the daemon and comes back as a setting event.
-    assert!(ui.screen().contains("ask (shift+tab to cycle)"));
+    // The sessions sidebar follows the daemon's session.changed events: title and preview.
+    let side = |screen: &str| {
+        screen
+            .lines()
+            .map(|l| l.chars().take(29).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let screen = ui.until("the session in the sidebar", |s| {
+        let side = side(s);
+        side.contains("hello from the terminal") && side.contains("[app_connected]")
+    });
+    assert!(screen.contains("Sessions · "), "{screen}");
+    assert!(screen.contains("· pi"), "the session's harness: {screen}");
+
+    // Approvals: shift-tab goes through the daemon (ask, edits, auto, ask) and the mode comes
+    // back as a setting event.
+    assert!(
+        ui.screen()
+            .contains("? ask before acting (shift+tab to cycle)")
+    );
+    ui.key(KeyCode::BackTab);
+    ui.until("accept edits", |s| {
+        s.contains("⏵⏵ accept edits on (shift+tab to cycle)")
+    });
     ui.key(KeyCode::BackTab);
     ui.until("auto approvals", |s| {
-        s.contains("⏵⏵ auto (shift+tab to cycle)")
+        s.contains("⏵⏵ auto mode on (shift+tab to cycle)")
     });
 
     // /clear: the daemon makes a fresh session current and the app follows it.
@@ -233,11 +256,21 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
         assert!(Instant::now() < deadline, "never followed the new session");
         std::thread::sleep(Duration::from_millis(10));
     }
-    let screen = ui.until("an empty chat", |s| !s.contains("echo #1"));
-    assert!(!screen.contains("hello from the terminal"), "{screen}");
+    // (The sidebar still lists the old session, so look at the chat pane only.)
+    let chat = |s: &str| {
+        s.lines()
+            .map(|l| l.chars().skip(31).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let screen = ui.until("an empty chat", |s| !chat(s).contains("echo #1"));
+    assert!(
+        !chat(&screen).contains("hello from the terminal"),
+        "{screen}"
+    );
     ui.type_line("again");
     ui.until("the echo in the new session", |s| {
-        s.contains("echo #1: again")
+        chat(s).contains("echo #1: again")
     });
 
     // The first session is still there and the switcher can go back to it.

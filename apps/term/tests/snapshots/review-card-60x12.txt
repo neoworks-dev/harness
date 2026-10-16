@@ -1,0 +1,12 @@
+▎ ● The agent changed 2 files: keep them?
+▎   [1 Keep]
+▎   [2 Revert all]
+▎   [3 Revert a.ts]
+▎   [4 Revert b.ts]
+
+
+────────────────────────────────────────────────────────────
+> message the agent · / for commands
+~/site · pi
+
+? ask before acting (shift+tab to cycle)

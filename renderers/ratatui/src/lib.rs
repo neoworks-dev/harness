@@ -34,6 +34,10 @@ pub struct Options {
     pub expanded: bool,
     /// Thought items: the text (dim italic) instead of one `∴ thinking` line.
     pub show_thoughts: bool,
+    /// Items with buttons (a permission request previewing a diff) show their diffs and code in
+    /// full; with this set they stop after that many lines in all and say how many are left, so
+    /// the buttons stay near. `expanded` shows everything. None: no limit.
+    pub preview_lines: Option<usize>,
     /// Highlights the n-th button of this item (index into [`buttons`]).
     pub focused_button: Option<usize>,
     pub theme: Palette,

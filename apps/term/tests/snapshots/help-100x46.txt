@@ -12,9 +12,10 @@ keys (any key closes this)
   ctrl-t                    show thoughts
   esc                       close menu, dismiss prompt, cancel the running turn
   ctrl-c                    clear input; twice to quit
-  shift-tab                 approvals: ask / auto
+  shift-tab                 approvals: ask / accept edits / auto
   tab                       complete command, next button, next panel
-  ctrl-s                    switch session
+  ctrl-s                    switch session (picker)
+  ctrl-g                    sessions sidebar: focus (up/down, enter, esc)
   1-9, arrows, enter        answer a prompt (empty input)
   ctrl-p / ctrl-n           pick an older prompt
 
@@ -26,15 +27,20 @@ commands
   /resume [claude|codex]        continue an earlier Claude Code / Codex conversation
   /claude <task>                give a task to Claude Code
   /codex <task>                 give a task to Codex
-  /approvals [ask|auto]         ask before guests act, or let them (no value: toggle)
+  /harness [pi|claude|codex]    switch this session's agent: pi, claude, codex
+  /approvals [ask|edits|auto]   ask first, accept edits, or auto (no value: next)
   /sessions                     switch to another session (ctrl-s)
+  /sidebar                      show or hide the sessions sidebar (ctrl-g focuses it)
   /expand                       toggle full tool results (ctrl-o)
   /thoughts                     show or hide the agent's thoughts (ctrl-t)
   /help                         keys and commands
   /quit                         leave; the session keeps running
 
+
+
+
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 > message the agent · / for commands
-~/site
+~/site · pi
 
-ask (shift+tab to cycle)
+? ask before acting (shift+tab to cycle)

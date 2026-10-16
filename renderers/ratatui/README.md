@@ -12,7 +12,7 @@ let actions = buttons(&item);   // label, action, args, key; in drawing order, f
 ```
 
 - `render_item(&ViewItem, width, &Options) -> Vec<Line<'static>>` is pure and does not touch the terminal, so the app can cache the lines per item until the item, the width or the options change. No line is wider than `width` cells (CJK and emoji count by display width, long words are cut, tables and kv are truncated with `…`). Items are not separated: the app puts a blank line between them (or not).
-- `Options`: `expanded` (tool items: full result instead of the compact form), `show_thoughts`, `focused_button: Option<usize>` (index into `buttons(item)`; drawn reversed), `theme: Palette`.
+- `Options`: `expanded` (tool items: full result instead of the compact form), `show_thoughts`, `preview_lines: Option<usize>` (items with buttons, such as a permission request previewing a diff: the diffs and code above the buttons stop after this many lines with `… N more lines`, unless `expanded`; a blank line separates them from the buttons), `focused_button: Option<usize>` (index into `buttons(item)`; drawn reversed), `theme: Palette`.
 - `Palette` is the daemon's `Theme` colors as `Color::Rgb` (`Palette::from_theme`, `Default` = `protocol/themes/default.json`). Fields are public: map them to 16/256 colors or `Color::Reset` for `NO_COLOR`. Plain text has no foreground color of its own, so the terminal's is used.
 - Untrusted text is cleaned before it is drawn: control characters (escape sequences in tool output) and bidi overrides are dropped, tabs expand to 4-column stops.
 

@@ -9,6 +9,7 @@ pub mod editor;
 pub mod history;
 pub mod menu;
 pub mod runtime;
+pub mod sessions;
 pub mod status;
 pub mod style;
 pub mod util;

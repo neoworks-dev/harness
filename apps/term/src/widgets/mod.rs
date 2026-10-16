@@ -1,6 +1,6 @@
 //! The side panels and the usage line under the prompt: plan (todo lists of the agent and its
 //! guests), files (git status plus what the agent touched, with diffs) and usage (context and
-//! cost). Each is state fed from session events plus a draw function; nothing here blocks the
+//! cost of the session's own agent). Each is state fed from session events plus a draw function; nothing here blocks the
 //! UI thread (git runs on a background thread).
 //!
 //! This is the contract the shell (`app`) uses. Behavior worth knowing:
@@ -9,7 +9,7 @@
 //!   empty = cleared). With several lists each gets a small header. When the panel is too small
 //!   the in-progress entry stays in view and the rest is counted (`… N more`). Focused:
 //!   Up/Down/j/k scroll, PgUp/PgDn, g/G.
-//! - **Usage**: the newest `usage` event per agent. Context fill is muted, accent from 60%,
+//! - **Usage**: the newest `usage` event of the session's own agent (guests' are left out). Context fill is muted, accent from 60%,
 //!   danger from 85%.
 //! - **Files**: `git status` runs on a thread (debounced 200 ms after `on_file_changed`, turn
 //!   ends and tool diffs; every 10 s anyway; one run at a time). Entries are git's changes plus
@@ -185,7 +185,7 @@ impl Widgets {
         self.files.branch()
     }
 
-    /// The usage line under the prompt, e.g. "ctx 35% · $0.18 · claude ctx 12% $0.42";
+    /// The usage line under the prompt, e.g. "ctx 35% · $0.18";
     /// None before any usage event.
     pub fn usage_line(&self) -> Option<Line<'static>> {
         self.usage.line(&self.palette)

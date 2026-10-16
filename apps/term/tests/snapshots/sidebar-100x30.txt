@@ -25,6 +25,6 @@ Done. The header now uses `position: sticky`.                      │ ◐ wire 
                                                                    │
 ────────────────────────────────────────────────────────────────── │
 > message the agent · / for commands                               │
-~/site                                                             │
+~/site · pi                                                        │
                                                                    │
-ask (shift+tab to cycle)                                           │
+? ask before acting (shift+tab to cycle)                           │

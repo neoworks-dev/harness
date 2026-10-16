@@ -366,8 +366,9 @@ pub fn start(options: StartOptions) -> Result<Started, StartError> {
         .map_err(StartError::Other)?
     {
         Choice::Existing(id) => sessions
-            .into_iter()
+            .iter()
             .find(|s| s.id == id)
+            .cloned()
             .expect("chosen from the list"),
         Choice::New => client
             .create_session(SessionCreateParams {
@@ -386,6 +387,12 @@ pub fn start(options: StartOptions) -> Result<Started, StartError> {
         history: options.history,
     });
     let driver = Driver::new(Arc::new(client), &app_id);
+    // The sidebar's overview starts from this list; session.changed events keep it current.
+    let mut known = sessions;
+    if !known.iter().any(|s| s.id == session.id) {
+        known.push(session.clone());
+    }
+    app.set_sessions(known);
     for event in early {
         let fx = app.handle_event(event);
         driver.run(fx);

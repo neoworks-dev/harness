@@ -27,4 +27,4 @@ Done. The header now uses `position: sticky`.
 > message the agent · / for commands
 ~/site · pi · model sonnet
 
-ask (shift+tab to cycle)
+? ask before acting (shift+tab to cycle)

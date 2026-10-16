@@ -11,7 +11,9 @@ use ratatui::layout::{Position, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
-use suite_protocol::{AgentFocus, SessionEvent, SessionEventRecord, SessionInfo, SessionState};
+use suite_protocol::{
+    AgentFocus, SessionEvent, SessionEventRecord, SessionInfo, SessionState, SettingName,
+};
 use suite_renderer_ratatui::{ButtonRef, Palette};
 use suite_sdk::Event;
 
@@ -19,6 +21,7 @@ use crate::chat::{Chat, ChatOpts};
 use crate::editor::Editor;
 use crate::history::{Histories, HistoryStore};
 use crate::menu::{self, Command, Entry, Switcher};
+use crate::sessions::{SIDEBAR_WIDTH, Sessions, SessionsAction};
 use crate::status::{Approvals, HarnessSettings, Status, record_setting};
 use crate::style::{Styles, plain_palette};
 use crate::util::{fit_line, shorten_home, truncate, width};
@@ -35,6 +38,10 @@ const MENU_ROWS: usize = 8;
 /// Most rows the editor grows to.
 const EDITOR_ROWS: usize = 8;
 const SPINNER: [char; 4] = ['◐', '◓', '◑', '◒'];
+/// The chat needs at least this much beside the sessions sidebar, else the sidebar is hidden.
+const CHAT_MIN_WIDTH: u16 = 52;
+/// The harness a session runs on until a `/harness` setting says otherwise.
+const DEFAULT_HARNESS: &str = "pi";
 
 /// What the runtime does on the app's behalf. Requests to the daemon block, so the runtime runs
 /// them off the UI thread.
@@ -89,6 +96,13 @@ enum Overlay {
     Switcher,
 }
 
+/// What has the keyboard besides the editor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Focus {
+    Sessions,
+    Panel(Panel),
+}
+
 #[derive(Debug, Clone)]
 struct Notice {
     text: String,
@@ -134,7 +148,13 @@ pub struct App {
     histories: Histories,
     overlay: Overlay,
     switcher: Switcher,
-    focus: Option<Panel>,
+    focus: Option<Focus>,
+    sessions: Sessions,
+    /// The sessions sidebar is switched on (it still needs a wide enough terminal).
+    sessions_on: bool,
+    sessions_shown: bool,
+    /// Ctrl-G while the sidebar was hidden: focus it once it is drawn.
+    sessions_wanted: bool,
     prompt: PromptState,
     menu_sel: usize,
     /// The editor text the slash menu was closed for.
@@ -146,6 +166,8 @@ pub struct App {
     turn_started_ms: i64,
     queued: usize,
     settings: Vec<HarnessSettings>,
+    /// The session's agent, from `/harness`.
+    harness: String,
     approvals: Approvals,
     connected: bool,
     /// Where the agent is (the last `agent.focus`).
@@ -189,6 +211,10 @@ impl App {
             overlay: Overlay::None,
             switcher: Switcher::new(&session),
             focus: None,
+            sessions: Sessions::default(),
+            sessions_on: true,
+            sessions_shown: false,
+            sessions_wanted: false,
             prompt: PromptState::default(),
             menu_sel: 0,
             menu_closed_for: None,
@@ -198,6 +224,7 @@ impl App {
             turn_started_ms: now,
             queued: 0,
             settings: Vec::new(),
+            harness: DEFAULT_HARNESS.to_string(),
             approvals: Approvals::Ask,
             connected: true,
             agent_app: None,
@@ -230,6 +257,20 @@ impl App {
 
     pub fn approvals(&self) -> Approvals {
         self.approvals
+    }
+
+    pub fn harness(&self) -> &str {
+        &self.harness
+    }
+
+    pub fn sessions(&self) -> &Sessions {
+        &self.sessions
+    }
+
+    /// The sessions known at start (`list_sessions`).
+    pub fn set_sessions(&mut self, list: Vec<SessionInfo>) {
+        self.sessions.set_all(list);
+        self.dirty = true;
     }
 
     pub fn editor_text(&self) -> &str {
@@ -272,7 +313,7 @@ impl App {
         if self.widgets.tick() {
             self.dirty = true;
         }
-        if self.running {
+        if self.running || self.sessions_shown && self.sessions.any_running() {
             let frame = now_ms / 125;
             if frame != self.last_spin {
                 self.last_spin = frame;
@@ -312,8 +353,12 @@ impl App {
         match event {
             Event::Focus(focus) => self.on_focus(focus, &mut fx),
             Event::Connectors(_) => {}
-            // The session overview (left sidebar) is next.
-            Event::SessionChanged(_) => {}
+            Event::SessionChanged(info) => {
+                if info.id == self.session {
+                    self.sync_info(&info);
+                }
+                self.sessions.upsert(info);
+            }
             Event::Session(record) => {
                 if record.session == self.session {
                     self.on_record(&record);
@@ -393,23 +438,42 @@ impl App {
             }
             SessionEvent::TurnEnded(_) => self.running = false,
             SessionEvent::SettingChanged(change) => {
-                if change.harness == "suite" {
-                    if let (suite_protocol::SettingName::Approvals, Some(value)) =
-                        (change.option, Approvals::parse(&change.value))
-                    {
-                        self.approvals = value;
-                    }
-                } else {
-                    let option = match change.option {
-                        suite_protocol::SettingName::Model => "model",
-                        suite_protocol::SettingName::Effort => "effort",
-                        suite_protocol::SettingName::Mode => "mode",
-                        suite_protocol::SettingName::Approvals => return,
-                    };
-                    record_setting(&mut self.settings, &change.harness, option, &change.value);
-                }
+                let option = match change.option {
+                    SettingName::Model => "model",
+                    SettingName::Effort => "effort",
+                    SettingName::Mode => "mode",
+                    SettingName::Approvals => "approvals",
+                    SettingName::Harness => "harness",
+                };
+                self.on_setting(&change.harness, option, &change.value);
             }
             _ => {}
+        }
+    }
+
+    /// The suite's own settings (approvals, harness) and each harness's (model, effort, mode).
+    fn on_setting(&mut self, harness: &str, option: &str, value: &str) {
+        match (harness, option) {
+            ("suite", "approvals") => {
+                if let Some(mode) = Approvals::parse(value) {
+                    self.approvals = mode;
+                }
+            }
+            ("suite", "harness") => self.harness = value.to_string(),
+            ("suite", _) | (_, "approvals" | "harness") => {}
+            _ => record_setting(&mut self.settings, harness, option, value),
+        }
+    }
+
+    /// What the daemon says about the shown session: how many inputs wait, and whether a turn
+    /// still runs (a turn that just started is trusted for a few seconds).
+    fn sync_info(&mut self, info: &SessionInfo) {
+        self.queued = usize::try_from(info.queued).unwrap_or(0);
+        if self.running
+            && info.state == SessionState::Idle
+            && self.now_ms - self.turn_started_ms > 3000
+        {
+            self.running = false;
         }
     }
 
@@ -419,14 +483,9 @@ impl App {
         match msg {
             Msg::Sessions(Ok(list)) => {
                 if let Some(me) = list.iter().find(|s| s.id == self.session) {
-                    self.queued = usize::try_from(me.queued).unwrap_or(0);
-                    if self.running
-                        && me.state == SessionState::Idle
-                        && self.now_ms - self.turn_started_ms > 3000
-                    {
-                        self.running = false;
-                    }
+                    self.sync_info(me);
                 }
+                self.sessions.set_all(list.clone());
                 if self.overlay == Overlay::Switcher {
                     self.switcher.set_sessions(list);
                 }
@@ -437,6 +496,7 @@ impl App {
                 }
             }
             Msg::Created(Ok(info)) => {
+                self.sessions.upsert(info.clone());
                 let from = self.session.clone();
                 self.begin_session(&info.id, &info.cwd);
                 self.awaiting = Some((info.id.clone(), self.now_ms + 3000));
@@ -462,6 +522,7 @@ impl App {
         self.turn_started_ms = self.now_ms;
         self.queued = 0;
         self.settings.clear();
+        self.harness = DEFAULT_HARNESS.to_string();
         self.approvals = Approvals::Ask;
         self.editor.clear();
         self.prompt = PromptState::default();
@@ -598,7 +659,7 @@ impl App {
             Overlay::Help => self.overlay = Overlay::None,
             Overlay::Switcher => self.switcher_key(key, &mut fx),
             Overlay::None => match self.focus {
-                Some(panel) => self.panel_key(panel, key, &mut fx),
+                Some(focus) => self.panel_key(focus, key, &mut fx),
                 None => self.editor_key(key, &mut fx),
             },
         }
@@ -623,26 +684,77 @@ impl App {
         }
     }
 
-    fn panel_key(&mut self, panel: Panel, key: KeyEvent, fx: &mut Vec<Effect>) {
+    fn panel_key(&mut self, focus: Focus, key: KeyEvent, fx: &mut Vec<Effect>) {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Tab => self.cycle_focus(),
-            KeyCode::BackTab => self.toggle_approvals(fx),
+            KeyCode::BackTab => self.cycle_approvals(fx),
             KeyCode::Char('c') if ctrl => self.ctrl_c(fx),
-            _ => {
-                if self.widgets.handle_key(panel, key) == WidgetAction::Leave {
-                    self.focus = None;
+            KeyCode::Char('g') if ctrl => self.toggle_sessions_focus(),
+            _ => match focus {
+                Focus::Panel(panel) => {
+                    if self.widgets.handle_key(panel, key) == WidgetAction::Leave {
+                        self.focus = None;
+                    }
                 }
-            }
+                Focus::Sessions => match self.sessions.key(key) {
+                    SessionsAction::Redraw => {}
+                    SessionsAction::Leave => self.focus = None,
+                    SessionsAction::Open(info) => {
+                        self.focus = None;
+                        self.open_session(*info, fx);
+                    }
+                },
+            },
         }
     }
 
+    /// Tab: editor, sessions, plan, files (the ones on screen), editor.
     fn cycle_focus(&mut self) {
+        let order = [
+            (self.sessions_shown, Focus::Sessions),
+            (self.sidebar_shown, Focus::Panel(Panel::Plan)),
+            (self.sidebar_shown, Focus::Panel(Panel::Files)),
+        ];
+        let mut on_screen = order.iter().filter(|(shown, _)| *shown).map(|(_, f)| *f);
         self.focus = match self.focus {
-            None if self.sidebar_shown => Some(Panel::Plan),
-            Some(Panel::Plan) => Some(Panel::Files),
-            _ => None,
+            None => on_screen.next(),
+            Some(current) => on_screen.skip_while(|f| *f != current).nth(1),
         };
+        self.enter_focus();
+    }
+
+    /// Ctrl-G: the sessions sidebar gets the keys (it is switched on first when hidden), or gives
+    /// them back.
+    fn toggle_sessions_focus(&mut self) {
+        if self.focus == Some(Focus::Sessions) {
+            self.focus = None;
+            return;
+        }
+        if self.sessions.is_empty() {
+            self.notify("no sessions yet", false);
+        } else if self.sessions_on && self.sessions_shown {
+            self.focus = Some(Focus::Sessions);
+            self.enter_focus();
+        } else {
+            // Switched on now: the next draw knows whether it fits, and focuses it or says why not.
+            self.sessions_on = true;
+            self.sessions_wanted = true;
+        }
+    }
+
+    fn enter_focus(&mut self) {
+        if self.focus == Some(Focus::Sessions) {
+            self.sessions.focus(&self.session);
+        }
+    }
+
+    /// `/sidebar`: show or hide the sessions sidebar.
+    fn toggle_sessions(&mut self) {
+        self.sessions_on = !self.sessions_on;
+        if !self.sessions_on && self.focus == Some(Focus::Sessions) {
+            self.focus = None;
+        }
     }
 
     fn switcher_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
@@ -675,16 +787,8 @@ impl App {
                         .and_then(|s| s.get(i))
                         .cloned();
                     self.overlay = Overlay::None;
-                    if let Some(info) = picked.filter(|s| s.id != self.session) {
-                        let from = self.session.clone();
-                        self.begin_session(&info.id, &info.cwd);
-                        self.awaiting = Some((info.id.clone(), self.now_ms + 3000));
-                        fx.push(Effect::Switch {
-                            from: Some(from),
-                            to: info.id,
-                            cwd: info.cwd,
-                            move_agent: true,
-                        });
+                    if let Some(info) = picked {
+                        self.open_session(info, fx);
                     }
                 }
                 None => {}
@@ -696,16 +800,33 @@ impl App {
         }
     }
 
+    /// Shows another session and brings the agent to this app (the switcher and the sidebar).
+    fn open_session(&mut self, info: SessionInfo, fx: &mut Vec<Effect>) {
+        if info.id == self.session {
+            return;
+        }
+        let from = self.session.clone();
+        self.begin_session(&info.id, &info.cwd);
+        self.awaiting = Some((info.id.clone(), self.now_ms + 3000));
+        fx.push(Effect::Switch {
+            from: Some(from),
+            to: info.id,
+            cwd: info.cwd,
+            move_agent: true,
+        });
+    }
+
     fn open_switcher(&mut self, fx: &mut Vec<Effect>) {
         self.switcher = Switcher::new(&self.session);
         self.overlay = Overlay::Switcher;
         fx.push(Effect::ListSessions);
     }
 
-    fn toggle_approvals(&mut self, fx: &mut Vec<Effect>) {
+    /// Shift-Tab: ask, edits, auto, ask…
+    fn cycle_approvals(&mut self, fx: &mut Vec<Effect>) {
         fx.push(Effect::Input {
             session: self.session.clone(),
-            text: format!("/approvals {}", self.approvals.other().word()),
+            text: format!("/approvals {}", self.approvals.next().word()),
         });
     }
 
@@ -773,7 +894,7 @@ impl App {
             KeyCode::Enter if alt || shift => self.editor.newline(),
             KeyCode::Enter => self.enter(fx),
             KeyCode::BackTab => {
-                self.toggle_approvals(fx);
+                self.cycle_approvals(fx);
                 edited = false;
             }
             KeyCode::Tab => {
@@ -878,6 +999,10 @@ impl App {
             }
             'l' => {
                 self.clear = true;
+                return false;
+            }
+            'g' => {
+                self.toggle_sessions_focus();
                 return false;
             }
             'p' | 'n' => {
@@ -994,6 +1119,7 @@ impl App {
     fn run_command(&mut self, name: &str, text: &str, fx: &mut Vec<Effect>) {
         match name {
             "sessions" => self.open_switcher(fx),
+            "sidebar" => self.toggle_sessions(),
             "expand" => self.expanded = !self.expanded,
             "thoughts" => self.show_thoughts = !self.show_thoughts,
             "help" => self.overlay = Overlay::Help,
@@ -1020,8 +1146,19 @@ impl App {
         let side_w = (area.width / 3).clamp(32, 40);
         let side = (area.width >= side_w + 1 + 40 && self.widgets.wants_sidebar(area.width))
             .then_some(side_w);
+        let right_w = side.map_or(0, |w| w + 1);
+        // The sessions sidebar yields to the plan / files column, and to the chat's width.
+        let left = (self.sessions_on
+            && !self.sessions.is_empty()
+            && area.width >= SIDEBAR_WIDTH + right_w + CHAT_MIN_WIDTH)
+            .then_some(Rect {
+                width: SIDEBAR_WIDTH,
+                ..area
+            });
+        let left_w = left.map_or(0, |r| r.width);
         let main = Rect {
-            width: area.width - side.map_or(0, |w| w + 1),
+            x: area.x + left_w,
+            width: area.width - left_w - right_w,
             ..area
         };
         let side = side.map(|w| Rect {
@@ -1050,6 +1187,7 @@ impl App {
             editor: at(chat_h + rule_h, editor_h),
             status: at(chat_h + rule_h + editor_h, status_h),
             side,
+            left,
         }
     }
 
@@ -1058,8 +1196,19 @@ impl App {
         self.size = (area.width, area.height);
         let areas = self.areas(area);
         self.sidebar_shown = areas.side.is_some();
-        if !self.sidebar_shown {
-            self.focus = None;
+        self.sessions_shown = areas.left.is_some();
+        if std::mem::take(&mut self.sessions_wanted) {
+            if self.sessions_shown {
+                self.focus = Some(Focus::Sessions);
+                self.enter_focus();
+            } else {
+                self.notify("terminal too narrow for the sessions sidebar", false);
+            }
+        }
+        match self.focus {
+            Some(Focus::Panel(_)) if !self.sidebar_shown => self.focus = None,
+            Some(Focus::Sessions) if !self.sessions_shown => self.focus = None,
+            _ => {}
         }
         self.sync_prompt();
 
@@ -1073,8 +1222,15 @@ impl App {
             }
             self.draw_menu(frame, areas.chat);
         }
+        if let Some(left) = areas.left {
+            self.draw_sessions(frame, left);
+        }
         if let Some(side) = areas.side {
-            self.widgets.draw_sidebar(frame, side, self.focus);
+            let panel = match self.focus {
+                Some(Focus::Panel(panel)) => Some(panel),
+                _ => None,
+            };
+            self.widgets.draw_sidebar(frame, side, panel);
         }
         if areas.rule.height > 0 {
             let rule = "─".repeat(usize::from(areas.rule.width));
@@ -1085,6 +1241,30 @@ impl App {
         }
         self.draw_editor(frame, areas.editor);
         self.draw_status(frame, areas.status);
+    }
+
+    /// The sessions on the left: the list, then a border and a gap before the chat.
+    fn draw_sessions(&mut self, frame: &mut Frame, area: Rect) {
+        let inner = area.width.saturating_sub(2);
+        let list = Rect {
+            width: inner,
+            ..area
+        };
+        let spinner = SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()];
+        let lines = self.sessions.render(
+            usize::from(list.width),
+            usize::from(list.height),
+            &self.session,
+            self.focus == Some(Focus::Sessions),
+            spinner,
+            &self.styles,
+        );
+        frame.render_widget(Paragraph::new(lines), list);
+        for y in area.y..area.bottom() {
+            frame.buffer_mut()[(area.x + inner, y)]
+                .set_symbol("│")
+                .set_style(self.styles.border);
+        }
     }
 
     fn chat_opts(&self) -> ChatOpts {
@@ -1285,6 +1465,7 @@ impl App {
             cwd: &cwd,
             branch: branch.as_deref(),
             settings: &self.settings,
+            harness: &self.harness,
             agent_in,
             usage: self.widgets.usage_line(),
             working_secs: self
@@ -1337,9 +1518,10 @@ impl App {
             key("ctrl-t", "show thoughts"),
             key("esc", "close menu, dismiss prompt, cancel the running turn"),
             key("ctrl-c", "clear input; twice to quit"),
-            key("shift-tab", "approvals: ask / auto"),
+            key("shift-tab", "approvals: ask / accept edits / auto"),
             key("tab", "complete command, next button, next panel"),
-            key("ctrl-s", "switch session"),
+            key("ctrl-s", "switch session (picker)"),
+            key("ctrl-g", "sessions sidebar: focus (up/down, enter, esc)"),
             key("1-9, arrows, enter", "answer a prompt (empty input)"),
             key("ctrl-p / ctrl-n", "pick an older prompt"),
             Line::default(),
@@ -1433,6 +1615,8 @@ struct Areas {
     editor: Rect,
     status: Rect,
     side: Option<Rect>,
+    /// The sessions sidebar.
+    left: Option<Rect>,
 }
 
 #[cfg(test)]

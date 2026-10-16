@@ -1,71 +1,42 @@
-//! The usage line under the prompt: context fill and cost of the agent and its guests.
+//! The usage line under the prompt: context fill and cost of the session's own agent.
 
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use suite_protocol::Usage;
 use suite_renderer_ratatui::Palette;
 
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-struct Numbers {
+/// The newest `usage` event of the session's own agent. Guests' (events with an `agent`) are
+/// not shown: the line is about the harness the session runs on.
+#[derive(Debug, Default)]
+pub(crate) struct UsageState {
     /// contextUsed / contextSize, when both are known and the size is not zero.
     ctx: Option<f64>,
     cost: Option<f64>,
 }
 
-/// The newest `usage` event per agent, in the order the agents first reported.
-#[derive(Debug, Default)]
-pub(crate) struct UsageState {
-    agents: Vec<(Option<String>, Numbers)>,
-}
-
 impl UsageState {
     pub(crate) fn apply(&mut self, u: &Usage) {
-        let ctx = match (u.context_used, u.context_size) {
+        if u.agent.is_some() {
+            return;
+        }
+        self.ctx = match (u.context_used, u.context_size) {
             (Some(used), Some(size)) if size > 0 => Some(used.max(0) as f64 / size as f64),
             _ => None,
         };
-        let numbers = Numbers { ctx, cost: u.cost };
-        match self.agents.iter_mut().find(|(a, _)| *a == u.agent) {
-            Some((_, n)) => *n = numbers,
-            None => self.agents.push((u.agent.clone(), numbers)),
-        }
+        self.cost = u.cost;
     }
 
     pub(crate) fn line(&self, palette: &Palette) -> Option<Line<'static>> {
         let muted = Style::new().fg(palette.muted);
         let mut spans: Vec<Span<'static>> = Vec::new();
-        let main = self.agents.iter().find(|(a, _)| a.is_none());
-        let guests = self.agents.iter().filter(|(a, _)| a.is_some());
-        for (agent, n) in main.into_iter().chain(guests) {
-            if n.ctx.is_none() && n.cost.is_none() {
-                continue;
+        if let Some(f) = self.ctx {
+            spans.push(ctx_span(f, palette));
+        }
+        if let Some(c) = self.cost {
+            if !spans.is_empty() {
+                spans.push(Span::styled(" · ", muted));
             }
-            match agent {
-                None => {
-                    if let Some(f) = n.ctx {
-                        spans.push(ctx_span(f, palette));
-                    }
-                    if let Some(c) = n.cost {
-                        if !spans.is_empty() {
-                            spans.push(Span::styled(" · ", muted));
-                        }
-                        spans.push(Span::styled(format_cost(c), muted));
-                    }
-                }
-                Some(name) => {
-                    if !spans.is_empty() {
-                        spans.push(Span::styled(" · ", muted));
-                    }
-                    spans.push(Span::styled(name.clone(), muted));
-                    if let Some(f) = n.ctx {
-                        spans.push(Span::styled(" ", muted));
-                        spans.push(ctx_span(f, palette));
-                    }
-                    if let Some(c) = n.cost {
-                        spans.push(Span::styled(format!(" {}", format_cost(c)), muted));
-                    }
-                }
-            }
+            spans.push(Span::styled(format_cost(c), muted));
         }
         (!spans.is_empty()).then(|| Line::from(spans))
     }
@@ -127,16 +98,15 @@ mod tests {
     }
 
     #[test]
-    fn main_then_guests_and_last_wins() {
+    fn only_the_main_agent_counts_and_the_last_wins() {
         let p = Palette::default();
         let mut s = UsageState::default();
         s.apply(&usage(Some("claude"), Some(12), Some(100), Some(0.42)));
+        assert!(s.line(&p).is_none(), "a guest alone shows nothing");
         s.apply(&usage(None, Some(10), Some(100), Some(0.01)));
         s.apply(&usage(None, Some(35), Some(100), Some(0.184)));
-        assert_eq!(
-            text(&s.line(&p).unwrap()),
-            "ctx 35% · $0.18 · claude ctx 12% $0.42"
-        );
+        s.apply(&usage(Some("codex"), Some(90), Some(100), Some(3.0)));
+        assert_eq!(text(&s.line(&p).unwrap()), "ctx 35% · $0.18");
     }
 
     #[test]
@@ -147,10 +117,8 @@ mod tests {
         assert_eq!(text(&s.line(&p).unwrap()), "<$0.01");
         s.apply(&usage(None, Some(5), Some(0), None));
         assert!(s.line(&p).is_none());
-        s.apply(&usage(Some("codex"), Some(50), Some(100), None));
-        assert_eq!(text(&s.line(&p).unwrap()), "codex ctx 50%");
         s.apply(&usage(None, Some(1), Some(1000), None));
-        assert_eq!(text(&s.line(&p).unwrap()), "ctx 0% · codex ctx 50%");
+        assert_eq!(text(&s.line(&p).unwrap()), "ctx 0%");
     }
 
     #[test]

@@ -60,11 +60,20 @@ pub const COMMANDS: &[Command] = &[
         ..daemon("codex", "<task>", "give a task to Codex")
     },
     daemon(
+        "harness",
+        "[pi|claude|codex]",
+        "switch this session's agent: pi, claude, codex",
+    ),
+    daemon(
         "approvals",
-        "[ask|auto]",
-        "ask before guests act, or let them (no value: toggle)",
+        "[ask|edits|auto]",
+        "ask first, accept edits, or auto (no value: next)",
     ),
     local("sessions", "switch to another session (ctrl-s)"),
+    local(
+        "sidebar",
+        "show or hide the sessions sidebar (ctrl-g focuses it)",
+    ),
     local("expand", "toggle full tool results (ctrl-o)"),
     local("thoughts", "show or hide the agent's thoughts (ctrl-t)"),
     local("help", "keys and commands"),
@@ -187,12 +196,17 @@ fn haystack(s: &SessionInfo) -> String {
     format!("{} {} {}", s.title.as_deref().unwrap_or(""), s.cwd, s.id).to_lowercase()
 }
 
-/// "title  ~/dir  5m ago  running" for a switcher row, minus the width fitting.
-pub fn session_label(s: &SessionInfo, home: Option<&str>, now_ms: i64) -> (String, String) {
-    let name = match s.title.as_deref().filter(|t| !t.trim().is_empty()) {
+/// The session's title on one line, else "session " and the start of its id.
+pub fn session_title(s: &SessionInfo) -> String {
+    match s.title.as_deref().filter(|t| !t.trim().is_empty()) {
         Some(t) => t.split_whitespace().collect::<Vec<_>>().join(" "),
         None => format!("session {}", s.id.chars().take(8).collect::<String>()),
-    };
+    }
+}
+
+/// "title  ~/dir  5m ago  running" for a switcher row, minus the width fitting.
+pub fn session_label(s: &SessionInfo, home: Option<&str>, now_ms: i64) -> (String, String) {
+    let name = session_title(s);
     let mut rest = format!(
         "{}  {}",
         shorten_home(&s.cwd, home),
@@ -233,6 +247,7 @@ mod tests {
         assert_eq!(names("/").len(), COMMANDS.len());
         assert_eq!(names("/c"), ["clear", "claude", "codex"]);
         assert_eq!(names("/mod"), ["model", "mode"]);
+        assert_eq!(names("/h"), ["harness", "help"]);
         assert_eq!(names("/model"), ["model"]);
         // No prefix match falls back to containing.
         assert_eq!(names("/ssion"), ["sessions"]);

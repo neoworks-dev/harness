@@ -765,22 +765,56 @@ fn settings_and_approvals_come_from_setting_changed() {
     assert_eq!(app.approvals(), Approvals::Auto);
     let line = app.status_lines(100)[0].to_string();
     assert!(
-        line.contains("pi · model sonnet · claude · effort high"),
-        "{line}"
+        line.ends_with("pi · model sonnet"),
+        "only the harness's own: {line}"
     );
     assert!(!line.contains("suite") && !line.contains("auto"));
-    assert!(app.status_lines(100)[2].to_string().starts_with("⏵⏵ auto"));
+    assert!(
+        app.status_lines(100)[2]
+            .to_string()
+            .starts_with("⏵⏵ auto mode on")
+    );
+    app.handle_event(setting("suite", SettingName::Approvals, "edits"));
+    assert_eq!(app.approvals(), Approvals::Edits);
+    assert!(
+        app.status_lines(100)[2]
+            .to_string()
+            .starts_with("⏵⏵ accept edits on")
+    );
 }
 
 #[test]
-fn shift_tab_toggles_approvals() {
+fn the_harness_comes_from_its_setting_and_defaults_to_pi() {
+    let mut app = app();
+    assert_eq!(app.harness(), "pi");
+    assert!(app.status_lines(100)[0].to_string().ends_with("· pi"));
+    app.handle_event(setting("claude", SettingName::Model, "opus"));
+    app.on_setting("suite", "harness", "claude");
+    assert_eq!(app.harness(), "claude");
+    assert!(
+        app.status_lines(100)[0]
+            .to_string()
+            .ends_with("· claude · model opus")
+    );
+    app.begin_session("s2", "/w");
+    assert_eq!(app.harness(), "pi", "a new session starts over");
+}
+
+#[test]
+fn shift_tab_cycles_approvals_ask_edits_auto() {
     let mut app = app();
     assert_eq!(app.approvals(), Approvals::Ask);
+    for (now, next) in [("edits", "auto"), ("auto", "ask")] {
+        let fx = app.handle_key(with(KeyCode::BackTab, KeyModifiers::SHIFT));
+        assert_eq!(fx.len(), 1);
+        app.handle_event(setting("suite", SettingName::Approvals, now));
+        let fx = app.handle_key(with(KeyCode::BackTab, KeyModifiers::SHIFT));
+        assert_eq!(fx, [input(&format!("/approvals {next}"))]);
+        app.handle_event(setting("suite", SettingName::Approvals, next));
+    }
+    assert_eq!(app.approvals(), Approvals::Ask);
     let fx = app.handle_key(with(KeyCode::BackTab, KeyModifiers::SHIFT));
-    assert_eq!(fx, [input("/approvals auto")]);
-    app.handle_event(setting("suite", SettingName::Approvals, "auto"));
-    let fx = app.handle_key(with(KeyCode::BackTab, KeyModifiers::SHIFT));
-    assert_eq!(fx, [input("/approvals ask")]);
+    assert_eq!(fx, [input("/approvals edits")]);
 }
 
 #[test]
@@ -986,6 +1020,348 @@ fn tab_does_nothing_without_a_sidebar_and_completes_commands() {
     assert_eq!(app.editor_text(), "/clear ");
 }
 
+// ---- permission previews and review cards ----
+
+/// A permission request as the daemon's session view builds it: the diff it would apply above
+/// one button per option.
+fn permission_with_diff(changed: usize) -> ViewItem {
+    let mut lines = vec![json!({"kind":"hunk","text":"@@ -1,40 +1,40 @@"})];
+    for i in 0..changed {
+        lines.push(json!({"kind":"remove","text":format!("const old{i} = {i};")}));
+        lines.push(json!({"kind":"add","text":format!("const next{i} = {i};")}));
+    }
+    let options = [
+        ("allow", "Allow once"),
+        ("always", "Always allow"),
+        ("reject", "Reject"),
+    ];
+    let buttons: Vec<_> = options
+        .iter()
+        .enumerate()
+        .map(|(i, (id, name))| {
+            json!({"type":"button","label":name,"action":"suite.permit",
+                   "args":{"id":"7","option":id},"key":(i + 1).to_string()})
+        })
+        .collect();
+    serde_json::from_value(json!({
+        "ref": "p-7", "kind": "tool", "label": "pi asks: Edit src/app.ts", "state": "pending",
+        "component": {"type":"stack","gap":"s","children":[
+            {"type":"diff","path":"src/app.ts","lines":lines},
+            {"type":"row","gap":"s","children":buttons}]}
+    }))
+    .unwrap()
+}
+
+#[test]
+fn a_permission_previews_its_diff_and_the_buttons_answer_from_the_keyboard() {
+    let mut app = app();
+    show(&mut app, vec![permission_with_diff(2)]);
+    let text = screen_text(&mut app, 70, 18);
+    snapshot("permission-diff-70x18", &text);
+    assert_eq!(app.active_ref(), Some("p-7"));
+    // Right/Tab move over the buttons, a digit or Enter presses.
+    app.handle_key(key(KeyCode::Tab));
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert!(
+        matches!(&fx[..], [Effect::Action { item, action, args: Some(a), .. }]
+            if item == "p-7" && action == "suite.permit" && a["option"] == "always"),
+        "{fx:?}"
+    );
+    let mut app = self::app();
+    show(&mut app, vec![permission_with_diff(2)]);
+    let fx = app.handle_key(key(KeyCode::Char('3')));
+    assert!(matches!(&fx[..], [Effect::Action { args: Some(a), .. }] if a["option"] == "reject"));
+}
+
+#[test]
+fn a_long_diff_keeps_the_buttons_in_reach_until_expanded() {
+    let mut app = app();
+    show(&mut app, vec![permission_with_diff(60)]);
+    // The prompt scrolls into view: the buttons are on screen, the middle of the diff is not.
+    let text = screen_text(&mut app, 70, 30);
+    assert!(
+        text.contains("[1 Allow once]  [2 Always allow]  [3 Reject]"),
+        "{text}"
+    );
+    assert!(text.contains("more lines (expand to see all)"), "{text}");
+    assert!(!text.contains("const next50"), "{text}");
+    // Ctrl-O shows all of it; the buttons are still at the end, and the layout holds.
+    app.handle_key(ctrl('o'));
+    let lines = screen(&mut app, 70, 30);
+    assert!(
+        lines.iter().any(|l| l.contains("[1 Allow once]")),
+        "{lines:#?}"
+    );
+    assert!(lines.iter().all(|l| l.chars().count() <= 70));
+    assert!(app.chat().total_lines() > 100);
+    // Narrow terminals wrap the diff and stack the buttons without breaking out of the pane.
+    let narrow = screen(&mut app, 24, 30);
+    assert!(
+        narrow.iter().any(|l| l.contains("[3 Reject]")),
+        "{narrow:#?}"
+    );
+}
+
+#[test]
+fn the_review_card_after_an_edits_turn_is_answered_with_keys() {
+    let option = |i: usize, id: &str, name: &str| {
+        json!({"type":"button","label":name,"action":"suite.choose",
+               "args":{"id":"r1","option":id},"key":(i + 1).to_string()})
+    };
+    let card: ViewItem = serde_json::from_value(json!({
+        "ref": "q-r1", "kind": "tool", "label": "The agent changed 2 files: keep them?",
+        "state": "pending",
+        "component": {"type":"stack","gap":"s","children":[
+            option(0, "keep", "Keep"),
+            option(1, "revert", "Revert all"),
+            option(2, "revert:a.ts", "Revert a.ts"),
+            option(3, "revert:b.ts", "Revert b.ts")]}
+    }))
+    .unwrap();
+    let mut app = app();
+    show(&mut app, vec![card]);
+    let text = screen_text(&mut app, 60, 12);
+    snapshot("review-card-60x12", &text);
+    // Down walks the buttons (the first is focused), Enter presses.
+    app.handle_key(key(KeyCode::Down));
+    app.handle_key(key(KeyCode::Down));
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert_eq!(
+        fx,
+        [Effect::Action {
+            session: "s1".into(),
+            item: "q-r1".into(),
+            action: "suite.choose".into(),
+            args: Some(json!({"id":"r1","option":"revert:a.ts"})),
+        }]
+    );
+}
+
+// ---- sessions sidebar ----
+
+fn info(id: &str, title: &str, last: i64) -> SessionInfo {
+    SessionInfo {
+        id: id.into(),
+        title: Some(title.into()),
+        cwd: "/home/me/site".into(),
+        created_at: 0,
+        last_activity: last,
+        last_seq: 3,
+        state: SessionState::Idle,
+        queued: 0,
+        preview: None,
+        added: None,
+        removed: None,
+    }
+}
+
+fn overview() -> App {
+    let mut app = scenario();
+    let mut s2 = info("s2", "Fix the login form", NOW - 60_000);
+    s2.state = SessionState::Running;
+    s2.preview = Some("Looking at the validation".into());
+    s2.added = Some(12);
+    s2.removed = Some(3);
+    let mut s1 = info("s1", "Sticky header", NOW - 30_000);
+    s1.preview = Some("Done. The header now uses position: sticky.".into());
+    app.set_sessions(vec![s2, s1, info("s3", "Docs", NOW - 3_600_000)]);
+    app
+}
+
+#[test]
+fn the_sessions_sidebar_lists_every_session_newest_first() {
+    let mut app = overview();
+    let text = screen_text(&mut app, 120, 24);
+    snapshot("sessions-120x24", &text);
+    assert!(app.sessions_shown);
+    // Too narrow for the chat beside it: hidden, and so is its focus.
+    app.handle_key(ctrl('g'));
+    assert_eq!(app.focus, Some(Focus::Sessions));
+    let narrow = screen_text(&mut app, 80, 24);
+    assert!(!narrow.contains("Sessions"), "{narrow}");
+    assert_eq!(app.focus, None);
+    // No sessions known (yet): nothing to show.
+    let mut empty = scenario();
+    assert!(!screen_text(&mut empty, 120, 24).contains("Sessions"));
+}
+
+#[test]
+fn session_changed_updates_or_adds_one_entry_live() {
+    let mut app = overview();
+    let titles = |app: &mut App| {
+        screen(app, 120, 24)
+            .iter()
+            .filter_map(|l| {
+                let side: String = l.chars().take(29).collect();
+                ["Fix the login form", "Sticky header", "Docs", "Brand new"]
+                    .into_iter()
+                    .find(|t| side.contains(t))
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        titles(&mut app),
+        ["Sticky header", "Fix the login form", "Docs"]
+    );
+    // Docs got a message: it moves up and shows what was said.
+    let mut docs = info("s3", "Docs", NOW);
+    docs.preview = Some("Rewrote the README".into());
+    docs.added = Some(40);
+    app.handle_event(Event::SessionChanged(docs));
+    assert_eq!(
+        titles(&mut app),
+        ["Docs", "Sticky header", "Fix the login form"]
+    );
+    let text = screen_text(&mut app, 120, 24);
+    assert!(text.contains("Rewrote the README"), "{text}");
+    assert!(text.contains("+40"), "{text}");
+    // A session nobody listed yet appears.
+    app.handle_event(Event::SessionChanged(info("s9", "Brand new", NOW + 1)));
+    assert_eq!(app.sessions().len(), 4);
+    assert_eq!(titles(&mut app)[0], "Brand new");
+    // The shown session's own queue and turn state follow it too.
+    app.running = true;
+    app.turn_started_ms = NOW - 10_000;
+    app.now_ms = NOW;
+    let mut mine = info("s1", "Sticky header", NOW);
+    mine.queued = 2;
+    app.handle_event(Event::SessionChanged(mine));
+    assert_eq!(app.queued, 2);
+    assert!(!app.running, "the daemon says idle");
+}
+
+#[test]
+fn running_sessions_animate_in_the_sidebar() {
+    let mut app = overview();
+    app.tick(NOW);
+    screen(&mut app, 120, 24);
+    app.take_dirty();
+    app.tick(NOW + 200);
+    assert!(app.take_dirty(), "the spinner needs a frame");
+    let mut idle = overview();
+    idle.set_sessions(vec![info("s1", "Sticky header", NOW)]);
+    idle.tick(NOW);
+    screen(&mut idle, 120, 24);
+    idle.take_dirty();
+    idle.tick(NOW + 200);
+    assert!(!idle.take_dirty());
+}
+
+#[test]
+fn ctrl_g_focuses_the_sidebar_and_enter_switches() {
+    let mut app = overview();
+    screen(&mut app, 120, 24);
+    app.handle_key(ctrl('g'));
+    assert_eq!(app.focus, Some(Focus::Sessions));
+    // The keys are the sidebar's: typing does not reach the editor.
+    type_str(&mut app, "x");
+    assert_eq!(app.editor_text(), "");
+    // Starts on the shown session (s1, the first row); j goes to s2 and s3, k back to s2.
+    app.handle_key(key(KeyCode::Char('j')));
+    app.handle_key(key(KeyCode::Down));
+    app.handle_key(key(KeyCode::Char('k')));
+    let text = screen_text(&mut app, 120, 24);
+    assert!(text.contains("Fix the login form"), "{text}");
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert_eq!(
+        fx,
+        [Effect::Switch {
+            from: Some("s1".into()),
+            to: "s2".into(),
+            cwd: "/home/me/site".into(),
+            move_agent: true,
+        }]
+    );
+    assert_eq!(app.session(), "s2");
+    assert_eq!(app.focus, None, "the editor has the keys again");
+    type_str(&mut app, "x");
+    assert_eq!(app.editor_text(), "x");
+}
+
+#[test]
+fn the_sidebar_gives_the_keys_back() {
+    let mut app = overview();
+    screen(&mut app, 120, 24);
+    app.handle_key(ctrl('g'));
+    app.handle_key(key(KeyCode::Esc));
+    assert_eq!(app.focus, None);
+    app.handle_key(ctrl('g'));
+    app.handle_key(ctrl('g'));
+    assert_eq!(app.focus, None);
+    // Enter on the shown session just returns to the editor.
+    app.handle_key(ctrl('g'));
+    assert!(app.handle_key(key(KeyCode::Enter)).is_empty());
+    assert_eq!(app.focus, None);
+    assert_eq!(app.session(), "s1");
+}
+
+#[test]
+fn tab_walks_sessions_plan_files_and_back() {
+    let mut app = overview();
+    app.handle_event(plan_event());
+    screen(&mut app, 150, 30);
+    assert!(app.sessions_shown && app.sidebar_shown);
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        app.handle_key(key(KeyCode::Tab));
+        seen.push(app.focus);
+    }
+    assert_eq!(
+        seen,
+        [
+            Some(Focus::Sessions),
+            Some(Focus::Panel(Panel::Plan)),
+            Some(Focus::Panel(Panel::Files)),
+            None
+        ]
+    );
+}
+
+#[test]
+fn the_plan_column_wins_when_both_do_not_fit() {
+    let mut app = overview();
+    app.handle_event(plan_event());
+    let text = screen_text(&mut app, 110, 24);
+    assert!(
+        text.contains("crop the logo") && !text.contains("Sessions"),
+        "{text}"
+    );
+    let text = screen_text(&mut app, 150, 24);
+    assert!(
+        text.contains("crop the logo") && text.contains("Sessions"),
+        "{text}"
+    );
+}
+
+#[test]
+fn sidebar_command_hides_and_shows_it() {
+    let mut app = overview();
+    assert!(screen_text(&mut app, 120, 24).contains("Sessions"));
+    type_str(&mut app, "/sidebar");
+    assert!(app.handle_key(key(KeyCode::Enter)).is_empty());
+    assert!(!screen_text(&mut app, 120, 24).contains("Sessions"));
+    // Ctrl-G switches it on again and takes the keys.
+    app.handle_key(ctrl('g'));
+    assert!(screen_text(&mut app, 120, 24).contains("Sessions"));
+    assert_eq!(app.focus, Some(Focus::Sessions));
+    // Too narrow: it says so instead of doing nothing.
+    app.focus = None;
+    screen(&mut app, 70, 24);
+    app.handle_key(ctrl('g'));
+    screen(&mut app, 70, 24);
+    assert_eq!(app.focus, None);
+    assert!(app.status_lines(100)[2].to_string().contains("too narrow"));
+}
+
+#[test]
+fn the_session_list_is_refreshed_by_list_sessions_answers() {
+    let mut app = overview();
+    app.handle_msg(Msg::Sessions(Ok(vec![info("s1", "Sticky header", NOW)])));
+    assert_eq!(app.sessions().len(), 1);
+    app.handle_msg(Msg::Created(Ok(info("s5", "Fresh", NOW + 5))));
+    assert_eq!(app.sessions().len(), 2);
+}
+
 // ---- drawing ----
 
 fn plan_event() -> Event {
@@ -1023,9 +1399,9 @@ fn the_sidebar_appears_with_a_plan_and_tab_cycles_focus() {
     // The chat keeps the left part; the side column the right.
     assert!(app.sidebar_shown);
     app.handle_key(key(KeyCode::Tab));
-    assert_eq!(app.focus, Some(Panel::Plan));
+    assert_eq!(app.focus, Some(Focus::Panel(Panel::Plan)));
     app.handle_key(key(KeyCode::Tab));
-    assert_eq!(app.focus, Some(Panel::Files));
+    assert_eq!(app.focus, Some(Focus::Panel(Panel::Files)));
     app.handle_key(key(KeyCode::Tab));
     assert_eq!(app.focus, None);
     // Typing is not possible while a panel has focus; Esc leaves it.
@@ -1081,7 +1457,7 @@ fn help_lists_keys_and_commands() {
     let mut app = scenario();
     type_str(&mut app, "/help");
     app.handle_key(key(KeyCode::Enter));
-    snapshot("help-100x40", &screen_text(&mut app, 100, 40));
+    snapshot("help-100x46", &screen_text(&mut app, 100, 46));
     app.handle_key(key(KeyCode::Esc));
     app.handle_key(key(KeyCode::Char('?')));
     assert_eq!(app.overlay, Overlay::Help, "? on an empty editor");

@@ -1,0 +1,18 @@
+▎ ● pi asks: Edit src/app.ts
+▎   src/app.ts
+▎   @@ -1,40 +1,40 @@
+▎   -const old0 = 0;
+▎   +const next0 = 0;
+▎   -const old1 = 1;
+▎   +const next1 = 1;
+▎
+▎   [1 Allow once]  [2 Always allow]  [3 Reject]
+
+
+
+
+──────────────────────────────────────────────────────────────────────
+> message the agent · / for commands
+~/site · pi
+
+? ask before acting (shift+tab to cycle)

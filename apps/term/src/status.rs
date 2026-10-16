@@ -5,11 +5,15 @@ use ratatui::text::{Line, Span};
 use crate::style::Styles;
 use crate::util::{fit_line, split_line};
 
-/// Whether the daemon answers guests' permission requests itself.
+/// What the daemon asks before the agent acts (`/approvals`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Approvals {
+    /// Edits, commands, guests: all ask.
     #[default]
     Ask,
+    /// File edits are written right away (and can be reverted after the turn); the rest asks.
+    Edits,
+    /// Nothing asks.
     Auto,
 }
 
@@ -17,14 +21,17 @@ impl Approvals {
     pub fn parse(value: &str) -> Option<Approvals> {
         match value {
             "ask" => Some(Approvals::Ask),
+            "edits" => Some(Approvals::Edits),
             "auto" => Some(Approvals::Auto),
             _ => None,
         }
     }
 
-    pub fn other(self) -> Approvals {
+    /// The mode Shift-Tab goes to: ask, edits, auto, ask…
+    pub fn next(self) -> Approvals {
         match self {
-            Approvals::Ask => Approvals::Auto,
+            Approvals::Ask => Approvals::Edits,
+            Approvals::Edits => Approvals::Auto,
             Approvals::Auto => Approvals::Ask,
         }
     }
@@ -32,6 +39,7 @@ impl Approvals {
     pub fn word(self) -> &'static str {
         match self {
             Approvals::Ask => "ask",
+            Approvals::Edits => "edits",
             Approvals::Auto => "auto",
         }
     }
@@ -67,6 +75,8 @@ pub struct Status<'a> {
     pub cwd: &'a str,
     pub branch: Option<&'a str>,
     pub settings: &'a [HarnessSettings],
+    /// The session's agent (`pi`, `claude`, `codex`).
+    pub harness: &'a str,
     /// The app the agent is in, when that isn't this one.
     pub agent_in: Option<&'a str>,
     pub usage: Option<Line<'static>>,
@@ -86,7 +96,8 @@ impl Status<'_> {
         [self.line1(width), self.line2(width), self.line3(width)]
     }
 
-    /// `~/site · main ↑1 · pi · model sonnet · in photo-editor`
+    /// `~/site · main ↑1 · pi · model sonnet · in photo-editor`: the harness is always named,
+    /// with only its own settings.
     fn line1(&self, width: usize) -> Line<'static> {
         let s = self.styles;
         let sep = || Span::styled(" · ", s.muted);
@@ -95,12 +106,9 @@ impl Status<'_> {
             spans.push(sep());
             spans.push(Span::styled(branch.to_string(), s.muted));
         }
-        for h in self.settings.iter().filter(|h| h.harness != "suite") {
-            if h.values.is_empty() {
-                continue;
-            }
-            spans.push(sep());
-            spans.push(Span::raw(h.harness.clone()));
+        spans.push(sep());
+        spans.push(Span::raw(self.harness.to_string()));
+        for h in self.settings.iter().filter(|h| h.harness == self.harness) {
             for (option, value) in &h.values {
                 spans.push(sep());
                 spans.push(Span::styled(format!("{option} {value}"), s.muted));
@@ -150,12 +158,14 @@ impl Status<'_> {
         fit_line(Line::from(spans), width)
     }
 
-    /// `⏵⏵ auto (shift+tab to cycle)` / `ask (shift+tab to cycle)`, a notice on the right.
+    /// `⏵⏵ accept edits on (shift+tab to cycle)`, `⏵⏵ auto mode on …` or `? ask before acting …`,
+    /// a notice on the right (the hint in parentheses goes first when they don't both fit).
     fn line3(&self, width: usize) -> Line<'static> {
         let s = self.styles;
-        let left = match self.approvals {
-            Approvals::Auto => Span::styled("⏵⏵ auto (shift+tab to cycle)", s.accent),
-            Approvals::Ask => Span::styled("ask (shift+tab to cycle)", s.muted),
+        let (text, style) = match self.approvals {
+            Approvals::Auto => ("⏵⏵ auto mode on", s.danger),
+            Approvals::Edits => ("⏵⏵ accept edits on", s.accent),
+            Approvals::Ask => ("? ask before acting", s.muted),
         };
         let right = self.notice.map(|(text, error)| {
             Line::from(Span::styled(
@@ -163,7 +173,15 @@ impl Status<'_> {
                 if error { s.danger } else { s.muted },
             ))
         });
-        split_line(Line::from(left), right, width)
+        let hint = " (shift+tab to cycle)";
+        let long = text.chars().count() + hint.chars().count();
+        let room = right.as_ref().map_or(0, |r| r.width() + 2);
+        let left = if long + room <= width {
+            Line::from(vec![Span::styled(text, style), Span::styled(hint, s.muted)])
+        } else {
+            Line::from(Span::styled(text, style))
+        };
+        split_line(left, right, width)
     }
 }
 
@@ -185,6 +203,7 @@ mod tests {
             cwd: "~/site",
             branch: Some("main ↑1"),
             settings,
+            harness: "pi",
             agent_in: None,
             usage: None,
             working_secs: None,
@@ -198,11 +217,11 @@ mod tests {
     }
 
     #[test]
-    fn line_one_shows_only_what_is_set() {
+    fn line_one_names_the_harness_and_shows_only_its_settings() {
         let styles = Styles::new(&Palette::default(), false);
         let mut settings = Vec::new();
         let s = status(&styles, &settings);
-        assert_eq!(s.lines(80)[0].to_string(), "~/site · main ↑1");
+        assert_eq!(s.lines(80)[0].to_string(), "~/site · main ↑1 · pi");
         record_setting(&mut settings, "pi", "model", "sonnet");
         record_setting(&mut settings, "suite", "approvals", "auto");
         let mut s = status(&styles, &settings);
@@ -223,6 +242,15 @@ mod tests {
             "~/site · main ↑1 · pi · model opus · effort high"
         );
         assert_eq!(status(&styles, &settings).lines(20)[0].width(), 20);
+        // Another harness's settings stay out of sight until it is the session's.
+        record_setting(&mut settings, "claude", "model", "opus-4");
+        let mut s = status(&styles, &settings);
+        assert!(!s.lines(80)[0].to_string().contains("opus-4"));
+        s.harness = "claude";
+        assert_eq!(
+            s.lines(80)[0].to_string(),
+            "~/site · main ↑1 · claude · model opus-4"
+        );
     }
 
     #[test]
@@ -255,16 +283,37 @@ mod tests {
         let none: [HarnessSettings; 0] = [];
         let mut s = status(&styles, &none);
         let l = &s.lines(60)[2];
-        assert_eq!(l.to_string(), "ask (shift+tab to cycle)");
+        assert_eq!(l.to_string(), "? ask before acting (shift+tab to cycle)");
         assert_eq!(l.spans[0].style, styles.muted);
+        assert_eq!(l.spans[1].style, styles.muted);
+        s.approvals = Approvals::Edits;
+        let l = &s.lines(60)[2];
+        assert_eq!(l.to_string(), "⏵⏵ accept edits on (shift+tab to cycle)");
+        assert_eq!(l.spans[0].style, styles.accent);
         s.approvals = Approvals::Auto;
         let l = &s.lines(60)[2];
-        assert_eq!(l.to_string(), "⏵⏵ auto (shift+tab to cycle)");
-        assert_eq!(l.spans[0].style, styles.accent);
+        assert_eq!(l.to_string(), "⏵⏵ auto mode on (shift+tab to cycle)");
+        assert_eq!(l.spans[0].style, styles.danger);
         s.notice = Some(("press ctrl-c again to quit", false));
-        let l = &s.lines(60)[2];
-        assert!(l.to_string().starts_with("⏵⏵ auto"));
+        let l = &s.lines(70)[2];
+        assert!(l.to_string().starts_with("⏵⏵ auto mode on (shift+tab"));
         assert!(l.to_string().ends_with("press ctrl-c again to quit"));
-        assert_eq!(l.width(), 60);
+        assert_eq!(l.width(), 70);
+        // Narrower: the notice wins over the hint.
+        let l = &s.lines(48)[2];
+        assert_eq!(
+            l.to_string(),
+            "⏵⏵ auto mode on       press ctrl-c again to quit"
+        );
+    }
+
+    #[test]
+    fn approvals_cycle_ask_edits_auto() {
+        let modes = [Approvals::Ask, Approvals::Edits, Approvals::Auto];
+        for (i, mode) in modes.iter().enumerate() {
+            assert_eq!(mode.next(), modes[(i + 1) % 3]);
+            assert_eq!(Approvals::parse(mode.word()), Some(*mode));
+        }
+        assert_eq!(Approvals::parse("yolo"), None);
     }
 }

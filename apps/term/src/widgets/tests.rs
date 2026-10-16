@@ -107,7 +107,7 @@ fn plan_events_replace_and_clear_per_agent() {
 }
 
 #[test]
-fn usage_events_keep_the_last_per_agent() {
+fn usage_events_keep_the_last_of_the_main_agent() {
     let mut w = widgets();
     assert!(w.usage_line().is_none());
     let u = |agent: Option<&str>, used: i64, cost: f64| {
@@ -123,7 +123,8 @@ fn usage_events_keep_the_last_per_agent() {
     w.on_session_event(&u(None, 350, 0.18));
     assert_eq!(
         text(&w.usage_line().unwrap()),
-        "ctx 35% · $0.18 · claude ctx 12% $0.42"
+        "ctx 35% · $0.18",
+        "guests' usage is left out"
     );
 }
 
