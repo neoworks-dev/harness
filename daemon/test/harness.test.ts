@@ -8,7 +8,8 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { fauxToolCall } from "@mariozechner/pi-ai";
 import { createPiAgent } from "@suite/harness/pi";
-import type { SessionEvent } from "@suite/protocol/types";
+import type { Envelope, HarnessSettings, SessionEvent } from "@suite/protocol/types";
+import { validateEnvelope } from "@suite/protocol/validate";
 import { fakeModel, reply, TEST_CONFIG, withUsage } from "../../harness/test/fake-model.ts";
 import type { GuestConfig } from "../src/guests/guests.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
@@ -49,10 +50,17 @@ async function setup(
     pi?: ReturnType<typeof createPiAgent>;
     /** How delegate's "start a subagent?" question is answered; manual: by the test. */
     gate?: string;
+    guests?: Record<string, GuestConfig>;
+    settingsTimeoutMs?: number;
   } = {},
 ): Promise<Setup> {
   const agent = options.agent ?? new FakeAgent("main");
-  const daemon = await startTestDaemon({ agent, guests: GUESTS, pi: options.pi });
+  const daemon = await startTestDaemon({
+    agent,
+    guests: options.guests ?? GUESTS,
+    pi: options.pi,
+    settingsTimeoutMs: options.settingsTimeoutMs,
+  });
   cleanups.push(() => daemon.stop());
   const gate = options.gate ?? "allow";
   if (gate !== "manual") {
@@ -238,6 +246,130 @@ describe("/harness", () => {
     await daemon.commands.run(session, "/model");
     const choice = await answer(daemon, session, "choice", "small");
     expect(choice).toMatchObject({ title: "Fake model (now: large)" });
+  });
+});
+
+/** Asks for session.settings over the hub, as a client would; resolves with the reply frame. */
+function askSettings(daemon: TestDaemon, session: string): Promise<Envelope> {
+  return new Promise((resolve, reject) => {
+    const handle = daemon.hub.connect({
+      send(frame) {
+        const result = validateEnvelope(JSON.parse(frame));
+        if (!result.ok) return reject(new Error(result.error));
+        if ("id" in result.value && result.value.id === "1") resolve(result.value);
+      },
+    });
+    const send = (frame: Record<string, unknown>): void => handle.receive(JSON.stringify(frame));
+    send({ topic: "bus.hello", payload: { protocol: 1, client: "test" } });
+    send({ topic: "session.settings", id: "1", payload: { session } });
+  });
+}
+
+async function settingsOf(daemon: TestDaemon, session: string): Promise<HarnessSettings[]> {
+  const reply = await askSettings(daemon, session);
+  if (reply.topic !== "session.settings_result") throw new Error(`got ${reply.topic}`);
+  expect(reply.id).toBe("1");
+  return reply.payload.harnesses;
+}
+
+const MODELS = [
+  { value: "small", name: "SMALL", description: "small one" },
+  { value: "large", name: "LARGE", description: "large one" },
+];
+const EFFORTS = [
+  { value: "low", name: "LOW", description: "low one" },
+  { value: "high", name: "HIGH", description: "high one" },
+];
+
+describe("session.settings", () => {
+  test("lists the daemon's agent and the guests, the current one marked, with their options", async () => {
+    const { daemon, session } = await setup();
+    const harnesses = await settingsOf(daemon, session);
+    // Asking starts each guest's adapter for the session (the fake one takes well under a second).
+    expect(harnesses).toEqual([
+      { name: "main", title: "main", current: true, options: [] },
+      {
+        name: "fake",
+        title: "Fake",
+        current: false,
+        options: [
+          { category: "model", current: "small", values: MODELS },
+          { category: "thought_level", current: "low", values: EFFORTS },
+        ],
+      },
+      {
+        name: "other",
+        title: "Other",
+        current: false,
+        options: [
+          { category: "model", current: "small", values: MODELS },
+          { category: "thought_level", current: "low", values: EFFORTS },
+        ],
+      },
+    ]);
+    // Same names, in the same order, as /harness offers.
+    await daemon.commands.run(session, "/harness");
+    const choice = await answer(daemon, session, "choice", "main");
+    expect(choice).toMatchObject({
+      options: harnesses.map((h) => ({ id: h.name, name: h.title })),
+    });
+  });
+
+  test("follows /harness and /model: the current harness and the current values", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/harness fake");
+    await daemon.commands.run(session, "/effort high");
+    await daemon.commands.run(session, "/model other large");
+    const harnesses = await settingsOf(daemon, session);
+    expect(harnesses.map((h) => [h.name, h.current])).toEqual([
+      ["main", false],
+      ["fake", true],
+      ["other", false],
+    ]);
+    const current = (name: string): (string | undefined)[] =>
+      harnesses.find((h) => h.name === name)?.options.map((o) => o.current) ?? [];
+    expect(current("fake")).toEqual(["small", "high"]);
+    expect(current("other")).toEqual(["large", "low"]);
+    // A new session starts from the user's last choices (the harness, and its effort).
+    const next = daemon.sessions.create({}).id;
+    const fresh = await settingsOf(daemon, next);
+    expect(fresh.find((h) => h.current)?.name).toBe("fake");
+    expect(fresh.find((h) => h.name === "fake")?.options.map((o) => o.current)).toEqual([
+      "small",
+      "high",
+    ]);
+  });
+
+  test("a guest that fails to start, or is too slow, is listed without options and with why", async () => {
+    const broken: GuestConfig = {
+      ...FAKE,
+      title: "Broken",
+      command: ["bun", "-e", "process.exit(3)"],
+    };
+    const slow: GuestConfig = { ...FAKE, title: "Slow", env: { FAKE_ACP_HANG: "1" } };
+    const { daemon, session } = await setup({
+      guests: { fake: FAKE, broken, slow },
+      settingsTimeoutMs: 400,
+    });
+    const harnesses = await settingsOf(daemon, session);
+    expect(harnesses.map((h) => h.name)).toEqual(["main", "fake", "broken", "slow"]);
+    const by = (name: string): HarnessSettings | undefined =>
+      harnesses.find((h) => h.name === name);
+    expect(by("fake")?.options.length).toBe(2);
+    expect(by("fake")?.error).toBeUndefined();
+    expect(by("broken")).toMatchObject({ title: "Broken", current: false, options: [] });
+    expect(by("broken")?.error).toBeString();
+    expect(by("slow")).toMatchObject({
+      title: "Slow",
+      options: [],
+      error: "Slow did not answer within 400 ms",
+    });
+  });
+
+  test("a session that doesn't exist is not_found", async () => {
+    const { daemon } = await setup();
+    const reply = await askSettings(daemon, "s_nope");
+    expect(reply).toMatchObject({ topic: "bus.error", id: "1", payload: { code: "not_found" } });
   });
 });
 

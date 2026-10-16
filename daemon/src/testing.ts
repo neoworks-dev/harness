@@ -43,6 +43,7 @@ export async function startTestDaemon(
     guests?: Record<string, GuestConfig>;
     /** The pi that delegate {agent: "pi"} uses, when the agent isn't pi. */
     pi?: Agent;
+    settingsTimeoutMs?: number;
   } = {},
 ): Promise<TestDaemon> {
   const dir = options.dir ?? mkdtempSync(join(tmpdir(), `${PREFIX}${process.pid}-`));
@@ -55,6 +56,7 @@ export async function startTestDaemon(
     defaultCwd: dir,
     guests: options.guests,
     pi: options.pi,
+    settingsTimeoutMs: options.settingsTimeoutMs,
   });
   return { ...daemon, env, dir };
 }

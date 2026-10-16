@@ -48,6 +48,8 @@ export interface DaemonOptions {
    * `agent` when that is pi; tests give one with a fake model.
    */
   pi?: Agent;
+  /** How long a harness gets to tell its options for session.settings; for tests. */
+  settingsTimeoutMs?: number;
 }
 
 export interface Daemon {
@@ -194,6 +196,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     main: agent.name,
     harness: harnessOf,
     harnesses: () => [agent.name, ...guests.names()],
+    settingsTimeoutMs: options.settingsTimeoutMs,
   });
   const hub = new Hub(
     store,
@@ -208,6 +211,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       assets,
       action: (action, from) => actions.run(action, from),
       command: (session, text) => commands.run(session, text),
+      settings: (session) => commands.settings(session),
     },
   );
   // The agent's write/edit results carry diffs; each one means a file changed on disk.

@@ -4,6 +4,7 @@ import type {
   Envelope,
   ErrorCode,
   FileChanged,
+  HarnessSettings,
   SessionEventRecord,
   Theme,
   UiAction,
@@ -38,6 +39,8 @@ export interface HubParts {
   action?: (action: UiAction, from: string) => Promise<void>;
   /** A command typed as input (/model…): its work, or undefined when the text isn't one. */
   command?: (session: string, text: string) => Promise<void> | undefined;
+  /** The harnesses a session can switch to with their options (session.settings). */
+  settings?: (session: string) => Promise<HarnessSettings[]>;
 }
 
 export interface DaemonInfo {
@@ -216,15 +219,18 @@ export class Hub {
       () => {
         if (id !== undefined) this.send(client, { topic: "bus.ack", id });
       },
-      (err: unknown) => {
-        if (err instanceof NotFoundError) this.fail(client, id, "not_found", err.message);
-        else if (err instanceof BadRequestError) this.fail(client, id, "bad_request", err.message);
-        else {
-          this.log.error(`request ${id ?? "-"}: ${String(err)}`);
-          this.fail(client, id, "internal", String(err));
-        }
-      },
+      (err: unknown) => this.failed(client, id, err),
     );
+  }
+
+  /** Fails a request with the error's kind. */
+  private failed(client: Client, id: string | undefined, err: unknown): void {
+    if (err instanceof NotFoundError) this.fail(client, id, "not_found", err.message);
+    else if (err instanceof BadRequestError) this.fail(client, id, "bad_request", err.message);
+    else {
+      this.log.error(`request ${id ?? "-"}: ${String(err)}`);
+      this.fail(client, id, "internal", String(err));
+    }
   }
 
   private handle(client: Client, msg: Envelope): void {
@@ -264,6 +270,22 @@ export class Hub {
           payload: { sessions: this.sessions.list() },
         });
         return;
+      case "session.settings": {
+        const { session } = msg.payload;
+        const { settings } = this.parts;
+        if (!settings) throw new BadRequestError("this daemon has no harness settings");
+        if (!this.sessions.info(session)) throw new NotFoundError(`no session ${session}`);
+        settings(session).then(
+          (harnesses) =>
+            this.send(client, {
+              topic: "session.settings_result",
+              id: msg.id,
+              payload: { harnesses },
+            }),
+          (err: unknown) => this.failed(client, msg.id, err),
+        );
+        return;
+      }
       case "session.subscribe": {
         const { session, fromSeq = 1 } = msg.payload;
         const info = this.sessions.info(session);
@@ -401,6 +423,7 @@ export class Hub {
       case "bus.error":
       case "session.info":
       case "session.list_result":
+      case "session.settings_result":
       case "session.subscribed":
       case "session.events":
       case "connectors.list_result":

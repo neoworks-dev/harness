@@ -12,6 +12,7 @@ import type {
   SessionCreateParams,
   SessionInfo,
   SessionInput,
+  SessionSettingsPayload,
   Theme,
   UiAction,
 } from "@suite/protocol/types";
@@ -180,6 +181,17 @@ export class Client {
   async listSessions(): Promise<SessionInfo[]> {
     const { sessions } = await this.connection.request("session.list");
     return sessions;
+  }
+
+  /**
+   * The harnesses `session` can switch to, each with what it offers to set (model, effort, mode)
+   * and the current values, for a picker. A harness that could not be asked has `options: []`
+   * and an `error`. Setting is done by sending `/model [harness] <value>`, `/effort`, `/mode` or
+   * `/harness <name>` as the session's input. Asking may start a guest's adapter, so it can take
+   * seconds.
+   */
+  sessionSettings(session: string): Promise<SessionSettingsPayload> {
+    return this.connection.request("session.settings", { session });
   }
 
   /** Starts a new session (in `params.cwd`, by default the daemon's home directory). */

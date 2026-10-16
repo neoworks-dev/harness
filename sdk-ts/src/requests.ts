@@ -9,6 +9,7 @@ type Topic = Envelope["topic"];
 export const REPLY_TOPICS = {
   "session.create": "session.info",
   "session.list": "session.list_result",
+  "session.settings": "session.settings_result",
   "session.subscribe": "session.subscribed",
   "session.unsubscribe": "bus.ack",
   "session.cancel": "bus.ack",

@@ -28,6 +28,8 @@ pub enum Envelope {
     SessionCreate(SessionCreate),
     SessionList(SessionList),
     SessionListResult(SessionListResult),
+    SessionSettings(SessionSettings),
+    SessionSettingsResult(SessionSettingsResult),
     SessionSubscribe(SessionSubscribe),
     SessionUnsubscribe(SessionUnsubscribe),
     SessionSubscribed(SessionSubscribed),
@@ -86,6 +88,14 @@ impl Serialize for Envelope {
             ),
             Envelope::SessionListResult(v) => (
                 "session.list_result",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::SessionSettings(v) => (
+                "session.settings",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::SessionSettingsResult(v) => (
+                "session.settings_result",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
             Envelope::SessionSubscribe(v) => (
@@ -222,6 +232,12 @@ impl<'de> Deserialize<'de> for Envelope {
             "session.list_result" => serde_json::from_value(value)
                 .map(Envelope::SessionListResult)
                 .map_err(D::Error::custom),
+            "session.settings" => serde_json::from_value(value)
+                .map(Envelope::SessionSettings)
+                .map_err(D::Error::custom),
+            "session.settings_result" => serde_json::from_value(value)
+                .map(Envelope::SessionSettingsResult)
+                .map_err(D::Error::custom),
             "session.subscribe" => serde_json::from_value(value)
                 .map(Envelope::SessionSubscribe)
                 .map_err(D::Error::custom),
@@ -341,6 +357,18 @@ impl From<SessionList> for Envelope {
 impl From<SessionListResult> for Envelope {
     fn from(v: SessionListResult) -> Self {
         Envelope::SessionListResult(v)
+    }
+}
+
+impl From<SessionSettings> for Envelope {
+    fn from(v: SessionSettings) -> Self {
+        Envelope::SessionSettings(v)
+    }
+}
+
+impl From<SessionSettingsResult> for Envelope {
+    fn from(v: SessionSettingsResult) -> Self {
+        Envelope::SessionSettingsResult(v)
     }
 }
 
@@ -611,6 +639,90 @@ pub struct SessionListResult {
 pub struct SessionListPayload {
     #[serde(rename = "sessions")]
     pub sessions: Vec<SessionInfo>,
+}
+
+/// Client → daemon: what the session's harnesses offer to set (model, effort, mode), for a picker. Replied to with session.settings_result. Setting a value needs no request of its own: send /model, /effort, /mode [harness] [value] and /harness <name> as session.input.
+/// Tagged `topic: "session.settings"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionSettings {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: SessionRef,
+}
+
+/// Tagged `topic: "session.settings_result"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionSettingsResult {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: SessionSettingsPayload,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionSettingsPayload {
+    /// Every harness the session can switch to (the same list /harness offers): the daemon's own agent first, then the configured guests.
+    #[serde(rename = "harnesses")]
+    pub harnesses: Vec<HarnessSettings>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HarnessSettings {
+    /// What /harness and /model take.
+    #[serde(rename = "name")]
+    pub name: String,
+    /// To show.
+    #[serde(rename = "title")]
+    pub title: String,
+    /// Whether the session runs on it now.
+    #[serde(rename = "current")]
+    pub current: bool,
+    /// What it offers to set. Empty when they could not be fetched (see error) or it offers none.
+    #[serde(rename = "options")]
+    pub options: Vec<ConfigOption>,
+    /// Why options is empty: the harness failed to start or did not answer in time.
+    #[serde(rename = "error", default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// One setting a harness offers, as ACP's session config options describe it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigOption {
+    #[serde(rename = "category")]
+    pub category: ConfigCategory,
+    /// The current value, if known.
+    #[serde(rename = "current", default, skip_serializing_if = "Option::is_none")]
+    pub current: Option<String>,
+    /// The values to offer. A harness may accept others (pi: any provider/model).
+    #[serde(rename = "values")]
+    pub values: Vec<ConfigValue>,
+}
+
+/// model: /model; thought_level: /effort; mode: /mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ConfigCategory {
+    #[serde(rename = "model")]
+    Model,
+    #[serde(rename = "thought_level")]
+    ThoughtLevel,
+    #[serde(rename = "mode")]
+    Mode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigValue {
+    /// What the command takes.
+    #[serde(rename = "value")]
+    pub value: String,
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(
+        rename = "description",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub description: Option<String>,
 }
 
 /// Client → daemon. The daemon replays session.events from fromSeq, sends session.subscribed, then streams live events with no gaps or duplicates.
