@@ -1,0 +1,5 @@
+⟦accent|● ⟧⟦bold|photo-editor.export⟧
+⟦muted|  ⎿ ⟧⟦accent bold|Exporting logo⟧
+    ⟦muted|Format:⟧ PNG⟦muted| · ⟧⟦muted|Size:⟧ 512×512⟦muted| · ⟧⟦muted|Quality:⟧ 90%
+    ⟦accent|▓▓▓▓▓▓▓▓▓▓▓▓⟧⟦muted|░░░░░░░░⟧ 60%⟦muted| Compressing⟧
+    ⟦muted|… +2 lines⟧

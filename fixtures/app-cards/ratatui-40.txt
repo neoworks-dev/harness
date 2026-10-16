@@ -1,0 +1,8 @@
+● browser.tabs
+  ╭ Site preview
+  │ http://localhost:5173/
+  │ Pinned
+  │ [1 Switch]
+  ╭ Logo ideas
+  │ https://example.com/logos
+  │ [2 Switch]

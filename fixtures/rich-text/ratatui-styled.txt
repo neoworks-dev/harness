@@ -1,0 +1,23 @@
+⟦bold|Logo added⟧
+
+I copied the image to ⟦fg bg:surface|public/logo.png⟧ and used it in ⟦bold|Header⟧, ⟦italic|styled⟧ as before.
+⟦crossed-out|Old favicon⟧ stays. See ⟦accent underlined|the docs⟧⟦muted| (https://example.com/logo)⟧.
+
+1. Copied the asset
+2. Edited ⟦fg bg:surface|src/Header.tsx⟧:
+   • added the ⟦fg bg:surface|<img>⟧
+   • kept the title
+
+⟦success|[x] ⟧build passes
+⟦muted|[ ] ⟧update the favicon
+
+⟦muted|│ ⟧⟦muted|The image is 512×512; browsers scale it down.⟧
+
+⟦fg bg:surface|  <img src="/logo.png" alt="Logo" />                                            ⟧
+
+⟦border|────────────────────────────────────────────────────────────────────────────────⟧
+
+Anything else?
+⟦bold|Summary⟧
+⟦success|All checks passed.⟧
+⟦fg bg:surface|took 1.2s⟧

@@ -1,0 +1,8 @@
+⟦success|● ⟧⟦bold|browser.tabs⟧
+  ⟦border|╭ ⟧⟦bold|Site preview⟧
+  ⟦border|│ ⟧⟦accent underlined|http://localhost:5173/⟧
+  ⟦border|│ ⟧⟦accent|Pinned⟧
+  ⟦border|│ ⟧[⟦accent bold|1⟧ Switch]
+  ⟦border|╭ ⟧⟦bold|Logo ideas⟧
+  ⟦border|│ ⟧⟦accent underlined|https://example.com/logos⟧
+  ⟦border|│ ⟧[⟦accent bold|2⟧ Switch]

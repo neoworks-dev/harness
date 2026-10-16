@@ -14,7 +14,7 @@ One agent session shared across every app in the suite. The design is in [docs/d
 | `apps/browser/`      | Stand-in web browser: navigate/read/images/download tools + page | 5     |
 | `apps/photo/`        | Stand-in photo editor (Go, terminal): image tools, preview, chat | 5     |
 | `services/lsp/`      | Language servers as a connector (started by the daemon)          | 5     |
-| `renderers/`         | web (TS), gpui (Rust), tui (Go)                                  | 4     |
+| `renderers/`         | web (TS), gpui (Rust), tui (Go), ratatui (Rust)                  | 4     |
 | `fixtures/`          | View fixtures + renderer snapshot tests                          | 4     |
 
 ## Requirements

@@ -1,0 +1,5 @@
+● photo-editor.crop
+  ╭ Cropped image
+  │ [image asset://img-7f3 · 1920×1080]
+  │ 1920×1080
+  │ [o Open as layer]  [c Copy handle]

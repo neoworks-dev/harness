@@ -1,0 +1,4 @@
+⟦success|● ⟧⟦bold|files.list⟧
+⟦muted|  ⎿ ⟧⟦bold|~/site/public⟧
+    3 rows · name, size, modified
+    ⟦muted|3 files, 1.25 MB total⟧

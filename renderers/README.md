@@ -1,6 +1,6 @@
 # renderers
 
-Three renderers draw the same resolved view (`protocol/schemas/view.schema.json`): `web/` (TS, DOM), `gpui/` (Rust), `tui/` (Go). They never parse markdown, diff text or fill templates: the daemon did that. Their input is a list of `ViewItem`s plus a `Theme` (`protocol/themes/default.json` is the default the daemon serves), kept current by `view.snapshot` + `view.patch`.
+Four renderers draw the same resolved view (`protocol/schemas/view.schema.json`): `web/` (TS, DOM), `gpui/` (Rust), `tui/` (Go) and `ratatui/` (Rust, styled lines for full-screen terminal apps; compact tool results, see its README). They never parse markdown, diff text or fill templates: the daemon did that. Their input is a list of `ViewItem`s plus a `Theme` (`protocol/themes/default.json` is the default the daemon serves), kept current by `view.snapshot` + `view.patch`.
 
 ## Conventions every renderer follows
 
@@ -40,4 +40,4 @@ Tool states: `pending` ○ (muted), `running` ◐ (accent; animated where possib
 
 ## Snapshot tests
 
-Every fixture in `fixtures/<name>/resolved.json` is drawn by every renderer and compared with a snapshot next to it: `tui.txt` (80 columns, no color), `tui-40.txt` (40 columns), `web.html`, `gpui.txt` (the GPUI renderer's layout model). `UPDATE_SNAPSHOTS=1` rewrites them; review the diff like code. Pixel screenshots for web and GPUI are not set up yet (see the design's open questions).
+Every fixture in `fixtures/<name>/resolved.json` is drawn by every renderer and compared with a snapshot next to it: `tui.txt` (80 columns, no color), `tui-40.txt` (40 columns), `web.html`, `gpui.txt` (the GPUI renderer's layout model), `ratatui.txt` / `ratatui-40.txt` / `ratatui-expanded.txt` / `ratatui-styled.txt` (the ratatui renderer's lines as text). `UPDATE_SNAPSHOTS=1` rewrites them; review the diff like code. Pixel screenshots for web and GPUI are not set up yet (see the design's open questions).

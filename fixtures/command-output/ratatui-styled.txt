@@ -1,0 +1,5 @@
+⟦danger|● ⟧⟦bold|bash: npm test⟧
+⟦muted|  ⎿ ⟧> site@1.0.0 test
+    > vitest run
+    ⟦muted|… +6 lines⟧
+    ⟦danger|Exit code ⟧⟦danger bold|1⟧
