@@ -5,3 +5,4 @@ bin/
 .env
 target/
 apps/gui/dist/
+.worktrees/
