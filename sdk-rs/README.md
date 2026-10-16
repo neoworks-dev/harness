@@ -2,8 +2,8 @@
 
 Minimal Rust client for the bus (crate `suite-sdk`), for GPUI apps. One background thread owns a blocking WebSocket on the daemon's Unix socket; there is no async runtime, so it fits GPUI's own executor.
 
-- **Requests are blocking** (10 s timeout): call them from a background task. `list_sessions`, `create_session`, `subscribe`, `unsubscribe`, `input`, `cancel`, `move_agent`, `set_presence`, `list_connectors`.
-- **Pushes arrive on `events()`**, an `async_channel::Receiver<Event>` a task can `.recv().await`: `Focus` (`agent.focus`), `Connectors` (`connectors.changed`), `Session` (replayed and live session events), `Subscribed` (replay finished) and `Connection(bool)`.
+- **Requests are blocking** (10 s timeout): call them from a background task. `list_sessions`, `create_session`, `subscribe`, `unsubscribe`, `input`, `cancel`, `move_agent`, `set_presence`, `list_connectors`, `subscribe_view`, `unsubscribe_view`, `action`, `put_asset`, `get_asset`; `file_changed` sends without waiting.
+- **Pushes arrive on `events()`**, an `async_channel::Receiver<Event>` a task can `.recv().await`: `Focus` (`agent.focus`), `Connectors` (`connectors.changed`), `Session` (replayed and live session events), `Subscribed` (replay finished), `Connection(bool)`, `Theme`, `ViewSnapshot`/`ViewPatch` (see `ViewState`) and `FileChanged`.
 - **`reconnect: true`** redials with backoff, repeats hello and the current presence, and resubscribes from the last seq seen + 1, so a session's events arrive in order with no gaps or repeats. Requests in flight when the connection drops fail with `Error::Disconnected` and are not retried (the daemon may have run them). The daemon re-sends `agent.focus` after each hello.
 - Events queue without bound until read, so either read them or don't call `events()`.
 
@@ -30,6 +30,19 @@ while let Ok(event) = events.recv_blocking() {
 ```
 
 Types come from `suite_protocol` (re-exported as `suite_sdk::protocol`).
+
+## Tools
+
+`suite_sdk::tools::ToolServer` is a small MCP server (Streamable HTTP, JSON responses, bearer token) on 127.0.0.1, so an app can bring its own tools without a large MCP crate. Handlers run on the server's threads; send to your UI thread through a channel when a tool needs app state.
+
+```rust
+use suite_sdk::tools::{Tool, ToolResult, ToolServer};
+
+let open = Tool::new("open", "Open a file", json!({"type": "object", "properties": {"path": {"type": "string"}}}),
+    |args| ToolResult::structured("opened", json!({"path": args["path"]})));
+let server = ToolServer::start("code-editor", None, vec![open])?;
+presence.mcp = Some(server.endpoint()); // keep `server` alive as long as the app runs
+```
 
 ## Tests
 

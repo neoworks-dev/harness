@@ -7,6 +7,7 @@
 
 mod conn;
 mod socket;
+pub mod tools;
 mod view;
 
 use std::path::PathBuf;

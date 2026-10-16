@@ -272,3 +272,29 @@ fn assets_and_file_changes() {
     assert_eq!(changed.path, "/site/src/Header.tsx");
     assert_eq!(changed.app.as_deref(), Some("code-editor"));
 }
+
+#[test]
+fn the_gateway_lists_tools_from_a_rust_tool_server() {
+    use suite_sdk::tools::{Tool, ToolResult, ToolServer};
+    let Some(daemon) = Daemon::start() else {
+        return;
+    };
+    let echo = Tool::new(
+        "echo",
+        "Echo the text",
+        serde_json::json!({"type": "object", "properties": {"text": {"type": "string"}}}),
+        |args| ToolResult::text(args["text"].as_str().unwrap_or("")),
+    );
+    let server = ToolServer::start("rusty", None, vec![echo]).expect("tool server");
+    let mut presence = app("rusty", false);
+    presence.mcp = Some(server.endpoint());
+    let client = daemon.connect("rusty", None);
+    client.set_presence(presence).expect("presence");
+    let connectors = client.list_connectors().expect("list");
+    let rusty = connectors
+        .iter()
+        .find(|c| c.app == "rusty")
+        .expect("rusty listed");
+    let names: Vec<&str> = rusty.tools.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(names, ["rusty.echo"], "{rusty:?}");
+}
