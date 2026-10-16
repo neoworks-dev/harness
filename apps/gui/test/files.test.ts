@@ -1,14 +1,11 @@
 import { expect, test } from "bun:test";
 import type { SessionEvent, ToolCallContent } from "@suite/protocol/types";
+import { branchLabel, parseStatus, relFromPrefix, relativize } from "../ui/lib/git-status.ts";
 import {
   NO_TOUCHES,
   applyTouch,
-  branchLabel,
   fileEntries,
   glyphOfMark,
-  parseStatus,
-  relFromPrefix,
-  relativize,
   type Touches,
 } from "../ui/plugins/files/files.ts";
 

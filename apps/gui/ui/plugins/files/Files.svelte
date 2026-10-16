@@ -8,8 +8,8 @@
   import FileIcon from "../../widgets/FileIcon.svelte";
   import { useCtx } from "../../kernel/slots/context.ts";
   import { parseUnified } from "../../lib/unified.ts";
+  import { branchLabel } from "../../lib/git-status.ts";
   import {
-    branchLabel,
     fileEntries,
     glyphOfMark,
     type FileEntry,
