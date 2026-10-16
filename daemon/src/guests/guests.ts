@@ -1,14 +1,20 @@
-// The ACP bridge (design §9): starts guest agents (Claude Code, Codex) through their ACP adapters,
-// one guest session per suite session and guest, and streams what they do into the suite
-// session. The main agent reaches them with delegate; the user with "/claude task".
+// The ACP bridge (design §9): starts agents (Claude Code, Codex) through their ACP adapters and
+// streams what they do into the suite session. Two roles: guests, one per suite session and
+// name, that the session's agent reaches with delegate and the user with "/claude task"; and the
+// session's own agent when the user runs it on that harness (/harness claude), which has no
+// label in the log and gets the session's context events. pi subagents (subagent.ts) are
+// delegated to the same way.
 import { extname } from "node:path";
 import type {
+  Agent,
   AgentSession,
   AgentUpdate,
   ConfigCategory,
   ConfigOption,
+  ContextEvent,
   McpServer,
   PromptResult,
+  RequestPermission,
 } from "@suite/harness/agent";
 import { formatPrompt } from "@suite/harness/context-events";
 import type {
@@ -18,8 +24,10 @@ import type {
   PlanEntryStatus,
   SessionEvent,
   StopReason,
+  ToolCall,
   ToolCallContent,
   ToolCallStatus,
+  ToolCallUpdate,
   ToolKind,
   Usage,
 } from "@suite/protocol/types";
@@ -28,10 +36,12 @@ import { BadRequestError } from "../focus.ts";
 import type { ConnectorSnapshot } from "../gateway/registry.ts";
 import type { Logger } from "../log.ts";
 import { NotFoundError } from "../sessions.ts";
-import type { Approvals } from "../settings.ts";
+import type { Approvals, HarnessSettings } from "../settings.ts";
 import { type FocusTarget, ToldState } from "../told.ts";
 import { AcpConnection, AcpError } from "./acp.ts";
-import { GUEST_PROMPT } from "./prompt.ts";
+import { GUEST_PROMPT, MAIN_PROMPT } from "./prompt.ts";
+import type { GuestRunResult, RunOptions } from "./run.ts";
+import { PI, PiSubagents, type SubagentOptions } from "./subagent.ts";
 
 export interface GuestConfig {
   /** Shown to the main agent, e.g. "Claude Code". */
@@ -43,9 +53,13 @@ export interface GuestConfig {
   permissions: "ask" | "allow";
 }
 
-export interface GuestRunResult extends PromptResult {
-  /** The guest's last message. */
-  text: string;
+/** Which client of the gateway an agent is (see Caller in gateway.ts). */
+export interface GatewayRole {
+  name: string;
+  /** A subagent: it may not delegate. */
+  guest?: boolean;
+  /** An ACP client: it gets text-only results. */
+  text?: boolean;
 }
 
 export interface GuestManagerOptions {
@@ -54,16 +68,26 @@ export interface GuestManagerOptions {
   /** Appends to a session's log. */
   append: (session: string, event: SessionEvent) => void;
   cwd: (session: string) => string;
-  /** The gateway, with headers that say which guest calls. */
-  mcpServers: (session: string, guest: string) => McpServer[];
+  /** The gateway, with headers that say who calls. */
+  mcpServers: (session: string, role: GatewayRole) => McpServer[];
   connectors: () => ConnectorSnapshot[];
   focus: (session: string) => FocusTarget | undefined;
-  /** What the user chose for this guest in this session (model, effort, mode). */
-  settings: (session: string, guest: string) => Partial<Record<ConfigCategory, string>>;
+  /** What the user chose for this harness in this session (model, effort, mode). */
+  settings: (session: string, harness: string) => HarnessSettings;
   /** Asks the user (permission requests). */
   asker: Asker;
   /** The session's approvals mode (/approvals): auto allows everything, edits allows edits. */
   approvals?: (session: string) => Approvals;
+  /**
+   * A summary of the turns other harnesses ran (see handoff.ts), for an ACP harness that lost
+   * its own conversation: `all` asks for every turn so far.
+   */
+  handoff?: (session: string, harness: string, all: boolean) => string | undefined;
+  /** pi, for delegate {agent: "pi"} (its subagent sessions are made with it). */
+  pi?: Agent;
+  resolveAsset?: (handle: string) => string | undefined;
+  /** The hook a pi subagent's own bash, write and edit ask through. */
+  requestPermission?: (session: string, agent: string) => RequestPermission;
 }
 
 /** A conversation the adapter has stored (session/list), for /resume. */
@@ -89,6 +113,10 @@ interface Run {
 interface Guest {
   name: string;
   session: string;
+  /** The session's own agent, not a guest: its updates carry no agent label. */
+  main: boolean;
+  /** A conversation the harness doesn't carry from before (new, or its stored one is gone). */
+  fresh: boolean;
   conn: AcpConnection;
   acpSession: string;
   told: ToldState;
@@ -154,9 +182,12 @@ function planEntries(value: unknown): PlanEntry[] {
   return entries;
 }
 
-/** ACP usage_update: context tokens used / window size, and the session's cost when in USD. */
-function usageOf(update: Record<string, unknown>, agent: string): Usage | undefined {
-  const usage: Usage = { type: "usage", agent };
+/**
+ * ACP usage_update: context tokens used / window size, and the session's cost when in USD.
+ * `agent` is the guest's name; the session's own agent has none.
+ */
+function usageOf(update: Record<string, unknown>, agent: string | undefined): Usage | undefined {
+  const usage: Usage = { type: "usage" };
   const used = count(update.used);
   const size = count(update.size);
   if (used !== undefined) usage.contextUsed = used;
@@ -165,7 +196,24 @@ function usageOf(update: Record<string, unknown>, agent: string): Usage | undefi
     const amount = update.cost.amount;
     if (typeof amount === "number" && Number.isFinite(amount) && amount >= 0) usage.cost = amount;
   }
-  return Object.keys(usage).length > 2 ? usage : undefined;
+  if (Object.keys(usage).length === 1) return undefined;
+  if (agent !== undefined) usage.agent = agent;
+  return usage;
+}
+
+/** Labels an update with the guest it is from; the session's own agent's stay unlabelled. */
+function labelled<T extends object>(update: T, agent: string | undefined): T {
+  return agent === undefined ? update : { ...update, agent };
+}
+
+/** The ACP conversation a harness_message of this harness last named, if any. */
+export function storedConversation(history: SessionEvent[], name: string): string | undefined {
+  let id: string | undefined;
+  for (const event of history) {
+    if (event.type !== "harness_message" || event.harness !== name) continue;
+    if (isRecord(event.message)) id = str(event.message.acpSession) ?? id;
+  }
+  return id;
 }
 
 function errorText(err: unknown): string {
@@ -273,9 +321,27 @@ async function imageBlocks(paths: string[] | undefined): Promise<Record<string, 
 
 export class GuestManager {
   private readonly guests = new Map<string, Promise<Guest>>();
-  private readonly byAcpSession = new Map<string, Guest>();
+  /** Every running adapter (guests and sessions' own agents), to stop them with the daemon. */
+  private readonly live = new Set<Guest>();
+  private readonly subagents?: PiSubagents;
 
-  constructor(private readonly options: GuestManagerOptions) {}
+  constructor(private readonly options: GuestManagerOptions) {
+    const { pi, requestPermission } = options;
+    if (!pi) return;
+    const subagents: SubagentOptions = {
+      log: options.log,
+      cwd: options.cwd,
+      // A guest of the gateway (no delegate), but one that sees structured results.
+      mcpServers: (session) => options.mcpServers(session, { name: PI, guest: true }),
+      settings: (session) => options.settings(session, PI),
+      connectors: options.connectors,
+      focus: options.focus,
+    };
+    if (options.resolveAsset) subagents.resolveAsset = options.resolveAsset;
+    if (requestPermission)
+      subagents.requestPermission = (session) => requestPermission(session, PI);
+    this.subagents = new PiSubagents(pi, subagents);
+  }
 
   names(): string[] {
     return Object.keys(this.options.configs);
@@ -283,6 +349,11 @@ export class GuestManager {
 
   has(name: string): boolean {
     return Object.hasOwn(this.options.configs, name);
+  }
+
+  /** Everything delegate can hand a task to: pi (when there is one) and the configured guests. */
+  harnesses(): string[] {
+    return this.subagents ? [PI, ...this.names()] : this.names();
   }
 
   title(name: string): string {
@@ -297,8 +368,9 @@ export class GuestManager {
     session: string,
     name: string,
     task: string,
-    opts: { emit: (update: AgentUpdate) => void; signal?: AbortSignal; images?: string[] },
+    opts: RunOptions,
   ): Promise<GuestRunResult> {
+    if (name === PI && this.subagents) return this.subagents.run(session, task, opts);
     if (!this.has(name)) {
       return { stopReason: "error", error: `No guest named ${name}.`, text: "" };
     }
@@ -308,9 +380,48 @@ export class GuestManager {
     } catch (err) {
       return { stopReason: "error", error: `Starting ${name} failed: ${errorText(err)}`, text: "" };
     }
-    const turn = guest.queue.then(() => this.prompt(guest, task, opts));
+    return this.enqueue(guest, task, opts);
+  }
+
+  /** One prompt at a time per adapter. */
+  private enqueue(guest: Guest, task: string, opts: RunOptions): Promise<GuestRunResult> {
+    const turn = guest.queue.then(() => this.runWith(guest, task, opts));
     guest.queue = turn.catch(() => {});
     return turn;
+  }
+
+  /**
+   * Runs the task with the settings that are meant for it alone (delegate's model and effort),
+   * then puts the previous values back. A value the adapter refuses ends the task with its
+   * message.
+   */
+  private async runWith(guest: Guest, task: string, opts: RunOptions): Promise<GuestRunResult> {
+    const before: [ConfigCategory, string][] = [];
+    const back = async (): Promise<void> => {
+      for (const [category, value] of before) {
+        await this.setOption(guest, category, value).catch((err: unknown) => {
+          this.options.log.warn(
+            `${guest.name}: putting ${category} back failed: ${errorText(err)}`,
+          );
+        });
+      }
+    };
+    for (const [name, value] of Object.entries(opts.settings ?? {})) {
+      const category = name as ConfigCategory;
+      const current = [...guest.config.values()].find((o) => o.category === category)?.current;
+      try {
+        await this.setOption(guest, category, value);
+      } catch (err) {
+        await back();
+        return { stopReason: "error", error: errorText(err), text: "" };
+      }
+      if (current !== undefined && current !== value) before.push([category, current]);
+    }
+    try {
+      return await this.prompt(guest, task, opts);
+    } finally {
+      await back();
+    }
   }
 
   /** The guest as an AgentSession, for turns the user gives it directly (/claude task). */
@@ -338,6 +449,63 @@ export class GuestManager {
     };
   }
 
+  /**
+   * The harness as the session's own agent (the user picked it with /harness): sessions create
+   * and load it like pi. Its conversation is the adapter's own, named in the log
+   * (harness_message {acpSession}) so a restarted daemon resumes it.
+   */
+  agent(name: string): Agent {
+    return {
+      name,
+      newSession: (params) => this.mainSession(params.sessionId, name, undefined),
+      loadSession: (params) =>
+        this.mainSession(params.sessionId, name, storedConversation(params.history, name)),
+    };
+  }
+
+  private async mainSession(
+    session: string,
+    name: string,
+    stored: string | undefined,
+  ): Promise<AgentSession> {
+    let guest = await this.start(session, name, { main: true, resume: stored });
+    let controller: AbortController | undefined;
+    return {
+      prompt: async (params) => {
+        const abort = new AbortController();
+        controller = abort;
+        try {
+          // The adapter may have died since the last turn: continue its conversation.
+          if (!guest.conn.running) {
+            guest = await this.start(session, name, { main: true, resume: guest.acpSession });
+          }
+        } catch (err) {
+          return { stopReason: "error", error: `Starting ${name} failed: ${errorText(err)}` };
+        }
+        const current = guest;
+        // A conversation it doesn't carry gets everything said so far, not just what it missed.
+        const summary = current.fresh
+          ? this.options.handoff?.(session, name, true)
+          : params.summary;
+        current.fresh = false;
+        const opts: RunOptions = {
+          emit: params.onUpdate,
+          signal: abort.signal,
+          images: params.images,
+          events: params.pendingEvents,
+        };
+        if (summary !== undefined) opts.summary = summary;
+        const result = await this.enqueue(current, params.text, opts);
+        const out: PromptResult = { stopReason: result.stopReason };
+        if (result.error !== undefined) out.error = result.error;
+        return out;
+      },
+      cancel: () => controller?.abort(),
+      configOptions: () => [...guest.config.values()],
+      setConfigOption: (category, value) => this.setOption(guest, category, value),
+    };
+  }
+
   /** The guest's settable options (starts it for this session if it isn't running). */
   async configOptions(session: string, name: string): Promise<ConfigOption[]> {
     const guest = await this.guest(session, name);
@@ -360,7 +528,7 @@ export class GuestManager {
 
   /** Conversations the guest has stored for this directory, newest first (session/list). */
   async list(name: string, cwd: string): Promise<StoredConversation[]> {
-    const conn = this.spawn(name, cwd);
+    const conn = this.spawn(name, cwd, {});
     try {
       await this.initialize(conn);
       const listed = await conn.request("session/list", { cwd });
@@ -391,20 +559,20 @@ export class GuestManager {
     if (running) {
       const guest = await running.catch(() => undefined);
       if (guest) {
-        this.byAcpSession.delete(guest.acpSession);
+        this.live.delete(guest);
         guest.conn.kill();
       }
     }
-    const resumed = this.start(session, name, conversation);
+    const resumed = this.start(session, name, { resume: conversation });
     this.guests.set(key, resumed);
     resumed.catch(() => this.guests.delete(key));
     await resumed;
   }
 
   shutdown(): void {
-    for (const guest of this.byAcpSession.values()) guest.conn.kill();
+    for (const guest of this.live) guest.conn.kill();
     this.guests.clear();
-    this.byAcpSession.clear();
+    this.live.clear();
   }
 
   private guest(session: string, name: string): Promise<Guest> {
@@ -412,22 +580,23 @@ export class GuestManager {
     const key = `${session}\0${name}`;
     let guest = this.guests.get(key);
     if (!guest) {
-      guest = this.start(session, name);
+      guest = this.start(session, name, {});
       this.guests.set(key, guest);
       guest.catch(() => this.guests.delete(key));
     }
     return guest;
   }
 
-  private spawn(name: string, cwd: string): AcpConnection {
+  /** `target` gets the guest once it exists: the connection's updates and requests are its. */
+  private spawn(name: string, cwd: string, target: { guest?: Guest }): AcpConnection {
     const config = this.options.configs[name];
     if (!config) throw new NotFoundError(`no guest ${name}`);
     return AcpConnection.spawn({
       command: config.command,
       cwd,
       env: config.env,
-      onNotification: (method, params) => this.onNotification(method, params),
-      onRequest: (method, params) => this.onRequest(method, params),
+      onNotification: (method, params) => this.onNotification(target.guest, method, params),
+      onRequest: (method, params) => this.onRequest(target.guest, method, params),
     });
   }
 
@@ -439,16 +608,44 @@ export class GuestManager {
     });
   }
 
-  /** Starts the adapter and a new conversation, or resumes a stored one. */
-  private async start(session: string, name: string, resume?: string): Promise<Guest> {
+  /**
+   * Starts the adapter and a new conversation, or resumes a stored one. The session's own agent
+   * falls back to a new conversation when the stored one can't be resumed.
+   */
+  private async start(
+    session: string,
+    name: string,
+    opts: { main?: boolean; resume?: string },
+  ): Promise<Guest> {
+    const { main = false, resume } = opts;
+    if (main && resume !== undefined) {
+      try {
+        return await this.open(session, name, main, resume);
+      } catch (err) {
+        this.options.log.warn(
+          `${name} for ${session}: resuming ${resume} failed (${errorText(err)}); starting anew`,
+        );
+      }
+    }
+    return this.open(session, name, main, main ? undefined : resume);
+  }
+
+  private async open(
+    session: string,
+    name: string,
+    main: boolean,
+    resume: string | undefined,
+  ): Promise<Guest> {
     const { log } = this.options;
     const cwd = this.options.cwd(session);
-    let guest: Guest | undefined;
-    const conn = this.spawn(name, cwd);
+    const target: { guest?: Guest } = {};
+    const conn = this.spawn(name, cwd, target);
     void conn.exited.then((code) => {
       log.info(`${name} for ${session} exited (${code})`);
+      const { guest } = target;
       if (!guest) return;
-      this.byAcpSession.delete(guest.acpSession);
+      this.live.delete(guest);
+      if (main) return;
       const key = `${session}\0${name}`;
       // Only if it's still the current one (a resume replaces it).
       void this.guests.get(key)?.then((current) => current === guest && this.guests.delete(key));
@@ -456,13 +653,13 @@ export class GuestManager {
     try {
       await this.initialize(conn);
       const mcpServers = this.options
-        .mcpServers(session, name)
+        .mcpServers(session, { name, guest: !main, text: true })
         .map((server) => ({ type: "http", ...server }));
       const params: Record<string, unknown> = {
         cwd,
         mcpServers,
         // Both adapters append this to their own system prompt.
-        _meta: { jetbrains: { air: { customInstructions: GUEST_PROMPT } } },
+        _meta: { jetbrains: { air: { customInstructions: main ? MAIN_PROMPT : GUEST_PROMPT } } },
       };
       if (resume !== undefined) params.sessionId = resume;
       const created = await conn.request(
@@ -472,16 +669,19 @@ export class GuestManager {
       const acpSession = resume ?? (isRecord(created) ? str(created.sessionId) : undefined);
       if (acpSession === undefined) throw new Error("session/new returned no sessionId");
       const config = configOptionsOf(isRecord(created) ? created.configOptions : undefined);
-      guest = {
+      const guest: Guest = {
         name,
         session,
+        main,
+        fresh: main && resume === undefined,
         conn,
         acpSession,
         told: new ToldState(),
         queue: Promise.resolve(),
         config,
       };
-      this.byAcpSession.set(acpSession, guest);
+      target.guest = guest;
+      this.live.add(guest);
       // Only what the user chose: everything else stays the guest's own default.
       for (const [category, value] of Object.entries(this.options.settings(session, name))) {
         try {
@@ -489,6 +689,14 @@ export class GuestManager {
         } catch (err) {
           log.warn(`${name}: setting ${category} to ${value} failed: ${errorText(err)}`);
         }
+      }
+      if (main && resume === undefined) {
+        // So a restarted daemon continues this conversation.
+        this.options.append(session, {
+          type: "harness_message",
+          harness: name,
+          message: { acpSession },
+        });
       }
       log.info(
         `${name} ${resume === undefined ? "started" : "resumed"} for ${session} (${acpSession})`,
@@ -521,11 +729,7 @@ export class GuestManager {
     }
   }
 
-  private async prompt(
-    guest: Guest,
-    task: string,
-    opts: { emit: (update: AgentUpdate) => void; signal?: AbortSignal; images?: string[] },
-  ): Promise<GuestRunResult> {
+  private async prompt(guest: Guest, task: string, opts: RunOptions): Promise<GuestRunResult> {
     const run: Run = {
       emit: opts.emit,
       messages: new Map(),
@@ -534,8 +738,16 @@ export class GuestManager {
     };
     const text = (): string => [...run.messages.values()].at(-1)?.trim() ?? "";
     if (opts.signal?.aborted) return { stopReason: "cancelled", text: "" };
-    const events = guest.told.changes(this.options.connectors(), this.options.focus(guest.session));
+    // What this adapter wasn't told yet about the connectors and focus, then what the session
+    // wants the agent to hear (guests' turns, reverted edits).
+    const events: ContextEvent[] = guest.told.changes(
+      this.options.connectors(),
+      this.options.focus(guest.session),
+    );
     for (const event of events) guest.told.apply(event);
+    for (const event of opts.events ?? []) {
+      if (event.type === "guest_turn" || event.type === "edits_reverted") events.push(event);
+    }
     const onAbort = (): void => {
       guest.conn.notify("session/cancel", { sessionId: guest.acpSession });
       run.done.abort();
@@ -544,7 +756,7 @@ export class GuestManager {
     guest.run = run;
     try {
       const prompt = [
-        { type: "text", text: formatPrompt(task, events) },
+        { type: "text", text: formatPrompt(task, events, undefined, opts.summary) },
         ...(await imageBlocks(opts.images)),
       ];
       const result = await guest.conn.request("session/prompt", {
@@ -564,31 +776,34 @@ export class GuestManager {
       guest.run = undefined;
     }
   }
-  private onNotification(method: string, params: unknown): void {
+
+  private onNotification(guest: Guest | undefined, method: string, params: unknown): void {
     if (method !== "session/update" || !isRecord(params) || !isRecord(params.update)) return;
-    const guest = this.byAcpSession.get(str(params.sessionId) ?? "");
     const run = guest?.run;
     if (!guest || !run) return;
+    // The session's own agent is unlabelled; ids are prefixed so they stay unique in the log.
+    const agent = guest.main ? undefined : guest.name;
+    const prefix = guest.main ? `${guest.name}-main` : guest.name;
     const update = params.update;
     const kind = update.sessionUpdate;
     if (kind === "agent_message_chunk" || kind === "agent_thought_chunk") {
       const text = isRecord(update.content) ? str(update.content.text) : undefined;
       if (text === undefined || text === "") return;
       const given = str(update.messageId);
-      if (given !== undefined) run.messageId = `${guest.name}-${given}`;
+      if (given !== undefined) run.messageId = `${prefix}-${given}`;
       else if (run.messageKind !== kind || run.messageId === undefined) {
-        run.messageId = `${guest.name}-${crypto.randomUUID()}`;
+        run.messageId = `${prefix}-${crypto.randomUUID()}`;
       }
       run.messageKind = kind;
       if (kind === "agent_message_chunk") {
         run.messages.set(run.messageId, (run.messages.get(run.messageId) ?? "") + text);
       }
-      run.emit({ type: kind, messageId: run.messageId, text, agent: guest.name });
+      run.emit(labelled({ type: kind, messageId: run.messageId, text }, agent));
       return;
     }
     // Not output of the agent: it neither ends nor splits the current message.
     if (kind === "usage_update") {
-      const usage = usageOf(update, guest.name);
+      const usage = usageOf(update, agent);
       if (usage) run.emit(usage);
       return;
     }
@@ -596,13 +811,13 @@ export class GuestManager {
     run.messageKind = undefined;
     if (kind === "plan") {
       if (Array.isArray(update.entries)) {
-        run.emit({ type: "plan", agent: guest.name, entries: planEntries(update.entries) });
+        run.emit(labelled({ type: "plan", entries: planEntries(update.entries) }, agent));
       }
       return;
     }
     const id = str(update.toolCallId);
     if (id === undefined) return;
-    const toolCallId = `${guest.name}:${id}`;
+    const toolCallId = `${prefix}:${id}`;
     const status = str(update.status);
     const listed = toContent(update.content);
     const content = listed?.length ? listed : (mcpResultText(update.rawOutput) ?? listed);
@@ -611,21 +826,21 @@ export class GuestManager {
     if (kind === "tool_call") {
       const { title, tool } = describeCall(rawTitle ?? "tool", update.rawInput);
       const toolKind = str(update.kind);
-      const call: AgentUpdate = {
+      const call: ToolCall = {
         type: "tool_call",
         toolCallId,
         title,
         kind: toolKind !== undefined && KINDS.has(toolKind) ? (toolKind as ToolKind) : "other",
         status:
           status !== undefined && STATUSES.has(status) ? (status as ToolCallStatus) : "pending",
-        agent: guest.name,
       };
+      if (agent !== undefined) call.agent = agent;
       if (tool !== undefined) call.tool = tool;
       if (update.rawInput !== undefined) call.rawInput = update.rawInput;
       run.emit(call);
       if (content?.length) run.emit({ type: "tool_call_update", toolCallId, content });
     } else if (kind === "tool_call_update") {
-      const out: AgentUpdate = { type: "tool_call_update", toolCallId };
+      const out: ToolCallUpdate = { type: "tool_call_update", toolCallId };
       // Adapters stream a call's input after it started; the title can say more then.
       if (update.title !== undefined || update.rawInput !== undefined) {
         const { title, tool } = describeCall(rawTitle ?? "tool", update.rawInput);
@@ -640,11 +855,14 @@ export class GuestManager {
     }
   }
 
-  private async onRequest(method: string, params: unknown): Promise<unknown> {
+  private async onRequest(
+    guest: Guest | undefined,
+    method: string,
+    params: unknown,
+  ): Promise<unknown> {
     if (method !== "session/request_permission" || !isRecord(params)) {
       throw new AcpError(`${method} is not supported`, -32601);
     }
-    const guest = this.byAcpSession.get(str(params.sessionId) ?? "");
     const options = this.permissionOptions(params.options);
     const cancelled = { outcome: { outcome: "cancelled" } };
     if (!guest?.run || options.length === 0) return cancelled;
@@ -654,6 +872,7 @@ export class GuestManager {
     const kind: ToolKind | undefined =
       callKind !== undefined && KINDS.has(callKind) ? (callKind as ToolKind) : undefined;
     const isEdit = kind === "edit" || content?.some((c) => c.type === "diff") === true;
+    // The same mapping for guests and the session's own agent.
     const config = this.options.configs[guest.name];
     const mode = this.options.approvals?.(guest.session);
     if (config?.permissions === "allow" || mode === "auto" || (mode === "edits" && isEdit)) {
@@ -671,7 +890,9 @@ export class GuestManager {
     if (kind !== undefined) request.kind = kind;
     if (content?.length) request.content = content;
     const toolCallId = str(call.toolCallId);
-    if (toolCallId !== undefined) request.toolCallId = `${guest.name}:${toolCallId}`;
+    if (toolCallId !== undefined) {
+      request.toolCallId = `${guest.main ? `${guest.name}-main` : guest.name}:${toolCallId}`;
+    }
     const optionId = await this.options.asker.ask(guest.session, request, guest.run.done.signal);
     return optionId === undefined ? cancelled : { outcome: { outcome: "selected", optionId } };
   }

@@ -161,6 +161,7 @@ export function createPiAgent(options: PiAgentOptions): HarnessAgent {
       text,
       images,
       pendingEvents,
+      summary,
       onUpdate,
     }: PromptParams): Promise<PromptResult> {
       if (running) return { stopReason: "error", error: "A turn is already running." };
@@ -180,7 +181,10 @@ export function createPiAgent(options: PiAgentOptions): HarnessAgent {
       try {
         const cwd = cwdTold ? undefined : params.cwd;
         cwdTold = true;
-        await agent.prompt(formatPrompt(text, pendingEvents, cwd), await loadImages(images ?? []));
+        await agent.prompt(
+          formatPrompt(text, pendingEvents, cwd, summary),
+          await loadImages(images ?? []),
+        );
         return toResult(final, cancelRequested);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

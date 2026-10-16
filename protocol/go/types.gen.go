@@ -1669,7 +1669,7 @@ const (
 	PermissionOptionKindRejectAlways PermissionOptionKind = "reject_always"
 )
 
-// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness "suite", value ask, edits or auto): ask asks before file edits, commands, starting a guest and guests' requests; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Per session, ask unless set.
+// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, edits or auto): ask asks before file edits, commands, starting a guest and guests' requests; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Per session, ask unless set.
 type SettingChanged struct {
 	// pi, claude, codex…
 	Harness string      `json:"harness"`
@@ -1695,6 +1695,7 @@ const (
 	SettingNameEffort    SettingName = "effort"
 	SettingNameMode      SettingName = "mode"
 	SettingNameApprovals SettingName = "approvals"
+	SettingNameHarness   SettingName = "harness"
 )
 
 type ChoiceOption struct {

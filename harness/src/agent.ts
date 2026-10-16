@@ -101,6 +101,11 @@ export interface PromptParams {
   images?: string[];
   /** Connect/disconnect/focus events since the previous prompt, oldest first. May be empty. */
   pendingEvents: ContextEvent[];
+  /**
+   * What was said in turns another harness ran since this one last did (a <conversation-so-far>
+   * block), put before the pending events. Absent when there is nothing to catch up on.
+   */
+  summary?: string;
   /** Called synchronously for each update, in order. */
   onUpdate: (update: AgentUpdate) => void;
 }

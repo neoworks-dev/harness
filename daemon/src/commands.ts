@@ -3,7 +3,8 @@
 //                                             from what the harness offers
 //   /resume [guest]                           pick a stored guest conversation to continue
 //   /approvals [ask|edits|auto]               how much the agents ask first; no value: next mode
-// The harness defaults to the session's own agent. Nothing is chosen for the user.
+//   /harness [name]                           the harness the session runs on; no name: pick one
+// The harness defaults to the one the session runs on. Nothing is chosen for the user.
 import type { ConfigOption } from "@suite/harness/agent";
 
 import type { Asker } from "./asker.ts";
@@ -29,8 +30,12 @@ export interface CommandParts {
   settings: Settings;
   asker: Asker;
   log: Logger;
-  /** The session agent's harness name, e.g. pi. */
+  /** The daemon's own agent's harness name, e.g. pi. */
   main: string;
+  /** The harness the session runs on now. */
+  harness: (session: string) => string;
+  /** Every harness a session can run on (the daemon's agent and the configured guests). */
+  harnesses: () => string[];
 }
 
 function when(iso: string | undefined): string | undefined {
@@ -51,6 +56,7 @@ export class Commands {
     if (isSettingName(name)) return this.setting(session, name, args);
     if (name === "resume") return this.resume(session, args);
     if (name === "approvals") return this.approvals(session, args);
+    if (name === "harness") return this.harness(session, args);
     return undefined;
   }
 
@@ -61,9 +67,10 @@ export class Commands {
   private async setting(session: string, name: HarnessSettingName, args: string[]): Promise<void> {
     const { guests, main } = this.parts;
     if (args.length > 2) throw new BadRequestError(`usage: /${name} [harness] [value]`);
-    let harness = main;
-    if (args[0] !== undefined && (args[0] === main || guests.has(args[0])))
-      harness = args.shift() ?? main;
+    let harness = this.parts.harness(session);
+    if (args[0] !== undefined && (args[0] === main || guests.has(args[0]))) {
+      harness = args.shift() ?? harness;
+    }
     const value = args[0];
     if (value !== undefined) {
       await this.apply(session, harness, name, value);
@@ -93,8 +100,15 @@ export class Commands {
       .catch((err: unknown) => this.parts.log.warn(`/${name}: ${String(err)}`));
   }
 
+  /** Whether the session manager runs it (the daemon's agent, the session's harness), not a guest. */
+  private isSessionAgent(session: string, harness: string): boolean {
+    return harness === this.parts.main || harness === this.parts.harness(session);
+  }
+
   private options(session: string, harness: string): Promise<ConfigOption[]> {
-    if (harness === this.parts.main) return this.parts.sessions.configOptions(session);
+    if (this.isSessionAgent(session, harness)) {
+      return this.parts.sessions.configOptions(session, harness);
+    }
     return this.parts.guests.configOptions(session, harness);
   }
 
@@ -106,8 +120,11 @@ export class Commands {
     value: string,
   ): Promise<void> {
     const category = CATEGORIES[name];
-    if (harness === this.parts.main) await this.parts.sessions.configure(session, category, value);
-    else await this.parts.guests.configure(session, harness, category, value);
+    if (this.isSessionAgent(session, harness)) {
+      await this.parts.sessions.configure(session, category, value, harness);
+    } else {
+      await this.parts.guests.configure(session, harness, category, value);
+    }
     this.parts.settings.set(session, harness, name, value);
   }
 
@@ -120,6 +137,31 @@ export class Commands {
     const { settings } = this.parts;
     // Without a value: the next mode, ask → edits → auto → ask.
     settings.setApprovals(session, mode ?? nextApprovals(settings.approvals(session)));
+    return Promise.resolve();
+  }
+
+  private harness(session: string, args: string[]): Promise<void> {
+    const [value] = args;
+    const { settings, guests, main } = this.parts;
+    const names = this.parts.harnesses();
+    if (args.length > 1 || (value !== undefined && !names.includes(value))) {
+      return Promise.reject(new BadRequestError(`usage: /harness [${names.join("|")}]`));
+    }
+    if (value !== undefined) {
+      settings.setHarness(session, value);
+      return Promise.resolve();
+    }
+    // The answer comes later, from a button; the command is done once the choice is shown.
+    void this.parts.asker
+      .ask(session, {
+        type: "choice",
+        title: `Harness (now: ${this.parts.harness(session)})`,
+        options: names.map((id) => ({ id, name: id === main ? id : guests.title(id) })),
+      })
+      .then((picked) => {
+        if (picked !== undefined) settings.setHarness(session, picked);
+      })
+      .catch((err: unknown) => this.parts.log.warn(`/harness: ${String(err)}`));
     return Promise.resolve();
   }
 

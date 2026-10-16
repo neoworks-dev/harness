@@ -1,5 +1,7 @@
 // Session manager: one turn at a time per session, inputs queued behind it. Talks to the agent only
-// through the ACP-style interface in @suite/harness/agent.
+// through the ACP-style interface in @suite/harness/agent. A session runs on one harness at a time
+// (pi, or an ACP harness like Claude Code the user picked with /harness); each has its own agent
+// session here, made on first use.
 import type {
   Agent,
   AgentSession,
@@ -9,10 +11,12 @@ import type {
   ContextEvent,
   McpServer,
   NewSessionParams,
+  PromptParams,
   RequestPermission,
 } from "@suite/harness/agent";
 import type { SessionEvent, SessionInfo, TurnEnded } from "@suite/protocol/types";
 import type { ConnectorSnapshot } from "./gateway/registry.ts";
+import { handoffSummary } from "./handoff.ts";
 import type { Logger } from "./log.ts";
 import type { SessionRow, SessionStore } from "./store.ts";
 import { type FocusTarget, ToldState } from "./told.ts";
@@ -34,7 +38,8 @@ interface QueuedInput {
 interface Runtime {
   queue: QueuedInput[];
   running: boolean;
-  agentSession?: AgentSession;
+  /** The agent session of each harness the session has run on, by harness name. */
+  agentSessions: Map<string, Promise<AgentSession>>;
   /** Whoever runs the current turn: the agent session, or a guest the user addressed. */
   active?: AgentSession;
   /** Set when cancel() arrives while the agent session is still loading. */
@@ -89,10 +94,16 @@ export interface SessionManagerOptions {
    * undefined when there is none by that name. Its prompt() gets the task as text.
    */
   guest?: (sessionId: string, name: string) => AgentSession | undefined;
-  /** What the user chose for the agent in this session (model, effort…). */
-  settings?: (sessionId: string) => Partial<Record<ConfigCategory, string>>;
+  /** The harness the session's turns run on; the agent's own name when absent. */
+  harness?: (sessionId: string) => string;
+  /** The agent of a harness other than the default one (an ACP harness); undefined: none. */
+  agents?: (harness: string) => Agent | undefined;
+  /** What the user chose for a harness in this session (model, effort…). */
+  settings?: (sessionId: string, harness: string) => Partial<Record<ConfigCategory, string>>;
   /** The hook the agent's own bash, write and edit ask through (see permissions.ts). */
   requestPermission?: (sessionId: string) => RequestPermission;
+  /** Called for each new session (it may start on a harness the user chose before). */
+  created?: (sessionId: string) => void;
 }
 
 /** "/claude fix it" → claude, "fix it". */
@@ -127,6 +138,7 @@ export class SessionManager {
       cwd: params.cwd ?? this.options.defaultCwd,
       title: params.title,
     });
+    this.options.created?.(row.id);
     return this.toInfo(row);
   }
 
@@ -150,17 +162,33 @@ export class SessionManager {
     this.stateChanged(sessionId);
   }
 
-  /** The agent's settable options for this session (loads its agent session if needed). */
-  async configOptions(sessionId: string): Promise<ConfigOption[]> {
-    const agentSession = await this.agentSession(sessionId);
+  /** The harness the session's next turn runs on. */
+  harness(sessionId: string): string {
+    return this.options.harness?.(sessionId) ?? this.agent.name;
+  }
+
+  /**
+   * A harness's settable options for this session (default: the one it runs on); loads its
+   * agent session if needed.
+   */
+  async configOptions(
+    sessionId: string,
+    harness = this.harness(sessionId),
+  ): Promise<ConfigOption[]> {
+    const agentSession = await this.agentSession(sessionId, harness);
     return agentSession.configOptions?.() ?? [];
   }
 
-  /** Sets one for the session's following turns; rejects if the agent doesn't take it. */
-  async configure(sessionId: string, category: ConfigCategory, value: string): Promise<void> {
-    const agentSession = await this.agentSession(sessionId);
+  /** Sets one for the harness's following turns; rejects if it doesn't take it. */
+  async configure(
+    sessionId: string,
+    category: ConfigCategory,
+    value: string,
+    harness = this.harness(sessionId),
+  ): Promise<void> {
+    const agentSession = await this.agentSession(sessionId, harness);
     if (!agentSession.setConfigOption) {
-      throw new BadRequestError(`${this.agent.name} has no settings`);
+      throw new BadRequestError(`${harness} has no settings`);
     }
     try {
       await agentSession.setConfigOption(category, value);
@@ -169,10 +197,19 @@ export class SessionManager {
     }
   }
 
-  private async agentSession(sessionId: string): Promise<AgentSession> {
+  private agentSession(sessionId: string, harness: string): Promise<AgentSession> {
     const rt = this.runtime(sessionId);
-    rt.agentSession ??= await this.loadAgentSession(sessionId);
-    return rt.agentSession;
+    let session = rt.agentSessions.get(harness);
+    if (!session) {
+      const loading = this.loadAgentSession(sessionId, harness);
+      session = loading;
+      rt.agentSessions.set(harness, loading);
+      // A failed start is tried again next time.
+      loading.catch(() => {
+        if (rt.agentSessions.get(harness) === loading) rt.agentSessions.delete(harness);
+      });
+    }
+    return session;
   }
 
   /** Cancels the running turn; queued inputs still run. */
@@ -235,6 +272,7 @@ export class SessionManager {
     const rt: Runtime = {
       queue: [],
       running: false,
+      agentSessions: new Map(),
       cancelRequested: false,
       pending,
       told,
@@ -265,16 +303,25 @@ export class SessionManager {
     const ended: TurnEnded = { type: "turn_ended", stopReason: "error" };
     let userLogged = false;
     try {
-      const agentSession = await this.agentSession(sessionId);
+      let harness = this.harness(sessionId);
+      let agentSession = await this.agentSession(sessionId, harness);
+      // A /harness while it loaded: the turn runs on the one the user chose last.
+      for (let now = this.harness(sessionId); now !== harness; now = this.harness(sessionId)) {
+        harness = now;
+        agentSession = await this.agentSession(sessionId, harness);
+      }
       this.announceConnectors(sessionId, rt);
       const pendingEvents = rt.pending.splice(0);
+      // What the turns another harness ran said, for one that wasn't there.
+      const summary = handoffSummary(this.store, sessionId, harness, this.agent.name);
       this.store.append(sessionId, userMessage(input));
       userLogged = true;
       if (rt.cancelRequested) {
         ended.stopReason = "cancelled";
       } else {
         rt.active = agentSession;
-        Object.assign(ended, await this.prompt(sessionId, agentSession, input, pendingEvents));
+        const turn = await this.prompt(sessionId, agentSession, input, pendingEvents, summary);
+        Object.assign(ended, turn);
       }
     } catch (err) {
       // prompt() never rejects by contract, but loading the agent session can fail.
@@ -321,6 +368,7 @@ export class SessionManager {
     agentSession: AgentSession,
     input: QueuedInput,
     pendingEvents: ContextEvent[],
+    summary?: string,
   ): Promise<Omit<TurnEnded, "type">> {
     let open = true;
     const onUpdate = (update: AgentUpdate): void => {
@@ -328,7 +376,9 @@ export class SessionManager {
       else this.options.log.warn(`${sessionId}: dropped ${update.type} sent after the turn ended`);
     };
     try {
-      const result = await agentSession.prompt({ ...input, pendingEvents, onUpdate });
+      const params: PromptParams = { ...input, pendingEvents, onUpdate };
+      if (summary !== undefined) params.summary = summary;
+      const result = await agentSession.prompt(params);
       const out: Omit<TurnEnded, "type"> = { stopReason: result.stopReason };
       if (result.error !== undefined) out.error = result.error;
       return out;
@@ -351,20 +401,24 @@ export class SessionManager {
     }
   }
 
-  private async loadAgentSession(sessionId: string): Promise<AgentSession> {
+  private async loadAgentSession(sessionId: string, harness: string): Promise<AgentSession> {
     const row = this.store.getSession(sessionId);
     if (!row) throw new NotFoundError(`no session ${sessionId}`);
+    const isDefault = harness === this.agent.name;
+    const agent = isDefault ? this.agent : this.options.agents?.(harness);
+    if (!agent) throw new BadRequestError(`no harness named ${harness}`);
     const mcpServers = this.options.mcpServers?.(sessionId) ?? [];
     const params: NewSessionParams = { sessionId, cwd: row.cwd, mcpServers };
     if (this.options.resolveAsset) params.resolveAsset = this.options.resolveAsset;
-    if (this.options.requestPermission) {
+    // An ACP harness asks through its adapter's requests instead.
+    if (isDefault && this.options.requestPermission) {
       params.requestPermission = this.options.requestPermission(sessionId);
     }
-    const settings = this.options.settings?.(sessionId);
+    const settings = this.options.settings?.(sessionId, harness);
     if (settings && Object.keys(settings).length > 0) params.settings = settings;
-    if (row.lastSeq === 0) return this.agent.newSession(params);
+    if (row.lastSeq === 0) return agent.newSession(params);
     const history = this.store.read(sessionId).map((r) => r.event);
-    return this.agent.loadSession({ ...params, history });
+    return agent.loadSession({ ...params, history });
   }
 
   private toInfo(row: SessionRow): SessionInfo {

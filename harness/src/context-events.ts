@@ -40,11 +40,18 @@ function connectedAttrs(
 /**
  * Prepends connector events to the user's text (design §6). Connect/disconnect lines, guest
  * turns and reverted edits keep their order; only the last focus event is sent, after them.
- * `cwd` (the session's working directory) comes first, on a session's first prompt.
+ * `cwd` (the session's working directory) comes first, on a session's first prompt; then the
+ * `summary` of turns another harness ran, if any.
  */
-export function formatPrompt(text: string, pendingEvents: ContextEvent[], cwd?: string): string {
+export function formatPrompt(
+  text: string,
+  pendingEvents: ContextEvent[],
+  cwd?: string,
+  summary?: string,
+): string {
   const lines: string[] = [];
   if (cwd !== undefined) lines.push(`<session ${attrs([["cwd", cwd]])}/>`);
+  if (summary !== undefined) lines.push(summary);
   let focus: string | undefined;
   for (const event of pendingEvents) {
     if (event.type === "app_connected") {

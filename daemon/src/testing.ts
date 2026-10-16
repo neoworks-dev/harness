@@ -37,7 +37,13 @@ for (const name of readdirSync(tmpdir())) {
 }
 
 export async function startTestDaemon(
-  options: { agent?: Agent; dir?: string; guests?: Record<string, GuestConfig> } = {},
+  options: {
+    agent?: Agent;
+    dir?: string;
+    guests?: Record<string, GuestConfig>;
+    /** The pi that delegate {agent: "pi"} uses, when the agent isn't pi. */
+    pi?: Agent;
+  } = {},
 ): Promise<TestDaemon> {
   const dir = options.dir ?? mkdtempSync(join(tmpdir(), `${PREFIX}${process.pid}-`));
   const env = { SUITE_SOCKET: join(dir, "bus.sock"), SUITE_DATA_DIR: join(dir, "data") };
@@ -48,6 +54,7 @@ export async function startTestDaemon(
     port: 0,
     defaultCwd: dir,
     guests: options.guests,
+    pi: options.pi,
   });
   return { ...daemon, env, dir };
 }

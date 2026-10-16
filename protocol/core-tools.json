@@ -71,18 +71,26 @@
     },
     {
       "name": "delegate",
-      "description": "Hand a task to a guest coding agent (claude: Claude Code, codex: Codex). It works in this session's directory with its own tools plus the same connectors, its progress shows in this chat, and its final reply comes back as the result. Write the task so it stands alone; follow-up delegations to the same agent continue its conversation.",
+      "description": "Hand a task to a subagent: another agent harness (pi; claude: Claude Code; codex: Codex), the one you run on included. It works in this session's directory with its own tools plus the same connectors, its progress shows in this chat, and its final reply comes back as the result. The user is asked before it starts. model and effort are optional: without them it uses what the user chose for that harness, else its own defaults. Write the task so it stands alone; follow-up delegations to the same agent continue its conversation. Subagents can't delegate.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "agent": {
             "type": "string",
-            "enum": ["claude", "codex"],
-            "description": "Which guest."
+            "enum": ["pi", "claude", "codex"],
+            "description": "Which harness."
           },
           "task": {
             "type": "string",
             "description": "What to do, with the context it needs."
+          },
+          "model": {
+            "type": "string",
+            "description": "Model for this task, as that harness names it (e.g. sonnet for claude). Default: the user's choice or the harness's own."
+          },
+          "effort": {
+            "type": "string",
+            "description": "Reasoning effort for this task, as that harness names it (e.g. low, medium, high). Default: the user's choice or the harness's own."
           }
         },
         "required": ["agent", "task"],

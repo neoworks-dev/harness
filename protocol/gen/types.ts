@@ -703,7 +703,7 @@ export interface PermissionResolved {
 
 export type PermissionOptionKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
 
-/** The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness "suite", value ask, edits or auto): ask asks before file edits, commands, starting a guest and guests' requests; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Per session, ask unless set. */
+/** The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, edits or auto): ask asks before file edits, commands, starting a guest and guests' requests; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Per session, ask unless set. */
 export interface SettingChanged {
   type: "setting_changed";
   /** pi, claude, codex… */
@@ -712,7 +712,7 @@ export interface SettingChanged {
   value: string;
 }
 
-export type SettingName = "model" | "effort" | "mode" | "approvals";
+export type SettingName = "model" | "effort" | "mode" | "approvals" | "harness";
 
 export interface ChoiceOption {
   id: string;

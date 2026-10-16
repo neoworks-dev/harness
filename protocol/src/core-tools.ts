@@ -28,6 +28,8 @@ export interface AppArgs {
 export interface DelegateArgs {
   agent: string;
   task: string;
+  model?: string;
+  effort?: string;
 }
 
 export const CORE_TOOLS: readonly CoreToolDefinition[] = data.tools.map((tool) => {

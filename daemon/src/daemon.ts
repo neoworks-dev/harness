@@ -12,9 +12,10 @@ import { Gateway } from "./gateway/gateway.ts";
 import { mcpHandler } from "./gateway/mcp-server.ts";
 import { ConnectorRegistry } from "./gateway/registry.ts";
 import { createDelegate } from "./guests/delegate.ts";
-import { type GuestConfig, GuestManager } from "./guests/guests.ts";
+import { type GatewayRole, type GuestConfig, GuestManager } from "./guests/guests.ts";
 import { Asker } from "./asker.ts";
 import { Commands } from "./commands.ts";
+import { handoffSummary } from "./handoff.ts";
 import { Permissions } from "./permissions.ts";
 import { Review } from "./review.ts";
 import { Settings } from "./settings.ts";
@@ -42,6 +43,11 @@ export interface DaemonOptions {
   connectUpstream?: ConnectUpstream;
   /** Guest agents (see guests/config.ts); none when absent. */
   guests?: Record<string, GuestConfig>;
+  /**
+   * The pi harness delegate hands tasks to ("pi" subagents are new sessions of it). Defaults to
+   * `agent` when that is pi; tests give one with a fake model.
+   */
+  pi?: Agent;
 }
 
 export interface Daemon {
@@ -70,21 +76,31 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   const connectors = new ConnectorRegistry(store, options.connectUpstream ?? connectMcp, log);
   let focus: FocusManager | undefined;
   let server: BusServer | undefined;
-  /** The gateway for a session's agent, or for one of its guests (which then gets refs). */
-  const mcpServers = (sessionId: string, guest?: string): McpServer[] => {
+  /**
+   * The gateway for a session's agent. `role` says who else calls: subagents may not delegate,
+   * ACP clients (guests and the session's own ACP harness) get text-only results with refs.
+   */
+  const mcpServers = (sessionId: string, role?: GatewayRole): McpServer[] => {
     if (!server) return [];
     const { url, token } = server.info;
     const headers = [
       { name: "authorization", value: `Bearer ${token}` },
       { name: "x-suite-session", value: sessionId },
     ];
-    if (guest !== undefined) headers.push({ name: "x-suite-guest", value: guest });
+    if (role?.guest === true) headers.push({ name: "x-suite-guest", value: role.name });
+    if (role?.text === true) headers.push({ name: "x-suite-text", value: "1" });
     return [{ name: "suite", url: `${url}/mcp`, headers }];
   };
-  const settings = new Settings(store);
+  const settings = new Settings(store, agent.name);
   const asker = new Asker((session, event) => {
     store.append(session, event);
   });
+  const permissions = new Permissions(asker, (session) => settings.approvals(session));
+  /** The harness a session runs on: its choice if that still exists, else the daemon's agent. */
+  const harnessOf = (session: string): string => {
+    const name = settings.harness(session);
+    return name === agent.name || guests.has(name) ? name : agent.name;
+  };
   const guests = new GuestManager({
     configs: options.guests ?? {},
     log,
@@ -98,8 +114,11 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     settings: (session, guest) => settings.get(session, guest),
     asker,
     approvals: (session) => settings.approvals(session),
+    handoff: (session, harness, all) => handoffSummary(store, session, harness, agent.name, all),
+    pi: options.pi ?? (agent.name === "pi" ? agent : undefined),
+    resolveAsset: (handle) => assets.resolve(handle),
+    requestPermission: (session, name) => permissions.hook(session, name),
   });
-  const permissions = new Permissions(asker, (session) => settings.approvals(session));
   const gateway = new Gateway(connectors, {
     log,
     resolveAsset: (handle) => assets.resolve(handle),
@@ -113,7 +132,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       append: (session, event) => {
         store.append(session, event);
       },
-      main: agent.name,
+      main: harnessOf,
       autoApprove: (session) => settings.approvals(session) === "auto",
     }),
     focus: (app, session) => {
@@ -135,14 +154,27 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     focus: (sessionId) => focus?.focusOf(sessionId),
     mcpServers: (sessionId) => mcpServers(sessionId),
     guest: (sessionId, name) => guests.turnSession(sessionId, name),
-    settings: (sessionId) => settings.get(sessionId, agent.name),
+    harness: harnessOf,
+    agents: (name) => (guests.has(name) ? guests.agent(name) : undefined),
+    settings: (sessionId, harness) => settings.get(sessionId, harness),
     requestPermission: (sessionId) => permissions.hook(sessionId, agent.name),
+    created: (sessionId) =>
+      settings.inheritHarness(sessionId, (name) => name === agent.name || guests.has(name)),
   });
   sessions.recoverInterruptedTurns();
   focus = new FocusManager(store, sessions, connectors, log);
   const views = new ViewManager(store, (tool) => connectors.template(tool), log);
   const actions = new ActionRunner({ store, sessions, connectors, gateway, views, asker });
-  const commands = new Commands({ sessions, guests, settings, asker, log, main: agent.name });
+  const commands = new Commands({
+    sessions,
+    guests,
+    settings,
+    asker,
+    log,
+    main: agent.name,
+    harness: harnessOf,
+    harnesses: () => [agent.name, ...guests.names()],
+  });
   const hub = new Hub(
     store,
     sessions,

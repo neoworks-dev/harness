@@ -24,7 +24,7 @@ export interface GatewayOptions {
   /** Moves the agent for apps_focus; returns an error message or undefined. */
   focus?: (app: string, session: string | undefined) => string | undefined;
   launchTimeoutMs?: number;
-  /** Runs a guest agent for delegate; its final reply is the result. */
+  /** Runs a subagent for delegate; its final reply is the result. */
   delegate?: (session: string, args: DelegateArgs, signal?: AbortSignal) => Promise<CallToolResult>;
   /** Stores a result a guest gets as text with [result:ref], so views can draw it. */
   recordResult?: (session: string, result: ToolResult) => void;
@@ -34,10 +34,15 @@ export interface GatewayOptions {
 
 const ASSET_HANDLES = /asset:\/\/[a-z]+-[0-9a-f]+/g;
 
-/** Who is calling: the session (x-suite-session) and, for guests, which one (x-suite-guest). */
+/**
+ * Who is calling: the session (x-suite-session); `guest` (x-suite-guest) names a subagent, which
+ * may not delegate; `text` (x-suite-text) is an ACP client (guests and the session's own ACP
+ * harness) that gets text only.
+ */
 export interface Caller {
   session?: string;
   guest?: string;
+  text?: boolean;
 }
 
 function text(value: string, isError = false): CallToolResult {
@@ -105,10 +110,10 @@ function toolsCallArgs(args: Record<string, unknown>): Record<string, unknown> |
 }
 
 /**
- * Guests get text only: some (Claude Code) show structuredContent instead of the text when
+ * ACP clients get text only: some (Claude Code) show structuredContent instead of the text when
  * both are there, which would hide the [result:ref] and the formatted search results.
  */
-function forGuest(result: CallToolResult): CallToolResult {
+function textOnly(result: CallToolResult): CallToolResult {
   const { structuredContent: _, ...rest } = result;
   return rest;
 }
@@ -122,28 +127,32 @@ export class Gateway {
     private readonly options: GatewayOptions,
   ) {}
 
-  /** `caller` says whose agent calls: a session id, or the session and guest. */
+  /** `caller` says whose agent calls: a session id, or the session and what kind of client. */
   async call(
     name: CoreToolName,
     args: unknown,
     signal?: AbortSignal,
     caller: Caller | string = {},
   ): Promise<CallToolResult> {
-    const { session, guest } = typeof caller === "string" ? { session: caller } : caller;
+    const {
+      session,
+      guest,
+      text: wantsText,
+    } = typeof caller === "string" ? { session: caller } : caller;
     if (!isRecord(args)) return text(`${name}: arguments must be an object`, true);
     switch (name) {
       case "tools_search": {
         if (typeof args.query !== "string") return text("tools_search: query is required", true);
         const found = this.search(args as unknown as ToolsSearchArgs);
-        return guest === undefined ? found : forGuest(found);
+        return wantsText === true ? textOnly(found) : found;
       }
       case "tools_call": {
         if (typeof args.name !== "string") return text("tools_call: name is required", true);
         const toolArgs = toolsCallArgs(args);
         if (typeof toolArgs === "string") return text(toolArgs, true);
         const call = { name: args.name, args: toolArgs };
-        if (guest !== undefined && session !== undefined) {
-          return forGuest(this.withRef(session, args.name, await this.callTool(call, signal)));
+        if (wantsText === true && session !== undefined) {
+          return textOnly(this.withRef(session, args.name, await this.callTool(call, signal)));
         }
         return this.callTool(call, signal);
       }
@@ -158,17 +167,22 @@ export class Gateway {
         if (typeof args.task !== "string" || args.task.trim() === "") {
           return text("delegate: task is required", true);
         }
-        if (guest !== undefined) return text("Guests can't delegate.", true);
+        for (const key of ["model", "effort"]) {
+          if (args[key] !== undefined && typeof args[key] !== "string") {
+            return text(`delegate: ${key} must be a string`, true);
+          }
+        }
+        if (guest !== undefined) return text("Subagents can't delegate.", true);
         if (!this.options.delegate || session === undefined) {
-          return text("No guest agents are available here.", true);
+          return text("No other agents are available here.", true);
         }
         return this.options.delegate(session, args as unknown as DelegateArgs, signal);
     }
   }
 
   /**
-   * Guests reduce results to text, so a structured result is stored (tool_result) and the text
-   * carries its ref; views match it and draw the result with the tool's template. Guests' own
+   * ACP clients reduce results to text, so a structured result is stored (tool_result) and the
+   * text carries its ref; views match it and draw the result with the tool's template. Their own
    * file tools don't know asset:// handles, so the result also names the file behind each.
    */
   private withRef(session: string, tool: string, result: CallToolResult): CallToolResult {

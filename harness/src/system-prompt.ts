@@ -26,7 +26,10 @@ Pass these handles to other tools to move results between apps. bash and read
 accept them as paths of the stored file (write and edit don't), e.g.
 cp asset://img-7f3 ~/site/logo.png.
 
-delegate hands a task to a guest coding agent (Claude Code or Codex) that works
-in the session's directory; use it for larger coding work. Its progress shows in
-the chat and its final reply is the tool result. <guest agent=…>…</guest> in a
-message is a task the user gave a guest directly, with its reply.`;
+delegate hands a task to a subagent (pi, Claude Code or Codex) that works in the
+session's directory; use it for larger coding work. Its progress shows in the
+chat and its final reply is the tool result. <guest agent=…>…</guest> in a
+message is a task the user gave a guest directly, with its reply.
+
+<conversation-so-far> in a message is what was said in turns that another agent
+ran while you weren't running this conversation: tool calls are left out.`;

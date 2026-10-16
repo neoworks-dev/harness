@@ -1871,7 +1871,7 @@ pub enum PermissionOptionKind {
     RejectAlways,
 }
 
-/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness "suite", value ask, edits or auto): ask asks before file edits, commands, starting a guest and guests' requests; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Per session, ask unless set.
+/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, edits or auto): ask asks before file edits, commands, starting a guest and guests' requests; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Per session, ask unless set.
 /// Tagged `type: "setting_changed"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SettingChanged {
@@ -1894,6 +1894,8 @@ pub enum SettingName {
     Mode,
     #[serde(rename = "approvals")]
     Approvals,
+    #[serde(rename = "harness")]
+    Harness,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

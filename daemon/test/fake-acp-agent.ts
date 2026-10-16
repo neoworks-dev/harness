@@ -7,6 +7,8 @@
 //   wait          runs until cancelled
 //   edit          reports a tool call with a diff
 //   config        reports what session/new (or resume) and set_config_option gave it
+//   started       reports how the conversation began: "new" or "resume" (resuming a session id
+//                 that starts with "gone" fails, like an adapter that lost the conversation)
 //   usage         sends usage_updates in the middle of one message (USD cost, then EUR cost)
 // It offers a model option (small, large) and an effort option (low, high), and one stored
 // conversation, "old-1", for session/list and session/resume.
@@ -27,6 +29,7 @@ let gateway: HttpServer | undefined;
 let instructions: unknown;
 const config: Record<string, unknown> = {};
 let sessionId = "";
+let started = "new";
 
 const VALUES: Record<string, string[]> = { model: ["small", "large"], effort: ["low", "high"] };
 const CATEGORY: Record<string, string> = { model: "model", effort: "thought_level" };
@@ -140,6 +143,9 @@ async function prompt(params: {
     update(sessionId, { sessionUpdate: "plan", entries: [] });
     say(sessionId, JSON.stringify({ instructions, config, session: sessionId }));
     return { stopReason: "end_turn" };
+  } else if (task === "started") {
+    say(sessionId, `started: ${started}`);
+    return { stopReason: "end_turn" };
   } else if (task === "usage") {
     say(sessionId, "one ");
     update(sessionId, { sessionUpdate: "usage_update", used: 100, size: 2000 });
@@ -190,8 +196,10 @@ async function handle(message: Record<string, unknown>): Promise<void> {
       sessionId = "acp-1";
       result = { sessionId, configOptions: configOptions() };
     } else if (method === "session/resume") {
+      if ((params.sessionId as string).startsWith("gone")) throw new Error("no such session");
       gateway = (params.mcpServers as HttpServer[])[0];
       sessionId = params.sessionId as string;
+      started = "resume";
       result = { configOptions: configOptions() };
     } else if (method === "session/list") {
       result = {

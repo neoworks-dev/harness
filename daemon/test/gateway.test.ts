@@ -256,7 +256,7 @@ describe("core tools", () => {
     expect(resultText(broken)).toContain("isn't JSON");
   });
 
-  test("guests get text only, with a ref to the stored result and the files behind handles", async () => {
+  test("ACP clients get text only, with a ref to the stored result and the files behind handles", async () => {
     const recorded: unknown[] = [];
     const { gateway, upstream } = await opened({
       recordResult: (_session, result) => void recorded.push(result),
@@ -268,7 +268,7 @@ describe("core tools", () => {
         content: [{ type: "text", text: "saved asset://img-0123456789ab" }],
         structuredContent: { ok: true },
       });
-    const caller = { session: "s1", guest: "claude" };
+    const caller = { session: "s1", guest: "claude", text: true };
     const result = await gateway.call(
       "tools_call",
       { name: "photo-editor.crop", args: { asset: "asset://img-0123456789ab", w: 1 } },
@@ -291,6 +291,33 @@ describe("core tools", () => {
     ]);
     const search = await gateway.call("tools_search", { query: "crop" }, undefined, caller);
     expect(search.structuredContent).toBeUndefined();
+  });
+
+  test("a text-only ACP client may delegate; a subagent (guest) may not; model and effort are strings", async () => {
+    const delegated: unknown[] = [];
+    const { gateway } = await opened({
+      delegate: (session, args) => {
+        delegated.push([session, args]);
+        return Promise.resolve({ content: [{ type: "text", text: "done" }] });
+      },
+    });
+    const args = { agent: "claude", task: "x", model: "sonnet", effort: "high" };
+    const main = { session: "s1", text: true };
+    expect(resultText(await gateway.call("delegate", args, undefined, main))).toBe("done");
+    expect(delegated).toEqual([["s1", args]]);
+    // Text only: no structured search results for the ACP client, still there for pi's tools.
+    const search = await gateway.call("tools_search", { query: "crop" }, undefined, main);
+    expect(search.structuredContent).toBeUndefined();
+
+    const sub = await gateway.call("delegate", args, undefined, { session: "s1", guest: "pi" });
+    expect(sub.isError).toBe(true);
+    expect(resultText(sub)).toBe("Subagents can't delegate.");
+    const guest = { session: "s1", guest: "claude", text: true };
+    expect((await gateway.call("delegate", args, undefined, guest)).isError).toBe(true);
+    expect(delegated).toHaveLength(1);
+
+    const bad = await gateway.call("delegate", { ...args, model: 3 }, undefined, main);
+    expect(resultText(bad)).toBe("delegate: model must be a string");
   });
 
   test("closed apps answer with the design's error", async () => {
