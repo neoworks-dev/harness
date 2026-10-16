@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
+	"image/png"
 	"math"
 	"path/filepath"
 	"strings"
@@ -85,14 +88,41 @@ func stringArg(args map[string]any, key string) (string, error) {
 
 // done turns an editor outcome into a tool result: the text for guests that
 // only read text, the data for templates and agents.
-func done(verb string, res imageResult, err error) (tools.Result, error) {
+// previewSide bounds the picture sent along with every result, so a model that takes images
+// sees what it did without paying for the full resolution.
+const previewSide = 512
+
+func (e *editor) done(verb string, res imageResult, err error) (tools.Result, error) {
 	if err != nil {
 		return tools.Result{}, err
 	}
-	return tools.Result{
+	out := tools.Result{
 		Text:       fmt.Sprintf("%s: %s, %d×%d, %s (%s)", verb, res.Name, res.Width, res.Height, res.Mime, res.Handle),
 		Structured: res,
-	}, nil
+	}
+	if d, _ := e.current(); d != nil {
+		if preview, err := previewPNG(d.img, previewSide); err == nil {
+			out.Content = []tools.Content{{Type: "image", Data: preview, MimeType: "image/png"}}
+		}
+	}
+	return out, nil
+}
+
+// previewPNG scales img to fit in side×side (never up) and encodes it as base64 PNG.
+func previewPNG(img *image.NRGBA, side int) (string, error) {
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w > side || h > side {
+		scale := float64(side) / float64(max(w, h))
+		w = max(1, int(math.Round(float64(w)*scale)))
+		h = max(1, int(math.Round(float64(h)*scale)))
+		img = resize(img, w, h)
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
 // photoTools are the editor's MCP tools.
@@ -104,7 +134,7 @@ func photoTools(e *editor) []tools.Tool {
 				return tools.Result{}, err
 			}
 			res, err := e.edit(ctx, op, do)
-			return done(op, res, err)
+			return e.done(op, res, err)
 		}
 	}
 	return []tools.Tool{
@@ -142,7 +172,7 @@ func photoTools(e *editor) []tools.Tool {
 				default:
 					res, err = e.openPath(ctx, path)
 				}
-				return done("Opened", res, err)
+				return e.done("Opened", res, err)
 			},
 		},
 		{
@@ -152,7 +182,7 @@ func photoTools(e *editor) []tools.Tool {
 			OutputSchema: imageSchema,
 			Handler: func(context.Context, map[string]any) (tools.Result, error) {
 				res, err := e.info()
-				return done("Current image", res, err)
+				return e.done("Current image", res, err)
 			},
 		},
 		{
@@ -259,7 +289,7 @@ func photoTools(e *editor) []tools.Tool {
 					quality = 90
 				}
 				res, err := e.export(ctx, strings.ToLower(format), quality)
-				return done("Exported", res, err)
+				return e.done("Exported", res, err)
 			},
 		},
 		{
@@ -269,7 +299,7 @@ func photoTools(e *editor) []tools.Tool {
 			OutputSchema: imageSchema,
 			Handler: func(context.Context, map[string]any) (tools.Result, error) {
 				res, err := e.undo()
-				return done("Undone", res, err)
+				return e.done("Undone", res, err)
 			},
 		},
 	}

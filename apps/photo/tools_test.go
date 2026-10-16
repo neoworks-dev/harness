@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"bytes"
+	"encoding/base64"
+	"image/png"
 	"neoworks.dev/suite/sdk-go/tools"
 )
 
@@ -324,5 +327,31 @@ func TestPresenceContext(t *testing.T) {
 	p = presence(srv, nil, d)
 	if p.Context["image"] != "face.png" || p.Context["asset"] != d.asset.Handle || p.Launch != nil {
 		t.Errorf("%+v", p.Context)
+	}
+}
+
+func TestResultsCarryAPreviewForTheModel(t *testing.T) {
+	s := newSession(t)
+	path := writePNG(t, t.TempDir(), "big.png", 1200, 600)
+	s.must("open", map[string]any{"path": path})
+	res, err := toolByName(t, s.list, "crop").Handler(context.Background(), map[string]any{
+		"x": float64(0), "y": float64(0), "width": float64(1000), "height": float64(500),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Content) != 1 || res.Content[0].Type != "image" || res.Content[0].MimeType != "image/png" {
+		t.Fatalf("content: %+v", res.Content)
+	}
+	raw, err := base64.StdEncoding.DecodeString(res.Content[0].Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := png.DecodeConfig(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Width != 512 || cfg.Height != 256 {
+		t.Errorf("preview is %d×%d, want 512×256", cfg.Width, cfg.Height)
 	}
 }
