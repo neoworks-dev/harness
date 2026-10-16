@@ -1,7 +1,7 @@
 # Rust pieces: generated protocol types, the Rust bus client, and GPUI apps.
 [workspace]
 resolver = "3"
-members = ["protocol/rust", "sdk-rs", "renderers/gpui", "renderers/ratatui", "apps/pad"]
+members = ["protocol/rust", "sdk-rs", "renderers/gpui", "renderers/ratatui", "apps/pad", "apps/term"]
 # Vendored crates are patched below, not part of the workspace (no fmt/clippy on them).
 exclude = ["apps/pad/vendor"]
 
