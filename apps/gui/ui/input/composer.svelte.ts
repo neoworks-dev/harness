@@ -1,7 +1,7 @@
 // What the input side holds: the draft, the `/` menu, the history and the question panel (a
 // permission or choice card answered in place of the input). The components draw it and the
 // window shortcuts (Shortcuts.svelte) call it, so they agree on what is open.
-import { window } from "@neoworks/svelte-gpui";
+import { clipboard, window } from "@neoworks/svelte-gpui";
 import {
   completion,
   isSlashWord,
@@ -14,6 +14,7 @@ import { History, walksHistory } from "../lib/history.ts";
 import {
   activePrompt,
   argsWithNote,
+  copyText,
   promptEngaged,
   startButton,
   takesNote,
@@ -23,6 +24,9 @@ import {
 import { suite } from "../state/suite.svelte.ts";
 import { ui } from "../state/ui.svelte.ts";
 import { appendHistory, loadHistory } from "./history-store.ts";
+
+/** How long "copied" stays in the status line. */
+const COPIED_NOTICE_MS = 1500;
 
 /** How long a second Ctrl-C quits. */
 const QUIT_WINDOW_MS = 2000;
@@ -209,8 +213,13 @@ class Composer {
     const prompt = this.prompt;
     const button = prompt?.buttons[index];
     if (!prompt || !button) return;
-    // A copy button is the client's to handle, and there is no clipboard for the app yet.
-    if (button.action.startsWith("copy:")) return;
+    // A copy button is the client's to handle: nothing goes to the daemon and the question stays.
+    const copied = copyText(button);
+    if (copied !== undefined) {
+      void clipboard.write(copied);
+      this.say("copied", COPIED_NOTICE_MS);
+      return;
+    }
     const args = this.note === undefined ? button.args : argsWithNote(button, this.note);
     this.note = undefined;
     this.dismissed = new Set([...this.dismissed, prompt.ref]);

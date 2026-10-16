@@ -142,6 +142,13 @@ export function takesNote(button: PromptButton | undefined): boolean {
   return answers && typeof button.args === "object" && button.args !== null;
 }
 
+/** The text a `copy:` button puts on the clipboard; undefined for buttons that act on the daemon. */
+export function copyText(button: PromptButton): string | undefined {
+  const prefix = "copy:";
+  if (!button.action.startsWith(prefix)) return undefined;
+  return button.action.slice(prefix.length);
+}
+
 /** The button's args with the user's note (when there is one) for the agent. */
 export function argsWithNote(button: PromptButton, note: string): unknown {
   const text = note.trim();

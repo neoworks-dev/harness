@@ -3,6 +3,7 @@ import type { Component, ViewItem } from "@suite/protocol/types";
 import {
   activePrompt,
   argsWithNote,
+  copyText,
   openPrompts,
   plainText,
   promptEngaged,
@@ -152,4 +153,9 @@ test("text blocks flatten to lines", () => {
       },
     ]),
   ).toBe("ab\n- x");
+});
+
+test("a copy button has text for the clipboard and nothing to send", () => {
+  expect(copyText({ label: "Copy", action: "copy:asset://x", current: false })).toBe("asset://x");
+  expect(copyText({ label: "Allow", action: "suite.permit", current: false })).toBeUndefined();
 });

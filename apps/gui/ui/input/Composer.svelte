@@ -112,7 +112,7 @@
         {composer.prompt.title || "A question"} is waiting. Stop typing to answer it, Esc puts it aside.
       </Text>
     {/if}
-    <View style={{ direction: "row", gap: p.space.m }}>
+    <View style={{ direction: "row", gap: p.space.m }} onpress={() => input?.focus()}>
       <Text style={{ color: p.accent, lineHeight: LINE_HEIGHT, fontWeight: 600 }}>›</Text>
       <View style={{ flex: 1, minWidth: 0 }} onlayout={layout}>
         <Scroll bind:this={scroller} style={{ maxHeight: MAX_INPUT_HEIGHT }}>
