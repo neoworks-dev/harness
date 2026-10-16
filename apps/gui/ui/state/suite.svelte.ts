@@ -10,10 +10,12 @@ import type {
   ViewItem,
 } from "@suite/protocol/types";
 import {
+  assetUrl,
   connect,
   ViewState,
   type Client,
   type ConnectionState,
+  type DaemonAddress,
   type Unsubscribe,
 } from "@suite/sdk";
 import { paletteOf } from "../lib/palette.ts";
@@ -59,6 +61,8 @@ class Suite {
   private client?: Client;
   private readonly view = new ViewState();
   private stopSession?: Unsubscribe;
+  /** The session this window asked the agent to move to, until the daemon confirms it. */
+  private movingTo?: string;
   private readonly recordListeners = new Set<RecordListener>();
 
   /** The session shown now, from the live list. */
@@ -72,7 +76,7 @@ class Suite {
       const startup = await invoke("startup", null);
       const client = await connect({
         client: "desktop",
-        address: () => invoke("daemon_address", null),
+        address: async () => (this.daemonAddress = await invoke("daemon_address", null)),
         waitForDaemon: true,
         onError: (error) => (this.error = error.message),
       });
@@ -80,7 +84,7 @@ class Suite {
       this.connection = client.state.value;
       client.state.on((state) => (this.connection = state));
       client.sessions.on((sessions) => (this.sessions = sessions));
-      client.focus.on((focus) => (this.focus = focus));
+      client.focus.on((focus) => this.followFocus(focus));
       client.theme.on((theme) => (this.theme = theme));
       this.theme = client.theme.value;
 
@@ -102,10 +106,38 @@ class Suite {
 
   /** Shows `id` in this window and moves the agent here with it. */
   async open(id: string): Promise<void> {
+    this.movingTo = id;
+    this.show(id);
+    await this.need()
+      .moveAgent({ app: this.appId, session: id })
+      .catch((error: unknown) => {
+        this.movingTo = undefined;
+        this.error = message(error);
+      });
+  }
+
+  /**
+   * Someone else made another session current while the agent is in this window (`/clear`,
+   * `suite move`): show it too. Focus changes from before our own move are stale, so they are
+   * skipped until the one for the session we moved to arrives.
+   */
+  private followFocus(focus: AgentFocus | undefined): void {
+    this.focus = focus;
+    if (!focus) return;
+    if (this.movingTo !== undefined) {
+      if (focus.session === this.movingTo) this.movingTo = undefined;
+      return;
+    }
+    if (focus.app === this.appId && focus.session !== this.sessionId) this.show(focus.session);
+  }
+
+  /** Follows `id`'s view and events in place of the session shown before. */
+  private show(id: string): void {
     const client = this.need();
     this.stopSession?.();
     this.sessionId = id;
-    this.cwd = this.sessions.find((session) => session.id === id)?.cwd ?? "";
+    // A session just made by /clear may not be listed yet; it is in the same directory.
+    this.cwd = this.sessions.find((session) => session.id === id)?.cwd ?? this.cwd;
     this.view.reset();
     this.items = [];
     this.status = initialStatus();
@@ -129,9 +161,6 @@ class Suite {
       stopEvents();
     };
     void this.refreshBranch();
-    await client.moveAgent({ app: this.appId, session: id }).catch((error: unknown) => {
-      this.error = message(error);
-    });
   }
 
   /** Starts a new session (in `cwd`, else the current directory) and shows it. */
@@ -205,6 +234,19 @@ class Suite {
   private need(): Client {
     if (!this.client) throw new Error("not connected to the suite daemon");
     return this.client;
+  }
+
+  // --- Pictures (the chat) ---
+
+  /** The daemon's address as of the last (re)connect; assets are fetched from it. */
+  private daemonAddress?: DaemonAddress;
+
+  /**
+   * The URL the window can load an `asset://` handle from, or undefined for any other source.
+   * It contains the daemon's token: hand it to an `Image` only, never log or show it.
+   */
+  assetSrc(src: string): string | undefined {
+    return this.daemonAddress === undefined ? undefined : assetUrl(this.daemonAddress, src);
   }
 }
 
