@@ -616,3 +616,30 @@ describe("/resume", () => {
     expect(daemon.commands.run(session, "/resume nope")).rejects.toThrow("no guest named nope");
   });
 });
+
+describe("/approvals", () => {
+  test("auto starts guests and answers their requests without asking; per session", async () => {
+    const { daemon, session } = await setup({ gate: "manual" });
+    expect(daemon.settings.approvals(session)).toBe("ask");
+    await daemon.commands.run(session, "/approvals");
+    expect(daemon.settings.approvals(session)).toBe("auto");
+    const result = await daemon.gateway.call(
+      "delegate",
+      { agent: "fake", task: "ask" },
+      undefined,
+      session,
+    );
+    expect(resultOf(result)).toBe("answer: yes");
+    expect(events(daemon, session).some((e) => e.type === "permission_request")).toBe(false);
+    const view = daemon.views.get(session).snapshot().items;
+    expect(view.some((i) => JSON.stringify(i.component).includes("approvals: auto"))).toBe(true);
+
+    const other = daemon.sessions.create({}).id;
+    expect(daemon.settings.approvals(other)).toBe("ask");
+    await daemon.commands.run(session, "/approvals ask");
+    expect(daemon.settings.approvals(session)).toBe("ask");
+    expect(daemon.commands.run(session, "/approvals yes")).rejects.toThrow(
+      "usage: /approvals [ask|auto]",
+    );
+  });
+});

@@ -605,7 +605,7 @@
       "enum": ["allow_once", "allow_always", "reject_once", "reject_always"]
     },
     "SettingChanged": {
-      "description": "The user changed a harness setting for this session (/model, /effort, /mode). The last one per harness and option wins; new sessions start with the user's last choice.",
+      "description": "The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness \"suite\", value ask or auto): whether guests' permission requests and starting a guest ask the user; per session, ask unless set.",
       "type": "object",
       "properties": {
         "type": {
@@ -627,7 +627,7 @@
     },
     "SettingName": {
       "type": "string",
-      "enum": ["model", "effort", "mode"]
+      "enum": ["model", "effort", "mode", "approvals"]
     },
     "ChoiceOption": {
       "type": "object",

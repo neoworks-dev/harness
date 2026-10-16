@@ -61,6 +61,8 @@ export interface GuestManagerOptions {
   settings: (session: string, guest: string) => Partial<Record<ConfigCategory, string>>;
   /** Asks the user (permission requests). */
   asker: Asker;
+  /** Whether the user lets this session's guests go ahead without asking (/approvals auto). */
+  autoApprove?: (session: string) => boolean;
 }
 
 /** A conversation the adapter has stored (session/list), for /resume. */
@@ -646,7 +648,7 @@ export class GuestManager {
     const cancelled = { outcome: { outcome: "cancelled" } };
     if (!guest?.run || options.length === 0) return cancelled;
     const config = this.options.configs[guest.name];
-    if (config?.permissions === "allow") {
+    if (config?.permissions === "allow" || this.options.autoApprove?.(guest.session) === true) {
       const allow =
         options.find((o) => o.kind === "allow_once") ??
         options.find((o) => o.kind.startsWith("allow"));

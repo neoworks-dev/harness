@@ -18,6 +18,8 @@ export interface DelegateParts {
   append: (session: string, event: SessionEvent) => void;
   /** Who asks: the session agent's harness name. */
   main: string;
+  /** Whether the user lets this session start guests without asking (/approvals auto). */
+  autoApprove?: (session: string) => boolean;
 }
 
 function text(value: string, isError = false): CallToolResult {
@@ -47,7 +49,7 @@ export function createDelegate(
     task: string,
     signal?: AbortSignal,
   ): Promise<string | CallToolResult> {
-    if (allowed.has(`${session}\0${agent}`)) return agent;
+    if (allowed.has(`${session}\0${agent}`) || parts.autoApprove?.(session) === true) return agent;
     const title = guests.title(agent);
     const options: PermissionOption[] = [
       { id: "allow", name: `Start ${title}`, kind: "allow_once" },

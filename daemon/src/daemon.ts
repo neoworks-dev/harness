@@ -94,6 +94,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     focus: (session) => focus?.focusOf(session),
     settings: (session, guest) => settings.get(session, guest),
     asker,
+    autoApprove: (session) => settings.approvals(session) === "auto",
   });
   const gateway = new Gateway(connectors, {
     log,
@@ -109,6 +110,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
         store.append(session, event);
       },
       main: agent.name,
+      autoApprove: (session) => settings.approvals(session) === "auto",
     }),
     focus: (app, session) => {
       try {

@@ -2,15 +2,16 @@
 //   /model, /effort, /mode [harness] [value]  set it for this session; without a value, pick
 //                                             from what the harness offers
 //   /resume [guest]                           pick a stored guest conversation to continue
+//   /approvals [ask|auto]                     whether guests and their requests ask first
 // The harness defaults to the session's own agent. Nothing is chosen for the user.
 import type { ConfigOption } from "@suite/harness/agent";
-import type { SettingName } from "@suite/protocol/types";
+
 import type { Asker } from "./asker.ts";
 import { BadRequestError } from "./focus.ts";
 import type { GuestManager, StoredConversation } from "./guests/guests.ts";
 import type { Logger } from "./log.ts";
 import type { SessionManager } from "./sessions.ts";
-import { CATEGORIES, isSettingName, type Settings } from "./settings.ts";
+import { CATEGORIES, type HarnessSettingName, isSettingName, type Settings } from "./settings.ts";
 
 /** How many stored conversations per guest /resume offers. */
 const RESUME_LIMIT = 8;
@@ -42,6 +43,7 @@ export class Commands {
     const name = head.slice(1);
     if (isSettingName(name)) return this.setting(session, name, args);
     if (name === "resume") return this.resume(session, args);
+    if (name === "approvals") return this.approvals(session, args);
     return undefined;
   }
 
@@ -49,7 +51,7 @@ export class Commands {
     return harness === this.parts.main ? harness : this.parts.guests.title(harness);
   }
 
-  private async setting(session: string, name: SettingName, args: string[]): Promise<void> {
+  private async setting(session: string, name: HarnessSettingName, args: string[]): Promise<void> {
     const { guests, main } = this.parts;
     if (args.length > 2) throw new BadRequestError(`usage: /${name} [harness] [value]`);
     let harness = main;
@@ -93,13 +95,27 @@ export class Commands {
   private async apply(
     session: string,
     harness: string,
-    name: SettingName,
+    name: HarnessSettingName,
     value: string,
   ): Promise<void> {
     const category = CATEGORIES[name];
     if (harness === this.parts.main) await this.parts.sessions.configure(session, category, value);
     else await this.parts.guests.configure(session, harness, category, value);
     this.parts.settings.set(session, harness, name, value);
+  }
+
+  private approvals(session: string, args: string[]): Promise<void> {
+    const [value] = args;
+    if (args.length > 1 || (value !== undefined && value !== "ask" && value !== "auto")) {
+      return Promise.reject(new BadRequestError("usage: /approvals [ask|auto]"));
+    }
+    const { settings } = this.parts;
+    // Without a value: toggle.
+    settings.setApprovals(
+      session,
+      value ?? (settings.approvals(session) === "ask" ? "auto" : "ask"),
+    );
+    return Promise.resolve();
   }
 
   private async resume(session: string, args: string[]): Promise<void> {

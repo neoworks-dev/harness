@@ -186,8 +186,11 @@ export class SessionView {
       }
       case "plan":
         return this.planOps(event);
-      case "setting_changed":
-        return [this.notice(`n${seq}`, `${event.harness} ${event.option}: ${event.value}`)];
+      case "setting_changed": {
+        const what =
+          event.option === "approvals" ? "approvals" : `${event.harness} ${event.option}`;
+        return [this.notice(`n${seq}`, `${what}: ${event.value}`)];
+      }
       case "turn_ended": {
         if (event.stopReason === "end_turn") return [];
         const what = event.error ?? `stopped: ${event.stopReason.replace("_", " ")}`;

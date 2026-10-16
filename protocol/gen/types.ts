@@ -675,7 +675,7 @@ export interface PermissionResolved {
 
 export type PermissionOptionKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
 
-/** The user changed a harness setting for this session (/model, /effort, /mode). The last one per harness and option wins; new sessions start with the user's last choice. */
+/** The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness "suite", value ask or auto): whether guests' permission requests and starting a guest ask the user; per session, ask unless set. */
 export interface SettingChanged {
   type: "setting_changed";
   /** pi, claude, codex… */
@@ -684,7 +684,7 @@ export interface SettingChanged {
   value: string;
 }
 
-export type SettingName = "model" | "effort" | "mode";
+export type SettingName = "model" | "effort" | "mode" | "approvals";
 
 export interface ChoiceOption {
   id: string;

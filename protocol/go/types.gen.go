@@ -1611,7 +1611,7 @@ const (
 	PermissionOptionKindRejectAlways PermissionOptionKind = "reject_always"
 )
 
-// SettingChanged: The user changed a harness setting for this session (/model, /effort, /mode). The last one per harness and option wins; new sessions start with the user's last choice.
+// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness "suite", value ask or auto): whether guests' permission requests and starting a guest ask the user; per session, ask unless set.
 type SettingChanged struct {
 	// pi, claude, codex…
 	Harness string      `json:"harness"`
@@ -1633,9 +1633,10 @@ func (v SettingChanged) MarshalJSON() ([]byte, error) {
 type SettingName string
 
 const (
-	SettingNameModel  SettingName = "model"
-	SettingNameEffort SettingName = "effort"
-	SettingNameMode   SettingName = "mode"
+	SettingNameModel     SettingName = "model"
+	SettingNameEffort    SettingName = "effort"
+	SettingNameMode      SettingName = "mode"
+	SettingNameApprovals SettingName = "approvals"
 )
 
 type ChoiceOption struct {

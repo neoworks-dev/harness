@@ -1807,7 +1807,7 @@ pub enum PermissionOptionKind {
     RejectAlways,
 }
 
-/// The user changed a harness setting for this session (/model, /effort, /mode). The last one per harness and option wins; new sessions start with the user's last choice.
+/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness "suite", value ask or auto): whether guests' permission requests and starting a guest ask the user; per session, ask unless set.
 /// Tagged `type: "setting_changed"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SettingChanged {
@@ -1828,6 +1828,8 @@ pub enum SettingName {
     Effort,
     #[serde(rename = "mode")]
     Mode,
+    #[serde(rename = "approvals")]
+    Approvals,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
