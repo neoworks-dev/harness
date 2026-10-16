@@ -2,24 +2,22 @@
   // The files panel: what git says changed in the session's directory, plus the files the agent
   // and its guests touched, tagged by who. Pressing a file shows its diff over the window.
   import { Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
-  import * as host from "../kernel/host/git.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
+  import { parseUnified } from "../../lib/unified.ts";
   import {
     branchLabel,
     fileEntries,
     glyphOfMark,
     type FileEntry,
     type Mark,
-  } from "../lib/files.ts";
-  import { parseUnified } from "../lib/unified.ts";
-  import { suite } from "../state/suite.svelte.ts";
-  import { useCtx } from "../kernel/slots/context.ts";
-  import { activity } from "./activity.svelte.ts";
+  } from "./files.ts";
   import { git } from "./git.svelte.ts";
+  import { touched } from "./state.svelte.ts";
 
-  const { diff } = useCtx();
+  const { daemon, diff, git: gitService } = useCtx();
 
-  const p = $derived(suite.palette);
-  const entries = $derived(fileEntries(git.status, activity.touches.touched));
+  const p = $derived(daemon.palette);
+  const entries = $derived(fileEntries(git.status, touched.touches.touched));
 
   function colorOf(mark: Mark): string {
     switch (mark) {
@@ -45,7 +43,7 @@
     if (!canDiff(entry)) return;
     const untracked = entry.mark === "untracked" || (git.status === undefined && entry.mark === "added");
     try {
-      const text = await host.diff({ cwd: suite.cwd, path: entry.rel, untracked });
+      const text = await gitService.diff({ cwd: daemon.cwd, path: entry.rel, untracked });
       const lines = parseUnified(text).flatMap((file) => file.lines);
       diff.show({
         type: "diff",
@@ -53,7 +51,7 @@
         lines: lines.length > 0 ? lines : [{ kind: "context", text: "no changes" }],
       });
     } catch (error) {
-      suite.error = error instanceof Error ? error.message : String(error);
+      daemon.error = error instanceof Error ? error.message : String(error);
     }
   }
 </script>

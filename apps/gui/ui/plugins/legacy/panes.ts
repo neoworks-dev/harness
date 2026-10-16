@@ -3,7 +3,6 @@
 // leaves this file; the shell's slots are all it needs to know about.
 import type { Context } from "@neoworks/extension-system";
 import GitHub from "../../side/GitHub.svelte";
-import SidePanels from "../../side/SidePanels.svelte";
 import { ui } from "../../state/ui.svelte.ts";
 import "../shell/slots.ts";
 
@@ -20,13 +19,4 @@ const github = {
     }),
 };
 
-const sidePanels = {
-  name: "legacy/side-panels",
-  inject,
-  apply: ({ slots }: Context) =>
-    slots.inject("shell.right", (slot) => {
-      slot.add({ component: SidePanels });
-    }),
-};
-
-export const panes = [github, sidePanels];
+export const panes = [github];

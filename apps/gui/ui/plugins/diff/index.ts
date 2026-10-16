@@ -1,5 +1,6 @@
 // The side-by-side diff over the window, and the `diff` service that opens it. Esc closes it,
-// ahead of whatever else Esc closes, since it covers everything.
+// ahead of whatever else Esc closes, since it covers everything (hence the priority: the plugins
+// that draw diffs mount after this one).
 import type { Context } from "@neoworks/extension-system";
 import "../shell/slots.ts";
 import DiffOverlay from "./DiffOverlay.svelte";
@@ -17,9 +18,13 @@ export const diffOverlay = {
       slot.add({ component: DiffOverlay });
     });
 
-    keymap.bind("escape", () => {
-      if (viewing.current === undefined) return false;
-      viewing.current = undefined;
-    });
+    keymap.bind(
+      "escape",
+      () => {
+        if (viewing.current === undefined) return false;
+        viewing.current = undefined;
+      },
+      { priority: 1 },
+    );
   },
 };

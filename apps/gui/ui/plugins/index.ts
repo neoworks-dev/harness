@@ -1,14 +1,19 @@
 // Every plugin of the window, in the order they mount (so the order of their registrations in a
-// list slot where `order` ties, and of the `/` menu). Plugins are compiled into the bundle.
+// list slot where `order` ties, and of the `/` menu). Plugins are compiled into the bundle. A
+// plugin that provides a service (diff, transcript, agentview, sidepanel) comes before those that
+// use it; one that needs a service that is not mounted yet waits for it.
 import type { Plugin } from "@neoworks/extension-system";
 import { agentsList } from "./agents/index.ts";
 import { agentViewPane } from "./agentview/index.ts";
 import { composerPane } from "./composer/index.ts";
+import { diffOverlay } from "./diff/index.ts";
+import { filesPanel } from "./files/index.ts";
 import { panes } from "./legacy/panes.ts";
 import { shortcuts } from "./legacy/shortcuts.ts";
-import { diffOverlay } from "./diff/index.ts";
+import { planPanel } from "./plan/index.ts";
 import { sessionsSidebar } from "./sessions/index.ts";
 import { shell } from "./shell/index.ts";
+import { sidePanel } from "./sidepanel/index.ts";
 import { statusLine } from "./statusline/index.ts";
 import { transcriptPane } from "./transcript/index.ts";
 
@@ -16,11 +21,14 @@ export const plugins: Plugin[] = [
   shell,
   sessionsSidebar,
   statusLine,
+  diffOverlay,
   transcriptPane,
   shortcuts,
+  ...panes,
   composerPane,
   agentViewPane,
   agentsList,
-  diffOverlay,
-  ...panes,
+  sidePanel,
+  planPanel,
+  filesPanel,
 ];
