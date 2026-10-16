@@ -202,6 +202,29 @@ describe("/harness", () => {
     expect(events(daemon, daemon.sessions.create({}).id)).toEqual([]);
   });
 
+  test("a session on a harness gets the user's last settings for it, logged for the panes", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/model fake large");
+    const other = daemon.sessions.create({}).id;
+    await daemon.commands.run(other, "/harness fake");
+    expect(events(daemon, other)).toEqual([
+      { type: "setting_changed", harness: "suite", option: "harness", value: "fake" },
+      { type: "setting_changed", harness: "fake", option: "model", value: "large" },
+    ]);
+    // A new session starts on fake, with its model, too.
+    expect(events(daemon, daemon.sessions.create({}).id)).toEqual([
+      { type: "setting_changed", harness: "suite", option: "harness", value: "fake" },
+      { type: "setting_changed", harness: "fake", option: "model", value: "large" },
+    ]);
+    // A choice made in the session already is not repeated.
+    await daemon.commands.run(other, "/harness main");
+    await daemon.commands.run(other, "/harness fake");
+    const models = events(daemon, other).filter(
+      (e) => e.type === "setting_changed" && e.option === "model",
+    );
+    expect(models.length).toBe(1);
+  });
+
   test("/model and the like default to the harness the session runs on", async () => {
     const { daemon, session } = await setup();
     await daemon.commands.run(session, "/harness fake");

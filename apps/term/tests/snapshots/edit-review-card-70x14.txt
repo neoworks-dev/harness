@@ -1,5 +1,5 @@
-▎
-▎   [1 Keep]  [2 Revert]                                             │
+● pi asks: Edited src/a.ts — keep it? · answer below
+
 ──────────────────────────────────────────────────────────────────────
 ▎ ● pi asks: Edited src/a.ts — keep it?
 ▎   src/a.ts

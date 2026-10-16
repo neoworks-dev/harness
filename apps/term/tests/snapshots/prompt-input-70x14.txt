@@ -1,5 +1,5 @@
-▎ ● claude asks: run ls?
-▎   [1 Yes]  [2 No]
+● claude asks: run ls? · answer below
+
 
 
 

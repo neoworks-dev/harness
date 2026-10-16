@@ -1,7 +1,7 @@
 › run the tests
 
-▎ ● claude asks: run ls?
-▎   [1 Allow once]  [2 Always allow]  [3 Reject]
+● claude asks: run ls? · answer below
+
 
 
 

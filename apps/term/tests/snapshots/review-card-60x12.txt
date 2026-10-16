@@ -1,5 +1,5 @@
-▎   [3 Revert a.ts]
-▎   [4 Revert b.ts]                                        │
+● The agent changed 2 files: keep them? · answer below
+
 ────────────────────────────────────────────────────────────
 ▎ ● The agent changed 2 files: keep them?
 ▎   [1 Keep]

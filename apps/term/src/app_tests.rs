@@ -1892,3 +1892,58 @@ fn the_cursor_sits_in_the_editor() {
     let pos = terminal.get_cursor_position().unwrap();
     assert_eq!((pos.x, pos.y), (2 + 5, 20 - 3 - 1));
 }
+
+#[test]
+fn a_prompt_answered_below_the_chat_leaves_one_line_in_the_chat_and_starts_on_the_current_value() {
+    let option = |i: usize, id: &str, name: &str, current: bool| {
+        let mut b = json!({"type":"button","label":name,"action":"suite.choose",
+               "args":{"id":"m1","option":id},"key":(i + 1).to_string()});
+        if current {
+            b["current"] = json!(true);
+        }
+        b
+    };
+    let picker: ViewItem = serde_json::from_value(json!({
+        "ref": "q-m1", "kind": "tool", "label": "Claude Code model (now: haiku)",
+        "state": "pending",
+        "component": {"type":"stack","gap":"s","children":[
+            option(0, "default", "Default", false),
+            option(1, "opus", "Opus", false),
+            option(2, "haiku", "Haiku", true)]}
+    }))
+    .unwrap();
+    let mut app = app();
+    show(&mut app, vec![picker]);
+    assert!(app.prompt.engaged);
+    let rows = screen(&mut app, 70, 20);
+    let titles = rows
+        .iter()
+        .filter(|l| l.contains("Claude Code model"))
+        .count();
+    assert_eq!(
+        titles, 2,
+        "one line in the chat, the picker below: {rows:#?}"
+    );
+    assert!(
+        rows.iter()
+            .any(|l| l.contains("● Claude Code model (now: haiku) · answer below")),
+        "{rows:#?}"
+    );
+    assert_eq!(
+        rows.iter().filter(|l| l.contains("[2 Opus]")).count(),
+        1,
+        "the buttons only once: {rows:#?}"
+    );
+    assert!(rows.iter().any(|l| l.contains("[3 Haiku] ✓")), "{rows:#?}");
+    // Enter keeps what is in effect.
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert_eq!(
+        fx,
+        [Effect::Action {
+            session: "s1".into(),
+            item: "q-m1".into(),
+            action: "suite.choose".into(),
+            args: Some(json!({"id":"m1","option":"haiku"})),
+        }]
+    );
+}

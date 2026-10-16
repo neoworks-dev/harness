@@ -849,6 +849,10 @@
           "items": {
             "$ref": "#/$defs/ChoiceOption"
           }
+        },
+        "current": {
+          "description": "The id of the option in effect now, if any.",
+          "type": "string"
         }
       },
       "required": ["type", "id", "title", "options"],

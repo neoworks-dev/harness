@@ -716,7 +716,7 @@ impl App {
         self.active_ref().map_or(&[], |r| self.chat.buttons_of(r))
     }
 
-    /// A new active prompt starts on its first button and is scrolled into view.
+    /// A new active prompt starts on its current or first button and is scrolled into view.
     fn sync_prompt(&mut self) {
         let current = self.active_ref().map(str::to_string);
         // The card was answered elsewhere, or another one took over: the note is moot.
@@ -728,7 +728,11 @@ impl App {
             self.note = None;
         }
         if current != self.prompt.seen {
-            self.prompt.button = 0;
+            // A picker starts on the value in effect now, anything else on its first button.
+            self.prompt.button = current
+                .as_deref()
+                .and_then(|r| self.chat.buttons_of(r).iter().position(|b| b.current))
+                .unwrap_or(0);
             if current.is_some() && self.prompt.selected.is_none() {
                 self.chat.follow();
             }
@@ -1692,6 +1696,7 @@ impl App {
                 show_thoughts: self.show_thoughts,
                 palette: self.palette,
                 active: None,
+                in_panel: false,
                 marker: self.styles.accent,
             };
             if let Some(t) = self.transcript.as_mut() {
@@ -1777,6 +1782,7 @@ impl App {
             active: self
                 .active_ref()
                 .map(|r| (r.to_string(), self.prompt.button)),
+            in_panel: self.prompt.engaged,
             marker: self.styles.accent,
         }
     }

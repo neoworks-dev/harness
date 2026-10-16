@@ -424,6 +424,7 @@ export class SessionView {
           args: { id: choice.id, option: option.id },
         };
         if (i < 9) button.key = String(i + 1);
+        if (option.id === choice.current) button.current = true;
         if (option.description === undefined) return button;
         return {
           type: "row",

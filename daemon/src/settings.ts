@@ -85,22 +85,42 @@ export class Settings {
       value,
     });
     this.store.setMeta(metaKey("suite", "harness"), value);
+    this.carryOver(session, value);
+  }
+
+  /**
+   * The user's last choices for a harness the session starts on (model, effort, mode), logged
+   * when the session has none of its own yet: they apply anyway (see get), and logged they show
+   * in the panes' status like a choice made here.
+   */
+  carryOver(session: string, harness: string): void {
+    const chosen = new Set<string>();
+    for (const { event } of this.store.readTypes(session, ["setting_changed"])) {
+      if (event.type === "setting_changed" && event.harness === harness) chosen.add(event.option);
+    }
+    for (const name of Object.keys(CATEGORIES)) {
+      const last = this.store.getMeta(metaKey(harness, name));
+      if (last === undefined || chosen.has(name) || !isSettingName(name)) continue;
+      this.store.append(session, { type: "setting_changed", harness, option: name, value: last });
+    }
   }
 
   /**
    * A new session starts on the user's last harness choice, if it still exists. Logged when it
    * isn't main, so the session keeps it whatever the user picks elsewhere later (and panes see
-   * it).
+   * it); so are that harness's last settings (carryOver).
    */
   inheritHarness(session: string, exists: (harness: string) => boolean): void {
     const last = this.store.getMeta(metaKey("suite", "harness"));
-    if (last === undefined || last === this.main || !exists(last)) return;
-    this.store.append(session, {
-      type: "setting_changed",
-      harness: "suite",
-      option: "harness",
-      value: last,
-    });
+    if (last !== undefined && last !== this.main && exists(last)) {
+      this.store.append(session, {
+        type: "setting_changed",
+        harness: "suite",
+        option: "harness",
+        value: last,
+      });
+    }
+    this.carryOver(session, this.harness(session));
   }
 
   /**

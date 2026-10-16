@@ -786,6 +786,8 @@ export interface Choice {
   id: string;
   title: string;
   options: ChoiceOption[];
+  /** The id of the option in effect now, if any. */
+  current?: string;
 }
 
 /** The answer to a choice: the picked option, or none when it was dropped (the daemon restarted, or a newer choice replaced it). */
@@ -972,6 +974,8 @@ export interface ButtonComponent {
   args?: unknown;
   /** Single-key hint; renderers bind it while the item has keyboard focus. */
   key?: string;
+  /** The value in effect now (a picker's current model): keyboard focus starts here and renderers may mark it. */
+  current?: boolean;
 }
 
 /** TUI: underlined text plus the URL. */

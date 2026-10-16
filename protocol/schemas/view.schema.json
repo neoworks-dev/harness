@@ -205,6 +205,10 @@
         "key": {
           "type": "string",
           "description": "Single-key hint; renderers bind it while the item has keyboard focus."
+        },
+        "current": {
+          "type": "boolean",
+          "description": "The value in effect now (a picker's current model): keyboard focus starts here and renderers may mark it."
         }
       },
       "required": ["type", "label", "action"],

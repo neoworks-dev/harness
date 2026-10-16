@@ -610,6 +610,7 @@ describe("settings", () => {
     const choice = await answer(daemon, session, "choice", "large");
     expect(choice).toMatchObject({
       title: "Fake model (now: small)",
+      current: "small",
       options: [
         { id: "small", name: "SMALL", description: "small one" },
         { id: "large", name: "LARGE", description: "large one" },
@@ -624,6 +625,28 @@ describe("settings", () => {
       .snapshot()
       .items.find((i) => choice.type === "choice" && i.ref === `q-${choice.id}`);
     expect(item).toMatchObject({ state: "done" });
+  });
+
+  test("the picker marks the value in effect, so panes start there", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/model fake large");
+    await daemon.commands.run(session, "/model fake");
+    await until(
+      () =>
+        daemon.views
+          .get(session)
+          .snapshot()
+          .items.some((i) => i.ref.startsWith("q-")),
+      "the picker",
+    );
+    const picker = daemon.views
+      .get(session)
+      .snapshot()
+      .items.find((i) => i.ref.startsWith("q-"));
+    const shown = JSON.stringify(picker?.component);
+    expect(shown).toContain('"label":"LARGE","action":"suite.choose","args":{"id"');
+    expect(shown.match(/"current":true/g)?.length).toBe(1);
+    expect(shown).toMatch(/"label":"LARGE"[^}]*\}[^}]*"current":true/);
   });
 
   test("new sessions start with the last choice; the agent gets its settings", async () => {

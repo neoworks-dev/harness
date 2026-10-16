@@ -48,6 +48,9 @@ pub struct ChatOpts {
     pub palette: Palette,
     /// The prompt being answered: item ref and the focused button.
     pub active: Option<(String, usize)>,
+    /// The active prompt is drawn in place of the editor: the chat shows one line for it
+    /// (the whole card when expanded).
+    pub in_panel: bool,
     pub marker: Style,
 }
 
@@ -290,6 +293,10 @@ impl Chat {
                     .flatten(),
             };
             let (lines, slots) = match self.cache.get(r) {
+                // Ctrl-O (everything in full) keeps the whole card, e.g. a long diff.
+                _ if opts.in_panel && active.is_some() && !opts.expanded => {
+                    (Rc::new(vec![panel_stub(item, opts)]), Rc::new(Vec::new()))
+                }
                 Some(c) if c.key == ckey => (c.lines.clone(), c.slots.clone()),
                 _ => {
                     let (lines, slots) = render(item, width, &ckey);
@@ -556,6 +563,16 @@ pub fn note_line(text: &str, width: usize, accent: Style) -> Line<'static> {
     Line::from(spans)
 }
 
+/// The line a prompt leaves in the chat while it is answered below the chat.
+fn panel_stub(item: &ViewItem, opts: &ChatOpts) -> Line<'static> {
+    let label = item.label.as_deref().unwrap_or("a question");
+    Line::from(vec![
+        Span::styled("● ", opts.marker),
+        Span::styled(label.to_string(), Style::new().add_modifier(Modifier::BOLD)),
+        Span::styled(" · answer below", Style::new().fg(opts.palette.muted)),
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -597,6 +614,7 @@ mod tests {
             show_thoughts: false,
             palette: Palette::default(),
             active: None,
+            in_panel: false,
             marker: Style::new(),
         }
     }

@@ -66,6 +66,7 @@ fn opts() -> ChatOpts {
         show_thoughts: false,
         palette: Palette::default(),
         active: None,
+        in_panel: false,
         marker: Style::new(),
     }
 }

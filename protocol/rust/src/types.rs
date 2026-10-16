@@ -2061,6 +2061,9 @@ pub struct Choice {
     pub title: String,
     #[serde(rename = "options")]
     pub options: Vec<ChoiceOption>,
+    /// The id of the option in effect now, if any.
+    #[serde(rename = "current", default, skip_serializing_if = "Option::is_none")]
+    pub current: Option<String>,
 }
 
 /// The answer to a choice: the picked option, or none when it was dropped (the daemon restarted, or a newer choice replaced it).
@@ -2564,6 +2567,9 @@ pub struct ButtonComponent {
     /// Single-key hint; renderers bind it while the item has keyboard focus.
     #[serde(rename = "key", default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
+    /// The value in effect now (a picker's current model): keyboard focus starts here and renderers may mark it.
+    #[serde(rename = "current", default, skip_serializing_if = "Option::is_none")]
+    pub current: Option<bool>,
 }
 
 /// TUI: underlined text plus the URL.

@@ -1830,6 +1830,8 @@ type Choice struct {
 	ID      string         `json:"id"`
 	Title   string         `json:"title"`
 	Options []ChoiceOption `json:"options"`
+	// The id of the option in effect now, if any.
+	Current *string `json:"current,omitempty"`
 }
 
 func (Choice) isSessionEvent() {}
@@ -2314,6 +2316,8 @@ type ButtonComponent struct {
 	Args json.RawMessage `json:"args,omitempty"`
 	// Single-key hint; renderers bind it while the item has keyboard focus.
 	Key *string `json:"key,omitempty"`
+	// The value in effect now (a picker's current model): keyboard focus starts here and renderers may mark it.
+	Current *bool `json:"current,omitempty"`
 }
 
 func (ButtonComponent) isComponent() {}

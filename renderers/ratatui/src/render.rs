@@ -794,6 +794,9 @@ impl<'a> Cx<'a> {
             ),
             Span::raw(format!(" {}]", one_line(&b.label))),
         ];
+        if b.current == Some(true) {
+            spans.push(Span::styled(" ✓", Style::new().fg(self.p.success)));
+        }
         if focused {
             for s in &mut spans {
                 s.style = s.style.add_modifier(Modifier::REVERSED);

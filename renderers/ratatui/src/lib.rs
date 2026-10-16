@@ -124,6 +124,8 @@ pub struct ButtonRef {
     /// What triggers it: the button's own key, else its 1-based position among the item's
     /// buttons. The same text is drawn in the button.
     pub key: String,
+    /// The value in effect now (a picker's current model): focus starts here.
+    pub current: bool,
 }
 
 impl ButtonRef {
@@ -148,6 +150,7 @@ fn collect(c: &pb::Component, out: &mut Vec<ButtonRef>) {
             action: b.action.clone(),
             args: b.args.clone(),
             key: render::button_key(b, out.len()),
+            current: b.current == Some(true),
         }),
         pb::Component::CardComponent(v) => v.children.iter().for_each(|c| collect(c, out)),
         pb::Component::RowComponent(v) => v.children.iter().for_each(|c| collect(c, out)),

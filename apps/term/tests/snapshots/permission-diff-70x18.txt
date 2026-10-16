@@ -1,7 +1,7 @@
-▎   -const old1 = 1;
-▎   +const next1 = 1;
-▎                                                                    │
-▎   [1 Allow once]  [2 Always allow]  [3 Reject]                     │
+● pi asks: Edit src/app.ts · answer below
+
+
+
 ──────────────────────────────────────────────────────────────────────
 ▎ ● pi asks: Edit src/app.ts
 ▎   src/app.ts

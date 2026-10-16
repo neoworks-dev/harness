@@ -7,7 +7,7 @@
 // The harness defaults to the one the session runs on. Nothing is chosen for the user.
 import type { ConfigOption } from "@suite/harness/agent";
 
-import type { Asker } from "./asker.ts";
+import type { Asker, Choice } from "./asker.ts";
 import { BadRequestError } from "./focus.ts";
 import type { GuestManager, StoredConversation } from "./guests/guests.ts";
 import type { Logger } from "./log.ts";
@@ -86,15 +86,17 @@ export class Commands {
     let title = `${this.title(harness)} ${name}`;
     if (option.current !== undefined) title += ` (now: ${option.current})`;
     // The answer comes later, from a button; the command is done once the choice is shown.
+    const choice: Omit<Choice, "id"> = {
+      type: "choice",
+      title,
+      options: option.values.map((v) => {
+        const entry = { id: v.value, name: v.name };
+        return v.description === undefined ? entry : { ...entry, description: v.description };
+      }),
+    };
+    if (option.values.some((v) => v.value === option.current)) choice.current = option.current;
     void this.parts.asker
-      .ask(session, {
-        type: "choice",
-        title,
-        options: option.values.map((v) => {
-          const entry = { id: v.value, name: v.name };
-          return v.description === undefined ? entry : { ...entry, description: v.description };
-        }),
-      })
+      .ask(session, choice)
       .then(async (picked) => {
         if (picked !== undefined) await this.apply(session, harness, name, picked);
       })
