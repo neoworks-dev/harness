@@ -5,46 +5,35 @@
   import { untrack } from "svelte";
   import { Button, List, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent } from "@neoworks/svelte-gpui/ui";
-  import { groupSessions, jumpGroup, step, type Entry } from "../lib/sessions.ts";
-  import { suite } from "../state/suite.svelte.ts";
-  import { ui } from "../state/ui.svelte.ts";
-  import { clock } from "./clock.svelte.ts";
-  import { finished } from "./finished.svelte.ts";
-  import { places } from "./places.svelte.ts";
+  import { clock } from "../../side/clock.svelte.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
   import SessionRow from "./SessionRow.svelte";
+  import { groupSessions, jumpGroup, step, type Entry } from "./sessions.ts";
+  import { sessions } from "./state.svelte.ts";
 
   /** Rows a PgUp / PgDn moves. */
   const PAGE = 5;
   const WIDTH = 270;
 
-  const p = $derived(suite.palette);
-  const grouped = $derived(groupSessions(suite.sessions, places.found));
+  const { daemon } = useCtx();
+
+  const p = $derived(daemon.palette);
+  const grouped = $derived(groupSessions(daemon.sessions, sessions.places));
   let list: ReturnType<typeof List<Entry>> | undefined = $state();
   let keys: ReturnType<typeof View> | undefined = $state();
   /** The row the keys are on while the sidebar has the keyboard. */
   let selected = $state<string>();
 
-  // The directories to look up on disk: only linked worktrees outside `.worktrees/` need it.
-  $effect(() => places.ensure(suite.sessions.map((session) => session.cwd)));
-
   // Ages tick while the sidebar is drawn.
   $effect(() => {
-    if (ui.sidebarOpen) return clock.join();
+    if (sessions.open) return clock.join();
   });
-
-  // F6 opens the sidebar and gives it the keyboard.
-  function windowKey(event: KeyboardEvent): void {
-    if (event.key !== "F6") return;
-    event.preventDefault();
-    ui.sidebarOpen = true;
-    ui.sidebarFocused = !ui.sidebarFocused;
-  }
 
   // The keys start on the shown session.
   $effect(() => {
-    if (!ui.sidebarFocused || !ui.sidebarOpen) return;
+    if (!sessions.focused || !sessions.open) return;
     untrack(() => {
-      selected = suite.sessionId ?? grouped.order[0];
+      selected = daemon.sessionId ?? grouped.order[0];
       keys?.focus();
     });
   });
@@ -66,7 +55,7 @@
 
   // The shown session stays in view.
   $effect(() => {
-    const id = suite.sessionId;
+    const id = daemon.sessionId;
     if (id !== undefined && grouped.order.includes(id)) untrack(() => reveal(id, false));
   });
 
@@ -77,11 +66,11 @@
   }
 
   function leave(): void {
-    ui.sidebarFocused = false;
+    sessions.focused = false;
   }
 
   function open(id: string): void {
-    if (id !== suite.sessionId) void suite.open(id);
+    if (id !== daemon.sessionId) void daemon.open(id);
   }
 
   function key(event: KeyEvent): void {
@@ -132,9 +121,7 @@
   }
 </script>
 
-<svelte:window onkeydown={windowKey} />
-
-{#if ui.sidebarOpen}
+{#if sessions.open}
   <View
     style={{
       width: WIDTH,
@@ -157,14 +144,14 @@
         style={{
           flex: 1,
           minWidth: 0,
-          color: ui.sidebarFocused ? p.accent : p.muted,
-          fontWeight: ui.sidebarFocused ? "bold" : "normal",
+          color: sessions.focused ? p.accent : p.muted,
+          fontWeight: sessions.focused ? "bold" : "normal",
         }}
       >
-        Sessions · {suite.sessions.length}{#if finished.ids.size > 0}<Text style={{ color: p.success }}>{" · "}{finished.ids.size} done</Text>{/if}
+        Sessions · {daemon.sessions.length}{#if sessions.finished.size > 0}<Text style={{ color: p.success }}>{" · "}{sessions.finished.size} done</Text>{/if}
       </Text>
       <Button
-        onpress={() => void suite.newSession()}
+        onpress={() => void daemon.newSession()}
         style={{ paddingX: p.space.m, paddingY: 2, radius: 4, color: p.accent }}
         hover={{ background: p.band }}
       >
@@ -200,9 +187,9 @@
             <SessionRow
               info={entry.info}
               child={entry.child}
-              current={entry.key === suite.sessionId}
-              finished={finished.ids.has(entry.key)}
-              selected={ui.sidebarFocused && selected === entry.key}
+              current={entry.key === daemon.sessionId}
+              finished={sessions.finished.has(entry.key)}
+              selected={sessions.focused && selected === entry.key}
               nowMs={clock.now}
               onpress={() => open(entry.key)}
             />

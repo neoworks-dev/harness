@@ -2,7 +2,7 @@
 // tone to a colour). Plain functions, so they are tested without a window.
 import type { ConnectionState } from "@suite/sdk";
 import type { Usage } from "@suite/protocol/types";
-import { currentSettings, type Approvals, type SessionStatus } from "./status.ts";
+import { currentSettings, type Approvals, type SessionStatus } from "../../lib/status.ts";
 
 export type Tone = "fg" | "muted" | "accent" | "danger" | "success";
 

@@ -1,17 +1,20 @@
 <script lang="ts">
   // One line under the input: branch, harness and its settings, approvals mode, turn state and
-  // usage. A lost connection, a notice (Ctrl-C) and the last error show here too.
+  // usage. Other plugins add messages after it (the `statusline.right` slot); a lost connection
+  // and the last error show here too.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
-  import { statusSegments, type Tone } from "../lib/statusline.ts";
-  import { suite } from "../state/suite.svelte.ts";
-  import { composer } from "./composer.svelte.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
+  import Slot from "../../kernel/slots/Slot.svelte";
+  import { statusSegments, type Tone } from "./segments.ts";
 
-  const p = $derived(suite.palette);
+  const { daemon } = useCtx();
+
+  const p = $derived(daemon.palette);
 
   // Ticks once a second while a turn runs, for its elapsed time.
   let now = $state(Date.now());
   $effect(() => {
-    if (!suite.status.running) return;
+    if (!daemon.status.running) return;
     now = Date.now();
     const timer = setInterval(() => (now = Date.now()), 1000);
     return () => clearInterval(timer);
@@ -19,10 +22,10 @@
 
   const segments = $derived(
     statusSegments({
-      branch: suite.branch,
-      status: suite.status,
-      queued: suite.session?.queued ?? 0,
-      connection: suite.connection,
+      branch: daemon.branch,
+      status: daemon.status,
+      queued: daemon.session?.queued ?? 0,
+      connection: daemon.connection,
       now,
     }),
   );
@@ -39,10 +42,8 @@
       <Text style={{ color: colour(segment.tone) }}>{segment.text}</Text>
     {/each}
   </Text>
-  {#if composer.notice}
-    <Text style={{ color: p.accent, shrink: 0 }}>{composer.notice}</Text>
-  {/if}
-  {#if suite.error}
-    <Text style={{ color: p.danger, maxWidth: "50%", truncate: true }}>{suite.error}</Text>
+  <Slot name="statusline.right" />
+  {#if daemon.error}
+    <Text style={{ color: p.danger, maxWidth: "50%", truncate: true }}>{daemon.error}</Text>
   {/if}
 </View>

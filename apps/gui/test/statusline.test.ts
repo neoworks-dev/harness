@@ -6,7 +6,7 @@ import {
   formatCost,
   formatElapsed,
   statusSegments,
-} from "../ui/lib/statusline.ts";
+} from "../ui/plugins/statusline/segments.ts";
 
 const idle = { branch: "main", queued: 0, connection: "open", now: 0 } as const;
 

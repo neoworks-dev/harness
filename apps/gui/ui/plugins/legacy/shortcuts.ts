@@ -1,6 +1,6 @@
 // The window's keys and local `/` commands from before panes were plugins. They reach into the
 // panes' stores directly; each moves into the plugin of the pane it belongs to when that pane is
-// converted (see the sessions plugin for Ctrl-S, F6 and Ctrl-N).
+// converted (see the sessions plugin for Ctrl-S, F6 and Ctrl-N, and its `/sidebar`).
 //
 // The keys reach the window when the focused input or panel does not use them. A handler that
 // returns false has not used the key.
@@ -37,17 +37,10 @@ export const shortcuts = {
     });
     keymap.bind("ctrl-o", () => void (ui.expanded = !ui.expanded));
     keymap.bind("ctrl-t", () => void (ui.showThoughts = !ui.showThoughts));
-    keymap.bind("ctrl-s", () => void (ui.sidebarOpen = !ui.sidebarOpen));
     keymap.bind("ctrl-x", () => void (ui.agentsFocused = !ui.agentsFocused));
     keymap.bind("ctrl-r", () => void (ui.githubOpen = !ui.githubOpen));
-    keymap.bind("ctrl-n", () => void suite.newSession());
-    keymap.bind("ctrl-p", () => void composer.reopenPrompts());
+    keymap.bind("ctrl-p", () => composer.reopenPrompts());
 
-    commands.register({
-      name: "sidebar",
-      desc: "show or hide the sessions sidebar (ctrl-s)",
-      run: () => (ui.sidebarOpen = !ui.sidebarOpen),
-    });
     commands.register({
       name: "expand",
       desc: "toggle full tool results (ctrl-o)",

@@ -2,7 +2,7 @@
 // names, arguments and results.
 import type { DaemonAddress } from "@suite/sdk";
 import type { Detail, Summary } from "./lib/github.ts";
-import type { Place } from "./lib/sessions.ts";
+import type { Place } from "./plugins/sessions/sessions.ts";
 
 export interface Startup {
   /** Where the window was started. */

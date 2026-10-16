@@ -12,7 +12,7 @@ import {
   sessionTitle,
   step,
   type Entry,
-} from "../ui/lib/sessions.ts";
+} from "../ui/plugins/sessions/sessions.ts";
 
 function session(id: string, title: string, cwd: string, lastActivity: number): SessionInfo {
   const info: SessionInfo = {

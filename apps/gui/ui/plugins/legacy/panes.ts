@@ -5,15 +5,15 @@ import type { Context } from "@neoworks/extension-system";
 import Chat from "../../chat/Chat.svelte";
 import DiffOverlay from "../../chat/DiffOverlay.svelte";
 import Composer from "../../input/Composer.svelte";
-import StatusLine from "../../input/StatusLine.svelte";
 import AgentView from "../../side/AgentView.svelte";
 import { agentView } from "../../side/agentview.svelte.ts";
 import Agents from "../../side/Agents.svelte";
 import GitHub from "../../side/GitHub.svelte";
-import Sessions from "../../side/Sessions.svelte";
 import SidePanels from "../../side/SidePanels.svelte";
 import { ui } from "../../state/ui.svelte.ts";
 import "../shell/slots.ts";
+import "../statusline/slots.ts";
+import Notice from "./Notice.svelte";
 
 const inject = ["slots"];
 
@@ -63,21 +63,12 @@ const agents = {
     }),
 };
 
-const statusLine = {
-  name: "legacy/status-line",
-  inject,
+const notice = {
+  name: "legacy/notice",
+  inject: ["slots", "daemon"],
   apply: ({ slots }: Context) =>
-    slots.inject("shell.bottom", (slot) => {
-      slot.add({ component: StatusLine, order: 30 });
-    }),
-};
-
-const sessions = {
-  name: "legacy/sessions",
-  inject,
-  apply: ({ slots }: Context) =>
-    slots.inject("shell.left", (slot) => {
-      slot.add({ component: Sessions });
+    slots.inject("statusline.right", (slot) => {
+      slot.add({ component: Notice });
     }),
 };
 
@@ -99,14 +90,4 @@ const diffOverlay = {
     }),
 };
 
-export const panes = [
-  sessions,
-  github,
-  agentChat,
-  chat,
-  composer,
-  agents,
-  statusLine,
-  sidePanels,
-  diffOverlay,
-];
+export const panes = [github, agentChat, chat, composer, agents, notice, sidePanels, diffOverlay];

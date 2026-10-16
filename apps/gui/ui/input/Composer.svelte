@@ -4,6 +4,7 @@
   import { untrack } from "svelte";
   import { Input, Overlay, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent, Layout } from "@neoworks/svelte-gpui/ui";
+  import { sessions } from "../plugins/sessions/state.svelte.ts";
   import { suite } from "../state/suite.svelte.ts";
   import { ui } from "../state/ui.svelte.ts";
   import { composer } from "./composer.svelte.ts";
@@ -56,7 +57,7 @@
   // The input has the keyboard unless the sidebar, the agents list or the GitHub view took it.
   // svelte-gpui can't hand focus back yet (neoworks-dev/svelte-gpui#41), hence the flags.
   $effect(() => {
-    if (!showPanel && !ui.agentsFocused && !ui.githubOpen && !ui.sidebarFocused) input?.focus();
+    if (!showPanel && !ui.agentsFocused && !ui.githubOpen && !sessions.focused) input?.focus();
   });
 
   function key(event: KeyEvent): void {

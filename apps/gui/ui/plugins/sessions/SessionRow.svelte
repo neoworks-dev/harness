@@ -4,9 +4,9 @@
   // finished unseen a green dot and a bold title; one that another session delegated to a ↳.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import type { SessionInfo } from "@suite/protocol/types";
-  import Spinner from "../chat/Spinner.svelte";
-  import { age, changedLines, previewOf, sessionTitle } from "../lib/sessions.ts";
-  import { suite } from "../state/suite.svelte.ts";
+  import Spinner from "../../chat/Spinner.svelte";
+  import { useCtx } from "../../kernel/slots/context.ts";
+  import { age, changedLines, previewOf, sessionTitle } from "./sessions.ts";
 
   interface Props {
     info: SessionInfo;
@@ -21,7 +21,8 @@
   }
 
   let { info, child, current, finished, selected, nowMs, onpress }: Props = $props();
-  const p = $derived(suite.palette);
+  const { daemon } = useCtx();
+  const p = $derived(daemon.palette);
   const changed = $derived(changedLines(info));
   const preview = $derived(previewOf(info));
   const emphasis = $derived(current || finished);
