@@ -10,7 +10,7 @@ import type { AssetResolver } from "./paths.ts";
 
 /**
  * The fixed core tool list. Order and definitions never change, whatever is connected. `ask`
- * (when given) is consulted before bash, write and edit act.
+ * (when given) is consulted before bash, read, write and edit act.
  */
 export function createCoreTools(
   cwd: string,
@@ -20,7 +20,7 @@ export function createCoreTools(
 ): AgentState["tools"] {
   return [
     createBashTool(cwd, assets, ask),
-    createReadTool(cwd, assets),
+    createReadTool(cwd, assets, ask),
     createWriteTool(cwd, ask),
     createEditTool(cwd, ask),
     createTodoWriteTool(),

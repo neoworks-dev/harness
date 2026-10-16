@@ -44,14 +44,22 @@ fn assert_fits(lines: &[Line<'_>], width: u16) {
 // ---- items ----
 
 #[test]
-fn user_items_get_a_prompt_and_the_app_dimmed() {
+fn user_items_get_a_prompt_and_the_app_dimmed_on_a_band() {
     let it = item_of("user", r#""label":"browser","#, &text("make it smaller"));
-    assert_eq!(lines(&it, 40), ["> make it smaller  · browser"]);
+    assert_eq!(lines(&it, 40), ["› make it smaller  · browser"]);
     let rendered = render_item(&it, 40, &Options::default());
     let spans = &rendered[0].spans;
-    assert_eq!(spans[0].content, ">");
+    assert_eq!(spans[0].content, "›");
     assert_eq!(spans[0].style.fg, Some(pal().accent));
-    assert_eq!(spans.last().unwrap().style.fg, Some(pal().muted));
+    let tag = spans
+        .iter()
+        .find(|s| s.content.contains("browser"))
+        .unwrap();
+    assert_eq!(tag.style.fg, Some(pal().muted));
+    // The band spans the whole width, so the user's turns stand out from the agent's.
+    assert_eq!(rendered[0].width(), 40);
+    assert!(spans.iter().all(|s| s.style.bg == Some(pal().band())));
+    assert_eq!(pal().band(), ratatui::style::Color::Rgb(0x33, 0x34, 0x39));
 }
 
 #[test]
@@ -63,18 +71,22 @@ fn user_text_hangs_under_the_prompt_and_the_label_moves_when_it_does_not_fit() {
     );
     assert_eq!(
         lines(&it, 14),
-        ["> one two", "  three four", "  five six", "  · browser"]
+        ["› one two", "  three four", "  five six", "  · browser"]
     );
     let bare = item_of("user", "", &text("hi"));
-    assert_eq!(lines(&bare, 14), ["> hi"]);
+    assert_eq!(lines(&bare, 14), ["› hi"]);
 }
 
 #[test]
-fn agent_items_are_plain_text_with_a_header_for_guests() {
+fn agent_text_hangs_under_a_bullet_with_a_header_for_guests() {
     let main = item_of("agent", "", &text("hello there"));
-    assert_eq!(lines(&main, 40), ["hello there"]);
+    assert_eq!(lines(&main, 40), ["● hello there"]);
+    assert_eq!(lines(&main, 9), ["● hello", "  there"]);
     let guest = item_of("agent", r#""label":"claude","#, &text("hello there"));
-    assert_eq!(lines(&guest, 40), ["claude", "hello there"]);
+    assert_eq!(lines(&guest, 40), ["claude", "● hello there"]);
+    // Other components are drawn as they are.
+    let card = r#"{"type":"card","title":"T","children":[]}"#;
+    assert!(!lines(&item_of("agent", "", card), 40)[0].starts_with('●'));
     let head = &render_item(&guest, 40, &Options::default())[0];
     assert_eq!(head.spans[0].style.fg, Some(pal().accent));
 }
@@ -499,8 +511,10 @@ fn button_text_is_key_and_label() {
 
 // ---- components ----
 
+/// A component as an agent item draws it; wrapped in a stack so text gets no bullet.
 fn one(component: &str, width: u16) -> Vec<String> {
-    lines(&item_of("agent", "", component), width)
+    let stack = format!(r#"{{"type":"stack","children":[{component}]}}"#);
+    lines(&item_of("agent", "", &stack), width)
 }
 
 #[test]
@@ -749,11 +763,12 @@ fn zero_width_draws_nothing() {
 
 #[test]
 fn cjk_and_emoji_wrap_by_display_width() {
-    let it = item_of("agent", "", &text("日本語のテキストです 👨‍👩‍👧👨‍👩‍👧👨‍👩‍👧"));
-    let got = lines(&it, 8);
+    let cjk = text("日本語のテキストです 👨‍👩‍👧👨‍👩‍👧👨‍👩‍👧");
+    let it = item_of("agent", "", &cjk);
+    let got = one(&cjk, 8);
     assert_eq!(got, ["日本語の", "テキスト", "です", "👨‍👩‍👧👨‍👩‍👧👨‍👩‍👧"]);
     // Narrower than the three: broken between families, never inside one.
-    let narrow = lines(&it, 4);
+    let narrow = one(&cjk, 4);
     assert_eq!(narrow[narrow.len() - 2..], ["👨‍👩‍👧👨‍👩‍👧", "👨‍👩‍👧"]);
     let rendered = render_item(&it, 8, &Options::default());
     assert_fits(&rendered, 8);

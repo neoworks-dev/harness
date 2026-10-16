@@ -1,0 +1,13 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 13,
+    "ts": 1760565601150,
+    "event": {
+      "type": "user_note",
+      "note": "use tabs instead",
+      "about": "claude asks: Edit src/parse.ts: Allow"
+    }
+  }
+}

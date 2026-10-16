@@ -47,7 +47,8 @@ impl<'a> Cx<'a> {
         lines
     }
 
-    /// `> text`, the app it came from dimmed after the text.
+    /// `› text` on a full-width band (`Palette::band`), so what the user said stands out
+    /// from the agent's replies; the app it came from dimmed after the text.
     fn user(&mut self, it: &pb::ViewItem, label: Option<String>, w: usize) -> Lines {
         let inner = w.saturating_sub(2).max(1);
         let mut body = self.comp(&it.component, inner);
@@ -64,18 +65,31 @@ impl<'a> Cx<'a> {
         }
         let lead = vec![
             Span::styled(
-                ">",
+                "›",
                 Style::new().fg(self.p.accent).add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
         ];
-        if body.is_empty() {
-            return vec![Line::from(lead[0].clone())];
+        let mut lines = if body.is_empty() {
+            vec![Line::from(lead)]
+        } else {
+            prefixed(body, lead, vec![Span::raw("  ")])
+        };
+        let band = self.p.band();
+        for line in &mut lines {
+            let pad = w.saturating_sub(line.width());
+            if pad > 0 {
+                line.spans.push(Span::raw(" ".repeat(pad)));
+            }
+            for span in &mut line.spans {
+                span.style = span.style.bg(band);
+            }
         }
-        prefixed(body, lead, vec![Span::raw("  ")])
+        lines
     }
 
-    /// The text; a guest agent's gets a small header with its name.
+    /// `● text`, the text indented under the bullet; a guest agent's gets a small header with
+    /// its name.
     fn agent(&mut self, it: &pb::ViewItem, label: Option<String>, w: usize) -> Lines {
         let mut out = Vec::new();
         if let Some(label) = label {
@@ -84,7 +98,16 @@ impl<'a> Cx<'a> {
                 Style::new().fg(self.p.accent).add_modifier(Modifier::BOLD),
             ));
         }
-        out.extend(self.comp(&it.component, w));
+        // Prose gets the bullet; anything else the agent shows (cards, tables…) is drawn as is.
+        if !matches!(it.component, pb::Component::TextComponent(_)) {
+            out.extend(self.comp(&it.component, w));
+            return out;
+        }
+        let body = self.comp(&it.component, w.saturating_sub(2).max(1));
+        if !body.is_empty() {
+            let bullet = vec![Span::styled("● ", Style::new().fg(self.p.fg))];
+            out.extend(prefixed(body, bullet, vec![Span::raw("  ")]));
+        }
         out
     }
 

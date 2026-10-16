@@ -66,8 +66,8 @@ pub const COMMANDS: &[Command] = &[
     ),
     daemon(
         "approvals",
-        "[ask|edits|auto]",
-        "ask first, accept edits, or auto (no value: next)",
+        "[ask|review|edits|auto]",
+        "ask, review each edit, accept edits, or auto (no value: next)",
     ),
     local("sessions", "switch to another session (ctrl-s)"),
     local(

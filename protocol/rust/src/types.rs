@@ -1135,6 +1135,7 @@ pub enum SessionEvent {
     Plan(Plan),
     Usage(Usage),
     EditsReverted(EditsReverted),
+    UserNote(UserNote),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -1215,6 +1216,10 @@ impl Serialize for SessionEvent {
                 "edits_reverted",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            SessionEvent::UserNote(v) => (
+                "user_note",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             SessionEvent::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -1288,6 +1293,9 @@ impl<'de> Deserialize<'de> for SessionEvent {
                 .map_err(D::Error::custom),
             "edits_reverted" => serde_json::from_value(value)
                 .map(SessionEvent::EditsReverted)
+                .map_err(D::Error::custom),
+            "user_note" => serde_json::from_value(value)
+                .map(SessionEvent::UserNote)
                 .map_err(D::Error::custom),
             _ => Ok(SessionEvent::Unknown(value)),
         }
@@ -1411,6 +1419,12 @@ impl From<Usage> for SessionEvent {
 impl From<EditsReverted> for SessionEvent {
     fn from(v: EditsReverted) -> Self {
         SessionEvent::EditsReverted(v)
+    }
+}
+
+impl From<UserNote> for SessionEvent {
+    fn from(v: UserNote) -> Self {
+        SessionEvent::UserNote(v)
     }
 }
 
@@ -1797,7 +1811,7 @@ pub struct GuestTurn {
     pub stop_reason: StopReason,
 }
 
-/// The user reverted edits the agents had applied (the review card after a turn in edits mode). Rendered to the main agent as <reverted paths="a.ts, b.ts"/> so it knows the files are back as they were.
+/// The user reverted edits the agents had applied (the review card after a turn in edits mode, or a per-edit Revert in review mode for an ACP harness). Rendered to the main agent as <reverted paths="a.ts, b.ts"/> so it knows the files are back as they were.
 /// Tagged `type: "edits_reverted"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EditsReverted {
@@ -1807,6 +1821,17 @@ pub struct EditsReverted {
     /// Files left alone because they changed again after the turn's edits.
     #[serde(rename = "skipped", default, skip_serializing_if = "Option::is_none")]
     pub skipped: Option<Vec<String>>,
+}
+
+/// The user answered a question with a note for the agent (Tab on a button in a permission_request or choice) and the answer could not reach the agent's tool result: a guest's permission request, a choice. Rendered to the main agent as <note about="...">text</note> with its next prompt. Not shown in the chat (the answered card shows the note).
+/// Tagged `type: "user_note"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserNote {
+    #[serde(rename = "note")]
+    pub note: String,
+    /// What was answered: the question's title and the picked option.
+    #[serde(rename = "about", default, skip_serializing_if = "Option::is_none")]
+    pub about: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1819,7 +1844,7 @@ pub struct PermissionOption {
     pub kind: PermissionOptionKind,
 }
 
-/// An agent asks before doing something: a guest running a tool, the main agent running a command or changing a file, starting a guest. Panes show the content (a diff to preview) and the options as buttons (action suite.permit); the agent waits until one is picked or the turn is cancelled.
+/// An agent asks before doing something: a guest running a tool, the main agent running a command, changing or reading a file, starting a guest. Panes show the content (a diff to preview) and the options as buttons (action suite.permit {id, option, note?}); the agent waits until one is picked or the turn is cancelled. Reads of sensitive files (.env, keys, credentials) ask in every approvals mode, with kind read and a title like "Read .env?". In review mode an edit is asked about after it was written: the diff in content, options Keep and Revert (an ACP harness's edit is not held back: the card comes when its completed diff arrives).
 /// Tagged `type: "permission_request"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PermissionRequest {
@@ -1854,6 +1879,9 @@ pub struct PermissionResolved {
     pub id: String,
     #[serde(rename = "option", default, skip_serializing_if = "Option::is_none")]
     pub option: Option<String>,
+    /// What the user added to the answer for the agent ("use tabs instead"); the agent hears it with the tool's result or its next prompt.
+    #[serde(rename = "note", default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
     /// App whose pane answered.
     #[serde(rename = "by", default, skip_serializing_if = "Option::is_none")]
     pub by: Option<String>,
@@ -1871,7 +1899,7 @@ pub enum PermissionOptionKind {
     RejectAlways,
 }
 
-/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, edits or auto): ask asks before file edits, commands, starting a guest and guests' requests; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Per session, ask unless set.
+/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set.
 /// Tagged `type: "setting_changed"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SettingChanged {
@@ -1912,7 +1940,7 @@ pub struct ChoiceOption {
     pub description: Option<String>,
 }
 
-/// The suite asks the user to pick one of several options (a model, a conversation to resume). Panes show them as buttons (action suite.choose {id, option}).
+/// The suite asks the user to pick one of several options (a model, a conversation to resume). Panes show them as buttons (action suite.choose {id, option, note?}).
 /// Tagged `type: "choice"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Choice {
@@ -1932,6 +1960,9 @@ pub struct ChoiceMade {
     pub id: String,
     #[serde(rename = "option", default, skip_serializing_if = "Option::is_none")]
     pub option: Option<String>,
+    /// What the user added to the answer for the agent.
+    #[serde(rename = "note", default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
     /// App whose pane answered.
     #[serde(rename = "by", default, skip_serializing_if = "Option::is_none")]
     pub by: Option<String>,

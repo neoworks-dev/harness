@@ -43,6 +43,14 @@ function describeSettings(settings: HarnessSettings): string {
 interface Decision {
   agent: string;
   settings: HarnessSettings;
+  /** What the user added to their answer. */
+  note?: string;
+}
+
+/** The result's lines with the user's note after them, when there is one. */
+function withNote(lines: string[], note: string | undefined): string[] {
+  if (note === undefined) return lines;
+  return [...lines, `The user added: ${note}`];
 }
 
 /** What the call asks for itself: its model and effort. */
@@ -87,7 +95,7 @@ export function createDelegate(
     const preview = task.length > TASK_PREVIEW ? `${task.slice(0, TASK_PREVIEW)}…` : task;
     let question = `Hand a task to ${title}`;
     if (settings !== "") question += ` (${settings})`;
-    const answer = await asker.ask(
+    const { option: answer, note } = await asker.askWithNote(
       session,
       {
         type: "permission_request",
@@ -100,12 +108,15 @@ export function createDelegate(
     if (answer === undefined) return { refusal: text("No answer: the turn ended first.", true) };
     if (answer === "reject") {
       const declined = `The user declined to hand this to ${title}. Do it yourself, or ask them how to proceed.`;
-      return { refusal: text(declined, true) };
+      return { refusal: text(withNote([declined], note).join("\n\n"), true) };
     }
     if (answer === "always") allowed.add(key);
+    const decision: Decision = { agent, settings: explicit };
     // Another harness knows other model names: the call's model and effort don't carry over.
-    if (answer.startsWith("use:")) return { agent: answer.slice(4), settings: {} };
-    return { agent, settings: explicit };
+    if (answer.startsWith("use:"))
+      Object.assign(decision, { agent: answer.slice(4), settings: {} });
+    if (note !== undefined) decision.note = note;
+    return decision;
   }
 
   return async (session, args, signal) => {
@@ -131,7 +142,7 @@ export function createDelegate(
       lines.push(`[${decision.agent} stopped: ${result.error ?? result.stopReason}]`);
     }
     return text(
-      lines.join("\n\n"),
+      withNote(lines, decision.note).join("\n\n"),
       result.stopReason === "error" || result.stopReason === "cancelled",
     );
   };

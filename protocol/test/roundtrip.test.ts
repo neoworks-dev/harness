@@ -54,6 +54,7 @@ describe("protocol examples", () => {
       plan: true,
       usage: true,
       edits_reverted: true,
+      user_note: true,
     };
     expect([...seen].sort()).toEqual(Object.keys(all).sort());
   });

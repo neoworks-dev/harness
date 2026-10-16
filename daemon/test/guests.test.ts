@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -439,6 +440,7 @@ async function answer(
   session: string,
   type: "permission_request" | "choice",
   option: string,
+  note?: string,
 ): Promise<SessionEvent> {
   await until(
     () => events(daemon, session).some((e) => e.type === type && !answered(daemon, session, e)),
@@ -447,7 +449,9 @@ async function answer(
   const open = events(daemon, session).findLast((e) => e.type === type);
   if (open?.type !== type) throw new Error(`no ${type}`);
   const action = type === "choice" ? "suite.choose" : "suite.permit";
-  await daemon.actions.run({ session, ref: "x", action, args: { id: open.id, option } }, "test");
+  const args: Record<string, string> = { id: open.id, option };
+  if (note !== undefined) args.note = note;
+  await daemon.actions.run({ session, ref: "x", action, args }, "test");
   return open;
 }
 
@@ -504,6 +508,33 @@ describe("starting a guest is the user's call", () => {
     expect(events(daemon, session).filter((e) => e.type === "permission_request")).toHaveLength(
       asked,
     );
+  });
+
+  test("a note on the answer goes into the tool result, for a refusal and for a start", async () => {
+    const { daemon, session } = await setup({ gate: "manual" });
+    const declined = daemon.gateway.call(
+      "delegate",
+      { agent: "fake", task: "x" },
+      undefined,
+      session,
+    );
+    await answer(daemon, session, "permission_request", "reject", "do it yourself, it is tiny");
+    const refusal = await declined;
+    expect(refusal.isError).toBe(true);
+    expect(resultOf(refusal)).toContain(
+      "Do it yourself, or ask them how to proceed.\n\nThe user added: do it yourself, it is tiny",
+    );
+
+    const started = daemon.gateway.call(
+      "delegate",
+      { agent: "fake", task: "y" },
+      undefined,
+      session,
+    );
+    await answer(daemon, session, "permission_request", "allow", "keep it short");
+    expect(resultOf(await started)).toBe("Done: y\n\nThe user added: keep it short");
+    // The tool result carries it: no event for the next prompt.
+    expect(events(daemon, session).some((e) => e.type === "user_note")).toBe(false);
   });
 
   test("the question shows the settings the guest will run with", async () => {
@@ -618,18 +649,21 @@ describe("/resume", () => {
 });
 
 describe("/approvals", () => {
-  test("cycles ask → edits → auto → ask, or sets a mode; per session; nothing in the chat", async () => {
+  test("cycles ask → review → edits → auto → ask, or sets a mode; per session; nothing in the chat", async () => {
     const { daemon, session } = await setup({ gate: "manual" });
     expect(daemon.settings.approvals(session)).toBe("ask");
     const modes: string[] = [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       await daemon.commands.run(session, "/approvals");
       modes.push(daemon.settings.approvals(session));
     }
-    expect(modes).toEqual(["edits", "auto", "ask", "edits"]);
+    expect(modes).toEqual(["review", "edits", "auto", "ask", "review"]);
     await daemon.commands.run(session, "/approvals auto");
     expect(daemon.settings.approvals(session)).toBe("auto");
-    expect(events(daemon, session).filter((e) => e.type === "setting_changed")).toHaveLength(5);
+    await daemon.commands.run(session, "/approvals review");
+    expect(daemon.settings.approvals(session)).toBe("review");
+    await daemon.commands.run(session, "/approvals auto");
+    expect(events(daemon, session).filter((e) => e.type === "setting_changed")).toHaveLength(8);
     // The mode is state for the panes' status line, not part of the conversation.
     const view = daemon.views.get(session).snapshot().items;
     expect(view).toEqual([]);
@@ -639,7 +673,7 @@ describe("/approvals", () => {
     await daemon.commands.run(session, "/approvals ask");
     expect(daemon.settings.approvals(session)).toBe("ask");
     expect(daemon.commands.run(session, "/approvals yes")).rejects.toThrow(
-      "usage: /approvals [ask|edits|auto]",
+      "usage: /approvals [ask|review|edits|auto]",
     );
   });
 
@@ -696,15 +730,97 @@ describe("/approvals", () => {
     expect(JSON.stringify(item()?.component)).not.toContain('"diff"');
   });
 
+  test("review mode: a guest's edit is allowed, then a Keep / Revert card follows its diff", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/approvals review");
+    const file = join(daemon.dir, "e.txt");
+    await writeFile(file, "old\n");
+    daemon.sessions.input(session, "cli", `/fake editfile ${file} brand new`);
+    const card = await answer(daemon, session, "permission_request", "revert", "wrong place");
+    expect(card).toMatchObject({
+      agent: "fake",
+      title: "Edited e.txt — keep it?",
+      kind: "edit",
+      content: [{ type: "diff", path: file, oldText: "old\n", newText: "brand new" }],
+      options: [{ id: "keep" }, { id: "revert" }],
+    });
+    await daemon.sessions.idle(session);
+    // The guest wasn't held up: its edit was allowed without a question of its own.
+    expect(events(daemon, session).filter((e) => e.type === "permission_request")).toHaveLength(1);
+    expect(events(daemon, session).findLast((e) => e.type === "guest_turn")).toMatchObject({
+      result: "answer: yes",
+    });
+    await until(() => events(daemon, session).some((e) => e.type === "edits_reverted"), "revert");
+    expect(await readFile(file, "utf8")).toBe("old\n");
+    expect(events(daemon, session).findLast((e) => e.type === "edits_reverted")).toEqual({
+      type: "edits_reverted",
+      paths: ["e.txt"],
+    });
+    // No end-of-turn card on top of the per-edit one.
+    expect(events(daemon, session).some((e) => e.type === "choice")).toBe(false);
+  });
+
+  test("review mode: Keep leaves the edit and tells nobody", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/approvals review");
+    const file = join(daemon.dir, "e.txt");
+    daemon.sessions.input(session, "cli", `/fake editfile ${file} created`);
+    await answer(daemon, session, "permission_request", "keep");
+    await daemon.sessions.idle(session);
+    await Bun.sleep(30);
+    expect(await readFile(file, "utf8")).toBe("created");
+    expect(events(daemon, session).some((e) => e.type === "edits_reverted")).toBe(false);
+  });
+
+  test("reads: ordinary ones go through in every mode, sensitive ones ask in every mode", async () => {
+    const { daemon } = await setup();
+    const notes = join(daemon.dir, "notes.md");
+    const env = join(daemon.dir, ".env");
+    for (const mode of ["ask", "review", "edits", "auto"]) {
+      const session = daemon.sessions.create({}).id;
+      await daemon.commands.run(session, `/approvals ${mode}`);
+      expect(await guestTurn(daemon, session, `readfile ${notes}`)).toBe("answer: yes");
+      expect(events(daemon, session).some((e) => e.type === "permission_request")).toBe(false);
+
+      daemon.sessions.input(session, "cli", `/fake readfile ${env}`);
+      const request = await answer(daemon, session, "permission_request", "no");
+      expect(request).toMatchObject({ agent: "fake", title: "Read .env?", kind: "read" });
+      await daemon.sessions.idle(session);
+      expect(events(daemon, session).findLast((e) => e.type === "guest_turn")).toMatchObject({
+        result: "answer: no",
+      });
+    }
+  });
+
+  test("a guest's command that mentions a sensitive file asks even in auto", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/approvals auto");
+    expect(await guestTurn(daemon, session, "runcmd ls -la")).toBe("answer: yes");
+    expect(events(daemon, session).some((e) => e.type === "permission_request")).toBe(false);
+    daemon.sessions.input(session, "cli", "/fake runcmd cat .env");
+    const request = await answer(daemon, session, "permission_request", "yes", "just the keys");
+    expect(request).toMatchObject({
+      title: "This command touches .env",
+      kind: "execute",
+    });
+    await daemon.sessions.idle(session);
+    // The guest's tool result can't carry the note: the agent hears it with its next prompt.
+    expect(events(daemon, session).findLast((e) => e.type === "user_note")).toEqual({
+      type: "user_note",
+      note: "just the keys",
+      about: "This command touches .env → Allow",
+    });
+  });
+
   test("permissions: allow in the config still allows in every mode", async () => {
     const { daemon, session } = await setup({ guest: { permissions: "allow" } });
     expect(await guestTurn(daemon, session, "ask execute")).toBe("answer: yes");
     expect(events(daemon, session).some((e) => e.type === "permission_request")).toBe(false);
   });
 
-  test("the delegate gate asks in ask and edits modes, not in auto", async () => {
+  test("the delegate gate asks in ask, review and edits modes, not in auto", async () => {
     const { daemon, session } = await setup({ gate: "manual" });
-    for (const mode of ["ask", "edits"]) {
+    for (const mode of ["ask", "review", "edits"]) {
       await daemon.commands.run(session, `/approvals ${mode}`);
       const call = daemon.gateway.call(
         "delegate",

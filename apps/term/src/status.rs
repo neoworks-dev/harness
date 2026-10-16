@@ -11,6 +11,8 @@ pub enum Approvals {
     /// Edits, commands, guests: all ask.
     #[default]
     Ask,
+    /// Each file edit is written right away and then kept or reverted by itself; the rest asks.
+    Review,
     /// File edits are written right away (and can be reverted after the turn); the rest asks.
     Edits,
     /// Nothing asks.
@@ -21,16 +23,18 @@ impl Approvals {
     pub fn parse(value: &str) -> Option<Approvals> {
         match value {
             "ask" => Some(Approvals::Ask),
+            "review" => Some(Approvals::Review),
             "edits" => Some(Approvals::Edits),
             "auto" => Some(Approvals::Auto),
             _ => None,
         }
     }
 
-    /// The mode Shift-Tab goes to: ask, edits, auto, ask…
+    /// The mode Shift-Tab goes to: ask, review, edits, auto, ask…
     pub fn next(self) -> Approvals {
         match self {
-            Approvals::Ask => Approvals::Edits,
+            Approvals::Ask => Approvals::Review,
+            Approvals::Review => Approvals::Edits,
             Approvals::Edits => Approvals::Auto,
             Approvals::Auto => Approvals::Ask,
         }
@@ -39,6 +43,7 @@ impl Approvals {
     pub fn word(self) -> &'static str {
         match self {
             Approvals::Ask => "ask",
+            Approvals::Review => "review",
             Approvals::Edits => "edits",
             Approvals::Auto => "auto",
         }
@@ -158,12 +163,13 @@ impl Status<'_> {
         fit_line(Line::from(spans), width)
     }
 
-    /// `⏵⏵ accept edits on (shift+tab to cycle)`, `⏵⏵ auto mode on …` or `? ask before acting …`,
-    /// a notice on the right (the hint in parentheses goes first when they don't both fit).
+    /// `⏵ review each edit (shift+tab to cycle)`, `⏵⏵ accept edits on …`, `⏵⏵ auto mode on …` or
+    /// `? ask before acting …`, a notice on the right (the hint in parentheses goes first when they don't both fit).
     fn line3(&self, width: usize) -> Line<'static> {
         let s = self.styles;
         let (text, style) = match self.approvals {
             Approvals::Auto => ("⏵⏵ auto mode on", s.danger),
+            Approvals::Review => ("⏵ review each edit", s.accent),
             Approvals::Edits => ("⏵⏵ accept edits on", s.accent),
             Approvals::Ask => ("? ask before acting", s.muted),
         };
@@ -286,6 +292,10 @@ mod tests {
         assert_eq!(l.to_string(), "? ask before acting (shift+tab to cycle)");
         assert_eq!(l.spans[0].style, styles.muted);
         assert_eq!(l.spans[1].style, styles.muted);
+        s.approvals = Approvals::Review;
+        let l = &s.lines(60)[2];
+        assert_eq!(l.to_string(), "⏵ review each edit (shift+tab to cycle)");
+        assert_eq!(l.spans[0].style, styles.accent);
         s.approvals = Approvals::Edits;
         let l = &s.lines(60)[2];
         assert_eq!(l.to_string(), "⏵⏵ accept edits on (shift+tab to cycle)");
@@ -308,10 +318,15 @@ mod tests {
     }
 
     #[test]
-    fn approvals_cycle_ask_edits_auto() {
-        let modes = [Approvals::Ask, Approvals::Edits, Approvals::Auto];
+    fn approvals_cycle_ask_review_edits_auto() {
+        let modes = [
+            Approvals::Ask,
+            Approvals::Review,
+            Approvals::Edits,
+            Approvals::Auto,
+        ];
         for (i, mode) in modes.iter().enumerate() {
-            assert_eq!(mode.next(), modes[(i + 1) % 3]);
+            assert_eq!(mode.next(), modes[(i + 1) % 4]);
             assert_eq!(Approvals::parse(mode.word()), Some(*mode));
         }
         assert_eq!(Approvals::parse("yolo"), None);

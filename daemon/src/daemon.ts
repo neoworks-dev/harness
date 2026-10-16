@@ -95,7 +95,12 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   const asker = new Asker((session, event) => {
     store.append(session, event);
   });
-  const permissions = new Permissions(asker, (session) => settings.approvals(session));
+  const permissions = new Permissions({
+    asker,
+    approvals: (session) => settings.approvals(session),
+    cwd: (session) => store.getSession(session)?.cwd ?? options.defaultCwd,
+    fileChanged: (path, session) => hub.fileChanged({ path, app: "agent", session }),
+  });
   /** The harness a session runs on: its choice if that still exists, else the daemon's agent. */
   const harnessOf = (session: string): string => {
     const name = settings.harness(session);
@@ -114,6 +119,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     settings: (session, guest) => settings.get(session, guest),
     asker,
     approvals: (session) => settings.approvals(session),
+    guard: permissions.guard,
     handoff: (session, harness, all) => handoffSummary(store, session, harness, agent.name, all),
     pi: options.pi ?? (agent.name === "pi" ? agent : undefined),
     resolveAsset: (handle) => assets.resolve(handle),

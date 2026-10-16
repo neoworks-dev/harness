@@ -633,7 +633,7 @@ fn a_pending_prompt_is_active_with_the_first_button_focused() {
     assert_eq!(app.prompt.button, 1);
     app.handle_key(key(KeyCode::Right));
     assert_eq!(app.prompt.button, 0, "wraps");
-    app.handle_key(key(KeyCode::Tab));
+    app.handle_key(key(KeyCode::Down));
     assert_eq!(app.prompt.button, 1);
     app.handle_key(key(KeyCode::Up));
     assert_eq!(app.prompt.button, 0);
@@ -664,24 +664,184 @@ fn enter_and_digits_press_buttons() {
     assert!(
         matches!(&fx[..], [Effect::Action { item, args: Some(a), .. }] if item == "p2" && a["option"] == "Yes")
     );
-    // Out of range digits are text.
+    // Out of range digits are nothing: the prompt has the keys, the editor is out of reach.
     show(&mut app, vec![prompt("p3", "pending", &["Yes", "No"])]);
     assert!(app.handle_key(key(KeyCode::Char('7'))).is_empty());
-    assert_eq!(app.editor_text(), "7");
+    assert_eq!(app.editor_text(), "");
+}
+
+// ---- a prompt takes the editor's place ----
+
+/// The text the user has typed, then a prompt arrives `ms` after the last key.
+fn typing_then_prompt(ms: i64) -> App {
+    let mut app = app();
+    type_str(&mut app, "draft");
+    app.tick(NOW + ms);
+    show(&mut app, vec![prompt("p1", "pending", &["Yes", "No"])]);
+    app
 }
 
 #[test]
-fn keys_belong_to_the_editor_once_it_has_text() {
+fn a_prompt_arriving_while_idle_takes_the_editors_place_at_once() {
     let mut app = app();
     show(&mut app, vec![prompt("p1", "pending", &["Yes", "No"])]);
-    type_str(&mut app, "a");
-    assert_eq!(app.editor_text(), "a");
-    app.handle_key(key(KeyCode::Right));
-    assert_eq!(app.prompt.button, 0);
+    assert!(app.prompt.engaged);
+    let text = screen_text(&mut app, 70, 14);
+    snapshot("prompt-input-70x14", &text);
+    assert!(
+        !text.contains("message the agent"),
+        "the editor is hidden: {text}"
+    );
+    assert!(
+        text.contains("enter yes · ←/→ choose · tab add a note · esc dismiss"),
+        "{text}"
+    );
+    // Typed characters go nowhere; the digits answer.
+    assert!(app.handle_key(key(KeyCode::Char('x'))).is_empty());
+    assert_eq!(app.editor_text(), "");
+    let fx = app.handle_key(key(KeyCode::Char('2')));
+    assert!(matches!(&fx[..], [Effect::Action { args: Some(a), .. }] if a["option"] == "No"));
+    // Answered: the editor is back.
+    assert!(!app.prompt.engaged);
+    assert!(screen_text(&mut app, 70, 14).contains("message the agent"));
+}
+
+#[test]
+fn a_prompt_waits_while_the_user_types_and_takes_over_after_a_pause() {
+    let mut app = typing_then_prompt(100);
+    assert!(!app.prompt.engaged);
+    let text = screen_text(&mut app, 70, 14);
+    assert!(
+        text.contains("permission needed — waiting until you stop typing"),
+        "{text}"
+    );
+    assert!(
+        text.contains("> draft"),
+        "the editor stays meanwhile: {text}"
+    );
+    snapshot("prompt-waits-70x14", &text);
+    // Keys still belong to the editor, digits included.
     app.handle_key(key(KeyCode::Char('2')));
-    assert_eq!(app.editor_text(), "a2");
+    assert_eq!(app.editor_text(), "draft2");
+    // Typing again restarts the pause.
+    app.tick(NOW + 700);
+    app.handle_key(key(KeyCode::Char('!')));
+    app.tick(NOW + 1_400);
+    assert!(
+        !app.prompt.engaged,
+        "700 ms after the last key is not enough"
+    );
+    app.tick(NOW + 1_500);
+    assert!(app.prompt.engaged);
+    assert!(app.take_dirty(), "the swap redraws");
+    let text = screen_text(&mut app, 70, 14);
+    assert!(!text.contains("draft"), "{text}");
+    assert!(!text.contains("permission needed"), "{text}");
+    // The draft is untouched behind it and comes back once the prompt is gone.
+    assert_eq!(app.editor_text(), "draft2!");
+    app.handle_key(key(KeyCode::Char('1')));
+    assert!(screen_text(&mut app, 70, 14).contains("> draft2!"));
+}
+
+#[test]
+fn a_prompt_after_a_pause_in_typing_takes_over_without_waiting() {
+    let app = typing_then_prompt(800);
+    assert!(app.prompt.engaged);
+}
+
+#[test]
+fn enter_answers_the_prompt_never_the_draft_and_esc_gives_the_editor_back() {
+    let mut app = typing_then_prompt(1_000);
+    app.tick(NOW + 1_000);
+    assert!(app.prompt.engaged);
+    type_str(&mut app, "more");
+    app.handle_key(key(KeyCode::Right));
     let fx = app.handle_key(key(KeyCode::Enter));
-    assert_eq!(fx, [input("a2")], "enter sends the text, not the button");
+    assert!(matches!(&fx[..], [Effect::Action { args: Some(a), .. }] if a["option"] == "No"));
+    assert_eq!(app.editor_text(), "draft", "the draft came back as it was");
+    // Esc dismisses instead of answering; the draft is intact and Enter sends it.
+    let mut app = typing_then_prompt(1_000);
+    assert!(app.handle_key(key(KeyCode::Esc)).is_empty());
+    assert!(!app.prompt.engaged);
+    assert_eq!(app.editor_text(), "draft");
+    assert_eq!(app.handle_key(key(KeyCode::Enter)), [input("draft")]);
+    // Ctrl-P brings the dismissed prompt back.
+    show(&mut app, vec![prompt("p1", "pending", &["Yes", "No"])]);
+    app.handle_key(ctrl('p'));
+    assert!(app.prompt.engaged);
+}
+
+#[test]
+fn a_prompt_leaves_the_draft_alone_for_ctrl_c_and_paste() {
+    let mut app = typing_then_prompt(1_000);
+    app.handle_paste("pasted");
+    assert_eq!(app.editor_text(), "draft");
+    app.handle_key(ctrl('c'));
+    assert_eq!(
+        app.editor_text(),
+        "draft",
+        "ctrl-c arms quit, it doesn't clear the draft"
+    );
+    assert!(
+        app.status_lines(80)[2]
+            .to_string()
+            .contains("press ctrl-c again to quit")
+    );
+}
+
+#[test]
+fn several_prompts_come_one_at_a_time() {
+    let mut app = app();
+    show(
+        &mut app,
+        vec![
+            prompt("p1", "pending", &["Yes", "No"]),
+            prompt("p2", "pending", &["Yes", "No"]),
+            prompt("p3", "pending", &["Yes", "No"]),
+        ],
+    );
+    let text = screen_text(&mut app, 70, 16);
+    assert!(text.contains("(1 of 3)"), "{text}");
+    let fx = app.handle_key(key(KeyCode::Char('1')));
+    assert!(matches!(&fx[..], [Effect::Action { item, .. }] if item == "p1"));
+    // The next one is already there: the editor does not flash back in between.
+    assert!(app.prompt.engaged);
+    assert_eq!(app.active_ref(), Some("p2"));
+    let text = screen_text(&mut app, 70, 16);
+    assert!(text.contains("(1 of 2)"), "{text}");
+    app.handle_key(key(KeyCode::Char('1')));
+    assert_eq!(app.active_ref(), Some("p3"));
+    assert!(
+        !screen_text(&mut app, 70, 16).contains("of"),
+        "the last one has no count"
+    );
+    app.handle_key(key(KeyCode::Char('2')));
+    assert!(!app.prompt.engaged);
+}
+
+#[test]
+fn a_long_diff_stays_compact_in_the_input_area() {
+    let mut app = app();
+    show(&mut app, vec![permission_with_diff(60)]);
+    let lines = screen(&mut app, 70, 30);
+    let text = lines.join("\n");
+    // The chat shows the item; the input area shows it again, cut short, with the buttons and
+    // the keys under it.
+    assert!(text.contains("[1 Allow once]"), "{text}");
+    assert!(
+        text.contains("enter allow once · ←/→ choose · tab add a note · esc dismiss"),
+        "{text}"
+    );
+    let panel_rows = lines
+        .iter()
+        .rev()
+        .take(12)
+        .filter(|l| l.starts_with("▎"))
+        .count();
+    assert!(panel_rows <= 16, "{text}");
+    // A tiny terminal still shows the question, the buttons and the keys.
+    let tiny = screen(&mut app, 50, 9).join("\n");
+    assert!(tiny.contains("[1 Allow once]"), "{tiny}");
 }
 
 #[test]
@@ -833,20 +993,28 @@ fn the_harness_comes_from_its_setting_and_defaults_to_pi() {
 }
 
 #[test]
-fn shift_tab_cycles_approvals_ask_edits_auto() {
+fn shift_tab_cycles_approvals_ask_review_edits_auto() {
     let mut app = app();
     assert_eq!(app.approvals(), Approvals::Ask);
-    for (now, next) in [("edits", "auto"), ("auto", "ask")] {
-        let fx = app.handle_key(with(KeyCode::BackTab, KeyModifiers::SHIFT));
-        assert_eq!(fx.len(), 1);
+    for (now, next) in [
+        ("ask", "review"),
+        ("review", "edits"),
+        ("edits", "auto"),
+        ("auto", "ask"),
+    ] {
         app.handle_event(setting("suite", SettingName::Approvals, now));
         let fx = app.handle_key(with(KeyCode::BackTab, KeyModifiers::SHIFT));
         assert_eq!(fx, [input(&format!("/approvals {next}"))]);
         app.handle_event(setting("suite", SettingName::Approvals, next));
     }
     assert_eq!(app.approvals(), Approvals::Ask);
-    let fx = app.handle_key(with(KeyCode::BackTab, KeyModifiers::SHIFT));
-    assert_eq!(fx, [input("/approvals edits")]);
+    app.handle_event(setting("suite", SettingName::Approvals, "review"));
+    assert_eq!(app.approvals(), Approvals::Review);
+    let line = app.status_lines(100)[2].to_string();
+    assert!(
+        line.starts_with("⏵ review each edit (shift+tab to cycle)"),
+        "{line}"
+    );
 }
 
 #[test]
@@ -1091,8 +1259,8 @@ fn a_permission_previews_its_diff_and_the_buttons_answer_from_the_keyboard() {
     let text = screen_text(&mut app, 70, 18);
     snapshot("permission-diff-70x18", &text);
     assert_eq!(app.active_ref(), Some("p-7"));
-    // Right/Tab move over the buttons, a digit or Enter presses.
-    app.handle_key(key(KeyCode::Tab));
+    // Right moves over the buttons, a digit or Enter presses.
+    app.handle_key(key(KeyCode::Right));
     let fx = app.handle_key(key(KeyCode::Enter));
     assert!(
         matches!(&fx[..], [Effect::Action { item, action, args: Some(a), .. }]
@@ -1103,6 +1271,152 @@ fn a_permission_previews_its_diff_and_the_buttons_answer_from_the_keyboard() {
     show(&mut app, vec![permission_with_diff(2)]);
     let fx = app.handle_key(key(KeyCode::Char('3')));
     assert!(matches!(&fx[..], [Effect::Action { args: Some(a), .. }] if a["option"] == "reject"));
+}
+
+/// The per-edit card of review mode, as the daemon's session view builds it: the diff of an edit
+/// that is already written above Keep and Revert.
+fn edit_review_card() -> ViewItem {
+    let lines = vec![
+        json!({"kind":"hunk","text":"@@ -3,2 +3,2 @@"}),
+        json!({"kind":"remove","text":"  return a - b;"}),
+        json!({"kind":"add","text":"  return a + b;"}),
+    ];
+    let buttons = [("keep", "Keep"), ("revert", "Revert")]
+        .iter()
+        .enumerate()
+        .map(|(i, (id, name))| {
+            json!({"type":"button","label":name,"action":"suite.permit",
+                   "args":{"id":"9","option":id},"key":(i + 1).to_string()})
+        })
+        .collect::<Vec<_>>();
+    serde_json::from_value(json!({
+        "ref": "p-9", "kind": "tool", "label": "pi asks: Edited src/a.ts — keep it?",
+        "state": "pending",
+        "component": {"type":"stack","gap":"s","children":[
+            {"type":"diff","path":"src/a.ts","lines":lines},
+            {"type":"row","gap":"s","children":buttons}]}
+    }))
+    .unwrap()
+}
+
+#[test]
+fn the_review_mode_edit_card_shows_its_diff_with_keep_and_revert() {
+    let mut app = app();
+    show(&mut app, vec![edit_review_card()]);
+    let text = screen_text(&mut app, 70, 14);
+    snapshot("edit-review-card-70x14", &text);
+    assert!(text.contains("[1 Keep]  [2 Revert]"), "{text}");
+    // Digits answer straight away; Revert is the second.
+    let fx = app.handle_key(key(KeyCode::Char('2')));
+    assert!(
+        matches!(&fx[..], [Effect::Action { item, action, args: Some(a), .. }]
+            if item == "p-9" && action == "suite.permit" && a["option"] == "revert"
+                && a.get("note").is_none()),
+        "{fx:?}"
+    );
+}
+
+#[test]
+fn tab_on_a_card_types_a_note_that_goes_with_the_focused_button() {
+    let mut app = app();
+    show(&mut app, vec![edit_review_card()]);
+    // Move to Revert, then Tab: the buttons wait, a one-line input opens under the card.
+    app.handle_key(key(KeyCode::Right));
+    assert!(app.handle_key(key(KeyCode::Tab)).is_empty());
+    let empty = screen_text(&mut app, 70, 14);
+    assert!(empty.contains("note ›"), "{empty}");
+    assert!(
+        empty.contains("for the agent · enter sends · esc cancels"),
+        "{empty}"
+    );
+    snapshot("edit-review-note-empty-70x14", &empty);
+    // Digits, arrows and Tab are text or nothing now, not answers.
+    type_str(&mut app, "1 wrong file, use b.ts");
+    app.handle_key(key(KeyCode::Left));
+    app.handle_key(key(KeyCode::Tab));
+    let typed = screen_text(&mut app, 70, 14);
+    snapshot("edit-review-note-typed-70x14", &typed);
+    assert!(typed.contains("note › 1 wrong file, use b.ts"), "{typed}");
+    // Backspace edits it; Enter answers with the focused button and the note.
+    app.handle_key(key(KeyCode::Backspace));
+    app.handle_key(key(KeyCode::Char('c')));
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert_eq!(
+        fx,
+        [Effect::Action {
+            session: "s1".into(),
+            item: "p-9".into(),
+            action: "suite.permit".into(),
+            args: Some(json!({"id":"9","option":"revert","note":"1 wrong file, use b.tc"})),
+        }]
+    );
+    assert!(app.note.is_none());
+    assert_eq!(app.active_ref(), None);
+}
+
+#[test]
+fn esc_leaves_the_note_but_keeps_the_card_and_an_empty_note_is_no_note() {
+    let mut app = app();
+    show(&mut app, vec![permission_with_diff(1)]);
+    app.handle_key(key(KeyCode::Tab));
+    type_str(&mut app, "never mind");
+    app.handle_key(key(KeyCode::Esc));
+    assert!(app.note.is_none());
+    assert_eq!(app.active_ref(), Some("p-7"), "the card is still waiting");
+    assert!(!screen_text(&mut app, 70, 18).contains("note ›"));
+    // The digits answer again.
+    app.handle_key(key(KeyCode::Tab));
+    type_str(&mut app, "   ");
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert!(
+        matches!(&fx[..], [Effect::Action { args: Some(a), .. }]
+            if a["option"] == "allow" && a.get("note").is_none()),
+        "{fx:?}"
+    );
+    // Pasting goes into the note, on one line.
+    let mut app = self::app();
+    show(&mut app, vec![permission_with_diff(1)]);
+    app.handle_key(key(KeyCode::Tab));
+    app.handle_paste("use\ntabs");
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert!(
+        matches!(&fx[..], [Effect::Action { args: Some(a), .. }] if a["note"] == "usetabs"),
+        "{fx:?}"
+    );
+}
+
+#[test]
+fn a_note_is_dropped_when_the_card_is_answered_elsewhere() {
+    let mut app = app();
+    show(&mut app, vec![edit_review_card()]);
+    app.handle_key(key(KeyCode::Tab));
+    type_str(&mut app, "hm");
+    let mut answered = edit_review_card();
+    answered.state = Some(suite_protocol::ItemState::Done);
+    answered.component = serde_json::from_value(json!({
+        "type":"text","blocks":[{"type":"paragraph","spans":[{"text":"Keep"}]}]
+    }))
+    .unwrap();
+    patch(&mut app, answered);
+    assert!(app.note.is_none());
+    type_str(&mut app, "x");
+    assert_eq!(app.editor_text(), "x", "typing goes to the editor again");
+}
+
+#[test]
+fn tab_still_moves_between_the_buttons_of_other_prompts() {
+    let mut app = app();
+    let other: ViewItem = serde_json::from_value(json!({
+        "ref": "o", "kind": "tool", "label": "photo", "state": "pending",
+        "component": {"type":"row","children":[
+            {"type":"button","label":"Crop","action":"photo.crop"},
+            {"type":"button","label":"Undo","action":"photo.undo"}]}
+    }))
+    .unwrap();
+    show(&mut app, vec![other]);
+    app.handle_key(key(KeyCode::Tab));
+    assert!(app.note.is_none());
+    assert_eq!(app.prompt.button, 1);
 }
 
 #[test]
@@ -1511,10 +1825,10 @@ fn the_editor_grows_and_wraps_up_to_eight_rows() {
     let mut app = scenario();
     app.handle_paste(&"line\n".repeat(12));
     let rows = screen(&mut app, 60, 24);
-    let editor_rows = rows
-        .iter()
-        .filter(|l| l.starts_with("> ") || l.starts_with("  line"))
-        .count();
+    // The rows between the rule above the editor and the status lines.
+    let rule = rows.iter().position(|l| l.starts_with("───")).unwrap();
+    let status = rows.iter().position(|l| l.starts_with("~/site")).unwrap();
+    let editor_rows = status - rule - 1;
     assert_eq!(editor_rows, 8, "{rows:#?}");
     // The status lines stay at the bottom.
     assert!(rows[23].contains("shift+tab"), "{rows:#?}");

@@ -993,7 +993,7 @@ type SessionEventRecord struct {
 }
 
 // SessionEvent: Everything that happens in a session. Views must ignore types they don't know.
-// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UnknownSessionEvent.
+// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, UnknownSessionEvent.
 type SessionEvent struct {
 	Value SessionEventVariant
 }
@@ -1152,6 +1152,12 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "edits_reverted":
 		var v EditsReverted
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "user_note":
+		var v UserNote
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -1591,7 +1597,7 @@ func (v GuestTurn) MarshalJSON() ([]byte, error) {
 	}{"guest_turn", plain(v)})
 }
 
-// EditsReverted: The user reverted edits the agents had applied (the review card after a turn in edits mode). Rendered to the main agent as <reverted paths="a.ts, b.ts"/> so it knows the files are back as they were.
+// EditsReverted: The user reverted edits the agents had applied (the review card after a turn in edits mode, or a per-edit Revert in review mode for an ACP harness). Rendered to the main agent as <reverted paths="a.ts, b.ts"/> so it knows the files are back as they were.
 type EditsReverted struct {
 	// Files restored (or deleted, when the turn created them).
 	Paths []string `json:"paths"`
@@ -1610,13 +1616,31 @@ func (v EditsReverted) MarshalJSON() ([]byte, error) {
 	}{"edits_reverted", plain(v)})
 }
 
+// UserNote: The user answered a question with a note for the agent (Tab on a button in a permission_request or choice) and the answer could not reach the agent's tool result: a guest's permission request, a choice. Rendered to the main agent as <note about="...">text</note> with its next prompt. Not shown in the chat (the answered card shows the note).
+type UserNote struct {
+	Note string `json:"note"`
+	// What was answered: the question's title and the picked option.
+	About *string `json:"about,omitempty"`
+}
+
+func (UserNote) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v UserNote) MarshalJSON() ([]byte, error) {
+	type plain UserNote
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"user_note", plain(v)})
+}
+
 type PermissionOption struct {
 	ID   string               `json:"id"`
 	Name string               `json:"name"`
 	Kind PermissionOptionKind `json:"kind"`
 }
 
-// PermissionRequest: An agent asks before doing something: a guest running a tool, the main agent running a command or changing a file, starting a guest. Panes show the content (a diff to preview) and the options as buttons (action suite.permit); the agent waits until one is picked or the turn is cancelled.
+// PermissionRequest: An agent asks before doing something: a guest running a tool, the main agent running a command, changing or reading a file, starting a guest. Panes show the content (a diff to preview) and the options as buttons (action suite.permit {id, option, note?}); the agent waits until one is picked or the turn is cancelled. Reads of sensitive files (.env, keys, credentials) ask in every approvals mode, with kind read and a title like "Read .env?". In review mode an edit is asked about after it was written: the diff in content, options Keep and Revert (an ACP harness's edit is not held back: the card comes when its completed diff arrives).
 type PermissionRequest struct {
 	ID    string `json:"id"`
 	Agent string `json:"agent"`
@@ -1645,6 +1669,8 @@ func (v PermissionRequest) MarshalJSON() ([]byte, error) {
 type PermissionResolved struct {
 	ID     string  `json:"id"`
 	Option *string `json:"option,omitempty"`
+	// What the user added to the answer for the agent ("use tabs instead"); the agent hears it with the tool's result or its next prompt.
+	Note *string `json:"note,omitempty"`
 	// App whose pane answered.
 	By *string `json:"by,omitempty"`
 }
@@ -1669,7 +1695,7 @@ const (
 	PermissionOptionKindRejectAlways PermissionOptionKind = "reject_always"
 )
 
-// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, edits or auto): ask asks before file edits, commands, starting a guest and guests' requests; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Per session, ask unless set.
+// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set.
 type SettingChanged struct {
 	// pi, claude, codex…
 	Harness string      `json:"harness"`
@@ -1704,7 +1730,7 @@ type ChoiceOption struct {
 	Description *string `json:"description,omitempty"`
 }
 
-// Choice: The suite asks the user to pick one of several options (a model, a conversation to resume). Panes show them as buttons (action suite.choose {id, option}).
+// Choice: The suite asks the user to pick one of several options (a model, a conversation to resume). Panes show them as buttons (action suite.choose {id, option, note?}).
 type Choice struct {
 	ID      string         `json:"id"`
 	Title   string         `json:"title"`
@@ -1726,6 +1752,8 @@ func (v Choice) MarshalJSON() ([]byte, error) {
 type ChoiceMade struct {
 	ID     string  `json:"id"`
 	Option *string `json:"option,omitempty"`
+	// What the user added to the answer for the agent.
+	Note *string `json:"note,omitempty"`
 	// App whose pane answered.
 	By *string `json:"by,omitempty"`
 }

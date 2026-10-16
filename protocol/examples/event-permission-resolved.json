@@ -4,6 +4,12 @@
     "session": "s_7k2m9q4x1c",
     "seq": 8,
     "ts": 1760565600800,
-    "event": { "type": "permission_resolved", "id": "p1", "option": "allow", "by": "code-editor" }
+    "event": {
+      "type": "permission_resolved",
+      "id": "p1",
+      "option": "allow",
+      "note": "use tabs instead",
+      "by": "code-editor"
+    }
   }
 }

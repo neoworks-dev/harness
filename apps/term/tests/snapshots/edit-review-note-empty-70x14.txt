@@ -1,0 +1,14 @@
+▎
+▎   [1 Keep]  [2 Revert]                                             │
+──────────────────────────────────────────────────────────────────────
+▎ ● pi asks: Edited src/a.ts — keep it?
+▎   src/a.ts
+▎   @@ -3,2 +3,2 @@
+▎   -  return a - b;
+▎   +  return a + b;
+▎
+▎   [1 Keep]  [2 Revert]
+▎ note ›  for the agent · enter sends · esc cancels
+~/site · pi
+
+? ask before acting (shift+tab to cycle)

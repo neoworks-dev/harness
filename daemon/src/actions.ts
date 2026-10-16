@@ -38,14 +38,20 @@ export class ActionRunner {
       throw new BadRequestError("copy: actions are handled by the client");
     }
     if (action === "suite.permit" || action === "suite.choose") {
-      // Answers a permission_request or a choice: args {id, option}.
+      // Answers a permission_request or a choice: args {id, option, note?}.
       const fields: Record<string, unknown> = Object.assign({}, args);
-      const { id, option } = fields;
+      const { id, option, note } = fields;
       if (typeof id !== "string" || typeof option !== "string" || !this.parts.asker) {
         throw new BadRequestError(`${action} needs args {id, option}`);
       }
+      if (note !== undefined && typeof note !== "string") {
+        throw new BadRequestError(`${action}: note must be a string`);
+      }
       const kind = action === "suite.permit" ? "permission" : "choice";
-      this.parts.asker.answer(session, kind, id, option, from);
+      // An empty note is no note.
+      const trimmed = note?.trim();
+      const added = trimmed === "" ? undefined : trimmed;
+      this.parts.asker.answer(session, kind, id, option, from, added);
       return;
     }
     const { store, connectors, gateway, sessions, views } = this.parts;

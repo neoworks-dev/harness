@@ -1,0 +1,14 @@
+▎ ● claude asks: run ls?
+▎   [1 Yes]  [2 No]
+
+
+
+
+
+
+──────────────────────────────────────────────────────────────────────
+permission needed — waiting until you stop typing
+> draft
+~/site · pi
+
+? ask before acting (shift+tab to cycle)

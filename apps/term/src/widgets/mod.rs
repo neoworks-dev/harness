@@ -46,7 +46,8 @@ use ratatui::widgets::Paragraph;
 use suite_protocol::{SessionEvent, SessionEventRecord, ToolCallContent};
 use suite_renderer_ratatui::Palette;
 
-use diff::{DiffRequest, DiffView};
+use diff::DiffRequest;
+pub(crate) use diff::DiffView;
 use files::{FileKey, FilesState};
 use git::Runner;
 use plan::PlanState;

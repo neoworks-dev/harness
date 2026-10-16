@@ -189,7 +189,7 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
     let screen = ui.until("the echo reply", |s| {
         s.contains("echo #1: hello from the terminal")
     });
-    assert!(screen.contains("> hello from the terminal"), "{screen}");
+    assert!(screen.contains("› hello from the terminal"), "{screen}");
     ui.until("the turn to end", |s| !s.contains("working"));
 
     // Registered as the app "terminal", and the agent is here with this session.
@@ -233,12 +233,16 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
     assert!(screen.contains("Sessions · "), "{screen}");
     assert!(screen.contains("· pi"), "the session's harness: {screen}");
 
-    // Approvals: shift-tab goes through the daemon (ask, edits, auto, ask) and the mode comes
-    // back as a setting event.
+    // Approvals: shift-tab goes through the daemon (ask, review, edits, auto, ask) and the mode
+    // comes back as a setting event.
     assert!(
         ui.screen()
             .contains("? ask before acting (shift+tab to cycle)")
     );
+    ui.key(KeyCode::BackTab);
+    ui.until("review", |s| {
+        s.contains("⏵ review each edit (shift+tab to cycle)")
+    });
     ui.key(KeyCode::BackTab);
     ui.until("accept edits", |s| {
         s.contains("⏵⏵ accept edits on (shift+tab to cycle)")

@@ -1,0 +1,14 @@
+▎ ● claude asks: run ls?
+▎   [1 Yes]  [2 No]
+
+
+
+
+
+──────────────────────────────────────────────────────────────────────
+▎ ● claude asks: run ls?
+▎   [1 Yes]  [2 No]
+▎ enter yes · ←/→ choose · tab add a note · esc dismiss
+~/site · pi
+
+? ask before acting (shift+tab to cycle)

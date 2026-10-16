@@ -58,6 +58,7 @@ const CONTEXT_TYPES = new Set<SessionEvent["type"]>([
   "focus_changed",
   "guest_turn",
   "edits_reverted",
+  "user_note",
 ]);
 
 function isContextEvent(event: SessionEvent): event is ContextEvent {

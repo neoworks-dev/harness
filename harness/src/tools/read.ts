@@ -3,7 +3,9 @@ import { extname } from "node:path";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { ImageContent } from "@mariozechner/pi-ai";
 import { Type } from "typebox";
+import type { RequestPermission } from "../agent.ts";
 import { type AssetResolver, resolvePath } from "./paths.ts";
+import { askToProceed, withNote } from "./permission.ts";
 import { MAX_BYTES, MAX_LINES, splitLines, truncateHead } from "./truncate.ts";
 
 const IMAGE_TYPES: Record<string, string> = {
@@ -45,6 +47,7 @@ export interface ReadDetails {
 export function createReadTool(
   cwd: string,
   assets?: AssetResolver,
+  ask?: RequestPermission,
 ): AgentTool<typeof parameters, ReadDetails> {
   return {
     name: "read",
@@ -54,15 +57,25 @@ export function createReadTool(
       "and webp images are returned as images. Output is cut to 2000 lines or 50KB, whichever " +
       "comes first, and says how to continue with offset. Other binary files can't be read.",
     parameters,
-    async execute(_toolCallId, { path, offset, limit }) {
+    async execute(toolCallId, { path, offset, limit }, signal) {
       const absolute = resolvePath(cwd, path, assets);
+      // The daemon lets ordinary reads through; sensitive files (.env, keys) ask first.
+      const { note: added } = await askToProceed(
+        ask,
+        { title: `read ${path}`, kind: "read", toolCallId, path: absolute },
+        "The user declined to let you read this file.",
+        signal,
+      );
       const buffer = await readFile(absolute);
 
       const mimeType = IMAGE_TYPES[extname(absolute).toLowerCase()];
       if (mimeType) {
         return {
           content: [
-            { type: "text", text: `Read image ${path} (${mimeType}, ${buffer.length} bytes).` },
+            {
+              type: "text",
+              text: withNote(`Read image ${path} (${mimeType}, ${buffer.length} bytes).`, added),
+            },
             { type: "image", data: buffer.toString("base64"), mimeType },
           ],
           details: { path: absolute },
@@ -96,7 +109,7 @@ export function createReadTool(
         result += `\n\n[${note} Use offset=${lastShown + 1} to continue.]`;
       }
       return {
-        content: [{ type: "text", text: result }],
+        content: [{ type: "text", text: withNote(result, added) }],
         details: { path: absolute, truncated: lastShown < lines.length },
       };
     },

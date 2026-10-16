@@ -2,12 +2,12 @@ photo-editor connected (v3): crop, export
 
 now in overlay
 
-> Crop this to a square logo and add it to the header.  · overlay
+› Crop this to a square logo and add it to the header.  · overlay
   [image /tmp/shot-1.png]
 
 ∴ Crop first, then edit Header.tsx.
 
-I'll crop the image to 512×512 first.
+● I'll crop the image to 512×512 first.
 
 ● photo-editor.crop
   ╭ Cropped image

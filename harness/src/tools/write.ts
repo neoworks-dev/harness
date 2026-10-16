@@ -2,9 +2,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "typebox";
-import type { RequestPermission } from "../agent.ts";
+import type { PermissionAsk, RequestPermission } from "../agent.ts";
 import { resolveWritablePath } from "./paths.ts";
-import { askToProceed } from "./permission.ts";
+import { askToProceed, reviewEdit, withNote } from "./permission.ts";
 
 const parameters = Type.Object({
   path: Type.String({
@@ -44,22 +44,20 @@ export function createWriteTool(
     async execute(toolCallId, { path, content }, signal) {
       const absolute = resolveWritablePath(cwd, path);
       const oldText = await readIfExists(absolute);
-      await askToProceed(
-        ask,
-        {
-          title: `write ${path}`,
-          kind: "edit",
-          toolCallId,
-          content: [{ type: "diff", path: absolute, oldText, newText: content }],
-        },
-        "The user declined this edit.",
-        signal,
-      );
+      const request: PermissionAsk = {
+        title: `write ${path}`,
+        kind: "edit",
+        toolCallId,
+        content: [{ type: "diff", path: absolute, oldText, newText: content }],
+      };
+      const proceed = await askToProceed(ask, request, "The user declined this edit.", signal);
       await mkdir(dirname(absolute), { recursive: true });
       await writeFile(absolute, content);
+      const note = await reviewEdit(ask, proceed, request, signal);
       const verb = oldText === undefined ? "Created" : "Overwrote";
+      const done = `${verb} ${path} (${Buffer.byteLength(content)} bytes).`;
       return {
-        content: [{ type: "text", text: `${verb} ${path} (${Buffer.byteLength(content)} bytes).` }],
+        content: [{ type: "text", text: withNote(done, note) }],
         details: { path: absolute, oldText, newText: content },
       };
     },

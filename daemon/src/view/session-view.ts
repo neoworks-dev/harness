@@ -61,6 +61,11 @@ function text(
   return { type: "text", ...extra, blocks };
 }
 
+/** An answered card's line with what the user added: `Allow · “use tabs”`. */
+function withNote(answer: string, note: string | undefined): string {
+  return note === undefined ? answer : `${answer} · “${note}”`;
+}
+
 function plain(value: string): Block[] {
   return value
     .split(/\n{2,}/)
@@ -174,7 +179,9 @@ export class SessionView {
       case "permission_resolved": {
         const request = this.permissions.get(event.id);
         if (!request) return [];
-        return [{ op: "set", item: this.permissionItem(request, event.option ?? null) }];
+        return [
+          { op: "set", item: this.permissionItem(request, event.option ?? null, event.note) },
+        ];
       }
       case "choice":
         this.choices.set(event.id, event);
@@ -182,7 +189,7 @@ export class SessionView {
       case "choice_made": {
         const choice = this.choices.get(event.id);
         if (!choice) return [];
-        return [{ op: "set", item: this.choiceItem(choice, event.option ?? null) }];
+        return [{ op: "set", item: this.choiceItem(choice, event.option ?? null, event.note) }];
       }
       case "plan":
         return this.planOps(event);
@@ -259,9 +266,13 @@ export class SessionView {
   /**
    * An agent asking before it acts: what it would do (a diff, text) above one button per option
    * until answered; then the one-line answer (the picked option id, or null when nobody
-   * answered before the turn ended).
+   * answered before the turn ended), followed by the note the user added.
    */
-  private permissionItem(request: PermissionRequest, answer?: string | null): ViewItem {
+  private permissionItem(
+    request: PermissionRequest,
+    answer?: string | null,
+    note?: string,
+  ): ViewItem {
     const label = `${request.agent} asks: ${request.title}`;
     if (answer === undefined) {
       const buttons: Component[] = request.options.map((option, i) => ({
@@ -285,12 +296,12 @@ export class SessionView {
       kind: "tool",
       label,
       state: allowed ? "done" : "failed",
-      component: text(plain(what), { tone: "muted" }),
+      component: text(plain(withNote(what, note)), { tone: "muted" }),
     };
   }
 
   /** A choice: one button per option (with its description, if any) until one is picked. */
-  private choiceItem(choice: Choice, answer?: string | null): ViewItem {
+  private choiceItem(choice: Choice, answer?: string | null, note?: string): ViewItem {
     const ref = `q-${choice.id}`;
     if (answer === undefined) {
       const rows: Component[] = choice.options.map((option, i) => {
@@ -317,7 +328,9 @@ export class SessionView {
       kind: "tool",
       label: choice.title,
       state: option ? "done" : "failed",
-      component: text(plain(option ? option.name : "Not answered."), { tone: "muted" }),
+      component: text(plain(withNote(option ? option.name : "Not answered.", note)), {
+        tone: "muted",
+      }),
     };
   }
 

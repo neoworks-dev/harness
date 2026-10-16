@@ -1,6 +1,7 @@
 // The session's harness (/harness): turns run on pi or on an ACP harness (the fake ACP agent),
 // switching between them, delegate with model and effort, and pi subagents.
 import { afterEach, describe, expect, test } from "bun:test";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -446,6 +447,49 @@ describe("approvals apply to the session's ACP harness", () => {
       content: [{ type: "diff", path: "/tmp/notes.txt", oldText: "a\n", newText: "b\n" }],
     });
     await daemon.sessions.idle(session);
+  });
+
+  test("review mode: the edit is allowed and written, then Keep / Revert; a revert is told next turn", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/harness fake");
+    await daemon.commands.run(session, "/approvals review");
+    const file = join(daemon.dir, "r.txt");
+    await writeFile(file, "before\n");
+    daemon.sessions.input(session, "cli", `editfile ${file} after`);
+    const card = await answer(daemon, session, "permission_request", "revert");
+    expect(card).toMatchObject({
+      agent: "fake",
+      title: "Edited r.txt — keep it?",
+      kind: "edit",
+      content: [{ type: "diff", path: file, oldText: "before\n", newText: "after" }],
+    });
+    await daemon.sessions.idle(session);
+    expect(replies(daemon, session).at(-1)).toBe("answer: yes");
+    await until(() => events(daemon, session).some((e) => e.type === "edits_reverted"), "revert");
+    expect(await readFile(file, "utf8")).toBe("before\n");
+    expect(events(daemon, session).some((e) => e.type === "choice")).toBe(false);
+
+    await say(daemon, session, "started");
+    expect(thoughts(daemon, session).at(-1)).toContain('<reverted paths="r.txt"/>');
+  });
+
+  test("a sensitive read by the ACP harness asks in auto mode; an ordinary one doesn't", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/harness fake");
+    await daemon.commands.run(session, "/approvals auto");
+    await say(daemon, session, `readfile ${join(daemon.dir, "ok.txt")}`);
+    expect(replies(daemon, session).at(-1)).toBe("answer: yes");
+    expect(events(daemon, session).some((e) => e.type === "permission_request")).toBe(false);
+    daemon.sessions.input(session, "cli", `readfile ${join(daemon.dir, "secrets.json")}`);
+    const request = await answer(daemon, session, "permission_request", "no");
+    expect(request).toMatchObject({
+      agent: "fake",
+      title: "Read secrets.json?",
+      kind: "read",
+      toolCallId: "fake-main:t5",
+    });
+    await daemon.sessions.idle(session);
+    expect(replies(daemon, session).at(-1)).toBe("answer: no");
   });
 
   test("edits mode: the review card covers the edits the ACP harness made", async () => {

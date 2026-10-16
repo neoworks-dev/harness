@@ -56,10 +56,26 @@ impl Palette {
         Style::new().fg(self.muted)
     }
 
+    /// The background of the user's messages: the text color mixed into the background, so the
+    /// band reads in any theme (the surface color is often too close to the background). Themes
+    /// without true colors get the surface color.
+    pub fn band(&self) -> Color {
+        blend(self.bg, self.fg, 14).unwrap_or(self.surface)
+    }
+
     /// Text on the surface color: code.
     pub(crate) fn code_style(&self) -> Style {
         Style::new().fg(self.fg).bg(self.surface)
     }
+}
+
+/// `over` mixed into `base` by `pct` percent; None unless both are true colors.
+pub(crate) fn blend(base: Color, over: Color, pct: u32) -> Option<Color> {
+    let (Color::Rgb(r0, g0, b0), Color::Rgb(r1, g1, b1)) = (base, over) else {
+        return None;
+    };
+    let mix = |a: u8, b: u8| ((u32::from(a) * (100 - pct) + u32::from(b) * pct) / 100) as u8;
+    Some(Color::Rgb(mix(r0, r1), mix(g0, g1), mix(b0, b1)))
 }
 
 /// `protocol/themes/default.json` (a test keeps the two in step).

@@ -7,7 +7,7 @@ import { Type } from "typebox";
 import { MAX_BYTES, MAX_LINES, truncateTail } from "./truncate.ts";
 import type { RequestPermission } from "../agent.ts";
 import { type AssetResolver, resolveAssetsInCommand } from "./paths.ts";
-import { askToProceed } from "./permission.ts";
+import { askToProceed, withNote } from "./permission.ts";
 
 const UPDATE_INTERVAL_MS = 200;
 // How long to wait for output pipes to close after the shell exits (a background process may
@@ -101,7 +101,7 @@ export function createBashTool(
     parameters,
     async execute(toolCallId, { command, timeout }, signal, onUpdate) {
       if (signal?.aborted) throw new Error("Command aborted before it started.");
-      await askToProceed(
+      const { note } = await askToProceed(
         ask,
         { title: command, kind: "execute", toolCallId },
         "The user declined to run this command.",
@@ -178,10 +178,10 @@ export function createBashTool(
       if (exitCode !== 0) {
         const how =
           exitCode === null ? `was killed by ${exitSignal}` : `exited with code ${exitCode}`;
-        throw new Error(`${text}\n\nCommand ${how}.`);
+        throw new Error(withNote(`${text}\n\nCommand ${how}.`, note));
       }
       return {
-        content: [{ type: "text", text }],
+        content: [{ type: "text", text: withNote(text, note) }],
         details: { exitCode, fullOutputPath: output.fullOutputPath },
       };
     },

@@ -19,7 +19,7 @@ use suite_protocol::{
 use suite_renderer_ratatui::{ButtonRef, Palette};
 use suite_sdk::Event;
 
-use crate::chat::{Chat, ChatOpts};
+use crate::chat::{self, Chat, ChatOpts};
 use crate::editor::Editor;
 use crate::history::{Histories, HistoryStore};
 use crate::menu::{self, Command, Entry, Switcher};
@@ -44,6 +44,10 @@ const EDITOR_ROWS: usize = 8;
 const SPINNER: [char; 4] = ['◐', '◓', '◑', '◒'];
 /// The chat needs at least this much beside the sessions sidebar, else the sidebar is hidden.
 const CHAT_MIN_WIDTH: u16 = 52;
+/// Most rows a prompt takes where the editor is (its question, preview, buttons and hint).
+const PANEL_ROWS: u16 = 16;
+/// How long the editor must have been idle before a prompt takes its place.
+const TYPING_PAUSE_MS: i64 = 800;
 /// The harness a session runs on until a `/harness` setting says otherwise.
 const DEFAULT_HARNESS: &str = "pi";
 
@@ -117,13 +121,52 @@ struct Notice {
 /// Which prompt (an item with buttons) the keys answer.
 #[derive(Debug, Default)]
 struct PromptState {
-    /// Picked by hand (Ctrl-P/N) instead of the newest pending one.
+    /// Picked by hand (Ctrl-P/N) instead of the oldest pending one.
     selected: Option<String>,
-    /// The highlight was dismissed (Esc) or the prompt answered.
-    dismissed: Option<String>,
+    /// Prompts that were dismissed (Esc) or answered: not the active one any more.
+    dismissed: Vec<String>,
     button: usize,
     /// The prompt last seen as active, to notice a new one.
     seen: Option<String>,
+    /// The prompt has taken the editor's place: keys go to it alone.
+    engaged: bool,
+    /// When the user last typed in the editor (ms): a prompt waits for a pause.
+    typed_ms: i64,
+}
+
+/// The keys line under a prompt in the input area.
+fn keys_hint(focused: Option<&ButtonRef>, buttons: usize) -> String {
+    let mut parts = Vec::new();
+    if let Some(button) = focused {
+        parts.push(format!("enter {}", button.label.to_lowercase()));
+        if takes_note(button) {
+            parts.push("tab add a note".to_string());
+        }
+    }
+    if buttons > 1 {
+        parts.insert(1.min(parts.len()), "←/→ choose".to_string());
+    }
+    parts.push("esc dismiss".to_string());
+    parts.join(" · ")
+}
+
+/// A note being typed for the answer of the focused button of a permission or choice card.
+#[derive(Debug)]
+struct Note {
+    /// The card's item ref.
+    r#ref: String,
+    /// The button the note goes with.
+    button: usize,
+    text: String,
+}
+
+/// Buttons that answer a question of the daemon's can carry a note for the agent.
+fn takes_note(button: &ButtonRef) -> bool {
+    matches!(button.action.as_str(), "suite.permit" | "suite.choose")
+        && button
+            .args
+            .as_ref()
+            .is_some_and(serde_json::Value::is_object)
 }
 
 /// What [`App::new`] needs.
@@ -160,6 +203,8 @@ pub struct App {
     /// Ctrl-G while the sidebar was hidden: focus it once it is drawn.
     sessions_wanted: bool,
     prompt: PromptState,
+    /// The note typed for the focused button's answer (Tab on a card).
+    note: Option<Note>,
     menu_sel: usize,
     /// The editor text the slash menu was closed for.
     menu_closed_for: Option<String>,
@@ -220,6 +265,7 @@ impl App {
             sessions_shown: false,
             sessions_wanted: false,
             prompt: PromptState::default(),
+            note: None,
             menu_sel: 0,
             menu_closed_for: None,
             expanded: false,
@@ -332,6 +378,7 @@ impl App {
             self.notice = None;
             self.dirty = true;
         }
+        self.update_engaged();
         if self
             .awaiting
             .as_ref()
@@ -530,6 +577,7 @@ impl App {
         self.approvals = Approvals::Ask;
         self.editor.clear();
         self.prompt = PromptState::default();
+        self.note = None;
         self.overlay = Overlay::None;
         self.focus = None;
         self.menu_sel = 0;
@@ -540,15 +588,47 @@ impl App {
 
     // ---- prompts (items with buttons) ----
 
-    /// The prompt the keys answer: one picked by hand, else the newest one still pending.
+    /// The prompt the keys answer: one picked by hand, else the oldest one still pending.
     fn active_ref(&self) -> Option<&str> {
         if let Some(r) = &self.prompt.selected
             && !self.chat.buttons_of(r).is_empty()
         {
             return Some(r);
         }
-        let r = self.chat.pending_prompt()?;
-        (self.prompt.dismissed.as_deref() != Some(r)).then_some(r)
+        self.chat
+            .pending_prompts()
+            .into_iter()
+            .find(|r| !self.prompt.dismissed.iter().any(|d| d == r))
+    }
+
+    /// The pending prompts that are not dismissed, and the active one's place among them.
+    fn queue(&self) -> (usize, usize) {
+        let pending: Vec<&str> = self
+            .chat
+            .pending_prompts()
+            .into_iter()
+            .filter(|r| !self.prompt.dismissed.iter().any(|d| d == r))
+            .collect();
+        let at = self
+            .active_ref()
+            .and_then(|a| pending.iter().position(|r| *r == a));
+        (at.map_or(1, |i| i + 1), pending.len().max(1))
+    }
+
+    /// A prompt takes the editor's place once the user has paused typing (at once when they
+    /// weren't typing), and gives it back, draft intact, when it is answered or dismissed.
+    fn update_engaged(&mut self) {
+        let quiet = self.now_ms - self.prompt.typed_ms >= TYPING_PAUSE_MS;
+        let engaged = self.active_ref().is_some() && (self.prompt.engaged || quiet);
+        if engaged != self.prompt.engaged {
+            self.prompt.engaged = engaged;
+            self.dirty = true;
+        }
+    }
+
+    /// A prompt is open but the user is typing: the editor stays, with a hint above it.
+    fn prompt_waits(&self) -> bool {
+        !self.prompt.engaged && self.active_ref().is_some()
     }
 
     fn active_buttons(&self) -> &[ButtonRef] {
@@ -558,6 +638,14 @@ impl App {
     /// A new active prompt starts on its first button and is scrolled into view.
     fn sync_prompt(&mut self) {
         let current = self.active_ref().map(str::to_string);
+        // The card was answered elsewhere, or another one took over: the note is moot.
+        if self
+            .note
+            .as_ref()
+            .is_some_and(|n| Some(&n.r#ref) != current.as_ref())
+        {
+            self.note = None;
+        }
         if current != self.prompt.seen {
             self.prompt.button = 0;
             if current.is_some() && self.prompt.selected.is_none() {
@@ -565,6 +653,7 @@ impl App {
             }
             self.prompt.seen = current;
         }
+        self.update_engaged();
     }
 
     fn move_button(&mut self, delta: isize) {
@@ -576,6 +665,11 @@ impl App {
     }
 
     fn press(&mut self, index: usize, fx: &mut Vec<Effect>) {
+        self.press_with(index, None, fx);
+    }
+
+    /// Presses a button; `note` (what the user added for the agent) goes along in its args.
+    fn press_with(&mut self, index: usize, note: Option<&str>, fx: &mut Vec<Effect>) {
         let Some(r) = self.active_ref().map(str::to_string) else {
             return;
         };
@@ -586,16 +680,71 @@ impl App {
             fx.push(Effect::Copy(text.to_string()));
             self.notify("copied", false);
         } else {
+            let mut args = button.args;
+            if let (Some(note), Some(serde_json::Value::Object(map))) = (note, args.as_mut()) {
+                map.insert("note".into(), note.into());
+            }
             fx.push(Effect::Action {
                 session: self.session.clone(),
                 item: r.clone(),
                 action: button.action,
-                args: button.args,
+                args,
             });
         }
-        self.prompt.dismissed = Some(r);
+        self.prompt.dismissed.push(r);
         self.prompt.selected = None;
         self.sync_prompt();
+    }
+
+    /// Tab on a card: a one-line note for the agent under it, sent with the focused button.
+    /// Cards that aren't the daemon's questions keep Tab as "next button".
+    fn tab_on_prompt(&mut self) {
+        let Some(r) = self.active_ref().map(str::to_string) else {
+            return;
+        };
+        let button = self.prompt.button;
+        if self.chat.buttons_of(&r).get(button).is_some_and(takes_note) {
+            self.note = Some(Note {
+                r#ref: r,
+                button,
+                text: String::new(),
+            });
+            self.chat.follow();
+        } else {
+            self.move_button(1);
+        }
+    }
+
+    /// Keys while a note is being typed: text, Enter answers with it, Esc goes back to the
+    /// buttons.
+    fn note_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let Some(note) = self.note.as_mut() else {
+            return;
+        };
+        match key.code {
+            KeyCode::Esc => self.note = None,
+            KeyCode::Char('c') if ctrl => self.note = None,
+            KeyCode::Char('u') if ctrl => note.text.clear(),
+            KeyCode::Char('w') if ctrl => {
+                let kept = note.text.trim_end().rfind(' ').map_or(0, |i| i + 1);
+                note.text.truncate(kept);
+            }
+            KeyCode::Char(c) if !ctrl && !key.modifiers.contains(KeyModifiers::ALT) => {
+                note.text.push(c);
+            }
+            KeyCode::Backspace => {
+                note.text.pop();
+            }
+            KeyCode::Enter => {
+                let Some(Note { button, text, .. }) = self.note.take() else {
+                    return;
+                };
+                let text = text.trim();
+                self.press_with(button, (!text.is_empty()).then_some(text), fx);
+            }
+            _ => {}
+        }
     }
 
     /// Ctrl-P / Ctrl-N: pick an older (or newer) item with buttons.
@@ -622,13 +771,15 @@ impl App {
         match target {
             Some(i) => {
                 let r = refs[i].clone();
+                self.prompt.dismissed.retain(|d| *d != r);
                 self.prompt.selected = Some(r.clone());
-                self.prompt.dismissed = None;
+                // Asked for by hand: no waiting for a pause in typing.
+                self.prompt.typed_ms = 0;
                 self.chat.reveal(&r);
             }
             None => {
                 self.prompt.selected = None;
-                self.prompt.dismissed = None;
+                self.prompt.dismissed.clear();
             }
         }
         self.sync_prompt();
@@ -662,6 +813,7 @@ impl App {
         match self.overlay {
             Overlay::Help => self.overlay = Overlay::None,
             Overlay::Switcher => self.switcher_key(key, &mut fx),
+            Overlay::None if self.note.is_some() => self.note_key(key, &mut fx),
             Overlay::None => match self.focus {
                 Some(focus) => self.panel_key(focus, key, &mut fx),
                 None => self.editor_key(key, &mut fx),
@@ -700,8 +852,14 @@ impl App {
                 .filter(|c| !c.is_control())
                 .for_each(|c| self.switcher.type_char(c)),
             Overlay::Help => self.overlay = Overlay::None,
+            Overlay::None if self.note.is_some() => {
+                if let Some(note) = self.note.as_mut() {
+                    note.text.extend(text.chars().filter(|c| !c.is_control()));
+                }
+            }
             Overlay::None => {
-                if self.focus.is_none() && !self.widgets.overlay_open() {
+                if self.focus.is_none() && !self.widgets.overlay_open() && !self.prompt.engaged {
+                    self.prompt.typed_ms = self.now_ms;
                     self.editor.insert_str(text);
                     self.histories.of(&self.session).reset();
                 }
@@ -847,7 +1005,7 @@ impl App {
         fx.push(Effect::ListSessions);
     }
 
-    /// Shift-Tab: ask, edits, auto, ask…
+    /// Shift-Tab: ask, review, edits, auto, ask…
     fn cycle_approvals(&mut self, fx: &mut Vec<Effect>) {
         fx.push(Effect::Input {
             session: self.session.clone(),
@@ -856,7 +1014,7 @@ impl App {
     }
 
     fn ctrl_c(&mut self, fx: &mut Vec<Effect>) {
-        if !self.editor.is_empty() {
+        if !self.editor.is_empty() && !self.prompt.engaged {
             self.editor.clear();
             self.histories.of(&self.session).reset();
         } else if self.quit_armed_until > self.now_ms {
@@ -875,7 +1033,7 @@ impl App {
         if self.menu_visible() {
             self.menu_closed_for = Some(self.editor.text().to_string());
         } else if let Some(r) = self.active_ref().map(str::to_string) {
-            self.prompt.dismissed = Some(r);
+            self.prompt.dismissed.push(r);
             self.prompt.selected = None;
         } else if self.running {
             fx.push(Effect::Cancel {
@@ -887,12 +1045,56 @@ impl App {
         }
     }
 
+    /// Keys while a prompt has taken the editor's place: they answer it, and nothing else
+    /// reaches the editor (and its draft).
+    fn prompt_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+        match key.code {
+            KeyCode::Char(c) if ctrl => match c {
+                'c' => self.ctrl_c(fx),
+                'p' => {
+                    self.select_prompt(-1);
+                }
+                'n' => {
+                    self.select_prompt(1);
+                }
+                'o' | 't' | 's' | 'l' | 'g' => {
+                    self.ctrl_key(c, fx);
+                }
+                _ => {}
+            },
+            KeyCode::Char(c) => {
+                if let Some(n) = c.to_digit(10).filter(|n| (1..=9).contains(n))
+                    && (n as usize) <= self.active_buttons().len()
+                {
+                    self.press(n as usize - 1, fx);
+                }
+            }
+            KeyCode::Enter => self.press(self.prompt.button, fx),
+            KeyCode::Tab => self.tab_on_prompt(),
+            KeyCode::BackTab => self.cycle_approvals(fx),
+            KeyCode::Esc => self.esc(fx),
+            KeyCode::Up if shift => self.chat.scroll_up(1),
+            KeyCode::Down if shift => self.chat.scroll_down(1),
+            KeyCode::Left | KeyCode::Up => self.move_button(-1),
+            KeyCode::Right | KeyCode::Down => self.move_button(1),
+            KeyCode::PageUp => self.chat.page_up(),
+            KeyCode::PageDown => self.chat.page_down(),
+            KeyCode::Home => self.chat.to_top(),
+            KeyCode::End => self.chat.follow(),
+            _ => {}
+        }
+    }
+
     fn editor_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
+        if self.prompt.engaged {
+            return self.prompt_key(key, fx);
+        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         let empty = self.editor.is_empty();
-        let prompting = empty && !self.active_buttons().is_empty();
         let mut edited = true;
         match key.code {
             KeyCode::Char(c) if ctrl => edited = self.ctrl_key(c, fx),
@@ -903,13 +1105,6 @@ impl App {
                 _ => edited = false,
             },
             KeyCode::Char(c) => {
-                if prompting
-                    && let Some(n) = c.to_digit(10).filter(|n| (1..=9).contains(n))
-                    && (n as usize) <= self.active_buttons().len()
-                {
-                    self.press(n as usize - 1, fx);
-                    return;
-                }
                 if c == '?' && empty {
                     self.overlay = Overlay::Help;
                     return;
@@ -926,8 +1121,6 @@ impl App {
                 edited = false;
                 if self.menu_visible() {
                     self.complete_menu();
-                } else if !self.active_buttons().is_empty() {
-                    self.move_button(1);
                 } else {
                     self.cycle_focus();
                 }
@@ -939,14 +1132,6 @@ impl App {
             KeyCode::Backspace if alt => self.editor.delete_word_back(),
             KeyCode::Backspace => self.editor.backspace(),
             KeyCode::Delete => self.editor.delete(),
-            KeyCode::Left if prompting => {
-                self.move_button(-1);
-                edited = false;
-            }
-            KeyCode::Right if prompting => {
-                self.move_button(1);
-                edited = false;
-            }
             KeyCode::Left if ctrl || alt => self.editor.word_left(),
             KeyCode::Right if ctrl || alt => self.editor.word_right(),
             KeyCode::Left => self.editor.left(),
@@ -963,8 +1148,6 @@ impl App {
                 edited = false;
                 if self.menu_visible() {
                     self.move_menu(-1);
-                } else if prompting {
-                    self.move_button(-1);
                 } else if !self.editor.up() {
                     self.history_prev();
                 }
@@ -973,8 +1156,6 @@ impl App {
                 edited = false;
                 if self.menu_visible() {
                     self.move_menu(1);
-                } else if prompting {
-                    self.move_button(1);
                 } else if !self.editor.down() {
                     self.history_next();
                 }
@@ -1001,6 +1182,7 @@ impl App {
         }
         if edited {
             self.histories.of(&self.session).reset();
+            self.prompt.typed_ms = self.now_ms;
         }
     }
 
@@ -1087,6 +1269,7 @@ impl App {
     fn menu_matches(&self) -> Vec<&'static Command> {
         let text = self.editor.text();
         if self.focus.is_some()
+            || self.prompt.engaged
             || self.overlay != Overlay::None
             || !menu::is_slash_word(text)
             || self.menu_closed_for.as_deref() == Some(text)
@@ -1131,9 +1314,6 @@ impl App {
         }
         let text = self.editor.text().trim().to_string();
         if text.is_empty() {
-            if !self.active_buttons().is_empty() {
-                self.press(self.prompt.button, fx);
-            }
             return;
         }
         self.editor.clear();
@@ -1202,11 +1382,25 @@ impl App {
         });
         self.editor
             .set_width(usize::from(main.width.saturating_sub(2)).max(1));
-        let wanted = self.editor.height().clamp(1, EDITOR_ROWS) as u16;
         let h = main.height;
         let status_h = h.saturating_sub(3).min(3);
         let rule_h = h.saturating_sub(status_h).min(1);
         let room = h - status_h - rule_h;
+        // An engaged prompt takes the editor's place; a waiting one adds a hint row above it.
+        let panel = if self.prompt.engaged {
+            self.panel_lines(
+                main.width,
+                usize::from(room.saturating_sub(1).min(PANEL_ROWS)),
+            )
+        } else {
+            Vec::new()
+        };
+        let hint_h = u16::from(self.prompt_waits() && room >= 3);
+        let wanted = if panel.is_empty() {
+            self.editor.height().clamp(1, EDITOR_ROWS) as u16 + hint_h
+        } else {
+            panel.len() as u16
+        };
         let editor_h = wanted.min(room.saturating_sub(1)).max(room.min(1));
         let chat_h = room - editor_h;
         let at = |y: u16, height: u16| Rect {
@@ -1214,10 +1408,13 @@ impl App {
             height,
             ..main
         };
+        let hint_h = hint_h.min(editor_h.saturating_sub(1));
         Areas {
             chat: at(0, chat_h),
             rule: at(chat_h, rule_h),
-            editor: at(chat_h + rule_h, editor_h),
+            hint: at(chat_h + rule_h, hint_h),
+            editor: at(chat_h + rule_h + hint_h, editor_h - hint_h),
+            panel,
             status: at(chat_h + rule_h + editor_h, status_h),
             side,
             left,
@@ -1272,7 +1469,21 @@ impl App {
                 areas.rule,
             );
         }
-        self.draw_editor(frame, areas.editor);
+        if areas.hint.height > 0 {
+            let hint = "permission needed — waiting until you stop typing";
+            frame.render_widget(
+                Paragraph::new(Span::styled(
+                    truncate(hint, usize::from(areas.hint.width)),
+                    self.styles.accent,
+                )),
+                areas.hint,
+            );
+        }
+        if areas.panel.is_empty() {
+            self.draw_editor(frame, areas.editor);
+        } else {
+            frame.render_widget(Paragraph::new(areas.panel), areas.editor);
+        }
         self.draw_status(frame, areas.status);
     }
 
@@ -1448,6 +1659,54 @@ impl App {
         frame.render_widget(Paragraph::new(lines), rect);
     }
 
+    /// The prompt as it fills the editor's place: the question with a compact preview, the
+    /// buttons (one focused), "1 of 3" when more wait, and a line of keys (or the note being
+    /// typed).
+    fn panel_lines(&self, width: u16, max_rows: usize) -> Vec<Line<'static>> {
+        let Some(r) = self.active_ref() else {
+            return Vec::new();
+        };
+        let Some(item) = self.chat.item(r) else {
+            return Vec::new();
+        };
+        let buttons = self.chat.buttons_of(r);
+        let focused = self.prompt.button.min(buttons.len().saturating_sub(1));
+        let w = usize::from(width);
+        let marker = self.styles.accent;
+        let tail = match &self.note {
+            Some(note) => chat::note_line(&note.text, w.saturating_sub(2), marker),
+            None => Line::from(Span::styled(
+                keys_hint(buttons.get(focused), buttons.len()),
+                self.styles.muted,
+            )),
+        };
+        let budget = max_rows.saturating_sub(1).max(1);
+        let mut body = Vec::new();
+        for preview in [10, 6, 3, 1, 0] {
+            body = chat::panel_lines(item, width, focused, preview, self.palette, marker);
+            if body.len() <= budget {
+                break;
+            }
+        }
+        if body.len() > budget {
+            // Too small for the preview: keep the question and the buttons.
+            let rest = body.split_off(body.len() - (budget - 1));
+            body.truncate(1);
+            body.extend(rest);
+        }
+        let (at, of) = self.queue();
+        if of > 1
+            && let Some(first) = body.first_mut()
+        {
+            first
+                .spans
+                .push(Span::styled(format!("  ({at} of {of})"), self.styles.muted));
+            *first = fit_line(first.clone(), w);
+        }
+        body.push(fit_line(chat::barred(tail, marker), w));
+        body
+    }
+
     fn draw_editor(&mut self, frame: &mut Frame, area: Rect) {
         if area.height == 0 || area.width == 0 {
             return;
@@ -1565,11 +1824,14 @@ impl App {
             key("ctrl-t", "show thoughts"),
             key("esc", "close menu, dismiss prompt, cancel the running turn"),
             key("ctrl-c", "clear input; twice to quit"),
-            key("shift-tab", "approvals: ask / accept edits / auto"),
-            key("tab", "complete command, next button, next panel"),
+            key("shift-tab", "approvals: ask / review / accept edits / auto"),
+            key("tab", "complete command, note on a prompt, next panel"),
             key("ctrl-s", "switch session (picker)"),
             key("ctrl-g", "sessions sidebar: focus (up/down, enter, esc)"),
-            key("1-9, arrows, enter", "answer a prompt (empty input)"),
+            key(
+                "1-9, arrows, enter",
+                "answer a prompt (it takes the input's place)",
+            ),
             key("ctrl-p / ctrl-n", "pick an older prompt"),
             Line::default(),
             head("commands"),
@@ -1581,7 +1843,7 @@ impl App {
                 format!("/{} {}", c.name, c.args)
             };
             lines.push(Line::from(vec![
-                Span::styled(format!("  {label:<30}"), self.styles.accent),
+                Span::styled(format!("  {label:<36}"), self.styles.accent),
                 Span::styled(c.desc, self.styles.muted),
             ]));
         }
@@ -1659,7 +1921,12 @@ impl App {
 struct Areas {
     chat: Rect,
     rule: Rect,
+    /// One row above the editor: a prompt is waiting for the user to stop typing.
+    hint: Rect,
+    /// The editor, or the prompt that has taken its place.
     editor: Rect,
+    /// The prompt's lines when it has taken the editor's place.
+    panel: Vec<Line<'static>>,
     status: Rect,
     side: Option<Rect>,
     /// The sessions sidebar.

@@ -3,14 +3,14 @@ export
 
 now in overlay
 
-> Crop this to a square logo and add it
+› Crop this to a square logo and add it
   to the header.
   [image /tmp/shot-1.png]
   · overlay
 
 ∴ thinking
 
-I'll crop the image to 512×512 first.
+● I'll crop the image to 512×512 first.
 
 ● photo-editor.crop
   ╭ Cropped image

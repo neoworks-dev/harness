@@ -39,7 +39,8 @@ function connectedAttrs(
 
 /**
  * Prepends connector events to the user's text (design §6). Connect/disconnect lines, guest
- * turns and reverted edits keep their order; only the last focus event is sent, after them.
+ * turns, reverted edits and the user's notes keep their order; only the last focus event is
+ * sent, after them.
  * `cwd` (the session's working directory) comes first, on a session's first prompt; then the
  * `summary` of turns another harness ran, if any.
  */
@@ -71,6 +72,10 @@ export function formatPrompt(
       const pairs: [string, string][] = [["paths", event.paths.join(", ")]];
       if (event.skipped?.length) pairs.push(["skipped", event.skipped.join(", ")]);
       lines.push(`<reverted ${attrs(pairs)}/>`);
+    } else if (event.type === "user_note") {
+      const open =
+        event.about === undefined ? "<note>" : `<note ${attrs([["about", event.about]])}>`;
+      lines.push(open, event.note, "</note>");
     } else {
       const pairs: [string, string][] = [
         ["app", event.app],

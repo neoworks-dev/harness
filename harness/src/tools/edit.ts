@@ -1,9 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "typebox";
-import type { RequestPermission } from "../agent.ts";
+import type { PermissionAsk, RequestPermission } from "../agent.ts";
 import { resolveWritablePath } from "./paths.ts";
-import { askToProceed } from "./permission.ts";
+import { askToProceed, reviewEdit, withNote } from "./permission.ts";
 import type { FileChangeDetails } from "./write.ts";
 
 const parameters = Type.Object({
@@ -95,20 +95,19 @@ export function createEditTool(
 
       const eol = crlf ? updated.replaceAll("\n", "\r\n") : updated;
       const absolute = resolveWritablePath(cwd, path);
-      await askToProceed(
-        ask,
-        {
-          title: `edit ${path}`,
-          kind: "edit",
-          toolCallId,
-          content: [{ type: "diff", path: absolute, oldText: original, newText: updated }],
-        },
-        "The user declined this edit.",
-        signal,
-      );
+      const request: PermissionAsk = {
+        title: `edit ${path}`,
+        kind: "edit",
+        toolCallId,
+        content: [{ type: "diff", path: absolute, oldText: original, newText: updated }],
+      };
+      const proceed = await askToProceed(ask, request, "The user declined this edit.", signal);
       await writeFile(absolute, hasBom ? BOM + eol : eol);
+      const note = await reviewEdit(ask, proceed, request, signal);
       return {
-        content: [{ type: "text", text: `Applied ${edits.length} edit(s) to ${path}.` }],
+        content: [
+          { type: "text", text: withNote(`Applied ${edits.length} edit(s) to ${path}.`, note) },
+        ],
         details: { path: absolute, oldText: original, newText: updated },
       };
     },

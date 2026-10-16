@@ -290,7 +290,26 @@ export const examples: Record<string, Envelope> = {
       session,
       seq: 8,
       ts: 1760565600800,
-      event: { type: "permission_resolved", id: "p1", option: "allow", by: "code-editor" },
+      event: {
+        type: "permission_resolved",
+        id: "p1",
+        option: "allow",
+        note: "use tabs instead",
+        by: "code-editor",
+      },
+    },
+  },
+  "event-user-note": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 13,
+      ts: 1760565601150,
+      event: {
+        type: "user_note",
+        note: "use tabs instead",
+        about: "claude asks: Edit src/parse.ts: Allow",
+      },
     },
   },
   "event-edits-reverted": {

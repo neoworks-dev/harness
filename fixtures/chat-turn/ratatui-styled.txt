@@ -2,12 +2,12 @@
 
 ⟦muted|now in overlay⟧
 
-⟦accent bold|>⟧ Crop this to a square logo and add it to the header.⟦muted|  · overlay⟧
-  ⟦muted|[image /tmp/shot-1.png]⟧
+⟦accent bg:#333439 bold|›⟧⟦bg:#333439| ⟧⟦bg:#333439|Crop this to a square logo and add it to the header.⟧⟦muted bg:#333439|  · overlay⟧⟦bg:#333439|               ⟧
+⟦bg:#333439|  ⟧⟦muted bg:#333439|[image /tmp/shot-1.png]⟧⟦bg:#333439|                                                       ⟧
 
 ⟦muted|∴ thinking⟧
 
-I'll crop the image to ⟦bold|512×512⟧ first.
+⟦fg|● ⟧I'll crop the image to ⟦bold|512×512⟧ first.
 
 ⟦success|● ⟧⟦bold|photo-editor.crop⟧
   ⟦border|╭ ⟧⟦bold|Cropped image⟧

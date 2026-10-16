@@ -6,6 +6,10 @@
 //                 ask diff: a diff but no kind)
 //   wait          runs until cancelled
 //   edit          reports a tool call with a diff
+//   readfile <p>  asks to read the file (kind read, locations [p]) and reports the answer
+//   runcmd <c>    asks to run the command (kind execute, rawInput.command) and reports the answer
+//   editfile <p> <text>  asks to edit the file, and when allowed writes it and reports the
+//                 completed tool call with its diff (like an adapter that asks before it writes)
 //   config        reports what session/new (or resume) and set_config_option gave it
 //   started       reports how the conversation began: "new" or "resume" (resuming a session id
 //                 that starts with "gone" fails, like an adapter that lost the conversation)
@@ -15,6 +19,7 @@
 //   anything else sends a plan (one entry with an unknown status), a usage_update, and replies
 //   "Done: <task>"
 // Every prompt first echoes the whole prompt text as a thought, so tests can see the event tags.
+import { readFileSync, writeFileSync } from "node:fs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
@@ -97,6 +102,29 @@ async function greet(sessionId: string, name: string): Promise<void> {
   });
 }
 
+const OPTIONS = [
+  { optionId: "yes", name: "Allow", kind: "allow_once" },
+  { optionId: "no", name: "Reject", kind: "reject_once" },
+];
+
+/** Asks for permission; resolves with the picked option id (or the outcome when cancelled). */
+async function permission(sessionId: string, toolCall: Record<string, unknown>): Promise<string> {
+  const answer = (await request("session/request_permission", {
+    sessionId,
+    toolCall,
+    options: OPTIONS,
+  })) as { outcome: { outcome: string; optionId?: string } };
+  return answer.outcome.optionId ?? answer.outcome.outcome;
+}
+
+function readOrUndefined(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
 async function prompt(params: {
   sessionId: string;
   prompt: { text?: string }[];
@@ -126,6 +154,55 @@ async function prompt(params: {
     say(sessionId, "\n\n");
     update(sessionId, { sessionUpdate: "plan", entries: [] });
     say(sessionId, `answer: ${answer.outcome.optionId ?? answer.outcome.outcome}`);
+    return { stopReason: "end_turn" };
+  } else if (task.startsWith("readfile ")) {
+    const path = task.slice(9);
+    const toolCall = {
+      toolCallId: "t5",
+      title: `Read ${path}`,
+      kind: "read",
+      locations: [{ path }],
+    };
+    const picked = await permission(sessionId, toolCall);
+    update(sessionId, { sessionUpdate: "plan", entries: [] });
+    say(sessionId, `answer: ${picked}`);
+    return { stopReason: "end_turn" };
+  } else if (task.startsWith("runcmd ")) {
+    const command = task.slice(7);
+    const toolCall = {
+      toolCallId: "t6",
+      title: "Bash",
+      kind: "execute",
+      rawInput: { command },
+    };
+    const picked = await permission(sessionId, toolCall);
+    update(sessionId, { sessionUpdate: "plan", entries: [] });
+    say(sessionId, `answer: ${picked}`);
+    return { stopReason: "end_turn" };
+  } else if (task.startsWith("editfile ")) {
+    const [path = "", ...rest] = task.slice(9).split(" ");
+    const newText = rest.join(" ");
+    const oldText = readOrUndefined(path);
+    const diff = { type: "diff", path, oldText, newText };
+    const toolCall = { toolCallId: "t7", title: `Edit ${path}`, kind: "edit", content: [diff] };
+    const picked = await permission(sessionId, toolCall);
+    if (picked === "yes") {
+      writeFileSync(path, newText);
+      update(sessionId, {
+        sessionUpdate: "tool_call",
+        ...toolCall,
+        status: "pending",
+        content: [],
+      });
+      update(sessionId, {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "t7",
+        status: "completed",
+        content: [diff],
+      });
+    }
+    update(sessionId, { sessionUpdate: "plan", entries: [] });
+    say(sessionId, `answer: ${picked}`);
     return { stopReason: "end_turn" };
   } else if (task === "wait") {
     await new Promise<void>((resolve) => (cancel = resolve));

@@ -23,18 +23,20 @@ export function isSettingName(name: string): name is HarnessSettingName {
 export type HarnessSettings = Partial<Record<ConfigCategory, string>>;
 
 /**
- * ask: edits are previewed before they are written, commands and guests ask. edits: edits are
+ * ask: edits are previewed before they are written, commands and guests ask. review: each edit
+ * is written right away and then kept or reverted by the user; the rest asks. edits: edits are
  * written right away (reviewed after the turn), everything else asks. auto: nothing asks.
+ * Reads are allowed in every mode, except sensitive files (see sensitive.ts).
  */
-export type Approvals = "ask" | "edits" | "auto";
+export type Approvals = "ask" | "review" | "edits" | "auto";
 
-export const APPROVALS: readonly Approvals[] = ["ask", "edits", "auto"];
+export const APPROVALS: readonly Approvals[] = ["ask", "review", "edits", "auto"];
 
 export function parseApprovals(value: string): Approvals | undefined {
   return APPROVALS.find((mode) => mode === value);
 }
 
-/** The mode after this one: ask, edits, auto, ask… */
+/** The mode after this one: ask, review, edits, auto, ask… */
 export function nextApprovals(mode: Approvals): Approvals {
   return APPROVALS[(APPROVALS.indexOf(mode) + 1) % APPROVALS.length] ?? "ask";
 }

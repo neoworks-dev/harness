@@ -36,6 +36,7 @@ import { BadRequestError } from "../focus.ts";
 import type { ConnectorSnapshot } from "../gateway/registry.ts";
 import type { Logger } from "../log.ts";
 import { NotFoundError } from "../sessions.ts";
+import type { Guard, Touches } from "../permissions.ts";
 import type { Approvals, HarnessSettings } from "../settings.ts";
 import { type FocusTarget, ToldState } from "../told.ts";
 import { AcpConnection, AcpError } from "./acp.ts";
@@ -76,8 +77,14 @@ export interface GuestManagerOptions {
   settings: (session: string, harness: string) => HarnessSettings;
   /** Asks the user (permission requests). */
   asker: Asker;
-  /** The session's approvals mode (/approvals): auto allows everything, edits allows edits. */
+  /**
+   * The session's approvals mode (/approvals): auto allows everything, edits and review allow
+   * edits (review: the card comes after the edit, see review.ts). Reads are allowed in every
+   * mode.
+   */
   approvals?: (session: string) => Approvals;
+  /** Reads and commands that touch sensitive files ask in every mode (see permissions.ts). */
+  guard?: Guard;
   /**
    * A summary of the turns other harnesses ran (see handoff.ts), for an ACP harness that lost
    * its own conversation: `all` asks for every turn so far.
@@ -221,6 +228,32 @@ function errorText(err: unknown): string {
 }
 
 /** ACP tool call content → ours (text and diffs; terminals are dropped). */
+/** The local files an ACP tool call is about: its locations and the path fields of its input. */
+function callPaths(call: Record<string, unknown>): string[] {
+  const paths: string[] = [];
+  if (Array.isArray(call.locations)) {
+    for (const location of call.locations) {
+      const path = isRecord(location) ? str(location.path) : undefined;
+      if (path !== undefined) paths.push(path);
+    }
+  }
+  if (isRecord(call.rawInput)) {
+    for (const key of ["file_path", "path", "filePath", "notebook_path"]) {
+      const path = str(call.rawInput[key]);
+      if (path !== undefined) paths.push(path);
+    }
+  }
+  return paths;
+}
+
+/** The shell command of an execute call (a string, or an argv list as Codex sends it). */
+function callCommand(call: Record<string, unknown>): string | undefined {
+  if (!isRecord(call.rawInput)) return undefined;
+  const { command } = call.rawInput;
+  if (!Array.isArray(command)) return str(command);
+  return command.filter((c) => typeof c === "string").join(" ");
+}
+
 function toContent(value: unknown): ToolCallContent[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const out: ToolCallContent[] = [];
@@ -739,14 +772,14 @@ export class GuestManager {
     const text = (): string => [...run.messages.values()].at(-1)?.trim() ?? "";
     if (opts.signal?.aborted) return { stopReason: "cancelled", text: "" };
     // What this adapter wasn't told yet about the connectors and focus, then what the session
-    // wants the agent to hear (guests' turns, reverted edits).
+    // wants the agent to hear (guests' turns, reverted edits, the user's notes).
     const events: ContextEvent[] = guest.told.changes(
       this.options.connectors(),
       this.options.focus(guest.session),
     );
     for (const event of events) guest.told.apply(event);
     for (const event of opts.events ?? []) {
-      if (event.type === "guest_turn" || event.type === "edits_reverted") events.push(event);
+      if (["guest_turn", "edits_reverted", "user_note"].includes(event.type)) events.push(event);
     }
     const onAbort = (): void => {
       guest.conn.notify("session/cancel", { sessionId: guest.acpSession });
@@ -875,11 +908,25 @@ export class GuestManager {
     // The same mapping for guests and the session's own agent.
     const config = this.options.configs[guest.name];
     const mode = this.options.approvals?.(guest.session);
-    if (config?.permissions === "allow" || mode === "auto" || (mode === "edits" && isEdit)) {
-      const allow =
-        options.find((o) => o.kind === "allow_once") ??
-        options.find((o) => o.kind.startsWith("allow"));
-      if (allow) return { outcome: { outcome: "selected", optionId: allow.id } };
+    const allow =
+      options.find((o) => o.kind === "allow_once") ??
+      options.find((o) => o.kind.startsWith("allow"));
+    // Sensitive files ask in every mode (a config of permissions: allow is the user's opt-out).
+    // (Edits are not asked about by what they touch: their mode decides.)
+    const touches: Touches = { kind: kind ?? "other", paths: [] };
+    if (!isEdit && kind !== "delete" && kind !== "move") {
+      touches.paths = callPaths(call);
+      const command = callCommand(call);
+      if (command !== undefined) touches.command = command;
+    }
+    let sensitive: string[] = [];
+    if (config?.permissions !== "allow") sensitive = this.guardOpen(guest, touches);
+    if (sensitive.length === 0 && allow) {
+      const reads = kind === "read" || kind === "search";
+      const edits = (mode === "edits" || mode === "review") && isEdit;
+      if (config?.permissions === "allow" || mode === "auto" || reads || edits) {
+        return { outcome: { outcome: "selected", optionId: allow.id } };
+      }
     }
     const request: Omit<PermissionRequest, "id"> = {
       type: "permission_request",
@@ -887,6 +934,9 @@ export class GuestManager {
       title: describeCall(str(call.title) ?? "use a tool", call.rawInput).title,
       options,
     };
+    if (sensitive.length > 0 && this.options.guard) {
+      request.title = this.options.guard.title(guest.session, touches.kind, sensitive);
+    }
     if (kind !== undefined) request.kind = kind;
     if (content?.length) request.content = content;
     const toolCallId = str(call.toolCallId);
@@ -894,7 +944,14 @@ export class GuestManager {
       request.toolCallId = `${guest.main ? `${guest.name}-main` : guest.name}:${toolCallId}`;
     }
     const optionId = await this.options.asker.ask(guest.session, request, guest.run.done.signal);
-    return optionId === undefined ? cancelled : { outcome: { outcome: "selected", optionId } };
+    if (optionId === undefined) return cancelled;
+    const picked = options.find((o) => o.id === optionId);
+    if (picked?.kind === "allow_always") this.options.guard?.remember(guest.session, sensitive);
+    return { outcome: { outcome: "selected", optionId } };
+  }
+
+  private guardOpen(guest: Guest, touches: Touches): string[] {
+    return this.options.guard?.open(guest.session, touches) ?? [];
   }
 
   private permissionOptions(value: unknown): PermissionOption[] {

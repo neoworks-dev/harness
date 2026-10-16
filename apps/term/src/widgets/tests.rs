@@ -296,7 +296,10 @@ fn overlay_takes_keys_until_closed() {
         t.draw(|f| assert!(w.draw_overlay(f, f.area()))).unwrap();
         dump(t.backend().buffer())
     };
-    assert_eq!(draw(&w), "a.rs  +20 −0\n@@ -1 +1 @@\n+l0\n+l1\n+l2\n+l3");
+    assert_eq!(
+        draw(&w),
+        "a.rs  +20 −0   lines 1–5 of 21\n@@ -1 +1 @@\n+l0\n+l1\n+l2\n+l3"
+    );
     // Whatever panel is focused, the overlay gets the keys.
     assert_eq!(
         w.handle_key(Panel::Plan, key(KeyCode::Char('j'))),

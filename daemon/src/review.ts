@@ -1,11 +1,14 @@
-// Review after a turn in edits mode (design §9, approvals): edits are written right away, so
-// afterwards one card offers to keep them or put the files back. The card is a choice (Keep,
-// Revert all, Revert <file> when there are several files); reverting restores each file to what
-// it was before the turn, unless it changed again since, and tells the agent (edits_reverted).
+// Review of edits that were written without asking (design §9, approvals). In edits mode, after
+// the turn: one card offers to keep them or put the files back (a choice: Keep, Revert all,
+// Revert <file> when there are several files). In review mode, after each edit an ACP harness
+// made (pi's own tools ask themselves, see permissions.ts): a card with the diff and Keep or
+// Revert. Reverting restores each file to what it was before, unless it changed again since,
+// and tells the agent (edits_reverted).
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 import type {
   DiffContent,
+  PermissionOption,
   SessionEvent,
   SessionEventRecord,
   ToolCallContent,
@@ -21,8 +24,14 @@ const MAX_FILE_OPTIONS = 10;
 const TITLE_FILES = 5;
 const BOM = "﻿";
 
+/** The options of a review-mode card: the edit is written already. */
+export const KEEP_OR_REVERT: PermissionOption[] = [
+  { id: "keep", name: "Keep", kind: "allow_once" },
+  { id: "revert", name: "Revert", kind: "reject_once" },
+];
+
 /** One file's edits over a turn. */
-interface FileEdit {
+export interface FileEdit {
   /** The content before the turn's first edit; absent: the turn created the file. */
   before?: string;
   /** The content after its last edit. */
@@ -30,6 +39,7 @@ interface FileEdit {
 }
 
 interface Call {
+  agent?: string;
   status?: string;
   diffs: DiffContent[];
   counted: boolean;
@@ -50,6 +60,27 @@ export interface ReviewOptions {
   /** A file was put back (or deleted): tell the editors. */
   fileChanged: (path: string, session: string) => void;
   log: Logger;
+}
+
+/** "Edited a.ts, b.ts — keep it?" */
+export function editedTitle(names: string[]): string {
+  return `Edited ${names.join(", ")} — keep it?`;
+}
+
+/** The agent of a guest's tool call id (`claude:t1`, `claude-main:t1`). */
+function guestOf(toolCallId: string): string {
+  const colon = toolCallId.indexOf(":");
+  return colon > 0 ? toolCallId.slice(0, colon).replace(/-main$/, "") : "agent";
+}
+
+/** Each file's first before and last after over the diffs, added to `into`. */
+function fold(diffs: DiffContent[], into = new Map<string, FileEdit>()): Map<string, FileEdit> {
+  for (const diff of diffs) {
+    const known = into.get(diff.path);
+    if (known) known.after = diff.newText;
+    else into.set(diff.path, { before: diff.oldText, after: diff.newText });
+  }
+  return into;
 }
 
 /** Editors keep a BOM and CRLF out of the diffs; compare and restore without them. */
@@ -82,7 +113,7 @@ export class Review {
         if (event.toolCallId !== undefined) this.turn(session).asked.add(event.toolCallId);
         break;
       case "tool_call":
-        this.track(session, event.toolCallId, event.status, undefined);
+        this.track(session, event.toolCallId, event.status, undefined, event.agent);
         break;
       case "tool_call_update":
         this.track(session, event.toolCallId, event.status, event.content);
@@ -105,12 +136,16 @@ export class Review {
     }
   }
 
-  /** Counts a finished edit call's diffs, when it was applied without asking in edits mode. */
+  /**
+   * Counts a finished edit call's diffs, when it was applied without asking: in edits mode for
+   * the card after the turn, in review mode for a card of its own.
+   */
   private track(
     session: string,
     id: string,
     status: string | undefined,
     content: ToolCallContent[] | undefined,
+    agent?: string,
   ): void {
     const turn = this.turn(session);
     let call = turn.calls.get(id);
@@ -118,17 +153,45 @@ export class Review {
       call = { diffs: [], counted: false };
       turn.calls.set(id, call);
     }
+    if (agent !== undefined) call.agent = agent;
     if (status !== undefined) call.status = status;
     const diffs = (content ?? []).filter((c): c is DiffContent => c.type === "diff");
     if (diffs.length > 0) call.diffs = diffs;
     if (call.counted || call.status !== "completed" || call.diffs.length === 0) return;
     call.counted = true;
-    if (turn.asked.has(id) || this.options.approvals(session) !== "edits") return;
-    for (const diff of call.diffs) {
-      const known = turn.files.get(diff.path);
-      if (known) known.after = diff.newText;
-      else turn.files.set(diff.path, { before: diff.oldText, after: diff.newText });
+    if (turn.asked.has(id)) return;
+    const mode = this.options.approvals(session);
+    if (mode === "review") {
+      const files = fold(call.diffs);
+      const agent = call.agent ?? guestOf(id);
+      const diffs = call.diffs;
+      queueMicrotask(() => {
+        this.reviewEdit(session, agent, diffs, files).catch((err: unknown) => {
+          this.options.log.warn(`${session}: edit review failed: ${String(err)}`);
+        });
+      });
+    } else if (mode === "edits") {
+      for (const [path, edit] of fold(call.diffs, turn.files)) turn.files.set(path, edit);
     }
+  }
+
+  /** Review mode: the edit is on disk; Keep, or Revert it (and tell the agent). */
+  private async reviewEdit(
+    session: string,
+    agent: string,
+    diffs: DiffContent[],
+    files: Map<string, FileEdit>,
+  ): Promise<void> {
+    const names = [...files.keys()].map((path) => this.display(session, path));
+    const picked = await this.options.asker.ask(session, {
+      type: "permission_request",
+      agent,
+      title: editedTitle(names),
+      kind: "edit",
+      content: diffs,
+      options: KEEP_OR_REVERT,
+    });
+    if (picked === "revert") await this.revert(session, files, [...files.keys()]);
   }
 
   private display(session: string, path: string): string {
@@ -200,7 +263,7 @@ export class Review {
  * Restores a file to its content before the turn, but only if it still has the turn's last
  * content. A file the turn created is deleted. Returns whether it was put back.
  */
-async function restore(path: string, edit: FileEdit): Promise<boolean> {
+export async function restore(path: string, edit: FileEdit): Promise<boolean> {
   let current: string;
   try {
     current = await readFile(path, "utf8");

@@ -2,7 +2,7 @@
 //   /model, /effort, /mode [harness] [value]  set it for this session; without a value, pick
 //                                             from what the harness offers
 //   /resume [guest]                           pick a stored guest conversation to continue
-//   /approvals [ask|edits|auto]               how much the agents ask first; no value: next mode
+//   /approvals [ask|review|edits|auto]        how much the agents ask first; no value: next mode
 //   /harness [name]                           the harness the session runs on; no name: pick one
 // The harness defaults to the one the session runs on. Nothing is chosen for the user.
 import type { ConfigOption } from "@suite/harness/agent";
@@ -13,6 +13,7 @@ import type { GuestManager, StoredConversation } from "./guests/guests.ts";
 import type { Logger } from "./log.ts";
 import type { SessionManager } from "./sessions.ts";
 import {
+  APPROVALS,
   CATEGORIES,
   type HarnessSettingName,
   isSettingName,
@@ -132,10 +133,10 @@ export class Commands {
     const [value] = args;
     const mode = value === undefined ? undefined : parseApprovals(value);
     if (args.length > 1 || (value !== undefined && mode === undefined)) {
-      return Promise.reject(new BadRequestError("usage: /approvals [ask|edits|auto]"));
+      return Promise.reject(new BadRequestError(`usage: /approvals [${APPROVALS.join("|")}]`));
     }
     const { settings } = this.parts;
-    // Without a value: the next mode, ask → edits → auto → ask.
+    // Without a value: the next mode, ask → review → edits → auto → ask.
     settings.setApprovals(session, mode ?? nextApprovals(settings.approvals(session)));
     return Promise.resolve();
   }

@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use suite_protocol::{ItemState, ViewItem, ViewPatch, ViewSnapshot};
 use suite_renderer_ratatui::{ButtonRef, Options, Palette, buttons, render_item};
@@ -149,15 +149,14 @@ impl Chat {
             .collect()
     }
 
-    /// The newest item with buttons, if it is still waiting for an answer.
-    pub fn pending_prompt(&self) -> Option<&str> {
-        let newest = self
-            .state
+    /// The items with buttons still waiting for an answer, oldest first.
+    pub fn pending_prompts(&self) -> Vec<&str> {
+        self.state
             .items
             .iter()
-            .rev()
-            .find(|i| self.buttons.contains_key(&i.r#ref))?;
-        (newest.state == Some(ItemState::Pending)).then_some(newest.r#ref.as_str())
+            .filter(|i| self.buttons.contains_key(&i.r#ref) && i.state == Some(ItemState::Pending))
+            .map(|i| i.r#ref.as_str())
+            .collect()
     }
 
     // ---- layout ----
@@ -374,12 +373,71 @@ fn render(item: &ViewItem, width: u16, key: &CacheKey) -> Vec<Line<'static>> {
     let inner = width.saturating_sub(2).max(1);
     render_item(item, inner, &opts)
         .into_iter()
-        .map(|line| {
-            let mut spans = vec![Span::styled("▎ ", key.marker)];
-            spans.extend(line.spans);
-            Line::from(spans)
-        })
+        .map(|line| barred(line, key.marker))
         .collect()
+}
+
+/// A line of the prompt being answered: the bar in the margin first.
+pub fn barred(line: Line<'static>, marker: Style) -> Line<'static> {
+    let mut spans = vec![Span::styled("▎ ", marker)];
+    spans.extend(line.spans);
+    Line::from(spans)
+}
+
+/// The prompt as the input area shows it: the item with the n-th button focused and at most
+/// `preview` lines of any diff or code, each line with the bar in the margin.
+pub fn panel_lines(
+    item: &ViewItem,
+    width: u16,
+    focused: usize,
+    preview: usize,
+    palette: Palette,
+    marker: Style,
+) -> Vec<Line<'static>> {
+    let opts = Options {
+        expanded: false,
+        show_thoughts: false,
+        focused_button: Some(focused),
+        preview_lines: Some(preview),
+        theme: palette,
+    };
+    render_item(item, width.saturating_sub(2).max(1), &opts)
+        .into_iter()
+        .map(|line| barred(line, marker))
+        .collect()
+}
+
+/// The one-line input for the answer's note: `note › text` with a cursor, or a hint while empty.
+/// A long note shows its end.
+pub fn note_line(text: &str, width: usize, accent: Style) -> Line<'static> {
+    let lead = "note › ";
+    let mut spans = vec![Span::styled(lead, accent)];
+    if text.is_empty() {
+        spans.push(Span::styled(
+            " ",
+            Style::new().add_modifier(Modifier::REVERSED),
+        ));
+        spans.push(Span::styled(
+            "for the agent · enter sends · esc cancels",
+            Style::new().add_modifier(Modifier::DIM),
+        ));
+    } else {
+        let room = width.saturating_sub(lead.chars().count() + 1).max(1);
+        let chars: Vec<char> = text.chars().collect();
+        let shown: String = if chars.len() > room {
+            std::iter::once('…')
+                .chain(chars[chars.len() - (room - 1)..].iter().copied())
+                .collect()
+        } else {
+            text.to_string()
+        };
+        spans.push(Span::raw(shown));
+        spans.push(Span::styled(
+            " ",
+            Style::new().add_modifier(Modifier::REVERSED),
+        ));
+    }
+    Line::from(spans)
 }
 
 #[cfg(test)]
@@ -445,11 +503,11 @@ mod tests {
     fn items_are_separated_by_a_blank_line_and_follow_the_tail() {
         let c = many(3);
         assert_eq!(c.total_lines(), 5);
-        assert_eq!(texts(&c), ["line 0", "", "line 1", "", "line 2"]);
+        assert_eq!(texts(&c), ["● line 0", "", "● line 1", "", "● line 2"]);
         let c = many(10);
         assert_eq!(c.total_lines(), 19);
         assert!(c.following());
-        assert_eq!(texts(&c).last().unwrap(), "line 9");
+        assert_eq!(texts(&c).last().unwrap(), "● line 9");
         assert_eq!(texts(&c).len(), 10);
     }
 
@@ -470,7 +528,7 @@ mod tests {
         c.scroll_down(1000);
         assert!(c.following());
         assert!(!c.has_unseen());
-        assert_eq!(texts(&c).last().unwrap(), "fresh");
+        assert_eq!(texts(&c).last().unwrap(), "● fresh");
     }
 
     #[test]
@@ -480,7 +538,7 @@ mod tests {
             c.page_up();
         }
         assert_eq!(c.top(), 0);
-        assert_eq!(texts(&c)[0], "line 0");
+        assert_eq!(texts(&c)[0], "● line 0");
         c.half_page_down();
         assert_eq!(c.top(), 5);
         c.to_top();
@@ -521,7 +579,7 @@ mod tests {
         });
         c.layout(40, 10, &opts());
         assert_eq!(Rc::as_ptr(&c.entries[0].lines), first);
-        assert_eq!(texts(&c).last().unwrap(), "changed");
+        assert_eq!(texts(&c).last().unwrap(), "● changed");
         // A new width re-renders everything.
         c.layout(30, 10, &opts());
         assert_ne!(Rc::as_ptr(&c.entries[0].lines), first);
@@ -534,20 +592,23 @@ mod tests {
             item("a", "agent", "hi"),
             prompt("p1", "done", &["Allow"]),
             prompt("p2", "pending", &["Allow", "Reject"]),
+            prompt("p3", "pending", &["Allow"]),
         ]));
-        assert_eq!(c.prompt_refs(), ["p1", "p2"]);
-        assert_eq!(c.pending_prompt(), Some("p2"));
+        assert_eq!(c.prompt_refs(), ["p1", "p2", "p3"]);
+        assert_eq!(c.pending_prompts(), ["p2", "p3"], "oldest first");
         assert_eq!(c.buttons_of("p2").len(), 2);
         c.apply_patch(ViewPatch {
             session: "s".into(),
             seq: 2,
             ops: vec![set(item("p2", "tool", "allowed"))],
         });
-        assert_eq!(
-            c.pending_prompt(),
-            None,
-            "the newest prompt with buttons is p1, which is done"
-        );
+        assert_eq!(c.pending_prompts(), ["p3"]);
+        c.apply_patch(ViewPatch {
+            session: "s".into(),
+            seq: 3,
+            ops: vec![set(item("p3", "tool", "allowed"))],
+        });
+        assert!(c.pending_prompts().is_empty());
         assert_eq!(c.prompt_refs(), ["p1"]);
     }
 

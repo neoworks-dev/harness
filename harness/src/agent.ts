@@ -21,6 +21,7 @@ import type {
   ToolCallUpdate,
   ToolKind,
   Usage,
+  UserNote,
 } from "@suite/protocol/types";
 
 /** What an agent may emit during a prompt (ACP session/update plus harness_message and usage). */
@@ -29,7 +30,7 @@ export type AgentUpdate =
 
 /** Connector events (and what guests did on their own) that get prepended to the next user message. */
 export type ContextEvent =
-  AppConnected | AppDisconnected | FocusChanged | GuestTurn | EditsReverted;
+  AppConnected | AppDisconnected | FocusChanged | GuestTurn | EditsReverted | UserNote;
 
 /** An MCP server for the agent (ACP's McpServerHttp shape). */
 export interface McpServer {
@@ -58,13 +59,35 @@ export interface PermissionAsk {
   toolCallId?: string;
   /** What to preview; for an edit, the diff that has not been written yet. */
   content?: ToolCallContent[];
+  /** The file a read is about (absolute): sensitive ones ask in every approvals mode. */
+  path?: string;
+  /**
+   * "before" (the default): asked before acting. "after": an edit was written and the user may
+   * take it back (review mode; only asked when the "before" answer had `review`); `content` has
+   * its diff, and a refusal reverts it.
+   */
+  phase?: "before" | "after";
+}
+
+/** The user's answer to a PermissionAsk. */
+export interface PermissionAnswer {
+  allowed: boolean;
+  /** What the user added for the agent ("use tabs instead"); the tool puts it in its result. */
+  note?: string;
+  /** "before" answers: go ahead, then ask again with phase "after" once the edit is written. */
+  review?: boolean;
+  /** "after" answers: whether the refused edit was put back (false: the file changed since). */
+  reverted?: boolean;
 }
 
 /**
- * Asks whether to go ahead; true means yes. The signal drops the question when the turn is
- * cancelled (the answer is then false).
+ * Asks whether to go ahead. The signal drops the question when the turn is cancelled (the
+ * answer is then not allowed).
  */
-export type RequestPermission = (request: PermissionAsk, signal?: AbortSignal) => Promise<boolean>;
+export type RequestPermission = (
+  request: PermissionAsk,
+  signal?: AbortSignal,
+) => Promise<PermissionAnswer>;
 
 export interface NewSessionParams {
   sessionId: string;
@@ -77,8 +100,8 @@ export interface NewSessionParams {
   /** What the user chose for this session; unset categories keep the harness's default. */
   settings?: Partial<Record<ConfigCategory, string>>;
   /**
-   * Asked before the agent's own bash, write and edit act (reads and the gateway tools never
-   * ask). Absent: they just run.
+   * Asked before the agent's own bash, write, edit and read act (the gateway tools never ask),
+   * and after an edit when the user reviews each one. Absent: they just run.
    */
   requestPermission?: RequestPermission;
 }
