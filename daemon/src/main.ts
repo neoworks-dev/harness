@@ -36,11 +36,15 @@ async function main(): Promise<void> {
   log.info(`listening on ${paths.socket} and ${daemon.info.url}, data in ${paths.dataDir}`);
   const commands: string[][] = [];
   if (process.env.SUITE_SERVICES !== "none") commands.push(...DEFAULT_SERVICES);
-  const services = startServices(commands, {
-    ...process.env,
-    SUITE_SOCKET: paths.socket,
-    SUITE_DAEMON_PID: String(process.pid),
-  }, log);
+  const services = startServices(
+    commands,
+    {
+      ...process.env,
+      SUITE_SOCKET: paths.socket,
+      SUITE_DAEMON_PID: String(process.pid),
+    },
+    log,
+  );
 
   let stopping = false;
   const stop = async (signal: string): Promise<void> => {
