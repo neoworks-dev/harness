@@ -3,22 +3,33 @@
   // worktree, newest first. Pressing a row shows that session. F6 gives the sidebar the keyboard:
   // arrows move, [ and ] jump between groups, Enter opens, Esc gives the keyboard back.
   import { untrack } from "svelte";
-  import { Button, List, Text, View } from "@neoworks/svelte-gpui/ui";
+  import { Button, Icon, List, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent } from "@neoworks/svelte-gpui/ui";
   import { clock } from "../../widgets/clock.svelte.ts";
   import { useCtx } from "../../kernel/slots/context.ts";
   import SessionRow from "./SessionRow.svelte";
-  import { groupSessions, jumpGroup, step, type Entry } from "./sessions.ts";
+  import newSession from "@phosphor-icons/core/regular/note-pencil.svg";
+  import { groupSessions, jumpGroup, lastSegment, placeOf, step, type Entry } from "./sessions.ts";
+  import { icons } from "./icons.svelte.ts";
   import { sessions } from "./state.svelte.ts";
 
   /** Rows a PgUp / PgDn moves. */
   const PAGE = 5;
-  const WIDTH = 270;
+  const WIDTH = 280;
 
   const { daemon } = useCtx();
 
   const p = $derived(daemon.palette);
   const grouped = $derived(groupSessions(daemon.sessions, sessions.places));
+  /** Each row names its project and branch, so the list draws the sessions without headers. */
+  const rows = $derived(
+    grouped.entries.filter((entry): entry is Extract<Entry, { kind: "session" }> => entry.kind === "session"),
+  );
+
+  $effect(() => {
+    const repos = rows.map((entry) => placeOf(entry.info.cwd, sessions.places).repo);
+    untrack(() => icons.ask(repos));
+  });
   let list: ReturnType<typeof List<Entry>> | undefined = $state();
   let keys: ReturnType<typeof View> | undefined = $state();
   /** The row the keys are on while the sidebar has the keyboard. */
@@ -39,17 +50,14 @@
   });
 
   function indexOfSession(id: string): number {
-    return grouped.entries.findIndex((entry) => entry.kind === "session" && entry.key === id);
+    return rows.findIndex((entry) => entry.key === id);
   }
 
-  /** Brings a session into view, with the headers above it when it starts its group. */
-  function reveal(id: string | undefined, up: boolean): void {
+  /** Brings a session into view. */
+  function reveal(id: string | undefined, _up: boolean): void {
     if (id === undefined) return;
-    let index = indexOfSession(id);
+    const index = indexOfSession(id);
     if (index < 0) return;
-    if (up) {
-      while (index > 0 && grouped.entries[index - 1]?.kind !== "session") index -= 1;
-    }
     list?.scrollToIndex(index, { align: "nearest" });
   }
 
@@ -126,7 +134,7 @@
     style={{
       width: WIDTH,
       shrink: 0,
-      background: p.surface,
+      background: p.sidebar,
       borderRightWidth: 1,
       borderColor: p.border,
     }}
@@ -136,56 +144,45 @@
         direction: "row",
         align: "center",
         gap: p.space.s,
-        paddingX: p.space.m,
-        paddingY: p.space.m,
+        paddingLeft: p.space.l,
+        paddingRight: p.space.m,
+        height: 48,
       }}
     >
       <Text
         style={{
           flex: 1,
           minWidth: 0,
-          color: sessions.focused ? p.accent : p.muted,
-          fontWeight: sessions.focused ? "bold" : "normal",
+          fontWeight: "semibold",
+          color: sessions.focused ? p.accent : p.fg,
         }}
       >
-        Sessions · {daemon.sessions.length}{#if sessions.finished.size > 0}<Text style={{ color: p.success }}>{" · "}{sessions.finished.size} done</Text>{/if}
+        Sessions{#if sessions.finished.size > 0}<Text style={{ color: p.success, fontWeight: "normal" }}>{"  "}{sessions.finished.size} done</Text>{/if}
       </Text>
       <Button
         onpress={() => void daemon.newSession()}
-        style={{ paddingX: p.space.m, paddingY: 2, radius: 4, color: p.accent }}
-        hover={{ background: p.band }}
+        style={{ padding: 6, radius: p.radius.s, color: p.muted }}
+        hover={{ background: p.hover, color: p.fg }}
       >
-        <Text>+ New</Text>
+        <Icon svg={newSession} size={18} />
       </Button>
     </View>
 
     <View bind:this={keys} focusable onkey={key} onblur={leave} style={{ flex: 1, minHeight: 0 }}>
       <List
         bind:this={list}
-        items={[...grouped.entries]}
+        items={[...rows]}
         key={(entry: Entry) => entry.key}
-        style={{ flex: 1, minHeight: 0 }}
+        style={{ flex: 1, minHeight: 0, paddingX: p.space.m }}
       >
         {#snippet row(entry: Entry)}
-          {#if entry.kind === "cluster"}
-            <Text
-              style={{
-                paddingX: p.space.m,
-                paddingTop: p.space.m,
-                paddingBottom: 2,
-                color: p.muted,
-                fontWeight: "bold",
-                truncate: true,
-              }}>{entry.name}</Text
-            >
-          {:else if entry.kind === "group"}
-            <Text
-              style={{ paddingLeft: p.space.l, paddingY: 2, color: p.muted, truncate: true }}
-              >⎇ {entry.name}</Text
-            >
-          {:else}
+          {#if entry.kind === "session"}
+            {@const place = placeOf(entry.info.cwd, sessions.places)}
             <SessionRow
               info={entry.info}
+              project={lastSegment(place.repo)}
+              icon={icons.byRepo[place.repo]}
+              branch={sessions.branches[entry.info.cwd] ?? place.worktree}
               child={entry.child}
               current={entry.key === daemon.sessionId}
               finished={sessions.finished.has(entry.key)}

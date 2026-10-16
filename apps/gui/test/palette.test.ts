@@ -6,8 +6,16 @@ test("the built-in theme is protocol/themes/default.json", () => {
   expect(DEFAULT_THEME).toEqual(theme);
 });
 
-test("the band mixes a little of the text colour into the background", () => {
+test("blend mixes one colour into another", () => {
   expect(blend("#000000", "#ffffff", 50)).toBe("#808080");
-  expect(blend("#16181d", "#e6e6e6", 14)).toBe(paletteOf().band);
   expect(blend("red", "#ffffff", 50)).toBe("red");
+});
+
+test("the window keeps its own greys and takes the accent from the theme", () => {
+  const custom = {
+    ...DEFAULT_THEME,
+    colors: { ...DEFAULT_THEME.colors, bg: "#ffffff", accent: "#ff0000" },
+  };
+  expect(paletteOf(custom).bg).toBe(paletteOf().bg);
+  expect(paletteOf(custom).accent).toBe("#ff0000");
 });

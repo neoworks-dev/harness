@@ -23,6 +23,8 @@ class Sessions {
    * files, which it does once per directory.
    */
   places = $state.raw<Readonly<Record<string, Place>>>({});
+  /** The branch checked out in each session's directory; null outside a repository. */
+  branches = $state.raw<Readonly<Record<string, string | null>>>({});
 
   private previous: readonly SessionInfo[] = [];
   private asked = new Set<string>();
@@ -54,6 +56,12 @@ class Sessions {
       (places) => (this.places = { ...this.places, ...places }),
       () => {},
     );
+    for (const cwd of fresh) {
+      host.branch(cwd).then(
+        (branch) => (this.branches = { ...this.branches, [cwd]: branch }),
+        () => {},
+      );
+    }
   }
 }
 

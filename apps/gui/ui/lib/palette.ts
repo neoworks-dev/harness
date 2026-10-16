@@ -14,6 +14,14 @@ export interface Palette {
   danger: string;
   /** The band behind the user's own messages and the input: bg with a little fg mixed in. */
   band: string;
+  /** The sessions column, a shade off the window's background. */
+  sidebar: string;
+  /** A row under the pointer. */
+  hover: string;
+  /** The shown row, and the user's message bubble. */
+  raised: string;
+  /** Corner radii in pixels: rows and buttons, then cards and the composer. */
+  radius: { s: number; m: number; l: number };
   /** Pixels. */
   space: { s: number; m: number; l: number };
   text: { title: number; body: number; code: number };
@@ -57,11 +65,28 @@ export function blend(base: string, over: string, percent: number): string {
   return `#${hex(mix(a[0], b[0]))}${hex(mix(a[1], b[1]))}${hex(mix(a[2], b[2]))}`;
 }
 
+/**
+ * The window's neutral greys, near-black and without the theme's tint. The theme still decides
+ * the accent and the success and danger colours.
+ */
+const NEUTRAL = {
+  fg: "#ededed",
+  bg: "#0e0e0f",
+  surface: "#161617",
+  border: "#262628",
+  muted: "#9a9a9f",
+  sidebar: "#0b0b0c",
+  hover: "#1a1a1c",
+  raised: "#222225",
+};
+
 export function paletteOf(theme: Theme = DEFAULT_THEME): Palette {
   const { colors, spacing, text } = theme;
   return {
     ...colors,
-    band: blend(colors.bg, colors.fg, 14),
+    ...NEUTRAL,
+    band: NEUTRAL.raised,
+    radius: { s: 6, m: 10, l: 16 },
     space: { s: spacing.s, m: spacing.m, l: spacing.l },
     text: { title: text.title.size, body: text.body.size, code: text.code.size },
   };
