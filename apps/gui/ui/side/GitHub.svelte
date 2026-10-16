@@ -72,6 +72,7 @@
     keys?.focus();
   }
 
+  // Scroll has no scrollBy or readable offset yet (neoworks-dev/svelte-gpui#40): track it here.
   function scrollBy(delta: number): void {
     scroller?.scrollTo(Math.min(scrollMax, Math.max(0, scrollY + delta)));
   }

@@ -54,6 +54,7 @@
   });
 
   // The input has the keyboard unless the sidebar, the agents list or the GitHub view took it.
+  // svelte-gpui can't hand focus back yet (neoworks-dev/svelte-gpui#41), hence the flags.
   $effect(() => {
     if (!showPanel && !ui.agentsFocused && !ui.githubOpen && !ui.sidebarFocused) input?.focus();
   });
