@@ -47,7 +47,7 @@
   </View>
 {/snippet}
 
-<View style={{ paddingTop: p.space.m }}>
+<View style={{ paddingTop: p.space.m, paddingBottom: p.space.s }}>
   {#if item.kind === "user"}
     <View style={{ direction: "row", background: p.band, paddingX: p.space.l, paddingY: p.space.m }}>
       <Text style={{ width: GUTTER, color: p.accent, fontWeight: "bold" }}>›</Text>
