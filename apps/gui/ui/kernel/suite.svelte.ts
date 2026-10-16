@@ -6,6 +6,7 @@ import type {
   AppPresence,
   SessionEventRecord,
   SessionInfo,
+  SessionSettingsPayload,
   Theme,
   ViewItem,
 } from "@suite/protocol/types";
@@ -174,6 +175,12 @@ class Suite {
   async send(text: string, images?: string[]): Promise<void> {
     if (this.sessionId === undefined) return;
     await this.guard(this.need().input(this.sessionId, text, { images }));
+  }
+
+  /** What each harness the session can switch to offers (models, reasoning levels). */
+  async settings(): Promise<SessionSettingsPayload | undefined> {
+    if (this.sessionId === undefined) return undefined;
+    return this.need().sessionSettings(this.sessionId);
   }
 
   /** Cancels the running turn. */

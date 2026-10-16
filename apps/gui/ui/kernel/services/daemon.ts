@@ -78,6 +78,10 @@ export class DaemonService extends Service {
   send(text: string, images?: string[]): Promise<void> {
     return suite.send(text, images);
   }
+  /** What each harness the session can switch to offers. Asking may start a guest's adapter. */
+  settings(): ReturnType<typeof suite.settings> {
+    return suite.settings();
+  }
   cancel(): Promise<void> {
     return suite.cancel();
   }

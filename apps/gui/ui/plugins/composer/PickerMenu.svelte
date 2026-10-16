@@ -1,7 +1,7 @@
 <script lang="ts">
   // A composer picker that opens a menu above itself: an optional heading, then the choices, each
   // with an icon, a description and a badge if it has them. The current one is highlighted.
-  import type { Snippet } from "svelte";
+  import { untrack, type Snippet } from "svelte";
   import { Button, Icon, Popover, Text, View } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Picker from "./Picker.svelte";
@@ -26,13 +26,21 @@
     /** The picker's own icon. */
     icon?: Snippet;
     width?: number;
+    /** Called each time the menu opens, e.g. to ask for its choices. */
+    onopen?: () => void;
+    /** Shown in place of the choices when there are none. */
+    empty?: string;
   }
 
-  let { label, choices, current, onselect, title, icon, width = 260 }: Props = $props();
+  let { label, choices, current, onselect, title, icon, width = 260, onopen, empty }: Props = $props();
 
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
   let open = $state(false);
+
+  $effect(() => {
+    if (open) untrack(() => onopen?.());
+  });
 </script>
 
 <Popover
@@ -57,6 +65,9 @@
   {#snippet children({ close })}
     {#if title}
       <Text style={{ paddingX: 10, paddingTop: 6, paddingBottom: 4, fontSize: 12, fontWeight: "medium", color: p.muted }}>{title}</Text>
+    {/if}
+    {#if choices.length === 0 && empty}
+      <Text style={{ paddingX: 10, paddingY: 8, color: p.muted }}>{empty}</Text>
     {/if}
     {#each choices as choice (choice.value)}
       <Button
