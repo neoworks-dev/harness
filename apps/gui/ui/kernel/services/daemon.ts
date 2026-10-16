@@ -2,6 +2,7 @@
 // `suite` store. Everything it reads is reactive; the store stays where components that are not
 // plugins yet read it. No `$state` of its own: the store has it (see the README).
 import { Service, type Context } from "@neoworks/extension-system";
+import type { ViewItem } from "@suite/protocol/types";
 import { suite } from "../../state/suite.svelte.ts";
 
 declare module "@neoworks/extension-system" {
@@ -91,6 +92,15 @@ export class DaemonService extends Service {
   /** The URL an `asset://` handle loads from, for an `Image`. It holds the daemon's token. */
   assetSrc(src: string): string | undefined {
     return suite.assetSrc(src);
+  }
+
+  /**
+   * Follows one agent's view (a subagent or a guest) in the shown session. Stops with the returned
+   * call, or when the plugin unloads.
+   */
+  followAgent(agent: string, onItems: (items: readonly ViewItem[]) => void): () => void {
+    const stop = this.ctx.effect(() => suite.followAgent(agent, onItems), "daemon.followAgent");
+    return () => void stop();
   }
 
   /** Every event of the shown session from now on; stops when the plugin unloads. */

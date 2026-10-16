@@ -1,7 +1,7 @@
-// What the shown session's events say beyond the chat: the plan, the agents working for it and
-// the files they touched. Folded as the events arrive (the daemon replays a session's history
-// when it is opened), and forgotten when another session is shown.
-import { applyAgentEvent, type AgentRow } from "../lib/agents.ts";
+// What the shown session's events say beyond the chat: the plan and the files the agents touched.
+// Folded as the events arrive (the daemon replays a session's history when it is opened), and
+// forgotten when another session is shown.
+import type { SessionEventRecord } from "@suite/protocol/types";
 import { NO_TOUCHES, applyTouch, type Touches } from "../lib/files.ts";
 import { applyPlan, type PlanList } from "../lib/plan.ts";
 import { suite } from "../state/suite.svelte.ts";
@@ -14,7 +14,6 @@ class Activity {
   private session = $state<string>();
   private lastSeq = 0;
   private _plans = $state.raw<readonly PlanList[]>([]);
-  private _agents = $state.raw<readonly AgentRow[]>([]);
   private _touches = $state.raw<Touches>(NO_TOUCHES);
   /** Bumped when a turn ends or a file is edited: git is worth asking again. */
   private _changes = $state(0);
@@ -33,11 +32,6 @@ class Activity {
     return this._plans;
   }
 
-  get agents(): readonly AgentRow[] {
-    if (!this.current) return NONE;
-    return this._agents;
-  }
-
   get touches(): Touches {
     if (!this.current) return NO_TOUCHES;
     return this._touches;
@@ -47,18 +41,16 @@ class Activity {
     return this._changes;
   }
 
-  private fold(record: Parameters<typeof applyAgentEvent>[1]): void {
+  private fold(record: SessionEventRecord): void {
     // A new session, or the same one replayed from the start: begin again.
     if (record.session !== this.session || record.seq <= this.lastSeq) {
       this.session = record.session;
       this._plans = [];
-      this._agents = [];
       this._touches = NO_TOUCHES;
     }
     this.lastSeq = record.seq;
     const { event } = record;
     if (event.type === "plan") this._plans = applyPlan(this._plans, event);
-    this._agents = applyAgentEvent(this._agents, record);
     const touches = applyTouch(this._touches, record, suite.cwd);
     if (touches.touched !== this._touches.touched || event.type === "turn_ended")
       this._changes += 1;

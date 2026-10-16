@@ -17,15 +17,15 @@
     moveAgent,
     shownAgents,
     type AgentRow,
-  } from "../lib/agents.ts";
-  import { suite } from "../state/suite.svelte.ts";
-  import { ui } from "../state/ui.svelte.ts";
-  import { activity } from "./activity.svelte.ts";
-  import { agentView } from "./agentview.svelte.ts";
-  import { clock } from "../widgets/clock.svelte.ts";
+  } from "./agents.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
+  import { clock } from "../../widgets/clock.svelte.ts";
+  import { agents } from "./state.svelte.ts";
 
-  const p = $derived(suite.palette);
-  const shown = $derived(shownAgents(activity.agents, clock.now));
+  const { daemon, agentview } = useCtx();
+
+  const p = $derived(daemon.palette);
+  const shown = $derived(shownAgents(agents.rows, clock.now));
   const visible = $derived(shown.slice(0, MAX_ROWS));
   const hidden = $derived(shown.length - visible.length);
   let keys: ReturnType<typeof View> | undefined = $state();
@@ -35,37 +35,35 @@
 
   // The elapsed times tick while there is a list, and the lingering rows leave on time.
   $effect(() => {
-    if (activity.agents.length === 0) return;
+    if (agents.rows.length === 0) return;
     return clock.join();
   });
 
   // Ctrl-X: the keys start on the latest running agent. With nothing to select it is given back.
-  // (The agent's own chat keeps the mode on, and has the keyboard itself.)
   $effect(() => {
-    if (!ui.agentsFocused || agentView.isOpen) return;
+    if (!agents.focused) return;
     untrack(() => {
       selected = firstSelection(shown);
-      if (selected === undefined) ui.agentsFocused = false;
+      if (selected === undefined) agents.focused = false;
       else keys?.focus();
     });
   });
 
   function leave(): void {
-    ui.agentsFocused = false;
-  }
-
-  // The keyboard moving on to the agent's own chat is not the list being left.
-  function blurred(): void {
-    if (!agentView.isOpen) leave();
+    agents.focused = false;
   }
 
   function open(row: AgentRow): void {
+    leave();
     // An agent that works as a session of its own in another directory is that session.
     if (row.child !== undefined) {
-      leave();
-      void suite.open(row.child);
+      void daemon.open(row.child);
     } else {
-      agentView.open(row);
+      agentview.open({
+        harness: row.harness,
+        model: row.model === undefined ? undefined : modelLabel(row.model),
+        task: row.task,
+      });
     }
   }
 
@@ -73,7 +71,7 @@
     if (row.state !== "running") return;
     stopping = new Set([...stopping, row.id]);
     // The same action the terminal app sends: the daemon ends the delegation.
-    void suite.action("agents", "suite.cancel_agent", { id: row.id });
+    void daemon.action("agents", "suite.cancel_agent", { id: row.id });
   }
 
   function key(event: KeyEvent): void {
@@ -135,7 +133,7 @@
 
   function doing(row: AgentRow): string {
     if (row.state === "running" && stopping.has(row.id)) return "stopping…";
-    return activityOf(row, suite.sessions);
+    return activityOf(row, daemon.sessions);
   }
 </script>
 
@@ -144,7 +142,7 @@
     bind:this={keys}
     focusable
     onkey={key}
-    onblur={blurred}
+    onblur={leave}
     style={{
       paddingX: p.space.l,
       paddingY: p.space.s,
@@ -154,9 +152,9 @@
     }}
   >
     <View style={{ direction: "row", gap: p.space.s }}>
-      <Text style={{ color: suite.status.running ? p.accent : p.muted }}>●</Text>
+      <Text style={{ color: daemon.status.running ? p.accent : p.muted }}>●</Text>
       <Text>main</Text>
-      <Text style={{ color: p.muted }}>· {suite.status.harness}</Text>
+      <Text style={{ color: p.muted }}>· {daemon.status.harness}</Text>
     </View>
     {#each visible as row (row.id)}
       {@const mark = glyph(row)}
@@ -167,7 +165,7 @@
           direction: "row",
           gap: p.space.m,
           paddingY: 1,
-          background: ui.agentsFocused && !agentView.isOpen && selected === row.id ? p.surface : "transparent",
+          background: agents.focused && selected === row.id ? p.surface : "transparent",
           cursor: "pointer",
         }}
       >
@@ -196,7 +194,7 @@
     {#if hidden > 0}
       <Text style={{ color: p.muted }}>  … +{hidden} more</Text>
     {/if}
-    {#if ui.agentsFocused && !agentView.isOpen}
+    {#if agents.focused}
       <Text style={{ color: p.muted }}>↑/↓ select · enter open · x stop · esc back</Text>
     {/if}
   </View>

@@ -11,7 +11,7 @@ import {
   moveAgent,
   shownAgents,
   type AgentRow,
-} from "../ui/lib/agents.ts";
+} from "../ui/plugins/agents/agents.ts";
 
 let seq = 0;
 function fold(rows: readonly AgentRow[], ts: number, event: SessionEvent): readonly AgentRow[] {

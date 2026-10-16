@@ -11,10 +11,9 @@ export const shortcuts = {
   name: "legacy/shortcuts",
   inject: ["keymap", "keyboard", "commands"],
   apply({ keymap, keyboard, commands }: Context) {
-    // The agents list and the GitHub view have the keyboard while they are open.
-    keyboard.claim(() => ui.agentsFocused || ui.githubOpen);
+    // The GitHub view has the keyboard while it is open.
+    keyboard.claim(() => ui.githubOpen);
 
-    keymap.bind("ctrl-x", () => void (ui.agentsFocused = !ui.agentsFocused));
     keymap.bind("ctrl-r", () => void (ui.githubOpen = !ui.githubOpen));
 
     commands.register({

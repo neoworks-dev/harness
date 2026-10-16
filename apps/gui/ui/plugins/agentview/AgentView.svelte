@@ -5,14 +5,13 @@
   import { Button, List, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent } from "@neoworks/svelte-gpui/ui";
   import type { ViewItem } from "@suite/protocol/types";
-  import { useCtx } from "../kernel/slots/context.ts";
-  import Slot from "../kernel/slots/Slot.svelte";
-  import { suite } from "../state/suite.svelte.ts";
-  import { agentView } from "./agentview.svelte.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
+  import Slot from "../../kernel/slots/Slot.svelte";
+  import { agentView } from "./state.svelte.ts";
 
-  const { transcript } = useCtx();
+  const { daemon, transcript } = useCtx();
 
-  const p = $derived(suite.palette);
+  const p = $derived(daemon.palette);
   const title = $derived(agentView.title);
   const items = $derived(transcript.visible(agentView.items));
   let keys: ReturnType<typeof View> | undefined = $state();
