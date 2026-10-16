@@ -310,7 +310,13 @@ var errTermMissing = errors.New("suite-term isn't built: run make build, or use 
 // resolveTerm finds the terminal app: SUITE_TERM, else suite-term next to the
 // running executable, else on PATH.
 func resolveTerm(getenv func(string) string, exe string, lookPath func(string) (string, error)) (string, error) {
-	if t := getenv("SUITE_TERM"); t != "" {
+	return resolveApp("SUITE_TERM", "suite-term", errTermMissing, getenv, exe, lookPath)
+}
+
+// resolveApp finds an app binary: the path or command name in the environment variable envVar,
+// else name next to the running executable (or its symlink target), else name on PATH.
+func resolveApp(envVar, name string, missing error, getenv func(string) string, exe string, lookPath func(string) (string, error)) (string, error) {
+	if t := getenv(envVar); t != "" {
 		if strings.ContainsRune(t, '/') {
 			if isExecutable(t) {
 				return t, nil
@@ -318,7 +324,7 @@ func resolveTerm(getenv func(string) string, exe string, lookPath func(string) (
 		} else if p, err := lookPath(t); err == nil {
 			return p, nil
 		}
-		return "", fmt.Errorf("SUITE_TERM=%s: not found or not executable", t)
+		return "", fmt.Errorf("%s=%s: not found or not executable", envVar, t)
 	}
 	if exe != "" {
 		dirs := []string{filepath.Dir(exe)}
@@ -326,15 +332,15 @@ func resolveTerm(getenv func(string) string, exe string, lookPath func(string) (
 			dirs = append(dirs, filepath.Dir(real))
 		}
 		for _, d := range dirs {
-			if p := filepath.Join(d, "suite-term"); isExecutable(p) {
+			if p := filepath.Join(d, name); isExecutable(p) {
 				return p, nil
 			}
 		}
 	}
-	if p, err := lookPath("suite-term"); err == nil {
+	if p, err := lookPath(name); err == nil {
 		return p, nil
 	}
-	return "", errTermMissing
+	return "", missing
 }
 
 func isExecutable(path string) bool {

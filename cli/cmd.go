@@ -36,6 +36,7 @@ type cliEnv struct {
 	Environ     func() []string                             // default os.Environ
 	LookPath    func(string) (string, error)                // default exec.LookPath
 	Exec        func(path string, argv, env []string) error // default syscall.Exec
+	Spawn       func(path string, argv, env []string) error // default: start detached (suite gui)
 	UpTimeout   time.Duration                               // default 15s
 	DownTimeout time.Duration                               // default 10s
 }
@@ -46,6 +47,9 @@ With no command on a terminal, suite starts the daemon if needed and opens the
 terminal app (suite-term).
 
 commands:
+  gui [--session ID | --new]    open the desktop app (suite-gui) on the agent's
+                                session, a given one, or a new one in this
+                                directory; the terminal stays free
   up                            make sure the daemon is running; start it in the
                                 background if not (log: daemon.log in the data dir)
   down                          stop the daemon
@@ -79,6 +83,8 @@ func run(ctx context.Context, args []string, e cliEnv) int {
 	}
 	cmd, args := args[0], args[1:]
 	switch cmd {
+	case "gui":
+		return runGui(ctx, args, e)
 	case "up":
 		return runUp(ctx, args, e)
 	case "down":

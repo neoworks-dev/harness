@@ -11,6 +11,8 @@ One agent session shared across every app in the suite. The design is in [docs/d
 | `sdk-ts/`, `sdk-go/` | Bus clients (sessions, presence; TS tool server: `sdk-ts-tools/`) | 2     |
 | `sdk-rs/`            | Rust bus client for GPUI apps                                     | 3     |
 | `apps/term/`         | `suite-term`: full-screen terminal app (chat, plan, files, usage) | 6     |
+| `apps/gui/`          | `suite-gui`: desktop app (Svelte on svelte-gpui, native window)   | 6     |
+| `crates/github/`     | Read-only GitHub (gh allowlist) for the term and gui apps         | 6     |
 | `apps/pad/`          | GPUI code editor stand-in (files, diagnostics, tools, chat)       | 3, 5  |
 | `apps/browser/`      | Stand-in web browser: navigate/read/images/download tools + page  | 5     |
 | `apps/photo/`        | Stand-in photo editor (Go, terminal): image tools, preview, chat  | 5     |
@@ -25,8 +27,9 @@ Bun ≥ 1.3, Go ≥ 1.27, Rust ≥ 1.85 (edition 2024; Pad needs GPUI's Linux bu
 ## Running it
 
 ```sh
-make build                 # bin/suite, bin/photo, bin/suite-term
+make build                 # bin/suite, bin/photo, bin/suite-term, bin/suite-gui
 bin/suite                  # in a terminal: starts the daemon if needed, then opens the terminal app (suite-term)
+bin/suite gui              # the desktop app (apps/gui) in its own window, terminal stays free: [--session ID | --new]
 bin/suite up               # make sure the daemon runs; starts it in the background (log: <data dir>/daemon.log)
 bin/suite down             # stop the daemon (SIGTERM; waits for the socket to close)
 bun run daemon             # alternatively: the daemon in the foreground (Ctrl-C stops it)
@@ -52,6 +55,7 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/
 | `SUITE_DAEMON_CMD`                    | `bun run <repo>/daemon/src/main.ts` (what `suite up` runs)  |
 | `SUITE_ROOT`                          | repo found above the `suite` binary (for `suite up`)        |
 | `SUITE_TERM`                          | `suite-term` next to `suite`, else on `PATH`                |
+| `SUITE_GUI`                           | `suite-gui` next to `suite`, else on `PATH`                 |
 | `SUITE_MODEL`                         | `deepseek/deepseek-flash` (`provider/model-id`)             |
 | `SUITE_IMAGES`                        | `1`/`0`: the model takes images (default: pi's registry)    |
 | `SUITE_THINKING`                      | `off` (`minimal`…`xhigh`)                                   |
@@ -114,5 +118,5 @@ Every pane draws the same thing: the daemon turns session events into view items
 ```sh
 make check      # install, codegen check, format check, lint, typecheck, test, build — everything
 make codegen    # regenerate protocol types after editing protocol/schemas
-make build      # builds bin/suite, bin/photo and bin/suite-term
+make build      # builds bin/suite, bin/photo, bin/suite-term and bin/suite-gui
 ```
