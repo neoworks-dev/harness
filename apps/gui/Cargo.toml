@@ -10,7 +10,12 @@ name = "suite-gui"
 path = "src/main.rs"
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+suite-github = { path = "../../crates/github" }
 suite-sdk = { path = "../../sdk-rs" }
 # svelte-gpui is checked out next to this repo.
 svelte_gpui_host = { path = "../../../svelte-gpui/host" }
+
+[dev-dependencies]
+suite-github = { path = "../../crates/github", features = ["fixtures"] }

@@ -5,7 +5,7 @@
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use super::model::Kind;
+use crate::model::Kind;
 
 /// Why a `gh` run failed, as far as the user can do something about it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,7 +93,7 @@ pub fn classify(stderr: &str) -> GhError {
             .map(str::trim)
             .find(|l| !l.is_empty())
             .unwrap_or("gh failed");
-        GhError::Other(super::model::sane_line(line))
+        GhError::Other(crate::model::sane_line(line))
     }
 }
 

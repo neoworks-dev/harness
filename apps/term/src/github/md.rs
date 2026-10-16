@@ -8,6 +8,7 @@ use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthChar;
 
 use crate::style::Styles;
+use suite_github::strip_comments;
 
 /// A styled character, the unit wrapping works on.
 type Cell = (char, Style);
@@ -131,21 +132,6 @@ fn list_marker(s: &str) -> Option<(String, &str)> {
         return Some(("☑ ".into(), r));
     }
     Some((marker, rest))
-}
-
-/// Removes `<!-- … -->` (an unclosed one swallows the rest, as markdown does).
-pub fn strip_comments(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut rest = s;
-    while let Some(i) = rest.find("<!--") {
-        out.push_str(&rest[..i]);
-        match rest[i..].find("-->") {
-            Some(j) => rest = &rest[i + j + 3..],
-            None => return out,
-        }
-    }
-    out.push_str(rest);
-    out
 }
 
 const TAGS: &[&str] = &[

@@ -6035,10 +6035,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
+name = "suite-github"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "suite-gui"
 version = "0.3.0"
 dependencies = [
+ "serde",
  "serde_json",
+ "suite-github",
  "suite-sdk",
  "svelte_gpui_host",
 ]
@@ -6102,6 +6112,7 @@ dependencies = [
  "ratatui",
  "ratatui-image",
  "serde_json",
+ "suite-github",
  "suite-protocol",
  "suite-renderer-ratatui",
  "suite-sdk",

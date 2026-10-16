@@ -2,10 +2,12 @@
 //! field is an empty value, never an error. Only JSON that isn't the expected shape at all is
 //! one. Everything that ends up on screen or in the prompt is cleaned of control characters.
 
+use serde::Serialize;
 use serde_json::Value;
 
 /// The two kinds of thing the view lists (and its two tabs).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Kind {
     Issue,
     Pr,
@@ -28,7 +30,8 @@ impl Kind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum State {
     Open,
     Closed,
@@ -48,7 +51,8 @@ impl State {
 }
 
 /// A row of the list.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Summary {
     pub number: u64,
     pub title: String,
@@ -59,14 +63,16 @@ pub struct Summary {
     pub updated_ms: i64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Comment {
     pub author: String,
     pub at_ms: i64,
     pub body: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Review {
     pub author: String,
     pub at_ms: i64,
@@ -76,7 +82,8 @@ pub struct Review {
 }
 
 /// A comment on a line of the diff.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReviewComment {
     pub author: String,
     pub at_ms: i64,
@@ -86,7 +93,8 @@ pub struct ReviewComment {
     pub reply: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum CheckState {
     Pass,
     Fail,
@@ -94,13 +102,15 @@ pub enum CheckState {
     Skipped,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Check {
     pub name: String,
     pub state: CheckState,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FileChange {
     pub path: String,
     pub additions: u64,
@@ -108,7 +118,8 @@ pub struct FileChange {
 }
 
 /// One issue or pull request with everything the detail shows.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Detail {
     pub kind: Kind,
     pub number: u64,

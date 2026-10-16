@@ -3,7 +3,7 @@
 
 GO_MODULES := cli sdk-go renderers/tui protocol/go apps/photo
 # Named, so rustfmt leaves path dependencies outside this repo (svelte-gpui's host) alone.
-RUST_FMT := cargo fmt -p suite-protocol -p suite-sdk -p suite-renderer-gpui -p suite-renderer-ratatui -p suite-pad -p suite-term -p suite-gui
+RUST_FMT := cargo fmt -p suite-protocol -p suite-sdk -p suite-renderer-gpui -p suite-renderer-ratatui -p suite-pad -p suite-term -p suite-gui -p suite-github
 
 .PHONY: check install build test test-ts test-go test-rust lint lint-ts lint-go lint-rust typecheck format format-check codegen codegen-check
 

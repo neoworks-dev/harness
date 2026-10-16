@@ -1,8 +1,8 @@
 //! The text block that goes to the model: one issue or pull request with its conversation,
 //! compact and bounded. The newest comments are kept and the oldest dropped, with a note.
 
-use super::md::strip_comments;
-use super::model::{CheckState, Detail, Kind, date};
+use crate::model::{CheckState, Detail, Kind, date};
+use crate::strip_comments;
 
 /// The whole block stays under about this many characters.
 pub const MAX_CHARS: usize = 12_000;

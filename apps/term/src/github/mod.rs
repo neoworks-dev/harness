@@ -15,11 +15,11 @@
 //!   short instruction. Both are [`Outgoing`] values for the shell to carry out.
 
 mod doc;
-mod format;
-pub mod gh;
 mod md;
-pub mod model;
 mod view;
+
+// The read-only `gh` boundary and its data are shared with the desktop app.
+pub use suite_github::{format, gh, model};
 
 #[cfg(test)]
 mod tests;
@@ -38,6 +38,7 @@ use suite_renderer_ratatui::Palette;
 use crate::widgets::DiffView;
 use gh::{Gh, GhCli, GhError};
 use model::{Detail, Kind, Summary};
+use suite_github::fetch;
 
 /// Rows one wheel notch moves.
 const WHEEL_ROWS: usize = 3;
@@ -245,12 +246,7 @@ impl Github {
         match &self.repo {
             Repo::Unknown => {
                 self.repo = Repo::Loading;
-                self.spawn(|gh, cwd| {
-                    Msg::Repo(
-                        gh.run(cwd, &gh::repo_args())
-                            .and_then(|out| model::parse_repo(&out).map_err(GhError::Other)),
-                    )
-                });
+                self.spawn(|gh, cwd| Msg::Repo(fetch::repo(gh, cwd)));
             }
             Repo::Ready(_) => {
                 let key = self.current();
@@ -273,10 +269,7 @@ impl Github {
         data.loading = true;
         data.error = None;
         self.spawn(move |gh, cwd| {
-            let args = gh::list_args(key.kind, &repo, key.all, &key.query);
-            let result = gh
-                .run(cwd, &args)
-                .and_then(|out| model::parse_list(key.kind, &out).map_err(GhError::Other));
+            let result = fetch::list(gh, cwd, key.kind, &repo, key.all, &key.query);
             Msg::List(key, result)
         });
     }
@@ -292,19 +285,7 @@ impl Github {
         data.loading = true;
         data.error = None;
         self.spawn(move |gh, cwd| {
-            let result = gh
-                .run(cwd, &gh::view_args(kind, &repo, number))
-                .and_then(|out| model::parse_detail(kind, &out).map_err(GhError::Other))
-                .map(|detail| {
-                    let mut detail = Box::new(detail);
-                    if kind == Kind::Pr {
-                        // Best effort: the pull request is useful without them.
-                        if let Ok(out) = gh.run(cwd, &gh::review_comments_args(&repo, number)) {
-                            detail.review_comments = model::parse_review_comments(&out);
-                        }
-                    }
-                    detail
-                });
+            let result = fetch::detail(gh, cwd, kind, &repo, number).map(Box::new);
             Msg::Detail(kind, number, result)
         });
     }
@@ -313,7 +294,7 @@ impl Github {
         let Some(repo) = self.repo_name().map(str::to_string) else {
             return;
         };
-        self.spawn(move |gh, cwd| Msg::Diff(number, gh.run(cwd, &gh::diff_args(&repo, number))));
+        self.spawn(move |gh, cwd| Msg::Diff(number, fetch::diff(gh, cwd, &repo, number)));
     }
 
     /// Picks up finished jobs. Called on every loop iteration.

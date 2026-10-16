@@ -8,6 +8,8 @@
 //! ```
 
 mod commands;
+mod git;
+mod github;
 
 use svelte_gpui::Options;
 

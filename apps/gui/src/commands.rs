@@ -6,13 +6,16 @@ use std::process::Command;
 use serde_json::{Value, json};
 use svelte_gpui::{CommandError, Commands};
 
+use crate::{git, github};
+
 pub fn all() -> Commands {
-    Commands::new()
+    let commands = Commands::new()
         .command("startup", |_| Ok::<_, CommandError>(startup()))
         .command("daemon_address", |_| daemon_address(&daemon_info_path()))
         .command("git_branch", |args| {
             Ok::<_, CommandError>(json!(git_branch(args["cwd"].as_str().unwrap_or(""))))
-        })
+        });
+    github::register(git::register(commands))
 }
 
 /// Where the window was started and which session it should open: `suite gui` passes
