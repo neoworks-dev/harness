@@ -5,7 +5,8 @@ keys (any key closes this)
   ctrl-a / ctrl-e           start / end of line
   alt-b / alt-f             word left / right
   ctrl-w / ctrl-u / ctrl-k  delete word / to line start / to line end
-  pgup / pgdn               scroll the chat
+  pgup / pgdn               scroll the chat (also the mouse wheel)
+  shift-up / shift-down     scroll the chat a line
   ctrl-u / ctrl-d           half page up / down (empty input; ctrl-d quits at the end)
   home / end                top / bottom of the chat (empty input; ctrl-home/end always)
   ctrl-o                    full tool results
@@ -35,7 +36,6 @@ commands
   /thoughts                     show or hide the agent's thoughts (ctrl-t)
   /help                         keys and commands
   /quit                         leave; the session keeps running
-
 
 
 

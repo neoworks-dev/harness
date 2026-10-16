@@ -6,7 +6,9 @@
 use std::path::PathBuf;
 
 use ratatui::Frame;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{
+    KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
+};
 use ratatui::layout::{Position, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -35,6 +37,8 @@ const NOTICE_MS: i64 = 4000;
 const POLL_MS: i64 = 2000;
 /// Rows of the slash menu.
 const MENU_ROWS: usize = 8;
+/// Chat lines one wheel notch scrolls.
+const WHEEL_LINES: usize = 3;
 /// Most rows the editor grows to.
 const EDITOR_ROWS: usize = 8;
 const SPINNER: [char; 4] = ['◐', '◓', '◑', '◒'];
@@ -667,6 +671,27 @@ impl App {
         fx
     }
 
+    /// The mouse wheel scrolls the chat (or the open diff). Other mouse events are ignored.
+    pub fn handle_mouse(&mut self, mouse: MouseEvent) {
+        let down = match mouse.kind {
+            MouseEventKind::ScrollUp => false,
+            MouseEventKind::ScrollDown => true,
+            _ => return,
+        };
+        self.dirty = true;
+        if self.widgets.overlay_open() {
+            let code = if down { KeyCode::Down } else { KeyCode::Up };
+            for _ in 0..WHEEL_LINES {
+                self.widgets
+                    .handle_key(Panel::Files, KeyEvent::new(code, KeyModifiers::NONE));
+            }
+        } else if down {
+            self.chat.scroll_down(WHEEL_LINES);
+        } else {
+            self.chat.scroll_up(WHEEL_LINES);
+        }
+    }
+
     pub fn handle_paste(&mut self, text: &str) {
         self.dirty = true;
         match self.overlay {
@@ -926,6 +951,14 @@ impl App {
             KeyCode::Right if ctrl || alt => self.editor.word_right(),
             KeyCode::Left => self.editor.left(),
             KeyCode::Right => self.editor.right(),
+            KeyCode::Up if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                self.chat.scroll_up(1);
+                edited = false;
+            }
+            KeyCode::Down if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                self.chat.scroll_down(1);
+                edited = false;
+            }
             KeyCode::Up => {
                 edited = false;
                 if self.menu_visible() {
@@ -1359,7 +1392,14 @@ impl App {
             return;
         }
         self.menu_sel = self.menu_sel.min(matches.len() - 1);
-        let rows = matches.len().min(MENU_ROWS).min(usize::from(chat.height));
+        // A rule above the entries sets them off from the chat.
+        let rows = matches
+            .len()
+            .min(MENU_ROWS)
+            .min(usize::from(chat.height).saturating_sub(1));
+        if rows == 0 {
+            return;
+        }
         let start = (self.menu_sel + 1).saturating_sub(rows);
         let name_w = matches
             .iter()
@@ -1397,9 +1437,11 @@ impl App {
                 )
             })
             .collect();
+        let rule = Line::from(Span::styled("─".repeat(w), self.styles.border));
+        let lines: Vec<Line<'static>> = std::iter::once(rule).chain(lines).collect();
         let rect = Rect {
-            y: chat.y + chat.height - rows as u16,
-            height: rows as u16,
+            y: chat.y + chat.height - rows as u16 - 1,
+            height: rows as u16 + 1,
             ..chat
         };
         frame.render_widget(Clear, rect);
@@ -1509,7 +1551,8 @@ impl App {
                 "ctrl-w / ctrl-u / ctrl-k",
                 "delete word / to line start / to line end",
             ),
-            key("pgup / pgdn", "scroll the chat"),
+            key("pgup / pgdn", "scroll the chat (also the mouse wheel)"),
+            key("shift-up / shift-down", "scroll the chat a line"),
             key(
                 "ctrl-u / ctrl-d",
                 "half page up / down (empty input; ctrl-d quits at the end)",

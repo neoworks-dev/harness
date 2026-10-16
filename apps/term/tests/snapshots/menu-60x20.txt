@@ -9,7 +9,7 @@ Done. The header now uses `position: sticky`.
 
 
 
-
+────────────────────────────────────────────────────────────
 › /clear           start a new conversation in this directo…
   /claude <task>   give a task to Claude Code
   /codex <task>    give a task to Codex

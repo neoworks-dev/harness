@@ -43,6 +43,7 @@ Without flags it shows the agent's current session if that works in this directo
 | Ctrl-A / Ctrl-E, Alt-B / Alt-F, Left / Right | line start / end, words, characters                                                                 |
 | Ctrl-W, Ctrl-U, Ctrl-K, Alt-D                | delete word back, to line start, to line end, word forward                                          |
 | PgUp / PgDn                                  | scroll the chat a page                                                                              |
+| Mouse wheel, Shift-Up / Shift-Down           | scroll the chat 3 lines / 1 line (the mouse is captured: select text with Shift-drag)               |
 | Home / End                                   | top / bottom of the chat when the editor is empty (Ctrl-Home / Ctrl-End always)                     |
 | Ctrl-U / Ctrl-D                              | half page up / down when the editor is empty (Ctrl-D quits when the chat is at the tail)            |
 | Ctrl-O                                       | expand / collapse tool results (`/expand`)                                                          |

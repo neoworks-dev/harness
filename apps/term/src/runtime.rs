@@ -5,7 +5,10 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use ratatui::DefaultTerminal;
-use ratatui::crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event};
+use ratatui::crossterm::event::{
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event,
+};
 use ratatui::crossterm::execute;
 
 use crate::driver::{self, Driver, StartError, StartOptions, USAGE};
@@ -74,21 +77,22 @@ struct Screen {
 impl Screen {
     fn enter() -> io::Result<Screen> {
         // `init` switches to the alternate screen, enables raw mode and installs a panic hook
-        // that restores them; the hook is extended to end bracketed paste too.
+        // that restores them; the hook is extended to end bracketed paste and mouse capture
+        // too. The mouse is captured for the wheel; selecting text then takes shift-drag.
         let terminal = ratatui::init();
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
-            let _ = execute!(io::stdout(), DisableBracketedPaste);
+            let _ = execute!(io::stdout(), DisableBracketedPaste, DisableMouseCapture);
             previous(info);
         }));
-        execute!(io::stdout(), EnableBracketedPaste)?;
+        execute!(io::stdout(), EnableBracketedPaste, EnableMouseCapture)?;
         Ok(Screen { terminal })
     }
 }
 
 impl Drop for Screen {
     fn drop(&mut self) {
-        let _ = execute!(io::stdout(), DisableBracketedPaste);
+        let _ = execute!(io::stdout(), DisableBracketedPaste, DisableMouseCapture);
         ratatui::restore();
     }
 }
@@ -103,6 +107,10 @@ fn run(mut app: crate::app::App, driver: Driver) -> io::Result<()> {
             loop {
                 let fx = match event::read()? {
                     Event::Key(key) => app.handle_key(key),
+                    Event::Mouse(mouse) => {
+                        app.handle_mouse(mouse);
+                        Vec::new()
+                    }
                     Event::Paste(text) => {
                         app.handle_paste(&text);
                         Vec::new()

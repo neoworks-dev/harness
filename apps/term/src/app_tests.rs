@@ -512,6 +512,38 @@ fn page_keys_scroll_the_chat_and_new_output_leaves_the_view_alone() {
 }
 
 #[test]
+fn the_wheel_and_shift_arrows_scroll_the_chat() {
+    use ratatui::crossterm::event::{MouseEvent, MouseEventKind};
+    let wheel = |kind| MouseEvent {
+        kind,
+        column: 10,
+        row: 5,
+        modifiers: KeyModifiers::NONE,
+    };
+    let mut app = app();
+    long_chat(&mut app, 40);
+    let bottom = app.chat().top();
+    app.handle_mouse(wheel(MouseEventKind::ScrollUp));
+    assert!(!app.chat().following());
+    assert_eq!(app.chat().top(), bottom - 3);
+    app.handle_key(with(KeyCode::Up, KeyModifiers::SHIFT));
+    assert_eq!(app.chat().top(), bottom - 4);
+    app.handle_key(with(KeyCode::Down, KeyModifiers::SHIFT));
+    app.handle_mouse(wheel(MouseEventKind::Moved));
+    assert_eq!(
+        app.chat().top(),
+        bottom - 3,
+        "other mouse events do nothing"
+    );
+    app.handle_mouse(wheel(MouseEventKind::ScrollDown));
+    assert!(app.chat().following());
+    // Shift-arrows don't walk the input history.
+    type_str(&mut app, "draft");
+    app.handle_key(with(KeyCode::Up, KeyModifiers::SHIFT));
+    assert_eq!(app.editor_text(), "draft");
+}
+
+#[test]
 fn home_end_belong_to_the_editor_when_it_has_text() {
     let mut app = app();
     long_chat(&mut app, 40);
