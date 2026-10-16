@@ -3,7 +3,7 @@
 // handler returns.
 import { Service, type Context } from "@neoworks/extension-system";
 import { keymap } from "../keymap-instance.ts";
-import type { KeyHandler } from "../keymap.ts";
+import type { BindOptions, KeyHandler } from "../keymap.ts";
 
 declare module "@neoworks/extension-system" {
   interface Context {
@@ -16,9 +16,12 @@ export class KeymapService extends Service {
     super(ctx, "keymap");
   }
 
-  /** Binds a chord; the newest binding of a chord gets the key first. */
-  bind(chord: string, run: KeyHandler): () => void {
-    const dispose = this.ctx.effect(() => keymap.bind(chord, run), `keymap.bind(${chord})`);
+  /** Binds a chord; the newest binding of a chord gets the key first, unless another has a higher `priority`. */
+  bind(chord: string, run: KeyHandler, options?: BindOptions): () => void {
+    const dispose = this.ctx.effect(
+      () => keymap.bind(chord, run, options),
+      `keymap.bind(${chord})`,
+    );
     return () => void dispose();
   }
 

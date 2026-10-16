@@ -36,16 +36,32 @@ export function chord(event: KeyEvent): string | undefined {
   return [...held, key].join("-");
 }
 
+export interface BindOptions {
+  /**
+   * Bindings of a higher priority get the key before those of a lower one, whichever is newer. An
+   * overlay that covers the window takes its Esc first this way, however late it mounted. Default 0.
+   */
+  priority?: number;
+}
+
+interface Binding {
+  run: KeyHandler;
+  priority: number;
+}
+
 export class Keymap {
-  private readonly bindings = new Map<string, KeyHandler[]>();
+  private readonly bindings = new Map<string, Binding[]>();
   private readonly observers = new Set<KeyHandler>();
 
-  /** Binds a chord. The newest binding of a chord gets the key first. */
-  bind(chord: string, run: KeyHandler): Dispose {
-    const list = this.bindings.get(chord) ?? [];
-    this.bindings.set(chord, [run, ...list]);
+  /** Binds a chord. Among bindings of one priority, the newest gets the key first. */
+  bind(chord: string, run: KeyHandler, { priority = 0 }: BindOptions = {}): Dispose {
+    const binding = { run, priority };
+    const list = [...(this.bindings.get(chord) ?? [])];
+    const at = list.findIndex((other) => other.priority <= priority);
+    list.splice(at < 0 ? list.length : at, 0, binding);
+    this.bindings.set(chord, list);
     return () => {
-      const rest = (this.bindings.get(chord) ?? []).filter((handler) => handler !== run);
+      const rest = (this.bindings.get(chord) ?? []).filter((other) => other !== binding);
       if (rest.length > 0) this.bindings.set(chord, rest);
       else this.bindings.delete(chord);
     };
@@ -62,7 +78,7 @@ export class Keymap {
     const pressed = chord(event);
     if (pressed === undefined) return false;
     for (const observer of [...this.observers]) observer(event);
-    for (const run of [...(this.bindings.get(pressed) ?? [])]) {
+    for (const { run } of [...(this.bindings.get(pressed) ?? [])]) {
       if (run(event) === false) continue;
       event.preventDefault();
       return true;

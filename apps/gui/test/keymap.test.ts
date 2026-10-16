@@ -43,6 +43,31 @@ test("a used key is kept from the focused input; an unbound one is left alone", 
   expect(hits).toBe(1);
 });
 
+test("a higher priority goes first however late it was bound", () => {
+  const keymap = new Keymap();
+  const seen: string[] = [];
+  const overlay = keymap.bind(
+    "escape",
+    () => {
+      seen.push("overlay");
+      return false;
+    },
+    { priority: 1 },
+  );
+  keymap.bind("escape", () => void seen.push("first"));
+  keymap.bind("escape", () => {
+    seen.push("second");
+    return false;
+  });
+  keymap.dispatch(press("Escape"));
+  expect(seen).toEqual(["overlay", "second", "first"]);
+
+  overlay();
+  seen.length = 0;
+  keymap.dispatch(press("Escape"));
+  expect(seen).toEqual(["second", "first"]);
+});
+
 test("the newest binding goes first, and false passes the key on", () => {
   const keymap = new Keymap();
   const seen: string[] = [];
