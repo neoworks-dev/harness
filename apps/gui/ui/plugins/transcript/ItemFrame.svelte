@@ -1,15 +1,11 @@
 <script lang="ts">
-  // The room around one chat item, whatever it is.
+  // The room around one chat item, whatever it is: the conversation's column, and space below.
   import type { Snippet } from "svelte";
-  import { View } from "@neoworks/svelte-gpui/ui";
-  import { useCtx } from "../../kernel/slots/context.ts";
+  import Column from "../../widgets/Column.svelte";
 
-  let { children }: { children: Snippet } = $props();
-
-  const { daemon } = useCtx();
-  const p = $derived(daemon.palette);
+  let { children, gap = 16 }: { children: Snippet; gap?: number } = $props();
 </script>
 
-<View style={{ paddingTop: p.space.m, paddingBottom: p.space.s }}>
+<Column style={{ paddingBottom: gap }}>
   {@render children()}
-</View>
+</Column>

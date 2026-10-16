@@ -1,7 +1,7 @@
 // What the item renderers share.
 
-/** Width of the glyph column (bullet, spinner, ✓) that results and text hang from. */
-export const GUTTER = 20;
+/** Width of the icon column (spinner, ✓) that a tool call's result hangs from. */
+export const GUTTER = 24;
 
 /** Lines of a diff or code a question shows before its buttons (Ctrl-O shows all). */
 export const PREVIEW_LINES = 12;

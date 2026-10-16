@@ -46,9 +46,9 @@
         <Text style={{ width: Math.round(cell.chars * charWidth), lineHeight: lineHeightOf(size), color: cell.marker?.done ? p.success : p.muted }}>{cell.marker?.text ?? ""}</Text>
       {/each}
       {#if row.kind === "paragraph"}
-        <Text style={{ flex: 1, minWidth: 0, lineHeight: lineHeightOf(size) }}><Runs spans={row.spans} /></Text>
+        <Text style={{ grow: 1, shrink: 1, basis: "auto", minWidth: 0, lineHeight: lineHeightOf(size) }}><Runs spans={row.spans} /></Text>
       {:else if row.kind === "heading"}
-        <Text style={{ flex: 1, minWidth: 0, fontSize: headingSize(row.level), fontWeight: "bold", lineHeight: lineHeightOf(headingSize(row.level)) }}><Runs spans={row.spans} /></Text>
+        <Text style={{ grow: 1, shrink: 1, basis: "auto", minWidth: 0, fontSize: headingSize(row.level), fontWeight: "bold", lineHeight: lineHeightOf(headingSize(row.level)) }}><Runs spans={row.spans} /></Text>
       {:else if row.kind === "code"}
         <View style={{ flex: 1, minWidth: 0 }}><CodeBlock code={row.code} /></View>
       {:else}

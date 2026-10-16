@@ -1,7 +1,11 @@
 <script lang="ts">
-  // A tool call: a header (its state, its title) and the result, collapsed to a few lines until
+  // A tool call: one muted row (its state, its title) and the result, collapsed to a summary until
   // pressed. A question (buttons) is always open, and a stub while the composer answers it.
-  import { Text, View } from "@neoworks/svelte-gpui/ui";
+  import { Icon, Text, View } from "@neoworks/svelte-gpui/ui";
+  import check from "@phosphor-icons/core/regular/check.svg";
+  import circle from "@phosphor-icons/core/regular/circle.svg";
+  import failed from "@phosphor-icons/core/regular/x.svg";
+  import question from "@phosphor-icons/core/regular/question.svg";
   import type { ViewItem } from "@suite/protocol/types";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Spinner from "../../widgets/Spinner.svelte";
@@ -10,68 +14,82 @@
   import ItemFrame from "./ItemFrame.svelte";
   import { GUTTER, PREVIEW_LINES } from "./layout.ts";
   import { opened } from "./opened.svelte.ts";
+  import { summarize } from "./summary.ts";
   import { transcript } from "./state.svelte.ts";
-  import Summary from "./Summary.svelte";
 
   let { item }: { item: ViewItem } = $props();
 
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
 
-  const question = $derived(hasButtons(item.component));
+  const asks = $derived(hasButtons(item.component));
+  /** The lines an edit changed, shown at the end of its row. */
+  const changed = $derived.by(() => {
+    let added = 0;
+    let removed = 0;
+    let any = false;
+    for (const leaf of summarize(item.component)) {
+      if (leaf.kind !== "diff") continue;
+      any = true;
+      added += leaf.added;
+      removed += leaf.removed;
+    }
+    return any ? { added, removed } : undefined;
+  });
   const open = $derived(transcript.expanded || opened.has(item.ref));
   /** Another pane is answering this card: the transcript keeps a stub. */
   const stub = $derived(transcript.stubbed === item.ref && !transcript.expanded);
 
   const stateColor = $derived.by(() => {
-    if (item.state === "done") return p.success;
     if (item.state === "failed") return p.danger;
     return item.state === "running" ? p.accent : p.muted;
   });
 </script>
 
 {#snippet glyph()}
-  <View style={{ width: GUTTER, color: stateColor }}>
+  <View style={{ width: GUTTER, height: 24, align: "center", justify: "center", color: stateColor }}>
     {#if item.state === "running"}
       <Spinner />
+    {:else if asks}
+      <Icon svg={question} size={16} />
     {:else if item.state === "done"}
-      <Text>✓</Text>
+      <Icon svg={check} size={16} />
     {:else if item.state === "failed"}
-      <Text>✗</Text>
+      <Icon svg={failed} size={16} />
     {:else}
-      <Text>○</Text>
+      <Icon svg={circle} size={16} />
     {/if}
   </View>
 {/snippet}
 
-<ItemFrame>
+<ItemFrame gap={asks ? 16 : 6}>
   {#if stub}
-    <View style={{ direction: "row", paddingX: p.space.l }}>
-      <Text style={{ width: GUTTER, color: p.accent }}>●</Text>
-      <Text><Text style={{ fontWeight: "bold" }}>{item.label ?? "a question"}</Text><Text style={{ color: p.muted }}>{" · answer below"}</Text></Text>
+    <View style={{ direction: "row", align: "center", color: p.muted }}>
+      {@render glyph()}
+      <Text><Text style={{ color: p.fg, fontWeight: "medium" }}>{item.label ?? "a question"}</Text>{" · answer below"}</Text>
     </View>
   {:else}
-    <View style={{ paddingX: p.space.l }}>
+    <View>
       <View
-        onpress={question ? undefined : () => opened.toggle(item.ref)}
-        style={{ direction: "row", cursor: question ? undefined : "pointer" }}
+        onpress={asks ? undefined : () => opened.toggle(item.ref)}
+        hover={asks ? undefined : { background: p.hover }}
+        style={{ direction: "row", align: "center", minHeight: 24, paddingY: 2, radius: p.radius.s, color: p.muted, cursor: asks ? undefined : "pointer" }}
       >
         {@render glyph()}
-        <Text style={{ fontWeight: "bold", flex: 1, minWidth: 0 }}>{item.label ?? ""}</Text>
+        <Text style={{ flex: 1, minWidth: 0, truncate: true, color: asks ? p.fg : p.muted, fontWeight: asks ? "medium" : "normal" }}>{item.label ?? ""}</Text>
+        {#if changed}
+          <Text style={{ fontFamily: "mono", fontSize: 12, paddingRight: 6 }}><Text style={{ color: p.success }}>+{changed.added}</Text>{" "}<Text style={{ color: p.danger }}>−{changed.removed}</Text></Text>
+        {/if}
       </View>
-      <View style={{ paddingLeft: GUTTER, paddingTop: 2 }}>
-        {#if question || open}
+      {#if asks || open}
+        <View style={{ paddingLeft: GUTTER, paddingTop: 4 }}>
           <Component
             component={item.component}
             ref={item.ref}
-            limit={question && !transcript.expanded ? PREVIEW_LINES : undefined}
+            limit={asks && !transcript.expanded ? PREVIEW_LINES : undefined}
           />
-        {:else}
-          <View onpress={() => opened.toggle(item.ref)} style={{ cursor: "pointer", color: p.muted }}>
-            <Summary component={item.component} ref={item.ref} />
-          </View>
-        {/if}
-      </View>
+        </View>
+      {/if}
     </View>
   {/if}
 </ItemFrame>

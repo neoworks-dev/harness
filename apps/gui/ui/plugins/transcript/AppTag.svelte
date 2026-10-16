@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The app a user message came from ("photo-editor", "browser"), muted at its right. Messages
+  // The app a user message came from ("photo-editor", "browser"), small and muted under it. Messages
   // typed in this window need no label.
   import { Text } from "@neoworks/svelte-gpui/ui";
   import type { ViewItem } from "@suite/protocol/types";
@@ -14,4 +14,4 @@
   );
 </script>
 
-{#if from}<Text style={{ color: p.muted, marginLeft: p.space.m }}>{from}</Text>{/if}
+{#if from}<Text style={{ color: p.muted, fontSize: 12 }}>{from}</Text>{/if}

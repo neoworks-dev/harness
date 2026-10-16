@@ -1,6 +1,7 @@
 <script lang="ts">
-  // The agent's thoughts, muted and italic behind a ∴.
-  import { Text, View } from "@neoworks/svelte-gpui/ui";
+  // The agent's thoughts, muted and italic, hanging from a brain.
+  import { Icon, View } from "@neoworks/svelte-gpui/ui";
+  import brain from "@phosphor-icons/core/regular/brain.svg";
   import type { ViewItem } from "@suite/protocol/types";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Component from "./Component.svelte";
@@ -13,9 +14,11 @@
   const p = $derived(daemon.palette);
 </script>
 
-<ItemFrame>
-  <View style={{ direction: "row", paddingX: p.space.l, color: p.muted, italic: true }}>
-    <Text style={{ width: GUTTER, italic: false }}>∴</Text>
+<ItemFrame gap={8}>
+  <View style={{ direction: "row", color: p.muted, italic: true }}>
+    <View style={{ width: GUTTER, height: 22, align: "center", justify: "center" }}>
+      <Icon svg={brain} size={16} />
+    </View>
     <View style={{ flex: 1, minWidth: 0 }}>
       <Component component={item.component} ref={item.ref} />
     </View>

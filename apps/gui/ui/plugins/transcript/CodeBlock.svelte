@@ -2,7 +2,6 @@
   // Code or command output: mono on the surface colour, long lines scroll sideways. Capped, since
   // one text of many thousand lines makes every frame slow.
   import { Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
-  import { lineHeightOf } from "./components.ts";
   import { clip } from "../../lib/diff.ts";
   import { useCtx } from "../../kernel/slots/context.ts";
 
@@ -24,15 +23,16 @@
   const text = $derived(clipped.shown.join("\n"));
 </script>
 
-<View style={{ background: p.surface, radius: 6 }}>
+<View style={{ background: p.surface, radius: p.radius.m, marginY: 4 }}>
   <Scroll horizontal>
-    <View style={{ padding: [p.space.m, p.space.l] }}>
+    <View style={{ padding: [13, 14] }}>
       <Text
         pre
         style={{
           fontFamily: "mono",
           fontSize: p.text.code,
-          lineHeight: lineHeightOf(p.text.code),
+          lineHeight: Math.round(p.text.code * 1.375),
+          color: p.fg,
           nowrap: true,
         }}>{text}</Text>
     </View>

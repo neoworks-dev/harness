@@ -13,8 +13,8 @@
   const p = $derived(daemon.palette);
 </script>
 
-<ItemFrame>
-  <View style={{ paddingX: p.space.l, paddingLeft: p.space.l + GUTTER, color: item.state === "failed" ? p.danger : p.muted }}>
+<ItemFrame gap={6}>
+  <View style={{ paddingLeft: GUTTER, fontSize: 13, color: item.state === "failed" ? p.danger : p.muted }}>
     <Component component={item.component} ref={item.ref} />
   </View>
 </ItemFrame>

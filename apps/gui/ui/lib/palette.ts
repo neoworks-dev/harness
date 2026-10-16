@@ -22,6 +22,10 @@ export interface Palette {
   hover: string;
   /** The shown row, and the user's message bubble. */
   raised: string;
+  /** The user's message bubble. */
+  message: string;
+  /** The agent's prose: the text colour, a step back. */
+  prose: string;
   /** Corner radii in pixels: rows and buttons, then cards and the composer. */
   radius: { s: number; m: number; l: number };
   /** Pixels. */
@@ -99,6 +103,8 @@ export function paletteOf(theme: Theme = DEFAULT_THEME): Palette {
     ...NEUTRAL,
     band: NEUTRAL.raised,
     side: SIDE,
+    message: "#1a1a1c",
+    prose: blend(NEUTRAL.fg, NEUTRAL.bg, 15),
     radius: { s: 8, m: 10, l: 18 },
     space: { s: spacing.s, m: spacing.m, l: spacing.l },
     text: { title: text.title.size, body: text.body.size, code: text.code.size },
