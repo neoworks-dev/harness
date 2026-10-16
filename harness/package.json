@@ -5,6 +5,7 @@
   "exports": {
     "./agent": "./src/agent.ts",
     "./config": "./src/config.ts",
+    "./context-events": "./src/context-events.ts",
     "./pi": "./src/pi-agent.ts"
   },
   "dependencies": {

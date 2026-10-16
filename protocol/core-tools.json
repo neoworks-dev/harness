@@ -68,6 +68,26 @@
         "required": ["app"],
         "additionalProperties": false
       }
+    },
+    {
+      "name": "delegate",
+      "description": "Hand a task to a guest coding agent (claude: Claude Code, codex: Codex). It works in this session's directory with its own tools plus the same connectors, its progress shows in this chat, and its final reply comes back as the result. Write the task so it stands alone; follow-up delegations to the same agent continue its conversation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "enum": ["claude", "codex"],
+            "description": "Which guest."
+          },
+          "task": {
+            "type": "string",
+            "description": "What to do, with the context it needs."
+          }
+        },
+        "required": ["agent", "task"],
+        "additionalProperties": false
+      }
     }
   ]
 }

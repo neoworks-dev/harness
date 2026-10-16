@@ -1,0 +1,19 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 7,
+    "ts": 1760565600700,
+    "event": {
+      "type": "permission_request",
+      "id": "p1",
+      "agent": "claude",
+      "title": "Edit src/parse.ts",
+      "toolCallId": "claude:toolu_1",
+      "options": [
+        { "id": "allow", "name": "Allow", "kind": "allow_once" },
+        { "id": "reject", "name": "Reject", "kind": "reject_once" }
+      ]
+    }
+  }
+}

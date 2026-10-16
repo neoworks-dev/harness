@@ -408,6 +408,7 @@ func TestItemHeaders(t *testing.T) {
 		}}}
 	}
 	label := "photo-editor.crop"
+	guest := "claude"
 	tool := func(state protocol.ItemState) protocol.ViewItem {
 		return protocol.ViewItem{Ref: "t", Kind: protocol.ItemKindTool, Label: &label, State: &state, Component: text("body")}
 	}
@@ -425,6 +426,9 @@ func TestItemHeaders(t *testing.T) {
 		{protocol.ViewItem{Kind: protocol.ItemKindAgent, Component: text("hi")}, Options{}, "hi"},
 		{protocol.ViewItem{Kind: protocol.ItemKindThought, Component: text("secret")}, Options{}, "… thinking"},
 		{protocol.ViewItem{Kind: protocol.ItemKindThought, Component: text("secret")}, Options{Thoughts: true}, "secret"},
+		{protocol.ViewItem{Kind: protocol.ItemKindAgent, Label: &guest, Component: text("hi")}, Options{}, "claude\nhi"},
+		{protocol.ViewItem{Kind: protocol.ItemKindThought, Label: &guest, Component: text("secret")}, Options{}, "… claude thinking"},
+		{protocol.ViewItem{Kind: protocol.ItemKindThought, Label: &guest, Component: text("secret")}, Options{Thoughts: true}, "secret"},
 		{protocol.ViewItem{Kind: protocol.ItemKindNotice, Component: text("note")}, Options{}, "note"},
 	}
 	for _, tc := range tests {

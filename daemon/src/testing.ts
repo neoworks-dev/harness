@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Agent } from "@suite/harness/agent";
 import { createDaemon, type Daemon } from "./daemon.ts";
+import type { GuestConfig } from "./guests/guests.ts";
 import { createEchoAgent } from "./echo-agent.ts";
 import { silentLogger } from "./log.ts";
 import { resolvePaths } from "./paths.ts";
@@ -36,7 +37,7 @@ for (const name of readdirSync(tmpdir())) {
 }
 
 export async function startTestDaemon(
-  options: { agent?: Agent; dir?: string } = {},
+  options: { agent?: Agent; dir?: string; guests?: Record<string, GuestConfig> } = {},
 ): Promise<TestDaemon> {
   const dir = options.dir ?? mkdtempSync(join(tmpdir(), `${PREFIX}${process.pid}-`));
   const env = { SUITE_SOCKET: join(dir, "bus.sock"), SUITE_DATA_DIR: join(dir, "data") };
@@ -46,6 +47,7 @@ export async function startTestDaemon(
     log: silentLogger,
     port: 0,
     defaultCwd: dir,
+    guests: options.guests,
   });
   return { ...daemon, env, dir };
 }

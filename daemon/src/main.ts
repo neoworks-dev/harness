@@ -2,11 +2,13 @@
 //
 // Env: SUITE_SOCKET, SUITE_DATA_DIR (see paths.ts), SUITE_PORT (TCP, default: any free port);
 // SUITE_AGENT=pi|echo (default pi); SUITE_SERVICES=none skips the background services (lsp);
+// guests (Claude Code, Codex) are configured in guests/config.ts (SUITE_GUESTS=none: none);
 // model and API key settings are read by the harness (see harness/src/config.ts).
 import { homedir } from "node:os";
 import type { Agent } from "@suite/harness/agent";
 import { createDaemon } from "./daemon.ts";
 import { createEchoAgent } from "./echo-agent.ts";
+import { loadGuestConfigs } from "./guests/config.ts";
 import { createLogger, type Logger } from "./log.ts";
 import { resolvePaths } from "./paths.ts";
 import { DEFAULT_SERVICES, startServices } from "./services.ts";
@@ -32,6 +34,7 @@ async function main(): Promise<void> {
     port: Number(process.env.SUITE_PORT ?? 0),
     defaultCwd: homedir(),
     theme: loadTheme(process.env, log),
+    guests: loadGuestConfigs(),
   });
   log.info(`listening on ${paths.socket} and ${daemon.info.url}, data in ${paths.dataDir}`);
   const commands: string[][] = [];

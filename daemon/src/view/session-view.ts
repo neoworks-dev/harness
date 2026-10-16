@@ -29,6 +29,8 @@ interface Stream {
 
 interface Call {
   ref: string;
+  /** Set for a guest's calls: their rawOutput is the guest's, not the connector's. */
+  agent?: string;
   tool?: string;
   title: string;
   status: ToolCallStatus;
@@ -36,6 +38,10 @@ interface Call {
   content?: ToolCallContent[];
   rawOutput?: unknown;
 }
+
+type PermissionRequest = Extract<SessionEvent, { type: "permission_request" }>;
+
+const RESULT_REF = /\[result:([0-9a-f]+)\]/;
 
 const STATES: Record<ToolCallStatus, ItemState> = {
   pending: "pending",
@@ -91,6 +97,9 @@ export class SessionView {
   private readonly index = new Map<string, number>();
   private readonly streams = new Map<string, Stream>();
   private readonly calls = new Map<string, Call>();
+  /** Connector results handed to guests as [result:ref]. */
+  private readonly results = new Map<string, { tool: string; rawOutput: unknown }>();
+  private readonly permissions = new Map<string, PermissionRequest>();
   private seq = 0;
 
   constructor(
@@ -123,27 +132,44 @@ export class SessionView {
         return [{ op: "set", item: { ref: `u${seq}`, kind: "user", label: event.app, component } }];
       }
       case "agent_message_chunk":
-        return this.stream(`m-${event.messageId}`, "agent", event.text);
+        return this.stream(`m-${event.messageId}`, "agent", event.text, event.agent);
       case "agent_thought_chunk":
-        return this.stream(`t-${event.messageId}`, "thought", event.text);
+        return this.stream(`t-${event.messageId}`, "thought", event.text, event.agent);
       case "tool_call": {
         const call: Call = {
           ref: `c-${event.toolCallId}`,
-          title: event.title,
+          title: event.agent === undefined ? event.title : `${event.agent}: ${event.title}`,
           status: event.status,
           rawInput: event.rawInput,
         };
         if (event.tool !== undefined) call.tool = event.tool;
+        if (event.agent !== undefined) call.agent = event.agent;
         this.calls.set(event.toolCallId, call);
         return [{ op: "set", item: this.toolItem(call) }];
       }
       case "tool_call_update": {
         const call = this.calls.get(event.toolCallId);
         if (!call) return [];
+        if (event.title !== undefined) {
+          call.title = call.agent === undefined ? event.title : `${call.agent}: ${event.title}`;
+        }
+        if (event.tool !== undefined) call.tool = event.tool;
+        if (event.rawInput !== undefined) call.rawInput = event.rawInput;
         if (event.status !== undefined) call.status = event.status;
         if (event.content !== undefined) call.content = event.content;
         if (event.rawOutput !== undefined) call.rawOutput = event.rawOutput;
         return [{ op: "set", item: this.toolItem(call) }];
+      }
+      case "tool_result":
+        this.results.set(event.ref, { tool: event.tool, rawOutput: event.rawOutput });
+        return [];
+      case "permission_request":
+        this.permissions.set(event.id, event);
+        return [{ op: "set", item: this.permissionItem(event) }];
+      case "permission_resolved": {
+        const request = this.permissions.get(event.id);
+        if (!request) return [];
+        return [{ op: "set", item: this.permissionItem(request, event.option ?? null) }];
       }
       case "turn_ended": {
         if (event.stopReason === "end_turn") return [];
@@ -168,8 +194,42 @@ export class SessionView {
     return { op: "set", item: { ref, kind: "notice", component: text(plain(message), { tone }) } };
   }
 
+  /**
+   * A guest asking before it runs a tool: one button per option until answered (answer: the
+   * picked option id, or null when nobody answered before the turn ended).
+   */
+  private permissionItem(request: PermissionRequest, answer?: string | null): ViewItem {
+    const label = `${request.agent} asks: ${request.title}`;
+    if (answer === undefined) {
+      const buttons: Component[] = request.options.map((option, i) => ({
+        type: "button",
+        label: option.name,
+        action: "suite.permit",
+        args: { id: request.id, option: option.id },
+        key: String(i + 1),
+      }));
+      const component: Component = { type: "row", gap: "s", children: buttons };
+      return { ref: `p-${request.id}`, kind: "tool", label, state: "pending", component };
+    }
+    const option = request.options.find((o) => o.id === answer);
+    const allowed = option?.kind.startsWith("allow") === true;
+    const what = option ? option.name : "No answer: the turn ended.";
+    return {
+      ref: `p-${request.id}`,
+      kind: "tool",
+      label,
+      state: allowed ? "done" : "failed",
+      component: text(plain(what), { tone: "muted" }),
+    };
+  }
+
   /** Streaming text: re-parse the whole message, send only the blocks that changed. */
-  private stream(ref: string, kind: "agent" | "thought", chunk: string): ViewOp[] {
+  private stream(
+    ref: string,
+    kind: "agent" | "thought",
+    chunk: string,
+    agent: string | undefined,
+  ): ViewOp[] {
     const existing = this.streams.get(ref);
     const stream = existing ?? { ref, raw: "", blocks: [] };
     stream.raw += chunk;
@@ -179,7 +239,9 @@ export class SessionView {
     this.streams.set(ref, stream);
     if (!existing) {
       const component = kind === "thought" ? text(blocks, { tone: "muted" }) : text(blocks);
-      return [{ op: "set", item: { ref, kind, component } }];
+      const item: ViewItem = { ref, kind, component };
+      if (agent !== undefined) item.label = agent;
+      return [{ op: "set", item }];
     }
     return [{ op: "blocks", ref, path: [], from, blocks: blocks.slice(from) }];
   }
@@ -195,17 +257,33 @@ export class SessionView {
   }
 
   private resultView(call: Call): Component {
-    const template =
-      call.tool !== undefined && call.tool.includes(".") ? this.templates(call.tool) : undefined;
-    if (template !== undefined && call.status === "completed" && call.rawOutput !== undefined) {
+    const result = this.connectorResult(call);
+    const template = result && this.templates(result.tool);
+    if (result && template !== undefined && call.status === "completed") {
       try {
-        return resolveTemplate(template, call.rawOutput);
+        return resolveTemplate(template, result.rawOutput);
       } catch (err) {
         const why = err instanceof TemplateError ? err.message : String(err);
-        this.log.warn(`template for ${call.tool ?? "?"} failed: ${why}`);
+        this.log.warn(`template for ${result.tool} failed: ${why}`);
       }
     }
     return this.fallback(call);
+  }
+
+  /** The connector result a call returned: its own rawOutput, or a guest's [result:ref]. */
+  private connectorResult(call: Call): { tool: string; rawOutput: unknown } | undefined {
+    if (call.agent === undefined) {
+      if (call.tool === undefined || !call.tool.includes(".") || call.rawOutput === undefined) {
+        return undefined;
+      }
+      return { tool: call.tool, rawOutput: call.rawOutput };
+    }
+    for (const content of call.content ?? []) {
+      const ref = content.type === "text" ? RESULT_REF.exec(content.text)?.[1] : undefined;
+      const result = ref === undefined ? undefined : this.results.get(ref);
+      if (result) return result;
+    }
+    return undefined;
   }
 
   /** No template: what ACP's base data says (text output, diffs), or the structured result as kv. */

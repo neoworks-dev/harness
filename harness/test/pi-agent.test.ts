@@ -219,6 +219,7 @@ test("the system prompt and tools are sent unchanged on every request", async ()
       "tools_call",
       "apps_launch",
       "apps_focus",
+      "delegate",
     ],
   });
   expect(seen[1]).toEqual(seen[0]);

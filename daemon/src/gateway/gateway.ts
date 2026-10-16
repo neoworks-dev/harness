@@ -1,13 +1,16 @@
-// The core connector tools: tools_search, tools_call, apps_launch, apps_focus. Every outcome is a
-// normal tool result (isError for failures), so the model can read it and correct itself.
+// The core connector tools: tools_search, tools_call, apps_launch, apps_focus, delegate. Every
+// outcome is a normal tool result (isError for failures), so the model can read it and correct
+// itself.
 import { spawn } from "node:child_process";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type {
   AppArgs,
   CoreToolName,
+  DelegateArgs,
   ToolsCallArgs,
   ToolsSearchArgs,
 } from "@suite/protocol/core-tools";
+import type { ToolResult } from "@suite/protocol/types";
 import Ajv2020, { type ValidateFunction } from "ajv/dist/2020.js";
 import type { Logger } from "../log.ts";
 import type { StoredConnector, StoredTool } from "../store.ts";
@@ -21,6 +24,20 @@ export interface GatewayOptions {
   /** Moves the agent for apps_focus; returns an error message or undefined. */
   focus?: (app: string, session: string | undefined) => string | undefined;
   launchTimeoutMs?: number;
+  /** Runs a guest agent for delegate; its final reply is the result. */
+  delegate?: (session: string, args: DelegateArgs, signal?: AbortSignal) => Promise<CallToolResult>;
+  /** Stores a result a guest gets as text with [result:ref], so views can draw it. */
+  recordResult?: (session: string, result: ToolResult) => void;
+  /** The file behind an asset:// handle, named in results for guests. */
+  resolveAsset?: (handle: string) => string | undefined;
+}
+
+const ASSET_HANDLES = /asset:\/\/[a-z]+-[0-9a-f]+/g;
+
+/** Who is calling: the session (x-suite-session) and, for guests, which one (x-suite-guest). */
+export interface Caller {
+  session?: string;
+  guest?: string;
 }
 
 function text(value: string, isError = false): CallToolResult {
@@ -63,6 +80,39 @@ function formatHits(hits: SearchHit[]): string {
   return parts.join("\n\n");
 }
 
+/**
+ * tools_call's args: an object, or a JSON string of one (models sometimes send that). Arguments
+ * under another key are an error that says where they go. A string is an error message.
+ */
+function toolsCallArgs(args: Record<string, unknown>): Record<string, unknown> | string {
+  let value = args.args;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return "tools_call: args must be an object (got a string that isn't JSON)";
+    }
+  }
+  if (value === undefined) {
+    const stray = Object.keys(args).filter((key) => key !== "name");
+    if (stray.length > 0) {
+      return `tools_call takes {name, args}: put the tool's arguments in args (an object), not in ${stray.join(", ")}.`;
+    }
+    return {};
+  }
+  if (!isRecord(value)) return "tools_call: args must be an object";
+  return value;
+}
+
+/**
+ * Guests get text only: some (Claude Code) show structuredContent instead of the text when
+ * both are there, which would hide the [result:ref] and the formatted search results.
+ */
+function forGuest(result: CallToolResult): CallToolResult {
+  const { structuredContent: _, ...rest } = result;
+  return rest;
+}
+
 export class Gateway {
   private readonly ajv = new Ajv2020({ strict: false, allErrors: true });
   private readonly validators = new Map<string, ValidateFunction>();
@@ -72,31 +122,75 @@ export class Gateway {
     private readonly options: GatewayOptions,
   ) {}
 
-  /** `session` is the calling agent's session (sent by the harness as x-suite-session). */
+  /** `caller` says whose agent calls: a session id, or the session and guest. */
   async call(
     name: CoreToolName,
     args: unknown,
     signal?: AbortSignal,
-    session?: string,
+    caller: Caller | string = {},
   ): Promise<CallToolResult> {
+    const { session, guest } = typeof caller === "string" ? { session: caller } : caller;
     if (!isRecord(args)) return text(`${name}: arguments must be an object`, true);
     switch (name) {
-      case "tools_search":
+      case "tools_search": {
         if (typeof args.query !== "string") return text("tools_search: query is required", true);
-        return this.search(args as unknown as ToolsSearchArgs);
-      case "tools_call":
+        const found = this.search(args as unknown as ToolsSearchArgs);
+        return guest === undefined ? found : forGuest(found);
+      }
+      case "tools_call": {
         if (typeof args.name !== "string") return text("tools_call: name is required", true);
-        if (args.args !== undefined && !isRecord(args.args)) {
-          return text("tools_call: args must be an object", true);
+        const toolArgs = toolsCallArgs(args);
+        if (typeof toolArgs === "string") return text(toolArgs, true);
+        const call = { name: args.name, args: toolArgs };
+        if (guest !== undefined && session !== undefined) {
+          return forGuest(this.withRef(session, args.name, await this.callTool(call, signal)));
         }
-        return this.callTool(args as unknown as ToolsCallArgs, signal);
+        return this.callTool(call, signal);
+      }
       case "apps_launch":
         if (typeof args.app !== "string") return text("apps_launch: app is required", true);
         return this.launch(args as unknown as AppArgs);
       case "apps_focus":
         if (typeof args.app !== "string") return text("apps_focus: app is required", true);
         return this.moveInto(args.app, session);
+      case "delegate":
+        if (typeof args.agent !== "string") return text("delegate: agent is required", true);
+        if (typeof args.task !== "string" || args.task.trim() === "") {
+          return text("delegate: task is required", true);
+        }
+        if (guest !== undefined) return text("Guests can't delegate.", true);
+        if (!this.options.delegate || session === undefined) {
+          return text("No guest agents are available here.", true);
+        }
+        return this.options.delegate(session, args as unknown as DelegateArgs, signal);
     }
+  }
+
+  /**
+   * Guests reduce results to text, so a structured result is stored (tool_result) and the text
+   * carries its ref; views match it and draw the result with the tool's template. Guests' own
+   * file tools don't know asset:// handles, so the result also names the file behind each.
+   */
+  private withRef(session: string, tool: string, result: CallToolResult): CallToolResult {
+    if (result.isError) return result;
+    const extra: string[] = [];
+    const handles = new Set(JSON.stringify(result).match(ASSET_HANDLES) ?? []);
+    for (const handle of handles) {
+      const path = this.options.resolveAsset?.(handle);
+      if (path !== undefined) extra.push(`${handle} is the file ${path}`);
+    }
+    if (result.structuredContent !== undefined && this.options.recordResult) {
+      const ref = crypto.randomUUID().slice(0, 8);
+      this.options.recordResult(session, {
+        type: "tool_result",
+        ref,
+        tool,
+        rawOutput: result.structuredContent,
+      });
+      extra.push(`[result:${ref}]`);
+    }
+    if (extra.length === 0) return result;
+    return { ...result, content: [...result.content, { type: "text", text: extra.join("\n") }] };
   }
 
   private search({ query, app }: ToolsSearchArgs): CallToolResult {

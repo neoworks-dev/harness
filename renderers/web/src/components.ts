@@ -396,16 +396,22 @@ export function renderItem(
       root.append(header);
       break;
     }
-    case "thought":
+    case "thought": {
+      const summary = item.label ? `… ${item.label} thinking` : "… thinking";
       root = el(
         doc,
         "details",
         "suite-item",
         attrs,
-        el(doc, "summary", "suite-item-header", {}, "… thinking"),
+        el(doc, "summary", "suite-item-header", {}, summary),
       );
       break;
+    }
     case "agent":
+      // A guest agent's items carry its name; the main agent's have no label and no header.
+      root = el(doc, "article", "suite-item", attrs);
+      if (item.label) root.append(el(doc, "header", "suite-item-header", {}, item.label));
+      break;
     case "notice":
       root = el(doc, "article", "suite-item", attrs);
       break;

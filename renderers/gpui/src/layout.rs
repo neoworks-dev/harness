@@ -412,13 +412,19 @@ pub fn layout_item(item: &ViewItem, theme: &ChatTheme) -> ItemLayout {
             collapsible = true;
             ctx.fg = theme.muted;
             ctx.italic = true;
-            header = Some(layout.header(None, "… thinking".into()));
+            header = Some(layout.header(
+                None,
+                label.map_or_else(|| "… thinking".to_string(), |l| format!("… {l} thinking")),
+            ));
         }
         ItemKind::Notice => {
             ctx.fg = theme.muted;
             ctx.scale = 0.9;
         }
-        ItemKind::Agent => {}
+        ItemKind::Agent => {
+            // A guest agent's items carry its name; the main agent's have no label and no header.
+            header = label.map(|l| layout.header(None, l.to_string()));
+        }
     }
     let body = layout.component(&item.component, ctx);
     ItemLayout {
@@ -1139,6 +1145,38 @@ mod tests {
             &theme,
         );
         assert_eq!(bare.header.unwrap().label.runs[0].text, "»");
+    }
+
+    #[test]
+    fn guest_labels_head_agent_and_thought_items() {
+        let theme = ChatTheme::default();
+        let body = json!({"type": "text", "blocks": []});
+        let labelled = |kind: &str| {
+            layout_item(
+                &item(json!({"ref": "g", "kind": kind, "label": "claude", "component": body})),
+                &theme,
+            )
+        };
+        assert_eq!(
+            labelled("agent").header.unwrap().label.runs[0].text,
+            "claude"
+        );
+        assert_eq!(
+            labelled("thought").header.unwrap().label.runs[0].text,
+            "… claude thinking"
+        );
+
+        let bare = |kind: &str| {
+            layout_item(
+                &item(json!({"ref": "m", "kind": kind, "component": body})),
+                &theme,
+            )
+        };
+        assert!(bare("agent").header.is_none());
+        assert_eq!(
+            bare("thought").header.unwrap().label.runs[0].text,
+            "… thinking"
+        );
     }
 
     #[test]

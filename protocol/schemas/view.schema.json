@@ -193,7 +193,10 @@
       "properties": {
         "type": { "const": "button" },
         "label": { "type": "string" },
-        "action": { "type": "string", "description": "app.tool, or copy:<text>." },
+        "action": {
+          "type": "string",
+          "description": "app.tool, copy:<text> (client-side), or suite.permit {id, option} (answers a guest's permission_request)."
+        },
         "args": { "description": "Arguments for the action." },
         "key": {
           "type": "string",

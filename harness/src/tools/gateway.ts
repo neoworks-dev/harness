@@ -1,4 +1,4 @@
-// tools_search, tools_call, apps_launch, apps_focus: native definitions from
+// tools_search, tools_call, apps_launch, apps_focus, delegate: native definitions from
 // protocol/core-tools.json (so the tool list is fixed whatever is connected), executed by the
 // daemon's MCP gateway. The harness is an MCP client of the gateway (design §4).
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
@@ -22,7 +22,11 @@ const LABELS: Record<CoreToolName, string> = {
   tools_call: "Call tool",
   apps_launch: "Launch app",
   apps_focus: "Focus app",
+  delegate: "Delegate",
 };
+
+// A guest can work for a long time; cancelling the turn aborts it through the signal.
+const TIMEOUTS: Partial<Record<CoreToolName, number>> = { delegate: 4 * 60 * 60_000 };
 
 /** Connects lazily on first use and again after a failure (the daemon may have restarted). */
 export function connectGateway(server: McpServer): GatewayConnection {
@@ -45,7 +49,7 @@ export function connectGateway(server: McpServer): GatewayConnection {
         return await connected.request(
           { method: "tools/call", params: { name, arguments: args } },
           CallToolResultSchema,
-          { signal, timeout: 10 * 60_000, resetTimeoutOnProgress: true },
+          { signal, timeout: TIMEOUTS[name] ?? 10 * 60_000, resetTimeoutOnProgress: true },
         );
       } catch (err) {
         client = undefined;
@@ -72,7 +76,7 @@ function toContent(result: CallToolResult): (TextContent | ImageContent)[] {
   return out;
 }
 
-/** The four connector tools. Without a gateway they still exist and answer with an error. */
+/** The core tools. Without a gateway they still exist and answer with an error. */
 export function createGatewayTools(gateway: GatewayConnection | undefined): AgentTool[] {
   return CORE_TOOLS.map((def): AgentTool => ({
     name: def.name,

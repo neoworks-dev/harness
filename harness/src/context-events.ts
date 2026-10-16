@@ -38,8 +38,8 @@ function connectedAttrs(
 }
 
 /**
- * Prepends connector events to the user's text (design §6). Connect/disconnect lines keep their
- * order; only the last focus event is sent, after them. `cwd` (the session's working directory)
+ * Prepends connector events to the user's text (design §6). Connect/disconnect lines and guest
+ * turns keep their order; only the last focus event is sent, after them. `cwd` (the session's working directory)
  * comes first, on a session's first prompt.
  */
 export function formatPrompt(text: string, pendingEvents: ContextEvent[], cwd?: string): string {
@@ -51,6 +51,13 @@ export function formatPrompt(text: string, pendingEvents: ContextEvent[], cwd?: 
       lines.push(`<app ${attrs(connectedAttrs(event))}/>`);
     } else if (event.type === "app_disconnected") {
       lines.push(`<app ${attrs([["disconnected", event.app]])}/>`);
+    } else if (event.type === "guest_turn") {
+      const pairs: [string, string][] = [
+        ["agent", event.agent],
+        ["task", event.task],
+        ["stop", event.stopReason],
+      ];
+      lines.push(`<guest ${attrs(pairs)}>`, event.result, "</guest>");
     } else {
       const pairs: [string, string][] = [
         ["app", event.app],

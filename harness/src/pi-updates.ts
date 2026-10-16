@@ -40,6 +40,13 @@ function describeToolCall(name: string, args: unknown): { title: string; kind: T
       return { title: `launch ${stringArg(args, "app")}`, kind: "other" };
     case "apps_focus":
       return { title: `focus ${stringArg(args, "app")}`, kind: "other" };
+    case "delegate": {
+      const task = stringArg(args, "task").split("\n")[0] ?? "";
+      return {
+        title: `${stringArg(args, "agent")}: ${task.slice(0, TITLE_COMMAND_CHARS)}`,
+        kind: "think",
+      };
+    }
     default:
       return { title: name, kind: "other" };
   }

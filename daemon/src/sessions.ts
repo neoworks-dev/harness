@@ -8,10 +8,13 @@ import type {
   McpServer,
   NewSessionParams,
 } from "@suite/harness/agent";
-import type { AppConnected, SessionEvent, SessionInfo, TurnEnded } from "@suite/protocol/types";
+import type { SessionEvent, SessionInfo, TurnEnded } from "@suite/protocol/types";
 import type { ConnectorSnapshot } from "./gateway/registry.ts";
 import type { Logger } from "./log.ts";
 import type { SessionRow, SessionStore } from "./store.ts";
+import { type FocusTarget, ToldState } from "./told.ts";
+
+export type { FocusTarget } from "./told.ts";
 
 export class NotFoundError extends Error {}
 
@@ -26,16 +29,14 @@ interface Runtime {
   queue: QueuedInput[];
   running: boolean;
   agentSession?: AgentSession;
+  /** Whoever runs the current turn: the agent session, or a guest the user addressed. */
+  active?: AgentSession;
   /** Set when cancel() arrives while the agent session is still loading. */
   cancelRequested: boolean;
   /** Connector events not yet delivered to the agent. */
   pending: ContextEvent[];
-  /** What this session's log says is open: app → version it was told about. */
-  told: Map<string, number>;
-  /** Every connector this session ever heard of (open or not): the last version and tools. */
-  seen: Map<string, { v: number; tools: string[] }>;
-  /** The last focus_changed in this session's log. */
-  toldFocus?: FocusTarget;
+  /** What this session's log has told the agent. */
+  told: ToldState;
   /** Resolves when the current drain loop finishes. */
   drained: Promise<void>;
 }
@@ -44,16 +45,11 @@ const CONTEXT_TYPES = new Set<SessionEvent["type"]>([
   "app_connected",
   "app_disconnected",
   "focus_changed",
+  "guest_turn",
 ]);
 
 function isContextEvent(event: SessionEvent): event is ContextEvent {
   return CONTEXT_TYPES.has(event.type);
-}
-
-function toFocus(event: { app: string; context?: Record<string, string> }): FocusTarget {
-  return event.context === undefined
-    ? { app: event.app }
-    : { app: event.app, context: event.context };
 }
 
 function userMessage(input: QueuedInput): SessionEvent {
@@ -79,24 +75,18 @@ export interface SessionManagerOptions {
   mcpServers?: (sessionId: string) => McpServer[];
   /** Resolves asset://… handles for the agent's file tools. */
   resolveAsset?: (handle: string) => string | undefined;
+  /**
+   * A guest the user addresses directly with "/name task" (e.g. /claude), for this session;
+   * undefined when there is none by that name. Its prompt() gets the task as text.
+   */
+  guest?: (sessionId: string, name: string) => AgentSession | undefined;
 }
 
-export interface FocusTarget {
-  app: string;
-  context?: Record<string, string>;
-}
-
-function sameFocus(a: FocusTarget | undefined, b: FocusTarget | undefined): boolean {
-  return a?.app === b?.app && JSON.stringify(a?.context ?? {}) === JSON.stringify(b?.context ?? {});
-}
-
-function applySeen(seen: Runtime["seen"], event: SessionEvent): void {
-  if (event.type === "app_connected") seen.set(event.app, { v: event.v, tools: event.tools });
-}
-
-function applyTold(told: Map<string, number>, event: SessionEvent): void {
-  if (event.type === "app_connected") told.set(event.app, event.v);
-  else if (event.type === "app_disconnected") told.delete(event.app);
+/** "/claude fix it" → claude, "fix it". */
+function guestCommand(text: string): { name: string; task: string } | undefined {
+  const match = /^\/([a-z][\w-]*)(?:\s+([\s\S]*))?$/.exec(text.trim());
+  if (!match?.[1]) return undefined;
+  return { name: match[1], task: match[2]?.trim() ?? "" };
 }
 
 export class SessionManager {
@@ -113,9 +103,7 @@ export class SessionManager {
       const rt = this.runtimes.get(record.session);
       if (!rt) return;
       rt.pending.push(record.event);
-      applyTold(rt.told, record.event);
-      applySeen(rt.seen, record.event);
-      if (record.event.type === "focus_changed") rt.toldFocus = toFocus(record.event);
+      rt.told.apply(record.event);
     });
   }
 
@@ -151,7 +139,7 @@ export class SessionManager {
   cancel(sessionId: string): void {
     const rt = this.runtime(sessionId);
     if (!rt.running) return;
-    if (rt.agentSession) rt.agentSession.cancel();
+    if (rt.active) rt.active.cancel();
     else rt.cancelRequested = true;
   }
 
@@ -201,21 +189,15 @@ export class SessionManager {
       .read(sessionId, lastInput + 1)
       .map((r) => r.event)
       .filter(isContextEvent);
-    const told = new Map<string, number>();
-    const seen: Runtime["seen"] = new Map();
-    for (const r of this.store.readTypes(sessionId, ["app_connected", "app_disconnected"])) {
-      applyTold(told, r.event);
-      applySeen(seen, r.event);
-    }
-    const lastFocus = this.store.readTypes(sessionId, ["focus_changed"]).at(-1)?.event;
+    const told = new ToldState();
+    const types: SessionEvent["type"][] = ["app_connected", "app_disconnected", "focus_changed"];
+    for (const r of this.store.readTypes(sessionId, types)) told.apply(r.event);
     const rt: Runtime = {
       queue: [],
       running: false,
       cancelRequested: false,
       pending,
       told,
-      seen,
-      toldFocus: lastFocus?.type === "focus_changed" ? toFocus(lastFocus) : undefined,
       drained: Promise.resolve(),
     };
     this.runtimes.set(sessionId, rt);
@@ -233,6 +215,12 @@ export class SessionManager {
   }
 
   private async runTurn(sessionId: string, rt: Runtime, input: QueuedInput): Promise<void> {
+    const command = guestCommand(input.text);
+    const guest = command && this.options.guest?.(sessionId, command.name);
+    if (command && guest) {
+      await this.runGuestTurn(sessionId, rt, input, guest, command.task);
+      return;
+    }
     const ended: TurnEnded = { type: "turn_ended", stopReason: "error" };
     let userLogged = false;
     try {
@@ -245,6 +233,7 @@ export class SessionManager {
       if (rt.cancelRequested) {
         ended.stopReason = "cancelled";
       } else {
+        rt.active = agentSession;
         Object.assign(ended, await this.prompt(sessionId, agentSession, input, pendingEvents));
       }
     } catch (err) {
@@ -254,7 +243,36 @@ export class SessionManager {
       if (!userLogged) this.store.append(sessionId, userMessage(input));
     } finally {
       rt.cancelRequested = false;
+      rt.active = undefined;
     }
+    this.store.append(sessionId, ended);
+  }
+
+  /**
+   * "/claude task": the guest runs the turn instead of the agent. The agent's pending events
+   * stay pending; the guest tells it what happened (guest_turn) for its next prompt.
+   */
+  private async runGuestTurn(
+    sessionId: string,
+    rt: Runtime,
+    input: QueuedInput,
+    guest: AgentSession,
+    task: string,
+  ): Promise<void> {
+    this.store.append(sessionId, userMessage(input));
+    const ended: TurnEnded = { type: "turn_ended", stopReason: "cancelled" };
+    if (task === "") {
+      Object.assign(ended, { stopReason: "error", error: `Usage: ${input.text.trim()} <task>` });
+    } else if (!rt.cancelRequested) {
+      rt.active = guest;
+      try {
+        const turn = { ...input, text: task };
+        Object.assign(ended, await this.prompt(sessionId, guest, turn, []));
+      } finally {
+        rt.active = undefined;
+      }
+    }
+    rt.cancelRequested = false;
     this.store.append(sessionId, ended);
   }
 
@@ -287,38 +305,9 @@ export class SessionManager {
   private announceConnectors(sessionId: string, rt: Runtime): void {
     const current = this.options.connectors?.();
     if (!current) return;
-    const open = new Set(current.map((c) => c.app));
-    for (const c of current) {
-      if (rt.told.get(c.app) === c.v) continue;
-      const event: AppConnected = {
-        type: "app_connected",
-        app: c.app,
-        kind: c.kind,
-        v: c.v,
-        tools: c.tools,
-      };
-      const before = rt.seen.get(c.app);
-      if (!before) {
-        // First time this session hears of it: say what it is for.
-        if (c.description !== undefined) event.description = c.description;
-      } else if (before.v === c.v) {
-        event.reconnect = true;
-      } else {
-        event.previous = before.v;
-        const added = c.tools.filter((t) => !before.tools.includes(t));
-        const removed = before.tools.filter((t) => !c.tools.includes(t));
-        if (added.length > 0) event.added = added;
-        if (removed.length > 0) event.removed = removed;
-      }
+    // Appending applies each event to rt.told (see the onAppend hook).
+    for (const event of rt.told.changes(current, this.options.focus?.(sessionId))) {
       this.store.append(sessionId, event);
-    }
-    for (const app of [...rt.told.keys()]) {
-      if (!open.has(app)) this.store.append(sessionId, { type: "app_disconnected", app });
-    }
-    // <focus> goes last and only when the agent's app or that app's context changed.
-    const focus = this.options.focus?.(sessionId);
-    if (focus && !sameFocus(focus, rt.toldFocus)) {
-      this.store.append(sessionId, { type: "focus_changed", ...focus });
     }
   }
 

@@ -202,6 +202,72 @@ export const examples: Record<string, Envelope> = {
       event: { type: "agent_message_chunk", messageId: "m1", text: "Creating it now." },
     },
   },
+  "event-guest-message-chunk": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 3,
+      ts: 1760565600300,
+      event: { type: "agent_message_chunk", messageId: "g1", text: "Fixed it.", agent: "claude" },
+    },
+  },
+  "event-tool-result": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 6,
+      ts: 1760565600600,
+      event: {
+        type: "tool_result",
+        ref: "a1f3",
+        tool: "photo-editor.crop",
+        rawOutput: { width: 200, height: 100 },
+      },
+    },
+  },
+  "event-guest-turn": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 9,
+      ts: 1760565600900,
+      event: {
+        type: "guest_turn",
+        agent: "claude",
+        task: "fix the failing test",
+        result: "Fixed: the parser skipped the last line.",
+        stopReason: "end_turn",
+      },
+    },
+  },
+  "event-permission-request": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 7,
+      ts: 1760565600700,
+      event: {
+        type: "permission_request",
+        id: "p1",
+        agent: "claude",
+        title: "Edit src/parse.ts",
+        toolCallId: "claude:toolu_1",
+        options: [
+          { id: "allow", name: "Allow", kind: "allow_once" },
+          { id: "reject", name: "Reject", kind: "reject_once" },
+        ],
+      },
+    },
+  },
+  "event-permission-resolved": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 8,
+      ts: 1760565600800,
+      event: { type: "permission_resolved", id: "p1", option: "allow", by: "code-editor" },
+    },
+  },
   "event-tool-call": {
     topic: "session.events",
     payload: {

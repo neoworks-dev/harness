@@ -61,6 +61,18 @@
         },
         {
           "$ref": "#/$defs/HarnessMessage"
+        },
+        {
+          "$ref": "#/$defs/ToolResult"
+        },
+        {
+          "$ref": "#/$defs/GuestTurn"
+        },
+        {
+          "$ref": "#/$defs/PermissionRequest"
+        },
+        {
+          "$ref": "#/$defs/PermissionResolved"
         }
       ],
       "discriminator": {
@@ -105,6 +117,10 @@
         },
         "text": {
           "type": "string"
+        },
+        "agent": {
+          "type": "string",
+          "description": "Set when a guest agent wrote it (e.g. claude, codex); absent for the session's own agent."
         }
       },
       "required": ["type", "messageId", "text"],
@@ -122,6 +138,10 @@
         },
         "text": {
           "type": "string"
+        },
+        "agent": {
+          "type": "string",
+          "description": "Set when a guest agent wrote it (e.g. claude, codex); absent for the session's own agent."
         }
       },
       "required": ["type", "messageId", "text"],
@@ -153,6 +173,10 @@
         },
         "rawInput": {
           "description": "Tool arguments as sent by the model."
+        },
+        "agent": {
+          "type": "string",
+          "description": "Set when a guest agent wrote it (e.g. claude, codex); absent for the session's own agent."
         }
       },
       "required": ["type", "toolCallId", "title", "kind", "status"],
@@ -167,6 +191,17 @@
         },
         "toolCallId": {
           "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "description": "A better title, once the input is known."
+        },
+        "tool": {
+          "type": "string",
+          "description": "As in tool_call."
+        },
+        "rawInput": {
+          "description": "Tool arguments, when they arrive after the call started."
         },
         "status": {
           "$ref": "#/$defs/ToolCallStatus"
@@ -437,6 +472,122 @@
       },
       "required": ["id", "cwd", "createdAt", "lastActivity", "lastSeq", "state", "queued"],
       "additionalProperties": false
+    },
+    "ToolResult": {
+      "description": "A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "tool_result"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string",
+          "description": "app.tool"
+        },
+        "rawOutput": {
+          "description": "The tool's structured result."
+        }
+      },
+      "required": ["type", "ref", "tool"],
+      "additionalProperties": false
+    },
+    "GuestTurn": {
+      "description": "A guest agent finished a task the user gave it directly (/claude …). Rendered to the main agent as <guest agent=… stop=…>result</guest> so it knows what happened.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "guest_turn"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string",
+          "description": "The guest's final reply."
+        },
+        "stopReason": {
+          "$ref": "#/$defs/StopReason"
+        }
+      },
+      "required": ["type", "agent", "task", "result", "stopReason"],
+      "additionalProperties": false
+    },
+    "PermissionOption": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/PermissionOptionKind"
+        }
+      },
+      "required": ["id", "name", "kind"],
+      "additionalProperties": false
+    },
+    "PermissionRequest": {
+      "description": "A guest asks before running a tool. Panes show the options as buttons (action suite.permit); the guest waits until one is picked or the turn is cancelled.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "permission_request"
+        },
+        "id": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "description": "What it wants to do."
+        },
+        "toolCallId": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PermissionOption"
+          }
+        }
+      },
+      "required": ["type", "id", "agent", "title", "options"],
+      "additionalProperties": false
+    },
+    "PermissionResolved": {
+      "description": "The answer to a permission_request: the picked option, or none when the turn was cancelled.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "permission_resolved"
+        },
+        "id": {
+          "type": "string"
+        },
+        "option": {
+          "type": "string"
+        },
+        "by": {
+          "type": "string",
+          "description": "App whose pane answered."
+        }
+      },
+      "required": ["type", "id"],
+      "additionalProperties": false
+    },
+    "PermissionOptionKind": {
+      "type": "string",
+      "enum": ["allow_once", "allow_always", "reject_once", "reject_always"]
     }
   }
 }

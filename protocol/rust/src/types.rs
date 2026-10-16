@@ -1103,6 +1103,10 @@ pub enum SessionEvent {
     AppDisconnected(AppDisconnected),
     FocusChanged(FocusChanged),
     HarnessMessage(HarnessMessage),
+    ToolResult(ToolResult),
+    GuestTurn(GuestTurn),
+    PermissionRequest(PermissionRequest),
+    PermissionResolved(PermissionResolved),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -1150,6 +1154,22 @@ impl Serialize for SessionEvent {
                 "harness_message",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            SessionEvent::ToolResult(v) => (
+                "tool_result",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            SessionEvent::GuestTurn(v) => (
+                "guest_turn",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            SessionEvent::PermissionRequest(v) => (
+                "permission_request",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            SessionEvent::PermissionResolved(v) => (
+                "permission_resolved",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             SessionEvent::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -1193,6 +1213,18 @@ impl<'de> Deserialize<'de> for SessionEvent {
                 .map_err(D::Error::custom),
             "harness_message" => serde_json::from_value(value)
                 .map(SessionEvent::HarnessMessage)
+                .map_err(D::Error::custom),
+            "tool_result" => serde_json::from_value(value)
+                .map(SessionEvent::ToolResult)
+                .map_err(D::Error::custom),
+            "guest_turn" => serde_json::from_value(value)
+                .map(SessionEvent::GuestTurn)
+                .map_err(D::Error::custom),
+            "permission_request" => serde_json::from_value(value)
+                .map(SessionEvent::PermissionRequest)
+                .map_err(D::Error::custom),
+            "permission_resolved" => serde_json::from_value(value)
+                .map(SessionEvent::PermissionResolved)
                 .map_err(D::Error::custom),
             _ => Ok(SessionEvent::Unknown(value)),
         }
@@ -1259,6 +1291,30 @@ impl From<HarnessMessage> for SessionEvent {
     }
 }
 
+impl From<ToolResult> for SessionEvent {
+    fn from(v: ToolResult) -> Self {
+        SessionEvent::ToolResult(v)
+    }
+}
+
+impl From<GuestTurn> for SessionEvent {
+    fn from(v: GuestTurn) -> Self {
+        SessionEvent::GuestTurn(v)
+    }
+}
+
+impl From<PermissionRequest> for SessionEvent {
+    fn from(v: PermissionRequest) -> Self {
+        SessionEvent::PermissionRequest(v)
+    }
+}
+
+impl From<PermissionResolved> for SessionEvent {
+    fn from(v: PermissionResolved) -> Self {
+        SessionEvent::PermissionResolved(v)
+    }
+}
+
 /// User input as typed, without injected event tags. Starts a turn.
 /// Tagged `type: "user_message"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1282,6 +1338,9 @@ pub struct AgentMessageChunk {
     pub message_id: String,
     #[serde(rename = "text")]
     pub text: String,
+    /// Set when a guest agent wrote it (e.g. claude, codex); absent for the session's own agent.
+    #[serde(rename = "agent", default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
 }
 
 /// Streamed piece of the agent's reasoning.
@@ -1292,6 +1351,9 @@ pub struct AgentThoughtChunk {
     pub message_id: String,
     #[serde(rename = "text")]
     pub text: String,
+    /// Set when a guest agent wrote it (e.g. claude, codex); absent for the session's own agent.
+    #[serde(rename = "agent", default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
 }
 
 /// The agent started a tool call.
@@ -1313,6 +1375,9 @@ pub struct ToolCall {
     /// Tool arguments as sent by the model.
     #[serde(rename = "rawInput", default, skip_serializing_if = "Option::is_none")]
     pub raw_input: Option<serde_json::Value>,
+    /// Set when a guest agent wrote it (e.g. claude, codex); absent for the session's own agent.
+    #[serde(rename = "agent", default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
 }
 
 /// Progress or result of a tool call. Fields that are present replace earlier values.
@@ -1321,6 +1386,15 @@ pub struct ToolCall {
 pub struct ToolCallUpdate {
     #[serde(rename = "toolCallId")]
     pub tool_call_id: String,
+    /// A better title, once the input is known.
+    #[serde(rename = "title", default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// As in tool_call.
+    #[serde(rename = "tool", default, skip_serializing_if = "Option::is_none")]
+    pub tool: Option<String>,
+    /// Tool arguments, when they arrive after the call started.
+    #[serde(rename = "rawInput", default, skip_serializing_if = "Option::is_none")]
+    pub raw_input: Option<serde_json::Value>,
     #[serde(rename = "status", default, skip_serializing_if = "Option::is_none")]
     pub status: Option<ToolCallStatus>,
     #[serde(rename = "content", default, skip_serializing_if = "Option::is_none")]
@@ -1583,6 +1657,91 @@ pub struct SessionInfo {
     /// Inputs waiting behind the running turn.
     #[serde(rename = "queued")]
     pub queued: i64,
+}
+
+/// A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template.
+/// Tagged `type: "tool_result"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolResult {
+    #[serde(rename = "ref")]
+    pub r#ref: String,
+    /// app.tool
+    #[serde(rename = "tool")]
+    pub tool: String,
+    /// The tool's structured result.
+    #[serde(rename = "rawOutput", default, skip_serializing_if = "Option::is_none")]
+    pub raw_output: Option<serde_json::Value>,
+}
+
+/// A guest agent finished a task the user gave it directly (/claude …). Rendered to the main agent as <guest agent=… stop=…>result</guest> so it knows what happened.
+/// Tagged `type: "guest_turn"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GuestTurn {
+    #[serde(rename = "agent")]
+    pub agent: String,
+    #[serde(rename = "task")]
+    pub task: String,
+    /// The guest's final reply.
+    #[serde(rename = "result")]
+    pub result: String,
+    #[serde(rename = "stopReason")]
+    pub stop_reason: StopReason,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PermissionOption {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(rename = "kind")]
+    pub kind: PermissionOptionKind,
+}
+
+/// A guest asks before running a tool. Panes show the options as buttons (action suite.permit); the guest waits until one is picked or the turn is cancelled.
+/// Tagged `type: "permission_request"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PermissionRequest {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "agent")]
+    pub agent: String,
+    /// What it wants to do.
+    #[serde(rename = "title")]
+    pub title: String,
+    #[serde(
+        rename = "toolCallId",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub tool_call_id: Option<String>,
+    #[serde(rename = "options")]
+    pub options: Vec<PermissionOption>,
+}
+
+/// The answer to a permission_request: the picked option, or none when the turn was cancelled.
+/// Tagged `type: "permission_resolved"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PermissionResolved {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "option", default, skip_serializing_if = "Option::is_none")]
+    pub option: Option<String>,
+    /// App whose pane answered.
+    #[serde(rename = "by", default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PermissionOptionKind {
+    #[serde(rename = "allow_once")]
+    AllowOnce,
+    #[serde(rename = "allow_always")]
+    AllowAlways,
+    #[serde(rename = "reject_once")]
+    RejectOnce,
+    #[serde(rename = "reject_always")]
+    RejectAlways,
 }
 
 /// The fixed component set. Apps combine these; they never add new ones.
@@ -1976,7 +2135,7 @@ pub struct ProgressComponent {
 pub struct ButtonComponent {
     #[serde(rename = "label")]
     pub label: String,
-    /// app.tool, or copy:<text>.
+    /// app.tool, copy:<text> (client-side), or suite.permit {id, option} (answers a guest's permission_request).
     #[serde(rename = "action")]
     pub action: String,
     /// Arguments for the action.

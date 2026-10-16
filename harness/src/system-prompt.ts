@@ -22,4 +22,9 @@ If you need a disconnected app, ask the user to open it or use apps_launch.
 Tools that produce files or media return handles like asset://img-7f3.
 Pass these handles to other tools to move results between apps. bash and read
 accept them as paths of the stored file (write and edit don't), e.g.
-cp asset://img-7f3 ~/site/logo.png.`;
+cp asset://img-7f3 ~/site/logo.png.
+
+delegate hands a task to a guest coding agent (Claude Code or Codex) that works
+in the session's directory; use it for larger coding work. Its progress shows in
+the chat and its final reply is the tool result. <guest agent=…>…</guest> in a
+message is a task the user gave a guest directly, with its reply.`;

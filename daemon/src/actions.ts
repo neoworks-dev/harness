@@ -5,6 +5,7 @@ import type { Component, UiAction } from "@suite/protocol/types";
 import { BadRequestError } from "./focus.ts";
 import type { Gateway } from "./gateway/gateway.ts";
 import type { ConnectorRegistry } from "./gateway/registry.ts";
+import type { GuestManager } from "./guests/guests.ts";
 import type { SessionManager } from "./sessions.ts";
 import type { SessionStore } from "./store.ts";
 import type { ViewManager } from "./view/views.ts";
@@ -15,6 +16,7 @@ interface Parts {
   connectors: ConnectorRegistry;
   gateway: Gateway;
   views: ViewManager;
+  guests?: GuestManager;
 }
 
 function findLabel(component: Component, action: string): string | undefined {
@@ -34,6 +36,16 @@ export class ActionRunner {
   async run({ session, ref, action, args }: UiAction, from: string): Promise<void> {
     if (action.startsWith("copy:")) {
       throw new BadRequestError("copy: actions are handled by the client");
+    }
+    if (action === "suite.permit") {
+      // A guest's permission request (permission_request): args {id, option}.
+      const fields: Record<string, unknown> = Object.assign({}, args);
+      const { id, option } = fields;
+      if (typeof id !== "string" || typeof option !== "string" || !this.parts.guests) {
+        throw new BadRequestError("suite.permit needs args {id, option}");
+      }
+      this.parts.guests.permit(session, id, option, from);
+      return;
     }
     const { store, connectors, gateway, sessions, views } = this.parts;
     const dot = action.indexOf(".");

@@ -1,5 +1,5 @@
-// The connector-facing core tools (tools_search, tools_call, apps_launch, apps_focus), shared by the
-// harness (native definitions) and the MCP gateway (which implements them).
+// The connector-facing core tools (tools_search, tools_call, apps_launch, apps_focus, delegate),
+// shared by the harness (native definitions) and the MCP gateway (which implements them).
 import data from "../core-tools.json";
 
 export interface CoreToolDefinition {
@@ -8,7 +8,8 @@ export interface CoreToolDefinition {
   inputSchema: Record<string, unknown>;
 }
 
-export type CoreToolName = "tools_search" | "tools_call" | "apps_launch" | "apps_focus";
+export type CoreToolName =
+  "tools_search" | "tools_call" | "apps_launch" | "apps_focus" | "delegate";
 
 export interface ToolsSearchArgs {
   query: string;
@@ -24,11 +25,16 @@ export interface AppArgs {
   app: string;
 }
 
+export interface DelegateArgs {
+  agent: string;
+  task: string;
+}
+
 export const CORE_TOOLS: readonly CoreToolDefinition[] = data.tools.map((tool) => {
   if (!isCoreToolName(tool.name)) throw new Error(`core-tools.json: unexpected tool ${tool.name}`);
   return { name: tool.name, description: tool.description, inputSchema: tool.inputSchema };
 });
 
 export function isCoreToolName(name: string): name is CoreToolName {
-  return ["tools_search", "tools_call", "apps_launch", "apps_focus"].includes(name);
+  return ["tools_search", "tools_call", "apps_launch", "apps_focus", "delegate"].includes(name);
 }

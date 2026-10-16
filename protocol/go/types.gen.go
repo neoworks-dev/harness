@@ -971,7 +971,7 @@ type SessionEventRecord struct {
 }
 
 // SessionEvent: Everything that happens in a session. Views must ignore types they don't know.
-// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, UnknownSessionEvent.
+// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, UnknownSessionEvent.
 type SessionEvent struct {
 	Value SessionEventVariant
 }
@@ -1074,6 +1074,30 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		u.Value = v
+	case "tool_result":
+		var v ToolResult
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "guest_turn":
+		var v GuestTurn
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "permission_request":
+		var v PermissionRequest
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "permission_resolved":
+		var v PermissionResolved
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
 	default:
 		u.Value = UnknownSessionEvent{Tag: *head.Tag, Raw: append(json.RawMessage(nil), data...)}
 	}
@@ -1105,6 +1129,8 @@ type AgentMessageChunk struct {
 	// Groups chunks of one assistant message.
 	MessageID string `json:"messageId"`
 	Text      string `json:"text"`
+	// Set when a guest agent wrote it (e.g. claude, codex); absent for the session's own agent.
+	Agent *string `json:"agent,omitempty"`
 }
 
 func (AgentMessageChunk) isSessionEvent() {}
@@ -1122,6 +1148,8 @@ func (v AgentMessageChunk) MarshalJSON() ([]byte, error) {
 type AgentThoughtChunk struct {
 	MessageID string `json:"messageId"`
 	Text      string `json:"text"`
+	// Set when a guest agent wrote it (e.g. claude, codex); absent for the session's own agent.
+	Agent *string `json:"agent,omitempty"`
 }
 
 func (AgentThoughtChunk) isSessionEvent() {}
@@ -1146,6 +1174,8 @@ type ToolCall struct {
 	Status ToolCallStatus `json:"status"`
 	// Tool arguments as sent by the model.
 	RawInput json.RawMessage `json:"rawInput,omitempty"`
+	// Set when a guest agent wrote it (e.g. claude, codex); absent for the session's own agent.
+	Agent *string `json:"agent,omitempty"`
 }
 
 func (ToolCall) isSessionEvent() {}
@@ -1161,9 +1191,15 @@ func (v ToolCall) MarshalJSON() ([]byte, error) {
 
 // ToolCallUpdate: Progress or result of a tool call. Fields that are present replace earlier values.
 type ToolCallUpdate struct {
-	ToolCallID string            `json:"toolCallId"`
-	Status     *ToolCallStatus   `json:"status,omitempty"`
-	Content    []ToolCallContent `json:"content,omitempty"`
+	ToolCallID string `json:"toolCallId"`
+	// A better title, once the input is known.
+	Title *string `json:"title,omitempty"`
+	// As in tool_call.
+	Tool *string `json:"tool,omitempty"`
+	// Tool arguments, when they arrive after the call started.
+	RawInput json.RawMessage   `json:"rawInput,omitempty"`
+	Status   *ToolCallStatus   `json:"status,omitempty"`
+	Content  []ToolCallContent `json:"content,omitempty"`
 	// Harness-specific result details.
 	RawOutput json.RawMessage `json:"rawOutput,omitempty"`
 }
@@ -1449,6 +1485,101 @@ type SessionInfo struct {
 	// Inputs waiting behind the running turn.
 	Queued int64 `json:"queued"`
 }
+
+// ToolResult: A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template.
+type ToolResult struct {
+	Ref string `json:"ref"`
+	// app.tool
+	Tool string `json:"tool"`
+	// The tool's structured result.
+	RawOutput json.RawMessage `json:"rawOutput,omitempty"`
+}
+
+func (ToolResult) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v ToolResult) MarshalJSON() ([]byte, error) {
+	type plain ToolResult
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"tool_result", plain(v)})
+}
+
+// GuestTurn: A guest agent finished a task the user gave it directly (/claude …). Rendered to the main agent as <guest agent=… stop=…>result</guest> so it knows what happened.
+type GuestTurn struct {
+	Agent string `json:"agent"`
+	Task  string `json:"task"`
+	// The guest's final reply.
+	Result     string     `json:"result"`
+	StopReason StopReason `json:"stopReason"`
+}
+
+func (GuestTurn) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v GuestTurn) MarshalJSON() ([]byte, error) {
+	type plain GuestTurn
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"guest_turn", plain(v)})
+}
+
+type PermissionOption struct {
+	ID   string               `json:"id"`
+	Name string               `json:"name"`
+	Kind PermissionOptionKind `json:"kind"`
+}
+
+// PermissionRequest: A guest asks before running a tool. Panes show the options as buttons (action suite.permit); the guest waits until one is picked or the turn is cancelled.
+type PermissionRequest struct {
+	ID    string `json:"id"`
+	Agent string `json:"agent"`
+	// What it wants to do.
+	Title      string             `json:"title"`
+	ToolCallID *string            `json:"toolCallId,omitempty"`
+	Options    []PermissionOption `json:"options"`
+}
+
+func (PermissionRequest) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v PermissionRequest) MarshalJSON() ([]byte, error) {
+	type plain PermissionRequest
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"permission_request", plain(v)})
+}
+
+// PermissionResolved: The answer to a permission_request: the picked option, or none when the turn was cancelled.
+type PermissionResolved struct {
+	ID     string  `json:"id"`
+	Option *string `json:"option,omitempty"`
+	// App whose pane answered.
+	By *string `json:"by,omitempty"`
+}
+
+func (PermissionResolved) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v PermissionResolved) MarshalJSON() ([]byte, error) {
+	type plain PermissionResolved
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"permission_resolved", plain(v)})
+}
+
+type PermissionOptionKind string
+
+const (
+	PermissionOptionKindAllowOnce    PermissionOptionKind = "allow_once"
+	PermissionOptionKindAllowAlways  PermissionOptionKind = "allow_always"
+	PermissionOptionKindRejectOnce   PermissionOptionKind = "reject_once"
+	PermissionOptionKindRejectAlways PermissionOptionKind = "reject_always"
+)
 
 // Component: The fixed component set. Apps combine these; they never add new ones.
 // Value is one of: CardComponent, RowComponent, StackComponent, TextComponent, ImageComponent, FileComponent, CodeComponent, DiffComponent, TableComponent, KvComponent, ProgressComponent, ButtonComponent, LinkComponent, UnknownComponent.
@@ -1824,7 +1955,7 @@ func (v ProgressComponent) MarshalJSON() ([]byte, error) {
 // ButtonComponent: Sends ui.action when pressed. Actions starting with copy: are handled by the client (copy the rest to the clipboard). TUI: [k] Label.
 type ButtonComponent struct {
 	Label string `json:"label"`
-	// app.tool, or copy:<text>.
+	// app.tool, copy:<text> (client-side), or suite.permit {id, option} (answers a guest's permission_request).
 	Action string `json:"action"`
 	// Arguments for the action.
 	Args json.RawMessage `json:"args,omitempty"`

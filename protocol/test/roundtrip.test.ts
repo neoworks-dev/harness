@@ -44,6 +44,10 @@ describe("protocol examples", () => {
       app_disconnected: true,
       focus_changed: true,
       harness_message: true,
+      tool_result: true,
+      guest_turn: true,
+      permission_request: true,
+      permission_resolved: true,
     };
     expect([...seen].sort()).toEqual(Object.keys(all).sort());
   });

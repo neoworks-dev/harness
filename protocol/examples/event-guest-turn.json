@@ -1,0 +1,15 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 9,
+    "ts": 1760565600900,
+    "event": {
+      "type": "guest_turn",
+      "agent": "claude",
+      "task": "fix the failing test",
+      "result": "Fixed: the parser skipped the last line.",
+      "stopReason": "end_turn"
+    }
+  }
+}

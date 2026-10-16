@@ -44,6 +44,27 @@ test("keeps connector events in order and emits only the last focus after them",
   ]);
 });
 
+test("a guest turn carries the task as an attribute and the reply as the body", () => {
+  const events: ContextEvent[] = [
+    {
+      type: "guest_turn",
+      agent: "claude",
+      task: 'fix "parse"',
+      result: "Fixed the off-by-one.\nTests pass.",
+      stopReason: "end_turn",
+    },
+    { type: "focus_changed", app: "code-editor" },
+  ];
+  expect(formatPrompt("thanks", events).split("\n")).toEqual([
+    '<guest agent="claude" task="fix &quot;parse&quot;" stop="end_turn">',
+    "Fixed the off-by-one.",
+    "Tests pass.",
+    "</guest>",
+    '<focus app="code-editor"/>',
+    "thanks",
+  ]);
+});
+
 test("focus without context has only the app attribute", () => {
   expect(formatPrompt("x", [{ type: "focus_changed", app: "term" }])).toBe(
     '<focus app="term"/>\nx',

@@ -1,20 +1,30 @@
 // The gateway's MCP endpoint (Streamable HTTP, stateless): serves the fixed core tools to the
-// harness and, later, to guest agents. Its tool list never changes; connector tools are reached
+// harness and to guest agents (which don't get delegate). Its tool list never changes; connector tools are reached
 // through tools_search / tools_call.
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { CORE_TOOLS, isCoreToolName } from "@suite/protocol/core-tools";
 import { VERSION } from "../version.ts";
-import type { Gateway } from "./gateway.ts";
+import type { Caller, Gateway } from "./gateway.ts";
+
+function header(
+  info: { headers: Record<string, string | string[] | undefined> } | undefined,
+  name: string,
+): string | undefined {
+  const value = info?.headers[name];
+  return typeof value === "string" ? value : undefined;
+}
 
 function createServer(gateway: Gateway): Server {
   const server = new Server(
     { name: "suite", version: VERSION },
     { capabilities: { tools: { listChanged: false } } },
   );
-  server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: CORE_TOOLS.map(({ name, description, inputSchema }) => ({
+  server.setRequestHandler(ListToolsRequestSchema, (_request, extra) => ({
+    tools: CORE_TOOLS.filter(
+      ({ name }) => name !== "delegate" || header(extra.requestInfo, "x-suite-guest") === undefined,
+    ).map(({ name, description, inputSchema }) => ({
       name,
       description,
       inputSchema: { type: "object" as const, ...inputSchema },
@@ -25,13 +35,12 @@ function createServer(gateway: Gateway): Server {
     if (!isCoreToolName(name)) {
       return { content: [{ type: "text", text: `Unknown tool ${name}.` }], isError: true };
     }
-    const session = extra.requestInfo?.headers["x-suite-session"];
-    return gateway.call(
-      name,
-      args,
-      extra.signal,
-      typeof session === "string" ? session : undefined,
-    );
+    const caller: Caller = {};
+    const session = header(extra.requestInfo, "x-suite-session");
+    const guest = header(extra.requestInfo, "x-suite-guest");
+    if (session !== undefined) caller.session = session;
+    if (guest !== undefined) caller.guest = guest;
+    return gateway.call(name, args, extra.signal, caller);
   });
   return server;
 }

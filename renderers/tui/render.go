@@ -128,8 +128,18 @@ func (r *renderer) item(it protocol.ViewItem) []line {
 			head = append(head, run{" " + label, style{fg: rAccent, bold: true}})
 		}
 		return append(wrapRuns(head, w), r.component(it.Component, w)...)
+	case protocol.ItemKindAgent:
+		// A guest agent's items carry its name; the main agent's have no label and no head.
+		if label == "" {
+			break
+		}
+		head := lit(label, style{fg: rAccent, bold: true})
+		return append(wrapRuns(head, w), r.component(it.Component, w)...)
 	case protocol.ItemKindThought:
 		if !r.opts.Thoughts {
+			if label != "" {
+				return []line{lit("… "+label+" thinking", style{fg: rMuted})}
+			}
 			return []line{lit("… thinking", style{fg: rMuted})}
 		}
 		return tint(r.component(it.Component, w), rMuted)

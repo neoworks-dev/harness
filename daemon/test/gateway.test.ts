@@ -6,7 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { AppPresence, SessionEvent } from "@suite/protocol/types";
-import { Gateway } from "../src/gateway/gateway.ts";
+import { Gateway, type GatewayOptions } from "../src/gateway/gateway.ts";
 import { ConnectorRegistry } from "../src/gateway/registry.ts";
 import { connectMcp, type Upstream } from "../src/gateway/upstream.ts";
 import { silentLogger } from "../src/log.ts";
@@ -66,7 +66,7 @@ function fakeUpstream(initial: StoredTool[]): FakeUpstream {
   };
 }
 
-function setup(store = new SessionStore(":memory:")): Setup {
+function setup(store = new SessionStore(":memory:"), options: Partial<GatewayOptions> = {}): Setup {
   const upstreams = new Map<string, FakeUpstream>();
   const registry = new ConnectorRegistry(
     store,
@@ -77,7 +77,7 @@ function setup(store = new SessionStore(":memory:")): Setup {
     },
     silentLogger,
   );
-  const gateway = new Gateway(registry, { log: silentLogger, launchTimeoutMs: 1000 });
+  const gateway = new Gateway(registry, { log: silentLogger, launchTimeoutMs: 1000, ...options });
   return { store, registry, gateway, upstreams };
 }
 
@@ -172,8 +172,10 @@ describe("connector registry", () => {
 });
 
 describe("core tools", () => {
-  async function opened(): Promise<Setup & { upstream: FakeUpstream; owner: object }> {
-    const s = setup();
+  async function opened(
+    options: Partial<GatewayOptions> = {},
+  ): Promise<Setup & { upstream: FakeUpstream; owner: object }> {
+    const s = setup(undefined, options);
     const upstream = fakeUpstream(photoTools);
     s.upstreams.set("mem://photo", upstream);
     const owner = {};
@@ -233,6 +235,62 @@ describe("core tools", () => {
     const unknown = await gateway.call("tools_call", { name: "photo-editor.sharpen" });
     expect(resultText(unknown)).toContain("tools_search");
     expect((await gateway.call("tools_call", { name: "nonsense" })).isError).toBe(true);
+  });
+
+  test("tools_call takes args as a JSON string; arguments under another key say where they go", async () => {
+    const { gateway, upstream } = await opened();
+    const parsed = await gateway.call("tools_call", {
+      name: "photo-editor.crop",
+      args: '{"asset":"asset://img-1","w":10}',
+    });
+    expect(parsed.isError).toBeUndefined();
+    expect(upstream.calls).toEqual(['crop {"asset":"asset://img-1","w":10}']);
+    const stray = await gateway.call("tools_call", {
+      name: "photo-editor.crop",
+      arguments: '{"asset":"asset://img-1"}',
+    });
+    expect(resultText(stray)).toBe(
+      "tools_call takes {name, args}: put the tool's arguments in args (an object), not in arguments.",
+    );
+    const broken = await gateway.call("tools_call", { name: "photo-editor.crop", args: "{nope" });
+    expect(resultText(broken)).toContain("isn't JSON");
+  });
+
+  test("guests get text only, with a ref to the stored result and the files behind handles", async () => {
+    const recorded: unknown[] = [];
+    const { gateway, upstream } = await opened({
+      recordResult: (_session, result) => void recorded.push(result),
+      resolveAsset: (handle) =>
+        handle === "asset://img-0123456789ab" ? "/data/img.png" : undefined,
+    });
+    upstream.call = () =>
+      Promise.resolve({
+        content: [{ type: "text", text: "saved asset://img-0123456789ab" }],
+        structuredContent: { ok: true },
+      });
+    const caller = { session: "s1", guest: "claude" };
+    const result = await gateway.call(
+      "tools_call",
+      { name: "photo-editor.crop", args: { asset: "asset://img-0123456789ab", w: 1 } },
+      undefined,
+      caller,
+    );
+    expect(result.structuredContent).toBeUndefined();
+    expect(recorded).toEqual([
+      {
+        type: "tool_result",
+        ref: expect.any(String),
+        tool: "photo-editor.crop",
+        rawOutput: { ok: true },
+      },
+    ]);
+    const { ref } = recorded[0] as { ref: string };
+    expect(result.content).toEqual([
+      { type: "text", text: "saved asset://img-0123456789ab" },
+      { type: "text", text: `asset://img-0123456789ab is the file /data/img.png\n[result:${ref}]` },
+    ]);
+    const search = await gateway.call("tools_search", { query: "crop" }, undefined, caller);
+    expect(search.structuredContent).toBeUndefined();
   });
 
   test("closed apps answer with the design's error", async () => {
@@ -448,6 +506,7 @@ describe("over real MCP", () => {
       "tools_call",
       "apps_launch",
       "apps_focus",
+      "delegate",
     ]);
     const found = await client.callTool({ name: "tools_search", arguments: { query: "hello" } });
     expect(JSON.stringify(found.content)).toContain("greeter.greet");

@@ -37,18 +37,25 @@ bin/suite move [app]       # move the agent to an open app; no app = home. --ses
 
 In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/<key>` presses a button on the latest result (`/help` lists them). `/clear` (in any pane: attach, Pad, the photo editor, the browser page) starts a new conversation in the same directory; every app switches to it and the agent stays where it is. Piped stdin sends one input per line and exits once the session is idle.
 
-| Env                                   | Default                                                     |
-| ------------------------------------- | ----------------------------------------------------------- |
-| `SUITE_SOCKET`                        | `$XDG_RUNTIME_DIR/suite/bus.sock` (else `/tmp/suite-$UID/`) |
-| `SUITE_DATA_DIR`                      | `$XDG_DATA_HOME/suite` (else `~/.local/share/suite`)        |
-| `SUITE_MODEL`                         | `deepseek/deepseek-flash` (`provider/model-id`)             |
-| `SUITE_IMAGES`                        | `1`/`0`: the model takes images (default: pi's registry)    |
-| `SUITE_THINKING`                      | `off` (`minimal`…`xhigh`)                                   |
-| `<PROVIDER>_API_KEY`, `SUITE_API_KEY` | falls back to API-key entries in `~/.pi/agent/auth.json`    |
-| `SUITE_AGENT`                         | `pi`; `echo` is an offline scripted agent for tests         |
-| `SUITE_PORT`                          | 127.0.0.1 port for `/bus` + `/mcp` (default: any free port) |
+| Env                                       | Default                                                          |
+| ----------------------------------------- | ---------------------------------------------------------------- |
+| `SUITE_SOCKET`                            | `$XDG_RUNTIME_DIR/suite/bus.sock` (else `/tmp/suite-$UID/`)      |
+| `SUITE_DATA_DIR`                          | `$XDG_DATA_HOME/suite` (else `~/.local/share/suite`)             |
+| `SUITE_MODEL`                             | `deepseek/deepseek-flash` (`provider/model-id`)                  |
+| `SUITE_IMAGES`                            | `1`/`0`: the model takes images (default: pi's registry)         |
+| `SUITE_THINKING`                          | `off` (`minimal`…`xhigh`)                                        |
+| `<PROVIDER>_API_KEY`, `SUITE_API_KEY`     | falls back to API-key entries in `~/.pi/agent/auth.json`         |
+| `SUITE_AGENT`                             | `pi`; `echo` is an offline scripted agent for tests              |
+| `SUITE_PORT`                              | 127.0.0.1 port for `/bus` + `/mcp` (default: any free port)      |
+| `SUITE_GUESTS`                            | `claude,codex`; `none` turns guest agents off                    |
+| `SUITE_CLAUDE_MODEL`, `SUITE_CODEX_MODEL` | the guest's model, e.g. `haiku`, `gpt-6-luna` (default: its own) |
+| `SUITE_GUEST_PERMISSIONS`                 | `ask` (buttons in the chat) or `allow`                           |
 
 `model` and `thinkingLevel` can also be set in `~/.config/suite/config.json`; env wins.
+
+## Guest agents
+
+Claude Code and Codex can work in a session as guests, through their ACP adapters (fetched by `bunx` on first use; they use your existing `claude` / `codex` logins). The agent hands them coding tasks with its `delegate` tool, or you address one directly in any pane: `/claude fix the failing test`, `/codex …`. Their messages and tool calls stream into the same chat, labelled; the agent hears what they did. When a guest asks before running something, the chat shows its options as buttons. Guests reach the same apps through the daemon's MCP gateway.
 
 ## Moving the agent between apps
 

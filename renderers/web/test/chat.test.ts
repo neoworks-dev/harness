@@ -292,6 +292,21 @@ describe("items", () => {
     expect(itemEl(page, "t-done").querySelector("header")?.textContent).toBe("✓ tool done");
   });
 
+  test("guest labels head agent and thought items; unlabeled ones stay bare", () => {
+    const { page, chat } = rig();
+    chat.setItems([
+      { ref: "a", kind: "agent", component: text(para("main")) },
+      { ref: "ga", kind: "agent", label: "claude", component: text(para("guest")) },
+      { ref: "t", kind: "thought", component: text(para("hmm")) },
+      { ref: "gt", kind: "thought", label: "codex", component: text(para("hmm")) },
+    ]);
+    expect(itemEl(page, "a").querySelector("header")).toBeNull();
+    expect(itemEl(page, "ga").querySelector("header")?.textContent).toBe("claude");
+    expect(itemEl(page, "ga").querySelector("header")?.className).toBe("suite-item-header");
+    expect(itemEl(page, "t").querySelector("summary")?.textContent).toBe("… thinking");
+    expect(itemEl(page, "gt").querySelector("summary")?.textContent).toBe("… codex thinking");
+  });
+
   test("images: asset:// and paths show the fallback, data: and https: draw an <img>", () => {
     const { page, chat } = rig();
     const image = (ref: string, src: string): ViewItem => ({

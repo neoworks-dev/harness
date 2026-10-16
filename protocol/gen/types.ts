@@ -446,7 +446,11 @@ export type SessionEvent =
   | AppConnected
   | AppDisconnected
   | FocusChanged
-  | HarnessMessage;
+  | HarnessMessage
+  | ToolResult
+  | GuestTurn
+  | PermissionRequest
+  | PermissionResolved;
 
 export type SessionEventTag = SessionEvent["type"];
 
@@ -466,6 +470,8 @@ export interface AgentMessageChunk {
   /** Groups chunks of one assistant message. */
   messageId: string;
   text: string;
+  /** Set when a guest agent wrote it (e.g. claude, codex); absent for the session's own agent. */
+  agent?: string;
 }
 
 /** Streamed piece of the agent's reasoning. */
@@ -473,6 +479,8 @@ export interface AgentThoughtChunk {
   type: "agent_thought_chunk";
   messageId: string;
   text: string;
+  /** Set when a guest agent wrote it (e.g. claude, codex); absent for the session's own agent. */
+  agent?: string;
 }
 
 /** The agent started a tool call. */
@@ -487,12 +495,20 @@ export interface ToolCall {
   status: ToolCallStatus;
   /** Tool arguments as sent by the model. */
   rawInput?: unknown;
+  /** Set when a guest agent wrote it (e.g. claude, codex); absent for the session's own agent. */
+  agent?: string;
 }
 
 /** Progress or result of a tool call. Fields that are present replace earlier values. */
 export interface ToolCallUpdate {
   type: "tool_call_update";
   toolCallId: string;
+  /** A better title, once the input is known. */
+  title?: string;
+  /** As in tool_call. */
+  tool?: string;
+  /** Tool arguments, when they arrive after the call started. */
+  rawInput?: unknown;
   status?: ToolCallStatus;
   content?: ToolCallContent[];
   /** Harness-specific result details. */
@@ -605,6 +621,54 @@ export interface SessionInfo {
   /** Inputs waiting behind the running turn. */
   queued: number;
 }
+
+/** A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template. */
+export interface ToolResult {
+  type: "tool_result";
+  ref: string;
+  /** app.tool */
+  tool: string;
+  /** The tool's structured result. */
+  rawOutput?: unknown;
+}
+
+/** A guest agent finished a task the user gave it directly (/claude …). Rendered to the main agent as <guest agent=… stop=…>result</guest> so it knows what happened. */
+export interface GuestTurn {
+  type: "guest_turn";
+  agent: string;
+  task: string;
+  /** The guest's final reply. */
+  result: string;
+  stopReason: StopReason;
+}
+
+export interface PermissionOption {
+  id: string;
+  name: string;
+  kind: PermissionOptionKind;
+}
+
+/** A guest asks before running a tool. Panes show the options as buttons (action suite.permit); the guest waits until one is picked or the turn is cancelled. */
+export interface PermissionRequest {
+  type: "permission_request";
+  id: string;
+  agent: string;
+  /** What it wants to do. */
+  title: string;
+  toolCallId?: string;
+  options: PermissionOption[];
+}
+
+/** The answer to a permission_request: the picked option, or none when the turn was cancelled. */
+export interface PermissionResolved {
+  type: "permission_resolved";
+  id: string;
+  option?: string;
+  /** App whose pane answered. */
+  by?: string;
+}
+
+export type PermissionOptionKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
 
 /** The fixed component set. Apps combine these; they never add new ones. */
 export type Component =
@@ -735,7 +799,7 @@ export interface ProgressComponent {
 export interface ButtonComponent {
   type: "button";
   label: string;
-  /** app.tool, or copy:<text>. */
+  /** app.tool, copy:<text> (client-side), or suite.permit {id, option} (answers a guest's permission_request). */
   action: string;
   /** Arguments for the action. */
   args?: unknown;

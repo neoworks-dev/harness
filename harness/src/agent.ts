@@ -10,6 +10,7 @@ import type {
   AppConnected,
   AppDisconnected,
   FocusChanged,
+  GuestTurn,
   HarnessMessage,
   SessionEvent,
   StopReason,
@@ -21,8 +22,8 @@ import type {
 export type AgentUpdate =
   AgentMessageChunk | AgentThoughtChunk | ToolCall | ToolCallUpdate | HarnessMessage;
 
-/** Connector events that get prepended to the next user message. */
-export type ContextEvent = AppConnected | AppDisconnected | FocusChanged;
+/** Connector events (and what guests did on their own) that get prepended to the next user message. */
+export type ContextEvent = AppConnected | AppDisconnected | FocusChanged | GuestTurn;
 
 /** An MCP server for the agent (ACP's McpServerHttp shape). */
 export interface McpServer {

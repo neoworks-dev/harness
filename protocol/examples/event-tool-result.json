@@ -1,0 +1,14 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 6,
+    "ts": 1760565600600,
+    "event": {
+      "type": "tool_result",
+      "ref": "a1f3",
+      "tool": "photo-editor.crop",
+      "rawOutput": { "width": 200, "height": 100 }
+    }
+  }
+}
