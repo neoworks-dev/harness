@@ -6,6 +6,7 @@
 //   /harness [name]                           the harness the session runs on; no name: pick one
 // The harness defaults to the one the session runs on. Nothing is chosen for the user.
 import type { ConfigOption } from "@suite/harness/agent";
+import type { HarnessSettings } from "@suite/protocol/types";
 
 import type { Asker, Choice } from "./asker.ts";
 import { BadRequestError } from "./focus.ts";
@@ -22,6 +23,9 @@ import {
   type Settings,
 } from "./settings.ts";
 
+/** How long a harness gets to tell its options before the picker shows it without them. */
+export const SETTINGS_TIMEOUT_MS = 5000;
+
 /** How many stored conversations per guest /resume offers. */
 const RESUME_LIMIT = 8;
 
@@ -37,6 +41,8 @@ export interface CommandParts {
   harness: (session: string) => string;
   /** Every harness a session can run on (the daemon's agent and the configured guests). */
   harnesses: () => string[];
+  /** Per harness, how long `settings` waits for its options. Defaults to SETTINGS_TIMEOUT_MS. */
+  settingsTimeoutMs?: number | undefined;
 }
 
 function when(iso: string | undefined): string | undefined {
@@ -59,6 +65,45 @@ export class Commands {
     if (name === "approvals") return this.approvals(session, args);
     if (name === "harness") return this.harness(session, args);
     return undefined;
+  }
+
+  /**
+   * Every harness the session can switch to with its options, for a client's picker (the data
+   * /model, /effort, /mode and /harness offer as choices). Asks the harnesses in parallel; one that
+   * fails or is too slow is listed without options and with the reason. Fetching a guest's options
+   * starts its adapter for this session if it isn't running (it stays up, so asking again is quick).
+   */
+  settings(session: string): Promise<HarnessSettings[]> {
+    const current = this.parts.harness(session);
+    return Promise.all(
+      this.parts.harnesses().map(async (name): Promise<HarnessSettings> => {
+        const entry: HarnessSettings = {
+          name,
+          title: this.title(name),
+          current: name === current,
+          options: [],
+        };
+        try {
+          entry.options = await this.withTimeout(this.options(session, name), name);
+        } catch (err) {
+          entry.error = err instanceof Error ? err.message : String(err);
+          this.parts.log.warn(`settings: ${name}: ${entry.error}`);
+        }
+        return entry;
+      }),
+    );
+  }
+
+  private withTimeout<T>(work: Promise<T>, harness: string): Promise<T> {
+    const ms = this.parts.settingsTimeoutMs ?? SETTINGS_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`${this.title(harness)} did not answer within ${ms} ms`)),
+        ms,
+      );
+    });
+    return Promise.race([work, late]).finally(() => clearTimeout(timer));
   }
 
   private title(harness: string): string {

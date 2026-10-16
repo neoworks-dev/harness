@@ -8,6 +8,8 @@ export type Envelope =
   | SessionCreate
   | SessionList
   | SessionListResult
+  | SessionSettings
+  | SessionSettingsResult
   | SessionSubscribe
   | SessionUnsubscribe
   | SessionSubscribed
@@ -110,6 +112,56 @@ export interface SessionListResult {
 
 export interface SessionListPayload {
   sessions: SessionInfo[];
+}
+
+/** Client → daemon: what the session's harnesses offer to set (model, effort, mode), for a picker. Replied to with session.settings_result. Setting a value needs no request of its own: send /model, /effort, /mode [harness] [value] and /harness <name> as session.input. */
+export interface SessionSettings {
+  topic: "session.settings";
+  id: string;
+  payload: SessionRef;
+}
+
+export interface SessionSettingsResult {
+  topic: "session.settings_result";
+  id: string;
+  payload: SessionSettingsPayload;
+}
+
+export interface SessionSettingsPayload {
+  /** Every harness the session can switch to (the same list /harness offers): the daemon's own agent first, then the configured guests. */
+  harnesses: HarnessSettings[];
+}
+
+export interface HarnessSettings {
+  /** What /harness and /model take. */
+  name: string;
+  /** To show. */
+  title: string;
+  /** Whether the session runs on it now. */
+  current: boolean;
+  /** What it offers to set. Empty when they could not be fetched (see error) or it offers none. */
+  options: ConfigOption[];
+  /** Why options is empty: the harness failed to start or did not answer in time. */
+  error?: string;
+}
+
+/** One setting a harness offers, as ACP's session config options describe it. */
+export interface ConfigOption {
+  category: ConfigCategory;
+  /** The current value, if known. */
+  current?: string;
+  /** The values to offer. A harness may accept others (pi: any provider/model). */
+  values: ConfigValue[];
+}
+
+/** model: /model; thought_level: /effort; mode: /mode. */
+export type ConfigCategory = "model" | "thought_level" | "mode";
+
+export interface ConfigValue {
+  /** What the command takes. */
+  value: string;
+  name: string;
+  description?: string;
 }
 
 /** Client → daemon. The daemon replays session.events from fromSeq, sends session.subscribed, then streams live events with no gaps or duplicates. */

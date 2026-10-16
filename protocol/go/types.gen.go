@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, AssetPutMessage, AssetGetMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, AssetPutMessage, AssetGetMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -89,6 +89,18 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "session.list_result":
 		var v SessionListResult
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "session.settings":
+		var v SessionSettings
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "session.settings_result":
+		var v SessionSettingsResult
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -400,6 +412,82 @@ func (v SessionListResult) MarshalJSON() ([]byte, error) {
 
 type SessionListPayload struct {
 	Sessions []SessionInfo `json:"sessions"`
+}
+
+// SessionSettings: Client → daemon: what the session's harnesses offer to set (model, effort, mode), for a picker. Replied to with session.settings_result. Setting a value needs no request of its own: send /model, /effort, /mode [harness] [value] and /harness <name> as session.input.
+type SessionSettings struct {
+	ID      string     `json:"id"`
+	Payload SessionRef `json:"payload"`
+}
+
+func (SessionSettings) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v SessionSettings) MarshalJSON() ([]byte, error) {
+	type plain SessionSettings
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"session.settings", plain(v)})
+}
+
+type SessionSettingsResult struct {
+	ID      string                 `json:"id"`
+	Payload SessionSettingsPayload `json:"payload"`
+}
+
+func (SessionSettingsResult) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v SessionSettingsResult) MarshalJSON() ([]byte, error) {
+	type plain SessionSettingsResult
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"session.settings_result", plain(v)})
+}
+
+type SessionSettingsPayload struct {
+	// Every harness the session can switch to (the same list /harness offers): the daemon's own agent first, then the configured guests.
+	Harnesses []HarnessSettings `json:"harnesses"`
+}
+
+type HarnessSettings struct {
+	// What /harness and /model take.
+	Name string `json:"name"`
+	// To show.
+	Title string `json:"title"`
+	// Whether the session runs on it now.
+	Current bool `json:"current"`
+	// What it offers to set. Empty when they could not be fetched (see error) or it offers none.
+	Options []ConfigOption `json:"options"`
+	// Why options is empty: the harness failed to start or did not answer in time.
+	Error *string `json:"error,omitempty"`
+}
+
+// ConfigOption: One setting a harness offers, as ACP's session config options describe it.
+type ConfigOption struct {
+	Category ConfigCategory `json:"category"`
+	// The current value, if known.
+	Current *string `json:"current,omitempty"`
+	// The values to offer. A harness may accept others (pi: any provider/model).
+	Values []ConfigValue `json:"values"`
+}
+
+// ConfigCategory: model: /model; thought_level: /effort; mode: /mode.
+type ConfigCategory string
+
+const (
+	ConfigCategoryModel        ConfigCategory = "model"
+	ConfigCategoryThoughtLevel ConfigCategory = "thought_level"
+	ConfigCategoryMode         ConfigCategory = "mode"
+)
+
+type ConfigValue struct {
+	// What the command takes.
+	Value       string  `json:"value"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
 }
 
 // SessionSubscribe: Client → daemon. The daemon replays session.events from fromSeq, sends session.subscribed, then streams live events with no gaps or duplicates.

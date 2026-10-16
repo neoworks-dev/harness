@@ -1,0 +1,39 @@
+{
+  "topic": "session.settings_result",
+  "id": "6",
+  "payload": {
+    "harnesses": [
+      {
+        "name": "pi",
+        "title": "pi",
+        "current": true,
+        "options": [
+          {
+            "category": "model",
+            "current": "anthropic/claude-sonnet-4-5",
+            "values": [
+              { "value": "anthropic/claude-sonnet-4-5", "name": "Claude Sonnet 4.5" },
+              { "value": "anthropic/claude-opus-4-1", "name": "Claude Opus 4.1" }
+            ]
+          },
+          {
+            "category": "thought_level",
+            "current": "medium",
+            "values": [
+              { "value": "low", "name": "Low", "description": "Quick answers" },
+              { "value": "medium", "name": "Medium" },
+              { "value": "high", "name": "High", "description": "Thinks longer" }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "claude",
+        "title": "Claude Code",
+        "current": false,
+        "options": [],
+        "error": "Starting claude failed: spawn claude ENOENT"
+      }
+    ]
+  }
+}

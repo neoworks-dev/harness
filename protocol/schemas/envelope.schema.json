@@ -29,6 +29,12 @@
           "$ref": "#/$defs/SessionListResult"
         },
         {
+          "$ref": "#/$defs/SessionSettings"
+        },
+        {
+          "$ref": "#/$defs/SessionSettingsResult"
+        },
+        {
           "$ref": "#/$defs/SessionSubscribe"
         },
         {
@@ -290,6 +296,127 @@
         }
       },
       "required": ["sessions"],
+      "additionalProperties": false
+    },
+    "SessionSettings": {
+      "description": "Client → daemon: what the session's harnesses offer to set (model, effort, mode), for a picker. Replied to with session.settings_result. Setting a value needs no request of its own: send /model, /effort, /mode [harness] [value] and /harness <name> as session.input.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.settings"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/SessionRef"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "SessionSettingsResult": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.settings_result"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/SessionSettingsPayload"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "SessionSettingsPayload": {
+      "type": "object",
+      "properties": {
+        "harnesses": {
+          "type": "array",
+          "description": "Every harness the session can switch to (the same list /harness offers): the daemon's own agent first, then the configured guests.",
+          "items": {
+            "$ref": "#/$defs/HarnessSettings"
+          }
+        }
+      },
+      "required": ["harnesses"],
+      "additionalProperties": false
+    },
+    "HarnessSettings": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "What /harness and /model take."
+        },
+        "title": {
+          "type": "string",
+          "description": "To show."
+        },
+        "current": {
+          "type": "boolean",
+          "description": "Whether the session runs on it now."
+        },
+        "options": {
+          "type": "array",
+          "description": "What it offers to set. Empty when they could not be fetched (see error) or it offers none.",
+          "items": {
+            "$ref": "#/$defs/ConfigOption"
+          }
+        },
+        "error": {
+          "type": "string",
+          "description": "Why options is empty: the harness failed to start or did not answer in time."
+        }
+      },
+      "required": ["name", "title", "current", "options"],
+      "additionalProperties": false
+    },
+    "ConfigOption": {
+      "description": "One setting a harness offers, as ACP's session config options describe it.",
+      "type": "object",
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/ConfigCategory"
+        },
+        "current": {
+          "type": "string",
+          "description": "The current value, if known."
+        },
+        "values": {
+          "type": "array",
+          "description": "The values to offer. A harness may accept others (pi: any provider/model).",
+          "items": {
+            "$ref": "#/$defs/ConfigValue"
+          }
+        }
+      },
+      "required": ["category", "values"],
+      "additionalProperties": false
+    },
+    "ConfigCategory": {
+      "description": "model: /model; thought_level: /effort; mode: /mode.",
+      "type": "string",
+      "enum": ["model", "thought_level", "mode"]
+    },
+    "ConfigValue": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "description": "What the command takes."
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": ["value", "name"],
       "additionalProperties": false
     },
     "SessionSubscribe": {

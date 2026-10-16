@@ -21,6 +21,7 @@
 // conversation, "old-1", for session/list and session/resume.
 //   anything else sends a plan (one entry with an unknown status), a usage_update, and replies
 //   "Done: <task>"
+// FAKE_ACP_HANG in the environment makes session/new never answer.
 // Every prompt first echoes the whole prompt text as a thought, so tests can see the event tags.
 import { readFileSync, writeFileSync } from "node:fs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -293,6 +294,8 @@ async function handle(message: Record<string, unknown>): Promise<void> {
     if (method === "initialize") {
       result = { protocolVersion: 1, agentCapabilities: { mcpCapabilities: { http: true } } };
     } else if (method === "session/new") {
+      // FAKE_ACP_HANG: an adapter that starts but never gets a conversation going.
+      if (process.env.FAKE_ACP_HANG !== undefined) await new Promise(() => undefined);
       const servers = params.mcpServers as HttpServer[];
       gateway = servers[0];
       cwd = params.cwd as string;

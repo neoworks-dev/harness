@@ -34,6 +34,18 @@ describe("requests", () => {
     expect(listed.sort()).toEqual([...initial, created.id].sort());
   });
 
+  test("sessionSettings lists the harnesses of a session; an unknown session is refused", async () => {
+    const { client } = await startRig(later);
+    const { id } = await client.createSession();
+    const { harnesses } = await client.sessionSettings(id);
+    // The test daemon has the echo agent only: no guests, nothing to set.
+    expect(harnesses).toHaveLength(1);
+    expect(harnesses[0]).toMatchObject({ current: true, options: [] });
+    expect(harnesses[0]?.error).toBeUndefined();
+    const error = await rejection(client.sessionSettings("s_nope"));
+    expect(error).toBeInstanceOf(SuiteError);
+  });
+
   test("input comes from the presence's app, else the client name, else the app you give", async () => {
     const { daemon, client } = await startRig(later);
     const { id } = await client.createSession();
