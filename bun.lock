@@ -62,6 +62,16 @@
         "@suite/daemon": "workspace:*",
       },
     },
+    "services/lsp": {
+      "name": "@suite/lsp",
+      "dependencies": {
+        "@suite/sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@suite/daemon": "workspace:*",
+        "@suite/protocol": "workspace:*",
+      },
+    },
   },
   "packages": {
     "@anthropic-ai/sdk": ["@anthropic-ai/sdk@0.91.1", "", { "dependencies": { "json-schema-to-ts": "^3.1.1" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-LAmu761tSN9r66ixvmciswUj/ZC+1Q4iAfpedTfSVLeswRwnY3n2Nb6Tsk+cLPP28aLOPWeMgIuTuCcMC6W/iw=="],
@@ -203,6 +213,8 @@
     "@suite/daemon": ["@suite/daemon@workspace:daemon"],
 
     "@suite/harness": ["@suite/harness@workspace:harness"],
+
+    "@suite/lsp": ["@suite/lsp@workspace:services/lsp"],
 
     "@suite/protocol": ["@suite/protocol@workspace:protocol"],
 

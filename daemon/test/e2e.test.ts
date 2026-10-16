@@ -39,6 +39,7 @@ function testEnv(): Env {
     SUITE_SOCKET: join(dir, "bus.sock"),
     SUITE_DATA_DIR: join(dir, "data"),
     SUITE_AGENT: "echo",
+    SUITE_SERVICES: "none",
   };
 }
 
@@ -225,4 +226,31 @@ describe.skipIf(!existsSync(suiteBin))("daemon + CLI end to end", () => {
     const { out } = await suite(env, ["attach", "--new"], "one\ntwo\n");
     expect(out.indexOf("echo #1: one")).toBeLessThan(out.indexOf("echo #2: two"));
   });
+
+  test("the daemon starts the lsp service, which leaves when the daemon is killed", async () => {
+    const env = { ...testEnv(), SUITE_SERVICES: "" };
+    const daemon = await startDaemon(env);
+    let listed = "";
+    for (let i = 0; i < 100 && !listed.includes("lsp.diagnostics"); i++) {
+      listed = (await suite(env, ["tools", "diagnostics"])).out;
+      await Bun.sleep(50);
+    }
+    expect(listed).toContain("lsp.diagnostics");
+    const children = Bun.spawnSync(["pgrep", "-P", String(daemon.pid)]).stdout.toString();
+    const pids = children
+      .split("\n")
+      .filter((line) => line !== "")
+      .map(Number);
+    expect(pids.length).toBeGreaterThan(0);
+    daemon.kill("SIGKILL");
+    const alive = (pid: number): boolean => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    await until(() => !pids.some(alive), "the lsp service to exit", 5000);
+  }, 15_000);
 });

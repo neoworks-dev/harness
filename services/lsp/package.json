@@ -1,0 +1,12 @@
+{
+  "name": "@suite/lsp",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@suite/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@suite/daemon": "workspace:*",
+    "@suite/protocol": "workspace:*"
+  }
+}
