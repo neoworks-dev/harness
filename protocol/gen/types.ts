@@ -31,7 +31,8 @@ export type Envelope =
   | AssetGetMessage
   | AssetInfoMessage
   | FileChangedMessage
-  | AppContextMessage;
+  | AppContextMessage
+  | SessionChangedMessage;
 
 export type EnvelopeTag = Envelope["topic"];
 
@@ -363,6 +364,12 @@ export interface AppContext {
   context: Record<string, string>;
 }
 
+/** Daemon → every client: a session's info changed (state, queue, title, preview, lines changed). Coalesced per session; the latest one is the truth. */
+export interface SessionChangedMessage {
+  topic: "session.changed";
+  payload: SessionInfo;
+}
+
 /** Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update. */
 export interface AppPresence {
   /** Connector name; prefixes its tools (app.tool). */
@@ -455,7 +462,8 @@ export type SessionEvent =
   | Choice
   | ChoiceMade
   | Plan
-  | Usage;
+  | Usage
+  | EditsReverted;
 
 export type SessionEventTag = SessionEvent["type"];
 
@@ -612,6 +620,7 @@ export type SessionState = "idle" | "running";
 
 export interface SessionInfo {
   id: string;
+  /** Set at creation, else the first line of the first message. */
   title?: string;
   /** Working directory for the core tools. */
   cwd: string;
@@ -625,6 +634,12 @@ export interface SessionInfo {
   state: SessionState;
   /** Inputs waiting behind the running turn. */
   queued: number;
+  /** The latest thing said, on one line and cut to about 120 characters: the agent's last message, else the user's. */
+  preview?: string;
+  /** Lines added by edits in this session (agent and guests), from their diffs. */
+  added?: number;
+  /** Lines removed by edits in this session. */
+  removed?: number;
 }
 
 /** A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template. */
@@ -647,13 +662,22 @@ export interface GuestTurn {
   stopReason: StopReason;
 }
 
+/** The user reverted edits the agents had applied (the review card after a turn in edits mode). Rendered to the main agent as <reverted paths="a.ts, b.ts"/> so it knows the files are back as they were. */
+export interface EditsReverted {
+  type: "edits_reverted";
+  /** Files restored (or deleted, when the turn created them). */
+  paths: string[];
+  /** Files left alone because they changed again after the turn's edits. */
+  skipped?: string[];
+}
+
 export interface PermissionOption {
   id: string;
   name: string;
   kind: PermissionOptionKind;
 }
 
-/** A guest asks before running a tool. Panes show the options as buttons (action suite.permit); the guest waits until one is picked or the turn is cancelled. */
+/** An agent asks before doing something: a guest running a tool, the main agent running a command or changing a file, starting a guest. Panes show the content (a diff to preview) and the options as buttons (action suite.permit); the agent waits until one is picked or the turn is cancelled. */
 export interface PermissionRequest {
   type: "permission_request";
   id: string;
@@ -661,6 +685,10 @@ export interface PermissionRequest {
   /** What it wants to do. */
   title: string;
   toolCallId?: string;
+  /** What kind of action is asked about (edit, execute…), when known. */
+  kind?: ToolKind;
+  /** What to preview: for an edit, the diff that has not been applied yet. */
+  content?: ToolCallContent[];
   options: PermissionOption[];
 }
 
@@ -675,7 +703,7 @@ export interface PermissionResolved {
 
 export type PermissionOptionKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
 
-/** The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness "suite", value ask or auto): whether guests' permission requests and starting a guest ask the user; per session, ask unless set. */
+/** The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness "suite", value ask, edits or auto): ask asks before file edits, commands, starting a guest and guests' requests; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Per session, ask unless set. */
 export interface SettingChanged {
   type: "setting_changed";
   /** pi, claude, codex… */

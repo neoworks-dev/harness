@@ -186,10 +186,17 @@ export class SessionView {
       }
       case "plan":
         return this.planOps(event);
-      case "setting_changed": {
-        const what =
-          event.option === "approvals" ? "approvals" : `${event.harness} ${event.option}`;
-        return [this.notice(`n${seq}`, `${what}: ${event.value}`)];
+      case "setting_changed":
+        // The approvals mode shows in the panes' status, not in the chat.
+        if (event.option === "approvals") return [];
+        return [this.notice(`n${seq}`, `${event.harness} ${event.option}: ${event.value}`)];
+      case "edits_reverted": {
+        const parts: string[] = [];
+        if (event.paths.length > 0) parts.push(`reverted ${event.paths.join(", ")}`);
+        if (event.skipped?.length) {
+          parts.push(`left ${event.skipped.join(", ")} (changed since)`);
+        }
+        return [this.notice(`n${seq}`, parts.join("; "))];
       }
       case "turn_ended": {
         if (event.stopReason === "end_turn") return [];
@@ -248,8 +255,9 @@ export class SessionView {
   }
 
   /**
-   * A guest asking before it runs a tool: one button per option until answered (answer: the
-   * picked option id, or null when nobody answered before the turn ended).
+   * An agent asking before it acts: what it would do (a diff, text) above one button per option
+   * until answered; then the one-line answer (the picked option id, or null when nobody
+   * answered before the turn ended).
    */
   private permissionItem(request: PermissionRequest, answer?: string | null): ViewItem {
     const label = `${request.agent} asks: ${request.title}`;
@@ -261,7 +269,10 @@ export class SessionView {
         args: { id: request.id, option: option.id },
         key: String(i + 1),
       }));
-      const component: Component = { type: "row", gap: "s", children: buttons };
+      const row: Component = { type: "row", gap: "s", children: buttons };
+      const preview = this.contentComponents(request.content);
+      const component: Component =
+        preview.length === 0 ? row : { type: "stack", gap: "s", children: [...preview, row] };
       return { ref: `p-${request.id}`, kind: "tool", label, state: "pending", component };
     }
     const option = request.options.find((o) => o.id === answer);
@@ -371,20 +382,26 @@ export class SessionView {
     return undefined;
   }
 
-  /** No template: what ACP's base data says (text output, diffs), or the structured result as kv. */
-  private fallback(call: Call): Component {
+  /** Diffs and text output as components (a diff, or the text as code). */
+  private contentComponents(content: ToolCallContent[] | undefined): Component[] {
     const children: Component[] = [];
-    for (const content of call.content ?? []) {
-      if (content.type === "diff") {
+    for (const item of content ?? []) {
+      if (item.type === "diff") {
         children.push({
           type: "diff",
-          path: content.path,
-          lines: diffLines(content.oldText, content.newText),
+          path: item.path,
+          lines: diffLines(item.oldText, item.newText),
         });
-      } else if (content.text.trim() !== "") {
-        children.push({ type: "code", code: content.text.replace(/\n+$/, "") });
+      } else if (item.text.trim() !== "") {
+        children.push({ type: "code", code: item.text.replace(/\n+$/, "") });
       }
     }
+    return children;
+  }
+
+  /** No template: what ACP's base data says (text output, diffs), or the structured result as kv. */
+  private fallback(call: Call): Component {
+    const children = this.contentComponents(call.content);
     if (children.length === 0 && isRecord(call.rawOutput)) {
       const items = Object.entries(call.rawOutput)
         .filter(([, v]) => typeof v !== "object" || v === null)

@@ -9,6 +9,7 @@ import type {
   ContextEvent,
   McpServer,
   NewSessionParams,
+  RequestPermission,
 } from "@suite/harness/agent";
 import type { SessionEvent, SessionInfo, TurnEnded } from "@suite/protocol/types";
 import type { ConnectorSnapshot } from "./gateway/registry.ts";
@@ -51,6 +52,7 @@ const CONTEXT_TYPES = new Set<SessionEvent["type"]>([
   "app_disconnected",
   "focus_changed",
   "guest_turn",
+  "edits_reverted",
 ]);
 
 function isContextEvent(event: SessionEvent): event is ContextEvent {
@@ -80,6 +82,8 @@ export interface SessionManagerOptions {
   mcpServers?: (sessionId: string) => McpServer[];
   /** Resolves asset://… handles for the agent's file tools. */
   resolveAsset?: (handle: string) => string | undefined;
+  /** More about a session for its info: preview, lines changed (see summaries.ts). */
+  describe?: (sessionId: string) => Partial<SessionInfo>;
   /**
    * A guest the user addresses directly with "/name task" (e.g. /claude), for this session;
    * undefined when there is none by that name. Its prompt() gets the task as text.
@@ -87,6 +91,8 @@ export interface SessionManagerOptions {
   guest?: (sessionId: string, name: string) => AgentSession | undefined;
   /** What the user chose for the agent in this session (model, effort…). */
   settings?: (sessionId: string) => Partial<Record<ConfigCategory, string>>;
+  /** The hook the agent's own bash, write and edit ask through (see permissions.ts). */
+  requestPermission?: (sessionId: string) => RequestPermission;
 }
 
 /** "/claude fix it" → claude, "fix it". */
@@ -98,6 +104,7 @@ function guestCommand(text: string): { name: string; task: string } | undefined 
 
 export class SessionManager {
   private readonly runtimes = new Map<string, Runtime>();
+  private readonly stateListeners: ((sessionId: string) => void)[] = [];
 
   constructor(
     private readonly store: SessionStore,
@@ -140,6 +147,7 @@ export class SessionManager {
       rt.running = true;
       rt.drained = this.drain(sessionId, rt);
     }
+    this.stateChanged(sessionId);
   }
 
   /** The agent's settable options for this session (loads its agent session if needed). */
@@ -243,6 +251,7 @@ export class SessionManager {
       }
     } finally {
       rt.running = false;
+      this.stateChanged(sessionId);
     }
   }
 
@@ -348,6 +357,9 @@ export class SessionManager {
     const mcpServers = this.options.mcpServers?.(sessionId) ?? [];
     const params: NewSessionParams = { sessionId, cwd: row.cwd, mcpServers };
     if (this.options.resolveAsset) params.resolveAsset = this.options.resolveAsset;
+    if (this.options.requestPermission) {
+      params.requestPermission = this.options.requestPermission(sessionId);
+    }
     const settings = this.options.settings?.(sessionId);
     if (settings && Object.keys(settings).length > 0) params.settings = settings;
     if (row.lastSeq === 0) return this.agent.newSession(params);
@@ -367,6 +379,16 @@ export class SessionManager {
       queued: rt?.queue.length ?? 0,
     };
     if (row.title !== undefined) info.title = row.title;
+    if (this.options.describe) Object.assign(info, this.options.describe(row.id));
     return info;
+  }
+
+  /** Called when a session starts or stops running, or its queue changes. */
+  onStateChange(listener: (sessionId: string) => void): void {
+    this.stateListeners.push(listener);
+  }
+
+  private stateChanged(sessionId: string): void {
+    for (const listener of this.stateListeners) listener(sessionId);
   }
 }

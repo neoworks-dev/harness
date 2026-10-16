@@ -9,6 +9,7 @@ import type {
   AgentThoughtChunk,
   AppConnected,
   AppDisconnected,
+  EditsReverted,
   FocusChanged,
   GuestTurn,
   HarnessMessage,
@@ -16,7 +17,9 @@ import type {
   SessionEvent,
   StopReason,
   ToolCall,
+  ToolCallContent,
   ToolCallUpdate,
+  ToolKind,
   Usage,
 } from "@suite/protocol/types";
 
@@ -25,7 +28,8 @@ export type AgentUpdate =
   AgentMessageChunk | AgentThoughtChunk | ToolCall | ToolCallUpdate | Plan | Usage | HarnessMessage;
 
 /** Connector events (and what guests did on their own) that get prepended to the next user message. */
-export type ContextEvent = AppConnected | AppDisconnected | FocusChanged | GuestTurn;
+export type ContextEvent =
+  AppConnected | AppDisconnected | FocusChanged | GuestTurn | EditsReverted;
 
 /** An MCP server for the agent (ACP's McpServerHttp shape). */
 export interface McpServer {
@@ -46,6 +50,22 @@ export interface ConfigOption {
   values: { value: string; name: string; description?: string }[];
 }
 
+/** What an agent's own tool asks the user before it acts. */
+export interface PermissionAsk {
+  /** What it wants to do: the file to write, the command to run. */
+  title: string;
+  kind: ToolKind;
+  toolCallId?: string;
+  /** What to preview; for an edit, the diff that has not been written yet. */
+  content?: ToolCallContent[];
+}
+
+/**
+ * Asks whether to go ahead; true means yes. The signal drops the question when the turn is
+ * cancelled (the answer is then false).
+ */
+export type RequestPermission = (request: PermissionAsk, signal?: AbortSignal) => Promise<boolean>;
+
 export interface NewSessionParams {
   sessionId: string;
   /** Working directory for the core tools. */
@@ -56,6 +76,11 @@ export interface NewSessionParams {
   resolveAsset?: (handle: string) => string | undefined;
   /** What the user chose for this session; unset categories keep the harness's default. */
   settings?: Partial<Record<ConfigCategory, string>>;
+  /**
+   * Asked before the agent's own bash, write and edit act (reads and the gateway tools never
+   * ask). Absent: they just run.
+   */
+  requestPermission?: RequestPermission;
 }
 
 export interface LoadSessionParams extends NewSessionParams {

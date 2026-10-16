@@ -2,7 +2,7 @@
 //   /model, /effort, /mode [harness] [value]  set it for this session; without a value, pick
 //                                             from what the harness offers
 //   /resume [guest]                           pick a stored guest conversation to continue
-//   /approvals [ask|auto]                     whether guests and their requests ask first
+//   /approvals [ask|edits|auto]               how much the agents ask first; no value: next mode
 // The harness defaults to the session's own agent. Nothing is chosen for the user.
 import type { ConfigOption } from "@suite/harness/agent";
 
@@ -11,7 +11,14 @@ import { BadRequestError } from "./focus.ts";
 import type { GuestManager, StoredConversation } from "./guests/guests.ts";
 import type { Logger } from "./log.ts";
 import type { SessionManager } from "./sessions.ts";
-import { CATEGORIES, type HarnessSettingName, isSettingName, type Settings } from "./settings.ts";
+import {
+  CATEGORIES,
+  type HarnessSettingName,
+  isSettingName,
+  nextApprovals,
+  parseApprovals,
+  type Settings,
+} from "./settings.ts";
 
 /** How many stored conversations per guest /resume offers. */
 const RESUME_LIMIT = 8;
@@ -106,15 +113,13 @@ export class Commands {
 
   private approvals(session: string, args: string[]): Promise<void> {
     const [value] = args;
-    if (args.length > 1 || (value !== undefined && value !== "ask" && value !== "auto")) {
-      return Promise.reject(new BadRequestError("usage: /approvals [ask|auto]"));
+    const mode = value === undefined ? undefined : parseApprovals(value);
+    if (args.length > 1 || (value !== undefined && mode === undefined)) {
+      return Promise.reject(new BadRequestError("usage: /approvals [ask|edits|auto]"));
     }
     const { settings } = this.parts;
-    // Without a value: toggle.
-    settings.setApprovals(
-      session,
-      value ?? (settings.approvals(session) === "ask" ? "auto" : "ask"),
-    );
+    // Without a value: the next mode, ask → edits → auto → ask.
+    settings.setApprovals(session, mode ?? nextApprovals(settings.approvals(session)));
     return Promise.resolve();
   }
 

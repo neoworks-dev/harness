@@ -59,8 +59,12 @@ function frameId(parsed: unknown): string | undefined {
   return typeof parsed.id === "string" ? parsed.id : undefined;
 }
 
+/** How often a session's overview may update while it streams. */
+const SESSION_CHANGE_MS = 250;
+
 export class Hub {
   private readonly clients = new Set<Client>();
+  private readonly pendingChanges = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private readonly store: SessionStore,
@@ -91,7 +95,11 @@ export class Hub {
     });
     // Appends are synchronous and so is subscribe's replay, so a subscriber either got an event
     // in its replay or gets it here — never both, never neither.
-    store.onAppend((record) => this.broadcast(record));
+    store.onAppend((record) => {
+      this.broadcast(record);
+      this.sessionChanged(record.session);
+    });
+    sessions.onStateChange((id) => this.sessionChanged(id));
   }
 
   connect(transport: Transport): ClientHandle {
@@ -118,7 +126,31 @@ export class Hub {
     }
   }
 
-  /** To every client that has said hello. */
+  /**
+   * session.changed for overviews: at most one per session per SESSION_CHANGE_MS (a streaming
+   * turn appends many events), and always one after the last change.
+   */
+  private sessionChanged(id: string): void {
+    if (this.pendingChanges.has(id)) return;
+    const timer = setTimeout(() => {
+      this.pendingChanges.delete(id);
+      try {
+        const payload = this.sessions.info(id);
+        if (payload) this.broadcastAll({ topic: "session.changed", payload });
+      } catch (err) {
+        // The store closed in between (shutdown, tests that skip close()).
+        this.log.warn(`session.changed for ${id}: ${String(err)}`);
+      }
+    }, SESSION_CHANGE_MS);
+    this.pendingChanges.set(id, timer);
+  }
+
+  /** Drops pending broadcasts; call before closing the store. */
+  close(): void {
+    for (const timer of this.pendingChanges.values()) clearTimeout(timer);
+    this.pendingChanges.clear();
+  }
+
   /** Tells every client (except the one it came from) that a file changed. */
   fileChanged(payload: FileChanged, except?: Client): void {
     for (const client of this.clients) {

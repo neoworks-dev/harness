@@ -1,7 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "typebox";
+import type { RequestPermission } from "../agent.ts";
 import { resolveWritablePath } from "./paths.ts";
+import { askToProceed } from "./permission.ts";
 import type { FileChangeDetails } from "./write.ts";
 
 const parameters = Type.Object({
@@ -35,7 +37,10 @@ function countOccurrences(text: string, needle: string): number {
   return count;
 }
 
-export function createEditTool(cwd: string): AgentTool<typeof parameters, FileChangeDetails> {
+export function createEditTool(
+  cwd: string,
+  ask?: RequestPermission,
+): AgentTool<typeof parameters, FileChangeDetails> {
   return {
     name: "edit",
     label: "edit",
@@ -45,7 +50,7 @@ export function createEditTool(cwd: string): AgentTool<typeof parameters, FileCh
       "together. Prefer one call with several edits over several calls. Line endings (CRLF) " +
       "and a UTF-8 BOM are preserved.",
     parameters,
-    async execute(_toolCallId, { path, edits }) {
+    async execute(toolCallId, { path, edits }, signal) {
       if (edits.length === 0) throw new Error("edits is empty.");
       const raw = await readFile(resolveWritablePath(cwd, path), "utf8");
       const hasBom = raw.startsWith(BOM);
@@ -90,6 +95,17 @@ export function createEditTool(cwd: string): AgentTool<typeof parameters, FileCh
 
       const eol = crlf ? updated.replaceAll("\n", "\r\n") : updated;
       const absolute = resolveWritablePath(cwd, path);
+      await askToProceed(
+        ask,
+        {
+          title: `edit ${path}`,
+          kind: "edit",
+          toolCallId,
+          content: [{ type: "diff", path: absolute, oldText: original, newText: updated }],
+        },
+        "The user declined this edit.",
+        signal,
+      );
       await writeFile(absolute, hasBom ? BOM + eol : eol);
       return {
         content: [{ type: "text", text: `Applied ${edits.length} edit(s) to ${path}.` }],

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { SessionEvent } from "@suite/protocol/types";
+import type { SessionEvent, ViewItem } from "@suite/protocol/types";
 import { loadGuestConfigs } from "../src/guests/config.ts";
 import { describeCall, type GuestConfig, mcpResultText } from "../src/guests/guests.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
@@ -618,28 +618,109 @@ describe("/resume", () => {
 });
 
 describe("/approvals", () => {
-  test("auto starts guests and answers their requests without asking; per session", async () => {
+  test("cycles ask → edits → auto → ask, or sets a mode; per session; nothing in the chat", async () => {
     const { daemon, session } = await setup({ gate: "manual" });
     expect(daemon.settings.approvals(session)).toBe("ask");
-    await daemon.commands.run(session, "/approvals");
+    const modes: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      await daemon.commands.run(session, "/approvals");
+      modes.push(daemon.settings.approvals(session));
+    }
+    expect(modes).toEqual(["edits", "auto", "ask", "edits"]);
+    await daemon.commands.run(session, "/approvals auto");
     expect(daemon.settings.approvals(session)).toBe("auto");
-    const result = await daemon.gateway.call(
-      "delegate",
-      { agent: "fake", task: "ask" },
-      undefined,
-      session,
-    );
-    expect(resultOf(result)).toBe("answer: yes");
-    expect(events(daemon, session).some((e) => e.type === "permission_request")).toBe(false);
+    expect(events(daemon, session).filter((e) => e.type === "setting_changed")).toHaveLength(5);
+    // The mode is state for the panes' status line, not part of the conversation.
     const view = daemon.views.get(session).snapshot().items;
-    expect(view.some((i) => JSON.stringify(i.component).includes("approvals: auto"))).toBe(true);
+    expect(view).toEqual([]);
 
     const other = daemon.sessions.create({}).id;
     expect(daemon.settings.approvals(other)).toBe("ask");
     await daemon.commands.run(session, "/approvals ask");
     expect(daemon.settings.approvals(session)).toBe("ask");
     expect(daemon.commands.run(session, "/approvals yes")).rejects.toThrow(
-      "usage: /approvals [ask|auto]",
+      "usage: /approvals [ask|edits|auto]",
+    );
+  });
+
+  /** The user's turn "/fake <task>"; resolves with the guest's reply once the turn is over. */
+  async function guestTurn(daemon: TestDaemon, session: string, task: string): Promise<string> {
+    daemon.sessions.input(session, "cli", `/fake ${task}`);
+    await daemon.sessions.idle(session);
+    const turn = events(daemon, session).findLast((e) => e.type === "guest_turn");
+    if (turn?.type !== "guest_turn") throw new Error("no guest_turn");
+    return turn.result;
+  }
+
+  test("auto answers a guest's requests without asking", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/approvals auto");
+    expect(await guestTurn(daemon, session, "ask execute")).toBe("answer: yes");
+    expect(events(daemon, session).some((e) => e.type === "permission_request")).toBe(false);
+  });
+
+  test("edits mode: a guest's edit requests are allowed, others ask", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/approvals edits");
+    // By kind, and by diff content when the adapter names no kind.
+    expect(await guestTurn(daemon, session, "ask edit")).toBe("answer: yes");
+    expect(await guestTurn(daemon, session, "ask diff")).toBe("answer: yes");
+    expect(events(daemon, session).some((e) => e.type === "permission_request")).toBe(false);
+
+    daemon.sessions.input(session, "cli", "/fake ask execute");
+    const request = await answer(daemon, session, "permission_request", "no");
+    expect(request).toMatchObject({ agent: "fake", title: "ls", kind: "execute" });
+    expect(request).not.toHaveProperty("content");
+    await daemon.sessions.idle(session);
+    expect(events(daemon, session).findLast((e) => e.type === "guest_turn")).toMatchObject({
+      result: "answer: no",
+    });
+  });
+
+  test("ask mode: a guest's edit request carries its kind and the diff to preview", async () => {
+    const { daemon, session } = await setup();
+    daemon.sessions.input(session, "cli", "/fake ask edit");
+    const request = await answer(daemon, session, "permission_request", "yes");
+    expect(request).toMatchObject({
+      kind: "edit",
+      content: [{ type: "diff", path: "/tmp/notes.txt", oldText: "a\n", newText: "b\n" }],
+    });
+    await daemon.sessions.idle(session);
+    if (request.type !== "permission_request") throw new Error("no request");
+    const item = (): ViewItem | undefined =>
+      daemon.views
+        .get(session)
+        .snapshot()
+        .items.find((i) => i.ref === `p-${request.id}`);
+    expect(item()).toMatchObject({ state: "done" });
+    expect(JSON.stringify(item()?.component)).not.toContain('"diff"');
+  });
+
+  test("permissions: allow in the config still allows in every mode", async () => {
+    const { daemon, session } = await setup({ guest: { permissions: "allow" } });
+    expect(await guestTurn(daemon, session, "ask execute")).toBe("answer: yes");
+    expect(events(daemon, session).some((e) => e.type === "permission_request")).toBe(false);
+  });
+
+  test("the delegate gate asks in ask and edits modes, not in auto", async () => {
+    const { daemon, session } = await setup({ gate: "manual" });
+    for (const mode of ["ask", "edits"]) {
+      await daemon.commands.run(session, `/approvals ${mode}`);
+      const call = daemon.gateway.call(
+        "delegate",
+        { agent: "fake", task: "x" },
+        undefined,
+        session,
+      );
+      const request = await answer(daemon, session, "permission_request", "allow");
+      expect(request).toMatchObject({ title: "Hand a task to Fake: x" });
+      await call;
+    }
+    await daemon.commands.run(session, "/approvals auto");
+    const asked = events(daemon, session).filter((e) => e.type === "permission_request").length;
+    await daemon.gateway.call("delegate", { agent: "fake", task: "x" }, undefined, session);
+    expect(events(daemon, session).filter((e) => e.type === "permission_request")).toHaveLength(
+      asked,
     );
   });
 });

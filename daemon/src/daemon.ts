@@ -15,7 +15,10 @@ import { createDelegate } from "./guests/delegate.ts";
 import { type GuestConfig, GuestManager } from "./guests/guests.ts";
 import { Asker } from "./asker.ts";
 import { Commands } from "./commands.ts";
+import { Permissions } from "./permissions.ts";
+import { Review } from "./review.ts";
 import { Settings } from "./settings.ts";
+import { SessionSummaries } from "./summaries.ts";
 import { type ConnectUpstream, connectMcp } from "./gateway/upstream.ts";
 import { Hub, PROTOCOL_VERSION } from "./hub.ts";
 import type { Logger } from "./log.ts";
@@ -94,8 +97,9 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     focus: (session) => focus?.focusOf(session),
     settings: (session, guest) => settings.get(session, guest),
     asker,
-    autoApprove: (session) => settings.approvals(session) === "auto",
+    approvals: (session) => settings.approvals(session),
   });
+  const permissions = new Permissions(asker, (session) => settings.approvals(session));
   const gateway = new Gateway(connectors, {
     log,
     resolveAsset: (handle) => assets.resolve(handle),
@@ -121,7 +125,9 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       }
     },
   });
+  const summaries = new SessionSummaries(store);
   const sessions = new SessionManager(store, agent, {
+    describe: (sessionId) => summaries.get(sessionId),
     defaultCwd: options.defaultCwd,
     resolveAsset: (handle) => assets.resolve(handle),
     log,
@@ -130,6 +136,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     mcpServers: (sessionId) => mcpServers(sessionId),
     guest: (sessionId, name) => guests.turnSession(sessionId, name),
     settings: (sessionId) => settings.get(sessionId, agent.name),
+    requestPermission: (sessionId) => permissions.hook(sessionId, agent.name),
   });
   sessions.recoverInterruptedTurns();
   focus = new FocusManager(store, sessions, connectors, log);
@@ -157,6 +164,14 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     for (const content of event.content ?? []) {
       if (content.type === "diff") hub.fileChanged({ path: content.path, app: "agent", session });
     }
+  });
+  // In edits mode the turn's edits are already written; a card offers to put them back.
+  new Review({
+    store,
+    asker,
+    approvals: (session) => settings.approvals(session),
+    fileChanged: (path, session) => hub.fileChanged({ path, app: "agent", session }),
+    log,
   });
   try {
     server = await startServer(hub, {
@@ -191,6 +206,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       asker.dropAll();
       guests.shutdown();
       await connectors.close();
+      hub.close();
       store.close();
     },
   };

@@ -52,6 +52,7 @@ pub enum Envelope {
     AssetInfoMessage(AssetInfoMessage),
     FileChangedMessage(FileChangedMessage),
     AppContextMessage(AppContextMessage),
+    SessionChangedMessage(SessionChangedMessage),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -182,6 +183,10 @@ impl Serialize for Envelope {
                 "app.context",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            Envelope::SessionChangedMessage(v) => (
+                "session.changed",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             Envelope::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("topic", tag, value).serialize(serializer)
@@ -288,6 +293,9 @@ impl<'de> Deserialize<'de> for Envelope {
                 .map_err(D::Error::custom),
             "app.context" => serde_json::from_value(value)
                 .map(Envelope::AppContextMessage)
+                .map_err(D::Error::custom),
+            "session.changed" => serde_json::from_value(value)
+                .map(Envelope::SessionChangedMessage)
                 .map_err(D::Error::custom),
             _ => Ok(Envelope::Unknown(value)),
         }
@@ -477,6 +485,12 @@ impl From<FileChangedMessage> for Envelope {
 impl From<AppContextMessage> for Envelope {
     fn from(v: AppContextMessage) -> Self {
         Envelope::AppContextMessage(v)
+    }
+}
+
+impl From<SessionChangedMessage> for Envelope {
+    fn from(v: SessionChangedMessage) -> Self {
+        Envelope::SessionChangedMessage(v)
     }
 }
 
@@ -977,6 +991,14 @@ pub struct AppContext {
     pub context: BTreeMap<String, String>,
 }
 
+/// Daemon → every client: a session's info changed (state, queue, title, preview, lines changed). Coalesced per session; the latest one is the truth.
+/// Tagged `topic: "session.changed"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionChangedMessage {
+    #[serde(rename = "payload")]
+    pub payload: SessionInfo,
+}
+
 /// Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppPresence {
@@ -1112,6 +1134,7 @@ pub enum SessionEvent {
     ChoiceMade(ChoiceMade),
     Plan(Plan),
     Usage(Usage),
+    EditsReverted(EditsReverted),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -1188,6 +1211,10 @@ impl Serialize for SessionEvent {
             ),
             SessionEvent::Plan(v) => ("plan", serde_json::to_value(v).map_err(S::Error::custom)?),
             SessionEvent::Usage(v) => ("usage", serde_json::to_value(v).map_err(S::Error::custom)?),
+            SessionEvent::EditsReverted(v) => (
+                "edits_reverted",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             SessionEvent::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -1258,6 +1285,9 @@ impl<'de> Deserialize<'de> for SessionEvent {
                 .map_err(D::Error::custom),
             "usage" => serde_json::from_value(value)
                 .map(SessionEvent::Usage)
+                .map_err(D::Error::custom),
+            "edits_reverted" => serde_json::from_value(value)
+                .map(SessionEvent::EditsReverted)
                 .map_err(D::Error::custom),
             _ => Ok(SessionEvent::Unknown(value)),
         }
@@ -1375,6 +1405,12 @@ impl From<Plan> for SessionEvent {
 impl From<Usage> for SessionEvent {
     fn from(v: Usage) -> Self {
         SessionEvent::Usage(v)
+    }
+}
+
+impl From<EditsReverted> for SessionEvent {
+    fn from(v: EditsReverted) -> Self {
+        SessionEvent::EditsReverted(v)
     }
 }
 
@@ -1700,6 +1736,7 @@ pub enum SessionState {
 pub struct SessionInfo {
     #[serde(rename = "id")]
     pub id: String,
+    /// Set at creation, else the first line of the first message.
     #[serde(rename = "title", default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     /// Working directory for the core tools.
@@ -1720,6 +1757,15 @@ pub struct SessionInfo {
     /// Inputs waiting behind the running turn.
     #[serde(rename = "queued")]
     pub queued: i64,
+    /// The latest thing said, on one line and cut to about 120 characters: the agent's last message, else the user's.
+    #[serde(rename = "preview", default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
+    /// Lines added by edits in this session (agent and guests), from their diffs.
+    #[serde(rename = "added", default, skip_serializing_if = "Option::is_none")]
+    pub added: Option<i64>,
+    /// Lines removed by edits in this session.
+    #[serde(rename = "removed", default, skip_serializing_if = "Option::is_none")]
+    pub removed: Option<i64>,
 }
 
 /// A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template.
@@ -1751,6 +1797,18 @@ pub struct GuestTurn {
     pub stop_reason: StopReason,
 }
 
+/// The user reverted edits the agents had applied (the review card after a turn in edits mode). Rendered to the main agent as <reverted paths="a.ts, b.ts"/> so it knows the files are back as they were.
+/// Tagged `type: "edits_reverted"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EditsReverted {
+    /// Files restored (or deleted, when the turn created them).
+    #[serde(rename = "paths")]
+    pub paths: Vec<String>,
+    /// Files left alone because they changed again after the turn's edits.
+    #[serde(rename = "skipped", default, skip_serializing_if = "Option::is_none")]
+    pub skipped: Option<Vec<String>>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PermissionOption {
     #[serde(rename = "id")]
@@ -1761,7 +1819,7 @@ pub struct PermissionOption {
     pub kind: PermissionOptionKind,
 }
 
-/// A guest asks before running a tool. Panes show the options as buttons (action suite.permit); the guest waits until one is picked or the turn is cancelled.
+/// An agent asks before doing something: a guest running a tool, the main agent running a command or changing a file, starting a guest. Panes show the content (a diff to preview) and the options as buttons (action suite.permit); the agent waits until one is picked or the turn is cancelled.
 /// Tagged `type: "permission_request"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PermissionRequest {
@@ -1778,6 +1836,12 @@ pub struct PermissionRequest {
         skip_serializing_if = "Option::is_none"
     )]
     pub tool_call_id: Option<String>,
+    /// What kind of action is asked about (edit, execute…), when known.
+    #[serde(rename = "kind", default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<ToolKind>,
+    /// What to preview: for an edit, the diff that has not been applied yet.
+    #[serde(rename = "content", default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<Vec<ToolCallContent>>,
     #[serde(rename = "options")]
     pub options: Vec<PermissionOption>,
 }
@@ -1807,7 +1871,7 @@ pub enum PermissionOptionKind {
     RejectAlways,
 }
 
-/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness "suite", value ask or auto): whether guests' permission requests and starting a guest ask the user; per session, ask unless set.
+/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness "suite", value ask, edits or auto): ask asks before file edits, commands, starting a guest and guests' requests; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Per session, ask unless set.
 /// Tagged `type: "setting_changed"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SettingChanged {

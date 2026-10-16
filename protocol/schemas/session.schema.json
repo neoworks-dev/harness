@@ -88,6 +88,9 @@
         },
         {
           "$ref": "#/$defs/Usage"
+        },
+        {
+          "$ref": "#/$defs/EditsReverted"
         }
       ],
       "discriminator": {
@@ -458,7 +461,8 @@
           "type": "string"
         },
         "title": {
-          "type": "string"
+          "type": "string",
+          "description": "Set at creation, else the first line of the first message."
         },
         "cwd": {
           "type": "string",
@@ -483,6 +487,20 @@
         "queued": {
           "type": "integer",
           "description": "Inputs waiting behind the running turn."
+        },
+        "preview": {
+          "type": "string",
+          "description": "The latest thing said, on one line and cut to about 120 characters: the agent's last message, else the user's."
+        },
+        "added": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Lines added by edits in this session (agent and guests), from their diffs."
+        },
+        "removed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Lines removed by edits in this session."
         }
       },
       "required": ["id", "cwd", "createdAt", "lastActivity", "lastSeq", "state", "queued"],
@@ -533,6 +551,31 @@
       "required": ["type", "agent", "task", "result", "stopReason"],
       "additionalProperties": false
     },
+    "EditsReverted": {
+      "description": "The user reverted edits the agents had applied (the review card after a turn in edits mode). Rendered to the main agent as <reverted paths=\"a.ts, b.ts\"/> so it knows the files are back as they were.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "edits_reverted"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Files restored (or deleted, when the turn created them)."
+        },
+        "skipped": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Files left alone because they changed again after the turn's edits."
+        }
+      },
+      "required": ["type", "paths"],
+      "additionalProperties": false
+    },
     "PermissionOption": {
       "type": "object",
       "properties": {
@@ -550,7 +593,7 @@
       "additionalProperties": false
     },
     "PermissionRequest": {
-      "description": "A guest asks before running a tool. Panes show the options as buttons (action suite.permit); the guest waits until one is picked or the turn is cancelled.",
+      "description": "An agent asks before doing something: a guest running a tool, the main agent running a command or changing a file, starting a guest. Panes show the content (a diff to preview) and the options as buttons (action suite.permit); the agent waits until one is picked or the turn is cancelled.",
       "type": "object",
       "properties": {
         "type": {
@@ -568,6 +611,17 @@
         },
         "toolCallId": {
           "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ToolKind",
+          "description": "What kind of action is asked about (edit, execute…), when known."
+        },
+        "content": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ToolCallContent"
+          },
+          "description": "What to preview: for an edit, the diff that has not been applied yet."
         },
         "options": {
           "type": "array",
@@ -605,7 +659,7 @@
       "enum": ["allow_once", "allow_always", "reject_once", "reject_always"]
     },
     "SettingChanged": {
-      "description": "The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness \"suite\", value ask or auto): whether guests' permission requests and starting a guest ask the user; per session, ask unless set.",
+      "description": "The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness \"suite\", value ask, edits or auto): ask asks before file edits, commands, starting a guest and guests' requests; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Per session, ask unless set.",
       "type": "object",
       "properties": {
         "type": {

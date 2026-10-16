@@ -128,6 +128,8 @@ pub enum Event {
     ViewPatch(ViewPatch),
     /// `file.changed`: the agent or another app changed a file.
     FileChanged(FileChanged),
+    /// `session.changed`: a session's state, title, preview or lines changed (for overviews).
+    SessionChanged(SessionInfo),
 }
 
 /// A connection to the daemon. Cheap to share behind an `Arc`; dropping it disconnects.

@@ -38,9 +38,9 @@ function connectedAttrs(
 }
 
 /**
- * Prepends connector events to the user's text (design §6). Connect/disconnect lines and guest
- * turns keep their order; only the last focus event is sent, after them. `cwd` (the session's working directory)
- * comes first, on a session's first prompt.
+ * Prepends connector events to the user's text (design §6). Connect/disconnect lines, guest
+ * turns and reverted edits keep their order; only the last focus event is sent, after them.
+ * `cwd` (the session's working directory) comes first, on a session's first prompt.
  */
 export function formatPrompt(text: string, pendingEvents: ContextEvent[], cwd?: string): string {
   const lines: string[] = [];
@@ -58,6 +58,12 @@ export function formatPrompt(text: string, pendingEvents: ContextEvent[], cwd?: 
         ["stop", event.stopReason],
       ];
       lines.push(`<guest ${attrs(pairs)}>`, event.result, "</guest>");
+    } else if (event.type === "edits_reverted") {
+      // Nothing was put back (everything changed again since): nothing for the agent to know.
+      if (event.paths.length === 0) continue;
+      const pairs: [string, string][] = [["paths", event.paths.join(", ")]];
+      if (event.skipped?.length) pairs.push(["skipped", event.skipped.join(", ")]);
+      lines.push(`<reverted ${attrs(pairs)}/>`);
     } else {
       const pairs: [string, string][] = [
         ["app", event.app],

@@ -53,6 +53,7 @@ describe("protocol examples", () => {
       choice_made: true,
       plan: true,
       usage: true,
+      edits_reverted: true,
     };
     expect([...seen].sort()).toEqual(Object.keys(all).sort());
   });

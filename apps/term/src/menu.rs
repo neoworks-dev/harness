@@ -221,6 +221,9 @@ mod tests {
             last_seq: 1,
             state: SessionState::Idle,
             queued: 0,
+            preview: None,
+            added: None,
+            removed: None,
         }
     }
 

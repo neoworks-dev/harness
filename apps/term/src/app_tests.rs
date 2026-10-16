@@ -829,6 +829,9 @@ fn queued_inputs_are_counted_while_a_turn_runs() {
         last_seq: 1,
         state: SessionState::Running,
         queued: 3,
+        preview: None,
+        added: None,
+        removed: None,
     }])));
     assert!(fx.is_empty());
     assert!(app.status_lines(100)[1].to_string().contains("3 queued"));
@@ -904,6 +907,9 @@ fn the_switcher_lists_filters_and_switches() {
         last_seq: 3,
         state: SessionState::Idle,
         queued: 0,
+        preview: None,
+        added: None,
+        removed: None,
     };
     app.handle_msg(Msg::Sessions(Ok(vec![
         info("s1", "this one", "/home/me/site", NOW - 60_000),
@@ -949,6 +955,9 @@ fn the_switcher_can_start_a_new_session_and_follow_it() {
         last_seq: 0,
         state: SessionState::Idle,
         queued: 0,
+        preview: None,
+        added: None,
+        removed: None,
     })));
     assert!(matches!(&fx[..], [Effect::Switch { to, move_agent: true, .. }] if to == "s9"));
     assert_eq!(app.session(), "s9");

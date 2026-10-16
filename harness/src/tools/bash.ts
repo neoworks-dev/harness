@@ -5,7 +5,9 @@ import { join } from "node:path";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "typebox";
 import { MAX_BYTES, MAX_LINES, truncateTail } from "./truncate.ts";
+import type { RequestPermission } from "../agent.ts";
 import { type AssetResolver, resolveAssetsInCommand } from "./paths.ts";
+import { askToProceed } from "./permission.ts";
 
 const UPDATE_INTERVAL_MS = 200;
 // How long to wait for output pipes to close after the shell exits (a background process may
@@ -85,6 +87,7 @@ function killGroup(pid: number | undefined): void {
 export function createBashTool(
   cwd: string,
   assets?: AssetResolver,
+  ask?: RequestPermission,
 ): AgentTool<typeof parameters, BashDetails> {
   return {
     name: "bash",
@@ -96,8 +99,14 @@ export function createBashTool(
       "reported as an error together with the output. Commands cannot read from stdin, so " +
       "don't run interactive programs.",
     parameters,
-    async execute(_toolCallId, { command, timeout }, signal, onUpdate) {
+    async execute(toolCallId, { command, timeout }, signal, onUpdate) {
       if (signal?.aborted) throw new Error("Command aborted before it started.");
+      await askToProceed(
+        ask,
+        { title: command, kind: "execute", toolCallId },
+        "The user declined to run this command.",
+        signal,
+      );
       const shell = existsSync("/bin/bash") ? "/bin/bash" : "sh";
       const child = spawn(shell, ["-c", resolveAssetsInCommand(command, assets)], {
         cwd,

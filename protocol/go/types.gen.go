@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, AssetPutMessage, AssetGetMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, AssetPutMessage, AssetGetMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -233,6 +233,12 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "app.context":
 		var v AppContextMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "session.changed":
+		var v SessionChangedMessage
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -898,6 +904,22 @@ type AppContext struct {
 	Context map[string]string `json:"context"`
 }
 
+// SessionChangedMessage: Daemon → every client: a session's info changed (state, queue, title, preview, lines changed). Coalesced per session; the latest one is the truth.
+type SessionChangedMessage struct {
+	Payload SessionInfo `json:"payload"`
+}
+
+func (SessionChangedMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v SessionChangedMessage) MarshalJSON() ([]byte, error) {
+	type plain SessionChangedMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"session.changed", plain(v)})
+}
+
 // AppPresence: Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.
 type AppPresence struct {
 	// Connector name; prefixes its tools (app.tool).
@@ -971,7 +993,7 @@ type SessionEventRecord struct {
 }
 
 // SessionEvent: Everything that happens in a session. Views must ignore types they don't know.
-// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, UnknownSessionEvent.
+// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UnknownSessionEvent.
 type SessionEvent struct {
 	Value SessionEventVariant
 }
@@ -1124,6 +1146,12 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "usage":
 		var v Usage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "edits_reverted":
+		var v EditsReverted
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -1500,7 +1528,8 @@ const (
 )
 
 type SessionInfo struct {
-	ID    string  `json:"id"`
+	ID string `json:"id"`
+	// Set at creation, else the first line of the first message.
 	Title *string `json:"title,omitempty"`
 	// Working directory for the core tools.
 	Cwd string `json:"cwd"`
@@ -1514,6 +1543,12 @@ type SessionInfo struct {
 	State SessionState `json:"state"`
 	// Inputs waiting behind the running turn.
 	Queued int64 `json:"queued"`
+	// The latest thing said, on one line and cut to about 120 characters: the agent's last message, else the user's.
+	Preview *string `json:"preview,omitempty"`
+	// Lines added by edits in this session (agent and guests), from their diffs.
+	Added *int64 `json:"added,omitempty"`
+	// Lines removed by edits in this session.
+	Removed *int64 `json:"removed,omitempty"`
 }
 
 // ToolResult: A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template.
@@ -1556,20 +1591,43 @@ func (v GuestTurn) MarshalJSON() ([]byte, error) {
 	}{"guest_turn", plain(v)})
 }
 
+// EditsReverted: The user reverted edits the agents had applied (the review card after a turn in edits mode). Rendered to the main agent as <reverted paths="a.ts, b.ts"/> so it knows the files are back as they were.
+type EditsReverted struct {
+	// Files restored (or deleted, when the turn created them).
+	Paths []string `json:"paths"`
+	// Files left alone because they changed again after the turn's edits.
+	Skipped []string `json:"skipped,omitempty"`
+}
+
+func (EditsReverted) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v EditsReverted) MarshalJSON() ([]byte, error) {
+	type plain EditsReverted
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"edits_reverted", plain(v)})
+}
+
 type PermissionOption struct {
 	ID   string               `json:"id"`
 	Name string               `json:"name"`
 	Kind PermissionOptionKind `json:"kind"`
 }
 
-// PermissionRequest: A guest asks before running a tool. Panes show the options as buttons (action suite.permit); the guest waits until one is picked or the turn is cancelled.
+// PermissionRequest: An agent asks before doing something: a guest running a tool, the main agent running a command or changing a file, starting a guest. Panes show the content (a diff to preview) and the options as buttons (action suite.permit); the agent waits until one is picked or the turn is cancelled.
 type PermissionRequest struct {
 	ID    string `json:"id"`
 	Agent string `json:"agent"`
 	// What it wants to do.
-	Title      string             `json:"title"`
-	ToolCallID *string            `json:"toolCallId,omitempty"`
-	Options    []PermissionOption `json:"options"`
+	Title      string  `json:"title"`
+	ToolCallID *string `json:"toolCallId,omitempty"`
+	// What kind of action is asked about (edit, execute…), when known.
+	Kind *ToolKind `json:"kind,omitempty"`
+	// What to preview: for an edit, the diff that has not been applied yet.
+	Content []ToolCallContent  `json:"content,omitempty"`
+	Options []PermissionOption `json:"options"`
 }
 
 func (PermissionRequest) isSessionEvent() {}
@@ -1611,7 +1669,7 @@ const (
 	PermissionOptionKindRejectAlways PermissionOptionKind = "reject_always"
 )
 
-// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness "suite", value ask or auto): whether guests' permission requests and starting a guest ask the user; per session, ask unless set.
+// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). approvals (harness "suite", value ask, edits or auto): ask asks before file edits, commands, starting a guest and guests' requests; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Per session, ask unless set.
 type SettingChanged struct {
 	// pi, claude, codex…
 	Harness string      `json:"harness"`

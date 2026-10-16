@@ -28,6 +28,7 @@ import { BadRequestError } from "../focus.ts";
 import type { ConnectorSnapshot } from "../gateway/registry.ts";
 import type { Logger } from "../log.ts";
 import { NotFoundError } from "../sessions.ts";
+import type { Approvals } from "../settings.ts";
 import { type FocusTarget, ToldState } from "../told.ts";
 import { AcpConnection, AcpError } from "./acp.ts";
 import { GUEST_PROMPT } from "./prompt.ts";
@@ -61,8 +62,8 @@ export interface GuestManagerOptions {
   settings: (session: string, guest: string) => Partial<Record<ConfigCategory, string>>;
   /** Asks the user (permission requests). */
   asker: Asker;
-  /** Whether the user lets this session's guests go ahead without asking (/approvals auto). */
-  autoApprove?: (session: string) => boolean;
+  /** The session's approvals mode (/approvals): auto allows everything, edits allows edits. */
+  approvals?: (session: string) => Approvals;
 }
 
 /** A conversation the adapter has stored (session/list), for /resume. */
@@ -647,20 +648,28 @@ export class GuestManager {
     const options = this.permissionOptions(params.options);
     const cancelled = { outcome: { outcome: "cancelled" } };
     if (!guest?.run || options.length === 0) return cancelled;
+    const call: Record<string, unknown> = Object.assign({}, params.toolCall);
+    const content = toContent(call.content);
+    const callKind = str(call.kind);
+    const kind: ToolKind | undefined =
+      callKind !== undefined && KINDS.has(callKind) ? (callKind as ToolKind) : undefined;
+    const isEdit = kind === "edit" || content?.some((c) => c.type === "diff") === true;
     const config = this.options.configs[guest.name];
-    if (config?.permissions === "allow" || this.options.autoApprove?.(guest.session) === true) {
+    const mode = this.options.approvals?.(guest.session);
+    if (config?.permissions === "allow" || mode === "auto" || (mode === "edits" && isEdit)) {
       const allow =
         options.find((o) => o.kind === "allow_once") ??
         options.find((o) => o.kind.startsWith("allow"));
       if (allow) return { outcome: { outcome: "selected", optionId: allow.id } };
     }
-    const call: Record<string, unknown> = Object.assign({}, params.toolCall);
     const request: Omit<PermissionRequest, "id"> = {
       type: "permission_request",
       agent: guest.name,
       title: describeCall(str(call.title) ?? "use a tool", call.rawInput).title,
       options,
     };
+    if (kind !== undefined) request.kind = kind;
+    if (content?.length) request.content = content;
     const toolCallId = str(call.toolCallId);
     if (toolCallId !== undefined) request.toolCallId = `${guest.name}:${toolCallId}`;
     const optionId = await this.options.asker.ask(guest.session, request, guest.run.done.signal);

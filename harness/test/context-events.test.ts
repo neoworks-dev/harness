@@ -65,6 +65,19 @@ test("a guest turn carries the task as an attribute and the reply as the body", 
   ]);
 });
 
+test("reverted edits list the files; nothing restored says nothing", () => {
+  const events: ContextEvent[] = [
+    { type: "edits_reverted", paths: ["a.ts", "b.ts"] },
+    { type: "edits_reverted", paths: ["c.ts"], skipped: ["d.ts"] },
+    { type: "edits_reverted", paths: [], skipped: ["e.ts"] },
+  ];
+  expect(formatPrompt("go", events).split("\n")).toEqual([
+    '<reverted paths="a.ts, b.ts"/>',
+    '<reverted paths="c.ts" skipped="d.ts"/>',
+    "go",
+  ]);
+});
+
 test("focus without context has only the app attribute", () => {
   expect(formatPrompt("x", [{ type: "focus_changed", app: "term" }])).toBe(
     '<focus app="term"/>\nx',

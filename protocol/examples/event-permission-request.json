@@ -10,6 +10,15 @@
       "agent": "claude",
       "title": "Edit src/parse.ts",
       "toolCallId": "claude:toolu_1",
+      "kind": "edit",
+      "content": [
+        {
+          "type": "diff",
+          "path": "/home/user/site/src/parse.ts",
+          "oldText": "const n = 1;\n",
+          "newText": "const n = 2;\n"
+        }
+      ],
       "options": [
         { "id": "allow", "name": "Allow", "kind": "allow_once" },
         { "id": "reject", "name": "Reject", "kind": "reject_once" }

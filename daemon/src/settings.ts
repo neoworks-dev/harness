@@ -21,7 +21,22 @@ export function isSettingName(name: string): name is HarnessSettingName {
 
 export type HarnessSettings = Partial<Record<ConfigCategory, string>>;
 
-export type Approvals = "ask" | "auto";
+/**
+ * ask: edits are previewed before they are written, commands and guests ask. edits: edits are
+ * written right away (reviewed after the turn), everything else asks. auto: nothing asks.
+ */
+export type Approvals = "ask" | "edits" | "auto";
+
+export const APPROVALS: readonly Approvals[] = ["ask", "edits", "auto"];
+
+export function parseApprovals(value: string): Approvals | undefined {
+  return APPROVALS.find((mode) => mode === value);
+}
+
+/** The mode after this one: ask, edits, auto, ask… */
+export function nextApprovals(mode: Approvals): Approvals {
+  return APPROVALS[(APPROVALS.indexOf(mode) + 1) % APPROVALS.length] ?? "ask";
+}
 
 export class Settings {
   constructor(private readonly store: SessionStore) {}
@@ -46,14 +61,14 @@ export class Settings {
   }
 
   /**
-   * Whether guests' permission requests and starting a guest ask the user (ask) or are
-   * allowed (auto). Per session and never carried over: a new session asks.
+   * How much the agents ask the user first (see Approvals). Per session and never carried
+   * over: a new session asks.
    */
   approvals(session: string): Approvals {
     let value: Approvals = "ask";
     for (const { event } of this.store.readTypes(session, ["setting_changed"])) {
       if (event.type === "setting_changed" && event.option === "approvals") {
-        value = event.value === "auto" ? "auto" : "ask";
+        value = parseApprovals(event.value) ?? "ask";
       }
     }
     return value;

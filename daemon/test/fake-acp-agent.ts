@@ -2,6 +2,8 @@
 // Codex in guest tests. What it does depends on the task, the prompt's last line:
 //   greet <name>  calls greeter.greet through the suite's MCP server (the gateway)
 //   ask           asks for permission and reports the answer
+//   ask edit      the same, for a tool call of kind edit with a diff (ask execute: kind execute;
+//                 ask diff: a diff but no kind)
 //   wait          runs until cancelled
 //   edit          reports a tool call with a diff
 //   config        reports what session/new (or resume) and set_config_option gave it
@@ -103,10 +105,16 @@ async function prompt(params: {
   say(sessionId, "Looking.");
   if (task.startsWith("greet ")) {
     await greet(sessionId, task.slice(6));
-  } else if (task === "ask") {
+  } else if (task === "ask" || task.startsWith("ask ")) {
+    const what = task.slice(4);
+    const toolCall: Record<string, unknown> = { toolCallId: "t2", title: "Write notes.txt" };
+    const diff = { type: "diff", path: "/tmp/notes.txt", oldText: "a\n", newText: "b\n" };
+    if (what === "edit") Object.assign(toolCall, { kind: "edit", content: [diff] });
+    else if (what === "diff") Object.assign(toolCall, { content: [diff] });
+    else if (what === "execute") Object.assign(toolCall, { kind: "execute", title: "ls" });
     const answer = (await request("session/request_permission", {
       sessionId,
-      toolCall: { toolCallId: "t2", title: "Write notes.txt" },
+      toolCall,
       options: [
         { optionId: "yes", name: "Allow", kind: "allow_once" },
         { optionId: "no", name: "Reject", kind: "reject_once" },

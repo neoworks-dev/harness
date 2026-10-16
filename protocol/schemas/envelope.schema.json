@@ -99,6 +99,9 @@
         },
         {
           "$ref": "#/$defs/AppContextMessage"
+        },
+        {
+          "$ref": "#/$defs/SessionChangedMessage"
         }
       ],
       "discriminator": {
@@ -886,6 +889,20 @@
         }
       },
       "required": ["app", "context"],
+      "additionalProperties": false
+    },
+    "SessionChangedMessage": {
+      "description": "Daemon → every client: a session's info changed (state, queue, title, preview, lines changed). Coalesced per session; the latest one is the truth.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.changed"
+        },
+        "payload": {
+          "$ref": "session.schema.json#/$defs/SessionInfo"
+        }
+      },
+      "required": ["topic", "payload"],
       "additionalProperties": false
     }
   }

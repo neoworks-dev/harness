@@ -444,7 +444,10 @@ impl Pad {
                     self.touched(cx, false);
                 }
             }
-            Event::Session(_) | Event::Subscribed { .. } | Event::Connectors(_) => {}
+            Event::Session(_)
+            | Event::SessionChanged(_)
+            | Event::Subscribed { .. }
+            | Event::Connectors(_) => {}
         }
         cx.notify();
     }

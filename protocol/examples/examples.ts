@@ -143,6 +143,22 @@ export const examples: Record<string, Envelope> = {
   "agent-focus-nowhere": { topic: "agent.focus", payload: { session, reason: "initial" } },
   "agent-move": { topic: "agent.move", id: "12", payload: { app: "pad" } },
   "agent-move-home-new-session": { topic: "agent.move", id: "13", payload: { session } },
+  "session-changed": {
+    topic: "session.changed",
+    payload: {
+      id: "s_7k2m9x4q1p8r3t5w6y0z",
+      title: "Crop the logo",
+      cwd: "/home/user/site",
+      createdAt: 1760565600000,
+      lastActivity: 1760565660000,
+      lastSeq: 42,
+      state: "running",
+      queued: 0,
+      preview: "Cropped it to 512×512 and added it to the header.",
+      added: 12,
+      removed: 3,
+    },
+  },
   "connectors-changed": {
     topic: "connectors.changed",
     payload: {
@@ -252,6 +268,15 @@ export const examples: Record<string, Envelope> = {
         agent: "claude",
         title: "Edit src/parse.ts",
         toolCallId: "claude:toolu_1",
+        kind: "edit",
+        content: [
+          {
+            type: "diff",
+            path: "/home/user/site/src/parse.ts",
+            oldText: "const n = 1;\n",
+            newText: "const n = 2;\n",
+          },
+        ],
         options: [
           { id: "allow", name: "Allow", kind: "allow_once" },
           { id: "reject", name: "Reject", kind: "reject_once" },
@@ -266,6 +291,19 @@ export const examples: Record<string, Envelope> = {
       seq: 8,
       ts: 1760565600800,
       event: { type: "permission_resolved", id: "p1", option: "allow", by: "code-editor" },
+    },
+  },
+  "event-edits-reverted": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 12,
+      ts: 1760565601100,
+      event: {
+        type: "edits_reverted",
+        paths: ["/home/user/site/src/parse.ts"],
+        skipped: ["/home/user/site/notes.md"],
+      },
     },
   },
   "event-setting-changed": {

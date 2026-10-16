@@ -135,7 +135,12 @@ export function createPiAgent(options: PiAgentOptions): HarnessAgent {
       initialState: {
         systemPrompt: SYSTEM_PROMPT,
         model: initial.model,
-        tools: createCoreTools(params.cwd, gatewayOf(params.mcpServers), params.resolveAsset),
+        tools: createCoreTools(
+          params.cwd,
+          gatewayOf(params.mcpServers),
+          params.resolveAsset,
+          params.requestPermission,
+        ),
         messages,
         thinkingLevel: initial.thinkingLevel,
       },

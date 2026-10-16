@@ -312,6 +312,8 @@ impl App {
         match event {
             Event::Focus(focus) => self.on_focus(focus, &mut fx),
             Event::Connectors(_) => {}
+            // The session overview (left sidebar) is next.
+            Event::SessionChanged(_) => {}
             Event::Session(record) => {
                 if record.session == self.session {
                     self.on_record(&record);

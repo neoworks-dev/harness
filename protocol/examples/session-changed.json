@@ -1,0 +1,16 @@
+{
+  "topic": "session.changed",
+  "payload": {
+    "id": "s_7k2m9x4q1p8r3t5w6y0z",
+    "title": "Crop the logo",
+    "cwd": "/home/user/site",
+    "createdAt": 1760565600000,
+    "lastActivity": 1760565660000,
+    "lastSeq": 42,
+    "state": "running",
+    "queued": 0,
+    "preview": "Cropped it to 512×512 and added it to the header.",
+    "added": 12,
+    "removed": 3
+  }
+}

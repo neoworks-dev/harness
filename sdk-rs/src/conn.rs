@@ -336,6 +336,9 @@ impl Io {
             }
             Envelope::ThemeMessage(message) => self.emit(Event::Theme(message.payload)),
             Envelope::FileChangedMessage(message) => self.emit(Event::FileChanged(message.payload)),
+            Envelope::SessionChangedMessage(message) => {
+                self.emit(Event::SessionChanged(message.payload));
+            }
             Envelope::ViewPatchMessage(message) => {
                 if self.views.contains(&message.payload.session) {
                     self.emit(Event::ViewPatch(message.payload));
