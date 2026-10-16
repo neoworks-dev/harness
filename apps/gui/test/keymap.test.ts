@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { Context } from "@neoworks/extension-system";
 import { Keymap, chord, type KeyEvent } from "../ui/kernel/keymap.ts";
 
 function press(key: string, held: Partial<KeyEvent> = {}): KeyEvent & { prevented: boolean } {

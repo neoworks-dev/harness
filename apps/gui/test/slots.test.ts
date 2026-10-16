@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
-import { Context, FiberState, Service } from "@neoworks/extension-system";
-import { SlotRegistry } from "../ui/kernel/slots/registry.ts";
+import { Context, FiberState, Service, type Fiber } from "@neoworks/extension-system";
+import type { Component } from "svelte";
+import { SlotRegistry, type Occupant } from "../ui/kernel/slots/registry.ts";
 import { SlotsService } from "../ui/kernel/slots/service.ts";
 import type { Chain, Keyed, List, Single } from "../ui/kernel/slots/types.ts";
 
@@ -22,35 +23,43 @@ declare module "@neoworks/extension-system" {
 }
 
 /** A stand-in for a Svelte component: the registry only passes it around. */
-const comp = (name: string) => Object.assign(() => {}, { displayName: name }) as never;
-const names = (occupants: { component: unknown }[]) =>
-  occupants.map((o) => (o.component as { displayName: string }).displayName);
+function comp<P extends Record<string, unknown>>(name: string): Component<P> {
+  return Object.assign(() => ({}), { displayName: name });
+}
+const names = (occupants: Occupant[]): string[] =>
+  occupants.map((o) => (o.component as unknown as { displayName: string }).displayName);
+
+/** What the registries of these tests were told failed. */
+const errors: Error[] = [];
+const newRegistry = (): SlotRegistry => new SlotRegistry((error) => void errors.push(error));
 
 /** Why a plugin failed to load; the fibers are thenables, which `rejects` does not take. */
-const failure = (fiber: PromiseLike<unknown>) =>
+const failure = (fiber: PromiseLike<unknown>): Promise<string | undefined> =>
   Promise.resolve(fiber).then(
     () => undefined,
     (error: Error) => error.message,
   );
 
+type Mounted = Fiber & PromiseLike<Fiber>;
+type Kinds = Record<string, "list" | "single" | "keyed" | "chain">;
+
 /** A context with the service mounted on a registry of its own, and `root` taken by an owner. */
-async function setup(slots: Record<string, "list" | "single" | "keyed" | "chain">) {
-  const registry = new SlotRegistry();
+async function setup(slots: Kinds): Promise<{ registry: SlotRegistry; root: Context }> {
+  const registry = newRegistry();
   const root = new Context();
   await root.plugin(SlotsService, registry);
-  const owner = root.plugin({
+  await root.plugin({
     name: "owner",
     inject: ["slots"],
     apply: (ctx: Context) =>
       ctx.slots.add("root", { component: comp("owner"), slots: slots as never }),
   });
-  await owner;
-  return { registry, root, owner };
+  return { registry, root };
 }
 
 test("a list draws its entries in order, ties in the order added", async () => {
   const { registry, root } = await setup({ "t.list": "list" });
-  const add = (name: string, order?: number) =>
+  const add = (name: string, order?: number): Mounted =>
     root.plugin({
       name,
       inject: ["slots"],
@@ -65,7 +74,7 @@ test("a list draws its entries in order, ties in the order added", async () => {
 
 test("a single draws its last entry, and the one before it returns when that goes", async () => {
   const { registry, root } = await setup({ "t.single": "single" });
-  const mount = (name: string) =>
+  const mount = (name: string): Mounted =>
     root.plugin({
       name,
       inject: ["slots"],
@@ -80,7 +89,7 @@ test("a single draws its last entry, and the one before it returns when that goe
 });
 
 test("a keyed slot draws the entry of the key, else its fallback", async () => {
-  const registry = new SlotRegistry();
+  const registry = newRegistry();
   const root = new Context();
   await root.plugin(SlotsService, registry);
   await root.plugin({
@@ -109,7 +118,7 @@ test("a keyed entry needs a key and a chain entry a select", async () => {
 
 test("a chain draws the first entry, by order, that selects the props", async () => {
   const { registry, root } = await setup({ "t.chain": "chain" });
-  const mount = (name: string, order: number, accepts: (n: number) => boolean) =>
+  const mount = (name: string, order: number, accepts: (n: number) => boolean): Mounted =>
     root.plugin({
       name,
       inject: ["slots"],
@@ -125,7 +134,7 @@ test("a chain draws the first entry, by order, that selects the props", async ()
 });
 
 test("registering into an undeclared slot fails the plugin while it loads", async () => {
-  const registry = new SlotRegistry();
+  const registry = newRegistry();
   const root = new Context();
   await root.plugin(SlotsService, registry);
   const fiber = root.plugin({
@@ -182,7 +191,7 @@ test("declaring is claiming: an entry's slots exist while it is registered, and 
 });
 
 test("inject registers when the owner is mounted, again when it comes back, and not after unload", async () => {
-  const registry = new SlotRegistry();
+  const registry = newRegistry();
   const root = new Context();
   await root.plugin(SlotsService, registry);
   let runs = 0;
@@ -199,7 +208,7 @@ test("inject registers when the owner is mounted, again when it comes back, and 
   // Nobody has declared the slot yet: nothing failed, nothing ran.
   expect(runs).toBe(0);
 
-  const mountOwner = () =>
+  const mountOwner = (): Mounted =>
     root.plugin({
       name: "owner",
       inject: ["slots"],
@@ -238,38 +247,34 @@ test("unloading a plugin takes its entries out and tells the subscribers", async
   expect(heard).toBeGreaterThan(before);
 });
 
-test("a contributor that throws once the slot exists fails its own plugin, not the owner's", async () => {
-  const registry = new SlotRegistry();
+test("a contributor that throws once the slot exists is reported, and does not fail the owner", async () => {
+  errors.length = 0;
+  const registry = newRegistry();
   const root = new Context();
   await root.plugin(SlotsService, registry);
-  const log = console.error;
-  console.error = () => {};
-  try {
-    await root.plugin({
-      name: "bad",
-      inject: ["slots"],
-      apply: (ctx: Context) =>
-        ctx.slots.inject("t.list", () => {
-          throw new Error("nope");
-        }),
-    });
-    const owner = root.plugin({
-      name: "owner",
-      inject: ["slots"],
-      apply: (ctx: Context) =>
-        ctx.slots.add("root", { component: comp("owner"), slots: { "t.list": "list" } }),
-    });
-    await owner;
-    expect(owner.state).toBe(FiberState.ACTIVE);
-    expect(registry.has("t.list")).toBe(true);
-  } finally {
-    console.error = log;
-  }
+  await root.plugin({
+    name: "bad",
+    inject: ["slots"],
+    apply: (ctx: Context) =>
+      ctx.slots.inject("t.list", () => {
+        throw new Error("nope");
+      }),
+  });
+  const owner = root.plugin({
+    name: "owner",
+    inject: ["slots"],
+    apply: (ctx: Context) =>
+      ctx.slots.add("root", { component: comp("owner"), slots: { "t.list": "list" } }),
+  });
+  await owner;
+  expect(owner.state).toBe(FiberState.ACTIVE);
+  expect(registry.has("t.list")).toBe(true);
+  expect(errors.map((error) => error.message)).toEqual(['contributing to slot "t.list" failed']);
 });
 
 test("replacing a single frees the slots the old one declared for the new one", async () => {
   const { registry, root } = await setup({ "t.single": "single" });
-  const mount = (name: string) =>
+  const mount = (name: string): Mounted =>
     root.plugin({
       name,
       inject: ["slots"],
@@ -294,7 +299,7 @@ test("an entry carries the context of the plugin that registered it", async () =
     }
     answer = 42;
   }
-  const registry = new SlotRegistry();
+  const registry = newRegistry();
   const root = new Context();
   await root.plugin(SlotsService, registry);
   await root.plugin(Thing);

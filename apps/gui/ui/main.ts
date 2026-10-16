@@ -8,13 +8,12 @@ import { root } from "./kernel/context.ts";
 import { services } from "./kernel/services.ts";
 import { plugins } from "./plugins/index.ts";
 
-// The window opens once the plugins are mounted, since they fill it.
-boot(root, services, plugins)
-  .catch((error: unknown) => console.error("boot failed", error))
-  .finally(() =>
-    start(
-      App,
-      {},
-      { window: { title: "suite", width: 1100, height: 780, minWidth: 520, minHeight: 360 } },
-    ),
-  );
+// The window opens once the plugins are mounted, since they fill it, and also when some failed:
+// the host reports the rejection, and the panes that did load are still of use.
+void boot(root, services, plugins).finally(() =>
+  start(
+    App,
+    {},
+    { window: { title: "suite", width: 1100, height: 780, minWidth: 520, minHeight: 360 } },
+  ),
+);

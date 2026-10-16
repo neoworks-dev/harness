@@ -9,6 +9,8 @@
 //   }
 import type { Component } from "svelte";
 
+// Props are declared as type literals, not interfaces, so they fit a component's props.
+
 /** One occupant. Adding another replaces it until that one goes away. */
 export interface Single<P extends object = {}> {
   kind: "single";
@@ -39,10 +41,10 @@ export interface SlotMap {
   root: Single;
 }
 
-export type SlotName = keyof SlotMap & string;
+export type SlotName = Extract<keyof SlotMap, string>;
 export type Kind<N extends SlotName> = SlotMap[N] extends { kind: infer K } ? K : never;
 export type Props<N extends SlotName> = SlotMap[N] extends {
-  props: infer P extends Record<string, any>;
+  props: infer P extends Record<string, unknown>;
 }
   ? P
   : never;

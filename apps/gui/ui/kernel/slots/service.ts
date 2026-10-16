@@ -18,7 +18,9 @@ declare module "@neoworks/extension-system" {
  * not reachable through it, and components need the plugin's.
  */
 function caller(service: SlotsService): Context {
-  return (service as unknown as Record<symbol, Context>)[symbols.caller]!;
+  const found = (service as unknown as Record<symbol, Context | undefined>)[symbols.caller];
+  if (!found) throw new Error("slots: called outside of a plugin");
+  return found;
 }
 
 export class SlotsService extends Service {
@@ -32,7 +34,11 @@ export class SlotsService extends Service {
   /** Registers into a slot that is declared now; the plugin fails to load if it is not. */
   add<N extends SlotName>(name: N, spec: EntrySpec<N>): () => void {
     const ctx = caller(this);
-    return this.ctx.effect(() => this.registry.add(name, { ...spec, ctx }), `slots.add(${name})`);
+    const dispose = this.ctx.effect(
+      () => this.registry.add(name, { ...spec, ctx }),
+      `slots.add(${name})`,
+    );
+    return () => void dispose();
   }
 
   /**
@@ -44,12 +50,13 @@ export class SlotsService extends Service {
     run: (slot: SlotHandle<N>) => (() => void) | void,
   ): () => void {
     const ctx = caller(this);
-    return this.ctx.effect(
+    const dispose = this.ctx.effect(
       () =>
         this.registry.contribute(name, (slot) =>
           run({ add: (spec) => slot.add({ ...spec, ctx }) }),
         ),
       `slots.inject(${name})`,
     );
+    return () => void dispose();
   }
 }

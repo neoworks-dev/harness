@@ -7,7 +7,7 @@
 import type { Component } from "svelte";
 
 export type Dispose = () => void;
-type Drawn = Component<any>;
+type Drawn = Component<never>;
 
 interface Declared {
   kind: string;
@@ -20,7 +20,7 @@ export interface Spec {
   slots?: Record<string, string | Declared>;
   order?: number;
   key?: string;
-  select?: (props: any) => unknown;
+  select?: (props: never) => unknown;
   /** The context of the plugin that registered it, for the component to reach services with. */
   ctx?: unknown;
 }
@@ -49,22 +49,17 @@ export interface Occupant {
   ctx?: unknown;
 }
 
-/** Runs a teardown step so that a failing one does not keep the others from running. */
-function settle(dispose: Dispose | void): void {
-  try {
-    dispose?.();
-  } catch (error) {
-    console.error("slot teardown failed", error);
-  }
-}
-
 export class SlotRegistry {
   private readonly slots = new Map<string, Slot>();
   private readonly contributors = new Map<string, Set<Contributor>>();
   private readonly listeners = new Set<() => void>();
   private ids = 0;
 
-  constructor() {
+  /**
+   * `onError` hears what fails where nobody is waiting for the result: a teardown step (the
+   * others still run) and a contributor that throws once the slot's owner is already mounting.
+   */
+  constructor(private readonly onError: (error: Error) => void) {
     this.declare("root", { kind: "single" });
   }
 
@@ -113,7 +108,7 @@ export class SlotRegistry {
       const current = this.slots.get(name);
       const applied = current?.applied.get(contribute);
       current?.applied.delete(contribute);
-      settle(applied);
+      this.settle(applied);
     };
   }
 
@@ -139,7 +134,7 @@ export class SlotRegistry {
       case "keyed":
         return slot.entries.filter((entry) => entry.spec.key === key).slice(-1);
       case "chain":
-        return slot.entries.filter((entry) => entry.spec.select?.(props)).slice(0, 1);
+        return slot.entries.filter((entry) => entry.spec.select?.(props as never)).slice(0, 1);
       default:
         return slot.entries;
     }
@@ -230,7 +225,7 @@ export class SlotRegistry {
     const slot = this.slots.get(name);
     if (!slot) return;
     this.slots.delete(name);
-    for (const dispose of slot.applied.values()) settle(dispose);
+    for (const dispose of slot.applied.values()) this.settle(dispose);
     for (const entry of slot.entries) {
       if (entry.active) this.deactivate(entry);
     }
@@ -241,7 +236,7 @@ export class SlotRegistry {
   private apply(slot: Slot, contribute: Contributor, rethrow: boolean): void {
     const added: Dispose[] = [];
     const undo = (): void => {
-      for (const dispose of added.splice(0).reverse()) settle(dispose);
+      for (const dispose of added.splice(0).reverse()) this.settle(dispose);
     };
     try {
       const own = contribute({
@@ -253,13 +248,22 @@ export class SlotRegistry {
       });
       slot.applied.set(contribute, () => {
         undo();
-        settle(own);
+        this.settle(own);
       });
     } catch (error) {
       undo();
       // Its owner is mounting; what a contributor does wrong is not the owner's failure.
       if (rethrow) throw error;
-      console.error(`contributing to slot "${slot.name}" failed`, error);
+      this.onError(new Error(`contributing to slot "${slot.name}" failed`, { cause: error }));
+    }
+  }
+
+  /** Runs a teardown step so that a failing one does not keep the others from running. */
+  private settle(dispose: Dispose | void): void {
+    try {
+      dispose?.();
+    } catch (error) {
+      this.onError(new Error("slot teardown failed", { cause: error }));
     }
   }
 

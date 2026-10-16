@@ -10,76 +10,84 @@ declare module "@neoworks/extension-system" {
   }
 }
 
+type Store = typeof suite;
+
 export class DaemonService extends Service {
   constructor(ctx: Context) {
     super(ctx, "daemon");
   }
 
   /** Connects to the daemon and opens the session `suite gui` asked for. */
-  start() {
+  start(): Promise<void> {
     return suite.start();
   }
 
-  get connection() {
+  get connection(): Store["connection"] {
     return suite.connection;
   }
   /** Why starting or the last request failed. */
-  get error() {
+  get error(): Store["error"] {
     return suite.error;
   }
-  set error(message: string | undefined) {
+  set error(message: Store["error"]) {
     suite.error = message;
   }
   /** What the window draws with. */
-  get palette() {
+  get palette(): Store["palette"] {
     return suite.palette;
   }
   /** Every session, kept current by the daemon. */
-  get sessions() {
+  get sessions(): Store["sessions"] {
     return suite.sessions;
   }
   /** The session this window shows, and its directory. */
-  get sessionId() {
+  get sessionId(): Store["sessionId"] {
     return suite.sessionId;
   }
-  get session() {
+  get session(): Store["session"] {
     return suite.session;
   }
-  get cwd() {
+  get cwd(): Store["cwd"] {
     return suite.cwd;
   }
   /** The shown session's chat, as the daemon resolved it. */
-  get items() {
+  get items(): Store["items"] {
     return suite.items;
   }
-  get status() {
+  get status(): Store["status"] {
     return suite.status;
   }
-  get branch() {
+  get branch(): Store["branch"] {
     return suite.branch;
   }
 
-  open(id: string) {
+  /** Shows a session in this window and moves the agent here with it. */
+  open(id: string): Promise<void> {
     return suite.open(id);
   }
-  newSession(cwd?: string) {
+  /** Starts a session (in `cwd`, else the shown one's directory) and shows it. */
+  newSession(cwd?: string): Promise<void> {
     return suite.newSession(cwd);
   }
-  send(text: string) {
+  /** Sends what the user typed, commands included. */
+  send(text: string): Promise<void> {
     return suite.send(text);
   }
-  cancel() {
+  cancel(): Promise<void> {
     return suite.cancel();
   }
-  cycleApprovals() {
+  /** Shift-Tab: the next approvals mode. */
+  cycleApprovals(): Promise<void> {
     return suite.cycleApprovals();
   }
-  assetSrc(src: string) {
+  /** The URL an `asset://` handle loads from, for an `Image`. It holds the daemon's token. */
+  assetSrc(src: string): string | undefined {
     return suite.assetSrc(src);
   }
 
   /** Every event of the shown session from now on; stops when the plugin unloads. */
-  onRecord(listener: Parameters<typeof suite.onRecord>[0]): () => void {
-    return this.ctx.effect(() => suite.onRecord(listener), "daemon.onRecord");
+  onRecord(listener: Parameters<Store["onRecord"]>[0]): () => void {
+    const stop = this.ctx.effect(() => suite.onRecord(listener), "daemon.onRecord");
+    return () => void stop();
   }
 }

@@ -18,11 +18,13 @@ export class KeymapService extends Service {
 
   /** Binds a chord; the newest binding of a chord gets the key first. */
   bind(chord: string, run: KeyHandler): () => void {
-    return this.ctx.effect(() => keymap.bind(chord, run), `keymap.bind(${chord})`);
+    const dispose = this.ctx.effect(() => keymap.bind(chord, run), `keymap.bind(${chord})`);
+    return () => void dispose();
   }
 
   /** Hears every key press before the bindings, without using it. */
   observe(run: KeyHandler): () => void {
-    return this.ctx.effect(() => keymap.observe(run), "keymap.observe");
+    const dispose = this.ctx.effect(() => keymap.observe(run), "keymap.observe");
+    return () => void dispose();
   }
 }

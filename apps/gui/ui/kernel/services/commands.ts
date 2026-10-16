@@ -25,9 +25,10 @@ export class CommandsService extends Service {
 
   /** Adds an entry to the menu. */
   register(command: NewCommand): () => void {
-    return this.ctx.effect(
+    const dispose = this.ctx.effect(
       () => commandStore.add({ args: "", needsArgs: false, ...command }),
       `commands.register(${command.name})`,
     );
+    return () => void dispose();
   }
 }
