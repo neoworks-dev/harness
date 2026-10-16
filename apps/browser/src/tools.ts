@@ -175,26 +175,6 @@ export function browserTools(browser: Browser): ToolSpec[] {
   ];
 }
 
-const thumb = (n: number): Record<string, unknown> => ({
-  type: "stack",
-  if: `data.images.${n}`,
-  children: [
-    {
-      type: "image",
-      src: `{{data.images.${n}.src}}`,
-      alt: `{{data.images.${n}.alt}}`,
-      width: 120,
-    },
-    {
-      type: "button",
-      label: `Download ${n + 1}`,
-      action: "browser.download",
-      args: { url: `{{data.images.${n}.src}}` },
-      key: String(n + 1),
-    },
-  ],
-});
-
 /** Keyed by tool name, as `app.presence.templates` wants (format: protocol/README.md). */
 export const browserTemplates: Record<string, unknown> = {
   navigate: {
@@ -212,7 +192,24 @@ export const browserTemplates: Record<string, unknown> = {
         type: "row",
         gap: "m",
         if: "data.images.0",
-        children: [thumb(0), thumb(1), thumb(2)],
+        children: [
+          {
+            type: "stack",
+            each: "data.images",
+            as: "img",
+            limit: 3,
+            children: [
+              { type: "image", src: "{{img.src}}", alt: "{{img.alt}}", width: 120 },
+              {
+                type: "button",
+                label: "Download {{index}}",
+                action: "browser.download",
+                args: { url: "{{img.src}}" },
+                key: "{{index}}",
+              },
+            ],
+          },
+        ],
       },
     ],
   },

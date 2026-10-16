@@ -60,6 +60,46 @@ describe("templates", () => {
       ],
     });
   });
+
+  test("limit caps each; index is the 1-based position as text", () => {
+    const template = {
+      type: "row",
+      children: [
+        {
+          type: "button",
+          each: "data.urls",
+          as: "u",
+          limit: 2,
+          label: "Get {{index}}",
+          action: "browser.download",
+          args: { url: "{{u}}" },
+          key: "{{index}}",
+        },
+      ],
+    };
+    expect(resolveTemplate(template, { urls: ["a", "b", "c"] })).toEqual({
+      type: "row",
+      children: [
+        {
+          type: "button",
+          label: "Get 1",
+          action: "browser.download",
+          args: { url: "a" },
+          key: "1",
+        },
+        {
+          type: "button",
+          label: "Get 2",
+          action: "browser.download",
+          args: { url: "b" },
+          key: "2",
+        },
+      ],
+    });
+    expect(resolveTemplate(template, { urls: ["a"] })).toMatchObject({
+      children: [{ key: "1" }],
+    });
+  });
 });
 
 describe("markdown", () => {

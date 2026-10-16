@@ -44,6 +44,6 @@ Apps register view templates for their tool results in `app.presence.templates` 
 
 - `text` takes `markdown` (a string) instead of `blocks`; `diff` takes `oldText`/`newText` instead of `lines`. The daemon parses and diffs them.
 - Any string may contain `{{path}}` (dotted: `data.size.w`, `item.name`, `data.rows.0`); missing values become empty. A string that is exactly `{{path}}` takes the raw value, so `"rows": "{{data.rows}}"` passes an array and `"value": "{{data.progress}}"` a number. `kv.items` may be an object (key → value); `table.rows` may be objects, read in column order.
-- Any node may carry `"if": "path"` (dropped when the value is falsy or an empty array) and `"each": "path"` with optional `"as": "name"` (default `item`): the node repeats once per element, spliced into its parent's children.
+- Any node may carry `"if": "path"` (dropped when the value is falsy or an empty array) and `"each": "path"` with optional `"as": "name"` (default `item`) and `"limit": n`: the node repeats once per element (at most n times), spliced into its parent's children. Inside, `{{index}}` is the element's 1-based position as text, e.g. `"label": "Download {{index}}", "key": "{{index}}"`.
 
 The resolved tree must validate against `Component`; otherwise the result falls back to a generic card (text output, diffs, or the data as key–value lines). Examples: `fixtures/*/fixture.json`.

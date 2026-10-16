@@ -2,8 +2,10 @@
 // format, except that text has `markdown` (not blocks) and diff has `oldText`/`newText` (not
 // lines). Any string may contain {{path}}; a string that is exactly "{{path}}" takes the raw
 // value (an array for table rows, a number for progress). Any node may carry
-// `"if": "path"` (dropped when falsy) and `"each": "path", "as": "name"` (repeated per element,
-// default name `item`). Paths are dotted: data.size.w, item.name, data.rows.0.
+// `"if": "path"` (dropped when falsy) and `"each": "path", "as": "name", "limit": n` (repeated per
+// element, at most n times; default name `item`, and `index` is the 1-based position as text, for
+// labels and keys). Paths are
+// dotted: data.size.w, item.name, data.rows.0.
 import type { Component } from "@suite/protocol/types";
 import { validateDef } from "@suite/protocol/validate";
 import { diffLines } from "./diff.ts";
@@ -16,7 +18,7 @@ type Node = Record<string, unknown>;
 
 const WHOLE = /^\{\{\s*([\w.-]+)\s*\}\}$/;
 const PART = /\{\{\s*([\w.-]+)\s*\}\}/g;
-const CONTROL = new Set(["if", "each", "as"]);
+const CONTROL = new Set(["if", "each", "as", "limit"]);
 
 function isNode(value: unknown): value is Node {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -134,9 +136,12 @@ function resolveNode(node: unknown, scope: Scope): Node[] {
   if (typeof node.each === "string") {
     const list = lookup(scope, node.each);
     const name = typeof node.as === "string" ? node.as : "item";
-    const { each: _each, as: _as, ...single } = node;
+    const { each: _each, as: _as, limit, ...single } = node;
     if (!Array.isArray(list)) return [];
-    return list.flatMap((element) => resolveNode(single, { ...scope, [name]: element }));
+    const shown = typeof limit === "number" && limit >= 0 ? list.slice(0, limit) : list;
+    return shown.flatMap((element, i) =>
+      resolveNode(single, { ...scope, [name]: element, index: String(i + 1) }),
+    );
   }
   if (typeof node.if === "string" && !truthy(lookup(scope, node.if))) return [];
 
