@@ -534,6 +534,10 @@
         "parent": {
           "type": "string",
           "description": "The session that delegated a task into this one (a subagent working in another directory, e.g. a worktree). Its turns run on the harness it was delegated to."
+        },
+        "harness": {
+          "type": "string",
+          "description": "The harness the session's next turn runs on: pi, claude, codex… (/harness)."
         }
       },
       "required": ["id", "cwd", "createdAt", "lastActivity", "lastSeq", "state", "queued"],

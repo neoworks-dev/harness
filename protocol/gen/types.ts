@@ -658,6 +658,8 @@ export interface SessionInfo {
   removed?: number;
   /** The session that delegated a task into this one (a subagent working in another directory, e.g. a worktree). Its turns run on the harness it was delegated to. */
   parent?: string;
+  /** The harness the session's next turn runs on: pi, claude, codex… (/harness). */
+  harness?: string;
 }
 
 /** A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template. */

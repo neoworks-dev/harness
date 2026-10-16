@@ -149,8 +149,11 @@ describe("/harness", () => {
   test("sets the harness: logged, shown in the chat, validated", async () => {
     const { daemon, session } = await setup();
     expect(daemon.settings.harness(session)).toBe("main");
+    expect(daemon.sessions.info(session)?.harness).toBe("main");
     await daemon.commands.run(session, "/harness fake");
     expect(daemon.settings.harness(session)).toBe("fake");
+    // The session list says which harness each session runs on.
+    expect(daemon.sessions.info(session)?.harness).toBe("fake");
     expect(events(daemon, session).filter((e) => e.type === "setting_changed")).toEqual([
       { type: "setting_changed", harness: "suite", option: "harness", value: "fake" },
     ]);

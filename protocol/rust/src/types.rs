@@ -1843,6 +1843,9 @@ pub struct SessionInfo {
     /// The session that delegated a task into this one (a subagent working in another directory, e.g. a worktree). Its turns run on the harness it was delegated to.
     #[serde(rename = "parent", default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
+    /// The harness the session's next turn runs on: pi, claude, codex… (/harness).
+    #[serde(rename = "harness", default, skip_serializing_if = "Option::is_none")]
+    pub harness: Option<String>,
 }
 
 /// A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template.

@@ -1598,6 +1598,8 @@ type SessionInfo struct {
 	Removed *int64 `json:"removed,omitempty"`
 	// The session that delegated a task into this one (a subagent working in another directory, e.g. a worktree). Its turns run on the harness it was delegated to.
 	Parent *string `json:"parent,omitempty"`
+	// The harness the session's next turn runs on: pi, claude, codex… (/harness).
+	Harness *string `json:"harness,omitempty"`
 }
 
 // ToolResult: A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template.

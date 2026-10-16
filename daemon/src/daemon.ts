@@ -128,7 +128,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   });
   const summaries = new SessionSummaries(store);
   const sessions = new SessionManager(store, agent, {
-    describe: (sessionId) => summaries.get(sessionId),
+    describe: (sessionId) => ({ ...summaries.get(sessionId), harness: harnessOf(sessionId) }),
     defaultCwd: options.defaultCwd,
     resolveAsset: (handle) => assets.resolve(handle),
     log,
