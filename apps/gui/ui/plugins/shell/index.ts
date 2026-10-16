@@ -18,6 +18,7 @@ export const shell = {
         "shell.main": "chain",
         "shell.bottom": "list",
         "shell.right": "list",
+        "shell.card": "list",
         "shell.overlay": "list",
       },
     });

@@ -47,6 +47,9 @@
           <Column style={{ paddingBottom: 8 }}>
             <Slot name="shell.bottom" />
           </Column>
+          <View style={{ position: "absolute", top: 12, right: 12 }}>
+            <Slot name="shell.card" />
+          </View>
         {/if}
       </View>
       <Slot name="shell.right" />
