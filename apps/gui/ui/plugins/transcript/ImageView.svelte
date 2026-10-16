@@ -3,8 +3,8 @@
   // size (see Component.svelte for why it is fixed). When it can't be loaded the box says so.
   import { Image, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { ImageComponent } from "@suite/protocol/types";
-  import { baseName, oneLine } from "../lib/components.ts";
-  import { suite } from "../state/suite.svelte.ts";
+  import { baseName, oneLine } from "./components.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
 
   interface Props {
     image: ImageComponent;
@@ -13,7 +13,8 @@
   }
 
   let { image, width, height }: Props = $props();
-  const p = $derived(suite.palette);
+  const { daemon } = useCtx();
+  const p = $derived(daemon.palette);
 
   let failed = $state(false);
   // A new source gets a new chance.
@@ -32,7 +33,7 @@
     </View>
   {:else}
     <Image
-      src={suite.assetSrc(image.src) ?? image.src}
+      src={daemon.assetSrc(image.src) ?? image.src}
       fit="contain"
       style={{ width, height, radius: 6 }}
       onerror={() => (failed = true)}

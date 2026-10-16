@@ -1,7 +1,7 @@
 // Small questions about view components that the chat's drawing code asks over and over. Plain
 // TypeScript so they can be tested without a window.
 import type { Component, Space, Tone } from "@suite/protocol/types";
-import type { Palette } from "./palette.ts";
+import type { Palette } from "../../lib/palette.ts";
 
 /** Whether the component is, or contains, a button: such an item is a question to answer. */
 export function hasButtons(component: Component): boolean {

@@ -13,7 +13,7 @@ import type {
   Tone,
 } from "@suite/protocol/types";
 import { oneLine } from "./components.ts";
-import { diffStats } from "./diff.ts";
+import { diffStats } from "../../lib/diff.ts";
 
 /** Lines shown before anything is cut (the `… +N lines` markers come on top). */
 export const BUDGET = 3;

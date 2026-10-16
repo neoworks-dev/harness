@@ -3,11 +3,10 @@
   // few lines unless expanded. Pressing it opens the side-by-side view over the window.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import type { DiffComponent } from "@suite/protocol/types";
-  import { lineHeightOf } from "../lib/components.ts";
-  import { clip, diffStats, gutterWidth } from "../lib/diff.ts";
-  import { suite } from "../state/suite.svelte.ts";
-  import { useCtx } from "../kernel/slots/context.ts";
-  import { diffColors } from "../lib/diff-colors.ts";
+  import { lineHeightOf } from "./components.ts";
+  import { clip, diffStats, gutterWidth } from "../../lib/diff.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
+  import { diffColors } from "../../lib/diff-colors.ts";
 
   interface Props {
     diff: DiffComponent;
@@ -19,8 +18,8 @@
   const CAP = 400;
 
   let { diff, limit }: Props = $props();
-  const { diff: overlay } = useCtx();
-  const p = $derived(suite.palette);
+  const { daemon, diff: overlay } = useCtx();
+  const p = $derived(daemon.palette);
   const colors = $derived(diffColors(p));
 
   const stats = $derived(diffStats(diff.lines));

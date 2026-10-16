@@ -4,7 +4,7 @@
   // finished unseen a green dot and a bold title; one that another session delegated to a ↳.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import type { SessionInfo } from "@suite/protocol/types";
-  import Spinner from "../../chat/Spinner.svelte";
+  import Spinner from "../../widgets/Spinner.svelte";
   import { useCtx } from "../../kernel/slots/context.ts";
   import { age, changedLines, previewOf, sessionTitle } from "./sessions.ts";
 

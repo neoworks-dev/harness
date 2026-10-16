@@ -35,22 +35,10 @@ export const shortcuts = {
       if (!suite.status.running) return false;
       void suite.cancel();
     });
-    keymap.bind("ctrl-o", () => void (ui.expanded = !ui.expanded));
-    keymap.bind("ctrl-t", () => void (ui.showThoughts = !ui.showThoughts));
     keymap.bind("ctrl-x", () => void (ui.agentsFocused = !ui.agentsFocused));
     keymap.bind("ctrl-r", () => void (ui.githubOpen = !ui.githubOpen));
     keymap.bind("ctrl-p", () => composer.reopenPrompts());
 
-    commands.register({
-      name: "expand",
-      desc: "toggle full tool results (ctrl-o)",
-      run: () => (ui.expanded = !ui.expanded),
-    });
-    commands.register({
-      name: "thoughts",
-      desc: "show or hide the agent's thoughts (ctrl-t)",
-      run: () => (ui.showThoughts = !ui.showThoughts),
-    });
     commands.register({
       name: "github",
       desc: "GitHub issues and pull requests (ctrl-r)",

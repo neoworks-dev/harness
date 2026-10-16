@@ -40,6 +40,10 @@ export class DaemonService extends Service {
   get sessions(): Store["sessions"] {
     return suite.sessions;
   }
+  /** The name this window registered under: desktop, desktop-2… */
+  get appId(): Store["appId"] {
+    return suite.appId;
+  }
   /** The session this window shows, and its directory. */
   get sessionId(): Store["sessionId"] {
     return suite.sessionId;
@@ -75,6 +79,10 @@ export class DaemonService extends Service {
   }
   cancel(): Promise<void> {
     return suite.cancel();
+  }
+  /** A button in chat item `ref` was pressed (`args` carries e.g. a note for the agent). */
+  action(ref: string, action: string, args?: unknown): Promise<void> {
+    return suite.action(ref, action, args);
   }
   /** Shift-Tab: the next approvals mode. */
   cycleApprovals(): Promise<void> {

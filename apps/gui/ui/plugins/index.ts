@@ -7,6 +7,7 @@ import { diffOverlay } from "./diff/index.ts";
 import { sessionsSidebar } from "./sessions/index.ts";
 import { shell } from "./shell/index.ts";
 import { statusLine } from "./statusline/index.ts";
+import { transcriptPane } from "./transcript/index.ts";
 
 export const plugins: Plugin[] = [
   shell,
@@ -14,5 +15,6 @@ export const plugins: Plugin[] = [
   statusLine,
   shortcuts,
   diffOverlay,
+  transcriptPane,
   ...panes,
 ];

@@ -2,13 +2,14 @@
   // A tool result collapsed to a few lines (see lib/summary.ts for which).
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import type { Component } from "@suite/protocol/types";
-  import { summarize } from "../lib/summary.ts";
-  import { suite } from "../state/suite.svelte.ts";
+  import { summarize } from "./summary.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
   import Self from "./Component.svelte";
   import Runs from "./Runs.svelte";
 
   let { component, ref }: { component: Component; ref: string } = $props();
-  const p = $derived(suite.palette);
+  const { daemon } = useCtx();
+  const p = $derived(daemon.palette);
   const leaves = $derived(summarize(component));
 </script>
 

@@ -4,9 +4,9 @@
   // paragraph's `Text`.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import type { Block } from "@suite/protocol/types";
-  import { lineHeightOf } from "../lib/components.ts";
-  import { indentCells, markdownRows, type RowGap } from "../lib/markdown.ts";
-  import { suite } from "../state/suite.svelte.ts";
+  import { lineHeightOf } from "./components.ts";
+  import { indentCells, markdownRows, type RowGap } from "./markdown.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
   import CodeBlock from "./CodeBlock.svelte";
   import Runs from "./Runs.svelte";
 
@@ -17,7 +17,8 @@
   }
 
   let { blocks, size }: Props = $props();
-  const p = $derived(suite.palette);
+  const { daemon } = useCtx();
+  const p = $derived(daemon.palette);
 
   const rows = $derived(markdownRows(blocks));
   /** Width of one character, to turn indents in characters into pixels. */

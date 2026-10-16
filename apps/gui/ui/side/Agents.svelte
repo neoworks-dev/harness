@@ -22,7 +22,7 @@
   import { ui } from "../state/ui.svelte.ts";
   import { activity } from "./activity.svelte.ts";
   import { agentView } from "./agentview.svelte.ts";
-  import { clock } from "./clock.svelte.ts";
+  import { clock } from "../widgets/clock.svelte.ts";
 
   const p = $derived(suite.palette);
   const shown = $derived(shownAgents(activity.agents, clock.now));

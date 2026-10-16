@@ -11,7 +11,7 @@
   import { suite } from "../state/suite.svelte.ts";
   import { useCtx } from "../kernel/slots/context.ts";
   import { ui } from "../state/ui.svelte.ts";
-  import { clock } from "./clock.svelte.ts";
+  import { clock } from "../widgets/clock.svelte.ts";
   import GitHubDetail from "./GitHubDetail.svelte";
   import GitHubRow from "./GitHubRow.svelte";
   import { github } from "./github.svelte.ts";

@@ -2,9 +2,9 @@
   // Code or command output: mono on the surface colour, long lines scroll sideways. Capped, since
   // one text of many thousand lines makes every frame slow.
   import { Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
-  import { lineHeightOf } from "../lib/components.ts";
-  import { clip } from "../lib/diff.ts";
-  import { suite } from "../state/suite.svelte.ts";
+  import { lineHeightOf } from "./components.ts";
+  import { clip } from "../../lib/diff.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
 
   interface Props {
     code: string;
@@ -16,7 +16,8 @@
   const CAP = 400;
 
   let { code, limit }: Props = $props();
-  const p = $derived(suite.palette);
+  const { daemon } = useCtx();
+  const p = $derived(daemon.palette);
 
   const lines = $derived(code.replace(/\n+$/, "").split("\n"));
   const clipped = $derived(clip(lines, limit ?? CAP));

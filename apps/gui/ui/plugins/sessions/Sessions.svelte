@@ -5,7 +5,7 @@
   import { untrack } from "svelte";
   import { Button, List, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent } from "@neoworks/svelte-gpui/ui";
-  import { clock } from "../../side/clock.svelte.ts";
+  import { clock } from "../../widgets/clock.svelte.ts";
   import { useCtx } from "../../kernel/slots/context.ts";
   import SessionRow from "./SessionRow.svelte";
   import { groupSessions, jumpGroup, step, type Entry } from "./sessions.ts";

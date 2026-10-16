@@ -5,16 +5,16 @@
   import { Button, List, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent } from "@neoworks/svelte-gpui/ui";
   import type { ViewItem } from "@suite/protocol/types";
-  import ChatItem from "../chat/ChatItem.svelte";
+  import { useCtx } from "../kernel/slots/context.ts";
+  import Slot from "../kernel/slots/Slot.svelte";
   import { suite } from "../state/suite.svelte.ts";
-  import { ui } from "../state/ui.svelte.ts";
   import { agentView } from "./agentview.svelte.ts";
+
+  const { transcript } = useCtx();
 
   const p = $derived(suite.palette);
   const title = $derived(agentView.title);
-  const items = $derived(
-    agentView.items.filter((item) => item.kind !== "thought" || ui.showThoughts),
-  );
+  const items = $derived(transcript.visible(agentView.items));
   let keys: ReturnType<typeof View> | undefined = $state();
   let list: ReturnType<typeof List<ViewItem>> | undefined = $state();
 
@@ -86,7 +86,7 @@
         style={{ flex: 1, minHeight: 0 }}
       >
         {#snippet row(item: ViewItem)}
-          <ChatItem {item} />
+          <Slot name="chat.item" key={item.kind} props={{ item }} />
         {/snippet}
       </List>
     {/if}

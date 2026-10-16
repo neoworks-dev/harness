@@ -2,7 +2,6 @@
 // pane that is converted moves into a plugin of its own (plugins/sessions is the example) and
 // leaves this file; the shell's slots are all it needs to know about.
 import type { Context } from "@neoworks/extension-system";
-import Chat from "../../chat/Chat.svelte";
 import Composer from "../../input/Composer.svelte";
 import AgentView from "../../side/AgentView.svelte";
 import { agentView } from "../../side/agentview.svelte.ts";
@@ -15,7 +14,7 @@ import "../statusline/slots.ts";
 import Notice from "./Notice.svelte";
 
 // Several draw a diff, so they need the service that shows it over the window.
-const inject = ["slots", "diff"];
+const inject = ["slots", "diff", "transcript"];
 
 // The middle shows the GitHub view when it is open, else an agent's own chat, else the chat.
 const github = {
@@ -33,15 +32,6 @@ const agentChat = {
   apply: ({ slots }: Context) =>
     slots.inject("shell.main", (slot) => {
       slot.add({ component: AgentView, order: 20, select: () => agentView.isOpen });
-    }),
-};
-
-const chat = {
-  name: "legacy/chat",
-  inject,
-  apply: ({ slots }: Context) =>
-    slots.inject("shell.main", (slot) => {
-      slot.add({ component: Chat, order: 100, select: () => true });
     }),
 };
 
@@ -81,4 +71,4 @@ const sidePanels = {
     }),
 };
 
-export const panes = [github, agentChat, chat, composer, agents, notice, sidePanels];
+export const panes = [github, agentChat, composer, agents, notice, sidePanels];

@@ -1,14 +1,16 @@
 <script lang="ts">
-  // The session's chat: every item the daemon resolved, drawn natively, following the end as
-  // the agent writes. Thoughts only show with Ctrl-T.
+  // The session's chat: every item the daemon resolved, each drawn by the renderer registered for
+  // its kind (`chat.item`), following the end as the agent writes. Thoughts only show with Ctrl-T.
   import { window } from "@neoworks/svelte-gpui";
   import { List } from "@neoworks/svelte-gpui/ui";
   import type { ViewItem } from "@suite/protocol/types";
-  import { suite } from "../state/suite.svelte.ts";
-  import { ui } from "../state/ui.svelte.ts";
-  import ChatItem from "./ChatItem.svelte";
+  import { useCtx } from "../../kernel/slots/context.ts";
+  import Slot from "../../kernel/slots/Slot.svelte";
+  import { transcript } from "./state.svelte.ts";
 
-  const items = $derived(suite.items.filter((item) => item.kind !== "thought" || ui.showThoughts));
+  const { daemon } = useCtx();
+
+  const items = $derived(transcript.visible(daemon.items));
 
   let list: { scrollToIndex(index: number, options: { align: "end" }): void } | undefined = $state();
 
@@ -16,7 +18,7 @@
   // just been opened (all its items at once) never is: start such a chat at its end.
   let started: string | undefined;
   $effect(() => {
-    const session = suite.sessionId;
+    const session = daemon.sessionId;
     const count = items.length;
     const start = `${session}@${width}`;
     if (session === undefined || count === 0 || started === start) return;
@@ -39,7 +41,7 @@
   style={{ flex: 1, minHeight: 0 }}
 >
   {#snippet row(item: ViewItem)}
-    <ChatItem {item} />
+    <Slot name="chat.item" key={item.kind} props={{ item }} />
   {/snippet}
 </List>
 {/key}

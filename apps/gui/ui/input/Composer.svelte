@@ -4,6 +4,7 @@
   import { untrack } from "svelte";
   import { Input, Overlay, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent, Layout } from "@neoworks/svelte-gpui/ui";
+  import { useCtx } from "../kernel/slots/context.ts";
   import { sessions } from "../plugins/sessions/state.svelte.ts";
   import { suite } from "../state/suite.svelte.ts";
   import { ui } from "../state/ui.svelte.ts";
@@ -11,6 +12,8 @@
   import CommandMenu from "./CommandMenu.svelte";
   import Help from "./Help.svelte";
   import PromptPanel from "./PromptPanel.svelte";
+
+  const { transcript } = useCtx();
 
   const p = $derived(suite.palette);
   /** The input grows with its text up to this many pixels, then scrolls. */
@@ -49,9 +52,7 @@
   // The chat draws a one-line stub for the question the panel is answering.
   const answeringRef = $derived(showPanel ? promptRef : undefined);
   $effect(() => {
-    if (answeringRef === undefined) return;
-    ui.panelRef = answeringRef;
-    return () => (ui.panelRef = undefined);
+    if (answeringRef !== undefined) return transcript.stub(answeringRef);
   });
 
   // The input has the keyboard unless the sidebar, the agents list or the GitHub view took it.

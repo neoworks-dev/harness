@@ -5,10 +5,10 @@
   import { clipboard } from "@neoworks/svelte-gpui";
   import { Button, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { Component, Tone } from "@suite/protocol/types";
-  import { baseName, gapOf, lineHeightOf, toneColor } from "../lib/components.ts";
-  import { fitImage } from "../lib/image.ts";
-  import { columnWeights } from "../lib/table.ts";
-  import { suite } from "../state/suite.svelte.ts";
+  import { baseName, gapOf, lineHeightOf, toneColor } from "./components.ts";
+  import { fitImage } from "./image.ts";
+  import { columnWeights } from "./table.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
   import Self from "./Component.svelte";
   import Blocks from "./Blocks.svelte";
   import CodeBlock from "./CodeBlock.svelte";
@@ -24,7 +24,8 @@
   }
 
   let { component, ref, limit }: Props = $props();
-  const p = $derived(suite.palette);
+  const { daemon } = useCtx();
+  const p = $derived(daemon.palette);
 
   /**
    * The most a picture takes: small in the chat, large when everything is expanded. A picture
@@ -43,7 +44,7 @@
   function press(action: string, args: unknown): void {
     // copy:<text> never leaves the window.
     if (action.startsWith("copy:")) void clipboard.write(action.slice("copy:".length));
-    else void suite.action(ref, action, args);
+    else void daemon.action(ref, action, args);
   }
 </script>
 
