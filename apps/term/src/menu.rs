@@ -76,6 +76,7 @@ pub const COMMANDS: &[Command] = &[
     ),
     local("expand", "toggle full tool results (ctrl-o)"),
     local("thoughts", "show or hide the agent's thoughts (ctrl-t)"),
+    local("github", "GitHub issues and pull requests (ctrl-r)"),
     local("help", "keys and commands"),
     local("quit", "leave; the session keeps running"),
 ];

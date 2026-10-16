@@ -21,6 +21,7 @@ use suite_sdk::Event;
 
 use crate::chat::{self, Chat, ChatOpts};
 use crate::editor::Editor;
+use crate::github::{Github, Outgoing};
 use crate::history::{Histories, HistoryStore};
 use crate::menu::{self, Command, Entry, Switcher};
 use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction};
@@ -190,6 +191,7 @@ pub struct App {
     styles: Styles,
 
     widgets: Widgets,
+    github: Github,
     chat: Chat,
     editor: Editor,
     histories: Histories,
@@ -247,6 +249,7 @@ impl App {
         let session = config.session.clone();
         App {
             widgets: Widgets::new(PathBuf::from(&config.cwd), palette),
+            github: Github::new(PathBuf::from(&config.cwd), palette),
             styles: Styles::new(&palette, config.no_color),
             palette,
             app_id: config.app_id,
@@ -335,6 +338,11 @@ impl App {
         &self.widgets
     }
 
+    #[cfg(test)]
+    pub(crate) fn github_mut(&mut self) -> &mut Github {
+        &mut self.github
+    }
+
     /// Whether anything changed since the last call (so the screen needs painting).
     pub fn take_dirty(&mut self) -> bool {
         std::mem::take(&mut self.dirty)
@@ -362,6 +370,11 @@ impl App {
         let mut fx = Vec::new();
         if self.widgets.tick() {
             self.dirty = true;
+        }
+        let gh = self.github.tick();
+        self.dirty |= gh.changed;
+        if let Some(out) = gh.out {
+            self.take_github(out, &mut fx);
         }
         if self.running || self.sessions_shown && self.sessions.any_running() {
             let frame = now_ms / 125;
@@ -432,6 +445,7 @@ impl App {
                     self.palette = Palette::from_theme(&theme);
                     self.styles = Styles::new(&self.palette, false);
                     self.widgets.set_palette(self.palette);
+                    self.github.set_palette(self.palette);
                 }
             }
             Event::ViewSnapshot(snapshot) => {
@@ -583,6 +597,7 @@ impl App {
         self.menu_sel = 0;
         self.menu_closed_for = None;
         self.widgets.reset(PathBuf::from(cwd));
+        self.github.reset(PathBuf::from(cwd));
         self.dirty = true;
     }
 
@@ -798,6 +813,12 @@ impl App {
             self.widgets.handle_key(Panel::Files, key);
             return fx;
         }
+        if self.github.is_open() {
+            if let Some(out) = self.github.key(key) {
+                self.take_github(out, &mut fx);
+            }
+            return fx;
+        }
         let ctrl_c =
             key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL);
         if !ctrl_c && self.quit_armed_until > 0 {
@@ -831,7 +852,9 @@ impl App {
             _ => return,
         };
         self.dirty = true;
-        if self.widgets.overlay_open() {
+        if self.github.is_open() {
+            self.github.wheel(down);
+        } else if self.widgets.overlay_open() {
             let code = if down { KeyCode::Down } else { KeyCode::Up };
             for _ in 0..WHEEL_LINES {
                 self.widgets
@@ -846,6 +869,10 @@ impl App {
 
     pub fn handle_paste(&mut self, text: &str) {
         self.dirty = true;
+        if self.github.is_open() {
+            self.github.paste(text);
+            return;
+        }
         match self.overlay {
             Overlay::Switcher => text
                 .chars()
@@ -1204,6 +1231,10 @@ impl App {
                 self.open_switcher(fx);
                 return false;
             }
+            'r' => {
+                self.github.open();
+                return false;
+            }
             'o' => {
                 self.expanded = !self.expanded;
                 return false;
@@ -1336,8 +1367,26 @@ impl App {
             "expand" => self.expanded = !self.expanded,
             "thoughts" => self.show_thoughts = !self.show_thoughts,
             "help" => self.overlay = Overlay::Help,
+            "github" => self.github.open(),
             "quit" => fx.push(Effect::Quit),
             _ => self.send(text.to_string(), fx),
+        }
+    }
+
+    /// What the GitHub view hands over: text for the editor, or a message to send right away.
+    fn take_github(&mut self, out: Outgoing, fx: &mut Vec<Effect>) {
+        match out {
+            Outgoing::Attach(text) => {
+                // After what is already typed, with room to add instructions below.
+                self.editor.text_end();
+                if !self.editor.is_empty() {
+                    self.editor.insert_str("\n\n");
+                }
+                self.editor.insert_str(&text);
+                self.editor.insert_str("\n\n");
+                self.histories.of(&self.session).reset();
+            }
+            Outgoing::Send(text) => self.send(text, fx),
         }
     }
 
@@ -1442,7 +1491,10 @@ impl App {
         }
         self.sync_prompt();
 
-        if self.widgets.overlay_open() {
+        if self.github.is_open() {
+            self.github
+                .draw(frame, areas.chat, self.now_ms, &self.styles);
+        } else if self.widgets.overlay_open() {
             self.widgets.draw_overlay(frame, areas.chat);
         } else {
             match self.overlay {
@@ -1747,15 +1799,20 @@ impl App {
                 })
                 .collect();
             frame.render_widget(Paragraph::new(lines), area);
-            if self.focus.is_none() && self.overlay != Overlay::Switcher {
+            if self.editor_has_cursor() {
                 let x = (2 + col).min(usize::from(area.width) - 1) as u16;
                 frame.set_cursor_position(Position::new(area.x + x, area.y + (row - start) as u16));
             }
             return;
         }
-        if self.focus.is_none() && self.overlay != Overlay::Switcher {
+        if self.editor_has_cursor() {
             frame.set_cursor_position(Position::new(area.x + 2.min(area.width - 1), area.y));
         }
+    }
+
+    /// The terminal cursor sits in the editor unless something else has the keys.
+    fn editor_has_cursor(&self) -> bool {
+        self.focus.is_none() && self.overlay != Overlay::Switcher && !self.github.is_open()
     }
 
     fn status_lines(&self, width: usize) -> [Line<'static>; 3] {
@@ -1828,6 +1885,11 @@ impl App {
             key("tab", "complete command, note on a prompt, next panel"),
             key("ctrl-s", "switch session (picker)"),
             key("ctrl-g", "sessions sidebar: focus (up/down, enter, esc)"),
+            key("ctrl-r", "GitHub issues and pull requests (/github)"),
+            key(
+                "diff view",
+                "n/p hunk · h/l/0 sideways · s split/unified · f whole file · q close",
+            ),
             key(
                 "1-9, arrows, enter",
                 "answer a prompt (it takes the input's place)",

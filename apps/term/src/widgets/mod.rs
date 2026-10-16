@@ -17,10 +17,14 @@
 //!   `(agent)` / `(claude)`. Outside a repository only the touched files are listed and
 //!   `branch()` is None. Focused: Up/Down/j/k move, g/G ends, Enter opens the diff overlay.
 //! - **Diff overlay**: `git diff HEAD -- path` (the whole file for untracked ones) loaded in the
-//!   background and drawn over the chat. While it is open it takes every key whatever panel is
-//!   focused: Up/Down/j/k, PgUp/PgDn, g/G, Ctrl-U/Ctrl-D scroll; Esc or q close it. Closing
+//!   background and drawn over the chat, side by side from 90 columns on. While it is open it
+//!   takes every key whatever panel is focused: Up/Down/j/k, PgUp/PgDn, g/G, Ctrl-U/Ctrl-D
+//!   scroll; n/p jump to the next / previous hunk; Left/Right/h/l scroll sideways by 8 cells and
+//!   0 returns to the left edge; s switches split and unified; f reloads with the whole file as
+//!   context (and back; it no longer pages); Esc or q close it. Closing
 //!   returns `Redraw`, so focus stays on the files panel (to pick the next file); a second Esc
 //!   there returns `Leave`.
+//! - The GitHub view (`crate::github`) reuses the diff view for a pull request's diff.
 //! - Keys the panels don't use return `Redraw` (harmless). Esc and q in a panel return `Leave`.
 
 mod diff;

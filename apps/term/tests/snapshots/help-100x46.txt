@@ -17,6 +17,8 @@ keys (any key closes this)
   tab                       complete command, note on a prompt, next panel
   ctrl-s                    switch session (picker)
   ctrl-g                    sessions sidebar: focus (up/down, enter, esc)
+  ctrl-r                    GitHub issues and pull requests (/github)
+  diff view                 n/p hunk · h/l/0 sideways · s split/unified · f whole file · q close
   1-9, arrows, enter        answer a prompt (it takes the input's place)
   ctrl-p / ctrl-n           pick an older prompt
 
@@ -34,11 +36,9 @@ commands
   /sidebar                            show or hide the sessions sidebar (ctrl-g focuses it)
   /expand                             toggle full tool results (ctrl-o)
   /thoughts                           show or hide the agent's thoughts (ctrl-t)
+  /github                             GitHub issues and pull requests (ctrl-r)
   /help                               keys and commands
   /quit                               leave; the session keeps running
-
-
-
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 > message the agent · / for commands
 ~/site · pi

@@ -1,0 +1,30 @@
+Issue #12  acme/site
+Header jumps when the menu opens
+open  alice · opened 6d ago · updated 3h ago
+labels: bug, ui
+
+What happens
+
+Opening the menu shifts the header by 4px.
+
+• Chrome 120
+• Firefox 121
+☐ not on Safari
+
+  header { position: sticky; }
+│ seen in production
+
+See the report.
+
+Comments (2) ───────────────────────────────────────────────────────────────────────────────────────
+bob · 5d ago
+  I can reproduce this on main.
+
+carol · 3h ago
+  Probably the scrollbar gutter.
+  Trying a fix.
+
+
+
+
+enter attach · s send · ↑↓ scroll · r reload · esc back · q close

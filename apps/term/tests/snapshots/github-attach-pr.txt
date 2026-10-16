@@ -1,0 +1,16 @@
+<github-pr repo="acme/site" number="31" url="https://github.com/acme/site/pull/31" state="open">
+Title: Fix the sticky header
+Author: bob · Labels: ui · Opened: 2026-10-15 · Updated: 2026-10-16
+Branch: fix-header -> main · +14 -3 in 2 files · Review: CHANGES_REQUESTED
+Checks: 2 passed, 1 failed, 1 pending (failing: test (ubuntu))
+Files:
+  src/header.css (+10 -3)
+  src/layout.css (+4 -0)
+Description:
+Fixes #12 by reserving the scrollbar gutter.
+Conversation (4):
+alice (2026-10-16, review changes requested): The gutter should be a variable.
+alice (2026-10-16, on src/header.css:12): Use a variable here.
+bob (2026-10-16, on src/header.css:12): Done.
+alice (2026-10-16): Thanks, looking.
+</github-pr>

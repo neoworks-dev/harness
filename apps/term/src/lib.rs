@@ -6,6 +6,7 @@ pub mod app;
 pub mod chat;
 pub mod driver;
 pub mod editor;
+pub mod github;
 pub mod history;
 pub mod menu;
 pub mod runtime;

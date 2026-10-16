@@ -191,7 +191,6 @@ impl DiffView {
     }
 
     /// A diff that is already at hand (the GitHub view's pull request diffs).
-    #[allow(dead_code)] // the GitHub view uses it (next commit)
     pub(crate) fn from_text(title: &str, text: &str) -> DiffView {
         let mut v = DiffView::blank(title.to_string());
         v.finish(Ok(text.to_string()));
@@ -199,7 +198,6 @@ impl DiffView {
     }
 
     /// A diff somebody else is fetching: loading until [`DiffView::finish`] is given the text.
-    #[allow(dead_code)] // the GitHub view uses it (next commit)
     pub(crate) fn loading(title: &str) -> DiffView {
         DiffView::blank(title.to_string())
     }
