@@ -13,7 +13,8 @@
     "verbatimModuleSyntax": true,
     "paths": {
       "@neoworks/svelte-gpui": ["../../../svelte-gpui/runtime/index.ts"],
-      "@neoworks/svelte-gpui/ui": ["../../../svelte-gpui/runtime/ui/index.ts"]
+      "@neoworks/svelte-gpui/ui": ["../../../svelte-gpui/runtime/ui/index.ts"],
+      "@neoworks/extension-system": ["../../../extension-system/lib/index"]
     }
   },
   "include": ["ui"]

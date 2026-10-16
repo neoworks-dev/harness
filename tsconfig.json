@@ -12,7 +12,10 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@neoworks/extension-system": ["../extension-system/lib/index"]
+    }
   },
   "include": [
     "protocol",

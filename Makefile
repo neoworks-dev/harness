@@ -27,7 +27,7 @@ bin/suite-term: FORCE
 	cp target/release/suite-term bin/suite-term.tmp && mv bin/suite-term.tmp bin/suite-term
 
 # The desktop app (apps/gui): its Svelte UI as a bundle, run by the binary (`suite gui`).
-# Needs svelte-gpui checked out next to this repo.
+# Needs svelte-gpui and extension-system (built: `bun run build`) checked out next to this repo.
 bin/suite-gui: FORCE
 	bun apps/gui/build.mjs
 	cargo build --release -p suite-gui
