@@ -38,7 +38,7 @@ function connect(d: TestDaemon, name: string): Client {
   return { received, send };
 }
 
-test("the store is content-addressed, sniffs types and keeps files read-only", async () => {
+test("the store is content-addressed and sniffs types", async () => {
   const d = await daemon();
   const store = new AssetStore(join(d.dir, "assets-unit"));
   const a = store.put({ bytes: PNG, name: "logo.png", app: "browser" });
@@ -50,7 +50,7 @@ test("the store is content-addressed, sniffs types and keeps files read-only", a
     app: "browser",
   });
   expect(a.path.endsWith(".png")).toBe(true);
-  expect(statSync(a.path).mode & 0o222).toBe(0);
+  expect(statSync(a.path).mode & 0o777).toBe(0o644);
   // Same bytes, same handle (the first name and app are kept).
   expect(store.put({ bytes: PNG, name: "other.png" })).toEqual(a);
   expect(store.get(a.handle)).toEqual(a);

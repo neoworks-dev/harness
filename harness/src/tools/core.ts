@@ -15,8 +15,8 @@ export function createCoreTools(
   return [
     createBashTool(cwd, assets),
     createReadTool(cwd, assets),
-    createWriteTool(cwd, assets),
-    createEditTool(cwd, assets),
+    createWriteTool(cwd),
+    createEditTool(cwd),
     ...createGatewayTools(gateway),
   ];
 }

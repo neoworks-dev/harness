@@ -26,7 +26,7 @@ test("asset handles resolve to the stored file in paths and commands", () => {
   );
 });
 
-test("bash, read and write accept handles; the stored file can't be overwritten", async () => {
+test("bash and read accept handles; write refuses them", async () => {
   const cwd = await tempDir();
   const stored = join(cwd, "stored.txt");
   writeFileSync(stored, "logo bytes", { mode: 0o400 });
@@ -37,6 +37,6 @@ test("bash, read and write accept handles; the stored file can't be overwritten"
   expect(resultText(await createReadTool(cwd, assets).execute("t", { path: HANDLE }))).toContain(
     "logo bytes",
   );
-  const write = createWriteTool(cwd, assets).execute("t", { path: HANDLE, content: "x" });
-  expect(await errorMessage(write)).toMatch(/EACCES|permission/i);
+  const write = createWriteTool(cwd).execute("t", { path: HANDLE, content: "x" });
+  expect(await errorMessage(write)).toContain("read-only");
 });

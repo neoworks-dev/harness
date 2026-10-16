@@ -21,6 +21,14 @@ export function resolvePath(cwd: string, path: string, assets?: AssetResolver): 
   return resolve(cwd, path);
 }
 
+/** Like resolvePath for tools that change files: assets are never written in place. */
+export function resolveWritablePath(cwd: string, path: string): string {
+  if (path.startsWith("asset://")) {
+    throw new Error(`${path} is read-only; copy it into the project first (bash: cp).`);
+  }
+  return resolvePath(cwd, path);
+}
+
 /** Replaces the asset handles in a shell command with their file paths; unknown ones stay. */
 export function resolveAssetsInCommand(command: string, assets?: AssetResolver): string {
   if (!assets) return command;

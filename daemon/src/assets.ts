@@ -1,9 +1,9 @@
 // Asset store: files apps produce (images, downloads, exports), addressed by asset://<id> handles
 // that stay valid after the producing app is gone. Content-addressed: the id is a hash prefix, so
-// storing the same bytes twice returns the same handle. Files are kept read-only under
+// storing the same bytes twice returns the same handle. Files are kept under
 // <dataDir>/assets as <id>.<ext>, with <id>.json holding the name, mime and producing app.
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import type { Asset } from "@suite/protocol/types";
 import { BadRequestError } from "./focus.ts";
@@ -116,8 +116,9 @@ export class AssetStore {
     const meta: Meta = { name: name ?? file, mime, createdAt: Date.now(), file };
     if (params.app !== undefined) meta.app = params.app;
     const path = join(this.dir, file);
-    writeFileSync(path, bytes, { mode: 0o400 });
-    chmodSync(path, 0o400);
+    // Not read-only on disk: copies made with cp should be ordinary files. The agent's
+    // write/edit tools refuse handles instead.
+    writeFileSync(path, bytes, { mode: 0o644 });
     writeFileSync(join(this.dir, `${id}.json`), JSON.stringify(meta), { mode: 0o600 });
     return this.info(id, meta, bytes.byteLength);
   }
