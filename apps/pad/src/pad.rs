@@ -186,8 +186,6 @@ pub struct Setup {
     pub socket: PathBuf,
     /// Tool calls from the tool server's threads.
     pub requests: async_channel::Receiver<Request>,
-    /// Where the tool server listens, for the presence updates.
-    pub endpoint: Option<McpEndpoint>,
     /// Keeps the tool server alive as long as the window.
     pub server: Option<ToolServer>,
     /// Files to open at startup.
@@ -198,6 +196,8 @@ pub struct Setup {
 /// belong on a background thread), so a quick open, close, open can't reorder.
 #[derive(Debug, Clone, PartialEq)]
 enum Op {
+    /// The presence context (current file and line), without the rest of the presence.
+    Context(std::collections::BTreeMap<String, String>),
     SubscribeView(String),
     UnsubscribeView(String),
     Input {
@@ -215,8 +215,6 @@ enum Op {
     Move {
         app: Option<&'static str>,
     },
-    /// The current file or line changed.
-    Presence(Box<AppPresence>),
     /// A file was saved.
     FileChanged(String),
 }
@@ -236,7 +234,7 @@ impl Op {
             } => client.action(session, item, action, args.clone()),
             Op::Cancel(session) => client.cancel(session),
             Op::Move { app } => client.move_agent(*app, None),
-            Op::Presence(presence) => client.set_presence((**presence).clone()),
+            Op::Context(context) => client.set_context(APP, context.clone()),
             Op::FileChanged(path) => client.file_changed(path),
         }
     }
@@ -272,7 +270,6 @@ pub struct Pad {
     /// Where the editor body was drawn, for mapping clicks to text positions.
     pub(crate) body: Rc<Cell<Bounds<Pixels>>>,
     gateway: Gateway,
-    endpoint: Option<McpEndpoint>,
     _server: Option<ToolServer>,
     last_context: Option<BTreeMap<String, String>>,
     /// The file ctrl-w refused to close because of its edits; a second ctrl-w discards them.
@@ -374,7 +371,6 @@ impl Pad {
             scroll: UniformListScrollHandle::new(),
             body: Rc::default(),
             gateway: Gateway::beside(&setup.socket),
-            endpoint: setup.endpoint,
             _server: setup.server,
             last_context: None,
             pending_close: None,
@@ -524,8 +520,7 @@ impl Pad {
             return;
         }
         self.last_context = context.clone();
-        let presence = presence(true, self.endpoint.clone(), context);
-        self.do_op(Op::Presence(Box::new(presence)));
+        self.do_op(Op::Context(context.unwrap_or_default()));
     }
 
     /// Opens a file for the user (the prompt, the command line).

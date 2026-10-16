@@ -264,6 +264,14 @@ export class Hub {
         );
         return;
       }
+      case "app.context": {
+        const { app, context } = msg.payload;
+        if (!this.parts.connectors?.setContext(client, app, context)) {
+          throw new NotFoundError(`${app} isn't registered on this connection`);
+        }
+        if (msg.id !== undefined) this.send(client, { topic: "bus.ack", id: msg.id });
+        return;
+      }
       case "agent.move":
         if (!this.parts.focus) {
           this.fail(client, msg.id, "bad_request", "this daemon doesn't track the agent's focus");

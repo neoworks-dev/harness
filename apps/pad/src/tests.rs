@@ -130,7 +130,6 @@ impl Rig {
         let setup = Setup {
             socket: daemon.socket.clone(),
             requests,
-            endpoint: Some(endpoint),
             server: Some(server),
             open,
         };
@@ -239,12 +238,12 @@ fn the_pane_follows_the_agent(cx: &mut TestAppContext) {
     draw(cx, window);
     assert_eq!(state(cx).1, None, "collapsed while the agent is elsewhere");
 
-    // Bring it here, and let the home app say something to it: the pane replays and follows.
+    // Bring it here, and say something from the terminal (typing in another app would move the
+    // agent there): the pane replays and follows.
     home.move_agent(Some(APP), None).expect("move here");
     wait_until(cx, "the pane to open", |cx| state(cx).1.is_some());
     let session = state(cx).1.expect("open");
-    home.input(&session, "test-home", "hello", &[])
-        .expect("input");
+    home.input(&session, "cli", "hello", &[]).expect("input");
     wait_until(cx, "the echo", |cx| {
         state(cx)
             .2
@@ -253,12 +252,9 @@ fn the_pane_follows_the_agent(cx: &mut TestAppContext) {
     });
 
     draw(cx, window);
-    // The user's input is a bubble headed with the app it came from.
+    // The user's input is a bubble headed with where it came from.
     assert!(
-        state(cx)
-            .2
-            .iter()
-            .any(|line| line.contains("\"» test-home\"")),
+        state(cx).2.iter().any(|line| line.contains("\"» cli\"")),
         "{:?}",
         state(cx).2
     );

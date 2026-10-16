@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, AssetPutMessage, AssetGetMessage, AssetInfoMessage, FileChangedMessage, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, AssetPutMessage, AssetGetMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -227,6 +227,12 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "file.changed":
 		var v FileChangedMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "app.context":
+		var v AppContextMessage
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -868,6 +874,28 @@ type FileChanged struct {
 	App *string `json:"app,omitempty"`
 	// The session whose agent changed it.
 	Session *string `json:"session,omitempty"`
+}
+
+// AppContextMessage: Client → daemon: what a registered app shows now (its presence context), without re-sending the whole presence. Acked when id is set; not broadcast (connectors.list returns it). The agent sees it in <focus> at its next turn.
+type AppContextMessage struct {
+	ID      *string    `json:"id,omitempty"`
+	Payload AppContext `json:"payload"`
+}
+
+func (AppContextMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v AppContextMessage) MarshalJSON() ([]byte, error) {
+	type plain AppContextMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"app.context", plain(v)})
+}
+
+type AppContext struct {
+	App     string            `json:"app"`
+	Context map[string]string `json:"context"`
 }
 
 // AppPresence: Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.

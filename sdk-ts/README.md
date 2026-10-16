@@ -77,3 +77,5 @@ const client = await BrowserClient.connect({ client: "web", url: "http://127.0.0
 Same API as `SuiteClient` (both extend `BusClient` in `src/bus-client.ts`, which imports nothing from node). `url` is the daemon's loopback URL from `daemon.json` (a page gets it from its server); `refreshAddress` is asked for a fresh `{ url, token }` on every reconnect, since a restarted daemon has a new port and token.
 
 `assetUrl(address, handle)` turns an `asset://` handle into `${url}/assets/<id>?token=…` (undefined for anything else), for `<img src>` or the web renderer's `resolveImage`. The URL carries the token, so keep it inside the page.
+
+`setContext(context)` updates only the presence context (what the app shows now, seen by the agent in `<focus>`), without re-sending the presence: cheap enough for every cursor move, and kept for reconnects.

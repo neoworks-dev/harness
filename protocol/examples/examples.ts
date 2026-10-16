@@ -330,4 +330,12 @@ export const examples: Record<string, Envelope> = {
     payload: { path: "/home/user/site/src/Header.tsx", app: "agent", session },
   },
   "file-changed-minimal": { topic: "file.changed", payload: { path: "/home/user/site/a.txt" } },
+  "app-context": {
+    topic: "app.context",
+    id: "30",
+    payload: {
+      app: "code-editor",
+      context: { file: "/home/user/site/src/Header.tsx", line: "40" },
+    },
+  },
 };

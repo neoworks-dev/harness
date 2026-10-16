@@ -347,8 +347,14 @@ func presence(srv *tools.Server, launch []string, d *doc) protocol.AppPresence {
 	if len(launch) > 0 {
 		p.Launch = &protocol.LaunchSpec{Command: launch}
 	}
-	if d != nil {
-		p.Context = map[string]string{"image": d.asset.Name, "asset": d.asset.Handle}
-	}
+	p.Context = contextOf(d)
 	return p
+}
+
+// contextOf is what the agent sees in <focus>: the open image, if any.
+func contextOf(d *doc) map[string]string {
+	if d == nil {
+		return nil
+	}
+	return map[string]string{"image": d.asset.Name, "asset": d.asset.Handle}
 }

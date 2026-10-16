@@ -48,9 +48,14 @@ pub(crate) struct Request {
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Effect {
     None,
-    Subscribe { session: String, from_seq: i64 },
+    Subscribe {
+        session: String,
+        from_seq: i64,
+    },
     Unsubscribe(String),
     Presence(AppPresence),
+    /// A new context for the registered presence (kept for reconnects).
+    Context(std::collections::BTreeMap<String, String>),
     ViewSubscribe(String),
     ViewUnsubscribe(String),
 }
@@ -280,6 +285,12 @@ impl Io {
                 self.presence = presence.open.then_some(presence);
                 Undo::Presence(previous)
             }
+            Effect::Context(context) => {
+                if let Some(presence) = &mut self.presence {
+                    presence.context = Some(context);
+                }
+                Undo::None
+            }
             Effect::ViewSubscribe(session) => {
                 self.views.insert(session.clone());
                 Undo::ViewUnsubscribe(session)
@@ -475,6 +486,7 @@ fn request_id(envelope: &Envelope) -> Option<String> {
         Envelope::ViewUnsubscribe(m) => Some(m.id.clone()),
         Envelope::UiActionMessage(m) => Some(m.id.clone()),
         Envelope::AssetPutMessage(m) => Some(m.id.clone()),
+        Envelope::AppContextMessage(m) => m.id.clone(),
         Envelope::AssetGetMessage(m) => Some(m.id.clone()),
         _ => None,
     }

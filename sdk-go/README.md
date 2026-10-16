@@ -168,3 +168,5 @@ d := sdktest.New(t)
 d.AddSession("s1", "title", time.Now())
 c, _ := sdk.Dial(ctx, sdk.Options{Socket: d.Socket})
 ```
+
+`c.SetContext(ctx, map[string]string{...})` updates only the presence context (what the app shows now, seen by the agent in `<focus>`), without re-sending the presence: cheap enough for every cursor move, and kept for reconnects.

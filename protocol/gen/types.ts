@@ -30,7 +30,8 @@ export type Envelope =
   | AssetPutMessage
   | AssetGetMessage
   | AssetInfoMessage
-  | FileChangedMessage;
+  | FileChangedMessage
+  | AppContextMessage;
 
 export type EnvelopeTag = Envelope["topic"];
 
@@ -348,6 +349,18 @@ export interface FileChanged {
   app?: string;
   /** The session whose agent changed it. */
   session?: string;
+}
+
+/** Client → daemon: what a registered app shows now (its presence context), without re-sending the whole presence. Acked when id is set; not broadcast (connectors.list returns it). The agent sees it in <focus> at its next turn. */
+export interface AppContextMessage {
+  topic: "app.context";
+  id?: string;
+  payload: AppContext;
+}
+
+export interface AppContext {
+  app: string;
+  context: Record<string, string>;
 }
 
 /** Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update. */

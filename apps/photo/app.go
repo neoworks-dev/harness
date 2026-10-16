@@ -147,6 +147,14 @@ func (a *app) publish(ctx context.Context) error {
 	return a.c.SetPresence(ctx, presence(a.srv, a.cfg.Launch, d))
 }
 
+// updateContext tells the daemon which image is open now.
+func (a *app) updateContext(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	d, _ := a.ed.current()
+	return a.c.SetContext(ctx, contextOf(d))
+}
+
 // pump keeps the presence context in step with the open image and wakes the
 // UI when the image changes.
 func (a *app) pump(ctx context.Context) {
@@ -155,8 +163,8 @@ func (a *app) pump(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-a.ed.changed:
-			if err := a.publish(ctx); err != nil && ctx.Err() == nil {
-				a.logf("updating presence: %v", err)
+			if err := a.updateContext(ctx); err != nil && ctx.Err() == nil {
+				a.logf("updating context: %v", err)
 			}
 			poke(a.redraw)
 		}

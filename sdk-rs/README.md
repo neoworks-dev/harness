@@ -47,3 +47,5 @@ presence.mcp = Some(server.endpoint()); // keep `server` alive as long as the ap
 ## Tests
 
 `cargo test -p suite-sdk`: `tests/fake_daemon.rs` runs against a scripted daemon (framing, routing, reconnect); `tests/daemon.rs` starts the real daemon (`bun run daemon/src/main.ts`, echo agent) and is skipped with a message if `bun` is missing.
+
+`client.set_context(app, context)` updates only the presence context (what the app shows now, seen by the agent in `<focus>`), without re-sending the presence: cheap enough for every cursor move, and kept for reconnects.

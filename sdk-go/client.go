@@ -321,6 +321,25 @@ func (c *Client) ListConnectors(ctx context.Context) ([]protocol.ConnectorInfo, 
 	return res.Payload.Connectors, err
 }
 
+// SetContext updates what the app shows now (its presence context, e.g. the
+// open file) without re-sending the whole presence; the latest one is kept
+// for reconnects. Cheap enough for every cursor move. It needs a presence.
+func (c *Client) SetContext(ctx context.Context, context map[string]string) error {
+	c.mu.Lock()
+	if c.presence == nil {
+		c.mu.Unlock()
+		return errors.New("SetContext needs a presence; call SetPresence first")
+	}
+	p := *c.presence
+	p.Context = context
+	c.presence = &p
+	c.mu.Unlock()
+	_, err := request[protocol.BusAck](ctx, c, func(id string) protocol.EnvelopeVariant {
+		return protocol.AppContextMessage{ID: &id, Payload: protocol.AppContext{App: p.App, Context: context}}
+	})
+	return err
+}
+
 // SetPresence registers (p.Open) or unregisters this client as a connector,
 // or updates its registration. A registration lasts as long as the
 // connection; with Options.Reconnect the latest one is re-sent after each

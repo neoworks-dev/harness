@@ -96,6 +96,9 @@
         },
         {
           "$ref": "#/$defs/FileChangedMessage"
+        },
+        {
+          "$ref": "#/$defs/AppContextMessage"
         }
       ],
       "discriminator": {
@@ -850,6 +853,39 @@
         }
       },
       "required": ["path"],
+      "additionalProperties": false
+    },
+    "AppContextMessage": {
+      "description": "Client → daemon: what a registered app shows now (its presence context), without re-sending the whole presence. Acked when id is set; not broadcast (connectors.list returns it). The agent sees it in <focus> at its next turn.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "app.context"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/AppContext"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "AppContext": {
+      "type": "object",
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["app", "context"],
       "additionalProperties": false
     }
   }

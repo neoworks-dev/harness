@@ -51,6 +51,7 @@ pub enum Envelope {
     AssetGetMessage(AssetGetMessage),
     AssetInfoMessage(AssetInfoMessage),
     FileChangedMessage(FileChangedMessage),
+    AppContextMessage(AppContextMessage),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -177,6 +178,10 @@ impl Serialize for Envelope {
                 "file.changed",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            Envelope::AppContextMessage(v) => (
+                "app.context",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             Envelope::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("topic", tag, value).serialize(serializer)
@@ -280,6 +285,9 @@ impl<'de> Deserialize<'de> for Envelope {
                 .map_err(D::Error::custom),
             "file.changed" => serde_json::from_value(value)
                 .map(Envelope::FileChangedMessage)
+                .map_err(D::Error::custom),
+            "app.context" => serde_json::from_value(value)
+                .map(Envelope::AppContextMessage)
                 .map_err(D::Error::custom),
             _ => Ok(Envelope::Unknown(value)),
         }
@@ -463,6 +471,12 @@ impl From<AssetInfoMessage> for Envelope {
 impl From<FileChangedMessage> for Envelope {
     fn from(v: FileChangedMessage) -> Self {
         Envelope::FileChangedMessage(v)
+    }
+}
+
+impl From<AppContextMessage> for Envelope {
+    fn from(v: AppContextMessage) -> Self {
+        Envelope::AppContextMessage(v)
     }
 }
 
@@ -943,6 +957,24 @@ pub struct FileChanged {
     /// The session whose agent changed it.
     #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
+}
+
+/// Client → daemon: what a registered app shows now (its presence context), without re-sending the whole presence. Acked when id is set; not broadcast (connectors.list returns it). The agent sees it in <focus> at its next turn.
+/// Tagged `topic: "app.context"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AppContextMessage {
+    #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(rename = "payload")]
+    pub payload: AppContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AppContext {
+    #[serde(rename = "app")]
+    pub app: String,
+    #[serde(rename = "context")]
+    pub context: BTreeMap<String, String>,
 }
 
 /// Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.

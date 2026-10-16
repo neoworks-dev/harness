@@ -265,6 +265,54 @@ describe("over the bus and the gateway", () => {
     expect(a.received.slice(-2).map((e) => e.topic)).toEqual(["agent.focus", "bus.ack"]);
   });
 
+  test("app.context updates what the agent sees next, without a broadcast or a store write", async () => {
+    const { hub, registry, focus, agent, sessions, store } = hubSetup();
+    const editor = client(hub);
+    const other = client(hub);
+    editor.send({
+      topic: "app.presence",
+      id: "p",
+      payload: { app: "code-editor", kind: "app", open: true, context: { line: "1" } },
+    });
+    await Bun.sleep(0);
+    focus.move({ app: "code-editor" }, "user");
+    await Bun.sleep(0);
+    const before = other.received.length;
+    const saved = JSON.stringify(store.loadConnectors());
+
+    editor.send({
+      topic: "app.context",
+      id: "c",
+      payload: { app: "code-editor", context: { file: "/site/a.ts", line: "40" } },
+    });
+    expect(editor.received.at(-1)).toEqual({ topic: "bus.ack", id: "c" });
+    await Bun.sleep(0);
+    expect(other.received.length).toBe(before);
+    expect(JSON.stringify(store.loadConnectors())).toBe(saved);
+    expect(registry.list().find((c) => c.app === "code-editor")?.context).toEqual({
+      file: "/site/a.ts",
+      line: "40",
+    });
+
+    const session = focus.current().session;
+    sessions.input(session, "cli", "hi");
+    await agent.started(1);
+    expect(agent.prompts[0]?.pendingEvents).toContainEqual({
+      type: "focus_changed",
+      app: "code-editor",
+      context: { file: "/site/a.ts", line: "40" },
+    });
+    agent.release();
+    await sessions.idle(session);
+
+    // Only the connection that registered the app may change it.
+    other.send({ topic: "app.context", id: "x", payload: { app: "code-editor", context: {} } });
+    expect(other.received.at(-1)).toMatchObject({
+      topic: "bus.error",
+      payload: { code: "not_found" },
+    });
+  });
+
   test("connector changes are broadcast once per burst", async () => {
     const { hub, registry } = hubSetup();
     const a = client(hub);

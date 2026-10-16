@@ -291,6 +291,18 @@ export class BusClient {
     if (this.connected) await this.sendPresence(presence);
   }
 
+  /**
+   * Updates what the app shows now (the presence context, e.g. the open file) without re-sending
+   * the whole presence; kept for reconnects. Cheap enough to call on every cursor move.
+   */
+  async setContext(context: Record<string, string>): Promise<void> {
+    if (!this.presence) throw new Error("setContext needs a presence; call setPresence first");
+    this.presence = { ...this.presence, context };
+    if (!this.connected) return;
+    const { app } = this.presence;
+    await this.call((id) => ({ topic: "app.context", id, payload: { app, context } }));
+  }
+
   async listSessions(): Promise<SessionInfo[]> {
     const reply = await this.call((id) => ({ topic: "session.list", id }));
     if (reply.topic !== "session.list_result") throw unexpected(reply);

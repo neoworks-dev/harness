@@ -91,8 +91,7 @@ export async function startBrowserApp(options: BrowserAppOptions = {}): Promise<
 
   browser.onEvent((event) => {
     if (event.type !== "page" || event.page === null) return;
-    const context = { url: event.page.url, title: event.page.title };
-    connected.setPresence(presenceFor(tools, context)).catch(() => {});
+    connected.setContext({ url: event.page.url, title: event.page.title }).catch(() => {});
   });
 
   return {

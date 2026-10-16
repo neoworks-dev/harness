@@ -81,6 +81,17 @@ export class ConnectorRegistry {
     markReady();
   }
 
+  /**
+   * Updates what a registered app shows (its presence context): memory only, no broadcast, as
+   * it can change on every cursor move. False if `owner` hasn't registered `app`.
+   */
+  setContext(owner: object, app: string, context: Record<string, string>): boolean {
+    const live = this.live.get(app);
+    if (live?.owner !== owner) return false;
+    live.presence = { ...live.presence, context };
+    return true;
+  }
+
   /** Unregisters everything a bus client registered (its connection closed). */
   async disconnect(owner: object): Promise<void> {
     const owned = [...this.live].filter(([, live]) => live.owner === owner);

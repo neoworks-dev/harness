@@ -651,6 +651,21 @@ func (d *Daemon) handle(c *websocket.Conn, v protocol.EnvelopeVariant) {
 		d.write(c, protocol.BusAck{ID: m.ID})
 	case protocol.AppPresenceMessage:
 		d.presence(c, st, m)
+	case protocol.AppContextMessage:
+		// Like the daemon: only the registering connection, no broadcast.
+		p, ok := d.presences[m.Payload.App]
+		if !ok || st.app != m.Payload.App {
+			d.fail(c, m.ID, protocol.ErrorCodeNotFound, m.Payload.App+" isn't registered on this connection")
+			return
+		}
+		p.Context = m.Payload.Context
+		d.presences[m.Payload.App] = p
+		if info := d.connectors[m.Payload.App]; info != nil {
+			info.Context = m.Payload.Context
+		}
+		if m.ID != nil {
+			d.write(c, protocol.BusAck{ID: *m.ID})
+		}
 	case protocol.AssetPutMessage:
 		d.assetPut(c, st, m)
 	case protocol.AssetGetMessage:

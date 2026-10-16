@@ -62,7 +62,6 @@ fn main() {
     let setup = pad::Setup {
         socket,
         requests,
-        endpoint: Some(endpoint),
         server: Some(server),
         open: std::env::args()
             .skip(1)

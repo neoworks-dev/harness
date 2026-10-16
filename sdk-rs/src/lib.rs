@@ -21,12 +21,13 @@ use conn::{Command, Effect, Request};
 pub use socket::default_socket_path;
 pub use suite_protocol as protocol;
 use suite_protocol::{
-    AgentFocus, AgentMove, AgentMoveMessage, AppPresence, AppPresenceMessage, Asset,
-    AssetGetMessage, AssetPut, AssetPutMessage, AssetRef, ConnectorInfo, ConnectorsList, Envelope,
-    ErrorInfo, FileChanged, FileChangedMessage, SessionCancel, SessionCreate, SessionCreateParams,
-    SessionEventRecord, SessionInfo, SessionInput, SessionInputMessage, SessionList, SessionRef,
-    SessionSubscribe, SessionUnsubscribe, SubscribeParams, SubscribedPayload, Theme, UiAction,
-    UiActionMessage, ViewPatch, ViewSnapshot, ViewSubscribe, ViewUnsubscribe,
+    AgentFocus, AgentMove, AgentMoveMessage, AppContext, AppContextMessage, AppPresence,
+    AppPresenceMessage, Asset, AssetGetMessage, AssetPut, AssetPutMessage, AssetRef, ConnectorInfo,
+    ConnectorsList, Envelope, ErrorInfo, FileChanged, FileChangedMessage, SessionCancel,
+    SessionCreate, SessionCreateParams, SessionEventRecord, SessionInfo, SessionInput,
+    SessionInputMessage, SessionList, SessionRef, SessionSubscribe, SessionUnsubscribe,
+    SubscribeParams, SubscribedPayload, Theme, UiAction, UiActionMessage, ViewPatch, ViewSnapshot,
+    ViewSubscribe, ViewUnsubscribe,
 };
 pub use view::ViewState;
 
@@ -278,6 +279,25 @@ impl Client {
             Envelope::AppPresenceMessage(AppPresenceMessage {
                 id: Some(id),
                 payload: presence,
+            })
+        })
+    }
+
+    /// Updates what the registered app `app` shows now (its presence context) without
+    /// re-sending the whole presence; kept for reconnects. Cheap enough for every cursor move.
+    pub fn set_context(
+        &self,
+        app: &str,
+        context: std::collections::BTreeMap<String, String>,
+    ) -> Result<()> {
+        let effect = Effect::Context(context.clone());
+        self.ack(effect, |id| {
+            Envelope::AppContextMessage(AppContextMessage {
+                id: Some(id),
+                payload: AppContext {
+                    app: app.into(),
+                    context,
+                },
             })
         })
     }

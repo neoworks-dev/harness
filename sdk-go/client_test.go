@@ -520,3 +520,23 @@ func TestFocusAfterReconnect(t *testing.T) {
 		t.Error("Focus lost")
 	}
 }
+
+func TestSetContext(t *testing.T) {
+	d := sdktest.New(t)
+	bare := dial(t, d, sdk.Options{Client: "bare"})
+	if err := bare.SetContext(ctxT(t), map[string]string{"a": "b"}); err == nil {
+		t.Error("SetContext without a presence succeeded")
+	}
+	c := dial(t, d, sdk.Options{Client: "code-editor"})
+	if err := c.SetPresence(ctxT(t), protocol.AppPresence{App: "code-editor", Kind: protocol.ConnectorKindApp, Open: true}); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"file": "/site/a.ts", "line": "40"}
+	if err := c.SetContext(ctxT(t), want); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := d.Presence("code-editor")
+	if p.Context["line"] != "40" || p.Context["file"] != "/site/a.ts" {
+		t.Errorf("context %v", p.Context)
+	}
+}
