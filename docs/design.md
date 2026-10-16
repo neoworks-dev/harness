@@ -358,6 +358,14 @@ This keeps all three renderers thin without a shared library across three langua
 
 ---
 
+### As built (Phase 5)
+
+- **Asset store.** Content-addressed files under `<data>/assets` (`asset://img-<12 hex>`, `file-…` for non-images), so the same bytes always get the same handle; a JSON sidecar keeps the name, type and producing app. Bus: `asset.put {path|data}` / `asset.get {handle}` → `asset.info`; HTTP `/assets` for browsers. The agent's bash and read take handles as paths (bash commands get them substituted); write and edit refuse them.
+- **`file.changed`** is derived from the diffs of the agent's write/edit results and passed on when an app sends it after saving (not echoed to the sender).
+- **The lsp service** is a separate process the daemon starts (`kind: service`), driving gopls / typescript-language-server / rust-analyzer per project root; files are re-read before each request. Editors call it through the gateway like the agent does.
+- **The working directory** is told to the model once per session (`<session cwd=…/>` in the first prompt), since the system prompt carries no session state.
+- **Stand-ins**: browser (TS/web), photo editor (Go/terminal), code editor (Pad, GPUI). Go and Rust apps serve their tools with small hand-written MCP servers (`sdk-go/tools`, `sdk_rs::tools`), the TS one with the MCP SDK.
+
 ## 9. Guest agents
 
 Claude Code, Codex and other ACP harnesses can join for heavy coding.
@@ -420,3 +428,4 @@ Each phase ends with something that works on its own.
 - **Templates can't slice lists.** `each` repeats over a whole list; there is no "first three" or index inside `each`, so the browser's three thumbnails are three static nodes with `if: "data.images.N"`. A `limit` on `each` (and the index as a variable) would cover it.
 - **Stand-ins fetch anything.** The browser stand-in fetches whatever URL the agent gives it, local addresses included, and the lsp service writes files on `rename`. Fine for testing; real apps need the approvals story (see above) before the agent can reach the local network or write outside a project.
 - **The bash tool's file changes aren't announced.** `file.changed` comes from write/edit diffs (and apps saving); `cp asset://… ~/site/logo.png` through bash changes a file nobody hears about. Watching the session's cwd, or diffing mtimes around a bash call, would close the gap.
+- **Presence is the only way to update context.** Pad re-sends its whole presence (templates, endpoint) whenever the cursor moves to another line, which rewrites the stored connector and broadcasts `connectors.changed` each time. A context-only update (or debouncing in apps) would be lighter.

@@ -13,6 +13,7 @@ One agent session shared across every app in the suite. The design is in [docs/d
 | `apps/pad/`          | GPUI code editor stand-in (files, diagnostics, tools, chat)      | 3, 5  |
 | `apps/browser/`      | Stand-in web browser: navigate/read/images/download tools + page | 5     |
 | `apps/photo/`        | Stand-in photo editor (Go, terminal): image tools, preview, chat | 5     |
+| `services/lsp/`      | Language servers as a connector (started by the daemon)          | 5     |
 | `renderers/`         | web (TS), gpui (Rust), tui (Go)                                  | 4     |
 | `fixtures/`          | View fixtures + renderer snapshot tests                          | 4     |
 
@@ -65,6 +66,20 @@ The agent can move itself with `apps_focus`, and Pad's buttons move it too. Clos
 ## Connecting an app
 
 Apps register with `app.presence` and bring their own MCP server; the daemon's gateway lists and calls its tools, and the agent finds them with `tools_search` / `tools_call`. Clients that can't use the Unix socket (Bun, browsers, MCP clients) read `daemon.json` next to the socket for the loopback URL and token. A complete example app: `bun run sdk-ts/examples/notes-app.ts`, then ask the agent to use the notes app. See [sdk-ts](sdk-ts/README.md) and [sdk-go](sdk-go/README.md).
+
+## Cross-app work (the stand-ins)
+
+The browser, photo editor and code editor are rough stand-ins for the real apps, enough to run the design's logo flow end to end. Downloads and edits become `asset://` handles in the daemon's asset store, which any app and the agent's bash/read tools can use; the lsp service (started with the daemon) gives diagnostics with or without an editor.
+
+```sh
+bun run daemon                         # terminal 1 (also starts the lsp service)
+bun run apps/browser/main.ts           # terminal 2: prints a page URL with the chat in it
+bin/photo                              # terminal 3: photo editor (make build), preview + chat
+cargo run -p suite-pad                 # a window: code editor + chat
+cd ~/site && bin/suite attach --new    # or chat from any pane
+```
+
+Then e.g. "download the logo from https://example.com, crop it to a square, put it into this project as public/logo.png and add it to src/Header.tsx". Details: [apps/browser](apps/browser/README.md), [apps/photo](apps/photo/README.md), [apps/pad](apps/pad/README.md), [services/lsp](services/lsp/README.md).
 
 ## The chat view
 
