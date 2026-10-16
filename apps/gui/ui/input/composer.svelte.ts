@@ -23,7 +23,6 @@ import {
   type Prompt,
 } from "../lib/prompt.ts";
 import { suite } from "../state/suite.svelte.ts";
-import { ui } from "../state/ui.svelte.ts";
 import { appendHistory, loadHistory } from "./history-store.ts";
 
 /** How long "copied" stays in the status line. */
@@ -213,8 +212,7 @@ class Composer {
 
   /** Esc closes what is open, innermost first. Returns false when nothing was. */
   escape(): boolean {
-    if (ui.diff !== undefined) ui.diff = undefined;
-    else if (this.helpOpen) this.helpOpen = false;
+    if (this.helpOpen) this.helpOpen = false;
     else if (this.menuVisible) this.menuClosedFor = this.text;
     else if (this.note !== undefined) this.note = undefined;
     else if (this.prompt) this.dismissed = new Set([...this.dismissed, this.prompt.ref]);

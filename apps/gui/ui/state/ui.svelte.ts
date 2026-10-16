@@ -1,5 +1,3 @@
-import type { DiffComponent } from "@suite/protocol/types";
-
 // What the window shows, as opposed to what the session holds (state/suite.svelte.ts). Shared
 // so the keyboard shortcuts, the chat and the panels agree.
 class Ui {
@@ -16,8 +14,6 @@ class Ui {
    * in place of the input; the chat shows a one-line stub for it. Set by the input side.
    */
   panelRef = $state<string>();
-  /** A diff shown over the window, side by side, until Esc. */
-  diff = $state.raw<DiffComponent>();
 }
 
 export const ui = new Ui();

@@ -4,6 +4,7 @@
 // `gh_*` commands. Nothing here can write to GitHub.
 import { untrack } from "svelte";
 import * as host from "../kernel/host/github.ts";
+import type { DiffService } from "../plugins/diff/service.ts";
 import { explain, type Detail, type Kind, type Summary } from "../lib/github.ts";
 import { parseUnified } from "../lib/unified.ts";
 import { suite } from "../state/suite.svelte.ts";
@@ -185,7 +186,7 @@ class GitHub {
   }
 
   /** A pull request's diff over the window, all files one after the other. */
-  async showDiff(number: number): Promise<void> {
+  async showDiff(number: number, diff: DiffService): Promise<void> {
     const repo = this.repoState;
     if (repo?.status !== "ready") return;
     try {
@@ -196,11 +197,11 @@ class GitHub {
         { kind: "hunk" as const, text: file.path },
         ...file.lines,
       ]);
-      ui.diff = {
+      diff.show({
         type: "diff",
         path: `#${number} ${repo.value}`,
         lines: lines.length > 0 ? lines : [{ kind: "context", text: "no changes" }],
-      };
+      });
     } catch (error) {
       suite.error = failure(error).message;
     }

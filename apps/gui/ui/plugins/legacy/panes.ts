@@ -3,7 +3,6 @@
 // leaves this file; the shell's slots are all it needs to know about.
 import type { Context } from "@neoworks/extension-system";
 import Chat from "../../chat/Chat.svelte";
-import DiffOverlay from "../../chat/DiffOverlay.svelte";
 import Composer from "../../input/Composer.svelte";
 import AgentView from "../../side/AgentView.svelte";
 import { agentView } from "../../side/agentview.svelte.ts";
@@ -15,7 +14,8 @@ import "../shell/slots.ts";
 import "../statusline/slots.ts";
 import Notice from "./Notice.svelte";
 
-const inject = ["slots"];
+// Several draw a diff, so they need the service that shows it over the window.
+const inject = ["slots", "diff"];
 
 // The middle shows the GitHub view when it is open, else an agent's own chat, else the chat.
 const github = {
@@ -81,13 +81,4 @@ const sidePanels = {
     }),
 };
 
-const diffOverlay = {
-  name: "legacy/diff-overlay",
-  inject,
-  apply: ({ slots }: Context) =>
-    slots.inject("shell.overlay", (slot) => {
-      slot.add({ component: DiffOverlay });
-    }),
-};
-
-export const panes = [github, agentChat, chat, composer, agents, notice, sidePanels, diffOverlay];
+export const panes = [github, agentChat, chat, composer, agents, notice, sidePanels];

@@ -9,6 +9,7 @@
   import type { KeyEvent, ScrollPosition } from "@neoworks/svelte-gpui/ui";
   import type { Kind, Summary } from "../lib/github.ts";
   import { suite } from "../state/suite.svelte.ts";
+  import { useCtx } from "../kernel/slots/context.ts";
   import { ui } from "../state/ui.svelte.ts";
   import { clock } from "./clock.svelte.ts";
   import GitHubDetail from "./GitHubDetail.svelte";
@@ -19,6 +20,8 @@
   const PAGE = 8;
   const STEP = 48;
   const ROW_HEIGHT = 52;
+
+  const { diff } = useCtx();
 
   const p = $derived(suite.palette);
   const NO_ROWS: Summary[] = [];
@@ -177,7 +180,7 @@
         void github.send(open.kind, open.number);
         return true;
       case "d":
-        if (open.kind === "pr") void github.showDiff(open.number);
+        if (open.kind === "pr") void github.showDiff(open.number, diff);
         return true;
       case "Escape":
       case "Backspace":

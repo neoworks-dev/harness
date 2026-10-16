@@ -5,13 +5,15 @@
   import type { Component } from "@suite/protocol/types";
   import { plainText, previewLines } from "../lib/prompt.ts";
   import { suite } from "../state/suite.svelte.ts";
-  import { ui } from "../state/ui.svelte.ts";
+  import { useCtx } from "../kernel/slots/context.ts";
 
   interface Props {
     components: readonly Component[];
   }
 
   let { components }: Props = $props();
+
+  const { diff } = useCtx();
 
   const p = $derived(suite.palette);
   const PREVIEW = 8;
@@ -36,7 +38,7 @@
           ).length}
         </Text>
         <Button
-          onpress={() => (ui.diff = component)}
+          onpress={() => diff.show(component)}
           style={{ paddingX: p.space.m, paddingY: 2, radius: 5, background: p.surface, borderWidth: 1, borderColor: p.border }}
           hover={{ borderColor: p.accent }}
         >

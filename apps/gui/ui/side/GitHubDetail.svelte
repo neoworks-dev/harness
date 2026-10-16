@@ -11,6 +11,7 @@
     timeline,
     type Detail,
   } from "../lib/github.ts";
+  import { useCtx } from "../kernel/slots/context.ts";
   import { suite } from "../state/suite.svelte.ts";
   import { github } from "./github.svelte.ts";
   import { checkColor, checkMark, stateColor } from "./github-look.ts";
@@ -24,6 +25,8 @@
   }
 
   let { detail, nowMs, onscroll, scroller = $bindable() }: Props = $props();
+  const { diff } = useCtx();
+
   const p = $derived(suite.palette);
   const counts = $derived(checkCounts(detail.checks));
   const conversation = $derived(timeline(detail));
@@ -78,7 +81,7 @@
       </Button>
       {#if isPr}
         <Button
-          onpress={() => void github.showDiff(detail.number)}
+          onpress={() => void github.showDiff(detail.number, diff)}
           style={{ paddingX: p.space.m, paddingY: p.space.s, radius: 4, background: p.surface }}
           hover={{ background: p.band }}
         >

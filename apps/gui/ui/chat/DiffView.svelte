@@ -6,7 +6,7 @@
   import { lineHeightOf } from "../lib/components.ts";
   import { clip, diffStats, gutterWidth } from "../lib/diff.ts";
   import { suite } from "../state/suite.svelte.ts";
-  import { ui } from "../state/ui.svelte.ts";
+  import { useCtx } from "../kernel/slots/context.ts";
   import { diffColors } from "../lib/diff-colors.ts";
 
   interface Props {
@@ -19,6 +19,7 @@
   const CAP = 400;
 
   let { diff, limit }: Props = $props();
+  const { diff: overlay } = useCtx();
   const p = $derived(suite.palette);
   const colors = $derived(diffColors(p));
 
@@ -47,7 +48,7 @@
 </script>
 
 <View
-  onpress={() => (ui.diff = diff)}
+  onpress={() => overlay.show(diff)}
   style={{ background: p.surface, radius: 6, cursor: "pointer", overflow: "hidden" }}
   hover={{ background: p.band }}
 >

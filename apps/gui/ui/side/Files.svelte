@@ -12,9 +12,11 @@
   } from "../lib/files.ts";
   import { parseUnified } from "../lib/unified.ts";
   import { suite } from "../state/suite.svelte.ts";
-  import { ui } from "../state/ui.svelte.ts";
+  import { useCtx } from "../kernel/slots/context.ts";
   import { activity } from "./activity.svelte.ts";
   import { git } from "./git.svelte.ts";
+
+  const { diff } = useCtx();
 
   const p = $derived(suite.palette);
   const entries = $derived(fileEntries(git.status, activity.touches.touched));
@@ -45,11 +47,11 @@
     try {
       const text = await host.diff({ cwd: suite.cwd, path: entry.rel, untracked });
       const lines = parseUnified(text).flatMap((file) => file.lines);
-      ui.diff = {
+      diff.show({
         type: "diff",
         path: entry.rel,
         lines: lines.length > 0 ? lines : [{ kind: "context", text: "no changes" }],
-      };
+      });
     } catch (error) {
       suite.error = error instanceof Error ? error.message : String(error);
     }

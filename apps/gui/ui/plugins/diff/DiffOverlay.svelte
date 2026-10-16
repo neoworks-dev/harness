@@ -4,16 +4,18 @@
   // Esc or the close button puts it away.
   import { Button, List, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { DiffComponent } from "@suite/protocol/types";
-  import { diffStats, gutterWidth, sideBySide, type SideCell, type SideRow } from "../lib/diff.ts";
-  import { diffColors } from "../lib/diff-colors.ts";
-  import { suite } from "../state/suite.svelte.ts";
-  import { ui } from "../state/ui.svelte.ts";
+  import { diffStats, gutterWidth, sideBySide, type SideCell, type SideRow } from "../../lib/diff.ts";
+  import { diffColors } from "../../lib/diff-colors.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
+  import { viewing } from "./state.svelte.ts";
 
   const ROW_HEIGHT = 20;
 
-  const p = $derived(suite.palette);
+  const { daemon } = useCtx();
+
+  const p = $derived(daemon.palette);
   const colors = $derived(diffColors(p));
-  const diff = $derived<DiffComponent | undefined>(ui.diff);
+  const diff = $derived<DiffComponent | undefined>(viewing.current);
   const rows = $derived.by(() => {
     if (diff === undefined) return [];
     return sideBySide(diff.lines);
@@ -24,7 +26,7 @@
   );
 
   function close(): void {
-    ui.diff = undefined;
+    viewing.current = undefined;
   }
 
   function background(cell: SideCell | undefined): string | undefined {
@@ -39,15 +41,6 @@
     return p.muted;
   }
 </script>
-
-<svelte:window
-  onkeydown={(event) => {
-    if (diff !== undefined && event.key === "Escape") {
-      event.preventDefault();
-      close();
-    }
-  }}
-/>
 
 {#snippet side(cell: SideCell | undefined)}
   <View style={{ flex: 1, minWidth: 0, direction: "row", height: ROW_HEIGHT, align: "center", overflow: "hidden", background: background(cell) ?? p.bg }}>
