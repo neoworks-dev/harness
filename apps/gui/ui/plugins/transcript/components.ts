@@ -42,3 +42,23 @@ export function lineHeightOf(size: number): number {
 export function oneLine(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
+
+/**
+ * The lines of a message as plain text, for measuring how wide it wants to be: the text of each
+ * paragraph and heading, split at line breaks. Undefined for anything but plain paragraphs and
+ * headings (lists, code, quotes), which take the full width they are given.
+ */
+export function plainLines(component: Component): string[] | undefined {
+  if (component.type !== "text") return undefined;
+  const lines: string[] = [];
+  for (const block of component.blocks) {
+    if (block.type !== "paragraph" && block.type !== "heading") return undefined;
+    lines.push(
+      ...block.spans
+        .map((span) => span.text)
+        .join("")
+        .split("\n"),
+    );
+  }
+  return lines;
+}
