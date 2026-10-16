@@ -53,9 +53,9 @@
     return () => (ui.panelRef = undefined);
   });
 
-  // The input has the keyboard unless the agents list or the GitHub view took it.
+  // The input has the keyboard unless the sidebar, the agents list or the GitHub view took it.
   $effect(() => {
-    if (!showPanel && !ui.agentsFocused && !ui.githubOpen) input?.focus();
+    if (!showPanel && !ui.agentsFocused && !ui.githubOpen && !ui.sidebarFocused) input?.focus();
   });
 
   function key(event: KeyEvent): void {
