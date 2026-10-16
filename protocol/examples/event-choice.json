@@ -1,0 +1,17 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 11,
+    "ts": 1760565601100,
+    "event": {
+      "type": "choice",
+      "id": "c1",
+      "title": "Claude Code model (now: opus)",
+      "options": [
+        { "id": "sonnet", "name": "Sonnet 5.5", "description": "Efficient for routine tasks" },
+        { "id": "haiku", "name": "Haiku 5.5" }
+      ]
+    }
+  }
+}

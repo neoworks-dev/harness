@@ -1,0 +1,14 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 10,
+    "ts": 1760565601000,
+    "event": {
+      "type": "setting_changed",
+      "harness": "claude",
+      "option": "model",
+      "value": "sonnet"
+    }
+  }
+}

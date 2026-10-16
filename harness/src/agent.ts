@@ -32,6 +32,18 @@ export interface McpServer {
   headers: { name: string; value: string }[];
 }
 
+/** ACP's config option categories the suite lets the user set (/model, /effort, /mode). */
+export type ConfigCategory = "model" | "thought_level" | "mode";
+
+/** One settable option of a session, as ACP's session config options describe it. */
+export interface ConfigOption {
+  category: ConfigCategory;
+  /** The current value, if known. */
+  current?: string;
+  /** The values to offer. A harness may accept others (pi: any provider/model). */
+  values: { value: string; name: string; description?: string }[];
+}
+
 export interface NewSessionParams {
   sessionId: string;
   /** Working directory for the core tools. */
@@ -40,6 +52,8 @@ export interface NewSessionParams {
   mcpServers: McpServer[];
   /** Resolves an asset://… handle to its file path (undefined: unknown handle). */
   resolveAsset?: (handle: string) => string | undefined;
+  /** What the user chose for this session; unset categories keep the harness's default. */
+  settings?: Partial<Record<ConfigCategory, string>>;
 }
 
 export interface LoadSessionParams extends NewSessionParams {
@@ -75,6 +89,10 @@ export interface AgentSession {
   prompt(params: PromptParams): Promise<PromptResult>;
   /** Cancels the running prompt, which then resolves with stopReason "cancelled". No-op when idle. */
   cancel(): void;
+  /** The options the user can set; absent when the harness has none. */
+  configOptions?(): ConfigOption[];
+  /** Sets one for the following turns. Rejects with a message the user can read. */
+  setConfigOption?(category: ConfigCategory, value: string): Promise<void>;
 }
 
 export interface Agent {

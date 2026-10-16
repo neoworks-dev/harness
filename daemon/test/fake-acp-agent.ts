@@ -4,7 +4,9 @@
 //   ask           asks for permission and reports the answer
 //   wait          runs until cancelled
 //   edit          reports a tool call with a diff
-//   config        reports what session/new and set_config_option gave it
+//   config        reports what session/new (or resume) and set_config_option gave it
+// It offers a model option (small, large) and an effort option (low, high), and one stored
+// conversation, "old-1", for session/list and session/resume.
 //   anything else replies "Done: <task>"
 // Every prompt first echoes the whole prompt text as a thought, so tests can see the event tags.
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -20,6 +22,24 @@ const waiting = new Map<number, (result: unknown) => void>();
 let gateway: HttpServer | undefined;
 let instructions: unknown;
 const config: Record<string, unknown> = {};
+let sessionId = "";
+
+const VALUES: Record<string, string[]> = { model: ["small", "large"], effort: ["low", "high"] };
+const CATEGORY: Record<string, string> = { model: "model", effort: "thought_level" };
+
+function configOptions(): unknown[] {
+  return Object.entries(VALUES).map(([id, values]) => ({
+    id,
+    category: CATEGORY[id],
+    type: "select",
+    currentValue: (config[id] as string | undefined) ?? values[0],
+    options: values.map((value) => ({
+      value,
+      name: value.toUpperCase(),
+      description: `${value} one`,
+    })),
+  }));
+}
 let cancel: (() => void) | undefined;
 
 function send(message: Record<string, unknown>): void {
@@ -108,7 +128,7 @@ async function prompt(params: {
     });
   } else if (task === "config") {
     update(sessionId, { sessionUpdate: "plan", entries: [] });
-    say(sessionId, JSON.stringify({ instructions, config }));
+    say(sessionId, JSON.stringify({ instructions, config, session: sessionId }));
     return { stopReason: "end_turn" };
   }
   update(sessionId, { sessionUpdate: "plan", entries: [] });
@@ -132,10 +152,30 @@ async function handle(message: Record<string, unknown>): Promise<void> {
       gateway = servers[0];
       const meta = params._meta as { jetbrains?: { air?: { customInstructions?: string } } };
       instructions = meta.jetbrains?.air?.customInstructions?.slice(0, 40);
-      result = { sessionId: "acp-1" };
+      sessionId = "acp-1";
+      result = { sessionId, configOptions: configOptions() };
+    } else if (method === "session/resume") {
+      gateway = (params.mcpServers as HttpServer[])[0];
+      sessionId = params.sessionId as string;
+      result = { configOptions: configOptions() };
+    } else if (method === "session/list") {
+      result = {
+        sessions: [
+          {
+            sessionId: "old-1",
+            cwd: params.cwd,
+            title: "Earlier work",
+            updatedAt: "2026-10-01T09:30:00Z",
+          },
+        ],
+      };
     } else if (method === "session/set_config_option") {
-      config[params.configId as string] = params.value;
-      result = { configOptions: [] };
+      const key = params.configId as string;
+      if (!VALUES[key]?.includes(params.value as string)) {
+        throw new Error(`no ${key} ${String(params.value)}`);
+      }
+      config[key] = params.value;
+      result = { configOptions: configOptions() };
     } else if (method === "session/prompt") {
       result = await prompt(params as never);
     } else if (method === "session/cancel") {

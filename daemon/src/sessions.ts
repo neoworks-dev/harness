@@ -4,6 +4,8 @@ import type {
   Agent,
   AgentSession,
   AgentUpdate,
+  ConfigCategory,
+  ConfigOption,
   ContextEvent,
   McpServer,
   NewSessionParams,
@@ -17,6 +19,9 @@ import { type FocusTarget, ToldState } from "./told.ts";
 export type { FocusTarget } from "./told.ts";
 
 export class NotFoundError extends Error {}
+
+/** A request that can't work as asked (the message says why). */
+export class BadRequestError extends Error {}
 
 interface QueuedInput {
   app: string;
@@ -80,6 +85,8 @@ export interface SessionManagerOptions {
    * undefined when there is none by that name. Its prompt() gets the task as text.
    */
   guest?: (sessionId: string, name: string) => AgentSession | undefined;
+  /** What the user chose for the agent in this session (model, effort…). */
+  settings?: (sessionId: string) => Partial<Record<ConfigCategory, string>>;
 }
 
 /** "/claude fix it" → claude, "fix it". */
@@ -133,6 +140,31 @@ export class SessionManager {
       rt.running = true;
       rt.drained = this.drain(sessionId, rt);
     }
+  }
+
+  /** The agent's settable options for this session (loads its agent session if needed). */
+  async configOptions(sessionId: string): Promise<ConfigOption[]> {
+    const agentSession = await this.agentSession(sessionId);
+    return agentSession.configOptions?.() ?? [];
+  }
+
+  /** Sets one for the session's following turns; rejects if the agent doesn't take it. */
+  async configure(sessionId: string, category: ConfigCategory, value: string): Promise<void> {
+    const agentSession = await this.agentSession(sessionId);
+    if (!agentSession.setConfigOption) {
+      throw new BadRequestError(`${this.agent.name} has no settings`);
+    }
+    try {
+      await agentSession.setConfigOption(category, value);
+    } catch (err) {
+      throw new BadRequestError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  private async agentSession(sessionId: string): Promise<AgentSession> {
+    const rt = this.runtime(sessionId);
+    rt.agentSession ??= await this.loadAgentSession(sessionId);
+    return rt.agentSession;
   }
 
   /** Cancels the running turn; queued inputs still run. */
@@ -224,8 +256,7 @@ export class SessionManager {
     const ended: TurnEnded = { type: "turn_ended", stopReason: "error" };
     let userLogged = false;
     try {
-      const agentSession = rt.agentSession ?? (await this.loadAgentSession(sessionId));
-      rt.agentSession = agentSession;
+      const agentSession = await this.agentSession(sessionId);
       this.announceConnectors(sessionId, rt);
       const pendingEvents = rt.pending.splice(0);
       this.store.append(sessionId, userMessage(input));
@@ -317,6 +348,8 @@ export class SessionManager {
     const mcpServers = this.options.mcpServers?.(sessionId) ?? [];
     const params: NewSessionParams = { sessionId, cwd: row.cwd, mcpServers };
     if (this.options.resolveAsset) params.resolveAsset = this.options.resolveAsset;
+    const settings = this.options.settings?.(sessionId);
+    if (settings && Object.keys(settings).length > 0) params.settings = settings;
     if (row.lastSeq === 0) return this.agent.newSession(params);
     const history = this.store.read(sessionId).map((r) => r.event);
     return this.agent.loadSession({ ...params, history });

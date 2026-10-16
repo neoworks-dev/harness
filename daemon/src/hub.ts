@@ -36,6 +36,8 @@ export interface HubParts {
   assets?: AssetStore;
   /** Runs a ui.action; rejects with NotFoundError/BadRequestError for impossible ones. */
   action?: (action: UiAction, from: string) => Promise<void>;
+  /** A command typed as input (/model…): its work, or undefined when the text isn't one. */
+  command?: (session: string, text: string) => Promise<void> | undefined;
 }
 
 export interface DaemonInfo {
@@ -175,6 +177,23 @@ export class Hub {
     }
   }
 
+  /** Acks a request when the work is done, or fails it with what went wrong. */
+  private settle(client: Client, id: string | undefined, work: Promise<void>): void {
+    work.then(
+      () => {
+        if (id !== undefined) this.send(client, { topic: "bus.ack", id });
+      },
+      (err: unknown) => {
+        if (err instanceof NotFoundError) this.fail(client, id, "not_found", err.message);
+        else if (err instanceof BadRequestError) this.fail(client, id, "bad_request", err.message);
+        else {
+          this.log.error(`request ${id ?? "-"}: ${String(err)}`);
+          this.fail(client, id, "internal", String(err));
+        }
+      },
+    );
+  }
+
   private handle(client: Client, msg: Envelope): void {
     switch (msg.topic) {
       case "bus.hello":
@@ -238,6 +257,12 @@ export class Hub {
       case "session.input": {
         const { session, app, text, images } = msg.payload;
         const { focus } = this.parts;
+        const command = this.parts.command?.(session, text);
+        if (command) {
+          if (!this.sessions.info(session)) throw new NotFoundError(`no session ${session}`);
+          this.settle(client, msg.id, command);
+          return;
+        }
         if (focus && text.trim() === "/clear") {
           if (!this.sessions.info(session)) throw new NotFoundError(`no session ${session}`);
           focus.clear(session);
@@ -306,16 +331,7 @@ export class Hub {
         if (!this.sessions.info(msg.payload.session)) {
           throw new NotFoundError(`no session ${msg.payload.session}`);
         }
-        const { id } = msg;
-        action(msg.payload, client.name ?? "ui").then(
-          () => this.send(client, { topic: "bus.ack", id }),
-          (err: unknown) => {
-            if (err instanceof NotFoundError) this.fail(client, id, "not_found", err.message);
-            else if (err instanceof BadRequestError)
-              this.fail(client, id, "bad_request", err.message);
-            else this.fail(client, id, "internal", String(err));
-          },
-        );
+        this.settle(client, msg.id, action(msg.payload, client.name ?? "ui"));
         return;
       }
       case "connectors.list":

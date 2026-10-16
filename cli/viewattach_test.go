@@ -118,12 +118,14 @@ func TestAttachViewButtons(t *testing.T) {
 	send("/c", "copy: asset://img-7f3") // no terminal to copy to: the text is printed
 	send("/x", "no button [x]")
 
-	// Anything that isn't a lone /key goes to the agent.
-	stdinW.Write([]byte("/usr/bin/env is missing\n//plain\n"))
-	eventually(t, "inputs", func() bool { return len(d.Inputs()) == 2 })
-	inputs := d.Inputs()
-	if inputs[0].Text != "/usr/bin/env is missing" || inputs[1].Text != "/plain" {
-		t.Errorf("inputs = %+v", inputs)
+	// Anything that isn't "/" and one character goes to the daemon.
+	want := []string{"/usr/bin/env is missing", "/plain", "/model", "/resume abc", "/mode pi plan"}
+	stdinW.Write([]byte("/usr/bin/env is missing\n//plain\n/model\n/resume abc\n/mode pi plan\n"))
+	eventually(t, "inputs", func() bool { return len(d.Inputs()) == len(want) })
+	for i, in := range d.Inputs() {
+		if in.Text != want[i] {
+			t.Errorf("input %d = %q, want %q", i, in.Text, want[i])
+		}
 	}
 
 	actions := d.Actions()
@@ -432,5 +434,26 @@ func TestInputCountsEchoedRows(t *testing.T) {
 	a.input(context.Background(), " ") // fits one row
 	if a.tailRows != 1 {
 		t.Errorf("tailRows %d, want 1", a.tailRows)
+	}
+}
+
+func TestIsCommand(t *testing.T) {
+	for line, want := range map[string]bool{
+		"/o":       true,
+		"/3":       true,
+		"/é":       true,
+		"/":        false,
+		"//":       false,
+		"//x":      false,
+		"/model":   false,
+		"/resume":  false,
+		"/o x":     false,
+		"/usr/bin": false,
+		"text":     false,
+		"/\xff":    false,
+	} {
+		if got := isCommand(line); got != want {
+			t.Errorf("isCommand(%q) = %v, want %v", line, got, want)
+		}
 	}
 }

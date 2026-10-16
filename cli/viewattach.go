@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"neoworks.dev/suite/renderers/tui"
@@ -419,8 +420,8 @@ func (a *viewAttachment) pollIdle(ctx context.Context) {
 	a.finish(1)
 }
 
-// input handles one line from stdin: a button (/key, or /help for the list)
-// or text for the agent.
+// input handles one line from stdin: a button (/key, or /help for the list),
+// a daemon command (/clear, /model, ...) or text for the agent.
 func (a *viewAttachment) input(ctx context.Context, line string) {
 	if a.tty && a.interactive {
 		// The terminal echoed the line below the tail; it is erased with it.
@@ -478,9 +479,16 @@ func (a *viewAttachment) clear(ctx context.Context) {
 	a.touch()
 }
 
-// isCommand tells "/o" from a message such as "/usr/bin/env is missing".
+// isCommand tells a button press such as "/o" from anything else starting with
+// a slash ("/model", "/usr/bin/env is missing"), which goes to the daemon.
+// Button keys are a single character; "//" is the escape, not a press.
 func isCommand(s string) bool {
-	return len(s) > 1 && s[0] == '/' && !strings.ContainsAny(s[1:], " \t/")
+	rest, ok := strings.CutPrefix(s, "/")
+	if !ok || rest == "/" {
+		return false
+	}
+	r, size := utf8.DecodeRuneInString(rest)
+	return size > 0 && size == len(rest) && r != utf8.RuneError && !unicode.IsSpace(r)
 }
 
 func (a *viewAttachment) send(ctx context.Context, text string) {
@@ -510,7 +518,7 @@ func itemName(it protocol.ViewItem) string {
 func (a *viewAttachment) help() {
 	it, btns, ok := a.lastWithButtons()
 	if !ok {
-		a.note("no buttons in this session yet; type text to talk to the agent, /clear for a new conversation")
+		a.note("no buttons in this session yet; type text to talk to the agent, /clear for a new conversation (also /model, /effort, /mode [harness] [value] and /resume)")
 		return
 	}
 	a.note("buttons of the latest item with any (%s); type /<key> to press one:", itemName(it))
@@ -521,7 +529,7 @@ func (a *viewAttachment) help() {
 		}
 		a.note("  /%s  %s  (%s)", b.Key, b.Label, what)
 	}
-	a.note("/clear starts a new conversation")
+	a.note("/clear starts a new conversation; /model, /effort, /mode [harness] [value] and /resume go to the daemon")
 }
 
 // press triggers the button with this key on the most recent item that has one.

@@ -268,6 +268,41 @@ export const examples: Record<string, Envelope> = {
       event: { type: "permission_resolved", id: "p1", option: "allow", by: "code-editor" },
     },
   },
+  "event-setting-changed": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 10,
+      ts: 1760565601000,
+      event: { type: "setting_changed", harness: "claude", option: "model", value: "sonnet" },
+    },
+  },
+  "event-choice": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 11,
+      ts: 1760565601100,
+      event: {
+        type: "choice",
+        id: "c1",
+        title: "Claude Code model (now: opus)",
+        options: [
+          { id: "sonnet", name: "Sonnet 5.5", description: "Efficient for routine tasks" },
+          { id: "haiku", name: "Haiku 5.5" },
+        ],
+      },
+    },
+  },
+  "event-choice-made": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 12,
+      ts: 1760565601200,
+      event: { type: "choice_made", id: "c1", option: "sonnet", by: "code-editor" },
+    },
+  },
   "event-tool-call": {
     topic: "session.events",
     payload: {

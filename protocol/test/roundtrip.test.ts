@@ -48,6 +48,9 @@ describe("protocol examples", () => {
       guest_turn: true,
       permission_request: true,
       permission_resolved: true,
+      setting_changed: true,
+      choice: true,
+      choice_made: true,
     };
     expect([...seen].sort()).toEqual(Object.keys(all).sort());
   });

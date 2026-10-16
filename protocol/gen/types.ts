@@ -450,7 +450,10 @@ export type SessionEvent =
   | ToolResult
   | GuestTurn
   | PermissionRequest
-  | PermissionResolved;
+  | PermissionResolved
+  | SettingChanged
+  | Choice
+  | ChoiceMade;
 
 export type SessionEventTag = SessionEvent["type"];
 
@@ -670,6 +673,40 @@ export interface PermissionResolved {
 
 export type PermissionOptionKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
 
+/** The user changed a harness setting for this session (/model, /effort, /mode). The last one per harness and option wins; new sessions start with the user's last choice. */
+export interface SettingChanged {
+  type: "setting_changed";
+  /** pi, claude, codex… */
+  harness: string;
+  option: SettingName;
+  value: string;
+}
+
+export type SettingName = "model" | "effort" | "mode";
+
+export interface ChoiceOption {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+/** The suite asks the user to pick one of several options (a model, a conversation to resume). Panes show them as buttons (action suite.choose {id, option}). */
+export interface Choice {
+  type: "choice";
+  id: string;
+  title: string;
+  options: ChoiceOption[];
+}
+
+/** The answer to a choice: the picked option, or none when it was dropped (the daemon restarted, or a newer choice replaced it). */
+export interface ChoiceMade {
+  type: "choice_made";
+  id: string;
+  option?: string;
+  /** App whose pane answered. */
+  by?: string;
+}
+
 /** The fixed component set. Apps combine these; they never add new ones. */
 export type Component =
   | CardComponent
@@ -799,7 +836,7 @@ export interface ProgressComponent {
 export interface ButtonComponent {
   type: "button";
   label: string;
-  /** app.tool, copy:<text> (client-side), or suite.permit {id, option} (answers a guest's permission_request). */
+  /** app.tool, copy:<text> (client-side), suite.permit {id, option} (answers a permission_request) or suite.choose {id, option} (answers a choice). */
   action: string;
   /** Arguments for the action. */
   args?: unknown;

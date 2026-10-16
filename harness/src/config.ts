@@ -6,7 +6,7 @@ import { getEnvApiKey } from "@mariozechner/pi-ai";
 import { isRecord } from "./util.ts";
 
 const DEFAULT_MODEL = "deepseek/deepseek-flash";
-const THINKING_LEVELS: readonly ThinkingLevel[] = [
+export const THINKING_LEVELS: readonly ThinkingLevel[] = [
   "off",
   "minimal",
   "low",
@@ -125,19 +125,26 @@ function readPiAuthKey(path: string, provider: string): string | undefined {
 
 /**
  * Provider env var (pi-ai) -> SUITE_API_KEY -> pi's auth file. Called per request so a key
- * added while the daemon runs is picked up.
+ * added while the daemon runs is picked up. `provider` defaults to the configured one; pass
+ * another when the session uses a model of a different provider.
  */
-export function resolveApiKey(config: HarnessConfig): string | undefined {
-  const fromEnv = getEnvApiKey(config.provider);
+export function resolveApiKey(
+  config: HarnessConfig,
+  provider: string = config.provider,
+): string | undefined {
+  const fromEnv = getEnvApiKey(provider);
   if (fromEnv) return fromEnv;
   if (config.apiKey) return config.apiKey;
-  return readPiAuthKey(config.piAuthPath, config.provider);
+  return readPiAuthKey(config.piAuthPath, provider);
 }
 
-export function missingApiKeyMessage(config: HarnessConfig): string {
-  const providerVar = `${config.provider.toUpperCase().replaceAll("-", "_")}_API_KEY`;
+export function missingApiKeyMessage(
+  config: HarnessConfig,
+  provider: string = config.provider,
+): string {
+  const providerVar = `${provider.toUpperCase().replaceAll("-", "_")}_API_KEY`;
   return (
-    `No API key for provider "${config.provider}". Set ${providerVar} or SUITE_API_KEY ` +
+    `No API key for provider "${provider}". Set ${providerVar} or SUITE_API_KEY ` +
     `in the daemon's environment.`
   );
 }

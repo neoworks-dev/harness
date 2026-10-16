@@ -40,6 +40,7 @@ interface Call {
 }
 
 type PermissionRequest = Extract<SessionEvent, { type: "permission_request" }>;
+type Choice = Extract<SessionEvent, { type: "choice" }>;
 
 const RESULT_REF = /\[result:([0-9a-f]+)\]/;
 
@@ -100,6 +101,7 @@ export class SessionView {
   /** Connector results handed to guests as [result:ref]. */
   private readonly results = new Map<string, { tool: string; rawOutput: unknown }>();
   private readonly permissions = new Map<string, PermissionRequest>();
+  private readonly choices = new Map<string, Choice>();
   private seq = 0;
 
   constructor(
@@ -171,6 +173,16 @@ export class SessionView {
         if (!request) return [];
         return [{ op: "set", item: this.permissionItem(request, event.option ?? null) }];
       }
+      case "choice":
+        this.choices.set(event.id, event);
+        return [{ op: "set", item: this.choiceItem(event) }];
+      case "choice_made": {
+        const choice = this.choices.get(event.id);
+        if (!choice) return [];
+        return [{ op: "set", item: this.choiceItem(choice, event.option ?? null) }];
+      }
+      case "setting_changed":
+        return [this.notice(`n${seq}`, `${event.harness} ${event.option}: ${event.value}`)];
       case "turn_ended": {
         if (event.stopReason === "end_turn") return [];
         const what = event.error ?? `stopped: ${event.stopReason.replace("_", " ")}`;
@@ -220,6 +232,38 @@ export class SessionView {
       label,
       state: allowed ? "done" : "failed",
       component: text(plain(what), { tone: "muted" }),
+    };
+  }
+
+  /** A choice: one button per option (with its description, if any) until one is picked. */
+  private choiceItem(choice: Choice, answer?: string | null): ViewItem {
+    const ref = `q-${choice.id}`;
+    if (answer === undefined) {
+      const rows: Component[] = choice.options.map((option, i) => {
+        const button: Component = {
+          type: "button",
+          label: option.name,
+          action: "suite.choose",
+          args: { id: choice.id, option: option.id },
+        };
+        if (i < 9) button.key = String(i + 1);
+        if (option.description === undefined) return button;
+        return {
+          type: "row",
+          gap: "s",
+          children: [button, text(plain(option.description), { tone: "muted" })],
+        };
+      });
+      const component: Component = { type: "stack", gap: "s", children: rows };
+      return { ref, kind: "tool", label: choice.title, state: "pending", component };
+    }
+    const option = choice.options.find((o) => o.id === answer);
+    return {
+      ref,
+      kind: "tool",
+      label: choice.title,
+      state: option ? "done" : "failed",
+      component: text(plain(option ? option.name : "Not answered."), { tone: "muted" }),
     };
   }
 

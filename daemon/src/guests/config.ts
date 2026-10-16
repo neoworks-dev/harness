@@ -1,8 +1,8 @@
 // Which guests exist and how they start. Defaults: Claude Code and Codex through their ACP
 // adapters (fetched by bunx on first use, pinned). `$XDG_CONFIG_HOME/suite/config.json` may set
-// `guests: {claude: {model, mode, permissions, command}, …}`; env overrides it:
-// SUITE_GUESTS=none (or a list like claude), SUITE_CLAUDE_MODEL, SUITE_CODEX_MODEL,
-// SUITE_GUEST_PERMISSIONS=ask|allow.
+// `guests: {claude: {title, command, permissions}, …}` (other names add guests); env overrides it:
+// SUITE_GUESTS=none (or a list like claude), SUITE_GUEST_PERMISSIONS=ask|allow. Model, effort and
+// mode are the user's choice per session (/model, /effort, /mode), not configured here.
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -60,15 +60,11 @@ export function loadGuestConfigs(
     if (Array.isArray(value.command) && value.command.every((c) => typeof c === "string")) {
       config.command = value.command;
     }
-    if (typeof value.model === "string") config.model = value.model;
-    if (typeof value.mode === "string") config.mode = value.mode;
     if (value.permissions !== undefined) {
       config.permissions = permissions(value.permissions, `config.json guests.${name}`);
     }
     if (config.command.length > 0) configs[name] = config;
   }
-  if (env.SUITE_CLAUDE_MODEL && configs.claude) configs.claude.model = env.SUITE_CLAUDE_MODEL;
-  if (env.SUITE_CODEX_MODEL && configs.codex) configs.codex.model = env.SUITE_CODEX_MODEL;
   if (env.SUITE_GUEST_PERMISSIONS) {
     const value = permissions(env.SUITE_GUEST_PERMISSIONS, "SUITE_GUEST_PERMISSIONS");
     for (const config of Object.values(configs)) config.permissions = value;

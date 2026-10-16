@@ -70,19 +70,27 @@ export interface FakeModel {
   streamFn: StreamFn;
   /** The messages sent to the model on each request. */
   requests: Message[][];
+  /** The model each request was made with. */
+  models: { provider: string; id: string }[];
+  /** The thinking level (reasoning option) of each request. */
+  reasoning: (string | undefined)[];
 }
 
 /** A model that answers request N with step N. */
 export function fakeModel(steps: Step[]): FakeModel {
   const requests: Message[][] = [];
-  const streamFn: StreamFn = (_model, context, options) => {
+  const models: FakeModel["models"] = [];
+  const reasoning: FakeModel["reasoning"] = [];
+  const streamFn: StreamFn = (model, context, options) => {
     requests.push(structuredClone(context.messages));
+    models.push({ provider: model.provider, id: model.id });
+    reasoning.push(options?.reasoning);
     const step = steps[requests.length - 1];
     if (!step) throw new Error(`unexpected model request #${requests.length}`);
     const message = typeof step === "function" ? step(context, options?.signal) : step;
     return streamMessage(message);
   };
-  return { streamFn, requests };
+  return { streamFn, requests, models, reasoning };
 }
 
 /** A model that never answers until the request is aborted. */
@@ -97,5 +105,5 @@ export function hangingModel(): FakeModel {
     });
     return stream;
   };
-  return { streamFn, requests };
+  return { streamFn, requests, models: [], reasoning: [] };
 }

@@ -195,7 +195,7 @@
         "label": { "type": "string" },
         "action": {
           "type": "string",
-          "description": "app.tool, copy:<text> (client-side), or suite.permit {id, option} (answers a guest's permission_request)."
+          "description": "app.tool, copy:<text> (client-side), suite.permit {id, option} (answers a permission_request) or suite.choose {id, option} (answers a choice)."
         },
         "args": { "description": "Arguments for the action." },
         "key": {

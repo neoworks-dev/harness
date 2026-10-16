@@ -14,7 +14,8 @@ interface Pending {
 }
 
 export class FakeAgent implements Agent {
-  readonly name = "fake";
+  constructor(readonly name = "fake") {}
+
   readonly created: NewSessionParams[] = [];
   readonly loaded: LoadSessionParams[] = [];
   readonly prompts: PromptParams[] = [];

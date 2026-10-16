@@ -1,0 +1,9 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 12,
+    "ts": 1760565601200,
+    "event": { "type": "choice_made", "id": "c1", "option": "sonnet", "by": "code-editor" }
+  }
+}

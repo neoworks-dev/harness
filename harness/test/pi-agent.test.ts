@@ -3,7 +3,13 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxToolCall } from "@mariozechner/pi-ai";
 import type { SessionEvent } from "@suite/protocol/types";
-import type { AgentSession, AgentUpdate, PromptResult } from "../src/agent.ts";
+import type {
+  AgentSession,
+  AgentUpdate,
+  ConfigCategory,
+  ConfigOption,
+  PromptResult,
+} from "../src/agent.ts";
 import { createPiAgent } from "../src/pi-agent.ts";
 import { SYSTEM_PROMPT } from "../src/system-prompt.ts";
 import { fakeModel, hangingModel, reply, TEST_CONFIG, type FakeModel } from "./fake-model.ts";
@@ -296,4 +302,141 @@ test("cancel during a bash command stops it and ends the turn cancelled", async 
   const { result } = await running;
   expect(result.stopReason).toBe("cancelled");
   expect(Date.now() - started).toBeLessThan(3000);
+});
+
+async function sessionWith(
+  model: FakeModel,
+  settings?: Parameters<ReturnType<typeof createPiAgent>["newSession"]>[0]["settings"],
+  config = TEST_CONFIG,
+): Promise<AgentSession> {
+  const agent = createPiAgent({ config, streamFn: model.streamFn });
+  return agent.newSession({ sessionId: "s1", cwd: await tempDir(), mcpServers: [], settings });
+}
+
+const optionOf = (session: AgentSession, category: string): ConfigOption | undefined =>
+  session.configOptions?.().find((option) => option.category === category);
+
+function setOption(session: AgentSession, category: ConfigCategory, value: string): Promise<void> {
+  if (!session.setConfigOption) throw new Error("the session has no setConfigOption");
+  return session.setConfigOption(category, value);
+}
+
+test("settings are applied when the session is created", async () => {
+  const model = fakeModel([reply("ok")]);
+  const session = await sessionWith(model, {
+    model: "deepseek/deepseek-v4-pro",
+    thought_level: "high",
+  });
+  expect(optionOf(session, "model")?.current).toBe("deepseek/deepseek-v4-pro");
+  expect(optionOf(session, "thought_level")?.current).toBe("high");
+  await run(session, "hi");
+  expect(model.models[0]).toEqual({ provider: "deepseek", id: "deepseek-v4-pro" });
+});
+
+test("a bare model id means the configured provider", async () => {
+  const model = fakeModel([reply("ok")]);
+  const session = await sessionWith(model, { model: "deepseek-v4-pro" });
+  expect(optionOf(session, "model")?.current).toBe("deepseek/deepseek-v4-pro");
+});
+
+test("invalid stored settings fall back to the defaults", async () => {
+  const warnings: string[] = [];
+  const logger = { warn: (message: string) => warnings.push(message) } as never;
+  const agent = createPiAgent({ config: TEST_CONFIG, logger });
+  for (const settings of [
+    { model: "nope/model", thought_level: "ludicrous" },
+    { model: "deepseek/" },
+  ]) {
+    const session = await agent.newSession({
+      sessionId: "s1",
+      cwd: await tempDir(),
+      mcpServers: [],
+      settings,
+    });
+    expect(optionOf(session, "model")?.current).toBe("deepseek/deepseek-v4-flash");
+    expect(optionOf(session, "thought_level")?.current).toBe("off");
+  }
+  expect(warnings.length).toBe(3);
+});
+
+test("configOptions lists the provider's models and the thinking levels", async () => {
+  const session = await sessionWith(fakeModel([]));
+  const model = optionOf(session, "model");
+  expect(model?.current).toBe("deepseek/deepseek-v4-flash");
+  expect(model?.values).toContainEqual({
+    value: "deepseek/deepseek-v4-pro",
+    name: expect.any(String),
+  });
+  expect(optionOf(session, "thought_level")).toEqual({
+    category: "thought_level",
+    current: "off",
+    values: ["off", "minimal", "low", "medium", "high", "xhigh"].map((v) => ({
+      value: v,
+      name: v,
+    })),
+  });
+  expect(optionOf(session, "mode")).toBeUndefined();
+});
+
+test("configOptions includes a current model the registry does not know", async () => {
+  const session = await sessionWith(fakeModel([]), { model: "deepseek/deepseek-v9" });
+  const model = optionOf(session, "model");
+  expect(model?.current).toBe("deepseek/deepseek-v9");
+  expect(model?.values.map((v) => v.value)).toContain("deepseek/deepseek-v9");
+});
+
+test("setConfigOption changes the model and thinking level for the next prompt", async () => {
+  const model = fakeModel([reply("one"), reply("two")]);
+  const session = await sessionWith(model);
+  await run(session, "a");
+  await setOption(session, "model", "deepseek/deepseek-v4-pro");
+  await setOption(session, "thought_level", "medium");
+  expect(optionOf(session, "model")?.current).toBe("deepseek/deepseek-v4-pro");
+  expect(optionOf(session, "thought_level")?.current).toBe("medium");
+  await run(session, "b");
+  expect(model.models.map((m) => m.id)).toEqual(["deepseek-v4-flash", "deepseek-v4-pro"]);
+  expect(model.reasoning[1]).toBe("medium");
+});
+
+test("the API key follows the model's provider", async () => {
+  const config = { ...TEST_CONFIG, apiKey: undefined, provider: "openai", modelId: "gpt-4o" };
+  const saved = { deepseek: process.env.DEEPSEEK_API_KEY, openai: process.env.OPENAI_API_KEY };
+  process.env.DEEPSEEK_API_KEY = "deepseek-key";
+  delete process.env.OPENAI_API_KEY;
+  try {
+    const model = fakeModel([reply("ok")]);
+    const session = await sessionWith(model, undefined, config);
+    await setOption(session, "model", "deepseek/deepseek-v4-pro");
+    const { result } = await run(session, "hi");
+    expect(result).toEqual({ stopReason: "end_turn" });
+    await setOption(session, "model", "gpt-4o");
+    const missing = await run(session, "hi");
+    expect(missing.result.error).toContain('"openai"');
+  } finally {
+    if (saved.deepseek === undefined) delete process.env.DEEPSEEK_API_KEY;
+    else process.env.DEEPSEEK_API_KEY = saved.deepseek;
+    if (saved.openai !== undefined) process.env.OPENAI_API_KEY = saved.openai;
+  }
+});
+
+async function rejection(promise: Promise<void>): Promise<string> {
+  try {
+    await promise;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return "";
+}
+
+test("setConfigOption rejects values it can't use", async () => {
+  const session = await sessionWith(fakeModel([]));
+  expect(await rejection(setOption(session, "thought_level", "max"))).toMatch(
+    /Unknown thinking level "max".*off, minimal/,
+  );
+  expect(await rejection(setOption(session, "model", "nope/x"))).toContain(
+    'Unknown model provider "nope"',
+  );
+  expect(await rejection(setOption(session, "mode", "plan"))).toContain("pi has no mode setting");
+  expect(optionOf(session, "model")?.current).toBe("deepseek/deepseek-v4-flash");
+  expect(optionOf(session, "thought_level")?.current).toBe("off");
 });

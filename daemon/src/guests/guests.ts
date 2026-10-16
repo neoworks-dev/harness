@@ -2,7 +2,14 @@
 // one guest session per suite session and guest, and streams what they do into the suite
 // session. The main agent reaches them with delegate; the user with "/claude task".
 import { extname } from "node:path";
-import type { AgentSession, AgentUpdate, McpServer, PromptResult } from "@suite/harness/agent";
+import type {
+  AgentSession,
+  AgentUpdate,
+  ConfigCategory,
+  ConfigOption,
+  McpServer,
+  PromptResult,
+} from "@suite/harness/agent";
 import { formatPrompt } from "@suite/harness/context-events";
 import type {
   PermissionOption,
@@ -12,6 +19,7 @@ import type {
   ToolCallStatus,
   ToolKind,
 } from "@suite/protocol/types";
+import type { Asker, PermissionRequest } from "../asker.ts";
 import { BadRequestError } from "../focus.ts";
 import type { ConnectorSnapshot } from "../gateway/registry.ts";
 import type { Logger } from "../log.ts";
@@ -26,10 +34,6 @@ export interface GuestConfig {
   /** The ACP adapter. */
   command: string[];
   env?: Record<string, string>;
-  /** Value for the adapter's "model" config option, e.g. haiku. */
-  model?: string;
-  /** Value for its "mode" config option (permission mode). */
-  mode?: string;
   /** ask: permission requests show as buttons in the chat; allow: the first allow option wins. */
   permissions: "ask" | "allow";
 }
@@ -49,6 +53,17 @@ export interface GuestManagerOptions {
   mcpServers: (session: string, guest: string) => McpServer[];
   connectors: () => ConnectorSnapshot[];
   focus: (session: string) => FocusTarget | undefined;
+  /** What the user chose for this guest in this session (model, effort, mode). */
+  settings: (session: string, guest: string) => Partial<Record<ConfigCategory, string>>;
+  /** Asks the user (permission requests). */
+  asker: Asker;
+}
+
+/** A conversation the adapter has stored (session/list), for /resume. */
+export interface StoredConversation {
+  id: string;
+  title?: string;
+  updatedAt?: string;
 }
 
 interface Run {
@@ -58,8 +73,8 @@ interface Run {
   messageKind?: "agent_message_chunk" | "agent_thought_chunk";
   /** Text of the agent's messages, by id, in order. */
   messages: Map<string, string>;
-  /** Permission requests waiting for an answer. */
-  permissions: Set<string>;
+  /** Aborted when the run ends: drops its open permission requests. */
+  done: AbortController;
   /** The adapter's own title of each tool call, to describe it again once its input arrives. */
   titles: Map<string, string>;
 }
@@ -73,13 +88,8 @@ interface Guest {
   /** One prompt at a time per guest. */
   queue: Promise<unknown>;
   run?: Run;
-}
-
-interface PendingPermission {
-  session: string;
-  guest: Guest;
-  options: PermissionOption[];
-  resolve: (optionId: string | undefined) => void;
+  /** The adapter's config options (session/new, set_config_option), by ACP config id. */
+  config: Map<string, ConfigOption>;
 }
 
 const KINDS = new Set<string>([
@@ -165,6 +175,44 @@ export function describeCall(title: string, rawInput: unknown): { title: string;
   return { title: plain };
 }
 
+/** ACP config options (flat or grouped selects) → ours, keyed by config id. */
+export function configOptionsOf(value: unknown): Map<string, ConfigOption> {
+  const out = new Map<string, ConfigOption>();
+  if (!Array.isArray(value)) return out;
+  for (const option of value.filter(isRecord)) {
+    const id = str(option.id);
+    const category = str(option.category);
+    if (
+      id === undefined ||
+      (category !== "model" && category !== "thought_level" && category !== "mode")
+    ) {
+      continue;
+    }
+    const values: ConfigOption["values"] = [];
+    // Options may come grouped ({group, options: […]}).
+    const listed: unknown[] = [];
+    if (Array.isArray(option.options)) listed.push(...option.options);
+    const flat: unknown[] = [];
+    for (const o of listed) {
+      if (isRecord(o) && Array.isArray(o.options)) flat.push(...o.options);
+      else flat.push(o);
+    }
+    for (const entry of flat.filter(isRecord)) {
+      const v = str(entry.value);
+      if (v === undefined) continue;
+      const item: ConfigOption["values"][number] = { value: v, name: str(entry.name) ?? v };
+      const description = str(entry.description);
+      if (description !== undefined) item.description = description;
+      values.push(item);
+    }
+    const parsed: ConfigOption = { category, values };
+    const current = str(option.currentValue);
+    if (current !== undefined) parsed.current = current;
+    out.set(id, parsed);
+  }
+  return out;
+}
+
 async function imageBlocks(paths: string[] | undefined): Promise<Record<string, unknown>[]> {
   const blocks: Record<string, unknown>[] = [];
   for (const path of paths ?? []) {
@@ -179,7 +227,6 @@ async function imageBlocks(paths: string[] | undefined): Promise<Record<string, 
 export class GuestManager {
   private readonly guests = new Map<string, Promise<Guest>>();
   private readonly byAcpSession = new Map<string, Guest>();
-  private readonly permissions = new Map<string, PendingPermission>();
 
   constructor(private readonly options: GuestManagerOptions) {}
 
@@ -189,6 +236,10 @@ export class GuestManager {
 
   has(name: string): boolean {
     return Object.hasOwn(this.options.configs, name);
+  }
+
+  title(name: string): string {
+    return this.options.configs[name]?.title ?? name;
   }
 
   /**
@@ -240,26 +291,77 @@ export class GuestManager {
     };
   }
 
-  /** A button press on a permission_request (action suite.permit). */
-  permit(session: string, id: string, option: string, by: string): void {
-    const pending = this.permissions.get(id);
-    if (!pending || pending.session !== session) {
-      throw new BadRequestError(`no open permission request ${id}`);
+  /** The guest's settable options (starts it for this session if it isn't running). */
+  async configOptions(session: string, name: string): Promise<ConfigOption[]> {
+    const guest = await this.guest(session, name);
+    return [...guest.config.values()];
+  }
+
+  /**
+   * Sets an option on this session's guest (starting it if needed). Rejects with the adapter's
+   * message when it doesn't take the value.
+   */
+  async configure(
+    session: string,
+    name: string,
+    category: ConfigCategory,
+    value: string,
+  ): Promise<void> {
+    const guest = await this.guest(session, name);
+    await this.setOption(guest, category, value);
+  }
+
+  /** Conversations the guest has stored for this directory, newest first (session/list). */
+  async list(name: string, cwd: string): Promise<StoredConversation[]> {
+    const conn = this.spawn(name, cwd);
+    try {
+      await this.initialize(conn);
+      const listed = await conn.request("session/list", { cwd });
+      const out: StoredConversation[] = [];
+      if (!isRecord(listed) || !Array.isArray(listed.sessions)) return out;
+      const sessions: unknown[] = listed.sessions;
+      for (const entry of sessions.filter(isRecord)) {
+        const id = str(entry.sessionId);
+        if (id === undefined) continue;
+        const item: StoredConversation = { id };
+        const title = str(entry.title);
+        const updatedAt = str(entry.updatedAt);
+        if (title !== undefined) item.title = title;
+        if (updatedAt !== undefined) item.updatedAt = updatedAt;
+        out.push(item);
+      }
+      return out;
+    } finally {
+      conn.kill();
     }
-    if (!pending.options.some((o) => o.id === option)) {
-      throw new BadRequestError(`permission request ${id} has no option ${option}`);
+  }
+
+  /** Continues a stored conversation as this session's guest, replacing the running one. */
+  async resume(session: string, name: string, conversation: string): Promise<void> {
+    const key = `${session}\0${name}`;
+    const running = this.guests.get(key);
+    this.guests.delete(key);
+    if (running) {
+      const guest = await running.catch(() => undefined);
+      if (guest) {
+        this.byAcpSession.delete(guest.acpSession);
+        guest.conn.kill();
+      }
     }
-    this.answer(id, option, by);
+    const resumed = this.start(session, name, conversation);
+    this.guests.set(key, resumed);
+    resumed.catch(() => this.guests.delete(key));
+    await resumed;
   }
 
   shutdown(): void {
-    for (const id of [...this.permissions.keys()]) this.answer(id, undefined);
     for (const guest of this.byAcpSession.values()) guest.conn.kill();
     this.guests.clear();
     this.byAcpSession.clear();
   }
 
   private guest(session: string, name: string): Promise<Guest> {
+    if (!this.has(name)) return Promise.reject(new BadRequestError(`no guest named ${name}`));
     const key = `${session}\0${name}`;
     let guest = this.guests.get(key);
     if (!guest) {
@@ -270,63 +372,105 @@ export class GuestManager {
     return guest;
   }
 
-  private async start(session: string, name: string): Promise<Guest> {
+  private spawn(name: string, cwd: string): AcpConnection {
     const config = this.options.configs[name];
     if (!config) throw new NotFoundError(`no guest ${name}`);
-    const { log } = this.options;
-    const cwd = this.options.cwd(session);
-    let guest: Guest | undefined;
-    const conn = AcpConnection.spawn({
+    return AcpConnection.spawn({
       command: config.command,
       cwd,
       env: config.env,
       onNotification: (method, params) => this.onNotification(method, params),
       onRequest: (method, params) => this.onRequest(method, params),
     });
+  }
+
+  private async initialize(conn: AcpConnection): Promise<void> {
+    await conn.request("initialize", {
+      protocolVersion: 1,
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+      clientInfo: { name: "suite", version: "0.6.0" },
+    });
+  }
+
+  /** Starts the adapter and a new conversation, or resumes a stored one. */
+  private async start(session: string, name: string, resume?: string): Promise<Guest> {
+    const { log } = this.options;
+    const cwd = this.options.cwd(session);
+    let guest: Guest | undefined;
+    const conn = this.spawn(name, cwd);
     void conn.exited.then((code) => {
       log.info(`${name} for ${session} exited (${code})`);
-      this.guests.delete(`${session}\0${name}`);
-      if (guest) this.byAcpSession.delete(guest.acpSession);
+      if (!guest) return;
+      this.byAcpSession.delete(guest.acpSession);
+      const key = `${session}\0${name}`;
+      // Only if it's still the current one (a resume replaces it).
+      void this.guests.get(key)?.then((current) => current === guest && this.guests.delete(key));
     });
     try {
-      await conn.request("initialize", {
-        protocolVersion: 1,
-        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-        clientInfo: { name: "suite", version: "0.6.0" },
-      });
+      await this.initialize(conn);
       const mcpServers = this.options
         .mcpServers(session, name)
         .map((server) => ({ type: "http", ...server }));
-      const created = await conn.request("session/new", {
+      const params: Record<string, unknown> = {
         cwd,
         mcpServers,
         // Both adapters append this to their own system prompt.
         _meta: { jetbrains: { air: { customInstructions: GUEST_PROMPT } } },
-      });
-      const acpSession = isRecord(created) ? str(created.sessionId) : undefined;
+      };
+      if (resume !== undefined) params.sessionId = resume;
+      const created = await conn.request(
+        resume === undefined ? "session/new" : "session/resume",
+        params,
+      );
+      const acpSession = resume ?? (isRecord(created) ? str(created.sessionId) : undefined);
       if (acpSession === undefined) throw new Error("session/new returned no sessionId");
-      guest = { name, session, conn, acpSession, told: new ToldState(), queue: Promise.resolve() };
+      const config = configOptionsOf(isRecord(created) ? created.configOptions : undefined);
+      guest = {
+        name,
+        session,
+        conn,
+        acpSession,
+        told: new ToldState(),
+        queue: Promise.resolve(),
+        config,
+      };
       this.byAcpSession.set(acpSession, guest);
-      for (const [configId, value] of [
-        ["model", config.model],
-        ["mode", config.mode],
-      ] as const) {
-        if (value === undefined) continue;
+      // Only what the user chose: everything else stays the guest's own default.
+      for (const [category, value] of Object.entries(this.options.settings(session, name))) {
         try {
-          await conn.request("session/set_config_option", {
-            sessionId: acpSession,
-            configId,
-            value,
-          });
+          await this.setOption(guest, category as ConfigCategory, value);
         } catch (err) {
-          log.warn(`${name}: setting ${configId} to ${value} failed: ${errorText(err)}`);
+          log.warn(`${name}: setting ${category} to ${value} failed: ${errorText(err)}`);
         }
       }
-      log.info(`${name} started for ${session} (${acpSession})`);
+      log.info(
+        `${name} ${resume === undefined ? "started" : "resumed"} for ${session} (${acpSession})`,
+      );
       return guest;
     } catch (err) {
       conn.kill();
       throw err;
+    }
+  }
+
+  private async setOption(guest: Guest, category: ConfigCategory, value: string): Promise<void> {
+    const entry = [...guest.config].find(([, option]) => option.category === category);
+    if (!entry) {
+      const name = category === "thought_level" ? "effort" : category;
+      throw new BadRequestError(`${this.title(guest.name)} has no ${name} setting`);
+    }
+    const [configId, option] = entry;
+    try {
+      const result = await guest.conn.request("session/set_config_option", {
+        sessionId: guest.acpSession,
+        configId,
+        value,
+      });
+      const updated = configOptionsOf(isRecord(result) ? result.configOptions : undefined);
+      if (updated.size > 0) guest.config = updated;
+      else option.current = value;
+    } catch (err) {
+      throw new BadRequestError(`${this.title(guest.name)}: ${errorText(err)}`);
     }
   }
 
@@ -338,7 +482,7 @@ export class GuestManager {
     const run: Run = {
       emit: opts.emit,
       messages: new Map(),
-      permissions: new Set(),
+      done: new AbortController(),
       titles: new Map(),
     };
     const text = (): string => [...run.messages.values()].at(-1)?.trim() ?? "";
@@ -347,7 +491,7 @@ export class GuestManager {
     for (const event of events) guest.told.apply(event);
     const onAbort = (): void => {
       guest.conn.notify("session/cancel", { sessionId: guest.acpSession });
-      for (const id of run.permissions) this.answer(id, undefined);
+      run.done.abort();
     };
     opts.signal?.addEventListener("abort", onAbort);
     guest.run = run;
@@ -369,11 +513,10 @@ export class GuestManager {
       return { stopReason: "error", error: `${guest.name}: ${errorText(err)}`, text: text() };
     } finally {
       opts.signal?.removeEventListener("abort", onAbort);
-      for (const id of run.permissions) this.answer(id, undefined);
+      run.done.abort();
       guest.run = undefined;
     }
   }
-
   private onNotification(method: string, params: unknown): void {
     if (method !== "session/update" || !isRecord(params) || !isRecord(params.update)) return;
     const guest = this.byAcpSession.get(str(params.sessionId) ?? "");
@@ -454,21 +597,15 @@ export class GuestManager {
       if (allow) return { outcome: { outcome: "selected", optionId: allow.id } };
     }
     const call: Record<string, unknown> = Object.assign({}, params.toolCall);
-    const id = `p_${crypto.randomUUID().slice(0, 8)}`;
-    const optionId = await new Promise<string | undefined>((resolve) => {
-      this.permissions.set(id, { session: guest.session, guest, options, resolve });
-      guest.run?.permissions.add(id);
-      const request: SessionEvent = {
-        type: "permission_request",
-        id,
-        agent: guest.name,
-        title: describeCall(str(call.title) ?? "use a tool", call.rawInput).title,
-        options,
-      };
-      const toolCallId = str(call.toolCallId);
-      if (toolCallId !== undefined) request.toolCallId = `${guest.name}:${toolCallId}`;
-      this.options.append(guest.session, request);
-    });
+    const request: Omit<PermissionRequest, "id"> = {
+      type: "permission_request",
+      agent: guest.name,
+      title: describeCall(str(call.title) ?? "use a tool", call.rawInput).title,
+      options,
+    };
+    const toolCallId = str(call.toolCallId);
+    if (toolCallId !== undefined) request.toolCallId = `${guest.name}:${toolCallId}`;
+    const optionId = await this.options.asker.ask(guest.session, request, guest.run.done.signal);
     return optionId === undefined ? cancelled : { outcome: { outcome: "selected", optionId } };
   }
 
@@ -484,18 +621,5 @@ export class GuestManager {
       out.push({ id, name: str(o.name) ?? id, kind: kind as PermissionOption["kind"] });
     }
     return out;
-  }
-
-  /** Settles a permission request: the picked option, or none (cancelled). */
-  private answer(id: string, option: string | undefined, by?: string): void {
-    const pending = this.permissions.get(id);
-    if (!pending) return;
-    this.permissions.delete(id);
-    pending.guest.run?.permissions.delete(id);
-    const event: SessionEvent = { type: "permission_resolved", id };
-    if (option !== undefined) event.option = option;
-    if (by !== undefined) event.by = by;
-    this.options.append(pending.session, event);
-    pending.resolve(option);
   }
 }

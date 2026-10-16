@@ -1,8 +1,7 @@
 // Wires the daemon's parts together. Used by main.ts and by tests (startTestDaemon).
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import type { Agent, AgentUpdate, McpServer } from "@suite/harness/agent";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { Agent, McpServer } from "@suite/harness/agent";
 import type { Theme } from "@suite/protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
 import { ActionRunner } from "./actions.ts";
@@ -12,7 +11,11 @@ import { ViewManager } from "./view/views.ts";
 import { Gateway } from "./gateway/gateway.ts";
 import { mcpHandler } from "./gateway/mcp-server.ts";
 import { ConnectorRegistry } from "./gateway/registry.ts";
+import { createDelegate } from "./guests/delegate.ts";
 import { type GuestConfig, GuestManager } from "./guests/guests.ts";
+import { Asker } from "./asker.ts";
+import { Commands } from "./commands.ts";
+import { Settings } from "./settings.ts";
 import { type ConnectUpstream, connectMcp } from "./gateway/upstream.ts";
 import { Hub, PROTOCOL_VERSION } from "./hub.ts";
 import type { Logger } from "./log.ts";
@@ -50,6 +53,8 @@ export interface Daemon {
   assets: AssetStore;
   guests: GuestManager;
   actions: ActionRunner;
+  commands: Commands;
+  settings: Settings;
   /** Cancels running turns (waiting up to timeoutMs), closes listeners and the database. */
   stop(timeoutMs?: number): Promise<void>;
 }
@@ -73,6 +78,10 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     if (guest !== undefined) headers.push({ name: "x-suite-guest", value: guest });
     return [{ name: "suite", url: `${url}/mcp`, headers }];
   };
+  const settings = new Settings(store);
+  const asker = new Asker((session, event) => {
+    store.append(session, event);
+  });
   const guests = new GuestManager({
     configs: options.guests ?? {},
     log,
@@ -83,6 +92,8 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     mcpServers,
     connectors: () => connectors.snapshot(),
     focus: (session) => focus?.focusOf(session),
+    settings: (session, guest) => settings.get(session, guest),
+    asker,
   });
   const gateway = new Gateway(connectors, {
     log,
@@ -90,26 +101,15 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     recordResult: (session, result) => {
       store.append(session, result);
     },
-    delegate: async (session, { agent, task }, signal) => {
-      if (!guests.has(agent)) {
-        const names = guests.names();
-        const known = names.length > 0 ? names.join(", ") : "none are configured";
-        return {
-          content: [{ type: "text", text: `No guest named ${agent} (${known}).` }],
-          isError: true,
-        };
-      }
-      const emit = (update: AgentUpdate): void => {
-        store.append(session, update);
-      };
-      const result = await guests.run(session, agent, task, { emit, signal });
-      const lines = [result.text || "(no reply)"];
-      if (result.stopReason !== "end_turn")
-        lines.push(`[${agent} stopped: ${result.error ?? result.stopReason}]`);
-      const out: CallToolResult = { content: [{ type: "text", text: lines.join("\n\n") }] };
-      if (result.stopReason === "error" || result.stopReason === "cancelled") out.isError = true;
-      return out;
-    },
+    delegate: createDelegate({
+      guests,
+      asker,
+      settings: (session, guest) => settings.get(session, guest),
+      append: (session, event) => {
+        store.append(session, event);
+      },
+      main: agent.name,
+    }),
     focus: (app, session) => {
       try {
         focus?.move({ app, session }, "agent");
@@ -127,11 +127,13 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     focus: (sessionId) => focus?.focusOf(sessionId),
     mcpServers: (sessionId) => mcpServers(sessionId),
     guest: (sessionId, name) => guests.turnSession(sessionId, name),
+    settings: (sessionId) => settings.get(sessionId, agent.name),
   });
   sessions.recoverInterruptedTurns();
   focus = new FocusManager(store, sessions, connectors, log);
   const views = new ViewManager(store, (tool) => connectors.template(tool), log);
-  const actions = new ActionRunner({ store, sessions, connectors, gateway, views, guests });
+  const actions = new ActionRunner({ store, sessions, connectors, gateway, views, asker });
+  const commands = new Commands({ sessions, guests, settings, asker, log, main: agent.name });
   const hub = new Hub(
     store,
     sessions,
@@ -144,6 +146,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       theme: options.theme ?? defaultTheme,
       assets,
       action: (action, from) => actions.run(action, from),
+      command: (session, text) => commands.run(session, text),
     },
   );
   // The agent's write/edit results carry diffs; each one means a file changed on disk.
@@ -178,9 +181,12 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     assets,
     guests,
     actions,
+    commands,
+    settings,
     async stop(timeoutMs = 2000) {
       await started.stop();
       await sessions.shutdown(timeoutMs);
+      asker.dropAll();
       guests.shutdown();
       await connectors.close();
       store.close();

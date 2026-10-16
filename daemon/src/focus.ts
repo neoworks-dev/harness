@@ -3,10 +3,10 @@
 import type { AgentFocus, FocusReason } from "@suite/protocol/types";
 import type { ConnectorRegistry } from "./gateway/registry.ts";
 import type { Logger } from "./log.ts";
-import { NotFoundError, type SessionManager } from "./sessions.ts";
+import { BadRequestError, NotFoundError, type SessionManager } from "./sessions.ts";
 import type { SessionStore } from "./store.ts";
 
-export class BadRequestError extends Error {}
+export { BadRequestError } from "./sessions.ts";
 
 const CURRENT_SESSION = "current_session";
 

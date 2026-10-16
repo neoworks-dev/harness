@@ -1107,6 +1107,9 @@ pub enum SessionEvent {
     GuestTurn(GuestTurn),
     PermissionRequest(PermissionRequest),
     PermissionResolved(PermissionResolved),
+    SettingChanged(SettingChanged),
+    Choice(Choice),
+    ChoiceMade(ChoiceMade),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -1170,6 +1173,17 @@ impl Serialize for SessionEvent {
                 "permission_resolved",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            SessionEvent::SettingChanged(v) => (
+                "setting_changed",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            SessionEvent::Choice(v) => {
+                ("choice", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            SessionEvent::ChoiceMade(v) => (
+                "choice_made",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             SessionEvent::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -1225,6 +1239,15 @@ impl<'de> Deserialize<'de> for SessionEvent {
                 .map_err(D::Error::custom),
             "permission_resolved" => serde_json::from_value(value)
                 .map(SessionEvent::PermissionResolved)
+                .map_err(D::Error::custom),
+            "setting_changed" => serde_json::from_value(value)
+                .map(SessionEvent::SettingChanged)
+                .map_err(D::Error::custom),
+            "choice" => serde_json::from_value(value)
+                .map(SessionEvent::Choice)
+                .map_err(D::Error::custom),
+            "choice_made" => serde_json::from_value(value)
+                .map(SessionEvent::ChoiceMade)
                 .map_err(D::Error::custom),
             _ => Ok(SessionEvent::Unknown(value)),
         }
@@ -1312,6 +1335,24 @@ impl From<PermissionRequest> for SessionEvent {
 impl From<PermissionResolved> for SessionEvent {
     fn from(v: PermissionResolved) -> Self {
         SessionEvent::PermissionResolved(v)
+    }
+}
+
+impl From<SettingChanged> for SessionEvent {
+    fn from(v: SettingChanged) -> Self {
+        SessionEvent::SettingChanged(v)
+    }
+}
+
+impl From<Choice> for SessionEvent {
+    fn from(v: Choice) -> Self {
+        SessionEvent::Choice(v)
+    }
+}
+
+impl From<ChoiceMade> for SessionEvent {
+    fn from(v: ChoiceMade) -> Self {
+        SessionEvent::ChoiceMade(v)
     }
 }
 
@@ -1744,6 +1785,68 @@ pub enum PermissionOptionKind {
     RejectAlways,
 }
 
+/// The user changed a harness setting for this session (/model, /effort, /mode). The last one per harness and option wins; new sessions start with the user's last choice.
+/// Tagged `type: "setting_changed"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SettingChanged {
+    /// pi, claude, codex…
+    #[serde(rename = "harness")]
+    pub harness: String,
+    #[serde(rename = "option")]
+    pub option: SettingName,
+    #[serde(rename = "value")]
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SettingName {
+    #[serde(rename = "model")]
+    Model,
+    #[serde(rename = "effort")]
+    Effort,
+    #[serde(rename = "mode")]
+    Mode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChoiceOption {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(
+        rename = "description",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub description: Option<String>,
+}
+
+/// The suite asks the user to pick one of several options (a model, a conversation to resume). Panes show them as buttons (action suite.choose {id, option}).
+/// Tagged `type: "choice"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Choice {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "title")]
+    pub title: String,
+    #[serde(rename = "options")]
+    pub options: Vec<ChoiceOption>,
+}
+
+/// The answer to a choice: the picked option, or none when it was dropped (the daemon restarted, or a newer choice replaced it).
+/// Tagged `type: "choice_made"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChoiceMade {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "option", default, skip_serializing_if = "Option::is_none")]
+    pub option: Option<String>,
+    /// App whose pane answered.
+    #[serde(rename = "by", default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+}
+
 /// The fixed component set. Apps combine these; they never add new ones.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Component {
@@ -2135,7 +2238,7 @@ pub struct ProgressComponent {
 pub struct ButtonComponent {
     #[serde(rename = "label")]
     pub label: String,
-    /// app.tool, copy:<text> (client-side), or suite.permit {id, option} (answers a guest's permission_request).
+    /// app.tool, copy:<text> (client-side), suite.permit {id, option} (answers a permission_request) or suite.choose {id, option} (answers a choice).
     #[serde(rename = "action")]
     pub action: String,
     /// Arguments for the action.

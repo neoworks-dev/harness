@@ -17,7 +17,6 @@ afterEach(async () => {
 const FAKE: GuestConfig = {
   title: "Fake",
   command: ["bun", join(import.meta.dir, "fake-acp-agent.ts")],
-  model: "small",
   permissions: "ask",
 };
 
@@ -32,13 +31,31 @@ const greet: AppTool = {
 };
 
 async function setup(
-  options: { agent?: FakeAgent; guest?: Partial<GuestConfig> } = {},
+  options: {
+    agent?: FakeAgent;
+    guest?: Partial<GuestConfig>;
+    guests?: Record<string, GuestConfig>;
+    /** How delegate's "start a guest?" question is answered; manual: by the test. */
+    gate?: string;
+  } = {},
 ): Promise<{ daemon: TestDaemon; session: string }> {
   const daemon = await startTestDaemon({
-    agent: options.agent,
-    guests: { fake: { ...FAKE, ...options.guest } },
+    agent: options.agent ?? new FakeAgent("main"),
+    guests: options.guests ?? { fake: { ...FAKE, ...options.guest } },
   });
   cleanups.push(() => daemon.stop());
+  const gate = options.gate ?? "allow";
+  if (gate !== "manual") {
+    daemon.store.onAppend(({ session, event }) => {
+      if (event.type !== "permission_request" || !event.title.startsWith("Hand a task")) return;
+      void Promise.resolve().then(() =>
+        daemon.actions.run(
+          { session, ref: "p", action: "suite.permit", args: { id: event.id, option: gate } },
+          "test",
+        ),
+      );
+    });
+  }
   const app = startMcpApp({ tools: [greet] });
   cleanups.push(() => app.close());
   await daemon.connectors.presence(
@@ -99,7 +116,7 @@ describe("delegate", () => {
     expect(thoughts.at(-1)).toMatchObject({ text: "again" });
   });
 
-  test("passes the appended prompt, model and errors for unknown guests", async () => {
+  test("passes the appended prompt; no settings unless the user chose some", async () => {
     const { daemon, session } = await setup();
     const config = await daemon.gateway.call(
       "delegate",
@@ -109,7 +126,8 @@ describe("delegate", () => {
     );
     expect(JSON.parse((config.content[0] as { text: string }).text)).toEqual({
       instructions: "You're working as a guest in a suite of ",
-      config: { model: "small" },
+      config: {},
+      session: "acp-1",
     });
     const unknown = await daemon.gateway.call(
       "delegate",
@@ -331,11 +349,10 @@ describe("config", () => {
     const env = loadGuestConfigs({
       ...base,
       SUITE_GUESTS: "claude",
-      SUITE_CLAUDE_MODEL: "haiku",
       SUITE_GUEST_PERMISSIONS: "allow",
     });
     expect(Object.keys(env)).toEqual(["claude"]);
-    expect(env.claude).toMatchObject({ model: "haiku", permissions: "allow" });
+    expect(env.claude).toMatchObject({ permissions: "allow" });
     expect(loadGuestConfigs({ ...base, SUITE_GUESTS: "none" })).toEqual({});
     expect(() => loadGuestConfigs({ ...base, SUITE_GUEST_PERMISSIONS: "yolo" })).toThrow(
       "permissions must be ask or allow",
@@ -374,5 +391,193 @@ describe("adapter shapes", () => {
     };
     expect(mcpResultText(raw)).toEqual([{ type: "text", text: "Hello, Ada!\n[result:3a6548d4]" }]);
     expect(mcpResultText("plain")).toBeUndefined();
+  });
+});
+
+/** The text of a delegate result. */
+function resultOf(result: { content: unknown[] }): string {
+  return (result.content[0] as { text: string }).text;
+}
+
+async function answer(
+  daemon: TestDaemon,
+  session: string,
+  type: "permission_request" | "choice",
+  option: string,
+): Promise<SessionEvent> {
+  await until(
+    () => events(daemon, session).some((e) => e.type === type && !answered(daemon, session, e)),
+    type,
+  );
+  const open = events(daemon, session).findLast((e) => e.type === type);
+  if (open?.type !== type) throw new Error(`no ${type}`);
+  const action = type === "choice" ? "suite.choose" : "suite.permit";
+  await daemon.actions.run({ session, ref: "x", action, args: { id: open.id, option } }, "test");
+  return open;
+}
+
+function answered(daemon: TestDaemon, session: string, event: SessionEvent): boolean {
+  if (event.type !== "choice" && event.type !== "permission_request") return true;
+  return events(daemon, session).some(
+    (e) => (e.type === "choice_made" || e.type === "permission_resolved") && e.id === event.id,
+  );
+}
+
+describe("starting a guest is the user's call", () => {
+  const twoGuests = { fake: FAKE, other: { ...FAKE, title: "Other" } };
+
+  test("delegate asks first; reject tells the agent", async () => {
+    const { daemon, session } = await setup({ gate: "manual", guests: twoGuests });
+    const call = daemon.gateway.call(
+      "delegate",
+      { agent: "fake", task: "tidy up" },
+      undefined,
+      session,
+    );
+    const request = await answer(daemon, session, "permission_request", "reject");
+    expect(request).toMatchObject({
+      agent: "main",
+      title: "Hand a task to Fake: tidy up",
+      options: [
+        { id: "allow", name: "Start Fake", kind: "allow_once" },
+        { id: "always", name: "Allow Fake for this session", kind: "allow_always" },
+        { id: "use:other", name: "Use Other", kind: "allow_once" },
+        { id: "reject", name: "Reject", kind: "reject_once" },
+      ],
+    });
+    const result = await call;
+    expect(result.isError).toBe(true);
+    expect(resultOf(result)).toContain("The user declined to hand this to Fake");
+    expect(events(daemon, session).some((e) => e.type === "agent_message_chunk")).toBe(false);
+  });
+
+  test("the user can pick another guest, or allow one for the session", async () => {
+    const { daemon, session } = await setup({ gate: "manual", guests: twoGuests });
+    const call = daemon.gateway.call("delegate", { agent: "fake", task: "x" }, undefined, session);
+    await answer(daemon, session, "permission_request", "use:other");
+    const result = await call;
+    expect(resultOf(result)).toBe("(The user chose Other instead.)\n\nDone: x");
+    expect(events(daemon, session).find((e) => e.type === "agent_message_chunk")).toMatchObject({
+      agent: "other",
+    });
+
+    const first = daemon.gateway.call("delegate", { agent: "fake", task: "a" }, undefined, session);
+    await answer(daemon, session, "permission_request", "always");
+    await first;
+    const asked = events(daemon, session).filter((e) => e.type === "permission_request").length;
+    await daemon.gateway.call("delegate", { agent: "fake", task: "b" }, undefined, session);
+    expect(events(daemon, session).filter((e) => e.type === "permission_request")).toHaveLength(
+      asked,
+    );
+  });
+
+  test("the question shows the settings the guest will run with", async () => {
+    const { daemon, session } = await setup({ gate: "manual" });
+    await daemon.commands.run(session, "/model fake large");
+    const call = daemon.gateway.call("delegate", { agent: "fake", task: "x" }, undefined, session);
+    const request = await answer(daemon, session, "permission_request", "allow");
+    expect(request).toMatchObject({ title: "Hand a task to Fake (model large): x" });
+    await call;
+  });
+});
+
+describe("settings", () => {
+  test("/model guest value sets it now and for the session; bad values are refused", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/model fake large");
+    await daemon.commands.run(session, "/effort fake high");
+    expect(events(daemon, session).filter((e) => e.type === "setting_changed")).toEqual([
+      { type: "setting_changed", harness: "fake", option: "model", value: "large" },
+      { type: "setting_changed", harness: "fake", option: "effort", value: "high" },
+    ]);
+    const config = await daemon.gateway.call(
+      "delegate",
+      { agent: "fake", task: "config" },
+      undefined,
+      session,
+    );
+    expect(JSON.parse(resultOf(config))).toMatchObject({
+      config: { model: "large", effort: "high" },
+    });
+    expect(daemon.commands.run(session, "/model fake huge")).rejects.toThrow("no model huge");
+    expect(daemon.commands.run(session, "/mode fake plan")).rejects.toThrow(
+      "Fake has no mode setting",
+    );
+    const view = daemon.views.get(session).snapshot().items;
+    expect(view.some((i) => JSON.stringify(i.component).includes("fake model: large"))).toBe(true);
+  });
+
+  test("/model guest without a value offers its models; the pick applies", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/model fake");
+    const choice = await answer(daemon, session, "choice", "large");
+    expect(choice).toMatchObject({
+      title: "Fake model (now: small)",
+      options: [
+        { id: "small", name: "SMALL", description: "small one" },
+        { id: "large", name: "LARGE", description: "large one" },
+      ],
+    });
+    await until(
+      () => events(daemon, session).some((e) => e.type === "setting_changed"),
+      "the setting",
+    );
+    const item = daemon.views
+      .get(session)
+      .snapshot()
+      .items.find((i) => choice.type === "choice" && i.ref === `q-${choice.id}`);
+    expect(item).toMatchObject({ state: "done" });
+  });
+
+  test("new sessions start with the last choice; the agent gets its settings", async () => {
+    const agent = new FakeAgent("main");
+    const { daemon, session } = await setup({ agent });
+    await daemon.commands.run(session, "/model fake large");
+    daemon.settings.set(session, "main", "model", "m2");
+    const next = daemon.sessions.create({}).id;
+    const config = await daemon.gateway.call(
+      "delegate",
+      { agent: "fake", task: "config" },
+      undefined,
+      next,
+    );
+    expect(JSON.parse(resultOf(config))).toMatchObject({ config: { model: "large" } });
+    daemon.sessions.input(next, "cli", "hi");
+    await agent.started(1);
+    // The guest's work is in the log already, so the agent session is loaded, not created.
+    expect(agent.loaded[0]?.settings).toEqual({ model: "m2" });
+    agent.release();
+    await daemon.sessions.idle(next);
+  });
+
+  test("an agent without settings says so", async () => {
+    const { daemon, session } = await setup();
+    expect(daemon.commands.run(session, "/model")).rejects.toThrow(
+      "main has no model setting to pick from",
+    );
+    expect(daemon.commands.run(session, "/model x")).rejects.toThrow("main has no settings");
+    expect(daemon.commands.run(session, "hello")).toBeUndefined();
+  });
+});
+
+describe("/resume", () => {
+  test("lists stored conversations; the pick continues one", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/resume");
+    const choice = await answer(daemon, session, "choice", "fake:old-1");
+    expect(choice).toMatchObject({
+      title: "Resume a conversation",
+      options: [{ id: "fake:old-1", name: "Fake: Earlier work", description: "2026-10-01 09:30" }],
+    });
+    // The resume finishes after the answer; the next task goes to that conversation.
+    await Bun.sleep(300);
+    const config = await daemon.gateway.call(
+      "delegate",
+      { agent: "fake", task: "config" },
+      undefined,
+      session,
+    );
+    expect(JSON.parse(resultOf(config))).toMatchObject({ session: "old-1" });
+    expect(daemon.commands.run(session, "/resume nope")).rejects.toThrow("no guest named nope");
   });
 });

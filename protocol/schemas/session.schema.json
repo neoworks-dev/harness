@@ -73,6 +73,15 @@
         },
         {
           "$ref": "#/$defs/PermissionResolved"
+        },
+        {
+          "$ref": "#/$defs/SettingChanged"
+        },
+        {
+          "$ref": "#/$defs/Choice"
+        },
+        {
+          "$ref": "#/$defs/ChoiceMade"
         }
       ],
       "discriminator": {
@@ -588,6 +597,91 @@
     "PermissionOptionKind": {
       "type": "string",
       "enum": ["allow_once", "allow_always", "reject_once", "reject_always"]
+    },
+    "SettingChanged": {
+      "description": "The user changed a harness setting for this session (/model, /effort, /mode). The last one per harness and option wins; new sessions start with the user's last choice.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "setting_changed"
+        },
+        "harness": {
+          "type": "string",
+          "description": "pi, claude, codex…"
+        },
+        "option": {
+          "$ref": "#/$defs/SettingName"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "harness", "option", "value"],
+      "additionalProperties": false
+    },
+    "SettingName": {
+      "type": "string",
+      "enum": ["model", "effort", "mode"]
+    },
+    "ChoiceOption": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "name"],
+      "additionalProperties": false
+    },
+    "Choice": {
+      "description": "The suite asks the user to pick one of several options (a model, a conversation to resume). Panes show them as buttons (action suite.choose {id, option}).",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "choice"
+        },
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChoiceOption"
+          }
+        }
+      },
+      "required": ["type", "id", "title", "options"],
+      "additionalProperties": false
+    },
+    "ChoiceMade": {
+      "description": "The answer to a choice: the picked option, or none when it was dropped (the daemon restarted, or a newer choice replaced it).",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "choice_made"
+        },
+        "id": {
+          "type": "string"
+        },
+        "option": {
+          "type": "string"
+        },
+        "by": {
+          "type": "string",
+          "description": "App whose pane answered."
+        }
+      },
+      "required": ["type", "id"],
+      "additionalProperties": false
     }
   }
 }

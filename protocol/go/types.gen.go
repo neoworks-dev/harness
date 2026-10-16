@@ -971,7 +971,7 @@ type SessionEventRecord struct {
 }
 
 // SessionEvent: Everything that happens in a session. Views must ignore types they don't know.
-// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, UnknownSessionEvent.
+// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, UnknownSessionEvent.
 type SessionEvent struct {
 	Value SessionEventVariant
 }
@@ -1094,6 +1094,24 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "permission_resolved":
 		var v PermissionResolved
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "setting_changed":
+		var v SettingChanged
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "choice":
+		var v Choice
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "choice_made":
+		var v ChoiceMade
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -1581,6 +1599,76 @@ const (
 	PermissionOptionKindRejectAlways PermissionOptionKind = "reject_always"
 )
 
+// SettingChanged: The user changed a harness setting for this session (/model, /effort, /mode). The last one per harness and option wins; new sessions start with the user's last choice.
+type SettingChanged struct {
+	// pi, claude, codex…
+	Harness string      `json:"harness"`
+	Option  SettingName `json:"option"`
+	Value   string      `json:"value"`
+}
+
+func (SettingChanged) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v SettingChanged) MarshalJSON() ([]byte, error) {
+	type plain SettingChanged
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"setting_changed", plain(v)})
+}
+
+type SettingName string
+
+const (
+	SettingNameModel  SettingName = "model"
+	SettingNameEffort SettingName = "effort"
+	SettingNameMode   SettingName = "mode"
+)
+
+type ChoiceOption struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+}
+
+// Choice: The suite asks the user to pick one of several options (a model, a conversation to resume). Panes show them as buttons (action suite.choose {id, option}).
+type Choice struct {
+	ID      string         `json:"id"`
+	Title   string         `json:"title"`
+	Options []ChoiceOption `json:"options"`
+}
+
+func (Choice) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v Choice) MarshalJSON() ([]byte, error) {
+	type plain Choice
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"choice", plain(v)})
+}
+
+// ChoiceMade: The answer to a choice: the picked option, or none when it was dropped (the daemon restarted, or a newer choice replaced it).
+type ChoiceMade struct {
+	ID     string  `json:"id"`
+	Option *string `json:"option,omitempty"`
+	// App whose pane answered.
+	By *string `json:"by,omitempty"`
+}
+
+func (ChoiceMade) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v ChoiceMade) MarshalJSON() ([]byte, error) {
+	type plain ChoiceMade
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"choice_made", plain(v)})
+}
+
 // Component: The fixed component set. Apps combine these; they never add new ones.
 // Value is one of: CardComponent, RowComponent, StackComponent, TextComponent, ImageComponent, FileComponent, CodeComponent, DiffComponent, TableComponent, KvComponent, ProgressComponent, ButtonComponent, LinkComponent, UnknownComponent.
 type Component struct {
@@ -1955,7 +2043,7 @@ func (v ProgressComponent) MarshalJSON() ([]byte, error) {
 // ButtonComponent: Sends ui.action when pressed. Actions starting with copy: are handled by the client (copy the rest to the clipboard). TUI: [k] Label.
 type ButtonComponent struct {
 	Label string `json:"label"`
-	// app.tool, copy:<text> (client-side), or suite.permit {id, option} (answers a guest's permission_request).
+	// app.tool, copy:<text> (client-side), suite.permit {id, option} (answers a permission_request) or suite.choose {id, option} (answers a choice).
 	Action string `json:"action"`
 	// Arguments for the action.
 	Args json.RawMessage `json:"args,omitempty"`
