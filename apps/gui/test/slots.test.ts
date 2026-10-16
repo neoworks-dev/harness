@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Context, FiberState } from "@neoworks/extension-system";
+import { Context, FiberState, Service } from "@neoworks/extension-system";
 import { SlotRegistry } from "../ui/kernel/slots/registry.ts";
 import { SlotsService } from "../ui/kernel/slots/service.ts";
 import type { Chain, Keyed, List, Single } from "../ui/kernel/slots/types.ts";
@@ -12,6 +12,12 @@ declare module "../ui/kernel/slots/types.ts" {
     "t.chain": Chain<{ n: number }>;
     "t.inner": List;
     "t.other": List;
+  }
+}
+
+declare module "@neoworks/extension-system" {
+  interface Context {
+    thing: Service & { answer: number };
   }
 }
 
@@ -279,4 +285,24 @@ test("replacing a single frees the slots the old one declared for the new one", 
   await second.dispose();
   expect(names(registry.resolve("t.single"))).toEqual(["first"]);
   expect(registry.has("t.inner")).toBe(true);
+});
+
+test("an entry carries the context of the plugin that registered it", async () => {
+  class Thing extends Service {
+    constructor(ctx: Context) {
+      super(ctx, "thing");
+    }
+    answer = 42;
+  }
+  const registry = new SlotRegistry();
+  const root = new Context();
+  await root.plugin(SlotsService, registry);
+  await root.plugin(Thing);
+  await root.plugin({
+    name: "pane",
+    inject: ["slots", "thing"],
+    apply: ({ slots }: Context) => slots.add("root", { component: comp("pane") }),
+  });
+  const ctx = registry.resolve("root")[0]?.ctx as unknown as { thing: Thing };
+  expect(ctx.thing.answer).toBe(42);
 });
