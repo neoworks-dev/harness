@@ -537,9 +537,9 @@
       "additionalProperties": false
     },
     "FocusReason": {
-      "description": "initial: sent after bus.welcome; user: an app or the CLI moved it; agent: the agent called apps_focus; closed: its app went away; opened: an app opened while the agent had none; session: the current session changed.",
+      "description": "initial: sent after bus.welcome; user: an app or the CLI moved it; agent: the agent called apps_focus; closed: its app went away; opened: an app opened while the agent had none; session: the current session changed; input: the user typed in that app's pane, so the agent followed.",
       "type": "string",
-      "enum": ["initial", "user", "agent", "closed", "opened", "session"]
+      "enum": ["initial", "user", "agent", "closed", "opened", "session", "input"]
     },
     "AgentMoveMessage": {
       "description": "Client → daemon: move the agent (acked). app must be an open connector of kind app; without app it goes home. With session, that session becomes the current one.",

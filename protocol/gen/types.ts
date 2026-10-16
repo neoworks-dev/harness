@@ -212,8 +212,8 @@ export interface AgentFocus {
   reason: FocusReason;
 }
 
-/** initial: sent after bus.welcome; user: an app or the CLI moved it; agent: the agent called apps_focus; closed: its app went away; opened: an app opened while the agent had none; session: the current session changed. */
-export type FocusReason = "initial" | "user" | "agent" | "closed" | "opened" | "session";
+/** initial: sent after bus.welcome; user: an app or the CLI moved it; agent: the agent called apps_focus; closed: its app went away; opened: an app opened while the agent had none; session: the current session changed; input: the user typed in that app's pane, so the agent followed. */
+export type FocusReason = "initial" | "user" | "agent" | "closed" | "opened" | "session" | "input";
 
 /** Client → daemon: move the agent (acked). app must be an open connector of kind app; without app it goes home. With session, that session becomes the current one. */
 export interface AgentMoveMessage {

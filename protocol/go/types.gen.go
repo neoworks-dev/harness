@@ -602,7 +602,7 @@ type AgentFocus struct {
 	Reason FocusReason `json:"reason"`
 }
 
-// FocusReason: initial: sent after bus.welcome; user: an app or the CLI moved it; agent: the agent called apps_focus; closed: its app went away; opened: an app opened while the agent had none; session: the current session changed.
+// FocusReason: initial: sent after bus.welcome; user: an app or the CLI moved it; agent: the agent called apps_focus; closed: its app went away; opened: an app opened while the agent had none; session: the current session changed; input: the user typed in that app's pane, so the agent followed.
 type FocusReason string
 
 const (
@@ -612,6 +612,7 @@ const (
 	FocusReasonClosed  FocusReason = "closed"
 	FocusReasonOpened  FocusReason = "opened"
 	FocusReasonSession FocusReason = "session"
+	FocusReasonInput   FocusReason = "input"
 )
 
 // AgentMoveMessage: Client → daemon: move the agent (acked). app must be an open connector of kind app; without app it goes home. With session, that session becomes the current one.

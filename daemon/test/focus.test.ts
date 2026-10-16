@@ -206,6 +206,45 @@ describe("over the bus and the gateway", () => {
     });
   });
 
+  test("typing in an open app's pane moves the agent there before the turn", async () => {
+    const { hub, registry, focus, agent, sessions } = hubSetup();
+    await registry.presence({}, app("overlay", { home: true }));
+    await registry.presence({}, app("photo-editor", { context: { image: "logo.png" } }));
+    await registry.presence({}, { app: "lsp", kind: "service", open: true });
+    const a = client(hub);
+    const session = focus.current().session;
+    const input = (from: string, id: string): void =>
+      a.send({ topic: "session.input", id, payload: { session, app: from, text: from } });
+
+    input("cli", "1"); // not an app: stays home
+    await agent.started(1);
+    agent.release();
+    await sessions.idle(session);
+    expect(focus.current().app).toBe("overlay");
+
+    input("photo-editor", "2");
+    expect(
+      a.received.find((e) => e.topic === "agent.focus" && e.payload.reason === "input"),
+    ).toEqual({
+      topic: "agent.focus",
+      payload: { session, app: "photo-editor", from: "overlay", reason: "input" },
+    });
+    await agent.started(2);
+    expect(agent.prompts[1]?.pendingEvents).toContainEqual({
+      type: "focus_changed",
+      app: "photo-editor",
+      context: { image: "logo.png" },
+    });
+    agent.release();
+    await sessions.idle(session);
+
+    input("lsp", "3"); // a service isn't somewhere the agent can be
+    await agent.started(3);
+    agent.release();
+    await sessions.idle(session);
+    expect(focus.current().app).toBe("photo-editor");
+  });
+
   test("connector changes are broadcast once per burst", async () => {
     const { hub, registry } = hubSetup();
     const a = client(hub);

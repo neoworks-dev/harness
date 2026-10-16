@@ -66,6 +66,17 @@ export class FocusManager {
     return this.set(session, target.app ?? this.registry.home(), effective);
   }
 
+  /**
+   * Input typed into an open app's pane moves the agent there (and makes that session current),
+   * so "this" means what the user is looking at. Input from anything else (the CLI) doesn't.
+   */
+  followInput(session: string, app: string): void {
+    if (app === this.app && session === this.session) return;
+    if (this.registry.presenceOf(app)?.kind !== "app") return;
+    if (!this.sessions.info(session)) return;
+    this.set(session, app, "input");
+  }
+
   onChange(listener: (focus: AgentFocus) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

@@ -732,7 +732,7 @@ pub struct AgentFocus {
     pub reason: FocusReason,
 }
 
-/// initial: sent after bus.welcome; user: an app or the CLI moved it; agent: the agent called apps_focus; closed: its app went away; opened: an app opened while the agent had none; session: the current session changed.
+/// initial: sent after bus.welcome; user: an app or the CLI moved it; agent: the agent called apps_focus; closed: its app went away; opened: an app opened while the agent had none; session: the current session changed; input: the user typed in that app's pane, so the agent followed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FocusReason {
     #[serde(rename = "initial")]
@@ -747,6 +747,8 @@ pub enum FocusReason {
     Opened,
     #[serde(rename = "session")]
     Session,
+    #[serde(rename = "input")]
+    Input,
 }
 
 /// Client → daemon: move the agent (acked). app must be an open connector of kind app; without app it goes home. With session, that session becomes the current one.
