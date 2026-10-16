@@ -19,7 +19,7 @@ client.subscribeView(session, {
 
 ## `mountChat(container, options)`
 
-`options`: `theme?`, `onAction?(ref, action, args)`, `clipboard?` (default `navigator.clipboard`), `onError?`, `injectStyles?` (default true: one `<style data-suite-chat-styles>` in the document head). It owns the container's children: give it an empty element (it becomes a scrollable flex column and stays pinned to the bottom while you are there).
+`options`: `theme?`, `onAction?(ref, action, args)`, `clipboard?` (default `navigator.clipboard`), `onError?`, `resolveImage?(src)`, `injectStyles?` (default true: one `<style data-suite-chat-styles>` in the document head). It owns the container's children: give it an empty element (it becomes a scrollable flex column and stays pinned to the bottom while you are there).
 
 Returns `{ setItems(items), applySnapshot(snapshot), applyPatch(patch), setTheme(theme), items, destroy() }`.
 
@@ -29,7 +29,7 @@ Returns `{ setItems(items), applySnapshot(snapshot), applyPatch(patch), setTheme
 
 Keyboard: items with buttons are focusable (`tabindex=0`; Tab, or Arrow Up/Down between them). While an item (or a button inside it) has focus, pressing a button's `key` triggers it; a button without `key` answers to its 1-based position among the item's buttons, as in the TUI. Each button shows its key as a `<kbd>` hint. `copy:<text>` actions write `<text>` to the clipboard (the button gets `data-copied` for a moment); everything else goes to `onAction`.
 
-Markup is semantic (`article`/`details`, `section`+`h3` for cards, `table`, `dl`, `figure`, `progressbar`, real `button`s). Links only render as `<a>` for http(s) and mailto. Images: `data:image/*` and `http(s):` render as `<img>` (falling back to the text box if they fail to load); `asset://` handles (Phase 5) and bare paths show the fallback box `[image W×H · src]`.
+Markup is semantic (`article`/`details`, `section`+`h3` for cards, `table`, `dl`, `figure`, `progressbar`, real `button`s). Links only render as `<a>` for http(s) and mailto. Images: `data:image/*` and `http(s):` render as `<img>` (falling back to the text box if they fail to load); `asset://` handles and bare paths show the fallback box `[image W×H · src]` unless the host passes `resolveImage`, which maps an `src` to a URL (e.g. `asset://img-0123456789ab` to `${daemonUrl}/assets/img-0123456789ab?token=…`, the daemon's asset endpoint). Only `http(s):` and `data:image/` results are used; anything else the resolver returns is ignored.
 
 ## Tests and snapshots
 

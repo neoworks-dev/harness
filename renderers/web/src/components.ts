@@ -30,6 +30,8 @@ export const STATE_ICONS: Record<ItemState, string> = {
 export interface RenderContext {
   doc: Document;
   buttons: ButtonComponent[];
+  /** See ChatOptions.resolveImage. */
+  resolveImage?: (src: string) => string | undefined;
 }
 
 type Attrs = Record<string, string | undefined>;
@@ -156,14 +158,25 @@ function renderImageFallback(doc: Document, image: ImageComponent): HTMLElement 
   );
 }
 
+const DRAWABLE = /^(data:image\/|https?:)/i;
+
+/** What to load for `src`: what the host's resolver says if that is drawable, else `src` itself. */
+function imageSource(ctx: RenderContext, src: string): string | undefined {
+  const resolved = ctx.resolveImage?.(src);
+  if (resolved !== undefined && DRAWABLE.test(resolved)) return resolved;
+  if (DRAWABLE.test(src)) return src;
+  return undefined;
+}
+
 function renderImage(ctx: RenderContext, image: ImageComponent): HTMLElement {
   const { doc } = ctx;
   const figure = el(doc, "figure", "suite-image");
-  // asset:// handles resolve in Phase 5, and a bare path means nothing to a browser: both get the
-  // text box, as does an image that fails to load.
-  if (/^(data:image\/|https?:)/i.test(image.src)) {
+  // An asset:// handle needs the host's resolver, and a bare path means nothing to a browser: both
+  // get the text box, as does an image that fails to load.
+  const source = imageSource(ctx, image.src);
+  if (source !== undefined) {
     const img = el(doc, "img", "", {
-      src: image.src,
+      src: source,
       alt: image.alt ?? "",
       width: image.width === undefined ? undefined : String(image.width),
       height: image.height === undefined ? undefined : String(image.height),
@@ -348,8 +361,12 @@ export interface RenderedItem {
   body: HTMLElement;
 }
 
-export function renderItem(doc: Document, item: ViewItem): RenderedItem {
-  const ctx: RenderContext = { doc, buttons: [] };
+export function renderItem(
+  doc: Document,
+  item: ViewItem,
+  resolveImage?: RenderContext["resolveImage"],
+): RenderedItem {
+  const ctx: RenderContext = { doc, buttons: [], resolveImage };
   const body = el(doc, "div", "suite-item-body", {}, renderComponent(ctx, item.component));
   const attrs: Attrs = { "data-ref": item.ref, "data-kind": item.kind, "data-state": item.state };
   let root: HTMLElement;

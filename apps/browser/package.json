@@ -1,0 +1,14 @@
+{
+  "name": "@suite/browser",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@suite/protocol": "workspace:*",
+    "@suite/renderer-web": "workspace:*",
+    "@suite/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@suite/daemon": "workspace:*",
+    "happy-dom": "^21.0.2"
+  }
+}

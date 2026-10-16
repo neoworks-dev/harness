@@ -8,7 +8,8 @@
     "harness",
     "sdk-ts",
     "renderers/web",
-    "services/lsp"
+    "services/lsp",
+    "apps/browser"
   ],
   "scripts": {
     "codegen": "bun run --cwd protocol codegen",

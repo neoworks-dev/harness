@@ -322,6 +322,39 @@ describe("items", () => {
     expect(itemEl(page, "web").querySelector(".suite-image-fallback")).not.toBeNull();
   });
 
+  test("resolveImage maps asset:// to a loadable URL; unsafe results are ignored", () => {
+    const { page, chat } = rig({
+      resolveImage: (src) => {
+        if (src === "asset://img-1") return "http://127.0.0.1:1/assets/img-1?token=t";
+        if (src === "asset://img-2") return "javascript:alert(1)";
+        if (src === "asset://img-3") return "file:///etc/passwd";
+        return undefined;
+      },
+    });
+    const image = (ref: string, src: string): ViewItem => ({
+      ref,
+      kind: "tool",
+      component: { type: "image", src, width: 4, height: 3 },
+    });
+    chat.setItems([
+      image("one", "asset://img-1"),
+      image("two", "asset://img-2"),
+      image("three", "asset://img-3"),
+      image("four", "asset://img-4"),
+      image("web", "https://example.com/a.png"),
+    ]);
+    expect(itemEl(page, "one").querySelector("img")?.getAttribute("src")).toBe(
+      "http://127.0.0.1:1/assets/img-1?token=t",
+    );
+    for (const ref of ["two", "three", "four"]) {
+      expect(itemEl(page, ref).querySelector("img")).toBeNull();
+      expect(itemEl(page, ref).querySelector(".suite-image-fallback")).not.toBeNull();
+    }
+    expect(itemEl(page, "web").querySelector("img")?.getAttribute("src")).toBe(
+      "https://example.com/a.png",
+    );
+  });
+
   test("links to anything but http(s) and mailto are not links", () => {
     const { page, chat } = rig();
     chat.setItems([

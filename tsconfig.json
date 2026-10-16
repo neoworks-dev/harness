@@ -14,6 +14,15 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["protocol", "daemon", "harness", "sdk-ts", "renderers/web", "services", "tools"],
+  "include": [
+    "protocol",
+    "daemon",
+    "harness",
+    "sdk-ts",
+    "renderers/web",
+    "services",
+    "apps/browser",
+    "tools"
+  ],
   "exclude": ["**/node_modules"]
 }

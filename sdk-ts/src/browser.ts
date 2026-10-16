@@ -23,6 +23,20 @@ export function busUrl({ url, token }: DaemonAddress): string {
   return `${base}/bus?token=${encodeURIComponent(token)}`;
 }
 
+const ASSET_HANDLE = /^asset:\/\/([a-z]+-[0-9a-f]{12})$/;
+
+/**
+ * The URL a page can load an `asset://` handle from: the daemon's `GET /assets/<id>`, with the
+ * token in the query since an `<img>` can't send headers. Undefined for anything that is not a
+ * handle. The URL carries the daemon token: only hand it to the page's own DOM.
+ */
+export function assetUrl({ url, token }: DaemonAddress, handle: string): string | undefined {
+  const id = ASSET_HANDLE.exec(handle)?.[1];
+  if (id === undefined) return undefined;
+  const base = url.replace(/^ws/, "http").replace(/\/+$/, "");
+  return `${base}/assets/${id}?token=${encodeURIComponent(token)}`;
+}
+
 export class BrowserClient extends BusClient {
   protected constructor(options: BrowserConnectOptions) {
     let first = true;

@@ -53,6 +53,8 @@ await tools.close();
 - `subscribe(session, { fromSeq?, onEvent, onLive?, onError? })` returns `{ close() }`. `onLive` fires when the replay is over (again after each reconnect).
 - `theme` / `onTheme(cb)` / `waitForTheme()`: the daemon's `theme` frame, sent after every (re)connect and on change.
 - `subscribeView(session, { onSnapshot, onPatch, onError? })` returns `{ close() }`. A `view.snapshot` comes first (replace your state with it), then a `view.patch` per change. After a reconnect the client re-subscribes and a fresh snapshot arrives; patches are never delivered before the snapshot.
+- `putAsset({ path?, data?, name?, mime? })` stores a file (absolute `path`, copied in) or bytes (`data`, base64) in the daemon's asset store and resolves with the `Asset` (`{ handle, path, name, mime, size, app?, createdAt }`); `getAsset(handle)` looks one up (`not_found` rejects as `SuiteError`). Identical content gets the same handle; handles stay valid after your app is gone. For big files, `POST /assets?name=&mime=&app=` on the daemon's loopback URL with the bearer token takes raw bytes.
+- `fileChanged(path)` tells every other client you changed the file at `path` (absolute; throws `DisconnectedError` when not connected); `onFileChanged(cb)` is called with `{ path, app?, session? }` when another client or the agent changed a file (never your own).
 - `action(session, ref, action, args?)` sends `ui.action` for a pressed button (`copy:` actions are the renderer's to handle).
 - `close()` unregisters the presence, then closes for good.
 - Daemon-side failures reject with `SuiteError` (`code` from the protocol); an unavailable connection with `DisconnectedError`.
@@ -73,3 +75,5 @@ const client = await BrowserClient.connect({ client: "web", url: "http://127.0.0
 ```
 
 Same API as `SuiteClient` (both extend `BusClient` in `src/bus-client.ts`, which imports nothing from node). `url` is the daemon's loopback URL from `daemon.json` (a page gets it from its server); `refreshAddress` is asked for a fresh `{ url, token }` on every reconnect, since a restarted daemon has a new port and token.
+
+`assetUrl(address, handle)` turns an `asset://` handle into `${url}/assets/<id>?token=…` (undefined for anything else), for `<img src>` or the web renderer's `resolveImage`. The URL carries the token, so keep it inside the page.

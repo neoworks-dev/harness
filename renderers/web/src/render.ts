@@ -29,6 +29,13 @@ export interface ChatOptions {
   clipboard?: ClipboardLike;
   /** Copying failed (no clipboard, permission denied). */
   onError?: (error: Error) => void;
+  /**
+   * Maps an image `src` to something the page can load, e.g. `asset://img-0123456789ab` to
+   * `${daemonUrl}/assets/img-0123456789ab?token=…`. Return undefined to leave `src` alone. Only
+   * `http(s):` and `data:image/` results are used; anything else is ignored. Images already
+   * drawn are not redrawn when the resolver changes what it returns.
+   */
+  resolveImage?: (src: string) => string | undefined;
   /** Insert the stylesheet into the document's head once (default true). */
   injectStyles?: boolean;
 }
@@ -99,7 +106,7 @@ export function mountChat(container: HTMLElement, options: ChatOptions = {}): Ch
   if (options.injectStyles !== false) injectStyles(doc);
 
   function build(item: ViewItem): Entry {
-    const { el, body, buttons } = renderItem(doc, item);
+    const { el, body, buttons } = renderItem(doc, item, options.resolveImage);
     return { item, el, body, buttons };
   }
 

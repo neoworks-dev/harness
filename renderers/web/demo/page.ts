@@ -1,6 +1,6 @@
 // Browser entry of the demo (bundled by serve.ts): connects to the daemon with the address the
 // server put in the page, then hands over to startDemo.
-import { BrowserClient, type DaemonAddress } from "@suite/sdk/browser";
+import { assetUrl, BrowserClient, type DaemonAddress } from "@suite/sdk/browser";
 import { startDemo } from "./app.ts";
 
 function byId<T extends HTMLElement>(id: string, kind: new () => T): T {
@@ -18,30 +18,40 @@ function readAddress(): DaemonAddress {
   return { url: config.url, token: config.token };
 }
 
+/** The daemon's current address; asset:// images load from it. */
+let address: DaemonAddress | undefined;
+
 /** The server re-reads daemon.json, so a restarted daemon (new port and token) is found again. */
 async function refreshAddress(): Promise<DaemonAddress> {
   const response = await fetch("/daemon");
   if (!response.ok) throw new Error(`the daemon is not running (${response.status})`);
-  return response.json();
+  const next: DaemonAddress = await response.json();
+  address = next;
+  return next;
 }
 
 async function main(): Promise<void> {
   const status = byId("status", HTMLElement);
   try {
+    address = readAddress();
     const client = await BrowserClient.connect({
       client: "web",
-      ...readAddress(),
+      ...address,
       refreshAddress,
       onError: (err) => {
         status.textContent = err.message;
       },
     });
-    startDemo(client, {
-      chat: byId("chat", HTMLElement),
-      status,
-      form: byId("form", HTMLFormElement),
-      input: byId("input", HTMLInputElement),
-    });
+    startDemo(
+      client,
+      {
+        chat: byId("chat", HTMLElement),
+        status,
+        form: byId("form", HTMLFormElement),
+        input: byId("input", HTMLInputElement),
+      },
+      { resolveImage: (src) => (address ? assetUrl(address, src) : undefined) },
+    );
   } catch (err) {
     status.textContent = err instanceof Error ? err.message : String(err);
   }

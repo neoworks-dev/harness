@@ -24,7 +24,7 @@ Tool states: `pending` ○ (muted), `running` ◐ (accent; animated where possib
 - `row`: side by side, wrapping to a stack when it doesn't fit. TUI: always stacked unless every child is a button (then on one line).
 - `stack`: top to bottom; `gap` s/m/l = theme spacing (TUI: 0/0/1 blank lines); no `gap` means `s` (also for `row`).
 - `text`: blocks in order. Headings bold (`title` role style for level ≤ 2); lists with `•` / `1.` and `[x]`/`[ ]` for tasks, nested items indented 2; `code_block` like a `code` component; quote with a `│ ` bar, muted; rule `───`. Spans: bold, italic, strike, inline code (code style / TUI: reverse or dim backtick-free), links underlined (TUI: `text (url)` unless text == url). `role` picks the theme text style; `tone` colors the text.
-- `image`: web/GPUI draw `data:image/` and http(s) sources (`asset://` resolves in Phase 5); anything else shows the fallback every renderer uses: `[image W×H · src]` (`[image · src]` when the size is unknown), the caption on the next line. Never fetch other schemes.
+- `image`: web/GPUI draw `data:image/` and http(s) sources (`asset://` handles resolve through the host: web's `resolveImage` maps them to the daemon's `GET /assets/<id>` URL); anything else shows the fallback every renderer uses: `[image W×H · src]` (`[image · src]` when the size is unknown), the caption on the next line. Never fetch other schemes.
 - `file`: chip `📄 name` (name = `name` or the path's base name); web/GPUI tooltip/full path, TUI `📄 path`.
 - `code`: monospace on the surface color, no wrapping in web/GPUI (scroll), TUI hard-wraps at the width.
 - `diff`: TUI colored unified diff (`+` success, `-` danger, hunk headers muted, `path` as a header line); web/GPUI may show side by side.

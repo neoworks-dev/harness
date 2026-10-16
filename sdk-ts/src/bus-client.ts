@@ -9,9 +9,12 @@ import type {
   AgentFocus,
   AgentMove,
   AppPresence,
+  Asset,
+  AssetPut,
   ConnectorInfo,
   Envelope,
   ErrorCode,
+  FileChanged,
   SessionCreateParams,
   SessionEvent,
   SessionEventRecord,
@@ -149,6 +152,7 @@ export class BusClient {
   private latestTheme?: Theme;
   private readonly themeListeners = new Set<(theme: Theme) => void>();
   private readonly viewSubscriptions = new Set<ViewSubscription>();
+  private readonly fileListeners = new Set<(change: FileChanged) => void>();
   private welcome?: { resolve: () => void; reject: (error: Error) => void };
   /** Aborted by close() to cut short any backoff sleep. */
   private readonly stop = new AbortController();
@@ -360,6 +364,39 @@ export class BusClient {
   /** Cancels the running turn; queued inputs still run. */
   async cancel(session: string): Promise<void> {
     await this.call((id) => ({ topic: "session.cancel", id, payload: { session } }));
+  }
+
+  /**
+   * Stores a file (`path`, copied in) or bytes (`data`, base64) in the daemon's asset store and
+   * returns the asset, whose `handle` (`asset://…`) other apps and tools can use. Identical
+   * content gets the same handle.
+   */
+  async putAsset(asset: AssetPut): Promise<Asset> {
+    const reply = await this.call((id) => ({ topic: "asset.put", id, payload: asset }));
+    if (reply.topic !== "asset.info") throw unexpected(reply);
+    return reply.payload;
+  }
+
+  /** Looks up a handle; rejects with `SuiteError` `not_found` for an unknown one. */
+  async getAsset(handle: string): Promise<Asset> {
+    const reply = await this.call((id) => ({ topic: "asset.get", id, payload: { handle } }));
+    if (reply.topic !== "asset.info") throw unexpected(reply);
+    return reply.payload;
+  }
+
+  /**
+   * Called when another client or the agent changed a file (`file.changed`): reload it or show a
+   * diff. Your own `fileChanged` is not echoed back.
+   */
+  onFileChanged(cb: (change: FileChanged) => void): () => void {
+    this.fileListeners.add(cb);
+    return () => this.fileListeners.delete(cb);
+  }
+
+  /** Tells every other client that you changed the file at `path` (absolute), e.g. after saving. */
+  fileChanged(path: string): void {
+    const payload: FileChanged = { path, app: this.defaultApp() };
+    this.send({ topic: "file.changed", payload });
   }
 
   async listConnectors(): Promise<ConnectorInfo[]> {
@@ -601,6 +638,15 @@ export class BusClient {
         return;
       case "theme":
         this.setTheme(msg.payload);
+        return;
+      case "file.changed":
+        for (const cb of [...this.fileListeners]) {
+          try {
+            cb(msg.payload);
+          } catch (err) {
+            this.options.onError?.(asError(err));
+          }
+        }
         return;
       case "view.snapshot":
         this.deliverSnapshot(msg.payload);

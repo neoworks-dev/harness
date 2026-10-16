@@ -12,6 +12,18 @@
         "typescript": "^7.0.2",
       },
     },
+    "apps/browser": {
+      "name": "@suite/browser",
+      "dependencies": {
+        "@suite/protocol": "workspace:*",
+        "@suite/renderer-web": "workspace:*",
+        "@suite/sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@suite/daemon": "workspace:*",
+        "happy-dom": "^21.0.2",
+      },
+    },
     "daemon": {
       "name": "@suite/daemon",
       "dependencies": {
@@ -209,6 +221,8 @@
     "@smithy/signature-v4": ["@smithy/signature-v4@5.7.4", "", { "dependencies": { "@smithy/core": "^3.35.0", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-tHy0K0VtqNd5Y7Y41h0a0Lhh0L1GzC08dTWg0F7vRJWFtTENg7IZikf3wQkanYIRdb7ngoIPMTmqgUi401fEeQ=="],
 
     "@smithy/types": ["@smithy/types@4.19.0", "", { "dependencies": { "tslib": "^2.6.2" } }, "sha512-r7jh49VJxGerfAcTQA6gXcKc+98zOp/tqRwzYjgOE+iSQsP6cEU1hq2QzbuipmP68QtYdY9wKEhiCQZIzHgZ4Q=="],
+
+    "@suite/browser": ["@suite/browser@workspace:apps/browser"],
 
     "@suite/daemon": ["@suite/daemon@workspace:daemon"],
 

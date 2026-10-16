@@ -12,6 +12,11 @@ export interface DemoElements {
   input: HTMLInputElement;
 }
 
+export interface DemoOptions {
+  /** See ChatOptions.resolveImage: where to load `asset://` images from. */
+  resolveImage?: (src: string) => string | undefined;
+}
+
 export interface Demo {
   readonly chat: Chat;
   /** The session being followed, once the first agent.focus arrived. */
@@ -26,7 +31,7 @@ function message(err: unknown): string {
   return String(err);
 }
 
-export function startDemo(client: BusClient, els: DemoElements): Demo {
+export function startDemo(client: BusClient, els: DemoElements, options: DemoOptions = {}): Demo {
   let session: string | undefined;
   let view: { close(): void } | undefined;
 
@@ -35,6 +40,7 @@ export function startDemo(client: BusClient, els: DemoElements): Demo {
   }
 
   const chat = mountChat(els.chat, {
+    resolveImage: options.resolveImage,
     onAction: (ref, action, args) => {
       if (session === undefined) return;
       client.action(session, ref, action, args).catch((err: unknown) => report(message(err)));
