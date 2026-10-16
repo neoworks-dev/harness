@@ -5,7 +5,7 @@ import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import { getEnvApiKey } from "@mariozechner/pi-ai";
 import { isRecord } from "./util.ts";
 
-const DEFAULT_MODEL = "deepseek/deepseek-v4-flash";
+const DEFAULT_MODEL = "deepseek/deepseek-flash";
 const THINKING_LEVELS: readonly ThinkingLevel[] = [
   "off",
   "minimal",
@@ -19,6 +19,11 @@ export interface HarnessConfig {
   provider: string;
   modelId: string;
   thinkingLevel: ThinkingLevel;
+  /**
+   * Whether the model takes images, overriding pi's registry (which lags behind new models).
+   * Unset: what the registry says. Text-only models get a placeholder instead of each image.
+   */
+  images?: boolean;
   /** From SUITE_API_KEY; used when the provider's own env var is not set. */
   apiKey?: string;
   /** pi's auth file, read lazily as the last key source. */
@@ -55,9 +60,15 @@ function parseModel(value: string, source: string): { provider: string; modelId:
   return { provider: value.slice(0, slash), modelId: value.slice(slash + 1) };
 }
 
+function parseImages(value: string, source: string): boolean {
+  if (["1", "true", "yes"].includes(value)) return true;
+  if (["0", "false", "no"].includes(value)) return false;
+  throw new Error(`${source}: expected 1 or 0, got "${value}"`);
+}
+
 /**
- * Reads `$XDG_CONFIG_HOME/suite/config.json` (optional; keys `model` = "provider/id" and
- * `thinkingLevel`), overridden by SUITE_MODEL and SUITE_THINKING.
+ * Reads `$XDG_CONFIG_HOME/suite/config.json` (optional; keys `model` = "provider/id",
+ * `thinkingLevel` and `images`), overridden by SUITE_MODEL, SUITE_THINKING and SUITE_IMAGES.
  */
 export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): HarnessConfig {
   const home = env.HOME || homedir();
@@ -87,12 +98,15 @@ export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): Harness
     thinkingSource = "SUITE_THINKING";
   }
 
-  return {
+  const config: HarnessConfig = {
     ...parseModel(model, modelSource),
     thinkingLevel: parseThinkingLevel(thinking, thinkingSource),
     apiKey: env.SUITE_API_KEY || undefined,
     piAuthPath: env.SUITE_PI_AUTH || join(home, ".pi", "agent", "auth.json"),
   };
+  if (env.SUITE_IMAGES) config.images = parseImages(env.SUITE_IMAGES, "SUITE_IMAGES");
+  else if (file && typeof file.images === "boolean") config.images = file.images;
+  return config;
 }
 
 /** API-key entries of pi's auth file only; OAuth entries are skipped. */

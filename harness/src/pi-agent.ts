@@ -46,7 +46,7 @@ function gatewayOf(servers: McpServer[]): GatewayConnection | undefined {
 /** The harness built on pi-agent-core: one pi Agent per session, the session log owns history. */
 export function createPiAgent(options: PiAgentOptions): HarnessAgent {
   const { config, logger, streamFn } = options;
-  const model = resolveModel(config.provider, config.modelId, logger);
+  const model = resolveModel(config.provider, config.modelId, logger, config.images);
 
   function createSession(
     params: NewSessionParams,

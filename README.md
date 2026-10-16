@@ -41,7 +41,8 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/
 | ------------------------------------- | ----------------------------------------------------------- |
 | `SUITE_SOCKET`                        | `$XDG_RUNTIME_DIR/suite/bus.sock` (else `/tmp/suite-$UID/`) |
 | `SUITE_DATA_DIR`                      | `$XDG_DATA_HOME/suite` (else `~/.local/share/suite`)        |
-| `SUITE_MODEL`                         | `deepseek/deepseek-v4-flash` (`provider/model-id`)          |
+| `SUITE_MODEL`                         | `deepseek/deepseek-flash` (`provider/model-id`)             |
+| `SUITE_IMAGES`                        | `1`/`0`: the model takes images (default: pi's registry)    |
 | `SUITE_THINKING`                      | `off` (`minimal`…`xhigh`)                                   |
 | `<PROVIDER>_API_KEY`, `SUITE_API_KEY` | falls back to API-key entries in `~/.pi/agent/auth.json`    |
 | `SUITE_AGENT`                         | `pi`; `echo` is an offline scripted agent for tests         |

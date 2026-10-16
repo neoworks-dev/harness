@@ -32,7 +32,7 @@ test("defaults without a config file", async () => {
   const home = await tempDir();
   expect(loadHarnessConfig({ HOME: home })).toEqual({
     provider: "deepseek",
-    modelId: "deepseek-v4-flash",
+    modelId: "deepseek-flash",
     thinkingLevel: "off",
     apiKey: undefined,
     piAuthPath: join(home, ".pi", "agent", "auth.json"),
@@ -127,4 +127,22 @@ test("the missing key message names the env vars to set", async () => {
   const message = missingApiKeyMessage(loadHarnessConfig({ HOME: await tempDir() }));
   expect(message).toContain("DEEPSEEK_API_KEY");
   expect(message).toContain("SUITE_API_KEY");
+});
+
+test("images: from the config file or SUITE_IMAGES, overriding pi's registry", async () => {
+  const home = await tempDir();
+  expect(loadHarnessConfig({ HOME: home }).images).toBeUndefined();
+  await writeConfig(home, { model: "deepseek/deepseek-v4.1-flash", images: true });
+  expect(loadHarnessConfig({ HOME: home }).images).toBe(true);
+  expect(loadHarnessConfig({ HOME: home, SUITE_IMAGES: "0" }).images).toBe(false);
+  expect(() => loadHarnessConfig({ HOME: home, SUITE_IMAGES: "maybe" })).toThrow("SUITE_IMAGES");
+
+  const { resolveModel } = await import("../src/model.ts");
+  expect(resolveModel("deepseek", "deepseek-v4.1-flash").input).toEqual(["text"]);
+  expect(resolveModel("deepseek", "deepseek-flash").input).toEqual(["text", "image"]);
+  expect(resolveModel("deepseek", "deepseek-flash", undefined, false).input).toEqual(["text"]);
+  expect(resolveModel("deepseek", "deepseek-v4.1-flash", undefined, true).input).toEqual([
+    "text",
+    "image",
+  ]);
 });
