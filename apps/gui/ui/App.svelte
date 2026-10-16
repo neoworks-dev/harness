@@ -2,6 +2,7 @@
   // The window: sessions on the left, then the chat, the input and the status line.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import Chat from "./chat/Chat.svelte";
+  import DiffOverlay from "./chat/DiffOverlay.svelte";
   import Composer from "./input/Composer.svelte";
   import Shortcuts from "./input/Shortcuts.svelte";
   import StatusLine from "./input/StatusLine.svelte";
@@ -32,4 +33,5 @@
       <StatusLine />
     {/if}
   </View>
+  <DiffOverlay />
 </View>
