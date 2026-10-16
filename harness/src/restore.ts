@@ -58,13 +58,18 @@ export function repairMessages(messages: Message[]): Message[] {
   return repaired;
 }
 
-/** Rebuilds the pi context from the session log. Everything but our own messages is ignored. */
-export function restoreMessages(history: SessionEvent[], logger?: Logger): Message[] {
+/** Our own messages from the session log, as logged. Everything else is ignored. */
+export function loggedMessages(history: SessionEvent[], logger?: Logger): Message[] {
   const messages: Message[] = [];
   for (const event of history) {
     if (event.type !== "harness_message" || event.harness !== HARNESS_NAME) continue;
     if (isMessage(event.message)) messages.push(event.message);
     else logger?.warn("Ignoring a harness_message that is not a pi message.");
   }
-  return repairMessages(messages);
+  return messages;
+}
+
+/** Rebuilds the pi context from the session log. Everything but our own messages is ignored. */
+export function restoreMessages(history: SessionEvent[], logger?: Logger): Message[] {
+  return repairMessages(loggedMessages(history, logger));
 }

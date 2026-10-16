@@ -5,9 +5,11 @@
 //   wait          runs until cancelled
 //   edit          reports a tool call with a diff
 //   config        reports what session/new (or resume) and set_config_option gave it
+//   usage         sends usage_updates in the middle of one message (USD cost, then EUR cost)
 // It offers a model option (small, large) and an effort option (low, high), and one stored
 // conversation, "old-1", for session/list and session/resume.
-//   anything else replies "Done: <task>"
+//   anything else sends a plan (one entry with an unknown status), a usage_update, and replies
+//   "Done: <task>"
 // Every prompt first echoes the whole prompt text as a thought, so tests can see the event tags.
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -130,8 +132,33 @@ async function prompt(params: {
     update(sessionId, { sessionUpdate: "plan", entries: [] });
     say(sessionId, JSON.stringify({ instructions, config, session: sessionId }));
     return { stopReason: "end_turn" };
+  } else if (task === "usage") {
+    say(sessionId, "one ");
+    update(sessionId, { sessionUpdate: "usage_update", used: 100, size: 2000 });
+    say(sessionId, "two ");
+    update(sessionId, {
+      sessionUpdate: "usage_update",
+      used: 300,
+      size: 2000,
+      cost: { amount: 1.5, currency: "EUR" },
+    });
+    say(sessionId, "three");
+    return { stopReason: "end_turn" };
   }
-  update(sessionId, { sessionUpdate: "plan", entries: [] });
+  update(sessionId, {
+    sessionUpdate: "plan",
+    entries: [
+      { content: "Read the code", priority: "high", status: "completed" },
+      { content: "Make the change", priority: "medium", status: "in_progress" },
+      { content: "Check it", priority: "urgent", status: "later" },
+    ],
+  });
+  update(sessionId, {
+    sessionUpdate: "usage_update",
+    used: 21109,
+    size: 1000000,
+    cost: { amount: 0.25, currency: "USD" },
+  });
   say(sessionId, `Done: ${task}`);
   return { stopReason: "end_turn" };
 }

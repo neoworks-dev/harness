@@ -12,15 +12,17 @@ import type {
   FocusChanged,
   GuestTurn,
   HarnessMessage,
+  Plan,
   SessionEvent,
   StopReason,
   ToolCall,
   ToolCallUpdate,
+  Usage,
 } from "@suite/protocol/types";
 
-/** What an agent may emit during a prompt (ACP session/update plus harness_message). */
+/** What an agent may emit during a prompt (ACP session/update plus harness_message and usage). */
 export type AgentUpdate =
-  AgentMessageChunk | AgentThoughtChunk | ToolCall | ToolCallUpdate | HarnessMessage;
+  AgentMessageChunk | AgentThoughtChunk | ToolCall | ToolCallUpdate | Plan | Usage | HarnessMessage;
 
 /** Connector events (and what guests did on their own) that get prepended to the next user message. */
 export type ContextEvent = AppConnected | AppDisconnected | FocusChanged | GuestTurn;

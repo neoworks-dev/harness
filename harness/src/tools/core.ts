@@ -2,6 +2,7 @@ import type { AgentState } from "@mariozechner/pi-agent-core";
 import { createBashTool } from "./bash.ts";
 import { createEditTool } from "./edit.ts";
 import { createReadTool } from "./read.ts";
+import { createTodoWriteTool } from "./todo.ts";
 import { createWriteTool } from "./write.ts";
 import { createGatewayTools, type GatewayConnection } from "./gateway.ts";
 import type { AssetResolver } from "./paths.ts";
@@ -17,6 +18,7 @@ export function createCoreTools(
     createReadTool(cwd, assets),
     createWriteTool(cwd),
     createEditTool(cwd),
+    createTodoWriteTool(),
     ...createGatewayTools(gateway),
   ];
 }

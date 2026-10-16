@@ -110,10 +110,45 @@ describe("delegate", () => {
     const ids = new Set(replies.map((e) => e.type === "agent_message_chunk" && e.messageId));
     expect(ids.size).toBe(2);
 
+    // The plan replaces the guest's list as a whole; the usage update is the latest numbers.
+    expect(log.filter((e) => e.type === "plan")).toEqual([
+      {
+        type: "plan",
+        agent: "fake",
+        entries: [
+          { content: "Read the code", priority: "high", status: "completed" },
+          { content: "Make the change", priority: "medium", status: "in_progress" },
+          { content: "Check it", status: "pending" },
+        ],
+      },
+    ]);
+    expect(log.filter((e) => e.type === "usage")).toEqual([
+      { type: "usage", agent: "fake", contextUsed: 21109, contextSize: 1000000, cost: 0.25 },
+    ]);
+
     // A follow-up continues the same guest session and only says what changed.
     await daemon.gateway.call("delegate", { agent: "fake", task: "again" }, undefined, session);
     const thoughts = events(daemon, session).filter((e) => e.type === "agent_thought_chunk");
     expect(thoughts.at(-1)).toMatchObject({ text: "again" });
+  });
+
+  test("usage updates keep the message going and only USD costs are kept", async () => {
+    const { daemon, session } = await setup();
+    const result = await daemon.gateway.call(
+      "delegate",
+      { agent: "fake", task: "usage" },
+      undefined,
+      session,
+    );
+    expect(result).toEqual({ content: [{ type: "text", text: "Looking.one two three" }] });
+    const log = events(daemon, session);
+    const ids = new Set(log.map((e) => e.type === "agent_message_chunk" && e.messageId));
+    ids.delete(false);
+    expect(ids.size).toBe(1);
+    expect(log.filter((e) => e.type === "usage")).toEqual([
+      { type: "usage", agent: "fake", contextUsed: 100, contextSize: 2000 },
+      { type: "usage", agent: "fake", contextUsed: 300, contextSize: 2000 },
+    ]);
   });
 
   test("passes the appended prompt; no settings unless the user chose some", async () => {

@@ -1110,6 +1110,8 @@ pub enum SessionEvent {
     SettingChanged(SettingChanged),
     Choice(Choice),
     ChoiceMade(ChoiceMade),
+    Plan(Plan),
+    Usage(Usage),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -1184,6 +1186,8 @@ impl Serialize for SessionEvent {
                 "choice_made",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            SessionEvent::Plan(v) => ("plan", serde_json::to_value(v).map_err(S::Error::custom)?),
+            SessionEvent::Usage(v) => ("usage", serde_json::to_value(v).map_err(S::Error::custom)?),
             SessionEvent::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -1248,6 +1252,12 @@ impl<'de> Deserialize<'de> for SessionEvent {
                 .map_err(D::Error::custom),
             "choice_made" => serde_json::from_value(value)
                 .map(SessionEvent::ChoiceMade)
+                .map_err(D::Error::custom),
+            "plan" => serde_json::from_value(value)
+                .map(SessionEvent::Plan)
+                .map_err(D::Error::custom),
+            "usage" => serde_json::from_value(value)
+                .map(SessionEvent::Usage)
                 .map_err(D::Error::custom),
             _ => Ok(SessionEvent::Unknown(value)),
         }
@@ -1353,6 +1363,18 @@ impl From<Choice> for SessionEvent {
 impl From<ChoiceMade> for SessionEvent {
     fn from(v: ChoiceMade) -> Self {
         SessionEvent::ChoiceMade(v)
+    }
+}
+
+impl From<Plan> for SessionEvent {
+    fn from(v: Plan) -> Self {
+        SessionEvent::Plan(v)
+    }
+}
+
+impl From<Usage> for SessionEvent {
+    fn from(v: Usage) -> Self {
+        SessionEvent::Usage(v)
     }
 }
 
@@ -1845,6 +1867,88 @@ pub struct ChoiceMade {
     /// App whose pane answered.
     #[serde(rename = "by", default, skip_serializing_if = "Option::is_none")]
     pub by: Option<String>,
+}
+
+/// An agent's current todo list. Replaces that agent's previous plan as a whole; the newest plan event per agent is its current plan. Not part of the model's context.
+/// Tagged `type: "plan"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Plan {
+    /// Set when a guest agent's plan (e.g. claude, codex); absent for the session's own agent.
+    #[serde(rename = "agent", default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(rename = "entries")]
+    pub entries: Vec<PlanEntry>,
+}
+
+/// One todo of a plan (ACP's plan entry).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlanEntry {
+    #[serde(rename = "content")]
+    pub content: String,
+    #[serde(rename = "status")]
+    pub status: PlanEntryStatus,
+    #[serde(rename = "priority", default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<PlanEntryPriority>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PlanEntryStatus {
+    #[serde(rename = "pending")]
+    Pending,
+    #[serde(rename = "in_progress")]
+    InProgress,
+    #[serde(rename = "completed")]
+    Completed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PlanEntryPriority {
+    #[serde(rename = "high")]
+    High,
+    #[serde(rename = "medium")]
+    Medium,
+    #[serde(rename = "low")]
+    Low,
+}
+
+/// Latest token and cost numbers of an agent, for status displays. Each event carries the agent's current numbers; consumers keep the newest event per agent. Not part of the model's context. Every number is optional: an agent reports what it knows.
+/// Tagged `type: "usage"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Usage {
+    /// Set when a guest agent's numbers (e.g. claude, codex); absent for the session's own agent.
+    #[serde(rename = "agent", default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    /// Tokens in the agent's context window as of its last request.
+    #[serde(
+        rename = "contextUsed",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub context_used: Option<i64>,
+    /// The model's context window in tokens.
+    #[serde(
+        rename = "contextSize",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub context_size: Option<i64>,
+    /// USD spent by this agent in this session so far (cumulative).
+    #[serde(rename = "cost", default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
+    /// Input tokens (including cache reads and writes) summed over this agent's requests in this session.
+    #[serde(
+        rename = "inputTokens",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub input_tokens: Option<i64>,
+    /// Output tokens summed over this agent's requests in this session.
+    #[serde(
+        rename = "outputTokens",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub output_tokens: Option<i64>,
 }
 
 /// The fixed component set. Apps combine these; they never add new ones.

@@ -5,8 +5,10 @@ import type {
   Block,
   Component,
   ItemState,
+  ListItem,
   SessionEvent,
   SessionEventRecord,
+  Span,
   ToolCallContent,
   ToolCallStatus,
   ViewItem,
@@ -39,6 +41,7 @@ interface Call {
   rawOutput?: unknown;
 }
 
+type Plan = Extract<SessionEvent, { type: "plan" }>;
 type PermissionRequest = Extract<SessionEvent, { type: "permission_request" }>;
 type Choice = Extract<SessionEvent, { type: "choice" }>;
 
@@ -181,6 +184,8 @@ export class SessionView {
         if (!choice) return [];
         return [{ op: "set", item: this.choiceItem(choice, event.option ?? null) }];
       }
+      case "plan":
+        return this.planOps(event);
       case "setting_changed":
         return [this.notice(`n${seq}`, `${event.harness} ${event.option}: ${event.value}`)];
       case "turn_ended": {
@@ -204,6 +209,39 @@ export class SessionView {
 
   private notice(ref: string, message: string, tone: "muted" | "danger" = "muted"): ViewOp {
     return { op: "set", item: { ref, kind: "notice", component: text(plain(message), { tone }) } };
+  }
+
+  /**
+   * An agent's todo list: one item per agent, replaced with each new plan. An empty plan removes
+   * the item.
+   */
+  private planOps(plan: Plan): ViewOp[] {
+    const ref = plan.agent === undefined ? "plan" : `plan-${plan.agent}`;
+    if (plan.entries.length === 0) {
+      if (!this.index.has(ref)) return [];
+      return [{ op: "remove", ref }];
+    }
+    const items: ListItem[] = plan.entries.map((entry) => {
+      const inProgress = entry.status === "in_progress";
+      const span: Span = inProgress
+        ? { text: `◐ ${entry.content}`, bold: true }
+        : { text: entry.content };
+      return {
+        checked: entry.status === "completed",
+        blocks: [{ type: "paragraph", spans: [span] }],
+      };
+    });
+    let state: ItemState = "pending";
+    if (plan.entries.every((entry) => entry.status === "completed")) state = "done";
+    else if (plan.entries.some((entry) => entry.status === "in_progress")) state = "running";
+    const item: ViewItem = {
+      ref,
+      kind: "tool",
+      label: plan.agent === undefined ? "Plan" : `${plan.agent}: Plan`,
+      state,
+      component: text([{ type: "list", ordered: false, items }]),
+    };
+    return [{ op: "set", item }];
   }
 
   /**

@@ -1,0 +1,16 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 15,
+    "ts": 1760565601500,
+    "event": {
+      "type": "usage",
+      "contextUsed": 21109,
+      "contextSize": 1000000,
+      "cost": 0.0421,
+      "inputTokens": 52000,
+      "outputTokens": 1800
+    }
+  }
+}

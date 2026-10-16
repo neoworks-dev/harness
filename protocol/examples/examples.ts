@@ -303,6 +303,60 @@ export const examples: Record<string, Envelope> = {
       event: { type: "choice_made", id: "c1", option: "sonnet", by: "code-editor" },
     },
   },
+  "event-plan": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 13,
+      ts: 1760565601300,
+      event: {
+        type: "plan",
+        entries: [
+          { content: "Read the parser", status: "completed" },
+          { content: "Fix the off-by-one", status: "in_progress", priority: "high" },
+          { content: "Run the tests", status: "pending", priority: "medium" },
+        ],
+      },
+    },
+  },
+  "event-guest-plan": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 14,
+      ts: 1760565601400,
+      event: {
+        type: "plan",
+        agent: "claude",
+        entries: [{ content: "Fix the failing test", status: "pending", priority: "high" }],
+      },
+    },
+  },
+  "event-usage": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 15,
+      ts: 1760565601500,
+      event: {
+        type: "usage",
+        contextUsed: 21109,
+        contextSize: 1000000,
+        cost: 0.0421,
+        inputTokens: 52000,
+        outputTokens: 1800,
+      },
+    },
+  },
+  "event-guest-usage": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 16,
+      ts: 1760565601600,
+      event: { type: "usage", agent: "claude", contextUsed: 8200, contextSize: 200000 },
+    },
+  },
   "event-tool-call": {
     topic: "session.events",
     payload: {

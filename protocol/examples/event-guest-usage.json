@@ -1,0 +1,9 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 16,
+    "ts": 1760565601600,
+    "event": { "type": "usage", "agent": "claude", "contextUsed": 8200, "contextSize": 200000 }
+  }
+}

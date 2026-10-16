@@ -148,6 +148,73 @@ describe("session view", () => {
     });
   });
 
+  test("a plan is one checklist per agent, replaced in place; usage is not shown", () => {
+    const first: SessionEvent = {
+      type: "plan",
+      entries: [
+        { content: "read", status: "completed", priority: "high" },
+        { content: "write", status: "in_progress" },
+        { content: "test", status: "pending" },
+      ],
+    };
+    const { view, ops } = feed([
+      first,
+      { type: "usage", contextUsed: 10, contextSize: 100, cost: 0.1 },
+      { type: "plan", agent: "claude", entries: [{ content: "fix", status: "pending" }] },
+      {
+        type: "plan",
+        entries: [
+          { content: "read", status: "completed" },
+          { content: "write", status: "completed" },
+          { content: "test", status: "completed" },
+        ],
+      },
+    ]);
+    expect(ops[1]).toEqual([]);
+    const items = view.snapshot().items;
+    expect(items.map((i) => [i.ref, i.kind, i.label, i.state])).toEqual([
+      ["plan", "tool", "Plan", "done"],
+      ["plan-claude", "tool", "claude: Plan", "pending"],
+    ]);
+    expect(items[0]?.component).toEqual({
+      type: "text",
+      blocks: [
+        {
+          type: "list",
+          ordered: false,
+          items: ["read", "write", "test"].map((content) => ({
+            checked: true,
+            blocks: [{ type: "paragraph", spans: [{ text: content }] }],
+          })),
+        },
+      ],
+    });
+    // The first plan, as drawn while work was going on.
+    const running = feed([first]).view.snapshot().items[0];
+    expect(running?.state).toBe("running");
+    expect(running?.component).toMatchObject({
+      blocks: [
+        {
+          items: [
+            { checked: true, blocks: [{ spans: [{ text: "read" }] }] },
+            { checked: false, blocks: [{ spans: [{ text: "◐ write", bold: true }] }] },
+            { checked: false, blocks: [{ spans: [{ text: "test" }] }] },
+          ],
+        },
+      ],
+    });
+  });
+
+  test("an empty plan removes the item", () => {
+    const { view, ops } = feed([
+      { type: "plan", entries: [] },
+      { type: "plan", entries: [{ content: "a", status: "pending" }] },
+      { type: "plan", entries: [] },
+    ]);
+    expect(ops.map((o) => o.map((op) => op.op))).toEqual([[], ["set"], ["remove"]]);
+    expect(view.snapshot().items).toEqual([]);
+  });
+
   test("connector events, focus and failed turns become notices; harness messages don't show", () => {
     const { view } = feed([
       { type: "app_connected", app: "pad", kind: "app", v: 1, tools: [] },

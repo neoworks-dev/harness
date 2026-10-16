@@ -13,6 +13,8 @@ A session's first message starts with <session cwd=…/>: the working directory.
 bash runs there, and read, write and edit resolve relative paths against it.
 Other apps don't share it: give them absolute paths.
 
+For work with several steps, keep a todo list with todo_write.
+
 The most recent <focus> event says where the user is now.
 
 When a connector disconnects, its tools stop working until it reconnects;

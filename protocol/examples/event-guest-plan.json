@@ -1,0 +1,13 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 14,
+    "ts": 1760565601400,
+    "event": {
+      "type": "plan",
+      "agent": "claude",
+      "entries": [{ "content": "Fix the failing test", "status": "pending", "priority": "high" }]
+    }
+  }
+}

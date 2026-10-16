@@ -82,6 +82,12 @@
         },
         {
           "$ref": "#/$defs/ChoiceMade"
+        },
+        {
+          "$ref": "#/$defs/Plan"
+        },
+        {
+          "$ref": "#/$defs/Usage"
         }
       ],
       "discriminator": {
@@ -681,6 +687,92 @@
         }
       },
       "required": ["type", "id"],
+      "additionalProperties": false
+    },
+    "Plan": {
+      "description": "An agent's current todo list. Replaces that agent's previous plan as a whole; the newest plan event per agent is its current plan. Not part of the model's context.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "plan"
+        },
+        "agent": {
+          "type": "string",
+          "description": "Set when a guest agent's plan (e.g. claude, codex); absent for the session's own agent."
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PlanEntry"
+          }
+        }
+      },
+      "required": ["type", "entries"],
+      "additionalProperties": false
+    },
+    "PlanEntry": {
+      "description": "One todo of a plan (ACP's plan entry).",
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/PlanEntryStatus"
+        },
+        "priority": {
+          "$ref": "#/$defs/PlanEntryPriority"
+        }
+      },
+      "required": ["content", "status"],
+      "additionalProperties": false
+    },
+    "PlanEntryStatus": {
+      "type": "string",
+      "enum": ["pending", "in_progress", "completed"]
+    },
+    "PlanEntryPriority": {
+      "type": "string",
+      "enum": ["high", "medium", "low"]
+    },
+    "Usage": {
+      "description": "Latest token and cost numbers of an agent, for status displays. Each event carries the agent's current numbers; consumers keep the newest event per agent. Not part of the model's context. Every number is optional: an agent reports what it knows.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "usage"
+        },
+        "agent": {
+          "type": "string",
+          "description": "Set when a guest agent's numbers (e.g. claude, codex); absent for the session's own agent."
+        },
+        "contextUsed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Tokens in the agent's context window as of its last request."
+        },
+        "contextSize": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The model's context window in tokens."
+        },
+        "cost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "USD spent by this agent in this session so far (cumulative)."
+        },
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Input tokens (including cache reads and writes) summed over this agent's requests in this session."
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Output tokens summed over this agent's requests in this session."
+        }
+      },
+      "required": ["type"],
       "additionalProperties": false
     }
   }

@@ -971,7 +971,7 @@ type SessionEventRecord struct {
 }
 
 // SessionEvent: Everything that happens in a session. Views must ignore types they don't know.
-// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, UnknownSessionEvent.
+// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, UnknownSessionEvent.
 type SessionEvent struct {
 	Value SessionEventVariant
 }
@@ -1112,6 +1112,18 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "choice_made":
 		var v ChoiceMade
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "plan":
+		var v Plan
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "usage":
+		var v Usage
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -1667,6 +1679,74 @@ func (v ChoiceMade) MarshalJSON() ([]byte, error) {
 		Tag string `json:"type"`
 		plain
 	}{"choice_made", plain(v)})
+}
+
+// Plan: An agent's current todo list. Replaces that agent's previous plan as a whole; the newest plan event per agent is its current plan. Not part of the model's context.
+type Plan struct {
+	// Set when a guest agent's plan (e.g. claude, codex); absent for the session's own agent.
+	Agent   *string     `json:"agent,omitempty"`
+	Entries []PlanEntry `json:"entries"`
+}
+
+func (Plan) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v Plan) MarshalJSON() ([]byte, error) {
+	type plain Plan
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"plan", plain(v)})
+}
+
+// PlanEntry: One todo of a plan (ACP's plan entry).
+type PlanEntry struct {
+	Content  string             `json:"content"`
+	Status   PlanEntryStatus    `json:"status"`
+	Priority *PlanEntryPriority `json:"priority,omitempty"`
+}
+
+type PlanEntryStatus string
+
+const (
+	PlanEntryStatusPending    PlanEntryStatus = "pending"
+	PlanEntryStatusInProgress PlanEntryStatus = "in_progress"
+	PlanEntryStatusCompleted  PlanEntryStatus = "completed"
+)
+
+type PlanEntryPriority string
+
+const (
+	PlanEntryPriorityHigh   PlanEntryPriority = "high"
+	PlanEntryPriorityMedium PlanEntryPriority = "medium"
+	PlanEntryPriorityLow    PlanEntryPriority = "low"
+)
+
+// Usage: Latest token and cost numbers of an agent, for status displays. Each event carries the agent's current numbers; consumers keep the newest event per agent. Not part of the model's context. Every number is optional: an agent reports what it knows.
+type Usage struct {
+	// Set when a guest agent's numbers (e.g. claude, codex); absent for the session's own agent.
+	Agent *string `json:"agent,omitempty"`
+	// Tokens in the agent's context window as of its last request.
+	ContextUsed *int64 `json:"contextUsed,omitempty"`
+	// The model's context window in tokens.
+	ContextSize *int64 `json:"contextSize,omitempty"`
+	// USD spent by this agent in this session so far (cumulative).
+	Cost *float64 `json:"cost,omitempty"`
+	// Input tokens (including cache reads and writes) summed over this agent's requests in this session.
+	InputTokens *int64 `json:"inputTokens,omitempty"`
+	// Output tokens summed over this agent's requests in this session.
+	OutputTokens *int64 `json:"outputTokens,omitempty"`
+}
+
+func (Usage) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v Usage) MarshalJSON() ([]byte, error) {
+	type plain Usage
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"usage", plain(v)})
 }
 
 // Component: The fixed component set. Apps combine these; they never add new ones.

@@ -1,0 +1,16 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 13,
+    "ts": 1760565601300,
+    "event": {
+      "type": "plan",
+      "entries": [
+        { "content": "Read the parser", "status": "completed" },
+        { "content": "Fix the off-by-one", "status": "in_progress", "priority": "high" },
+        { "content": "Run the tests", "status": "pending", "priority": "medium" }
+      ]
+    }
+  }
+}

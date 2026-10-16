@@ -28,6 +28,24 @@ export function reply(
   return fauxAssistantMessage(content, { stopReason, errorMessage });
 }
 
+/** A reply as a provider reports it: with token counts and the cost of the request. */
+export function withUsage(
+  message: AssistantMessage,
+  tokens: { input: number; output: number; cacheRead?: number; cacheWrite?: number },
+  cost: number,
+): AssistantMessage {
+  const { input, output, cacheRead = 0, cacheWrite = 0 } = tokens;
+  const usage = {
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    totalTokens: input + output + cacheRead + cacheWrite,
+    cost: { input: cost, output: 0, cacheRead: 0, cacheWrite: 0, total: cost },
+  };
+  return { ...message, usage };
+}
+
 function streamMessage(message: AssistantMessage): AssistantMessageEventStream {
   const stream = createAssistantMessageEventStream();
   const empty: AssistantMessage = { ...message, content: [] };

@@ -51,6 +51,8 @@ describe("protocol examples", () => {
       setting_changed: true,
       choice: true,
       choice_made: true,
+      plan: true,
+      usage: true,
     };
     expect([...seen].sort()).toEqual(Object.keys(all).sort());
   });

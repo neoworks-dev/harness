@@ -2,7 +2,9 @@ import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { ToolCallContent, ToolKind } from "@suite/protocol/types";
 import type { AgentUpdate } from "./agent.ts";
 import { HARNESS_NAME } from "./restore.ts";
+import { parseTodos } from "./tools/todo.ts";
 import { tailBytes } from "./tools/truncate.ts";
+import type { UsageTracker } from "./usage.ts";
 import { isRecord } from "./util.ts";
 
 // Live output shown while a tool runs; the final result carries what the model got.
@@ -40,6 +42,8 @@ function describeToolCall(name: string, args: unknown): { title: string; kind: T
       return { title: `launch ${stringArg(args, "app")}`, kind: "other" };
     case "apps_focus":
       return { title: `focus ${stringArg(args, "app")}`, kind: "other" };
+    case "todo_write":
+      return { title: "update todos", kind: "think" };
     case "delegate": {
       const task = stringArg(args, "task").split("\n")[0] ?? "";
       return {
@@ -74,10 +78,12 @@ function diffOf(toolName: string, details: unknown): ToolCallContent[] {
 
 /**
  * Translates pi events into AgentUpdates for one prompt. Stateful because deltas need the id of
- * the assistant message they belong to.
+ * the assistant message they belong to. With a usage tracker, each assistant message is followed
+ * by a usage update.
  */
 export function createUpdateMapper(
   emit: (update: AgentUpdate) => void,
+  usage?: UsageTracker,
 ): (event: AgentEvent) => void {
   let messageId = "";
 
@@ -106,11 +112,18 @@ export function createUpdateMapper(
             status: "pending",
             rawInput,
           });
+          // The plan shows as soon as the model has written it, not when the tool has run.
+          const todos = name === "todo_write" ? parseTodos(rawInput) : undefined;
+          if (todos) emit({ type: "plan", entries: todos });
         }
         break;
       }
       case "message_end":
         emit({ type: "harness_message", harness: HARNESS_NAME, message: event.message });
+        if (event.message.role === "assistant") {
+          const update = usage?.add(event.message);
+          if (update) emit(update);
+        }
         break;
       case "tool_execution_start":
         emit({ type: "tool_call_update", toolCallId: event.toolCallId, status: "in_progress" });

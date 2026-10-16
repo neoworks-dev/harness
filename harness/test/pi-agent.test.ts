@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxToolCall } from "@mariozechner/pi-ai";
-import type { SessionEvent } from "@suite/protocol/types";
+import type { PlanEntry, SessionEvent } from "@suite/protocol/types";
 import type {
   AgentSession,
   AgentUpdate,
@@ -12,7 +12,14 @@ import type {
 } from "../src/agent.ts";
 import { createPiAgent } from "../src/pi-agent.ts";
 import { SYSTEM_PROMPT } from "../src/system-prompt.ts";
-import { fakeModel, hangingModel, reply, TEST_CONFIG, type FakeModel } from "./fake-model.ts";
+import {
+  fakeModel,
+  hangingModel,
+  reply,
+  TEST_CONFIG,
+  withUsage,
+  type FakeModel,
+} from "./fake-model.ts";
 import { ofType, tempDir } from "./helpers.ts";
 
 async function newSession(model: FakeModel): Promise<{ session: AgentSession; cwd: string }> {
@@ -161,6 +168,55 @@ test("a tool call produces tool_call, updates and a diff in order", async () => 
   expect(model.requests[1]?.map((m) => m.role)).toEqual(["user", "assistant", "toolResult"]);
 });
 
+test("todo_write emits the plan when the call is made, then answers with a summary", async () => {
+  const todos: PlanEntry[] = [
+    { content: "read the code", status: "completed" },
+    { content: "fix the bug", status: "in_progress" },
+    { content: "run the tests", status: "pending" },
+  ];
+  const model = fakeModel([
+    reply([fauxToolCall("todo_write", { todos }, { id: "t1" })], "toolUse"),
+    reply("ok"),
+  ]);
+  const { session } = await newSession(model);
+  const { updates } = await run(session, "plan it");
+  const kinds = updates.map((u) => u.type).filter((type) => type !== "harness_message");
+  expect(kinds).toEqual([
+    "tool_call",
+    "plan",
+    "tool_call_update",
+    "tool_call_update",
+    "agent_message_chunk",
+    "agent_message_chunk",
+  ]);
+  expect(ofType(updates, "plan")).toEqual([{ type: "plan", entries: todos }]);
+  expect(ofType(updates, "tool_call")[0]).toMatchObject({
+    tool: "todo_write",
+    title: "update todos",
+    kind: "think",
+  });
+  const done = ofType(updates, "tool_call_update").at(-1);
+  expect(done).toMatchObject({
+    status: "completed",
+    content: [{ type: "text", text: "3 todos: 1 done, 1 in progress, 1 pending" }],
+    rawOutput: { todos },
+  });
+});
+
+test("a todo_write call with a malformed list emits no plan", async () => {
+  const model = fakeModel([
+    reply(
+      [fauxToolCall("todo_write", { todos: [{ content: "x", status: "stuck" }] }, { id: "t1" })],
+      "toolUse",
+    ),
+    reply("ok"),
+  ]);
+  const { session } = await newSession(model);
+  const { updates } = await run(session, "plan it");
+  expect(ofType(updates, "plan")).toEqual([]);
+  expect(ofType(updates, "tool_call_update").at(-1)?.status).toBe("failed");
+});
+
 test("a failing tool is reported as failed and the turn continues", async () => {
   const model = fakeModel([
     reply(
@@ -221,6 +277,7 @@ test("the system prompt and tools are sent unchanged on every request", async ()
       "read",
       "write",
       "edit",
+      "todo_write",
       "tools_search",
       "tools_call",
       "apps_launch",
@@ -229,6 +286,73 @@ test("the system prompt and tools are sent unchanged on every request", async ()
     ],
   });
   expect(seen[1]).toEqual(seen[0]);
+});
+
+test("usage follows each assistant message with running totals", async () => {
+  const model = fakeModel([
+    withUsage(
+      reply([fauxToolCall("bash", { command: "true" }, { id: "b1" })], "toolUse"),
+      { input: 100, output: 20, cacheRead: 50 },
+      0.01,
+    ),
+    withUsage(reply("done"), { input: 30, output: 5, cacheRead: 150, cacheWrite: 10 }, 0.02),
+  ]);
+  const { session } = await newSession(model);
+  const { updates } = await run(session, "go");
+  const usage = ofType(updates, "usage");
+  expect(usage).toHaveLength(2);
+  expect(usage[0]).toEqual({
+    type: "usage",
+    contextUsed: 170,
+    contextSize: expect.any(Number),
+    cost: 0.01,
+    inputTokens: 150,
+    outputTokens: 20,
+  });
+  expect(usage[0]?.contextSize).toBeGreaterThan(0);
+  expect(usage[1]).toMatchObject({
+    contextUsed: 195,
+    cost: expect.closeTo(0.03, 10),
+    inputTokens: 340,
+    outputTokens: 25,
+  });
+  // The usage update comes right after the message it describes.
+  const types = updates.map((u) => u.type);
+  expect(types.at(-1)).toBe("usage");
+  expect(types.at(-2)).toBe("harness_message");
+});
+
+test("usage keeps adding up after the session is loaded from the log", async () => {
+  const model = fakeModel([
+    withUsage(reply("one"), { input: 100, output: 10 }, 0.5),
+    withUsage(reply("two"), { input: 200, output: 20 }, 0.25),
+  ]);
+  const { session, cwd } = await newSession(model);
+  const first = await run(session, "a");
+  const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const loaded = await agent.loadSession({
+    sessionId: "s1",
+    cwd,
+    mcpServers: [],
+    history: first.updates,
+  });
+  const second = await run(loaded, "b");
+  expect(ofType(second.updates, "usage")).toEqual([
+    {
+      type: "usage",
+      contextUsed: 220,
+      contextSize: expect.any(Number),
+      cost: 0.75,
+      inputTokens: 300,
+      outputTokens: 30,
+    },
+  ]);
+});
+
+test("replies without usage emit no usage update", async () => {
+  const { session } = await newSession(fakeModel([reply("hi")]));
+  const { updates } = await run(session, "x");
+  expect(ofType(updates, "usage")).toEqual([]);
 });
 
 test("stop reasons map to the contract", async () => {

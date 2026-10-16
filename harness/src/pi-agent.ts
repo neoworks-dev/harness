@@ -28,11 +28,12 @@ import {
 import type { Logger } from "./logger.ts";
 import { resolveModel } from "./model.ts";
 import { createUpdateMapper } from "./pi-updates.ts";
-import { HARNESS_NAME, restoreMessages } from "./restore.ts";
+import { HARNESS_NAME, loggedMessages, restoreMessages } from "./restore.ts";
 import { SYSTEM_PROMPT } from "./system-prompt.ts";
 import { createCoreTools } from "./tools/core.ts";
 import { connectGateway, type GatewayConnection } from "./tools/gateway.ts";
 import { loadImages } from "./tools/read.ts";
+import { createUsageTracker } from "./usage.ts";
 
 export interface PiAgentOptions {
   config: HarnessConfig;
@@ -143,6 +144,11 @@ export function createPiAgent(options: PiAgentOptions): HarnessAgent {
       toolExecution: "sequential",
       streamFn,
     });
+    // Counts every message ever logged, including failed ones the context no longer holds.
+    const usage = createUsageTracker(
+      loggedMessages(history, logger),
+      () => agent.state.model.contextWindow,
+    );
     let running = false;
     let cancelRequested = false;
 
@@ -159,7 +165,7 @@ export function createPiAgent(options: PiAgentOptions): HarnessAgent {
       }
       running = true;
       cancelRequested = false;
-      const mapEvent = createUpdateMapper(onUpdate);
+      const mapEvent = createUpdateMapper(onUpdate, usage);
       let final: AssistantMessage | undefined;
       const unsubscribe = agent.subscribe((event) => {
         mapEvent(event);

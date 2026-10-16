@@ -13,11 +13,15 @@ import type {
 import { formatPrompt } from "@suite/harness/context-events";
 import type {
   PermissionOption,
+  PlanEntry,
+  PlanEntryPriority,
+  PlanEntryStatus,
   SessionEvent,
   StopReason,
   ToolCallContent,
   ToolCallStatus,
   ToolKind,
+  Usage,
 } from "@suite/protocol/types";
 import type { Asker, PermissionRequest } from "../asker.ts";
 import { BadRequestError } from "../focus.ts";
@@ -104,6 +108,8 @@ const KINDS = new Set<string>([
   "other",
 ]);
 const STATUSES = new Set<string>(["pending", "in_progress", "completed", "failed"]);
+const PLAN_STATUSES: PlanEntryStatus[] = ["pending", "in_progress", "completed"];
+const PLAN_PRIORITIES: PlanEntryPriority[] = ["high", "medium", "low"];
 const STOP_REASONS = new Set<string>(["end_turn", "max_tokens", "cancelled", "refusal"]);
 const IMAGE_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -119,6 +125,44 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function str(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function count(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.round(value)
+    : undefined;
+}
+
+/** ACP plan entries; one without content is dropped, an unknown status counts as pending. */
+function planEntries(value: unknown): PlanEntry[] {
+  const entries: PlanEntry[] = [];
+  if (!Array.isArray(value)) return entries;
+  for (const item of value) {
+    const content = isRecord(item) ? str(item.content) : undefined;
+    if (!isRecord(item) || content === undefined) continue;
+    const entry: PlanEntry = {
+      content,
+      status: PLAN_STATUSES.find((status) => status === item.status) ?? "pending",
+    };
+    const priority = PLAN_PRIORITIES.find((candidate) => candidate === item.priority);
+    if (priority !== undefined) entry.priority = priority;
+    entries.push(entry);
+  }
+  return entries;
+}
+
+/** ACP usage_update: context tokens used / window size, and the session's cost when in USD. */
+function usageOf(update: Record<string, unknown>, agent: string): Usage | undefined {
+  const usage: Usage = { type: "usage", agent };
+  const used = count(update.used);
+  const size = count(update.size);
+  if (used !== undefined) usage.contextUsed = used;
+  if (size !== undefined) usage.contextSize = size;
+  if (isRecord(update.cost) && update.cost.currency === "USD") {
+    const amount = update.cost.amount;
+    if (typeof amount === "number" && Number.isFinite(amount) && amount >= 0) usage.cost = amount;
+  }
+  return Object.keys(usage).length > 2 ? usage : undefined;
 }
 
 function errorText(err: unknown): string {
@@ -539,8 +583,20 @@ export class GuestManager {
       run.emit({ type: kind, messageId: run.messageId, text, agent: guest.name });
       return;
     }
+    // Not output of the agent: it neither ends nor splits the current message.
+    if (kind === "usage_update") {
+      const usage = usageOf(update, guest.name);
+      if (usage) run.emit(usage);
+      return;
+    }
     // Anything else ends the current message.
     run.messageKind = undefined;
+    if (kind === "plan") {
+      if (Array.isArray(update.entries)) {
+        run.emit({ type: "plan", agent: guest.name, entries: planEntries(update.entries) });
+      }
+      return;
+    }
     const id = str(update.toolCallId);
     if (id === undefined) return;
     const toolCallId = `${guest.name}:${id}`;

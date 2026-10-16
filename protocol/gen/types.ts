@@ -453,7 +453,9 @@ export type SessionEvent =
   | PermissionResolved
   | SettingChanged
   | Choice
-  | ChoiceMade;
+  | ChoiceMade
+  | Plan
+  | Usage;
 
 export type SessionEventTag = SessionEvent["type"];
 
@@ -705,6 +707,42 @@ export interface ChoiceMade {
   option?: string;
   /** App whose pane answered. */
   by?: string;
+}
+
+/** An agent's current todo list. Replaces that agent's previous plan as a whole; the newest plan event per agent is its current plan. Not part of the model's context. */
+export interface Plan {
+  type: "plan";
+  /** Set when a guest agent's plan (e.g. claude, codex); absent for the session's own agent. */
+  agent?: string;
+  entries: PlanEntry[];
+}
+
+/** One todo of a plan (ACP's plan entry). */
+export interface PlanEntry {
+  content: string;
+  status: PlanEntryStatus;
+  priority?: PlanEntryPriority;
+}
+
+export type PlanEntryStatus = "pending" | "in_progress" | "completed";
+
+export type PlanEntryPriority = "high" | "medium" | "low";
+
+/** Latest token and cost numbers of an agent, for status displays. Each event carries the agent's current numbers; consumers keep the newest event per agent. Not part of the model's context. Every number is optional: an agent reports what it knows. */
+export interface Usage {
+  type: "usage";
+  /** Set when a guest agent's numbers (e.g. claude, codex); absent for the session's own agent. */
+  agent?: string;
+  /** Tokens in the agent's context window as of its last request. */
+  contextUsed?: number;
+  /** The model's context window in tokens. */
+  contextSize?: number;
+  /** USD spent by this agent in this session so far (cumulative). */
+  cost?: number;
+  /** Input tokens (including cache reads and writes) summed over this agent's requests in this session. */
+  inputTokens?: number;
+  /** Output tokens summed over this agent's requests in this session. */
+  outputTokens?: number;
 }
 
 /** The fixed component set. Apps combine these; they never add new ones. */
