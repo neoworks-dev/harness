@@ -5,6 +5,7 @@
 import type { Plugin } from "@neoworks/extension-system";
 import { agentsList } from "./agents/index.ts";
 import { agentViewPane } from "./agentview/index.ts";
+import { commentsStore } from "./comments/index.ts";
 import { composerPane } from "./composer/index.ts";
 import { diffOverlay } from "./diff/index.ts";
 import { filesPanel } from "./files/index.ts";
@@ -20,6 +21,7 @@ export const plugins: Plugin[] = [
   shell,
   sessionsSidebar,
   statusLine,
+  commentsStore,
   diffOverlay,
   transcriptPane,
   githubPane,
