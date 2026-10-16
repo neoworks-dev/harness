@@ -14,7 +14,9 @@ export interface Palette {
   danger: string;
   /** The band behind the user's own messages and the input: bg with a little fg mixed in. */
   band: string;
-  /** The sessions column, a shade off the window's background. */
+  /** The sessions column: its background, rows under the pointer and the shown row, its border, icons. */
+  side: { bg: string; hover: string; active: string; border: string; icon: string; muted: string };
+  /** The sessions column's background. */
   sidebar: string;
   /** A row under the pointer. */
   hover: string;
@@ -80,13 +82,24 @@ const NEUTRAL = {
   raised: "#222225",
 };
 
+/** The sessions column, a shade darker than the window. */
+const SIDE = {
+  bg: NEUTRAL.sidebar,
+  hover: NEUTRAL.hover,
+  active: NEUTRAL.raised,
+  border: NEUTRAL.border,
+  icon: "#6a6a70",
+  muted: NEUTRAL.muted,
+};
+
 export function paletteOf(theme: Theme = DEFAULT_THEME): Palette {
   const { colors, spacing, text } = theme;
   return {
     ...colors,
     ...NEUTRAL,
     band: NEUTRAL.raised,
-    radius: { s: 6, m: 10, l: 16 },
+    side: SIDE,
+    radius: { s: 8, m: 10, l: 18 },
     space: { s: spacing.s, m: spacing.m, l: spacing.l },
     text: { title: text.title.size, body: text.body.size, code: text.code.size },
   };

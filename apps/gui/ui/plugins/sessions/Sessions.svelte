@@ -15,7 +15,7 @@
 
   /** Rows a PgUp / PgDn moves. */
   const PAGE = 5;
-  const WIDTH = 280;
+  const WIDTH = 256;
 
   const { daemon } = useCtx();
 
@@ -134,9 +134,9 @@
     style={{
       width: WIDTH,
       shrink: 0,
-      background: p.sidebar,
+      background: p.side.bg,
       borderRightWidth: 1,
-      borderColor: p.border,
+      borderColor: p.side.border,
     }}
   >
     <View
@@ -144,16 +144,16 @@
         direction: "row",
         align: "center",
         gap: p.space.s,
-        paddingLeft: p.space.l,
-        paddingRight: p.space.m,
-        height: 48,
+        paddingLeft: 20,
+        paddingRight: 12,
+        height: 52,
       }}
     >
       <Text
         style={{
           flex: 1,
           minWidth: 0,
-          fontWeight: "semibold",
+          fontWeight: "medium",
           color: sessions.focused ? p.accent : p.fg,
         }}
       >
@@ -161,10 +161,10 @@
       </Text>
       <Button
         onpress={() => void daemon.newSession()}
-        style={{ padding: 6, radius: p.radius.s, color: p.muted }}
-        hover={{ background: p.hover, color: p.fg }}
+        style={{ size: 28, align: "center", justify: "center", radius: p.radius.s, color: p.side.icon }}
+        hover={{ background: p.side.hover, color: p.fg }}
       >
-        <Icon svg={newSession} size={18} />
+        <Icon svg={newSession} size={16} />
       </Button>
     </View>
 
@@ -173,7 +173,7 @@
         bind:this={list}
         items={[...rows]}
         key={(entry: Entry) => entry.key}
-        style={{ flex: 1, minHeight: 0, paddingX: p.space.m }}
+        style={{ flex: 1, minHeight: 0, paddingX: 8 }}
       >
         {#snippet row(entry: Entry)}
           {#if entry.kind === "session"}
