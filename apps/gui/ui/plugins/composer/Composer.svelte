@@ -1,13 +1,17 @@
 <script lang="ts">
-  // Where the user types: a multiline input in a band, or, once the agent asks a question (a
-  // permission or a choice) and the user has paused typing, the panel that answers it.
+  // Where the user types: a rounded card with the input over the session's pickers and the send
+  // button, or, once the agent asks a question (a permission or a choice) and the user has paused
+  // typing, the panel that answers it.
   import { untrack } from "svelte";
-  import { Input, Overlay, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
+  import { Button, Icon, Input, Overlay, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
+  import arrowUp from "@phosphor-icons/core/bold/arrow-up-bold.svg";
+  import stop from "@phosphor-icons/core/fill/stop-fill.svg";
   import type { KeyEvent, Layout } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
   import CommandMenu from "./CommandMenu.svelte";
   import Help from "./Help.svelte";
+  import Pickers from "./Pickers.svelte";
   import PromptPanel from "./PromptPanel.svelte";
   import { composer } from "./state.svelte.ts";
 
@@ -16,7 +20,7 @@
   const p = $derived(daemon.palette);
   /** The input grows with its text up to this many pixels, then scrolls. */
   const MAX_INPUT_HEIGHT = 200;
-  const LINE_HEIGHT = 20;
+  const LINE_HEIGHT = 22;
 
   let input: ReturnType<typeof Input> | undefined = $state();
   let scroller: ReturnType<typeof Scroll> | undefined = $state();
@@ -104,45 +108,85 @@
   }
 </script>
 
-<View style={{ background: p.band, paddingX: p.space.l, paddingY: p.space.m, gap: p.space.s }}>
-  {#if showPanel}
-    <PromptPanel />
-  {:else}
-    {#if composer.waiting && composer.prompt}
-      <Text style={{ color: p.muted, truncate: true }}>
-        {composer.prompt.title || "A question"} is waiting. Stop typing to answer it, Esc puts it aside.
-      </Text>
-    {/if}
-    <View style={{ direction: "row", gap: p.space.m }} onpress={() => input?.focus()}>
-      <Slot name="composer.left" />
-      <Text style={{ color: p.accent, lineHeight: LINE_HEIGHT, fontWeight: 600 }}>›</Text>
-      <View style={{ flex: 1, minWidth: 0 }} onlayout={layout}>
-        <Scroll bind:this={scroller} style={{ maxHeight: MAX_INPUT_HEIGHT }}>
-          <View onlayout={grown}>
-            <Input
-              bind:this={input}
-              bind:value={composer.text}
-              multiline
-              rows={1}
-              placeholder="Message the agent, / for commands"
-              style={{ color: p.fg, lineHeight: LINE_HEIGHT }}
-              oninput={typed}
-              onkey={key}
-            />
-          </View>
-        </Scroll>
-        {#if composer.menuVisible}
-          <Overlay side="top" align="start" offset={p.space.m} matchWidth>
-            <CommandMenu onchosen={() => input?.focus()} />
-          </Overlay>
-        {/if}
-        {#if composer.helpOpen}
-          <Overlay side="top" align="start" offset={p.space.m} matchWidth>
-            <Help />
-          </Overlay>
+<View style={{ paddingTop: 8, paddingBottom: 12 }}>
+  <View
+    style={{
+      background: p.surface,
+      radius: 22,
+      borderWidth: 1,
+      borderColor: p.border,
+      shadow: { y: 1, blur: 0, color: "rgba(255, 255, 255, 0.03)" },
+    }}
+  >
+    {#if showPanel}
+      <View style={{ padding: 16 }}>
+        <PromptPanel />
+      </View>
+    {:else}
+      {#if composer.waiting && composer.prompt}
+        <Text style={{ color: p.muted, truncate: true, paddingX: 16, paddingTop: 12 }}>
+          {composer.prompt.title || "A question"} is waiting. Stop typing to answer it, Esc puts it aside.
+        </Text>
+      {/if}
+      <View style={{ paddingX: 16, paddingTop: 16, paddingBottom: 8 }} onpress={() => input?.focus()}>
+        <View style={{ minWidth: 0 }} onlayout={layout}>
+          <Scroll bind:this={scroller} style={{ maxHeight: MAX_INPUT_HEIGHT }}>
+            <View onlayout={grown} style={{ minHeight: LINE_HEIGHT * 2 }}>
+              <Input
+                bind:this={input}
+                bind:value={composer.text}
+                multiline
+                rows={2}
+                placeholder="Ask anything, or / for commands"
+                style={{ color: p.fg, lineHeight: LINE_HEIGHT }}
+                oninput={typed}
+                onkey={key}
+              />
+            </View>
+          </Scroll>
+          {#if composer.menuVisible}
+            <Overlay side="top" align="start" offset={24} matchWidth>
+              <CommandMenu onchosen={() => input?.focus()} />
+            </Overlay>
+          {/if}
+          {#if composer.helpOpen}
+            <Overlay side="top" align="start" offset={24} matchWidth>
+              <Help />
+            </Overlay>
+          {/if}
+        </View>
+      </View>
+      <View style={{ direction: "row", align: "center", gap: 8, paddingX: 10, paddingBottom: 10 }}>
+        <Slot name="composer.left" />
+        <Pickers />
+        <View style={{ flex: 1 }} />
+        <Slot name="composer.right" />
+        {#if daemon.status.running && composer.text.trim() === ""}
+          <Button
+            onpress={() => void daemon.cancel()}
+            style={{ size: 32, radius: 16, align: "center", justify: "center", background: p.danger, color: "#ffffff" }}
+            hover={{ opacity: 0.9 }}
+          >
+            <Icon svg={stop} size={12} />
+          </Button>
+        {:else}
+          <Button
+            onpress={() => composer.submit()}
+            style={{
+              size: 32,
+              radius: 16,
+              align: "center",
+              justify: "center",
+              background: p.accent,
+              color: "#ffffff",
+              opacity: composer.text.trim() === "" ? 0.64 : 1,
+            }}
+            hover={{ opacity: 0.9 }}
+          >
+            <Icon svg={arrowUp} size={14} />
+          </Button>
         {/if}
       </View>
-      <Slot name="composer.right" />
-    </View>
-  {/if}
+    {/if}
+  </View>
 </View>

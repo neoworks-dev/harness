@@ -4,6 +4,7 @@
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
+  import Column from "../../widgets/Column.svelte";
 
   const { daemon } = useCtx();
 
@@ -23,7 +24,9 @@
       </View>
     {:else}
       <Slot name="shell.main" />
-      <Slot name="shell.bottom" />
+      <Column style={{ paddingBottom: 8 }}>
+        <Slot name="shell.bottom" />
+      </Column>
     {/if}
   </View>
   <Slot name="shell.right" />
