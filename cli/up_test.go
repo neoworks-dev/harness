@@ -414,3 +414,70 @@ func TestDataDir(t *testing.T) {
 		}
 	}
 }
+
+func TestUpRestartsAStaleDaemon(t *testing.T) {
+	if _, err := osexec.LookPath("bun"); err != nil {
+		t.Skip("bun is not installed; cannot start the real daemon")
+	}
+	u := newUpEnv(t)
+	// A repo whose entry point is the real daemon, so its sources can be touched.
+	root := t.TempDir()
+	src := filepath.Join(root, "daemon", "src")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	entry := "import " + strconv.Quote(filepath.Join(repoRoot(t), "daemon", "src", "main.ts")) + ";\n"
+	if err := os.WriteFile(filepath.Join(src, "main.ts"), []byte(entry), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Hour)
+	os.Chtimes(filepath.Join(src, "main.ts"), old, old)
+	u.vars["SUITE_ROOT"] = root
+	u.extra = []string{"SUITE_AGENT=echo", "SUITE_SERVICES=none", "SUITE_GUESTS=none", "SUITE_PORT=0"}
+	u.timeout = 20 * time.Second
+
+	if code, _, stderr := u.do(t, "up"); code != 0 {
+		t.Fatalf("up: code %d, stderr %q", code, stderr)
+	}
+	first, err := probe(context.Background(), u.socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Unchanged code: the daemon stays.
+	if code, stdout, stderr := u.do(t, "up"); code != 0 || stderr != "" || !strings.Contains(stdout, "already running") {
+		t.Fatalf("second up: code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	// The code changed after it started: it is restarted.
+	if err := os.WriteFile(filepath.Join(src, "changed.ts"), []byte("export {};\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := u.do(t, "up")
+	if code != 0 || !strings.Contains(stderr, "older than its code; restarting") || !strings.Contains(stdout, "daemon started") {
+		t.Fatalf("stale up: code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	second, err := probe(context.Background(), u.socket)
+	if err != nil || second == first {
+		t.Errorf("pid %d -> %d (%v)", first, second, err)
+	}
+	eventually(t, "old daemon to exit", func() bool { return !alive(first) })
+}
+
+func TestNewestSource(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel string, at time.Time) {
+		p := filepath.Join(root, rel)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, nil, 0o644)
+		os.Chtimes(p, at, at)
+	}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	write("daemon/src/a.ts", base)
+	write("protocol/gen/types.ts", base.Add(time.Minute))
+	// Not daemon code: apps, node_modules, other file types.
+	write("apps/x/main.ts", base.Add(time.Hour))
+	write("daemon/src/node_modules/m/index.ts", base.Add(time.Hour))
+	write("harness/src/notes.md", base.Add(time.Hour))
+	if got := newestSource(root); !got.Equal(base.Add(time.Minute)) {
+		t.Errorf("newest = %v", got)
+	}
+}

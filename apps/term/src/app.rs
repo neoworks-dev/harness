@@ -21,7 +21,7 @@ use crate::chat::{Chat, ChatOpts};
 use crate::editor::Editor;
 use crate::history::{Histories, HistoryStore};
 use crate::menu::{self, Command, Entry, Switcher};
-use crate::sessions::{SIDEBAR_WIDTH, Sessions, SessionsAction};
+use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction};
 use crate::status::{Approvals, HarnessSettings, Status, record_setting};
 use crate::style::{Styles, plain_palette};
 use crate::util::{fit_line, shorten_home, truncate, width};
@@ -1251,12 +1251,16 @@ impl App {
             ..area
         };
         let spinner = SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()];
+        let look = Look {
+            current: &self.session,
+            focused: self.focus == Some(Focus::Sessions),
+            spinner,
+            now_ms: self.now_ms,
+        };
         let lines = self.sessions.render(
             usize::from(list.width),
             usize::from(list.height),
-            &self.session,
-            self.focus == Some(Focus::Sessions),
-            spinner,
+            &look,
             &self.styles,
         );
         frame.render_widget(Paragraph::new(lines), list);

@@ -30,6 +30,8 @@ bin/suite                  # in a terminal: starts the daemon if needed, then op
 bin/suite up               # make sure the daemon runs; starts it in the background (log: <data dir>/daemon.log)
 bin/suite down             # stop the daemon (SIGTERM; waits for the socket to close)
 bun run daemon             # alternatively: the daemon in the foreground (Ctrl-C stops it)
+# suite and suite up restart a daemon whose code (daemon/, harness/, protocol/) changed since it
+# started, unless a turn is running (then they say so and keep it).
 bin/suite attach --new     # new session in the current directory; type to chat
 bin/suite status           # daemon info + session counts + where the agent is
 bin/suite tools [query]    # connectors (open or closed) and their tools

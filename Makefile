@@ -22,7 +22,7 @@ bin/photo: FORCE
 # The terminal app (apps/term): what `suite` with no arguments opens.
 bin/suite-term: FORCE
 	cargo build --release -p suite-term
-	cp target/release/suite-term bin/suite-term
+	cp target/release/suite-term bin/suite-term.tmp && mv bin/suite-term.tmp bin/suite-term
 
 FORCE:
 

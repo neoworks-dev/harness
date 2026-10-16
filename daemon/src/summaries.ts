@@ -9,6 +9,8 @@ const PREVIEW_CHARS = 120;
 const TITLE_CHARS = 60;
 
 export interface Summary {
+  /** Only when it was just given (the session's row had none). */
+  title?: string;
   preview?: string;
   added: number;
   removed: number;
@@ -46,12 +48,20 @@ export class SessionSummaries {
 
   get(session: string): Summary {
     let state = this.states.get(session);
+    let named: string | undefined;
     if (!state) {
       state = { diffs: new Map() };
-      for (const { event } of this.store.read(session)) apply(state, event);
+      let first: string | undefined;
+      for (const { event } of this.store.read(session)) {
+        if (first === undefined && event.type === "user_message") first = event.text;
+        apply(state, event);
+      }
       this.states.set(session, state);
+      // Sessions from before titles were given get one now.
+      if (first !== undefined) named = this.nameAfter(session, first);
     }
     const summary: Summary = { added: 0, removed: 0 };
+    if (named !== undefined) summary.title = named;
     for (const counts of state.diffs.values()) {
       summary.added += counts.added;
       summary.removed += counts.removed;
@@ -62,12 +72,13 @@ export class SessionSummaries {
     return summary;
   }
 
-  /** An untitled session is named after its first message. */
-  private nameAfter(session: string, text: string): void {
+  /** An untitled session is named after its first message; the title given, if any. */
+  private nameAfter(session: string, text: string): string | undefined {
     const row = this.store.getSession(session);
-    if (!row || row.title !== undefined) return;
+    if (!row || row.title !== undefined) return undefined;
     const title = oneLine(text, TITLE_CHARS);
     if (title !== undefined) this.store.setTitle(session, title);
+    return title;
   }
 }
 

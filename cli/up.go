@@ -79,20 +79,52 @@ func daemonCommand(getenv func(string) string, exe func() (string, error)) ([]st
 	if c := strings.Fields(getenv("SUITE_DAEMON_CMD")); len(c) > 0 {
 		return c, nil
 	}
-	root := getenv("SUITE_ROOT")
-	if root == "" {
-		if exe == nil {
-			exe = os.Executable
-		}
-		path, err := exe()
-		if err != nil {
-			return nil, fmt.Errorf("cannot locate the suite executable: %w", err)
-		}
-		if root, err = findRoot(path); err != nil {
-			return nil, err
-		}
+	root, err := daemonRoot(getenv, exe)
+	if err != nil {
+		return nil, err
 	}
 	return []string{"bun", "run", filepath.Join(root, daemonEntry)}, nil
+}
+
+// daemonRoot is the repo the daemon runs from: SUITE_ROOT, else found from exe.
+func daemonRoot(getenv func(string) string, exe func() (string, error)) (string, error) {
+	if root := getenv("SUITE_ROOT"); root != "" {
+		return root, nil
+	}
+	if exe == nil {
+		exe = os.Executable
+	}
+	path, err := exe()
+	if err != nil {
+		return "", fmt.Errorf("cannot locate the suite executable: %w", err)
+	}
+	return findRoot(path)
+}
+
+// restartIfStale stops a daemon started before its code last changed, unless a
+// turn is running (then it only says so). It reports whether the daemon was
+// stopped. A daemon run by SUITE_DAEMON_CMD has no known sources: never stale.
+func restartIfStale(ctx context.Context, socket string, e cliEnv) (bool, error) {
+	if e.Getenv("SUITE_DAEMON_CMD") != "" {
+		return false, nil
+	}
+	root, err := daemonRoot(e.Getenv, e.Executable)
+	if err != nil {
+		return false, nil
+	}
+	st, err := inspect(ctx, socket)
+	if err != nil || !newestSource(root).After(st.startedAt) {
+		return false, nil
+	}
+	if st.busy {
+		fmt.Fprintf(e.Stderr, "suite: the daemon (pid %d) is older than its code but a turn is running; run suite down and start again when it's done\n", st.pid)
+		return false, nil
+	}
+	fmt.Fprintf(e.Stderr, "suite: the daemon (pid %d) is older than its code; restarting it\n", st.pid)
+	if err := stopDaemon(ctx, socket, st.pid, e); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // tailLines returns the last n lines of b.
@@ -108,7 +140,13 @@ func tailLines(b []byte, n int) string {
 // already did. On failure the error says why (and includes the log tail).
 func ensureDaemon(ctx context.Context, socket string, e cliEnv) (pid int, started bool, logPath string, err error) {
 	if pid, err := probe(ctx, socket); err == nil {
-		return pid, false, "", nil
+		restarted, err := restartIfStale(ctx, socket, e)
+		if err != nil {
+			return 0, false, "", err
+		}
+		if !restarted {
+			return pid, false, "", nil
+		}
 	} else if !errors.Is(err, sdk.ErrDaemonDown) {
 		return 0, false, "", fmt.Errorf("cannot connect to daemon (socket %s): %w", socket, err)
 	}
@@ -233,9 +271,18 @@ func runDown(ctx context.Context, args []string, e cliEnv) int {
 		fmt.Fprintf(e.Stderr, "suite: the daemon on %s reports no pid\n", path)
 		return 1
 	}
-	if err := terminate(pid); err != nil {
-		fmt.Fprintf(e.Stderr, "suite: cannot stop daemon (pid %d): %v\n", pid, err)
+	if err := stopDaemon(ctx, path, pid, e); err != nil {
+		fmt.Fprintf(e.Stderr, "suite: %v\n", err)
 		return 1
+	}
+	fmt.Fprintf(e.Stdout, "daemon stopped (pid %d)\n", pid)
+	return 0
+}
+
+// stopDaemon terminates the daemon and waits until its socket goes quiet.
+func stopDaemon(ctx context.Context, path string, pid int, e cliEnv) error {
+	if err := terminate(pid); err != nil {
+		return fmt.Errorf("cannot stop daemon (pid %d): %w", pid, err)
 	}
 	timeout := e.DownTimeout
 	if timeout <= 0 {
@@ -244,16 +291,14 @@ func runDown(ctx context.Context, args []string, e cliEnv) int {
 	deadline := time.Now().Add(timeout)
 	for {
 		if _, err := probe(ctx, path); errors.Is(err, sdk.ErrDaemonDown) {
-			fmt.Fprintf(e.Stdout, "daemon stopped (pid %d)\n", pid)
-			return 0
+			return nil
 		}
 		if time.Now().After(deadline) {
-			fmt.Fprintf(e.Stderr, "suite: daemon (pid %d) still answers on %s after %s\n", pid, path, timeout)
-			return 1
+			return fmt.Errorf("daemon (pid %d) still answers on %s after %s", pid, path, timeout)
 		}
 		select {
 		case <-ctx.Done():
-			return 1
+			return ctx.Err()
 		case <-time.After(pollEvery):
 		}
 	}

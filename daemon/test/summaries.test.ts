@@ -2,6 +2,8 @@ import { afterEach, expect, test } from "bun:test";
 import type { SessionInfo } from "@suite/protocol/types";
 import { validateEnvelope } from "@suite/protocol/validate";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
+import { resolvePaths } from "../src/paths.ts";
+import { SessionStore } from "../src/store.ts";
 import { oneLine } from "../src/summaries.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -75,4 +77,19 @@ test("clients get session.changed when a session runs, ends and changes", async 
   for (let i = 0; i < 100 && changes.at(-1)?.state !== "idle"; i++) await Bun.sleep(20);
   expect(changes.at(-1)).toMatchObject({ id, state: "idle", title: "hello there" });
   expect(changes.at(-1)?.preview).toContain("hello there");
+});
+
+test("sessions from before titles get one from their first message", async () => {
+  const d = await daemon();
+  await d.stop();
+  cleanups.pop();
+  // A log written without the summaries (as an older daemon did).
+  const store = new SessionStore(resolvePaths(d.env).db);
+  const id = store.createSession({ id: "s_old", cwd: d.dir }).id;
+  store.append(id, { type: "user_message", app: "cli", text: "Old question" });
+  store.append(id, { type: "user_message", app: "cli", text: "later" });
+  store.close();
+  const again = await startTestDaemon({ dir: d.dir });
+  cleanups.push(() => again.stop());
+  expect(again.sessions.info(id)).toMatchObject({ title: "Old question", preview: "later" });
 });
