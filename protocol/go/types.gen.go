@@ -917,6 +917,8 @@ type AppPresence struct {
 	PID *int64 `json:"pid,omitempty"`
 	// View templates for this app's tool results, keyed by tool name (without the app prefix). Format: protocol/README.md#templates. Kept by the daemon so results still render after the app closes.
 	Templates map[string]json.RawMessage `json:"templates,omitempty"`
+	// One line for the agent about what the app is for, shown when it first connects in a session. Default: the first sentence of the MCP server's instructions.
+	Description *string `json:"description,omitempty"`
 }
 
 // McpEndpoint: The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it.
@@ -1331,13 +1333,23 @@ const (
 	ConnectorKindService ConnectorKind = "service"
 )
 
-// AppConnected: A connector registered. Rendered to the model as <app connected=…/>.
+// AppConnected: A connector registered, came back, or changed its tools (new v). Rendered to the model as <app connected=…/> the first time, <app reconnected=…/> for the same version, <app updated=… added=… removed=…/> for a new one. tools is always the full current list.
 type AppConnected struct {
 	App  string        `json:"app"`
 	Kind ConnectorKind `json:"kind"`
 	// Connector version; bumps when its tools change.
 	V     int64    `json:"v"`
 	Tools []string `json:"tools"`
+	// One line about the connector; only in the first app_connected a session gets for it.
+	Description *string `json:"description,omitempty"`
+	// The session already saw this exact version: earlier schemas still apply. Rendered as <app reconnected=…/>.
+	Reconnect *bool `json:"reconnect,omitempty"`
+	// Tools new since the previous version (omitted when none).
+	Added []string `json:"added,omitempty"`
+	// Tools gone since the previous version (omitted when none).
+	Removed []string `json:"removed,omitempty"`
+	// Set when the session knew an earlier version: that version. Rendered as <app updated=…/>; added/removed list the difference (omitted when empty).
+	Previous *int64 `json:"previous,omitempty"`
 }
 
 func (AppConnected) isSessionEvent() {}

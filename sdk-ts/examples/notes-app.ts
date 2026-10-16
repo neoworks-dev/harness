@@ -98,6 +98,7 @@ const suite = await SuiteClient.connect({
     app: "notes",
     kind: "app",
     title: "Notes",
+    description: "Notes: short lines of text the user keeps.",
     open: true,
     mcp: tools.endpoint,
     templates,

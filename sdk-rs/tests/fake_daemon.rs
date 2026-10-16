@@ -224,6 +224,7 @@ fn reconnect_restores_presence_and_resumes_without_gaps_or_repeats() {
     let (_dir, listener, mut options) = setup("reconnect");
     options.reconnect = true;
     options.presence = Some(AppPresence {
+        description: None,
         templates: None,
         app: "code-editor".into(),
         kind: ConnectorKind::App,

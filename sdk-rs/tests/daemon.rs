@@ -77,6 +77,7 @@ impl Drop for Daemon {
 
 fn app(name: &str, home: bool) -> AppPresence {
     AppPresence {
+        description: None,
         templates: None,
         app: name.into(),
         kind: ConnectorKind::App,

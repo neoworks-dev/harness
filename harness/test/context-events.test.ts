@@ -65,3 +65,42 @@ test("the system prompt uses underscore tool names and holds no session state", 
   expect(SYSTEM_PROMPT).toContain("apps_launch");
   expect(SYSTEM_PROMPT).not.toMatch(/tools\.\w|apps\.\w/);
 });
+
+test("first connect says what the app is for; a reconnect or a tool change says only that", () => {
+  const lines = formatPrompt("go", [
+    {
+      type: "app_connected",
+      app: "photo-editor",
+      kind: "app",
+      v: 1,
+      tools: ["open", "crop"],
+      description: "Edits one image at a time.",
+    },
+    { type: "app_connected", app: "lsp", kind: "service", v: 1, tools: ["hover"], reconnect: true },
+    {
+      type: "app_connected",
+      app: "browser",
+      kind: "app",
+      v: 3,
+      tools: ["navigate", "download", "screenshot"],
+      previous: 2,
+      added: ["screenshot"],
+      removed: ["images"],
+    },
+    {
+      type: "app_connected",
+      app: "notes",
+      kind: "app",
+      v: 2,
+      tools: ["add"],
+      previous: 1,
+    },
+  ]).split("\n");
+  expect(lines).toEqual([
+    '<app connected="photo-editor" kind="app" v="1" tools="open, crop" about="Edits one image at a time."/>',
+    '<app reconnected="lsp" v="1"/>',
+    '<app updated="browser" v="3" added="screenshot" removed="images"/>',
+    '<app updated="notes" v="2"/>',
+    "go",
+  ]);
+});

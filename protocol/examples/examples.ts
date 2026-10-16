@@ -267,6 +267,7 @@ export const examples: Record<string, Envelope> = {
         kind: "service",
         v: 1,
         tools: ["diagnostics", "definition", "references", "rename"],
+        description: "Language servers: diagnostics and navigation for Go, TypeScript and Rust.",
       },
     },
   },
@@ -336,6 +337,39 @@ export const examples: Record<string, Envelope> = {
     payload: {
       app: "code-editor",
       context: { file: "/home/user/site/src/Header.tsx", line: "40" },
+    },
+  },
+  "event-app-reconnected": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 30,
+      ts: 1760565609000,
+      event: {
+        type: "app_connected",
+        app: "lsp",
+        kind: "service",
+        v: 1,
+        tools: [],
+        reconnect: true,
+      },
+    },
+  },
+  "event-app-updated": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 31,
+      ts: 1760565610000,
+      event: {
+        type: "app_connected",
+        app: "lsp",
+        kind: "service",
+        v: 2,
+        tools: ["diagnostics", "definition", "references", "rename", "hover"],
+        previous: 1,
+        added: ["hover"],
+      },
     },
   },
 };

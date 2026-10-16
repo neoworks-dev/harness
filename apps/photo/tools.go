@@ -340,8 +340,9 @@ func templates() map[string]json.RawMessage {
 // presence is the app's registration; context says which image is open.
 func presence(srv *tools.Server, launch []string, d *doc) protocol.AppPresence {
 	title := "Photo editor"
+	description := "Photo editor: crop, resize, rotate, flip and export the open image; every edit is a new asset:// handle."
 	p := protocol.AppPresence{
-		App: appName, Kind: protocol.ConnectorKindApp, Title: &title, Open: true,
+		App: appName, Kind: protocol.ConnectorKindApp, Title: &title, Description: &description, Open: true,
 		Mcp: srv.Endpoint(), Templates: templates(),
 	}
 	if len(launch) > 0 {

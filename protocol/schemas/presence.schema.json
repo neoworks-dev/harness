@@ -49,6 +49,10 @@
           "type": "object",
           "description": "View templates for this app's tool results, keyed by tool name (without the app prefix). Format: protocol/README.md#templates. Kept by the daemon so results still render after the app closes.",
           "additionalProperties": {}
+        },
+        "description": {
+          "type": "string",
+          "description": "One line for the agent about what the app is for, shown when it first connects in a session. Default: the first sentence of the MCP server's instructions."
         }
       },
       "required": ["app", "kind", "open"],

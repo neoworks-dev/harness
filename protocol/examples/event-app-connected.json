@@ -9,7 +9,8 @@
       "app": "lsp",
       "kind": "service",
       "v": 1,
-      "tools": ["diagnostics", "definition", "references", "rename"]
+      "tools": ["diagnostics", "definition", "references", "rename"],
+      "description": "Language servers: diagnostics and navigation for Go, TypeScript and Rust."
     }
   }
 }

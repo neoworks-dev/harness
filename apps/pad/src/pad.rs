@@ -157,12 +157,16 @@ pub fn bind_keys(cx: &mut App) {
 }
 
 /// The presence: what the daemon knows about this app. `context` is the current file and line.
+/// What the agent is told about the app when it first connects.
+const DESCRIPTION: &str = "Code editor: open and reveal files, read the user's selection; <focus> has the current file and line.";
+
 pub fn presence(
     open: bool,
     endpoint: Option<McpEndpoint>,
     context: Option<BTreeMap<String, String>>,
 ) -> AppPresence {
     AppPresence {
+        description: Some(DESCRIPTION.into()),
         templates: open.then(tools::templates),
         app: APP.into(),
         kind: ConnectorKind::App,

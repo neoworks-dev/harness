@@ -1,0 +1,16 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 30,
+    "ts": 1760565609000,
+    "event": {
+      "type": "app_connected",
+      "app": "lsp",
+      "kind": "service",
+      "v": 1,
+      "tools": [],
+      "reconnect": true
+    }
+  }
+}

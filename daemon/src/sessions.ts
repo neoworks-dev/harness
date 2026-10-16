@@ -8,7 +8,7 @@ import type {
   McpServer,
   NewSessionParams,
 } from "@suite/harness/agent";
-import type { SessionEvent, SessionInfo, TurnEnded } from "@suite/protocol/types";
+import type { AppConnected, SessionEvent, SessionInfo, TurnEnded } from "@suite/protocol/types";
 import type { ConnectorSnapshot } from "./gateway/registry.ts";
 import type { Logger } from "./log.ts";
 import type { SessionRow, SessionStore } from "./store.ts";
@@ -32,6 +32,8 @@ interface Runtime {
   pending: ContextEvent[];
   /** What this session's log says is open: app → version it was told about. */
   told: Map<string, number>;
+  /** Every connector this session ever heard of (open or not): the last version and tools. */
+  seen: Map<string, { v: number; tools: string[] }>;
   /** The last focus_changed in this session's log. */
   toldFocus?: FocusTarget;
   /** Resolves when the current drain loop finishes. */
@@ -88,6 +90,10 @@ function sameFocus(a: FocusTarget | undefined, b: FocusTarget | undefined): bool
   return a?.app === b?.app && JSON.stringify(a?.context ?? {}) === JSON.stringify(b?.context ?? {});
 }
 
+function applySeen(seen: Runtime["seen"], event: SessionEvent): void {
+  if (event.type === "app_connected") seen.set(event.app, { v: event.v, tools: event.tools });
+}
+
 function applyTold(told: Map<string, number>, event: SessionEvent): void {
   if (event.type === "app_connected") told.set(event.app, event.v);
   else if (event.type === "app_disconnected") told.delete(event.app);
@@ -108,6 +114,7 @@ export class SessionManager {
       if (!rt) return;
       rt.pending.push(record.event);
       applyTold(rt.told, record.event);
+      applySeen(rt.seen, record.event);
       if (record.event.type === "focus_changed") rt.toldFocus = toFocus(record.event);
     });
   }
@@ -195,8 +202,10 @@ export class SessionManager {
       .map((r) => r.event)
       .filter(isContextEvent);
     const told = new Map<string, number>();
+    const seen: Runtime["seen"] = new Map();
     for (const r of this.store.readTypes(sessionId, ["app_connected", "app_disconnected"])) {
       applyTold(told, r.event);
+      applySeen(seen, r.event);
     }
     const lastFocus = this.store.readTypes(sessionId, ["focus_changed"]).at(-1)?.event;
     const rt: Runtime = {
@@ -205,6 +214,7 @@ export class SessionManager {
       cancelRequested: false,
       pending,
       told,
+      seen,
       toldFocus: lastFocus?.type === "focus_changed" ? toFocus(lastFocus) : undefined,
       drained: Promise.resolve(),
     };
@@ -280,13 +290,27 @@ export class SessionManager {
     const open = new Set(current.map((c) => c.app));
     for (const c of current) {
       if (rt.told.get(c.app) === c.v) continue;
-      this.store.append(sessionId, {
+      const event: AppConnected = {
         type: "app_connected",
         app: c.app,
         kind: c.kind,
         v: c.v,
         tools: c.tools,
-      });
+      };
+      const before = rt.seen.get(c.app);
+      if (!before) {
+        // First time this session hears of it: say what it is for.
+        if (c.description !== undefined) event.description = c.description;
+      } else if (before.v === c.v) {
+        event.reconnect = true;
+      } else {
+        event.previous = before.v;
+        const added = c.tools.filter((t) => !before.tools.includes(t));
+        const removed = before.tools.filter((t) => !c.tools.includes(t));
+        if (added.length > 0) event.added = added;
+        if (removed.length > 0) event.removed = removed;
+      }
+      this.store.append(sessionId, event);
     }
     for (const app of [...rt.told.keys()]) {
       if (!open.has(app)) this.store.append(sessionId, { type: "app_disconnected", app });

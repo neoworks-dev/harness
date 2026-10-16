@@ -62,6 +62,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function connectedNotice(event: Extract<SessionEvent, { type: "app_connected" }>): string {
+  if (event.reconnect === true) return `${event.app} is back (v${event.v})`;
+  if (event.previous === undefined) {
+    return `${event.app} connected (v${event.v}): ${event.tools.join(", ")}`;
+  }
+  const changes: string[] = [];
+  if (event.added?.length) changes.push(`+ ${event.added.join(", ")}`);
+  if (event.removed?.length) changes.push(`− ${event.removed.join(", ")}`);
+  const what = changes.length > 0 ? changes.join("; ") : "schemas changed";
+  return `${event.app} updated (v${event.v}): ${what}`;
+}
+
 /** The first index where two block lists differ. */
 function firstChange(before: Block[], after: Block[]): number {
   let i = 0;
@@ -140,9 +152,7 @@ export class SessionView {
         return [this.notice(`e${seq}`, what, tone)];
       }
       case "app_connected":
-        return [
-          this.notice(`n${seq}`, `${event.app} connected (v${event.v}): ${event.tools.join(", ")}`),
-        ];
+        return [this.notice(`n${seq}`, connectedNotice(event))];
       case "app_disconnected":
         return [this.notice(`n${seq}`, `${event.app} disconnected`)];
       case "focus_changed": {

@@ -1007,6 +1007,13 @@ pub struct AppPresence {
     /// View templates for this app's tool results, keyed by tool name (without the app prefix). Format: protocol/README.md#templates. Kept by the daemon so results still render after the app closes.
     #[serde(rename = "templates", default, skip_serializing_if = "Option::is_none")]
     pub templates: Option<BTreeMap<String, serde_json::Value>>,
+    /// One line for the agent about what the app is for, shown when it first connects in a session. Default: the first sentence of the MCP server's instructions.
+    #[serde(
+        rename = "description",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub description: Option<String>,
 }
 
 /// The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it.
@@ -1464,7 +1471,7 @@ pub enum ConnectorKind {
     Service,
 }
 
-/// A connector registered. Rendered to the model as <app connected=…/>.
+/// A connector registered, came back, or changed its tools (new v). Rendered to the model as <app connected=…/> the first time, <app reconnected=…/> for the same version, <app updated=… added=… removed=…/> for a new one. tools is always the full current list.
 /// Tagged `type: "app_connected"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppConnected {
@@ -1477,6 +1484,25 @@ pub struct AppConnected {
     pub v: i64,
     #[serde(rename = "tools")]
     pub tools: Vec<String>,
+    /// One line about the connector; only in the first app_connected a session gets for it.
+    #[serde(
+        rename = "description",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub description: Option<String>,
+    /// The session already saw this exact version: earlier schemas still apply. Rendered as <app reconnected=…/>.
+    #[serde(rename = "reconnect", default, skip_serializing_if = "Option::is_none")]
+    pub reconnect: Option<bool>,
+    /// Tools new since the previous version (omitted when none).
+    #[serde(rename = "added", default, skip_serializing_if = "Option::is_none")]
+    pub added: Option<Vec<String>>,
+    /// Tools gone since the previous version (omitted when none).
+    #[serde(rename = "removed", default, skip_serializing_if = "Option::is_none")]
+    pub removed: Option<Vec<String>>,
+    /// Set when the session knew an earlier version: that version. Rendered as <app updated=…/>; added/removed list the difference (omitted when empty).
+    #[serde(rename = "previous", default, skip_serializing_if = "Option::is_none")]
+    pub previous: Option<i64>,
 }
 
 /// A connector went away. Rendered to the model as <app disconnected=…/>.

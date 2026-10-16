@@ -25,6 +25,8 @@ const suite = await SuiteClient.connect({
     app: "lsp",
     kind: "service",
     title: "Language servers",
+    description:
+      "Language servers: diagnostics, definitions, references, hover and rename for Go, TypeScript and Rust files.",
     open: true,
     mcp: tools.endpoint,
     templates,

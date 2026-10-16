@@ -41,6 +41,8 @@ function presenceFor(tools: ToolServer, context: Record<string, string>): AppPre
     app: "browser",
     kind: "app",
     title: "Browser",
+    description:
+      "Browser: open pages, read their text, list and download their images (downloads become asset:// handles).",
     open: true,
     mcp: tools.endpoint,
     templates: browserTemplates,

@@ -267,7 +267,7 @@
       "enum": ["app", "service"]
     },
     "AppConnected": {
-      "description": "A connector registered. Rendered to the model as <app connected=…/>.",
+      "description": "A connector registered, came back, or changed its tools (new v). Rendered to the model as <app connected=…/> the first time, <app reconnected=…/> for the same version, <app updated=… added=… removed=…/> for a new one. tools is always the full current list.",
       "type": "object",
       "properties": {
         "type": {
@@ -288,6 +288,32 @@
           "items": {
             "type": "string"
           }
+        },
+        "description": {
+          "type": "string",
+          "description": "One line about the connector; only in the first app_connected a session gets for it."
+        },
+        "reconnect": {
+          "type": "boolean",
+          "description": "The session already saw this exact version: earlier schemas still apply. Rendered as <app reconnected=…/>."
+        },
+        "added": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tools new since the previous version (omitted when none)."
+        },
+        "removed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tools gone since the previous version (omitted when none)."
+        },
+        "previous": {
+          "type": "integer",
+          "description": "Set when the session knew an earlier version: that version. Rendered as <app updated=…/>; added/removed list the difference (omitted when empty)."
         }
       },
       "required": ["type", "app", "kind", "v", "tools"],

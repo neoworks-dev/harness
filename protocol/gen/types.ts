@@ -382,6 +382,8 @@ export interface AppPresence {
   pid?: number;
   /** View templates for this app's tool results, keyed by tool name (without the app prefix). Format: protocol/README.md#templates. Kept by the daemon so results still render after the app closes. */
   templates?: Record<string, unknown>;
+  /** One line for the agent about what the app is for, shown when it first connects in a session. Default: the first sentence of the MCP server's instructions. */
+  description?: string;
 }
 
 /** The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it. */
@@ -532,7 +534,7 @@ export interface TurnEnded {
 
 export type ConnectorKind = "app" | "service";
 
-/** A connector registered. Rendered to the model as <app connected=…/>. */
+/** A connector registered, came back, or changed its tools (new v). Rendered to the model as <app connected=…/> the first time, <app reconnected=…/> for the same version, <app updated=… added=… removed=…/> for a new one. tools is always the full current list. */
 export interface AppConnected {
   type: "app_connected";
   app: string;
@@ -540,6 +542,16 @@ export interface AppConnected {
   /** Connector version; bumps when its tools change. */
   v: number;
   tools: string[];
+  /** One line about the connector; only in the first app_connected a session gets for it. */
+  description?: string;
+  /** The session already saw this exact version: earlier schemas still apply. Rendered as <app reconnected=…/>. */
+  reconnect?: boolean;
+  /** Tools new since the previous version (omitted when none). */
+  added?: string[];
+  /** Tools gone since the previous version (omitted when none). */
+  removed?: string[];
+  /** Set when the session knew an earlier version: that version. Rendered as <app updated=…/>; added/removed list the difference (omitted when empty). */
+  previous?: number;
 }
 
 /** A connector went away. Rendered to the model as <app disconnected=…/>. */

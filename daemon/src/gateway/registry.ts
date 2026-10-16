@@ -14,6 +14,16 @@ export interface ConnectorSnapshot {
   v: number;
   /** Tool names without the app prefix. */
   tools: string[];
+  /** One line for the agent: the presence's description, else the instructions' first sentence. */
+  description?: string;
+}
+
+/** The first sentence (or line) of an MCP server's instructions, kept short. */
+export function firstSentence(text: string): string {
+  const line = text.trim().split("\n")[0] ?? "";
+  const end = line.search(/[.!?](\s|$)/);
+  const sentence = end === -1 ? line : line.slice(0, end + 1);
+  return sentence.length > 160 ? `${sentence.slice(0, 159)}…` : sentence;
 }
 
 interface Live {
@@ -167,8 +177,14 @@ export class ConnectorRegistry {
     const out: ConnectorSnapshot[] = [];
     for (const { connector, open } of this.all()) {
       if (!open) continue;
-      const { app, kind, v, tools } = connector;
-      out.push({ app, kind, v, tools: tools.map((t) => t.name) });
+      const { app, kind, v, tools, instructions } = connector;
+      const snapshot: ConnectorSnapshot = { app, kind, v, tools: tools.map((t) => t.name) };
+      const described = this.live.get(app)?.presence.description;
+      if (described !== undefined && described !== "") snapshot.description = described;
+      else if (instructions !== undefined && instructions.trim() !== "") {
+        snapshot.description = firstSentence(instructions);
+      }
+      out.push(snapshot);
     }
     return out;
   }

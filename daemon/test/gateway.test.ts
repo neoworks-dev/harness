@@ -114,7 +114,13 @@ describe("connector registry", () => {
     const owner = {};
     await registry.presence(owner, photoPresence());
     expect(registry.snapshot()).toEqual([
-      { app: "photo-editor", kind: "app", v: 1, tools: ["crop", "export"] },
+      {
+        app: "photo-editor",
+        kind: "app",
+        v: 1,
+        tools: ["crop", "export"],
+        description: "Use crop before export.",
+      },
     ]);
 
     upstream.setTools([...photoTools, tool("resize", "Resize")]);
@@ -298,8 +304,16 @@ describe("session announcements", () => {
     const owner = {};
     await registry.presence(owner, photoPresence());
     await turn(0);
+    // The first time: what it is for (the instructions' first sentence, without a description).
     expect(context(0)).toEqual([
-      { type: "app_connected", app: "photo-editor", kind: "app", v: 1, tools: ["crop", "export"] },
+      {
+        type: "app_connected",
+        app: "photo-editor",
+        kind: "app",
+        v: 1,
+        tools: ["crop", "export"],
+        description: "Use crop before export.",
+      },
     ]);
 
     await turn(1); // nothing changed
@@ -310,16 +324,60 @@ describe("session announcements", () => {
     await turn(2);
     expect(context(2)).toEqual([]);
 
-    photo.setTools([tool("crop", "Crop it differently")]);
+    // Tools changing while it is open: only the difference.
+    photo.setTools([tool("crop", "Crop it differently"), tool("resize", "Resize")]);
     await Bun.sleep(1);
     await turn(3);
     expect(context(3)).toEqual([
-      { type: "app_connected", app: "photo-editor", kind: "app", v: 2, tools: ["crop"] },
+      {
+        type: "app_connected",
+        app: "photo-editor",
+        kind: "app",
+        v: 2,
+        tools: ["crop", "resize"],
+        previous: 1,
+        added: ["resize"],
+        removed: ["export"],
+      },
     ]);
 
     await registry.disconnect(owner);
     await turn(4);
     expect(context(4)).toEqual([{ type: "app_disconnected", app: "photo-editor" }]);
+
+    // Back unchanged after the session was told it left: just that.
+    await registry.presence(owner, photoPresence());
+    await turn(5);
+    expect(context(5)).toEqual([
+      {
+        type: "app_connected",
+        app: "photo-editor",
+        kind: "app",
+        v: 2,
+        tools: ["crop", "resize"],
+        reconnect: true,
+      },
+    ]);
+
+    // Gone, then back with other tools: the difference against what it last saw.
+    await registry.disconnect(owner);
+    await turn(6);
+    photo.setTools([tool("crop", "Crop it differently")]);
+    await registry.presence(owner, photoPresence());
+    await turn(7);
+    expect(context(7)).toEqual([
+      {
+        type: "app_connected",
+        app: "photo-editor",
+        kind: "app",
+        v: 3,
+        tools: ["crop"],
+        previous: 2,
+        removed: ["resize"],
+      },
+    ]);
+    await registry.disconnect(owner);
+    await turn(8);
     // The announcements are part of the log, just before the user message they precede.
     expect(
       store
@@ -361,7 +419,7 @@ describe("over real MCP", () => {
   test("the gateway lists, calls and follows list_changed on an app's MCP server", async () => {
     const { daemon, app } = await daemonWithApp([greet]);
     expect(daemon.connectors.snapshot()).toEqual([
-      { app: "greeter", kind: "app", v: 1, tools: ["greet"] },
+      { app: "greeter", kind: "app", v: 1, tools: ["greet"], description: "Greets people." },
     ]);
     const result = await daemon.gateway.call("tools_call", {
       name: "greeter.greet",

@@ -1,0 +1,17 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 31,
+    "ts": 1760565610000,
+    "event": {
+      "type": "app_connected",
+      "app": "lsp",
+      "kind": "service",
+      "v": 2,
+      "tools": ["diagnostics", "definition", "references", "rename", "hover"],
+      "previous": 1,
+      "added": ["hover"]
+    }
+  }
+}
