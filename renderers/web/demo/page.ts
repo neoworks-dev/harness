@@ -1,6 +1,6 @@
 // Browser entry of the demo (bundled by serve.ts): connects to the daemon with the address the
 // server put in the page, then hands over to startDemo.
-import { assetUrl, BrowserClient, type DaemonAddress } from "@suite/sdk/browser";
+import { assetUrl, connect, type DaemonAddress } from "@suite/sdk";
 import { startDemo } from "./app.ts";
 
 function byId<T extends HTMLElement>(id: string, kind: new () => T): T {
@@ -22,7 +22,7 @@ function readAddress(): DaemonAddress {
 let address: DaemonAddress | undefined;
 
 /** The server re-reads daemon.json, so a restarted daemon (new port and token) is found again. */
-async function refreshAddress(): Promise<DaemonAddress> {
+async function fetchAddress(): Promise<DaemonAddress> {
   const response = await fetch("/daemon");
   if (!response.ok) throw new Error(`the daemon is not running (${response.status})`);
   const next: DaemonAddress = await response.json();
@@ -33,11 +33,17 @@ async function refreshAddress(): Promise<DaemonAddress> {
 async function main(): Promise<void> {
   const status = byId("status", HTMLElement);
   try {
-    address = readAddress();
-    const client = await BrowserClient.connect({
+    const initial = readAddress();
+    address = initial;
+    let firstConnect = true;
+    const client = await connect({
       client: "web",
-      ...address,
-      refreshAddress,
+      address: () => {
+        // The page carries the address for the first connect; after that, ask the server.
+        if (!firstConnect) return fetchAddress();
+        firstConnect = false;
+        return Promise.resolve(initial);
+      },
       onError: (err) => {
         status.textContent = err.message;
       },

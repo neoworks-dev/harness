@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { startTestDaemon, type TestDaemon } from "../../../daemon/src/testing.ts";
-import { BrowserClient } from "@suite/sdk/browser";
+import { connect, fixedAddress } from "@suite/sdk";
 import { startDemo, type Demo } from "../demo/app.ts";
 import { startDemoServer, type DemoServer } from "../demo/server.ts";
 import { newPage } from "./dom.ts";
@@ -96,11 +96,7 @@ describe("demo server", () => {
 describe("demo page logic against a real daemon", () => {
   test("follows the current session, shows the echo reply, streams and handles reconnects", async () => {
     const d = await daemon();
-    const client = await BrowserClient.connect({
-      client: "web",
-      url: d.info.url,
-      token: d.info.token,
-    });
+    const client = await connect({ client: "web", address: fixedAddress(d.info) });
     cleanups.push(() => client.close());
 
     const { window, container } = newPage();
@@ -119,7 +115,7 @@ describe("demo page logic against a real daemon", () => {
     cleanups.push(() => demo.stop());
 
     await until(() => demo.session !== undefined, "focus");
-    expect(demo.session).toBe(client.focus?.session);
+    expect(demo.session).toBe(client.focus.value?.session);
     // The daemon's theme arrived and was applied.
     await until(() => container.style.getPropertyValue("--suite-accent") !== "", "theme");
 

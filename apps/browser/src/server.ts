@@ -5,7 +5,7 @@
 // The page carries secrets (the daemon token), so every request must be addressed to this
 // server's own 127.0.0.1:PORT / localhost:PORT (DNS rebinding) and the endpoints need the token.
 import { timingSafeEqual } from "node:crypto";
-import { readDaemonEndpoint } from "@suite/sdk";
+import { daemonJsonAddress } from "@suite/sdk/node";
 import { viewOf, type Browser } from "./browser.ts";
 import type { ServerEvent } from "./types.ts";
 
@@ -175,8 +175,7 @@ export async function startBrowserServer(options: BrowserServerOptions): Promise
         let address: { url: string; token: string } | null = null;
         let problem = "";
         try {
-          const endpoint = await readDaemonEndpoint(options.env);
-          address = { url: endpoint.url, token: endpoint.token };
+          address = await daemonJsonAddress(options.env);
         } catch (err) {
           problem = errorText(err);
         }

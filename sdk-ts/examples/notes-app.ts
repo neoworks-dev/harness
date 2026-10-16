@@ -2,8 +2,9 @@
 //   bun run sdk-ts/examples/notes-app.ts
 // Then ask the agent (e.g. `suite attach --new`) to use the notes app. Its results are drawn with
 // the templates below (buttons included) in every pane.
-import { SuiteClient } from "@suite/sdk";
-import { createToolServer } from "@suite/sdk/tools";
+import { connect } from "@suite/sdk";
+import { daemonJsonAddress } from "@suite/sdk/node";
+import { createToolServer } from "@suite/sdk-tools";
 
 const notes: string[] = [];
 
@@ -91,8 +92,9 @@ const templates = {
   clear_notes: { type: "text", markdown: "Removed **{{data.removed}}** notes.", tone: "muted" },
 };
 
-const suite = await SuiteClient.connect({
+const suite = await connect({
   client: "notes",
+  address: daemonJsonAddress,
   waitForDaemon: true,
   presence: {
     app: "notes",

@@ -3,7 +3,10 @@
 // a renderer can keep them and compare by identity.
 import type {
   Block,
+  CardComponent,
   Component,
+  RowComponent,
+  StackComponent,
   ViewItem,
   ViewOp,
   ViewPatch,
@@ -25,6 +28,13 @@ export type ViewChange =
       from: number;
     };
 
+/** Whether `component` holds other components (a card, row or stack). */
+export function hasChildren(
+  component: Component,
+): component is CardComponent | RowComponent | StackComponent {
+  return component.type === "card" || component.type === "row" || component.type === "stack";
+}
+
 /** The component at `path` (child indexes from `component`; [] is `component`), if there is one. */
 export function componentAtPath(
   component: Component,
@@ -32,7 +42,7 @@ export function componentAtPath(
 ): Component | undefined {
   let node: Component | undefined = component;
   for (const index of path) {
-    if (node?.type !== "card" && node?.type !== "row" && node?.type !== "stack") return undefined;
+    if (node === undefined || !hasChildren(node)) return undefined;
     node = node.children[index];
   }
   return node;
@@ -53,56 +63,68 @@ function replaceBlocks(
     if (component.type !== "text") return undefined;
     return { ...component, blocks: [...component.blocks.slice(0, from), ...blocks] };
   }
-  if (component.type !== "card" && component.type !== "row" && component.type !== "stack") {
-    return undefined;
-  }
+  if (!hasChildren(component)) return undefined;
   const child = component.children[head];
   if (!child) return undefined;
   const replaced = replaceBlocks(child, rest, from, blocks);
   if (!replaced) return undefined;
-  return { ...component, children: component.children.map((c, i) => (i === head ? replaced : c)) };
+  return {
+    ...component,
+    children: component.children.map((sibling, i) => (i === head ? replaced : sibling)),
+  };
 }
 
+/**
+ * The client-side copy of one view: the latest snapshot with every later patch applied. Feed it
+ * from `subscribeView`, then draw `items`; `applyPatch` tells you what changed, so a renderer can
+ * update its output instead of redrawing.
+ */
 export class ViewState {
   /** The session of the latest snapshot; undefined for state built from bare items. */
   session?: string;
+  /** The agent of the latest snapshot, if it was an agent's view rather than the session's own. */
+  agent?: string;
   /** The seq the state is current as of (0 for state built from bare items). */
   seq = 0;
-  private list: ViewItem[];
+  private current: ViewItem[];
 
   constructor(items: ViewItem[] = []) {
-    this.list = [...items];
+    this.current = [...items];
   }
 
+  /** The items in display order. A change replaces an item object; it never edits one. */
   get items(): readonly ViewItem[] {
-    return this.list;
+    return this.current;
   }
 
+  /** The item with this ref, if there is one. */
   get(ref: string): ViewItem | undefined {
-    return this.list.find((item) => item.ref === ref);
+    return this.current.find((item) => item.ref === ref);
   }
 
-  /** Replaces everything. */
+  /** Replaces everything with the snapshot. */
   applySnapshot(snapshot: ViewSnapshot): void {
     this.session = snapshot.session;
+    this.agent = snapshot.agent;
     this.seq = snapshot.seq;
-    this.list = [...snapshot.items];
+    this.current = [...snapshot.items];
   }
 
-  /** Replaces the items and forgets the session and seq. */
+  /** Replaces the items and forgets the session, agent and seq. */
   reset(items: ViewItem[] = []): void {
     this.session = undefined;
+    this.agent = undefined;
     this.seq = 0;
-    this.list = [...items];
+    this.current = [...items];
   }
 
   /**
-   * Applies the ops in order and returns what changed. A patch for another session, or older than
-   * the state (a straggler from before a snapshot), is ignored. Ops that don't fit the state (an
-   * unknown ref, a path that isn't a text component) are skipped, not fatal.
+   * Applies the ops in order and returns what changed. A patch for another session or agent, or
+   * older than the state (a straggler from before a snapshot), is ignored. Ops that don't fit the
+   * state (an unknown ref, a path that isn't a text component) are skipped, not fatal.
    */
   applyPatch(patch: ViewPatch): ViewChange[] {
-    if (this.session !== undefined && patch.session !== this.session) return [];
+    if (this.session !== undefined && !this.isViewOf(patch)) return [];
     if (patch.seq < this.seq) return [];
     this.seq = patch.seq;
     const changes: ViewChange[] = [];
@@ -113,31 +135,39 @@ export class ViewState {
     return changes;
   }
 
+  private isViewOf(patch: ViewPatch): boolean {
+    return patch.session === this.session && patch.agent === this.agent;
+  }
+
+  private indexOf(ref: string): number {
+    return this.current.findIndex((item) => item.ref === ref);
+  }
+
   private applyOp(op: ViewOp): ViewChange | undefined {
     switch (op.op) {
       case "set": {
-        const index = this.list.findIndex((item) => item.ref === op.item.ref);
+        const index = this.indexOf(op.item.ref);
         if (index < 0) {
-          this.list.push(op.item);
-          return { type: "added", item: op.item, index: this.list.length - 1 };
+          this.current.push(op.item);
+          return { type: "added", item: op.item, index: this.current.length - 1 };
         }
-        this.list[index] = op.item;
+        this.current[index] = op.item;
         return { type: "replaced", item: op.item, index };
       }
       case "remove": {
-        const index = this.list.findIndex((item) => item.ref === op.ref);
+        const index = this.indexOf(op.ref);
         if (index < 0) return undefined;
-        this.list.splice(index, 1);
+        this.current.splice(index, 1);
         return { type: "removed", ref: op.ref, index };
       }
       case "blocks": {
-        const index = this.list.findIndex((item) => item.ref === op.ref);
-        const item = this.list[index];
+        const index = this.indexOf(op.ref);
+        const item = this.current[index];
         if (!item) return undefined;
         const component = replaceBlocks(item.component, op.path, op.from, op.blocks);
         if (!component) return undefined;
         const next: ViewItem = { ...item, component };
-        this.list[index] = next;
+        this.current[index] = next;
         return { type: "blocks", item: next, index, path: op.path, from: op.from };
       }
     }

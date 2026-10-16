@@ -1,8 +1,9 @@
 // Wires the browser together: the Browser core, its MCP tools, the page's server, and the bus
 // connection that registers it as the "browser" app (and keeps its context current).
 import type { Asset, AssetPut, AppPresence } from "@suite/protocol/types";
-import { SuiteClient } from "@suite/sdk";
-import { createToolServer, type ToolServer } from "@suite/sdk/tools";
+import { connect, type Client } from "@suite/sdk";
+import { daemonJsonAddress } from "@suite/sdk/node";
+import { createToolServer, type ToolServer } from "@suite/sdk-tools";
 import { Browser } from "./browser.ts";
 import { startBrowserServer, type BrowserServer } from "./server.ts";
 import { browserTemplates, browserTools } from "./tools.ts";
@@ -26,7 +27,7 @@ export interface BrowserApp {
   /** The page. */
   url: string;
   browser: Browser;
-  suite: SuiteClient;
+  suite: Client;
   tools: ToolServer;
   server: BrowserServer;
   /** Unregisters the app and shuts both servers down. */
@@ -52,7 +53,7 @@ function presenceFor(tools: ToolServer, context: Record<string, string>): AppPre
 }
 
 export async function startBrowserApp(options: BrowserAppOptions = {}): Promise<BrowserApp> {
-  let suite: SuiteClient | undefined;
+  let suite: Client | undefined;
   const browser = new Browser({
     putAsset(asset: AssetPut): Promise<Asset> {
       if (!suite) return Promise.reject(new Error("not connected to the suite daemon yet"));
@@ -79,9 +80,9 @@ export async function startBrowserApp(options: BrowserAppOptions = {}): Promise<
   options.onListening?.(server.url);
 
   try {
-    suite = await SuiteClient.connect({
+    suite = await connect({
       client: "browser",
-      env: options.env,
+      address: () => daemonJsonAddress(options.env),
       waitForDaemon: options.waitForDaemon,
       presence: presenceFor(tools, { url: "about:blank", title: "New tab" }),
     });

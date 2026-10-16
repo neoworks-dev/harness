@@ -4,7 +4,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import type { Asset, Component, ConnectorInfo, ViewItem } from "@suite/protocol/types";
-import { SuiteClient } from "@suite/sdk";
+import { connect, type Client } from "@suite/sdk";
+import { daemonJsonAddress } from "@suite/sdk/node";
 import { startTestDaemon, type TestDaemon } from "../../../daemon/src/testing.ts";
 import { startBrowserApp, type BrowserApp } from "../src/app.ts";
 import { PNG, startFixture, type Fixture } from "./fixture.ts";
@@ -12,14 +13,14 @@ import { PNG, startFixture, type Fixture } from "./fixture.ts";
 let daemon: TestDaemon;
 let fixture: Fixture;
 let app: BrowserApp;
-let user: SuiteClient;
+let user: Client;
 let session: string;
 
 beforeEach(async () => {
   daemon = await startTestDaemon();
   fixture = startFixture();
   app = await startBrowserApp({ env: daemon.env, script: "// not built in this test" });
-  user = await SuiteClient.connect({ client: "tester", env: daemon.env });
+  user = await connect({ client: "tester", address: () => daemonJsonAddress(daemon.env) });
   session = daemon.focus.current().session;
 });
 afterEach(async () => {

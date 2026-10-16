@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Block, Component, ViewItem, ViewOp, ViewPatch } from "@suite/protocol/types";
-import { ViewState } from "../src/view-state.ts";
+import { componentAtPath, hasChildren, ViewState } from "../src/view.ts";
 
 function para(text: string): Block {
   return { type: "paragraph", spans: [{ text }] };
@@ -152,5 +152,38 @@ describe("ViewState", () => {
   test("state built from bare items accepts patches of any session", () => {
     const state = new ViewState([agent("a")]);
     expect(state.applyPatch(patch(1, { op: "remove", ref: "a" }))).toHaveLength(1);
+  });
+
+  test("an agent's view only takes that agent's patches, and the session's view only its own", () => {
+    const own = new ViewState();
+    own.applySnapshot({ session: "s1", seq: 1, items: [agent("a")] });
+    const claude = new ViewState();
+    claude.applySnapshot({ session: "s1", agent: "claude", seq: 1, items: [agent("a")] });
+
+    const remove: ViewPatch = { session: "s1", seq: 2, ops: [{ op: "remove", ref: "a" }] };
+    const removeForClaude: ViewPatch = { ...remove, agent: "claude" };
+    expect(own.applyPatch(removeForClaude)).toEqual([]);
+    expect(claude.applyPatch(remove)).toEqual([]);
+    expect(claude.applyPatch(removeForClaude)).toHaveLength(1);
+    expect(own.applyPatch(remove)).toHaveLength(1);
+    expect(claude.agent).toBe("claude");
+  });
+});
+
+describe("hasChildren and componentAtPath", () => {
+  test("cards, rows and stacks have children; the rest do not", () => {
+    expect(hasChildren({ type: "card", children: [] })).toBe(true);
+    expect(hasChildren({ type: "row", children: [] })).toBe(true);
+    expect(hasChildren({ type: "stack", children: [] })).toBe(true);
+    expect(hasChildren({ type: "text", blocks: [] })).toBe(false);
+    expect(hasChildren({ type: "code", code: "x" })).toBe(false);
+  });
+
+  test("componentAtPath follows child indexes and gives up on a bad path", () => {
+    const { component } = nested();
+    expect(componentAtPath(component, [])).toBe(component);
+    expect(componentAtPath(component, [1, 0])).toEqual({ type: "code", code: "x" });
+    expect(componentAtPath(component, [0, 0])).toBeUndefined();
+    expect(componentAtPath(component, [5])).toBeUndefined();
   });
 });

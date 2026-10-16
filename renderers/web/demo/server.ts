@@ -1,6 +1,7 @@
 // The demo's HTTP side: serves the page with the daemon's address filled in (read from
 // daemon.json here, since a browser can't read files), and the bundled browser code.
-import { readDaemonEndpoint, type DaemonEndpoint } from "@suite/sdk";
+import type { DaemonAddress } from "@suite/sdk";
+import { daemonJsonAddress } from "@suite/sdk/node";
 
 export interface DemoServerOptions {
   /** Port on 127.0.0.1; 0 picks a free one. */
@@ -24,7 +25,7 @@ function scriptJson(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
-function html(address: Pick<DaemonEndpoint, "url" | "token"> | undefined, problem: string): string {
+function html(address: DaemonAddress | undefined, problem: string): string {
   const config = address ? scriptJson({ url: address.url, token: address.token }) : "null";
   const note = address ? "connecting…" : problem;
   return `<!doctype html>
@@ -87,9 +88,9 @@ export async function startDemoServer(options: DemoServerOptions = {}): Promise<
         });
       }
       if (path !== "/" && path !== "/daemon") return new Response("not found", { status: 404 });
-      let endpoint: DaemonEndpoint;
+      let address: DaemonAddress;
       try {
-        endpoint = await readDaemonEndpoint(options.env);
+        address = await daemonJsonAddress(options.env);
       } catch (err) {
         const why = err instanceof Error ? err.message : String(err);
         if (path === "/daemon") return new Response(why, { status: 503 });
@@ -98,7 +99,6 @@ export async function startDemoServer(options: DemoServerOptions = {}): Promise<
           headers: { "content-type": "text/html; charset=utf-8" },
         });
       }
-      const address = { url: endpoint.url, token: endpoint.token };
       if (path === "/daemon")
         return Response.json(address, { headers: { "cache-control": "no-store" } });
       return new Response(html(address, ""), {

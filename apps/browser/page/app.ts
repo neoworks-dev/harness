@@ -2,7 +2,8 @@
 // the address bar, the page's text and images (with a Download button each), and the agent's chat
 // pane, which always shows the daemon's current session and lights up when the agent is here.
 import { mountChat, type Chat } from "@suite/renderer-web";
-import type { BusClient } from "@suite/sdk/bus";
+import type { AgentFocus, Theme } from "@suite/protocol/types";
+import type { Client, ConnectionState, Unsubscribe } from "@suite/sdk";
 import type { DownloadView, PageView } from "../src/types.ts";
 import type { PageApi } from "./api.ts";
 
@@ -52,14 +53,14 @@ function isHttp(url: string): boolean {
 
 /** `client` may be undefined (no daemon): the address bar and the page work, the chat doesn't. */
 export function startBrowserPage(
-  client: BusClient | undefined,
+  client: Client | undefined,
   api: PageApi,
   els: PageElements,
   options: PageOptions = {},
 ): BrowserPage {
   const doc = els.images.ownerDocument;
   let session: string | undefined;
-  let view: { close(): void } | undefined;
+  let unfollowView: Unsubscribe | undefined;
   /** Tile handle labels by image URL, so a download made by the agent shows up too. */
   const handles = new Map<string, HTMLElement>();
   let shown = 0;
@@ -174,30 +175,32 @@ export function startBrowserPage(
     const bus = client;
     const follow = (next: string): void => {
       if (next === session) return;
-      view?.close();
+      unfollowView?.();
       session = next;
       chat.setItems([]);
-      view = bus.subscribeView(next, {
+      unfollowView = bus.subscribeView(next, {
         onSnapshot: (snapshot) => chat.applySnapshot(snapshot),
         onPatch: (patch) => chat.applyPatch(patch),
         onError: (err) => report(err.message),
       });
       report(`session ${next}`);
     };
-    const focusChanged = (focus: { session: string; app?: string }): void => {
+    const focusChanged = (focus: AgentFocus | undefined): void => {
+      if (!focus) return;
       follow(focus.session);
       els.pane.classList.toggle("focused", focus.app === APP);
     };
-    if (bus.theme) chat.setTheme(bus.theme);
-    offs.push(
-      bus.onTheme((theme) => chat.setTheme(theme)),
-      bus.onFocus(focusChanged),
-      bus.onConnectionChange((connected) => {
-        if (connected) report(`session ${session ?? "?"}`);
-        else report("disconnected, reconnecting…");
-      }),
-    );
-    if (bus.focus) focusChanged(bus.focus);
+    const themeChanged = (theme: Theme | undefined): void => {
+      if (theme) chat.setTheme(theme);
+    };
+    const stateChanged = (state: ConnectionState): void => {
+      if (state === "open") report(`session ${session ?? "?"}`);
+      else if (state === "reconnecting") report("disconnected, reconnecting…");
+      else if (state === "closed") report("disconnected");
+    };
+    themeChanged(bus.theme.value);
+    offs.push(bus.theme.on(themeChanged), bus.focus.on(focusChanged), bus.state.on(stateChanged));
+    focusChanged(bus.focus.value);
   }
 
   return {
@@ -210,7 +213,7 @@ export function startBrowserPage(
     stop() {
       offEvents();
       for (const off of offs) off();
-      view?.close();
+      unfollowView?.();
       els.addressForm.removeEventListener("submit", onAddress);
       els.chatForm.removeEventListener("submit", onChat);
       chat.destroy();

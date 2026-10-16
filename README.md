@@ -8,7 +8,7 @@ One agent session shared across every app in the suite. The design is in [docs/d
 | `daemon/`            | TS on Bun: session store, bus hub, turn queue                     | 1     |
 | `harness/`           | TS on Bun: pi-based agent, core tools, system prompt              | 1     |
 | `cli/`               | Go: `suite status / sessions / attach / tools / focus / move`     | 1-3   |
-| `sdk-ts/`, `sdk-go/` | Bus clients (sessions, presence; TS: tool server helper)          | 2     |
+| `sdk-ts/`, `sdk-go/` | Bus clients (sessions, presence; TS tool server: `sdk-ts-tools/`) | 2     |
 | `sdk-rs/`            | Rust bus client for GPUI apps                                     | 3     |
 | `apps/term/`         | `suite-term`: full-screen terminal app (chat, plan, files, usage) | 6     |
 | `apps/pad/`          | GPUI code editor stand-in (files, diagnostics, tools, chat)       | 3, 5  |
@@ -89,7 +89,7 @@ The agent can move itself with `apps_focus`, and Pad's buttons move it too. Clos
 
 ## Connecting an app
 
-Apps register with `app.presence` and bring their own MCP server; the daemon's gateway lists and calls its tools, and the agent finds them with `tools_search` / `tools_call`. Clients that can't use the Unix socket (Bun, browsers, MCP clients) read `daemon.json` next to the socket for the loopback URL and token. A complete example app: `bun run sdk-ts/examples/notes-app.ts`, then ask the agent to use the notes app. See [sdk-ts](sdk-ts/README.md) and [sdk-go](sdk-go/README.md).
+Apps register with `app.presence` and bring their own MCP server; the daemon's gateway lists and calls its tools, and the agent finds them with `tools_search` / `tools_call`. Clients that can't use the Unix socket (Bun, browsers, MCP clients) read `daemon.json` next to the socket for the loopback URL and token. A complete example app: `bun run sdk-ts/examples/notes-app.ts`, then ask the agent to use the notes app. See [sdk-ts](sdk-ts/README.md) (tool hosting: `sdk-ts-tools`) and [sdk-go](sdk-go/README.md).
 
 ## Cross-app work (the stand-ins)
 

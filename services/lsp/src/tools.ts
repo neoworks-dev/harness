@@ -3,7 +3,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ToolSpec } from "@suite/sdk/tools";
+import type { ToolSpec } from "@suite/sdk-tools";
 import type { Diagnostic, Range, ServerPool } from "./servers.ts";
 
 export interface Location {

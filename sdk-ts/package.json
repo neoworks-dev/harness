@@ -3,17 +3,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/client.ts",
-    "./bus": "./src/bus-client.ts",
-    "./browser": "./src/browser.ts",
-    "./view": "./src/view-state.ts",
-    "./tools": "./src/tool-server.ts"
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.1",
     "@suite/protocol": "workspace:*"
   },
   "devDependencies": {
-    "@suite/daemon": "workspace:*"
+    "@suite/daemon": "workspace:*",
+    "@suite/sdk-tools": "workspace:*"
   }
 }

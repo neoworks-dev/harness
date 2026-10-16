@@ -1,6 +1,6 @@
 // Browser entry of the page (bundled by server.ts): reads the config the server put in the page,
 // connects to the daemon and hands over to startBrowserPage.
-import { assetUrl, BrowserClient, type DaemonAddress } from "@suite/sdk/browser";
+import { assetUrl, connect, type DaemonAddress } from "@suite/sdk";
 import { createApi } from "./api.ts";
 import { startBrowserPage } from "./app.ts";
 
@@ -48,11 +48,16 @@ async function main(): Promise<void> {
     return;
   }
   try {
-    const client = await BrowserClient.connect({
+    let firstConnect = true;
+    const client = await connect({
       client: "browser-page",
-      ...address,
-      // The server re-reads daemon.json, so a restarted daemon (new port and token) is found.
-      refreshAddress: async () => {
+      address: async () => {
+        // The page carries the address for the first connect; after that the server re-reads
+        // daemon.json, so a restarted daemon (new port and token) is found.
+        if (firstConnect && address) {
+          firstConnect = false;
+          return address;
+        }
         address = await api.daemon();
         return address;
       },

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Window } from "happy-dom";
-import { assetUrl, BrowserClient } from "@suite/sdk/browser";
+import { assetUrl, connect, fixedAddress, type Client } from "@suite/sdk";
 import { startTestDaemon, type TestDaemon } from "../../../daemon/src/testing.ts";
 import { startBrowserApp, type BrowserApp } from "../src/app.ts";
 import { TOKEN_HEADER } from "../src/server.ts";
@@ -144,7 +144,7 @@ interface Rig {
   page: BrowserPage;
   els: PageElements;
   window: Window;
-  user: BrowserClient;
+  user: Client;
 }
 
 /** The page logic on a happy-dom document, connected like the bundled page would be. */
@@ -174,17 +174,9 @@ async function rig(): Promise<Rig> {
     chatInput,
     status: make("div"),
   };
-  const client = await BrowserClient.connect({
-    client: "browser-page",
-    url: daemon.info.url,
-    token: daemon.info.token,
-  });
+  const client = await connect({ client: "browser-page", address: fixedAddress(daemon.info) });
   cleanups.push(() => client.close());
-  const user = await BrowserClient.connect({
-    client: "tester",
-    url: daemon.info.url,
-    token: daemon.info.token,
-  });
+  const user = await connect({ client: "tester", address: fixedAddress(daemon.info) });
   cleanups.push(() => user.close());
   const api = createApi(app.url, app.server.token);
   const page = startBrowserPage(client, api, els, {

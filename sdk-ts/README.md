@@ -1,12 +1,39 @@
 # sdk-ts
 
-TS client for the suite bus (`@suite/sdk`): connection, presence, tool hosting, session attach, and the resolved view. The Bun entry (`@suite/sdk`) reads `daemon.json`; the browser entry (`@suite/sdk/browser`) is told the address.
+The TypeScript client for the suite daemon (`@suite/sdk`). With it an app can:
 
-Bun's WebSocket can't dial Unix sockets, so the client uses the daemon's loopback listener. It finds the URL and token in `daemon.json` next to the socket (`SUITE_SOCKET`, else `$XDG_RUNTIME_DIR/suite/bus.sock`, else `/tmp/suite-<uid>/bus.sock`) and re-reads it on every reconnect, since both change on each daemon start.
+- offer tools to the agent, and tell the agent what it is showing;
+- create sessions, send them input, and follow what the agent does;
+- draw the chat the way the daemon resolved it, from a browser or a terminal;
+- follow where the agent is, which sessions exist, and which apps are connected;
+- survive a daemon restart without losing its place.
+
+The core runs anywhere with a global `WebSocket`: Bun, Node, browsers.
+
+## Install and import
+
+In this monorepo, depend on the workspace packages:
+
+```json
+{ "dependencies": { "@suite/sdk": "workspace:*", "@suite/sdk-tools": "workspace:*" } }
+```
 
 ```ts
-import { SuiteClient } from "@suite/sdk";
-import { createToolServer } from "@suite/sdk/tools";
+import { connect, ViewState } from "@suite/sdk"; // the client, for any runtime
+import { daemonJsonAddress } from "@suite/sdk/node"; // finds a daemon on this machine
+import { createToolServer } from "@suite/sdk-tools"; // hosts an app's tools (Bun)
+```
+
+`@suite/sdk-tools` is a separate package so that the client does not depend on the MCP SDK.
+
+## An app that offers tools to the agent
+
+```ts
+import { connect } from "@suite/sdk";
+import { daemonJsonAddress } from "@suite/sdk/node";
+import { createToolServer } from "@suite/sdk-tools";
+
+const notes: string[] = [];
 
 const tools = createToolServer({
   name: "notes",
@@ -16,66 +43,183 @@ const tools = createToolServer({
       name: "append",
       description: "Append a line to the notes",
       inputSchema: { type: "object", properties: { line: { type: "string" } }, required: ["line"] },
-      handler: async ({ line }) => `added: ${String(line)}`,
+      handler: async ({ line }) => {
+        notes.push(String(line));
+        return `added: ${String(line)}`;
+      },
     },
   ],
 });
 
-const suite = await SuiteClient.connect({
+const client = await connect({
   client: "notes",
-  waitForDaemon: true, // keep retrying if the daemon isn't up yet
-  presence: { app: "notes", kind: "app", open: true, mcp: tools.endpoint },
+  address: daemonJsonAddress,
+  waitForDaemon: true, // keep trying if the daemon is not up yet
+  presence: { app: "notes", kind: "app", title: "Notes", open: true, mcp: tools.endpoint },
 });
 
-const [session = await suite.createSession()] = await suite.listSessions();
-suite.subscribe(session.id, {
-  fromSeq: session.lastSeq + 1, // skip history; omit to replay it
-  onEvent: (event) => {
-    if (event.type === "agent_message_chunk") process.stdout.write(event.text);
-  },
-});
-await suite.input(session.id, "What is in my notes?");
+// Tell the agent what the user is looking at; cheap enough for every cursor move.
+await client.setContext({ file: "/home/me/todo.txt", line: "12" });
 
-await suite.close(); // sends presence open:false first
+// On the way out: marks the app closed, then disconnects.
+await client.close();
 await tools.close();
 ```
 
-## `SuiteClient`
+The daemon lists the tools next to the app's name (`notes.append`) and forwards the agent's calls to your handler. A handler returns a string, or `{ content, structuredContent, isError }`; if it throws, the agent sees the message as an error result. A complete app with result templates and buttons is in [`examples/notes-app.ts`](examples/notes-app.ts).
 
-- `SuiteClient.connect({ client, presence?, reconnect = true, waitForDaemon = false, env?, onError? })`. Rejects if the daemon isn't running unless `waitForDaemon`. `reconnect` governs what happens after a connection drops.
-- Reconnects with backoff (250 ms, doubling, cap 5 s), re-sends hello and the current presence, and resumes each subscription from the last seq it delivered, so subscribers see no gaps or duplicates. Requests in flight when the connection drops reject with `DisconnectedError`; requests while down reject too.
-- `onConnectionChange(cb)` is called with `true` once a (re)connect is fully set up and `false` when it drops. `isConnected` is the current state.
-- `setPresence(presence)` is sent now and on every reconnect.
-- `listSessions()`, `createSession({ cwd?, title? })`, `input(session, text, { app?, images? })`, `cancel(session)`, `listConnectors()`.
-- `focus` is the latest `agent.focus` (`{ session, app?, from?, reason }`): the daemon-owned current session and the app hosting the agent (absent: nowhere). The daemon sends it after every (re)connect and broadcasts every change. `onFocus(cb)` fires on each one; `waitForFocus()` resolves with the current focus once there is one.
-- `moveAgent({ app?, session? })` moves the agent to an open app, or home without `app`; with `session` that session becomes current for everybody. It resolves after the resulting `agent.focus` was broadcast; `not_found` / `bad_request` reject as `SuiteError`.
-- `connectors` is the latest connector list (fetched after every (re)connect, then kept current from `connectors.changed`; entries carry `home`, `pid`, `context`); `onConnectors(cb)` fires on each update.
-- `subscribe(session, { fromSeq?, onEvent, onLive?, onError? })` returns `{ close() }`. `onLive` fires when the replay is over (again after each reconnect).
-- `theme` / `onTheme(cb)` / `waitForTheme()`: the daemon's `theme` frame, sent after every (re)connect and on change.
-- `subscribeView(session, { onSnapshot, onPatch, onError? })` returns `{ close() }`. A `view.snapshot` comes first (replace your state with it), then a `view.patch` per change. After a reconnect the client re-subscribes and a fresh snapshot arrives; patches are never delivered before the snapshot.
-- `putAsset({ path?, data?, name?, mime? })` stores a file (absolute `path`, copied in) or bytes (`data`, base64) in the daemon's asset store and resolves with the `Asset` (`{ handle, path, name, mime, size, app?, createdAt }`); `getAsset(handle)` looks one up (`not_found` rejects as `SuiteError`). Identical content gets the same handle; handles stay valid after your app is gone. For big files, `POST /assets?name=&mime=&app=` on the daemon's loopback URL with the bearer token takes raw bytes.
-- `fileChanged(path)` tells every other client you changed the file at `path` (absolute; throws `DisconnectedError` when not connected); `onFileChanged(cb)` is called with `{ path, app?, session? }` when another client or the agent changed a file (never your own).
-- `action(session, ref, action, args?)` sends `ui.action` for a pressed button (`copy:` actions are the renderer's to handle).
-- `close()` unregisters the presence, then closes for good.
-- Daemon-side failures reject with `SuiteError` (`code` from the protocol); an unavailable connection with `DisconnectedError`.
-
-## `createToolServer` (`@suite/sdk/tools`)
-
-An MCP Streamable HTTP server on `127.0.0.1` (random port) behind a random bearer token. Returns `{ url, headers, endpoint, setTools(tools), close() }`; pass `endpoint` as `presence.mcp`. A tool is `{ name, description, inputSchema, outputSchema?, handler(args) }`; the handler returns a string or `{ content?, structuredContent?, isError? }`, and a thrown error becomes an `isError` text result. `setTools` swaps the list and sends `tools/list_changed`.
-
-## `ViewState` (`@suite/sdk/view`)
-
-The client-side copy of a view, shared by renderers: `applySnapshot(snapshot)`, `applyPatch(patch)` (returns what changed: `added` / `replaced` / `removed` / `blocks`, for incremental rendering), `items`, `get(ref)`. Updates are copy-on-write. `set` replaces by ref or appends; `blocks` replaces `blocks[from:]` of the text component at `path` (child indexes from the item's component); `remove` drops the ref. Patches for another session or with a `seq` below the snapshot's are ignored, and ops that do not fit (unknown ref, path not leading to a text component) are skipped.
-
-## Browser (`@suite/sdk/browser`)
+## Following and driving a session
 
 ```ts
-import { BrowserClient } from "@suite/sdk/browser";
-const client = await BrowserClient.connect({ client: "web", url: "http://127.0.0.1:PORT", token });
+import { connect } from "@suite/sdk";
+import { daemonJsonAddress } from "@suite/sdk/node";
+
+const client = await connect({ client: "my-script", address: daemonJsonAddress });
+
+const session = await client.createSession({ title: "Demo" });
+const stopFollowing = client.subscribe(session.id, {
+  onEvent: (event) => {
+    if (event.type === "agent_message_chunk") process.stdout.write(event.text);
+    if (event.type === "turn_ended") console.log(`\n[${event.stopReason}]`);
+  },
+});
+
+await client.input(session.id, "What is in my notes?");
+// ... later
+stopFollowing();
+await client.close();
 ```
 
-Same API as `SuiteClient` (both extend `BusClient` in `src/bus-client.ts`, which imports nothing from node). `url` is the daemon's loopback URL from `daemon.json` (a page gets it from its server); `refreshAddress` is asked for a fresh `{ url, token }` on every reconnect, since a restarted daemon has a new port and token.
+`subscribe` replays the session from the start (pass `fromSeq` to skip history) and then streams live. Where the agent is and what exists is always at hand:
 
-`assetUrl(address, handle)` turns an `asset://` handle into `${url}/assets/<id>?token=…` (undefined for anything else), for `<img src>` or the web renderer's `resolveImage`. The URL carries the token, so keep it inside the page.
+```ts
+client.focus.on((focus) => console.log("the agent is in", focus?.app ?? "no app"));
+client.sessions.on((sessions) => console.log(sessions.map((s) => `${s.title}: ${s.state}`)));
+const focus = await client.focus.waitFor(); // the current one, waiting for the first if needed
+await client.moveAgent({ app: "editor" }); // or { session } to switch the current session
+```
 
-`setContext(context)` updates only the presence context (what the app shows now, seen by the agent in `<focus>`), without re-sending the presence: cheap enough for every cursor move, and kept for reconnects.
+## Rendering the chat view
+
+The daemon resolves a session into view items (messages, tool calls, diffs, buttons). `ViewState` keeps the latest snapshot with patches applied and tells you what changed, so a renderer can update its output instead of redrawing it.
+
+```ts
+import { ViewState } from "@suite/sdk";
+
+const view = new ViewState();
+const stop = client.subscribeView(session.id, {
+  onSnapshot: (snapshot) => {
+    view.applySnapshot(snapshot); // replaces everything, also after a reconnect
+    drawAll(view.items);
+  },
+  onPatch: (patch) => {
+    for (const change of view.applyPatch(patch)) drawChange(change); // added, replaced, removed, blocks
+  },
+});
+
+// A button in the view was pressed:
+await client.action(session.id, item.ref, button.action);
+```
+
+To follow what one agent did inside a session (a subagent, or a guest the user addressed), pass `agent: "claude"` to `subscribeView` and keep a separate `ViewState` for it.
+
+## Connecting from a browser, or another runtime
+
+`daemonJsonAddress` reads a file, so it only works next to the daemon. Anywhere else, give `connect` the address yourself: the daemon's loopback URL and its token, for example served to the page by a small local server that reads `daemon.json`.
+
+```ts
+import { assetUrl, connect, fixedAddress } from "@suite/sdk";
+
+const address = { url: "http://127.0.0.1:41234", token };
+const client = await connect({ client: "web", address: fixedAddress(address) });
+
+img.src = assetUrl(address, "asset://img-0123456789ab") ?? ""; // images the agent read
+```
+
+A restarted daemon has a new port and token, so the client asks for the address again on every reconnect. If your page can fetch a fresh one, pass your own function:
+
+```ts
+const client = await connect({
+  client: "web",
+  address: async () => (await fetch("/daemon")).json(),
+});
+```
+
+The address carries the daemon token: keep it inside your own page or process.
+
+## Reference
+
+### `connect(options): Promise<Client>`
+
+| Option              | Meaning                                                                                |
+| ------------------- | -------------------------------------------------------------------------------------- |
+| `client`            | Your client's name.                                                                    |
+| `address`           | `() => Promise<DaemonAddress>`, called on every (re)connect.                           |
+| `presence?`         | The app's registration (`AppPresence`), sent on connect and after every reconnect.     |
+| `reconnect?`        | Reconnect after a drop, with backoff (default `true`).                                 |
+| `waitForDaemon?`    | Keep trying while the daemon is not running, instead of rejecting (default `false`).   |
+| `requestTimeoutMs?` | How long to wait for an answer before rejecting with `TimeoutError` (default 10000).   |
+| `onError?`          | Failures nobody is waiting for: a refused subscription, an error thrown by a callback. |
+
+Rejects with `DisconnectedError` if the daemon cannot be reached, `SuiteError` if it refuses the client or the presence.
+
+### `Client`
+
+Requests resolve when the daemon has acted.
+
+| Member                                       | Does                                                                                   |
+| -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `createSession(params?)`                     | Starts a session (`cwd?`, `title?`).                                                   |
+| `listSessions()`                             | The daemon's sessions.                                                                 |
+| `input(session, text, { app?, images? })`    | Sends user input; resolves once queued.                                                |
+| `cancel(session)`                            | Cancels the running turn.                                                              |
+| `subscribe(session, options)`                | Events: replay from `fromSeq?`, then live. See below.                                  |
+| `subscribeView(session, options)`            | The resolved view: snapshot, then patches. See below.                                  |
+| `action(session, ref, action, args?)`        | A button was pressed in view item `ref`.                                               |
+| `moveAgent({ app?, session? })`              | Moves the agent to an app (home without `app`) and/or makes a session current.         |
+| `setPresence(presence)`                      | Replaces the registration, now and on reconnects.                                      |
+| `setContext(context)`                        | Updates what the app shows, without re-sending the presence.                           |
+| `listConnectors()`                           | The connected apps and their tools.                                                    |
+| `putAsset({ path? \| data?, name?, mime? })` | Stores a file or base64 bytes; resolves with an `Asset` whose `handle` others can use. |
+| `getAsset(handle)`                           | Looks an asset up (`not_found` if unknown).                                            |
+| `fileChanged(path)`                          | Tells other clients you changed a file. Throws `DisconnectedError` if offline.         |
+| `onFileChanged(callback)`                    | Another client or the agent changed a file (never your own).                           |
+| `close()`                                    | Marks the app closed, disconnects for good.                                            |
+
+Everything that listens returns a function that stops it.
+
+`subscribe` options: `onEvent(event, record)`, `onLive?(session)` (the replay is over; fires again after a reconnect), `onError?`, `fromSeq?`. After a reconnect it continues from the last event delivered.
+
+`subscribeView` options: `onSnapshot(snapshot)` (replace your state; fires again after a reconnect), `onPatch(patch)` (never before a snapshot), `onError?`, `agent?`.
+
+Subscribing while disconnected is fine: it starts when the connection opens.
+
+### Watched values
+
+These properties are `Watched<T>`: `.value` is the latest, `.on(callback)` returns an unsubscribe function, `.waitFor(timeoutMs?, accept?)` resolves with the first value (that `accept` approves, if given) and rejects with `TimeoutError` if none arrives.
+
+| Property     | Value                                                                         |
+| ------------ | ----------------------------------------------------------------------------- |
+| `state`      | `"connecting" \| "open" \| "reconnecting" \| "closed"`                        |
+| `focus`      | `AgentFocus \| undefined`: the current session and the app showing the agent. |
+| `theme`      | `Theme \| undefined`                                                          |
+| `connectors` | `ConnectorInfo[]`, kept current.                                              |
+| `sessions`   | `SessionInfo[]`, kept current as sessions change.                             |
+
+### `ViewState`
+
+`applySnapshot(snapshot)`, `applyPatch(patch)` (returns `ViewChange[]`), `items`, `get(ref)`, `reset(items?)`, `session`, `agent`, `seq`. Items are never edited, only replaced, so a renderer can compare them by identity. Also `componentAtPath(component, path)` and `hasChildren(component)`.
+
+### Addresses
+
+`DaemonAddress { url, token }`, `fixedAddress(address)`, `busUrl(address)`, `assetUrl(address, handle)`; from `@suite/sdk/node`: `daemonJsonAddress(env?)`, `daemonJsonPath(env?)`.
+
+### Errors
+
+- `SuiteError`: the daemon said no; `code` is `bad_request`, `not_found`, `unsupported_protocol` or `internal`.
+- `DisconnectedError`: there is no connection. Requests waiting when it drops reject with it too.
+- `TimeoutError`: no answer in time, or a `waitFor` ran out of time.
+
+### `createToolServer(options)` (`@suite/sdk-tools`)
+
+`{ name, version?, instructions?, tools }` where a tool is `{ name, description, inputSchema, outputSchema?, handler(args) }`. Returns `{ url, headers, endpoint, setTools(tools), close() }`: pass `endpoint` as `presence.mcp`; `setTools` swaps the list and tells the daemon.

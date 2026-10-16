@@ -1,189 +1,188 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { AppPresence } from "@suite/protocol/types";
-import { startTestDaemon, type TestDaemon } from "@suite/daemon/testing";
-import { DisconnectedError, SuiteClient, SuiteError } from "../src/client.ts";
-import { createToolServer } from "../src/tool-server.ts";
-import { emptyEnv, Recorder, start, until } from "./helpers.ts";
+import { createToolServer } from "@suite/sdk-tools";
+import {
+  connect,
+  DisconnectedError,
+  fixedAddress,
+  SuiteError,
+  TimeoutError,
+} from "../src/index.ts";
+import { cleanupAfterEach } from "./support/cleanup.ts";
+import { FakeDaemon } from "./support/fake-daemon.ts";
+import { Recorder } from "./support/recorder.ts";
+import {
+  addressIn,
+  connectTo,
+  emptyDaemonDir,
+  startDaemon,
+  startRig,
+} from "./support/real-daemon.ts";
+import { rejection, until } from "./support/wait.ts";
 
-const cleanups: (() => Promise<void>)[] = [];
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-});
+const later = cleanupAfterEach();
 
-async function rig(): Promise<{ daemon: TestDaemon; client: SuiteClient }> {
-  const r = await start();
-  cleanups.push(() => r.daemon.stop(200));
-  cleanups.push(() => r.client.close());
-  return r;
-}
-
-describe("sessions", () => {
-  test("create, list, subscribe replays then follows live, input gets an echo", async () => {
-    const { client } = await rig();
+describe("requests", () => {
+  test("create and list sessions", async () => {
+    const { client } = await startRig(later);
     // The daemon always has a current session.
-    const initial = (await client.listSessions()).map((s) => s.id);
+    const initial = (await client.listSessions()).map((session) => session.id);
     expect(initial).toHaveLength(1);
     const created = await client.createSession({ title: "t" });
     expect(created.title).toBe("t");
-    expect((await client.listSessions()).map((s) => s.id).sort()).toEqual(
-      [...initial, created.id].sort(),
-    );
-
-    await client.input(created.id, "one");
-    const first = new Recorder();
-    // Subscribing after (or during) the first turn replays what is there.
-    const sub = client.subscribe(created.id, first);
-    await until(() => first.live === 1 && first.turnsEnded() === 1, "replay");
-    expect(first.types()[0]).toBe("user_message");
-    expect(first.text()).toBe("echo #1: one");
-
-    await client.input(created.id, "two", { app: "photo" });
-    await until(() => first.turnsEnded() === 2, "second turn");
-    expect(first.text()).toBe("echo #1: oneecho #2: two");
-    const user = first.records.find((r) => r.event.type === "user_message" && r.seq > 3);
-    expect(user?.event).toMatchObject({ app: "photo", text: "two" });
-    expect(first.seqs).toEqual(first.seqs.map((_, i) => i + 1));
-    sub.close();
+    const listed = (await client.listSessions()).map((session) => session.id);
+    expect(listed.sort()).toEqual([...initial, created.id].sort());
   });
 
-  test("fromSeq skips older events; input defaults to the presence app, else the client name", async () => {
-    const { client } = await rig();
+  test("input comes from the presence's app, else the client name, else the app you give", async () => {
+    const { daemon, client } = await startRig(later);
     const { id } = await client.createSession();
-    await client.input(id, "a");
-    const all = new Recorder();
-    client.subscribe(id, all);
-    await until(() => all.turnsEnded() === 1, "first turn");
-    const last = all.seqs.at(-1) ?? 0;
+    const events = new Recorder();
+    client.subscribe(id, events);
 
-    const tail = new Recorder();
-    client.subscribe(id, { fromSeq: last + 1, onEvent: tail.onEvent });
-    await client.input(id, "b");
-    await until(() => tail.turnsEnded() === 1, "second turn");
-    expect(tail.seqs[0]).toBe(last + 1);
-    expect(tail.records[0]?.event).toMatchObject({ type: "user_message", app: "test" });
+    await client.input(id, "a");
+    const named = await connectTo(later, daemon, {
+      client: "other",
+      presence: { app: "editor", kind: "app", open: true },
+    });
+    await until(() => events.turnsEnded() === 1, "first turn");
+    await named.input(id, "b");
+    await client.input(id, "c", { app: "photo" });
+    await until(() => events.turnsEnded() === 3, "all turns");
+
+    const apps: string[] = [];
+    for (const { event } of events.records) {
+      if (event.type === "user_message") apps.push(event.app);
+    }
+    expect(apps).toEqual(["test", "editor", "photo"]);
   });
 
   test("cancel ends a running turn", async () => {
-    const { client } = await rig();
+    const { client } = await startRig(later);
     const { id } = await client.createSession();
-    const rec = new Recorder();
-    client.subscribe(id, rec);
+    const events = new Recorder();
+    client.subscribe(id, events);
     await client.input(id, "wait:10000 slow");
-    await until(() => rec.types().includes("user_message"), "turn start");
+    await until(() => events.types().includes("user_message"), "turn start");
     await client.cancel(id);
-    await until(() => rec.turnsEnded() === 1, "turn end");
-    const ended = rec.records.find((r) => r.event.type === "turn_ended");
-    expect(ended?.event).toMatchObject({ stopReason: "cancelled" });
+    await until(() => events.turnsEnded() === 1, "turn end");
+    expect(events.turnEnds()).toEqual(["cancelled"]);
   });
 
-  test("closing a subscription stops its events", async () => {
-    const { client } = await rig();
-    const { id } = await client.createSession();
-    const rec = new Recorder();
-    const sub = client.subscribe(id, rec);
-    await until(() => rec.live === 1, "live");
-    sub.close();
-    await client.input(id, "x");
-    await Bun.sleep(150);
-    expect(rec.records).toEqual([]);
+  test("a request the daemon refuses rejects with SuiteError and its code", async () => {
+    const { client } = await startRig(later);
+    const error = await client.input("nope", "x").catch((thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(SuiteError);
+    expect(error).toMatchObject({ code: "not_found" });
   });
 
-  test("a bad request rejects with the daemon's error", async () => {
-    const { client } = await rig();
-    const err = await client.input("nope", "x").catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(SuiteError);
-    expect(err).toMatchObject({ code: "not_found" });
-  });
+  test("a request the daemon never answers rejects with TimeoutError", async () => {
+    const daemon = new FakeDaemon();
+    later(() => daemon.stop());
+    daemon.silentOn.add("ui.action");
+    const client = await connect({
+      client: "test",
+      address: fixedAddress(daemon),
+      requestTimeoutMs: 100,
+    });
+    later(() => client.close());
 
-  test("an unknown session reaches the subscription's onError", async () => {
-    const { client } = await rig();
-    const errors: Error[] = [];
-    client.subscribe("nope", { onEvent: () => {}, onError: (e) => errors.push(e) });
-    await until(() => errors.length === 1, "error");
-    expect(errors[0]).toMatchObject({ code: "not_found" });
+    const error = await client.action("s1", "ref", "do.it").catch((thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(TimeoutError);
+    expect(String(error)).toContain("ui.action");
+    // Other requests are not affected.
+    expect(await client.listSessions()).toEqual([]);
   });
 });
 
 describe("connecting", () => {
-  test("rejects when no daemon is running", async () => {
-    const attempt = SuiteClient.connect({ client: "test", env: emptyEnv(), reconnect: false });
-    const err = await attempt.catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(DisconnectedError);
-    expect(String(err)).toContain("not running");
+  test("rejects with DisconnectedError when no daemon is running", async () => {
+    const attempt = connect({
+      client: "test",
+      address: addressIn(emptyDaemonDir()),
+      reconnect: false,
+    });
+    expect(await rejection(attempt)).toBeInstanceOf(DisconnectedError);
+    expect(String(await rejection(attempt))).toContain("not running");
   });
 
   test("waitForDaemon resolves once the daemon starts", async () => {
-    const env = emptyEnv();
-    const dir = env.SUITE_SOCKET?.replace(/\/bus\.sock$/, "") ?? "";
-    const connecting = SuiteClient.connect({ client: "test", env, waitForDaemon: true });
+    const dir = emptyDaemonDir();
+    const connecting = connect({ client: "test", address: addressIn(dir), waitForDaemon: true });
     await Bun.sleep(400);
-    const daemon = await startTestDaemon({ dir });
-    cleanups.push(() => daemon.stop(200));
+    await startDaemon(later, dir);
     const client = await connecting;
-    cleanups.push(() => client.close());
+    later(() => client.close());
     expect(await client.listSessions()).toHaveLength(1);
   });
 });
 
+describe("close", () => {
+  test("marks the app closed, ends the connection and rejects later calls", async () => {
+    const daemon = new FakeDaemon();
+    later(() => daemon.stop());
+    const presence: AppPresence = { app: "demo", kind: "app", open: true };
+    const client = await connect({ client: "demo", address: fixedAddress(daemon), presence });
+    const states: string[] = [];
+    client.state.on((state) => states.push(state));
+
+    await client.close();
+    await client.close();
+    const registered: boolean[] = [];
+    for (const frame of daemon.received) {
+      if (frame.topic === "app.presence") registered.push(frame.payload.open);
+    }
+    expect(registered).toEqual([true, false]);
+    expect(states).toEqual(["closed"]);
+    expect(await rejection(client.listSessions())).toBeInstanceOf(DisconnectedError);
+    expect(() => client.fileChanged("/tmp/a")).toThrow(DisconnectedError);
+  });
+});
+
 describe("daemon restart", () => {
-  test("resumes subscriptions without gaps or duplicates", async () => {
-    const first = await startTestDaemon();
-    let daemon = first;
-    cleanups.push(() => daemon.stop(200));
-    const client = await SuiteClient.connect({ client: "test", env: first.env });
-    cleanups.push(() => client.close());
+  test("the state goes reconnecting, then open; requests meanwhile are refused", async () => {
+    const first = await startDaemon(later);
+    const client = await connectTo(later, first);
+    const states: string[] = [];
+    client.state.on((state) => states.push(state));
 
-    const changes: boolean[] = [];
-    client.onConnectionChange((c) => changes.push(c));
-    const { id } = await client.createSession();
-    const rec = new Recorder();
-    client.subscribe(id, rec);
-    await client.input(id, "before");
-    await until(() => rec.turnsEnded() === 1, "first turn");
-    const seen = rec.records.length;
+    await first.stop();
+    await client.state.waitFor(2000, (state) => state === "reconnecting");
+    expect(await rejection(client.listSessions())).toBeInstanceOf(DisconnectedError);
 
-    // A request in flight when the daemon goes away fails instead of hanging.
-    const inFlight = client.input(id, "wait:10000 lost");
-    await until(() => rec.types().includes("user_message") && rec.records.length > seen, "start");
-    await first.stop(200);
-    await inFlight.catch(() => {});
-    await until(() => changes.includes(false), "disconnect");
-    const down = await client.listSessions().catch((e: unknown) => e);
-    expect(down).toBeInstanceOf(DisconnectedError);
-
-    daemon = await startTestDaemon({ dir: first.dir });
-    await until(() => client.isConnected, "reconnect");
-    expect(changes).toEqual([false, true]);
-    expect(rec.live).toBe(2);
-
-    await client.input(id, "after");
-    await until(() => rec.turnsEnded() === 3, "turns after restart");
-    // Gap-free and duplicate-free, including the turn the restart interrupted.
-    expect(rec.seqs).toEqual(rec.seqs.map((_, i) => i + 1));
-    expect(rec.text()).toContain("echo #3: after");
-    const reasons = rec.turnEnds();
-    expect(reasons).toHaveLength(3);
-    // The turn the restart interrupted ended one way or the other, and is in the replay.
-    expect(["cancelled", "error"]).toContain(reasons[1] ?? "");
+    await startDaemon(later, first.dir);
+    await client.state.waitFor(8000, (state) => state === "open");
+    expect(states).toEqual(["reconnecting", "open"]);
+    expect(await client.listSessions()).toHaveLength(1);
   });
 
-  test("with reconnect: false the client stays down", async () => {
-    const first = await startTestDaemon();
-    let daemon = first;
-    cleanups.push(() => daemon.stop(200));
-    const client = await SuiteClient.connect({ client: "test", env: first.env, reconnect: false });
-    await first.stop(200);
-    await until(() => !client.isConnected, "disconnect");
-    daemon = await startTestDaemon({ dir: first.dir });
+  test("with reconnect: false the client closes and stays down", async () => {
+    const first = await startDaemon(later);
+    const client = await connectTo(later, first, { reconnect: false });
+    await first.stop();
+    await client.state.waitFor(2000, (state) => state === "closed");
+    await startDaemon(later, first.dir);
     await Bun.sleep(700);
-    expect(client.isConnected).toBe(false);
-    await client.close();
+    expect(client.state.value).toBe("closed");
+  });
+
+  test("a request in flight when the connection drops rejects with DisconnectedError", async () => {
+    const daemon = new FakeDaemon();
+    later(() => daemon.stop());
+    daemon.silentOn.add("ui.action");
+    const client = await connect({ client: "test", address: fixedAddress(daemon) });
+    later(() => client.close());
+
+    const inFlight = client.action("s1", "ref", "do.it").catch((thrown: unknown) => thrown);
+    await until(() => daemon.topics().includes("ui.action"), "the request to arrive");
+    daemon.dropConnections();
+    expect(await inFlight).toBeInstanceOf(DisconnectedError);
   });
 });
 
 // These need the daemon's MCP gateway (app.presence, connectors.list).
 describe("presence (needs the gateway)", () => {
-  const presence = (url: string, headers: Record<string, string>): AppPresence => ({
+  const presenceFor = (url: string, headers: Record<string, string>): AppPresence => ({
     app: "demo",
     kind: "app",
     title: "Demo",
@@ -203,35 +202,54 @@ describe("presence (needs the gateway)", () => {
         },
       ],
     });
-    cleanups.push(() => tools.close());
-    const first = await startTestDaemon();
-    let daemon = first;
-    cleanups.push(() => daemon.stop(200));
-    const client = await SuiteClient.connect({
+    later(() => tools.close());
+    const first = await startDaemon(later);
+    const client = await connectTo(later, first, {
       client: "demo",
-      env: first.env,
-      presence: presence(tools.url, tools.headers),
+      presence: presenceFor(tools.url, tools.headers),
     });
-    cleanups.push(() => client.close());
 
-    const find = async (): Promise<string[]> => {
+    const toolNames = async (): Promise<string[]> => {
       const connectors = await client.listConnectors();
       return connectors
-        .filter((c) => c.app === "demo" && c.connected)
-        .flatMap((c) => c.tools.map((t) => t.name));
+        .filter((connector) => connector.app === "demo" && connector.connected)
+        .flatMap((connector) => connector.tools.map((tool) => tool.name));
     };
-    expect(await find()).toEqual(["demo.ping"]);
+    expect(await toolNames()).toEqual(["demo.ping"]);
 
-    const changes: boolean[] = [];
-    client.onConnectionChange((connected) => changes.push(connected));
-    await first.stop(200);
-    daemon = await startTestDaemon({ dir: first.dir });
-    await until(() => changes.join() === "false,true", "reconnect");
-    expect(await find()).toEqual(["demo.ping"]);
+    await first.stop();
+    await client.state.waitFor(2000, (state) => state === "reconnecting");
+    await startDaemon(later, first.dir);
+    await client.state.waitFor(8000, (state) => state === "open");
+    expect(await toolNames()).toEqual(["demo.ping"]);
 
     // Closing the app marks it disconnected but known.
-    await client.setPresence({ ...presence(tools.url, tools.headers), open: false });
-    const after = (await client.listConnectors()).find((c) => c.app === "demo");
+    await client.setPresence({ ...presenceFor(tools.url, tools.headers), open: false });
+    const after = (await client.listConnectors()).find((connector) => connector.app === "demo");
     expect(after?.connected).toBe(false);
+  });
+
+  test("setContext updates the app's context and is kept for reconnects", async () => {
+    const daemon = await startDaemon(later);
+    const app = await connectTo(later, daemon, {
+      client: "code-editor",
+      presence: { app: "code-editor", kind: "app", open: true, context: { line: "1" } },
+    });
+
+    await app.setContext({ file: "/site/a.ts", line: "40" });
+    const listed = daemon.connectors.list().find((connector) => connector.app === "code-editor");
+    expect(listed?.context).toEqual({ file: "/site/a.ts", line: "40" });
+
+    await daemon.stop();
+    await app.state.waitFor(2000, (state) => state === "reconnecting");
+    const restarted = await startDaemon(later, daemon.dir);
+    await app.state.waitFor(8000, (state) => state === "open");
+    const kept = restarted.connectors.list().find((connector) => connector.app === "code-editor");
+    expect(kept?.context).toEqual({ file: "/site/a.ts", line: "40" });
+  });
+
+  test("setContext without a presence says to set one first", async () => {
+    const { client } = await startRig(later);
+    expect(String(await rejection(client.setContext({ a: "b" })))).toContain("setPresence");
   });
 });

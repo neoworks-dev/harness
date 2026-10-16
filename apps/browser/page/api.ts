@@ -1,6 +1,6 @@
 // The page's side of its own server: JSON calls for the address bar and downloads, and the
 // WebSocket that pushes page changes. Uses only fetch and WebSocket, so tests run it under Bun.
-import type { DaemonAddress } from "@suite/sdk/browser";
+import type { DaemonAddress } from "@suite/sdk";
 import type { DownloadView, PageView, ServerEvent } from "../src/types.ts";
 
 const TOKEN_HEADER = "x-browser-token";

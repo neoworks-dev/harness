@@ -18,6 +18,7 @@
         "@suite/protocol": "workspace:*",
         "@suite/renderer-web": "workspace:*",
         "@suite/sdk": "workspace:*",
+        "@suite/sdk-tools": "workspace:*",
       },
       "devDependencies": {
         "@suite/daemon": "workspace:*",
@@ -67,17 +68,25 @@
     "sdk-ts": {
       "name": "@suite/sdk",
       "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.32.1",
         "@suite/protocol": "workspace:*",
       },
       "devDependencies": {
         "@suite/daemon": "workspace:*",
+        "@suite/sdk-tools": "workspace:*",
+      },
+    },
+    "sdk-ts-tools": {
+      "name": "@suite/sdk-tools",
+      "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.32.1",
+        "@suite/protocol": "workspace:*",
       },
     },
     "services/lsp": {
       "name": "@suite/lsp",
       "dependencies": {
         "@suite/sdk": "workspace:*",
+        "@suite/sdk-tools": "workspace:*",
       },
       "devDependencies": {
         "@suite/daemon": "workspace:*",
@@ -235,6 +244,8 @@
     "@suite/renderer-web": ["@suite/renderer-web@workspace:renderers/web"],
 
     "@suite/sdk": ["@suite/sdk@workspace:sdk-ts"],
+
+    "@suite/sdk-tools": ["@suite/sdk-tools@workspace:sdk-ts-tools"],
 
     "@tootallnate/quickjs-emscripten": ["@tootallnate/quickjs-emscripten@0.23.0", "", {}, "sha512-C5Mc6rdnsaJDjO3UpGW/CQTHtCKaYlScZTly4JIu97Jxo/odCiH0ITnDXSJPTOrEKk/ycSZ0AOgTmkDtkOsvIA=="],
 

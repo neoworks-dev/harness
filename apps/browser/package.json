@@ -5,7 +5,8 @@
   "dependencies": {
     "@suite/protocol": "workspace:*",
     "@suite/renderer-web": "workspace:*",
-    "@suite/sdk": "workspace:*"
+    "@suite/sdk": "workspace:*",
+    "@suite/sdk-tools": "workspace:*"
   },
   "devDependencies": {
     "@suite/daemon": "workspace:*",

@@ -2,8 +2,15 @@ import { afterEach, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
-import { createToolServer, type ToolServer, type ToolSpec } from "../src/tool-server.ts";
-import { until } from "./helpers.ts";
+import { createToolServer, type ToolServer, type ToolSpec } from "../src/index.ts";
+
+async function until(check: () => boolean, what: string): Promise<void> {
+  const deadline = Date.now() + 5000;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await Bun.sleep(10);
+  }
+}
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {

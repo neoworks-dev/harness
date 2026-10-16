@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@suite/sdk": "workspace:*"
+    "@suite/sdk": "workspace:*",
+    "@suite/sdk-tools": "workspace:*"
   },
   "devDependencies": {
     "@suite/daemon": "workspace:*",

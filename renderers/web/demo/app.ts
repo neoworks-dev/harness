@@ -1,7 +1,8 @@
 // The demo page's behavior, kept apart from the page shell so tests can run it under happy-dom:
 // follow the daemon's current session (agent.focus), draw its view, send typed input and button
 // presses back.
-import type { BusClient } from "@suite/sdk/bus";
+import type { AgentFocus, Theme } from "@suite/protocol/types";
+import type { Client, ConnectionState, Unsubscribe } from "@suite/sdk";
 import { mountChat, type Chat } from "../src/render.ts";
 
 export interface DemoElements {
@@ -31,9 +32,9 @@ function message(err: unknown): string {
   return String(err);
 }
 
-export function startDemo(client: BusClient, els: DemoElements, options: DemoOptions = {}): Demo {
+export function startDemo(client: Client, els: DemoElements, options: DemoOptions = {}): Demo {
   let session: string | undefined;
-  let view: { close(): void } | undefined;
+  let unfollowView: Unsubscribe | undefined;
 
   function report(text: string): void {
     els.status.textContent = text;
@@ -51,10 +52,10 @@ export function startDemo(client: BusClient, els: DemoElements, options: DemoOpt
   /** Subscribes to `next`'s view; the daemon answers with a snapshot, which replaces the list. */
   function follow(next: string): void {
     if (next === session) return;
-    view?.close();
+    unfollowView?.();
     session = next;
     chat.setItems([]);
-    view = client.subscribeView(next, {
+    unfollowView = client.subscribeView(next, {
       onSnapshot: (snapshot) => chat.applySnapshot(snapshot),
       onPatch: (patch) => chat.applyPatch(patch),
       onError: (err) => report(err.message),
@@ -76,16 +77,24 @@ export function startDemo(client: BusClient, els: DemoElements, options: DemoOpt
   };
   els.form.addEventListener("submit", onSubmit);
 
-  if (client.theme) chat.setTheme(client.theme);
-  const offs = [
-    client.onTheme((theme) => chat.setTheme(theme)),
-    client.onFocus((focus) => follow(focus.session)),
-    client.onConnectionChange((connected) => {
-      if (connected) report(`session ${session ?? "?"}`);
-      else report("disconnected, reconnecting…");
-    }),
+  const themeChanged = (theme: Theme | undefined): void => {
+    if (theme) chat.setTheme(theme);
+  };
+  const focusChanged = (focus: AgentFocus | undefined): void => {
+    if (focus) follow(focus.session);
+  };
+  const stateChanged = (state: ConnectionState): void => {
+    if (state === "open") report(`session ${session ?? "?"}`);
+    else if (state === "reconnecting") report("disconnected, reconnecting…");
+    else if (state === "closed") report("disconnected");
+  };
+  themeChanged(client.theme.value);
+  const stops = [
+    client.theme.on(themeChanged),
+    client.focus.on(focusChanged),
+    client.state.on(stateChanged),
   ];
-  if (client.focus) follow(client.focus.session);
+  focusChanged(client.focus.value);
 
   return {
     chat,
@@ -94,8 +103,8 @@ export function startDemo(client: BusClient, els: DemoElements, options: DemoOpt
     },
     send,
     stop() {
-      for (const off of offs) off();
-      view?.close();
+      for (const stop of stops) stop();
+      unfollowView?.();
       els.form.removeEventListener("submit", onSubmit);
       chat.destroy();
     },

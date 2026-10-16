@@ -19,6 +19,7 @@
     "daemon",
     "harness",
     "sdk-ts",
+    "sdk-ts-tools",
     "renderers/web",
     "services",
     "apps/browser",

@@ -8,7 +8,7 @@ import type {
   ViewPatch,
   ViewSnapshot,
 } from "@suite/protocol/types";
-import { componentAtPath, ViewState, type ViewChange } from "@suite/sdk/view";
+import { componentAtPath, ViewState, type ViewChange } from "@suite/sdk";
 import { buttonKey, renderBlocks, renderItem } from "./components.ts";
 import { CHAT_CLASS, chatStyles, themeVariables } from "./styles.ts";
 

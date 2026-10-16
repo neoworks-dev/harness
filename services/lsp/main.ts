@@ -1,8 +1,9 @@
 // The lsp service: language servers as a background connector, so diagnostics and definitions
 // work whether or not an editor is open. Editors use the same servers through the gateway.
 //   bun run services/lsp/main.ts
-import { SuiteClient } from "@suite/sdk";
-import { createToolServer } from "@suite/sdk/tools";
+import { connect } from "@suite/sdk";
+import { daemonJsonAddress } from "@suite/sdk/node";
+import { createToolServer } from "@suite/sdk-tools";
 import { ServerPool } from "./src/servers.ts";
 import { createTools, templates } from "./src/tools.ts";
 
@@ -17,8 +18,9 @@ const tools = createToolServer({
   tools: createTools(pool),
 });
 
-const suite = await SuiteClient.connect({
+const suite = await connect({
   client: "lsp",
+  address: daemonJsonAddress,
   waitForDaemon: true,
   reconnect: true,
   presence: {
