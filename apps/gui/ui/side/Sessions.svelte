@@ -28,7 +28,9 @@
   $effect(() => places.ensure(suite.sessions.map((session) => session.cwd)));
 
   // Ages tick while the sidebar is drawn.
-  $effect(() => clock.join());
+  $effect(() => {
+    if (ui.sidebarOpen) return clock.join();
+  });
 
   // F6 opens the sidebar and gives it the keyboard.
   function windowKey(event: KeyboardEvent): void {

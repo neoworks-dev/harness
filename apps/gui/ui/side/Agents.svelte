@@ -54,6 +54,11 @@
     ui.agentsFocused = false;
   }
 
+  // The keyboard moving on to the agent's own chat is not the list being left.
+  function blurred(): void {
+    if (!agentView.isOpen) leave();
+  }
+
   function open(row: AgentRow): void {
     // An agent that works as a session of its own in another directory is that session.
     if (row.child !== undefined) {
@@ -139,7 +144,7 @@
     bind:this={keys}
     focusable
     onkey={key}
-    onblur={leave}
+    onblur={blurred}
     style={{
       paddingX: p.space.l,
       paddingY: p.space.s,
