@@ -2,20 +2,21 @@
 
 One agent session shared across every app in the suite. The design is in [docs/design.md](docs/design.md).
 
-| Path                 | What                                                             | Phase |
-| -------------------- | ---------------------------------------------------------------- | ----- |
-| `protocol/`          | JSON Schemas (source of truth) + generated TS, Go, Rust types    | 0     |
-| `daemon/`            | TS on Bun: session store, bus hub, turn queue                    | 1     |
-| `harness/`           | TS on Bun: pi-based agent, core tools, system prompt             | 1     |
-| `cli/`               | Go: `suite status / sessions / attach / tools / focus / move`    | 1-3   |
-| `sdk-ts/`, `sdk-go/` | Bus clients (sessions, presence; TS: tool server helper)         | 2     |
-| `sdk-rs/`            | Rust bus client for GPUI apps                                    | 3     |
-| `apps/pad/`          | GPUI code editor stand-in (files, diagnostics, tools, chat)      | 3, 5  |
-| `apps/browser/`      | Stand-in web browser: navigate/read/images/download tools + page | 5     |
-| `apps/photo/`        | Stand-in photo editor (Go, terminal): image tools, preview, chat | 5     |
-| `services/lsp/`      | Language servers as a connector (started by the daemon)          | 5     |
-| `renderers/`         | web (TS), gpui (Rust), tui (Go), ratatui (Rust)                  | 4     |
-| `fixtures/`          | View fixtures + renderer snapshot tests                          | 4     |
+| Path                 | What                                                              | Phase |
+| -------------------- | ----------------------------------------------------------------- | ----- |
+| `protocol/`          | JSON Schemas (source of truth) + generated TS, Go, Rust types     | 0     |
+| `daemon/`            | TS on Bun: session store, bus hub, turn queue                     | 1     |
+| `harness/`           | TS on Bun: pi-based agent, core tools, system prompt              | 1     |
+| `cli/`               | Go: `suite status / sessions / attach / tools / focus / move`     | 1-3   |
+| `sdk-ts/`, `sdk-go/` | Bus clients (sessions, presence; TS: tool server helper)          | 2     |
+| `sdk-rs/`            | Rust bus client for GPUI apps                                     | 3     |
+| `apps/term/`         | `suite-term`: full-screen terminal app (chat, plan, files, usage) | 6     |
+| `apps/pad/`          | GPUI code editor stand-in (files, diagnostics, tools, chat)       | 3, 5  |
+| `apps/browser/`      | Stand-in web browser: navigate/read/images/download tools + page  | 5     |
+| `apps/photo/`        | Stand-in photo editor (Go, terminal): image tools, preview, chat  | 5     |
+| `services/lsp/`      | Language servers as a connector (started by the daemon)           | 5     |
+| `renderers/`         | web (TS), gpui (Rust), tui (Go), ratatui (Rust)                   | 4     |
+| `fixtures/`          | View fixtures + renderer snapshot tests                           | 4     |
 
 ## Requirements
 
@@ -24,7 +25,7 @@ Bun ≥ 1.3, Go ≥ 1.27, Rust ≥ 1.85 (edition 2024; Pad needs GPUI's Linux bu
 ## Running it
 
 ```sh
-make build                 # bin/suite, bin/photo
+make build                 # bin/suite, bin/photo, bin/suite-term
 bin/suite                  # in a terminal: starts the daemon if needed, then opens the terminal app (suite-term)
 bin/suite up               # make sure the daemon runs; starts it in the background (log: <data dir>/daemon.log)
 bin/suite down             # stop the daemon (SIGTERM; waits for the socket to close)
@@ -37,6 +38,8 @@ bin/suite attach [id]      # id or unique prefix (default: the agent's current s
 bin/suite focus            # where the agent is: its session and app (or no app)
 bin/suite move [app]       # move the agent to an open app; no app = home. --session ID also makes that session current
 ```
+
+`suite` opens the terminal app ([apps/term](apps/term/README.md)): the session's chat in a full-screen pane next to a prompt editor, with the git branch, model settings, turn state and usage under it, and plan / changed files at the side when there are any. It shows the agent's session if it works in the current directory (else the latest one here, else a new one), `--new` and `--session ID` choose another, and the agent moves into it. Closing it never stops work. Keys: Enter sends, Alt-Enter newline, Up/Down history, PgUp/PgDn scroll, Ctrl-O full tool results, Ctrl-T thoughts, Esc closes / cancels the turn, Ctrl-C twice quits, Shift-Tab approvals ask/auto, Ctrl-S sessions, `/` for commands (`/help` lists everything).
 
 In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/<key>` presses a button on the latest result (`/help` lists them). `/clear` (in any pane: attach, Pad, the photo editor, the browser page) starts a new conversation in the same directory; every app switches to it and the agent stays where it is. Piped stdin sends one input per line and exits once the session is idle.
 
@@ -105,5 +108,5 @@ Every pane draws the same thing: the daemon turns session events into view items
 ```sh
 make check      # install, codegen check, format check, lint, typecheck, test, build — everything
 make codegen    # regenerate protocol types after editing protocol/schemas
-make build      # builds bin/suite
+make build      # builds bin/suite, bin/photo and bin/suite-term
 ```

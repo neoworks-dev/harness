@@ -1,0 +1,20 @@
+> make the header sticky
+
+Done. The header now uses `position: sticky`.
+
+
+
+
+
+
+
+
+
+› /clear           start a new conversation in this directo…
+  /claude <task>   give a task to Claude Code
+  /codex <task>    give a task to Codex
+────────────────────────────────────────────────────────────
+> /c
+~/site
+◐ working 12s
+⏵⏵ auto (shift+tab to cycle)

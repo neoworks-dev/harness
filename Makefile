@@ -10,7 +10,7 @@ check: install codegen-check format-check lint typecheck build test
 install:
 	bun install --frozen-lockfile
 
-build: bin/suite bin/photo
+build: bin/suite bin/photo bin/suite-term
 
 bin/suite: FORCE
 	go build -o bin/suite ./cli
@@ -18,6 +18,11 @@ bin/suite: FORCE
 # The photo editor stand-in app (apps/photo).
 bin/photo: FORCE
 	go build -o bin/photo ./apps/photo
+
+# The terminal app (apps/term): what `suite` with no arguments opens.
+bin/suite-term: FORCE
+	cargo build --release -p suite-term
+	cp target/release/suite-term bin/suite-term
 
 FORCE:
 

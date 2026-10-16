@@ -1,0 +1,30 @@
+> make the header sticky                                           │ Plan
+                                                                   │ ✓ crop the logo
+Done. The header now uses `position: sticky`.                      │ ◐ wire it into the header
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+                                                                   │
+────────────────────────────────────────────────────────────────── │
+> message the agent · / for commands                               │
+~/site                                                             │
+                                                                   │
+ask (shift+tab to cycle)                                           │

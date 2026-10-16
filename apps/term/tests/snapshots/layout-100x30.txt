@@ -1,0 +1,30 @@
+> make the header sticky
+
+Done. The header now uses `position: sticky`.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+> message the agent · / for commands
+~/site · pi · model sonnet
+
+ask (shift+tab to cycle)

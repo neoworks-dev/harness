@@ -367,6 +367,12 @@ This keeps all three renderers thin without a shared library across three langua
 - **The working directory** is told to the model once per session (`<session cwd=…/>` in the first prompt), since the system prompt carries no session state.
 - **Stand-ins**: browser (TS/web), photo editor (Go/terminal), code editor (Pad, GPUI). Go and Rust apps serve their tools with small hand-written MCP servers (`sdk-go/tools`, `sdk_rs::tools`), the TS one with the MCP SDK.
 
+### The terminal app (after Phase 6)
+
+- **`suite`** (no arguments) starts the daemon if it isn't running (`suite up`: detached, log in the data dir; `suite down` stops it) and opens `suite-term`, a full-screen ratatui app (`apps/term`) for people who live in the terminal. The desktop overlay stays the home app; the terminal registers as an ordinary app (`terminal`, `terminal-2`… for more than one), so typing there pulls the agent in and other apps show the same conversation.
+- **Layout:** the chat scrolls inside its pane (not the terminal's scrollback, which tmux breaks), drawn by `renderers/ratatui` in Claude Code's compact style (`●` tool lines with `⎿` summaries, Ctrl-O for full results); the editor; three status lines under it (directory, branch, harness settings, where the agent is; usage and turn state; the approvals mode, shift+tab to toggle); a side column with the plan and the files (git status plus what the agent and guests changed, Enter for a diff) when there is something to show.
+- **Keyboard only:** prompts and choices are answered with arrows/digits/Enter, `/` opens a command menu (daemon commands are sent as input; /sessions, /help and the like are local), Ctrl-S switches sessions, Esc cancels a turn.
+
 ## 9. Guest agents
 
 Claude Code, Codex and other ACP harnesses can join for heavy coding.

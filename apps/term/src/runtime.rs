@@ -1,0 +1,147 @@
+//! The process: terminal setup and restore, the event loop, and `main`.
+
+use std::io::{self, IsTerminal, Write};
+use std::process::ExitCode;
+use std::time::Duration;
+
+use ratatui::DefaultTerminal;
+use ratatui::crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event};
+use ratatui::crossterm::execute;
+
+use crate::driver::{self, Driver, StartError, StartOptions, USAGE};
+use crate::history::HistoryStore;
+use crate::util::{now_ms, osc52};
+
+/// How long to wait for a key before looking at the daemon's events again.
+const POLL: Duration = Duration::from_millis(50);
+
+pub fn main() -> ExitCode {
+    let args = match driver::parse_args(std::env::args().skip(1)) {
+        Ok(Some(args)) => args,
+        Ok(None) => {
+            println!("{USAGE}");
+            return ExitCode::SUCCESS;
+        }
+        Err(why) => {
+            eprintln!("suite-term: {why}\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    if !io::stdout().is_terminal() || !io::stdin().is_terminal() {
+        eprintln!("suite-term needs a terminal (use `suite attach` in scripts)");
+        return ExitCode::FAILURE;
+    }
+    let cwd = match driver::current_dir() {
+        Ok(cwd) => cwd,
+        Err(why) => {
+            eprintln!("suite-term: {why}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let started = driver::start(StartOptions {
+        socket: None,
+        cwd,
+        home: std::env::var("HOME").ok(),
+        no_color: std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty()),
+        history: HistoryStore::in_data_dir(),
+        args,
+    });
+    let started = match started {
+        Ok(started) => started,
+        Err(StartError::DaemonDown) => {
+            eprintln!("daemon not running: run suite (or suite up)");
+            return ExitCode::FAILURE;
+        }
+        Err(StartError::Other(why)) => {
+            eprintln!("suite-term: {why}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match run(started.app, started.driver) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("suite-term: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Puts the terminal back when dropped, including while unwinding from a panic.
+struct Screen {
+    terminal: DefaultTerminal,
+}
+
+impl Screen {
+    fn enter() -> io::Result<Screen> {
+        // `init` switches to the alternate screen, enables raw mode and installs a panic hook
+        // that restores them; the hook is extended to end bracketed paste too.
+        let terminal = ratatui::init();
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let _ = execute!(io::stdout(), DisableBracketedPaste);
+            previous(info);
+        }));
+        execute!(io::stdout(), EnableBracketedPaste)?;
+        Ok(Screen { terminal })
+    }
+}
+
+impl Drop for Screen {
+    fn drop(&mut self) {
+        let _ = execute!(io::stdout(), DisableBracketedPaste);
+        ratatui::restore();
+    }
+}
+
+fn run(mut app: crate::app::App, driver: Driver) -> io::Result<()> {
+    let mut screen = Screen::enter()?;
+    let size = screen.terminal.size()?;
+    app.resize(size.width, size.height);
+    loop {
+        let mut quit = false;
+        if event::poll(POLL)? {
+            loop {
+                let fx = match event::read()? {
+                    Event::Key(key) => app.handle_key(key),
+                    Event::Paste(text) => {
+                        app.handle_paste(&text);
+                        Vec::new()
+                    }
+                    Event::Resize(w, h) => {
+                        app.resize(w, h);
+                        Vec::new()
+                    }
+                    _ => Vec::new(),
+                };
+                let out = driver.run(fx);
+                quit |= out.quit;
+                copy_to_clipboard(&out.copy)?;
+                if !event::poll(Duration::ZERO)? {
+                    break;
+                }
+            }
+        }
+        let (out, _) = driver.pump(&mut app);
+        quit |= out.quit;
+        copy_to_clipboard(&out.copy)?;
+        let fx = app.tick(now_ms());
+        quit |= driver.run(fx).quit;
+        if quit {
+            return Ok(());
+        }
+        if app.take_clear() {
+            screen.terminal.clear()?;
+        }
+        if app.take_dirty() {
+            screen.terminal.draw(|frame| app.draw(frame))?;
+        }
+    }
+}
+
+fn copy_to_clipboard(texts: &[String]) -> io::Result<()> {
+    let mut out = io::stdout();
+    for text in texts {
+        out.write_all(osc52(text).as_bytes())?;
+    }
+    out.flush()
+}

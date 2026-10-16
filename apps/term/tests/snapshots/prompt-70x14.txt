@@ -1,0 +1,14 @@
+> run the tests
+
+▎ ● claude asks: run ls?
+▎   [1 Allow once]  [2 Always allow]  [3 Reject]
+
+
+
+
+
+──────────────────────────────────────────────────────────────────────
+> message the agent · / for commands
+~/site
+
+ask (shift+tab to cycle)
