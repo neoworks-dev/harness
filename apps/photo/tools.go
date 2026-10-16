@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"path/filepath"
 	"strings"
 
 	protocol "neoworks.dev/suite/protocol/go"
@@ -123,6 +124,14 @@ func photoTools(e *editor) []tools.Tool {
 				path, err := stringArg(args, "path")
 				if err != nil {
 					return tools.Result{}, err
+				}
+				// A handle passed as path is still a handle; a relative path would resolve
+				// against this app's directory, which means nothing to the agent.
+				if asset == "" && strings.HasPrefix(path, "asset://") {
+					asset, path = path, ""
+				}
+				if path != "" && !filepath.IsAbs(path) {
+					return tools.Result{}, fmt.Errorf("path must be absolute, got %q", path)
 				}
 				var res imageResult
 				switch {

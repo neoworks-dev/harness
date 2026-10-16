@@ -14,10 +14,12 @@ function attrs(pairs: [string, string][]): string {
 
 /**
  * Prepends connector events to the user's text (design §6). Connect/disconnect lines keep their
- * order; only the last focus event is sent, after them.
+ * order; only the last focus event is sent, after them. `cwd` (the session's working directory)
+ * comes first, on a session's first prompt.
  */
-export function formatPrompt(text: string, pendingEvents: ContextEvent[]): string {
+export function formatPrompt(text: string, pendingEvents: ContextEvent[], cwd?: string): string {
   const lines: string[] = [];
+  if (cwd !== undefined) lines.push(`<session ${attrs([["cwd", cwd]])}/>`);
   let focus: string | undefined;
   for (const event of pendingEvents) {
     if (event.type === "app_connected") {

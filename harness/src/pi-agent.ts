@@ -52,12 +52,15 @@ export function createPiAgent(options: PiAgentOptions): HarnessAgent {
     params: NewSessionParams,
     history: LoadSessionParams["history"],
   ): AgentSession {
+    const messages = restoreMessages(history, logger);
+    // Told once per session, in its first prompt (older logs: the first prompt after loading).
+    let cwdTold = JSON.stringify(messages).includes("<session cwd=");
     const agent = new Agent({
       initialState: {
         systemPrompt: SYSTEM_PROMPT,
         model,
         tools: createCoreTools(params.cwd, gatewayOf(params.mcpServers), params.resolveAsset),
-        messages: restoreMessages(history, logger),
+        messages,
         thinkingLevel: config.thinkingLevel,
       },
       getApiKey: () => resolveApiKey(config),
@@ -88,7 +91,9 @@ export function createPiAgent(options: PiAgentOptions): HarnessAgent {
         for (const message of event.messages) if (message.role === "assistant") final = message;
       });
       try {
-        await agent.prompt(formatPrompt(text, pendingEvents), await loadImages(images ?? []));
+        const cwd = cwdTold ? undefined : params.cwd;
+        cwdTold = true;
+        await agent.prompt(formatPrompt(text, pendingEvents, cwd), await loadImages(images ?? []));
         return toResult(final, cancelRequested);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

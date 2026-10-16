@@ -181,6 +181,13 @@ func TestOpenAssetAndErrors(t *testing.T) {
 	if res := s.must("open", map[string]any{"asset": other.Handle}); res.Width != 30 || res.Handle != other.Handle {
 		t.Errorf("%+v", res)
 	}
+	// A handle given as path is opened as the asset; relative paths are refused.
+	if res := s.must("open", map[string]any{"path": other.Handle}); res.Handle != other.Handle {
+		t.Errorf("handle as path: %+v", res)
+	}
+	if _, err := s.call("open", map[string]any{"path": "x.png"}); err == nil || !strings.Contains(err.Error(), "absolute") {
+		t.Errorf("relative path: %v", err)
+	}
 }
 
 func TestBadArguments(t *testing.T) {

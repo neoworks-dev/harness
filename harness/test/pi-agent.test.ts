@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxToolCall } from "@mariozechner/pi-ai";
+import type { SessionEvent } from "@suite/protocol/types";
 import type { AgentSession, AgentUpdate, PromptResult } from "../src/agent.ts";
 import { createPiAgent } from "../src/pi-agent.ts";
 import { SYSTEM_PROMPT } from "../src/system-prompt.ts";
@@ -33,7 +34,7 @@ const harnessMessages = (updates: AgentUpdate[]): unknown[] =>
   ofType(updates, "harness_message").map((u) => u.message);
 
 test("a text reply streams chunks and logs both messages", async () => {
-  const { session } = await newSession(
+  const { session, cwd } = await newSession(
     fakeModel([
       reply([
         { type: "thinking", thinking: "hmm" },
@@ -55,21 +56,39 @@ test("a text reply streams chunks and logs both messages", async () => {
   const thought = updates.find((u) => u.type === "agent_thought_chunk");
   expect(thought).toMatchObject({ text: "hmm", messageId: chunks[0]?.messageId });
   const [user, assistant] = harnessMessages(updates);
-  expect(user).toMatchObject({ role: "user", content: [{ type: "text", text: "hi" }] });
+  expect(user).toMatchObject({
+    role: "user",
+    content: [{ type: "text", text: `<session cwd="${cwd}"/>\nhi` }],
+  });
   expect(assistant).toMatchObject({ role: "assistant", stopReason: "stop" });
 });
 
 test("pending events are prepended to the text sent to the model", async () => {
   const model = fakeModel([reply("ok")]);
-  const { session } = await newSession(model);
+  const { session, cwd } = await newSession(model);
   const { updates } = await run(session, "do it", [
     { type: "app_connected", app: "lsp", kind: "service", v: 1, tools: ["diagnostics"] },
     { type: "focus_changed", app: "browser", context: { url: "https://x" } },
   ]);
-  const expected =
-    '<app connected="lsp" kind="service" v="1" tools="diagnostics"/>\n<focus app="browser" url="https://x"/>\ndo it';
+  const expected = `<session cwd="${cwd}"/>\n<app connected="lsp" kind="service" v="1" tools="diagnostics"/>\n<focus app="browser" url="https://x"/>\ndo it`;
   expect(harnessMessages(updates)[0]).toMatchObject({ content: [{ text: expected }] });
   expect(model.requests[0]?.[0]).toMatchObject({ role: "user", content: [{ text: expected }] });
+});
+
+test("the working directory is told once per session, also across a reload", async () => {
+  const model = fakeModel([reply("one"), reply("two"), reply("three")]);
+  const { session, cwd } = await newSession(model);
+  const first = await run(session, "a");
+  await run(session, "b");
+  const texts = (updates: AgentUpdate[]): string => JSON.stringify(harnessMessages(updates)[0]);
+  expect(texts(first.updates)).toContain(`<session cwd=`);
+  expect(JSON.stringify(model.requests[1]?.at(-1))).not.toContain("<session cwd=");
+
+  const history: SessionEvent[] = first.updates;
+  const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const loaded = await agent.loadSession({ sessionId: "s1", cwd, mcpServers: [], history });
+  const third = await run(loaded, "c");
+  expect(texts(third.updates)).not.toContain("<session cwd=");
 });
 
 test("a tool call produces tool_call, updates and a diff in order", async () => {

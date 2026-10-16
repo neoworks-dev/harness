@@ -6,6 +6,10 @@ Connectors (apps and services) announce themselves with <app connected=…/>
 and <app disconnected=…/> events. Each event lists tool names only; use
 tools_search to get a connector's tool schemas and tools_call to run them.
 
+A session's first message starts with <session cwd=…/>: the working directory.
+bash runs there, and read, write and edit resolve relative paths against it.
+Other apps don't share it: give them absolute paths.
+
 The most recent <focus> event says where the user is now.
 
 When a connector disconnects, its tools stop working until it reconnects;
