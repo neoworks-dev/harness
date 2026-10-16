@@ -1,10 +1,11 @@
 <script lang="ts">
   // `/help`: the keys, above the input. Esc closes it.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
-  import { suite } from "../state/suite.svelte.ts";
-  import { composer } from "./composer.svelte.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
+  import { composer } from "./state.svelte.ts";
 
-  const p = $derived(suite.palette);
+  const { daemon } = useCtx();
+  const p = $derived(daemon.palette);
 
   const KEYS: readonly (readonly [string, string])[] = [
     ["Enter", "send"],

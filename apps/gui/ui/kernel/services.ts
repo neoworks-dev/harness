@@ -5,6 +5,7 @@ import { CommandsService } from "./services/commands.ts";
 import { DaemonService } from "./services/daemon.ts";
 import { GitService } from "./services/git.ts";
 import { GithubService } from "./services/github.ts";
+import { KeyboardService } from "./services/keyboard.ts";
 import { KeymapService } from "./services/keymap.ts";
 import { SlotsService } from "./slots/service.ts";
 
@@ -14,5 +15,6 @@ export const services: Plugin[] = [
   GitService,
   GithubService,
   KeymapService,
+  KeyboardService,
   CommandsService,
 ];

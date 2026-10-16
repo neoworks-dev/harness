@@ -4,18 +4,16 @@
   import { untrack } from "svelte";
   import { Input, Overlay, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent, Layout } from "@neoworks/svelte-gpui/ui";
-  import { useCtx } from "../kernel/slots/context.ts";
-  import { sessions } from "../plugins/sessions/state.svelte.ts";
-  import { suite } from "../state/suite.svelte.ts";
-  import { ui } from "../state/ui.svelte.ts";
-  import { composer } from "./composer.svelte.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
+  import Slot from "../../kernel/slots/Slot.svelte";
   import CommandMenu from "./CommandMenu.svelte";
   import Help from "./Help.svelte";
   import PromptPanel from "./PromptPanel.svelte";
+  import { composer } from "./state.svelte.ts";
 
-  const { transcript } = useCtx();
+  const { daemon, keyboard, transcript } = useCtx();
 
-  const p = $derived(suite.palette);
+  const p = $derived(daemon.palette);
   /** The input grows with its text up to this many pixels, then scrolls. */
   const MAX_INPUT_HEIGHT = 200;
   const LINE_HEIGHT = 20;
@@ -31,7 +29,7 @@
 
   // Another session: its own draft and history.
   $effect(() => {
-    const session = suite.sessionId;
+    const session = daemon.sessionId;
     untrack(() => void composer.switchSession(session));
   });
 
@@ -55,10 +53,10 @@
     if (answeringRef !== undefined) return transcript.stub(answeringRef);
   });
 
-  // The input has the keyboard unless the sidebar, the agents list or the GitHub view took it.
-  // svelte-gpui can't hand focus back yet (neoworks-dev/svelte-gpui#41), hence the flags.
+  // The input has the keyboard unless a pane (the sidebar, the agents list, the GitHub view)
+  // took it. svelte-gpui can't hand focus back yet (neoworks-dev/svelte-gpui#41), hence the claims.
   $effect(() => {
-    if (!showPanel && !ui.agentsFocused && !ui.githubOpen && !sessions.focused) input?.focus();
+    if (!showPanel && !keyboard.taken) input?.focus();
   });
 
   function key(event: KeyEvent): void {
@@ -116,6 +114,7 @@
       </Text>
     {/if}
     <View style={{ direction: "row", gap: p.space.m }} onpress={() => input?.focus()}>
+      <Slot name="composer.left" />
       <Text style={{ color: p.accent, lineHeight: LINE_HEIGHT, fontWeight: 600 }}>›</Text>
       <View style={{ flex: 1, minWidth: 0 }} onlayout={layout}>
         <Scroll bind:this={scroller} style={{ maxHeight: MAX_INPUT_HEIGHT }}>
@@ -143,6 +142,7 @@
           </Overlay>
         {/if}
       </View>
+      <Slot name="composer.right" />
     </View>
   {/if}
 </View>

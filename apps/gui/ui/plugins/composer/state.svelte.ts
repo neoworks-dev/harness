@@ -1,8 +1,10 @@
 // What the input side holds: the draft, the `/` menu, the history and the question panel (a
 // permission or choice card answered in place of the input). The components draw it and the
-// window shortcuts (plugins/legacy/shortcuts.ts) call it, so they agree on what is open.
+// plugin's keys call it, so they agree on what is open.
 import { clipboard, window } from "@neoworks/svelte-gpui";
-import { commandStore } from "../kernel/commands.svelte.ts";
+import type { ViewItem } from "@suite/protocol/types";
+import type { CommandsService } from "../../kernel/services/commands.ts";
+import type { DaemonService } from "../../kernel/services/daemon.ts";
 import {
   completion,
   isSlashWord,
@@ -10,8 +12,8 @@ import {
   matching,
   moveSelection,
   type Command,
-} from "../lib/commands.ts";
-import { History, walksHistory } from "../lib/history.ts";
+} from "../../lib/commands.ts";
+import { History, walksHistory } from "./history.ts";
 import {
   activePrompt,
   argsWithNote,
@@ -21,9 +23,17 @@ import {
   takesNote,
   TYPING_PAUSE_MS,
   type Prompt,
-} from "../lib/prompt.ts";
-import { suite } from "../state/suite.svelte.ts";
+} from "./prompt.ts";
 import { appendHistory, loadHistory } from "./history-store.ts";
+
+/** The services the composer reads and calls, from the plugin that started it. */
+interface Services {
+  daemon: DaemonService;
+  commands: CommandsService;
+}
+
+const NO_ITEMS: readonly ViewItem[] = [];
+const NO_COMMANDS: readonly Command[] = [];
 
 /** How long "copied" stays in the status line. */
 const COPIED_NOTICE_MS = 1500;
@@ -32,6 +42,7 @@ const COPIED_NOTICE_MS = 1500;
 const QUIT_WINDOW_MS = 2000;
 
 class Composer {
+  private services = $state.raw<Services>();
   /** The draft in the input. Kept while a question has the input's place. */
   text = $state("");
   history = $state.raw(new History());
@@ -55,7 +66,7 @@ class Composer {
   note = $state<string>();
 
   /** The oldest open question that was not put aside. */
-  prompt = $derived(activePrompt(suite.items, this.dismissed));
+  prompt = $derived(activePrompt(this.items, this.dismissed));
   /** The question is open but the user is typing, so the input stays (with a hint above). */
   waiting = $derived(this.prompt !== undefined && !this.engaged);
   menuVisible = $derived(
@@ -63,7 +74,7 @@ class Composer {
       !this.helpOpen &&
       isSlashWord(this.text) &&
       this.menuClosedFor !== this.text &&
-      matching(this.text, commandStore.list).length > 0,
+      matching(this.text, this.menuEntries).length > 0,
   );
   /** The commands the menu lists, if it is open. */
   commands = $derived(this.listCommands());
@@ -71,9 +82,24 @@ class Composer {
   private quitArmedUntil = 0;
   private noticeTimer?: ReturnType<typeof setTimeout>;
 
+  /** Serves the services until the returned call stops it. */
+  start(services: Services): () => void {
+    this.services = services;
+    return () => (this.services = undefined);
+  }
+
+  private get items(): readonly ViewItem[] {
+    return this.services?.daemon.items ?? NO_ITEMS;
+  }
+
+  /** Every command the menu can list. */
+  private get menuEntries(): readonly Command[] {
+    return this.services?.commands.list ?? NO_COMMANDS;
+  }
+
   private listCommands(): Command[] {
     if (!this.menuVisible) return [];
-    return matching(this.text, commandStore.list);
+    return matching(this.text, this.menuEntries);
   }
 
   // ---- typing ----
@@ -97,7 +123,7 @@ class Composer {
     const text = this.text.trim();
     if (text === "") return;
     this.text = "";
-    const command = text.startsWith("/") ? lookup(text, commandStore.list) : undefined;
+    const command = text.startsWith("/") ? lookup(text, this.menuEntries) : undefined;
     if (command?.run) command.run();
     else this.send(text);
   }
@@ -127,9 +153,9 @@ class Composer {
   }
 
   private send(text: string): void {
-    const session = suite.sessionId;
+    const session = this.services?.daemon.sessionId;
     if (this.history.push(text) && session !== undefined) void appendHistory(session, text);
-    void suite.send(text);
+    void this.services?.daemon.send(text);
   }
 
   // ---- history ----
@@ -151,7 +177,7 @@ class Composer {
     this.history = new History();
     if (session === undefined) return;
     const loaded = await loadHistory(session);
-    if (suite.sessionId === session) this.history = loaded;
+    if (this.services?.daemon.sessionId === session) this.history = loaded;
   }
 
   // ---- the question panel ----
@@ -200,7 +226,7 @@ class Composer {
     const args = this.note === undefined ? button.args : argsWithNote(button, this.note);
     this.note = undefined;
     this.dismissed = new Set([...this.dismissed, prompt.ref]);
-    void suite.action(prompt.ref, button.action, args);
+    void this.services?.daemon.action(prompt.ref, button.action, args);
   }
 
   /** Brings back the questions put aside. */

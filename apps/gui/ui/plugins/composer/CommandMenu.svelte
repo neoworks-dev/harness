@@ -3,8 +3,8 @@
   // keyboard (Up/Down/Tab/Enter reach it through its onkey), so this only draws and takes presses.
   import { Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { Layout, ScrollPosition } from "@neoworks/svelte-gpui/ui";
-  import { suite } from "../state/suite.svelte.ts";
-  import { composer } from "./composer.svelte.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
+  import { composer } from "./state.svelte.ts";
 
   interface Props {
     /** A command was picked with the pointer. */
@@ -13,7 +13,8 @@
 
   let { onchosen }: Props = $props();
 
-  const p = $derived(suite.palette);
+  const { daemon } = useCtx();
+  const p = $derived(daemon.palette);
   const ROW = 28;
   const VISIBLE_ROWS = 8;
 

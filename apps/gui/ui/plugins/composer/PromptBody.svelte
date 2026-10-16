@@ -3,9 +3,8 @@
   // side by side over the window.
   import { Button, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { Component } from "@suite/protocol/types";
-  import { plainText, previewLines } from "../lib/prompt.ts";
-  import { suite } from "../state/suite.svelte.ts";
-  import { useCtx } from "../kernel/slots/context.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
+  import { plainText, previewLines } from "./prompt.ts";
 
   interface Props {
     components: readonly Component[];
@@ -13,9 +12,9 @@
 
   let { components }: Props = $props();
 
-  const { diff } = useCtx();
+  const { daemon, diff } = useCtx();
 
-  const p = $derived(suite.palette);
+  const p = $derived(daemon.palette);
   const PREVIEW = 8;
 </script>
 

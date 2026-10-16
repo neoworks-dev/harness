@@ -5,11 +5,12 @@
   // with the answer, Esc puts the question aside.
   import { Button, Input, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent } from "@neoworks/svelte-gpui/ui";
-  import { suite } from "../state/suite.svelte.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
   import PromptBody from "./PromptBody.svelte";
-  import { composer } from "./composer.svelte.ts";
+  import { composer } from "./state.svelte.ts";
 
-  const p = $derived(suite.palette);
+  const { daemon } = useCtx();
+  const p = $derived(daemon.palette);
   const prompt = $derived(composer.prompt);
   const focused = $derived(prompt?.buttons[composer.button]);
   const hasBody = $derived((prompt?.body.length ?? 0) > 0);

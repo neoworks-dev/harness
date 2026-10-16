@@ -8,15 +8,18 @@ import { sessions } from "./state.svelte.ts";
 
 export const sessionsSidebar = {
   name: "sessions",
-  inject: ["slots", "daemon", "keymap", "commands"],
+  inject: ["slots", "daemon", "keymap", "keyboard", "commands"],
   apply(ctx: Context) {
-    const { slots, daemon, keymap, commands } = ctx;
+    const { slots, daemon, keymap, keyboard, commands } = ctx;
     // State that runs its own effects is started through `ctx.effect`, so unloading stops it.
     ctx.effect(() => sessions.start(daemon), "sessions state");
 
     slots.inject("shell.left", (slot) => {
       slot.add({ component: Sessions });
     });
+
+    // The input leaves the keyboard alone while the sidebar has it.
+    keyboard.claim(() => sessions.focused);
 
     const toggle = (): void => {
       sessions.open = !sessions.open;

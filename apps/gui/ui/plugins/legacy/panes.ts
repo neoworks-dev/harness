@@ -2,7 +2,6 @@
 // pane that is converted moves into a plugin of its own (plugins/sessions is the example) and
 // leaves this file; the shell's slots are all it needs to know about.
 import type { Context } from "@neoworks/extension-system";
-import Composer from "../../input/Composer.svelte";
 import AgentView from "../../side/AgentView.svelte";
 import { agentView } from "../../side/agentview.svelte.ts";
 import Agents from "../../side/Agents.svelte";
@@ -10,8 +9,6 @@ import GitHub from "../../side/GitHub.svelte";
 import SidePanels from "../../side/SidePanels.svelte";
 import { ui } from "../../state/ui.svelte.ts";
 import "../shell/slots.ts";
-import "../statusline/slots.ts";
-import Notice from "./Notice.svelte";
 
 // Several draw a diff, so they need the service that shows it over the window.
 const inject = ["slots", "diff", "transcript"];
@@ -35,30 +32,12 @@ const agentChat = {
     }),
 };
 
-const composer = {
-  name: "legacy/composer",
-  inject,
-  apply: ({ slots }: Context) =>
-    slots.inject("shell.bottom", (slot) => {
-      slot.add({ component: Composer, order: 10 });
-    }),
-};
-
 const agents = {
   name: "legacy/agents",
   inject,
   apply: ({ slots }: Context) =>
     slots.inject("shell.bottom", (slot) => {
       slot.add({ component: Agents, order: 20 });
-    }),
-};
-
-const notice = {
-  name: "legacy/notice",
-  inject: ["slots", "daemon"],
-  apply: ({ slots }: Context) =>
-    slots.inject("statusline.right", (slot) => {
-      slot.add({ component: Notice });
     }),
 };
 
@@ -71,4 +50,4 @@ const sidePanels = {
     }),
 };
 
-export const panes = [github, agentChat, composer, agents, notice, sidePanels];
+export const panes = [github, agentChat, agents, sidePanels];

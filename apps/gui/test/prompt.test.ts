@@ -11,7 +11,7 @@ import {
   startButton,
   takesNote,
   TYPING_PAUSE_MS,
-} from "../ui/lib/prompt.ts";
+} from "../ui/plugins/composer/prompt.ts";
 
 const text = (value: string): Component => ({
   type: "text",

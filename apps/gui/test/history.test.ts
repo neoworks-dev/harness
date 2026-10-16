@@ -6,7 +6,7 @@ import {
   historyLine,
   parseHistory,
   walksHistory,
-} from "../ui/lib/history.ts";
+} from "../ui/plugins/composer/history.ts";
 
 test("Up walks back, Down forward, and the draft comes back at the end", () => {
   const history = new History();
