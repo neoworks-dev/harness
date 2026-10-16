@@ -7,23 +7,21 @@
   import { untrack } from "svelte";
   import { Button, Input, List, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent, ScrollPosition } from "@neoworks/svelte-gpui/ui";
-  import type { Kind, Summary } from "../lib/github.ts";
-  import { suite } from "../state/suite.svelte.ts";
-  import { useCtx } from "../kernel/slots/context.ts";
-  import { ui } from "../state/ui.svelte.ts";
-  import { clock } from "../widgets/clock.svelte.ts";
+  import type { Kind, Summary } from "./github.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
+    import { clock } from "../../widgets/clock.svelte.ts";
   import GitHubDetail from "./GitHubDetail.svelte";
   import GitHubRow from "./GitHubRow.svelte";
-  import { github } from "./github.svelte.ts";
+  import { github } from "./state.svelte.ts";
 
   /** Rows a PgUp / PgDn moves; pixels an arrow scrolls a detail. */
   const PAGE = 8;
   const STEP = 48;
   const ROW_HEIGHT = 52;
 
-  const { diff } = useCtx();
+  const { daemon } = useCtx();
 
-  const p = $derived(suite.palette);
+  const p = $derived(daemon.palette);
   const NO_ROWS: Summary[] = [];
 
   function listRows(loaded: typeof github.list): Summary[] {
@@ -44,7 +42,7 @@
 
   // The keys are the view's from the moment it opens.
   $effect(() => {
-    if (ui.githubOpen) untrack(() => keys?.focus());
+    if (github.shown) untrack(() => keys?.focus());
   });
   // Ages tick while the view is drawn.
   $effect(() => clock.join());
@@ -61,7 +59,7 @@
   }
 
   function close(): void {
-    ui.githubOpen = false;
+    github.shown = false;
   }
 
   function switchTo(tab: Kind): void {
@@ -180,7 +178,7 @@
         void github.send(open.kind, open.number);
         return true;
       case "d":
-        if (open.kind === "pr") void github.showDiff(open.number, diff);
+        if (open.kind === "pr") void github.showDiff(open.number);
         return true;
       case "Escape":
       case "Backspace":

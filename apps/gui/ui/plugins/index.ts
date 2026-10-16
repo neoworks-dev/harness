@@ -8,8 +8,7 @@ import { agentViewPane } from "./agentview/index.ts";
 import { composerPane } from "./composer/index.ts";
 import { diffOverlay } from "./diff/index.ts";
 import { filesPanel } from "./files/index.ts";
-import { panes } from "./legacy/panes.ts";
-import { shortcuts } from "./legacy/shortcuts.ts";
+import { githubPane } from "./github/index.ts";
 import { planPanel } from "./plan/index.ts";
 import { sessionsSidebar } from "./sessions/index.ts";
 import { shell } from "./shell/index.ts";
@@ -23,8 +22,7 @@ export const plugins: Plugin[] = [
   statusLine,
   diffOverlay,
   transcriptPane,
-  shortcuts,
-  ...panes,
+  githubPane,
   composerPane,
   agentViewPane,
   agentsList,

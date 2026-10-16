@@ -3,12 +3,18 @@
 // the directory changes; `reload` asks again. Everything is a read through the host's
 // `gh_*` commands. Nothing here can write to GitHub.
 import { untrack } from "svelte";
-import * as host from "../kernel/host/github.ts";
-import type { DiffService } from "../plugins/diff/service.ts";
-import { explain, type Detail, type Kind, type Summary } from "../lib/github.ts";
-import { parseUnified } from "../lib/unified.ts";
-import { suite } from "../state/suite.svelte.ts";
-import { ui } from "../state/ui.svelte.ts";
+import type { DaemonService } from "../../kernel/services/daemon.ts";
+import type { GithubService } from "../../kernel/services/github.ts";
+import type { DiffService } from "../diff/service.ts";
+import { parseUnified } from "../../lib/unified.ts";
+import { explain, type Detail, type Kind, type Summary } from "./github.ts";
+
+/** The services the view reads and calls, from the plugin that started it. */
+interface Services {
+  daemon: DaemonService;
+  host: GithubService;
+  diff: DiffService;
+}
 
 /** What a load is in: working, done or failed with something to tell the user. */
 export type Loaded<T> =
@@ -24,6 +30,8 @@ const listKey = (kind: Kind, all: boolean, query: string): string => `${kind} ${
 const itemKey = (kind: Kind, number: number): string => `${kind} ${number}`;
 
 class GitHub {
+  /** Ctrl-R: the view is shown in place of the chat. */
+  shown = $state(false);
   tab = $state<Kind>("issue");
   /** Closed ones too. */
   all = $state(false);
@@ -40,23 +48,36 @@ class GitHub {
   private diffs: Record<string, string> = {};
   /** The directory what is cached belongs to. */
   private cwd = "";
+  private services?: Services;
 
-  constructor() {
-    $effect.root(() => {
+  /** Follows the session's directory and what the view is asked for, until the returned call stops it. */
+  start(services: Services): () => void {
+    const { daemon } = services;
+    this.services = services;
+    const stop = $effect.root(() => {
       // Another directory is another repository.
       $effect(() => {
-        const cwd = suite.cwd;
+        const cwd = daemon.cwd;
         untrack(() => this.reset(cwd));
       });
       // Opening the view starts what it needs.
       $effect(() => {
-        if (!ui.githubOpen || suite.sessionId === undefined) return;
+        if (!this.shown || daemon.sessionId === undefined) return;
         void this.tab;
         void this.all;
         void this.query;
         untrack(() => this.ensureList());
       });
     });
+    return () => {
+      stop();
+      this.services = undefined;
+    };
+  }
+
+  private get need(): Services {
+    if (this.services === undefined) throw new Error("the GitHub view is not started");
+    return this.services;
   }
 
   private reset(cwd: string): void {
@@ -107,7 +128,7 @@ class GitHub {
     const cwd = this.cwd;
     this.repoState = { status: "loading" };
     try {
-      const name = await host.repo(cwd);
+      const name = await this.need.host.repo(cwd);
       if (cwd !== this.cwd) return;
       this.repoState = { status: "ready", value: name };
       this.ensureList();
@@ -129,7 +150,7 @@ class GitHub {
     if (previous?.status !== "ready") this.lists = { ...this.lists, [key]: { status: "loading" } };
     try {
       const args = { cwd, repo, all, query };
-      const rows = await (tab === "issue" ? host.issues(args) : host.prs(args));
+      const rows = await (tab === "issue" ? this.need.host.issues(args) : this.need.host.prs(args));
       if (cwd !== this.cwd) return;
       this.lists = { ...this.lists, [key]: { status: "ready", value: rows } };
       this.selected = Math.min(this.selected, Math.max(0, rows.length - 1));
@@ -160,7 +181,9 @@ class GitHub {
     }
     try {
       const args = { cwd, repo, number };
-      const detail = await (kind === "issue" ? host.issue(args) : host.pr(args));
+      const detail = await (kind === "issue"
+        ? this.need.host.issue(args)
+        : this.need.host.pr(args));
       if (cwd !== this.cwd) return;
       this.details = { ...this.details, [key]: { status: "ready", value: detail } };
     } catch (error) {
@@ -177,33 +200,35 @@ class GitHub {
     if (repo?.status !== "ready") return;
     try {
       const args = { cwd: this.cwd, repo: repo.value, number };
-      const text = await (kind === "issue" ? host.issueText(args) : host.prText(args));
-      ui.githubOpen = false;
-      await suite.send(text);
+      const text = await (kind === "issue"
+        ? this.need.host.issueText(args)
+        : this.need.host.prText(args));
+      this.shown = false;
+      await this.need.daemon.send(text);
     } catch (error) {
-      suite.error = failure(error).message;
+      this.need.daemon.error = failure(error).message;
     }
   }
 
   /** A pull request's diff over the window, all files one after the other. */
-  async showDiff(number: number, diff: DiffService): Promise<void> {
+  async showDiff(number: number): Promise<void> {
     const repo = this.repoState;
     if (repo?.status !== "ready") return;
     try {
       const key = String(number);
-      this.diffs[key] ??= await host.prDiff({ cwd: this.cwd, repo: repo.value, number });
+      this.diffs[key] ??= await this.need.host.prDiff({ cwd: this.cwd, repo: repo.value, number });
       const files = parseUnified(this.diffs[key] ?? "");
       const lines = files.flatMap((file) => [
         { kind: "hunk" as const, text: file.path },
         ...file.lines,
       ]);
-      diff.show({
+      this.need.diff.show({
         type: "diff",
         path: `#${number} ${repo.value}`,
         lines: lines.length > 0 ? lines : [{ kind: "context", text: "no changes" }],
       });
     } catch (error) {
-      suite.error = failure(error).message;
+      this.need.daemon.error = failure(error).message;
     }
   }
 }

@@ -1,5 +1,5 @@
 // The `github` service: the host's GitHub commands. They only read; the app never writes to
-// GitHub. The view's own state stays in side/github.svelte.ts.
+// GitHub. The view's own state is in plugins/github.
 import { Service, type Context } from "@neoworks/extension-system";
 import * as host from "../host/github.ts";
 

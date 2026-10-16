@@ -2,9 +2,9 @@
   // One issue or pull request in the list: its state, title and comment count, then who opened it,
   // its labels and how long ago it changed.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
-  import { rowFacts, shortAge, type Summary } from "../lib/github.ts";
-  import { suite } from "../state/suite.svelte.ts";
-  import { stateColor } from "./github-look.ts";
+  import { useCtx } from "../../kernel/slots/context.ts";
+  import { rowFacts, shortAge, type Summary } from "./github.ts";
+    import { stateColor } from "./look.ts";
 
   interface Props {
     row: Summary;
@@ -14,7 +14,8 @@
   }
 
   let { row, selected, nowMs, onpress }: Props = $props();
-  const p = $derived(suite.palette);
+  const { daemon } = useCtx();
+  const p = $derived(daemon.palette);
 </script>
 
 <View

@@ -1,7 +1,7 @@
 // What the Rust side (apps/gui/src/commands.rs) offers, written down once so `invoke` checks
 // names, arguments and results.
 import type { DaemonAddress } from "@suite/sdk";
-import type { Detail, Summary } from "./lib/github.ts";
+import type { Detail, Summary } from "./plugins/github/github.ts";
 import type { Place } from "./plugins/sessions/sessions.ts";
 
 export interface Startup {

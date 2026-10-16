@@ -1,5 +1,5 @@
 // A session's input history on disk, under the app's data directory. The walking itself is in
-// lib/history.ts; this part touches files, so a window is needed to run it.
+// history.ts; this part touches files, so a window is needed to run it.
 import { files } from "@neoworks/svelte-gpui";
 import { History, historyFile, historyLine, parseHistory } from "./history.ts";
 

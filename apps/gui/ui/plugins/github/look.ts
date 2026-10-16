@@ -1,5 +1,5 @@
-import type { Palette } from "../lib/palette.ts";
-import type { CheckState, State } from "../lib/github.ts";
+import type { Palette } from "../../lib/palette.ts";
+import type { CheckState, State } from "./github.ts";
 
 /** Open is green, closed red, merged the accent, a draft muted. */
 export function stateColor(state: State, p: Palette): string {
