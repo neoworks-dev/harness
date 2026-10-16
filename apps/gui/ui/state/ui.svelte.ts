@@ -9,6 +9,8 @@ class Ui {
   showThoughts = $state(false);
   /** Ctrl-S: the sessions sidebar. */
   sidebarOpen = $state(true);
+  /** F6: the sessions sidebar has the keyboard (arrows move, Enter opens, Esc gives it back). */
+  sidebarFocused = $state(false);
   /** Ctrl-X: the agents list under the input has the keyboard. */
   agentsFocused = $state(false);
   /** Ctrl-R: the GitHub view instead of the chat. */

@@ -26,10 +26,25 @@ cleanup() {
 }
 trap cleanup EXIT
 
-bun run "$root/daemon/src/main.ts" >"$tmp/daemon.log" 2>&1 &
+# SCENE=side runs a daemon with scripted sessions and events instead (scripts/scene-daemon.ts), in
+# a git repository with a changed and an untracked file.
+if [ -n "${SCENE:-}" ]; then
+  mkdir -p "$tmp/work" "$tmp/elsewhere"
+  git -C "$tmp/work" init -q
+  printf 'one\ntwo\n' >"$tmp/work/a.txt"
+  git -C "$tmp/work" add a.txt
+  git -C "$tmp/work" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m first
+  printf 'one\nthree\n' >"$tmp/work/a.txt"
+  printf 'fresh\n' >"$tmp/work/new.txt"
+  SCENE_CWD="$tmp/work" SCENE_ELSEWHERE="$tmp/elsewhere" bun run "$root/apps/gui/scripts/scene-daemon.ts" >"$tmp/daemon.log" 2>&1 &
+else
+  bun run "$root/daemon/src/main.ts" >"$tmp/daemon.log" 2>&1 &
+fi
 daemon_pid=$!
+ready=$tmp/daemon.json
+if [ -n "${SCENE:-}" ]; then ready=$tmp/scene-ready; fi
 for _ in $(seq 100); do
-  [ -e "$tmp/daemon.json" ] && break
+  [ -e "$ready" ] && break
   sleep 0.1
 done
 
@@ -38,6 +53,16 @@ cd "$tmp/work"
 if [ -n "${SEED:-}" ]; then
   printf '%s\n' "$SEED" | "$root/bin/suite" attach --new >/dev/null
 fi
+# More sessions, each from its own directory (under work/, so the window's own stays the first
+# session's): SEED2 in work/site, SEED3 in a worktree of it. A line "wait:60000" keeps one running.
+for extra in "SEED2 site" "SEED3 site/.worktrees/dark"; do
+  read -r var dir <<<"$extra"
+  seed=${!var:-}
+  if [ -n "$seed" ]; then
+    mkdir -p "$tmp/work/$dir"
+    (cd "$tmp/work/$dir" && printf '%s\n' "$seed" | timeout 5 "$root/bin/suite" attach --new >/dev/null) || true
+  fi
+done
 
 HOST="$root/target/release/suite-gui" \
   "$root/../svelte-gpui/scripts/shot.sh" "$root/apps/gui/dist/gui.js" "$out" "$seconds" "$@"

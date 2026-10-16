@@ -6,7 +6,14 @@
   import Composer from "./input/Composer.svelte";
   import Shortcuts from "./input/Shortcuts.svelte";
   import StatusLine from "./input/StatusLine.svelte";
+  import AgentView from "./side/AgentView.svelte";
+  import Agents from "./side/Agents.svelte";
+  import GitHub from "./side/GitHub.svelte";
+  import { agentView } from "./side/agentview.svelte.ts";
+  import SidePanels from "./side/SidePanels.svelte";
+  import Sessions from "./side/Sessions.svelte";
   import { suite } from "./state/suite.svelte.ts";
+  import { ui } from "./state/ui.svelte.ts";
 
   $effect(() => {
     void suite.start();
@@ -18,6 +25,7 @@
 <Shortcuts />
 
 <View style={{ flex: 1, direction: "row", background: p.bg, color: p.fg, fontSize: p.text.body }}>
+  <Sessions />
   <View style={{ flex: 1, minWidth: 0 }}>
     {#if suite.sessionId === undefined}
       <View style={{ flex: 1, align: "center", justify: "center", gap: 8 }}>
@@ -28,10 +36,18 @@
         {/if}
       </View>
     {:else}
-      <Chat />
+      {#if ui.githubOpen}
+        <GitHub />
+      {:else if agentView.isOpen}
+        <AgentView />
+      {:else}
+        <Chat />
+      {/if}
       <Composer />
+      <Agents />
       <StatusLine />
     {/if}
   </View>
+  <SidePanels />
   <DiffOverlay />
 </View>
