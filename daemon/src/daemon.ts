@@ -121,6 +121,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     approvals: (session) => settings.approvals(session),
     guard: permissions.guard,
     handoff: (session, harness, all) => handoffSummary(store, session, harness, agent.name, all),
+    storeImage: (data, mime) => assets.put({ bytes: Buffer.from(data, "base64"), mime }).handle,
     pi: options.pi ?? (agent.name === "pi" ? agent : undefined),
     resolveAsset: (handle) => assets.resolve(handle),
     requestPermission: (session, name) => permissions.hook(session, name),

@@ -543,13 +543,20 @@ export type ToolKind =
 
 export type ToolCallStatus = "pending" | "in_progress" | "completed" | "failed";
 
-export type ToolCallContent = TextContent | DiffContent;
+export type ToolCallContent = TextContent | DiffContent | ImageContent;
 
 export type ToolCallContentTag = ToolCallContent["type"];
 
 export interface TextContent {
   type: "text";
   text: string;
+}
+
+/** An image a tool returned (pi's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log. */
+export interface ImageContent {
+  type: "image";
+  src: string;
+  mimeType?: string;
 }
 
 /** A file change. oldText is absent for new files. */

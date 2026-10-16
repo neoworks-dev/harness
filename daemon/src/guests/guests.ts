@@ -94,6 +94,8 @@ export interface GuestManagerOptions {
   /** pi, for delegate {agent: "pi"} (its subagent sessions are made with it). */
   pi?: Agent;
   resolveAsset?: (handle: string) => string | undefined;
+  /** Stores an image an adapter sent (base64) and returns its asset handle. */
+  storeImage?: StoreImage;
   /** The hook a pi subagent's own bash, write and edit ask through. */
   requestPermission?: (session: string, agent: string) => RequestPermission;
 }
@@ -255,7 +257,10 @@ function callCommand(call: Record<string, unknown>): string | undefined {
   return command.filter((c) => typeof c === "string").join(" ");
 }
 
-function toContent(value: unknown): ToolCallContent[] | undefined {
+/** Keeps an image's bytes out of the log: base64 data and its mime type → an asset handle. */
+export type StoreImage = (data: string, mimeType: string) => string | undefined;
+
+function toContent(value: unknown, storeImage?: StoreImage): ToolCallContent[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const out: ToolCallContent[] = [];
   for (const item of value) {
@@ -266,11 +271,26 @@ function toContent(value: unknown): ToolCallContent[] | undefined {
       out.push(diff);
     } else if (item.type === "content" && isRecord(item.content)) {
       const text = str(item.content.text);
+      const image = imageOf(item.content, storeImage);
       if (text !== undefined) out.push({ type: "text", text });
+      else if (image) out.push(image);
       else out.push({ type: "text", text: `[${String(item.content.type)}]` });
     }
   }
   return out;
+}
+
+/** An ACP image block ({type: "image", data, mimeType} or a uri) as image content. */
+function imageOf(
+  block: Record<string, unknown>,
+  storeImage?: StoreImage,
+): ToolCallContent | undefined {
+  if (block.type !== "image") return undefined;
+  const mimeType = str(block.mimeType) ?? "image/png";
+  const uri = str(block.uri);
+  const data = str(block.data);
+  const src = data === undefined || !storeImage ? uri : storeImage(data, mimeType);
+  return src === undefined ? undefined : { type: "image", src, mimeType };
 }
 
 /**
@@ -888,7 +908,7 @@ export class GuestManager {
     if (id === undefined) return;
     const toolCallId = `${prefix}:${id}`;
     const status = str(update.status);
-    const listed = toContent(update.content);
+    const listed = toContent(update.content, this.options.storeImage);
     const content = listed?.length ? listed : (mcpResultText(update.rawOutput) ?? listed);
     const rawTitle = str(update.title) ?? run.titles.get(toolCallId);
     if (rawTitle !== undefined) run.titles.set(toolCallId, rawTitle);
@@ -936,7 +956,7 @@ export class GuestManager {
     const cancelled = { outcome: { outcome: "cancelled" } };
     if (!guest?.run || options.length === 0) return cancelled;
     const call: Record<string, unknown> = Object.assign({}, params.toolCall);
-    const content = toContent(call.content);
+    const content = toContent(call.content, this.options.storeImage);
     const callKind = str(call.kind);
     const kind: ToolKind | undefined =
       callKind !== undefined && KINDS.has(callKind) ? (callKind as ToolKind) : undefined;

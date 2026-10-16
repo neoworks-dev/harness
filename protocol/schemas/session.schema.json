@@ -263,6 +263,9 @@
         },
         {
           "$ref": "#/$defs/DiffContent"
+        },
+        {
+          "$ref": "#/$defs/ImageContent"
         }
       ],
       "discriminator": {
@@ -280,6 +283,23 @@
         }
       },
       "required": ["type", "text"],
+      "additionalProperties": false
+    },
+    "ImageContent": {
+      "description": "An image a tool returned (pi's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "image"
+        },
+        "src": {
+          "type": "string"
+        },
+        "mimeType": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "src"],
       "additionalProperties": false
     },
     "DiffContent": {

@@ -325,7 +325,7 @@ Data and view are separate. Each result type registers a template when its app a
 }
 ```
 
-Results with no template fall back to a generic card built from ACP's base data (`kind`, text, diff, terminal output).
+Results with no template fall back to a generic card built from ACP's base data (`kind`, text, diff, image, terminal output). Images a tool returns become `{type: "image", src}` content: pi's read of a picture points at the file, an adapter's base64 image block is stored as an asset first, so the bytes stay out of the log; the view shows them as `image` components.
 
 ### Behavior
 

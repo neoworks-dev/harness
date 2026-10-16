@@ -231,6 +231,18 @@ async function prompt(params: {
       status: "completed",
       content: [{ type: "diff", path: "/tmp/a.txt", oldText: "a\n", newText: "b\n" }],
     });
+  } else if (task === "image") {
+    // A tool that returns a picture (a 1x1 png) as an image block.
+    const data =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    update(sessionId, {
+      sessionUpdate: "tool_call",
+      toolCallId: "t4",
+      title: "Read dot.png",
+      kind: "read",
+      status: "completed",
+      content: [{ type: "content", content: { type: "image", data, mimeType: "image/png" } }],
+    });
   } else if (task === "config") {
     update(sessionId, { sessionUpdate: "plan", entries: [] });
     say(sessionId, JSON.stringify({ instructions, config, session: sessionId }));

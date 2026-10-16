@@ -1322,7 +1322,7 @@ const (
 )
 
 // ToolCallContent
-// Value is one of: TextContent, DiffContent, UnknownToolCallContent.
+// Value is one of: TextContent, DiffContent, ImageContent, UnknownToolCallContent.
 type ToolCallContent struct {
 	Value ToolCallContentVariant
 }
@@ -1377,6 +1377,12 @@ func (u *ToolCallContent) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		u.Value = v
+	case "image":
+		var v ImageContent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
 	default:
 		u.Value = UnknownToolCallContent{Tag: *head.Tag, Raw: append(json.RawMessage(nil), data...)}
 	}
@@ -1396,6 +1402,23 @@ func (v TextContent) MarshalJSON() ([]byte, error) {
 		Tag string `json:"type"`
 		plain
 	}{"text", plain(v)})
+}
+
+// ImageContent: An image a tool returned (pi's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log.
+type ImageContent struct {
+	Src      string  `json:"src"`
+	MimeType *string `json:"mimeType,omitempty"`
+}
+
+func (ImageContent) isToolCallContent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v ImageContent) MarshalJSON() ([]byte, error) {
+	type plain ImageContent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"image", plain(v)})
 }
 
 // DiffContent: A file change. oldText is absent for new files.

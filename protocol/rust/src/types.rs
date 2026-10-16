@@ -1593,6 +1593,7 @@ pub enum ToolCallStatus {
 pub enum ToolCallContent {
     TextContent(TextContent),
     DiffContent(DiffContent),
+    ImageContent(ImageContent),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -1605,6 +1606,9 @@ impl Serialize for ToolCallContent {
             }
             ToolCallContent::DiffContent(v) => {
                 ("diff", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            ToolCallContent::ImageContent(v) => {
+                ("image", serde_json::to_value(v).map_err(S::Error::custom)?)
             }
             ToolCallContent::Unknown(v) => return v.serialize(serializer),
         };
@@ -1626,6 +1630,9 @@ impl<'de> Deserialize<'de> for ToolCallContent {
             "diff" => serde_json::from_value(value)
                 .map(ToolCallContent::DiffContent)
                 .map_err(D::Error::custom),
+            "image" => serde_json::from_value(value)
+                .map(ToolCallContent::ImageContent)
+                .map_err(D::Error::custom),
             _ => Ok(ToolCallContent::Unknown(value)),
         }
     }
@@ -1643,11 +1650,27 @@ impl From<DiffContent> for ToolCallContent {
     }
 }
 
+impl From<ImageContent> for ToolCallContent {
+    fn from(v: ImageContent) -> Self {
+        ToolCallContent::ImageContent(v)
+    }
+}
+
 /// Tagged `type: "text"` inside [`ToolCallContent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextContent {
     #[serde(rename = "text")]
     pub text: String,
+}
+
+/// An image a tool returned (pi's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log.
+/// Tagged `type: "image"` inside [`ToolCallContent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ImageContent {
+    #[serde(rename = "src")]
+    pub src: String,
+    #[serde(rename = "mimeType", default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
 }
 
 /// A file change. oldText is absent for new files.

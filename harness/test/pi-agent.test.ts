@@ -564,3 +564,23 @@ test("setConfigOption rejects values it can't use", async () => {
   expect(optionOf(session, "model")?.current).toBe("deepseek/deepseek-v4-flash");
   expect(optionOf(session, "thought_level")?.current).toBe("off");
 });
+
+test("reading a picture shows it: the result carries the file as image content", async () => {
+  const model = fakeModel([
+    reply([fauxToolCall("read", { path: "dot.png" }, { id: "call-1" })], "toolUse"),
+    reply("A dot."),
+  ]);
+  const { session, cwd } = await newSession(model);
+  // A 1x1 png.
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  await Bun.write(join(cwd, "dot.png"), png);
+  const { updates } = await run(session, "what is in dot.png?");
+  const done = ofType(updates, "tool_call_update").find((u) => u.status === "completed");
+  expect(done?.content).toEqual([
+    { type: "text", text: "Read image dot.png (image/png, 70 bytes)." },
+    { type: "image", src: join(cwd, "dot.png"), mimeType: "image/png" },
+  ]);
+});

@@ -56,16 +56,26 @@ function describeToolCall(name: string, args: unknown): { title: string; kind: T
   }
 }
 
-/** Text of tool result content; images are only mentioned. */
-function contentText(content: unknown): string {
+/** Text of tool result content; images are mentioned unless they are shown as image content. */
+function contentText(content: unknown, imagesShown = false): string {
   if (!Array.isArray(content)) return "";
   const parts: string[] = [];
   for (const part of content) {
     if (!isRecord(part)) continue;
     if (part.type === "text" && typeof part.text === "string") parts.push(part.text);
-    else if (part.type === "image") parts.push("[image]");
+    else if (part.type === "image" && !imagesShown) parts.push("[image]");
   }
   return parts.join("\n");
+}
+
+/** An image result as a picture for the view: the file it was read from (read's details.path). */
+function imagesOf(content: unknown, details: unknown): ToolCallContent[] {
+  if (!Array.isArray(content) || !isRecord(details) || typeof details.path !== "string") return [];
+  const image = content.find((part) => isRecord(part) && part.type === "image");
+  if (!isRecord(image)) return [];
+  const out: ToolCallContent = { type: "image", src: details.path };
+  if (typeof image.mimeType === "string") out.mimeType = image.mimeType;
+  return [out];
 }
 
 function diffOf(toolName: string, details: unknown): ToolCallContent[] {
@@ -138,9 +148,12 @@ export function createUpdateMapper(
         break;
       }
       case "tool_execution_end": {
-        const output = contentText(event.result?.content);
+        const images: ToolCallContent[] = [];
+        if (!event.isError) images.push(...imagesOf(event.result?.content, event.result?.details));
+        const output = contentText(event.result?.content, images.length > 0);
         const content: ToolCallContent[] = [{ type: "text", text: output }];
         if (!event.isError) content.push(...diffOf(event.toolName, event.result?.details));
+        content.push(...images);
         emit({
           type: "tool_call_update",
           toolCallId: event.toolCallId,

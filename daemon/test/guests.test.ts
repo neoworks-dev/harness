@@ -241,6 +241,25 @@ describe("delegate", () => {
   });
 });
 
+describe("guest images", () => {
+  test("an image a guest's tool returns is stored as an asset and shown in the view", async () => {
+    const { daemon, session } = await setup();
+    daemon.sessions.input(session, "cli", "/fake image");
+    await daemon.sessions.idle(session);
+    const update = events(daemon, session).find((e) => e.type === "tool_call_update");
+    const image = update?.type === "tool_call_update" ? update.content?.[0] : undefined;
+    if (image?.type !== "image") throw new Error(`no image content: ${JSON.stringify(image)}`);
+    expect(image.mimeType).toBe("image/png");
+    const src = image.src;
+    expect(src).toStartWith("asset://img-");
+    expect(daemon.assets.get(src)?.mime).toBe("image/png");
+    const shown = JSON.stringify(daemon.views.get(session).snapshot().items);
+    expect(shown).toContain(JSON.stringify({ type: "image", src }));
+    // The bytes stay out of the log.
+    expect(JSON.stringify(events(daemon, session))).not.toContain("iVBORw0KGgo");
+  });
+});
+
 describe("/guest turns", () => {
   test("/fake task runs the guest as the turn and tells the agent what it did", async () => {
     const agent = new FakeAgent();

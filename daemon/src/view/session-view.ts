@@ -521,7 +521,7 @@ export class SessionView {
     return undefined;
   }
 
-  /** Diffs and text output as components (a diff, or the text as code). */
+  /** Diffs, images and text output as components (a diff, an image, or the text as code). */
   private contentComponents(content: ToolCallContent[] | undefined): Component[] {
     const children: Component[] = [];
     for (const item of content ?? []) {
@@ -531,6 +531,8 @@ export class SessionView {
           path: item.path,
           lines: diffLines(item.oldText, item.newText),
         });
+      } else if (item.type === "image") {
+        children.push({ type: "image", src: item.src });
       } else if (item.text.trim() !== "") {
         children.push({ type: "code", code: item.text.replace(/\n+$/, "") });
       }
