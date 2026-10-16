@@ -52,6 +52,10 @@ type Options struct {
 	// OnTheme is called with every theme the daemon sends: once after each
 	// (re)connect and again when it changes. Same delivery as OnFocus.
 	OnTheme func(protocol.Theme)
+	// OnFileChanged is called for every file.changed the daemon passes on:
+	// the agent's writes and other apps' saves (not this client's own).
+	// Same delivery as OnFocus.
+	OnFileChanged func(protocol.FileChanged)
 }
 
 // Client is a connection to the daemon.

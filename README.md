@@ -12,6 +12,7 @@ One agent session shared across every app in the suite. The design is in [docs/d
 | `sdk-rs/`            | Rust bus client for GPUI apps                                    | 3     |
 | `apps/pad/`          | Small GPUI app hosting the chat pane (stand-in for Grove)        | 3     |
 | `apps/browser/`      | Stand-in web browser: navigate/read/images/download tools + page | 5     |
+| `apps/photo/`        | Stand-in photo editor (Go, terminal): image tools, preview, chat | 5     |
 | `renderers/`         | web (TS), gpui (Rust), tui (Go)                                  | 4     |
 | `fixtures/`          | View fixtures + renderer snapshot tests                          | 4     |
 
@@ -22,7 +23,7 @@ Bun ≥ 1.3, Go ≥ 1.27, Rust ≥ 1.85 (edition 2024; Pad needs GPUI's Linux bu
 ## Running it
 
 ```sh
-make build                 # bin/suite
+make build                 # bin/suite, bin/photo
 bun run daemon             # starts the daemon in the foreground (Ctrl-C stops it)
 bin/suite attach --new     # new session in the current directory; type to chat
 bin/suite status           # daemon info + session counts + where the agent is

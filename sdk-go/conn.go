@@ -139,6 +139,8 @@ func replyID(v protocol.EnvelopeVariant) (string, bool) {
 		return m.ID, true
 	case protocol.ConnectorsListResult:
 		return m.ID, true
+	case protocol.AssetInfoMessage:
+		return m.ID, true
 	}
 	return "", false
 }
@@ -170,6 +172,11 @@ func (c *Client) dispatch(v protocol.EnvelopeVariant) {
 		return
 	case protocol.ConnectorsChanged:
 		c.setConnectors(m.Payload.Connectors)
+		return
+	case protocol.FileChangedMessage:
+		if c.opts.OnFileChanged != nil {
+			c.notes.push(func() { c.opts.OnFileChanged(m.Payload) })
+		}
 		return
 	case protocol.ConnectorsListResult:
 		// A fresh snapshot, in wire order with the broadcasts: the latest wins.

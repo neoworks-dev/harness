@@ -2,6 +2,9 @@ package sdktest
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -69,6 +72,9 @@ type Daemon struct {
 	theme      protocol.Theme
 	current    string // the current session; empty until first needed
 	focusApp   string // app hosting the agent; empty when none
+	assets     map[string]protocol.Asset
+	changes    []protocol.FileChanged // file.changed received from clients
+	dir        string                 // holds the asset files
 }
 
 type session struct {
@@ -84,6 +90,7 @@ type session struct {
 // connState is what the daemon remembers about one client connection.
 type connState struct {
 	hello bool
+	name  string // the client name from bus.hello
 	app   string // connector registered by this connection, if any
 }
 
@@ -113,6 +120,8 @@ func New(t testing.TB) *Daemon {
 		connectors: map[string]*protocol.ConnectorInfo{},
 		presences:  map[string]protocol.AppPresence{},
 		theme:      DefaultTheme(),
+		assets:     map[string]protocol.Asset{},
+		dir:        dir,
 	}
 	d.Start()
 	t.Cleanup(d.Stop)
@@ -540,7 +549,7 @@ func (d *Daemon) handle(c *websocket.Conn, v protocol.EnvelopeVariant) {
 			d.fail(c, nil, protocol.ErrorCodeUnsupportedProtocol, fmt.Sprintf("daemon speaks protocol 1, client sent %d", m.Payload.Protocol))
 			return
 		}
-		st.hello = true
+		st.hello, st.name = true, m.Payload.Client
 		d.write(c, protocol.BusWelcome{Payload: protocol.Welcome{
 			Protocol: 1, DaemonVersion: "test", PID: 4242, StartedAt: d.StartedAt.UnixMilli(),
 		}})
@@ -642,6 +651,26 @@ func (d *Daemon) handle(c *websocket.Conn, v protocol.EnvelopeVariant) {
 		d.write(c, protocol.BusAck{ID: m.ID})
 	case protocol.AppPresenceMessage:
 		d.presence(c, st, m)
+	case protocol.AssetPutMessage:
+		d.assetPut(c, st, m)
+	case protocol.AssetGetMessage:
+		a, ok := d.assets[m.Payload.Handle]
+		if !ok {
+			d.fail(c, &m.ID, protocol.ErrorCodeNotFound, "no asset "+m.Payload.Handle)
+			return
+		}
+		d.write(c, protocol.AssetInfoMessage{ID: m.ID, Payload: a})
+	case protocol.FileChangedMessage:
+		p := m.Payload
+		if p.App == nil {
+			p.App = &st.name
+		}
+		d.changes = append(d.changes, p)
+		for other, ost := range d.conns {
+			if other != c && ost.hello {
+				d.write(other, protocol.FileChangedMessage{Payload: p})
+			}
+		}
 	case protocol.ConnectorsList:
 		d.write(c, protocol.ConnectorsListResult{ID: m.ID, Payload: protocol.ConnectorsListPayload{Connectors: d.connectorListLocked()}})
 	case protocol.AgentMoveMessage:
@@ -748,4 +777,77 @@ func (d *Daemon) runTurns(s *session, in protocol.SessionInput) {
 		s.info.Queued = int64(len(s.queue))
 		d.mu.Unlock()
 	}
+}
+
+// assetPut stores bytes or a copied file under <dir>/assets, with the
+// daemon's content-addressed handles (asset://img-<12 hex>).
+func (d *Daemon) assetPut(c *websocket.Conn, st *connState, m protocol.AssetPutMessage) {
+	p := m.Payload
+	var data []byte
+	var err error
+	switch {
+	case p.Path != nil && p.Data == nil:
+		data, err = os.ReadFile(*p.Path)
+	case p.Data != nil && p.Path == nil:
+		data, err = base64.StdEncoding.DecodeString(*p.Data)
+	default:
+		err = fmt.Errorf("asset.put takes path or data")
+	}
+	if err != nil {
+		d.fail(c, &m.ID, protocol.ErrorCodeBadRequest, err.Error())
+		return
+	}
+	sum := sha256.Sum256(data)
+	id := hex.EncodeToString(sum[:])[:12]
+	name := ""
+	if p.Name != nil {
+		name = *p.Name
+	} else if p.Path != nil {
+		name = filepath.Base(*p.Path)
+	}
+	mime := http.DetectContentType(data)
+	if p.Mime != nil {
+		mime = *p.Mime
+	}
+	prefix := "file-"
+	if strings.HasPrefix(mime, "image/") {
+		prefix = "img-"
+	}
+	handle := "asset://" + prefix + id
+	if a, ok := d.assets[handle]; ok {
+		d.write(c, protocol.AssetInfoMessage{ID: m.ID, Payload: a})
+		return
+	}
+	dir := filepath.Join(d.dir, "assets")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		d.fail(c, &m.ID, protocol.ErrorCodeInternal, err.Error())
+		return
+	}
+	file := filepath.Join(dir, prefix+id+filepath.Ext(name))
+	if err := os.WriteFile(file, data, 0o400); err != nil {
+		d.fail(c, &m.ID, protocol.ErrorCodeInternal, err.Error())
+		return
+	}
+	if name == "" {
+		name = filepath.Base(file)
+	}
+	app := st.name
+	a := protocol.Asset{Handle: handle, Path: file, Name: name, Mime: mime, Size: int64(len(data)), App: &app, CreatedAt: time.Now().UnixMilli()}
+	d.assets[handle] = a
+	d.write(c, protocol.AssetInfoMessage{ID: m.ID, Payload: a})
+}
+
+// FileChanges returns the file.changed frames clients sent.
+func (d *Daemon) FileChanges() []protocol.FileChanged {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return slices.Clone(d.changes)
+}
+
+// SendFileChanged broadcasts a file.changed to every client, as the real
+// daemon does when the agent's write or edit changes a file.
+func (d *Daemon) SendFileChanged(f protocol.FileChanged) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.broadcastLocked(protocol.FileChangedMessage{Payload: f})
 }

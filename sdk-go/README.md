@@ -38,7 +38,47 @@ The app stays registered while the connection lives. Call `SetPresence` again to
 
 `c.ListConnectors(ctx)` returns what the daemon knows (app, kind, connected, `v`, tools, error).
 
-**Out of scope:** an MCP server helper for registering tools. A Go MCP server needs a large dependency; run any Streamable HTTP MCP server and point `Mcp.URL` at it.
+### Tools: `sdk-go/tools`
+
+`tools.Start` hosts the app's tools as an MCP server, the counterpart of sdk-ts's `createToolServer`. It is a small hand-written Streamable HTTP server on `net/http` (no dependency): stateless, plain `application/json` responses, bound to 127.0.0.1 on a free port, with a random bearer token that the presence carries in `Mcp.Headers` (the gateway sends them with every request). It answers `initialize` (echoing a protocol version it knows), `ping`, `notifications/*` (202), `tools/list` and `tools/call`; protocol errors are JSON-RPC errors, a failing handler is an `isError` result.
+
+```go
+srv, err := tools.Start(tools.Options{
+    Name:         "photo-editor",
+    Instructions: "Edits one image at a time…", // shown by tools_search next to the tools
+    Tools: []tools.Tool{{
+        Name:        "crop",
+        Description: "Cut out a rectangle.",
+        InputSchema: map[string]any{ // "type": "object" is filled in
+            "properties": map[string]any{"width": map[string]any{"type": "integer"}},
+            "required":   []string{"width"},
+        },
+        OutputSchema: map[string]any{"properties": map[string]any{"handle": map[string]any{"type": "string"}}},
+        Handler: func(ctx context.Context, args map[string]any) (tools.Result, error) {
+            // args is the arguments object (numbers are float64). A returned error becomes an isError result.
+            return tools.Result{Text: "Cropped", Structured: map[string]any{"handle": "asset://img-…"}}, nil
+        },
+    }},
+})
+defer srv.Close()
+err = c.SetPresence(ctx, protocol.AppPresence{App: "photo-editor", Kind: protocol.ConnectorKindApp, Open: true, Mcp: srv.Endpoint()})
+```
+
+`Result.Structured` becomes `structuredContent` (the data view templates get); without `Text` its JSON is the text content. The tool list is fixed once the server started (there is no server-to-client stream, so no `list_changed`); a changed list needs a new server and a new `SetPresence`. Tests can use `sdktest.StartReal(t)`, which runs the real TypeScript daemon (`SUITE_AGENT=echo`, temp socket and data dir; skips without `bun`) and calls tools through its `/mcp` with `CallTool("app.tool", args)`.
+
+## Assets and file changes
+
+```go
+a, err := c.PutAsset(ctx, protocol.AssetPut{Data: &base64Bytes, Name: &name}) // or Path: absolute path to copy in
+a.Handle // asset://img-0123456789ab: content-addressed, valid after this app disconnects
+a.Path   // the stored file: read-only, same machine; copy it before editing
+a, err = c.GetAsset(ctx, "asset://img-0123456789ab") // *sdk.Error with code not_found if unknown
+
+err = c.FileChanged(ctx, "/abs/path/logo.png")        // after saving a file: no reply, not echoed back
+c, _ = sdk.Dial(ctx, sdk.Options{OnFileChanged: func(f protocol.FileChanged) { /* f.Path, f.App ("agent" or an app), f.Session */ }})
+```
+
+The daemon records `Options.Client` as the asset's app and as the source of a `file.changed`, so give the client the app's name.
 
 ## Where the agent is
 
@@ -121,7 +161,7 @@ Requests in flight when the connection drops fail with `ErrConnectionLost` and a
 
 ## Testing
 
-`sdk-go/sdktest` is an in-process fake daemon (sessions, replay/live subscriptions, a scripted agent, a small view resolver with `view.subscribe` / `view.patch` / `ui.action` / `theme` (`PatchView` adds items of your own), presence and connector listing, `agent.focus` / `agent.move` / `connectors.changed` with a home app, request recording) that the SDK's and the CLI's tests share:
+`sdk-go/sdktest` is an in-process fake daemon (sessions, replay/live subscriptions, a scripted agent, a small view resolver with `view.subscribe` / `view.patch` / `ui.action` / `theme` (`PatchView` adds items of your own), presence and connector listing, `agent.focus` / `agent.move` / `connectors.changed` with a home app, request recording, `asset.put` / `asset.get` with files in a temp dir, `file.changed` with `FileChanges` / `SendFileChanged`) that the SDK's and the CLI's tests share:
 
 ```go
 d := sdktest.New(t)
