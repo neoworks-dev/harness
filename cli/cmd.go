@@ -30,11 +30,25 @@ type cliEnv struct {
 	// unknown); it may be nil.
 	StdoutTTY bool
 	Size      func() (cols, rows int)
+
+	// Used by up, down and the terminal app launch; all optional.
+	Executable  func() (string, error)                      // default os.Executable
+	Environ     func() []string                             // default os.Environ
+	LookPath    func(string) (string, error)                // default exec.LookPath
+	Exec        func(path string, argv, env []string) error // default syscall.Exec
+	UpTimeout   time.Duration                               // default 15s
+	DownTimeout time.Duration                               // default 10s
 }
 
-const usage = `usage: suite <command> [flags]
+const usage = `usage: suite [command] [flags]
+
+With no command on a terminal, suite starts the daemon if needed and opens the
+terminal app (suite-term).
 
 commands:
+  up                            make sure the daemon is running; start it in the
+                                background if not (log: daemon.log in the data dir)
+  down                          stop the daemon
   status                        show daemon info, session counts and where the agent is
   sessions                      list sessions, most recently active first
   attach [id|prefix]            follow a session and send it input; without an
@@ -57,11 +71,18 @@ that has buttons; /help lists them
 // run executes one CLI invocation and returns the process exit code.
 func run(ctx context.Context, args []string, e cliEnv) int {
 	if len(args) == 0 {
+		if isTerminal(e.Stdin) && e.StdoutTTY {
+			return runTerm(ctx, e)
+		}
 		fmt.Fprint(e.Stderr, usage)
 		return 2
 	}
 	cmd, args := args[0], args[1:]
 	switch cmd {
+	case "up":
+		return runUp(ctx, args, e)
+	case "down":
+		return runDown(ctx, args, e)
 	case "status":
 		return runStatus(ctx, args, e)
 	case "sessions":
@@ -113,7 +134,7 @@ func connect(ctx context.Context, socketFlag string, e cliEnv) (*sdk.Client, str
 	c, err := sdk.Dial(ctx, sdk.Options{Socket: path, Client: "cli"})
 	switch {
 	case errors.Is(err, sdk.ErrDaemonDown):
-		fmt.Fprintf(e.Stderr, "suite: daemon not running (socket %s); start it with: bun run daemon\n", path)
+		fmt.Fprintf(e.Stderr, "suite: daemon not running (socket %s); start it with: suite up\n", path)
 	case err != nil:
 		fmt.Fprintf(e.Stderr, "suite: cannot connect to daemon (socket %s): %v\n", path, err)
 	default:

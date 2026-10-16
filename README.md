@@ -25,7 +25,10 @@ Bun ≥ 1.3, Go ≥ 1.27, Rust ≥ 1.85 (edition 2024; Pad needs GPUI's Linux bu
 
 ```sh
 make build                 # bin/suite, bin/photo
-bun run daemon             # starts the daemon in the foreground (Ctrl-C stops it)
+bin/suite                  # in a terminal: starts the daemon if needed, then opens the terminal app (suite-term)
+bin/suite up               # make sure the daemon runs; starts it in the background (log: <data dir>/daemon.log)
+bin/suite down             # stop the daemon (SIGTERM; waits for the socket to close)
+bun run daemon             # alternatively: the daemon in the foreground (Ctrl-C stops it)
 bin/suite attach --new     # new session in the current directory; type to chat
 bin/suite status           # daemon info + session counts + where the agent is
 bin/suite tools [query]    # connectors (open or closed) and their tools
@@ -41,6 +44,9 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/
 | ------------------------------------- | ----------------------------------------------------------- |
 | `SUITE_SOCKET`                        | `$XDG_RUNTIME_DIR/suite/bus.sock` (else `/tmp/suite-$UID/`) |
 | `SUITE_DATA_DIR`                      | `$XDG_DATA_HOME/suite` (else `~/.local/share/suite`)        |
+| `SUITE_DAEMON_CMD`                    | `bun run <repo>/daemon/src/main.ts` (what `suite up` runs)  |
+| `SUITE_ROOT`                          | repo found above the `suite` binary (for `suite up`)        |
+| `SUITE_TERM`                          | `suite-term` next to `suite`, else on `PATH`                |
 | `SUITE_MODEL`                         | `deepseek/deepseek-flash` (`provider/model-id`)             |
 | `SUITE_IMAGES`                        | `1`/`0`: the model takes images (default: pi's registry)    |
 | `SUITE_THINKING`                      | `off` (`minimal`…`xhigh`)                                   |

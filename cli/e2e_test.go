@@ -308,7 +308,7 @@ func TestDaemonNotRunning(t *testing.T) {
 				args = append(args, "x")
 			}
 			code, stdout, stderr := exec(t, sock, "", args...)
-			want := "suite: daemon not running (socket " + sock + "); start it with: bun run daemon\n"
+			want := "suite: daemon not running (socket " + sock + "); start it with: suite up\n"
 			if code != 1 || stdout != "" || stderr != want {
 				t.Errorf("%v: code %d stdout %q stderr %q", args, code, stdout, stderr)
 			}
