@@ -432,6 +432,8 @@ func (a *viewAttachment) input(ctx context.Context, line string) {
 	case trimmed == "":
 	case trimmed == "/help":
 		a.help()
+	case trimmed == "/clear":
+		a.clear(ctx)
 	case isCommand(trimmed):
 		a.press(ctx, trimmed[1:])
 	default:
@@ -441,6 +443,39 @@ func (a *viewAttachment) input(ctx context.Context, line string) {
 		}
 		a.send(ctx, line)
 	}
+}
+
+// clear asks the daemon for a fresh session (same directory, made current)
+// and follows it. The daemon sends the new agent.focus before acking, so the
+// client already knows the new session when Input returns.
+func (a *viewAttachment) clear(ctx context.Context) {
+	if err := a.c.Input(ctx, protocol.SessionInput{Session: a.id, App: a.app, Text: "/clear"}); err != nil {
+		a.failed(err)
+		return
+	}
+	focus, ok := a.c.Focus()
+	if !ok || focus.Session == a.id {
+		a.warnf("the daemon did not start a new session")
+		return
+	}
+	view, err := a.c.SubscribeView(ctx, focus.Session)
+	if err != nil {
+		a.failed(err)
+		return
+	}
+	events, err := a.c.SubscribeLive(ctx, focus.Session)
+	if err != nil {
+		view.Close()
+		a.failed(err)
+		return
+	}
+	a.view.Close()
+	a.events.Close()
+	a.id, a.view, a.state, a.events = focus.Session, view, view.State(), events
+	a.running = false
+	a.printed = map[string]bool{}
+	a.note("-- cleared: new session %s --", a.id)
+	a.touch()
 }
 
 // isCommand tells "/o" from a message such as "/usr/bin/env is missing".
@@ -475,7 +510,7 @@ func itemName(it protocol.ViewItem) string {
 func (a *viewAttachment) help() {
 	it, btns, ok := a.lastWithButtons()
 	if !ok {
-		a.note("no buttons in this session yet; type text to talk to the agent")
+		a.note("no buttons in this session yet; type text to talk to the agent, /clear for a new conversation")
 		return
 	}
 	a.note("buttons of the latest item with any (%s); type /<key> to press one:", itemName(it))
@@ -486,6 +521,7 @@ func (a *viewAttachment) help() {
 		}
 		a.note("  /%s  %s  (%s)", b.Key, b.Label, what)
 	}
+	a.note("/clear starts a new conversation")
 }
 
 // press triggers the button with this key on the most recent item that has one.

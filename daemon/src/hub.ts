@@ -237,9 +237,15 @@ export class Hub {
         return;
       case "session.input": {
         const { session, app, text, images } = msg.payload;
-        // Before queueing, so the turn already sees the new focus.
-        this.parts.focus?.followInput(session, app);
-        this.sessions.input(session, app, text, images);
+        const { focus } = this.parts;
+        if (focus && text.trim() === "/clear") {
+          if (!this.sessions.info(session)) throw new NotFoundError(`no session ${session}`);
+          focus.clear(session);
+        } else {
+          // Before queueing, so the turn already sees the new focus.
+          focus?.followInput(session, app);
+          this.sessions.input(session, app, text, images);
+        }
         if (msg.id !== undefined) this.send(client, { topic: "bus.ack", id: msg.id });
         return;
       }

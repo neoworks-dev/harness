@@ -245,6 +245,26 @@ describe("over the bus and the gateway", () => {
     expect(focus.current().app).toBe("photo-editor");
   });
 
+  test("/clear starts a fresh current session in the same directory; the agent stays put", async () => {
+    const { hub, registry, focus, sessions, agent } = hubSetup();
+    await registry.presence({}, app("code-editor"));
+    const old = sessions.create({ cwd: "/site" }).id;
+    focus.move({ app: "code-editor", session: old }, "user");
+    const a = client(hub);
+    a.send({
+      topic: "session.input",
+      id: "c",
+      payload: { session: old, app: "code-editor", text: " /clear " },
+    });
+    const now = focus.current();
+    expect(now.session).not.toBe(old);
+    expect(now.app).toBe("code-editor");
+    expect(sessions.info(now.session)?.cwd).toBe("/site");
+    expect(sessions.info(old)).toBeDefined();
+    expect(agent.prompts).toHaveLength(0); // never reaches the agent
+    expect(a.received.slice(-2).map((e) => e.topic)).toEqual(["agent.focus", "bus.ack"]);
+  });
+
   test("connector changes are broadcast once per burst", async () => {
     const { hub, registry } = hubSetup();
     const a = client(hub);

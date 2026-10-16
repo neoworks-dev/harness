@@ -220,6 +220,20 @@ describe.skipIf(!existsSync(suiteBin))("daemon + CLI end to end", () => {
     await app.close();
   });
 
+  test("/clear in attach moves to a fresh session in the same directory", async () => {
+    const env = testEnv();
+    await startDaemon(env);
+    const { out } = await suite(env, ["attach", "--new"], "hello\n/clear\nagain\n");
+    const first = sessionIdFrom(out);
+    const fresh = /cleared: new session (s_[a-z0-9]+)/.exec(out)?.[1] ?? "";
+    expect(fresh).not.toBe("");
+    expect(fresh).not.toBe(first);
+    expect(out.indexOf("echo #1: hello")).toBeLessThan(out.indexOf("cleared"));
+    // The new session starts its own count.
+    expect(out.slice(out.indexOf("cleared"))).toContain("echo #1: again");
+    expect((await suite(env, ["focus"])).out).toContain(fresh);
+  });
+
   test("piped inputs are queued and run in order", async () => {
     const env = testEnv();
     await startDaemon(env);

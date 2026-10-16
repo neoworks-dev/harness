@@ -283,6 +283,8 @@ func (u *ui) submit(ctx context.Context) {
 		u.quit = true
 	case line == "/help":
 		u.help()
+	case line == "/clear":
+		u.send(ctx, line) // the daemon starts a fresh session; the chat follows agent.focus
 	case strings.HasPrefix(line, "/open "):
 		u.open(ctx, strings.TrimSpace(strings.TrimPrefix(line, "/open ")))
 	case isCommand(line):
@@ -343,14 +345,14 @@ func (u *ui) lastWithButtons() (protocol.ViewItem, []tui.Button, bool) {
 func (u *ui) help() {
 	_, btns, ok := u.lastWithButtons()
 	if !ok {
-		u.setNote("no buttons yet. /open <path> loads an image; type to talk to the agent; q quits")
+		u.setNote("no buttons yet. /open <path> loads an image; /clear starts a new conversation; type to talk to the agent; q quits")
 		return
 	}
 	parts := make([]string, len(btns))
 	for i, b := range btns {
 		parts[i] = "/" + b.Key + " " + b.Label
 	}
-	u.setNote("buttons: %s", strings.Join(parts, "  "))
+	u.setNote("buttons: %s  (/clear: new conversation)", strings.Join(parts, "  "))
 }
 
 // press triggers the button with this key on the most recent item that has one.

@@ -35,7 +35,7 @@ bin/suite focus            # where the agent is: its session and app (or no app)
 bin/suite move [app]       # move the agent to an open app; no app = home. --session ID also makes that session current
 ```
 
-In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/<key>` presses a button on the latest result (`/help` lists them). Piped stdin sends one input per line and exits once the session is idle.
+In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/<key>` presses a button on the latest result (`/help` lists them). `/clear` (in any pane: attach, Pad, the photo editor, the browser page) starts a new conversation in the same directory; every app switches to it and the agent stays where it is. Piped stdin sends one input per line and exits once the session is idle.
 
 | Env                                   | Default                                                     |
 | ------------------------------------- | ----------------------------------------------------------- |
