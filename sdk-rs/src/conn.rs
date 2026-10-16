@@ -32,6 +32,8 @@ const MAX_BACKOFF: Duration = Duration::from_secs(5);
 
 pub(crate) enum Command {
     Request(Box<Request>),
+    /// A frame without a reply (`file.changed`); dropped while disconnected.
+    Send(Box<Envelope>),
     Close,
 }
 
@@ -154,6 +156,7 @@ fn reply_id(envelope: &Envelope) -> Option<&str> {
         Envelope::SessionSubscribed(m) => Some(&m.id),
         Envelope::ConnectorsListResult(m) => Some(&m.id),
         Envelope::ViewSnapshotMessage(m) => Some(&m.id),
+        Envelope::AssetInfoMessage(m) => Some(&m.id),
         _ => None,
     }
 }
@@ -212,6 +215,11 @@ impl Io {
                 match self.commands.try_recv() {
                     Ok(Command::Request(request)) => {
                         if let Flow::Lost = self.send_request(socket, request) {
+                            return Flow::Lost;
+                        }
+                    }
+                    Ok(Command::Send(envelope)) => {
+                        if send(socket, &envelope).is_err() {
                             return Flow::Lost;
                         }
                     }
@@ -316,6 +324,7 @@ impl Io {
                 self.emit(Event::Connectors(message.payload.connectors));
             }
             Envelope::ThemeMessage(message) => self.emit(Event::Theme(message.payload)),
+            Envelope::FileChangedMessage(message) => self.emit(Event::FileChanged(message.payload)),
             Envelope::ViewPatchMessage(message) => {
                 if self.views.contains(&message.payload.session) {
                     self.emit(Event::ViewPatch(message.payload));
@@ -443,6 +452,7 @@ impl Io {
                 Ok(Command::Request(request)) => {
                     let _ = request.reply.send(Err(Error::Disconnected));
                 }
+                Ok(Command::Send(_)) => {}
                 Ok(Command::Close) | Err(mpsc::TryRecvError::Disconnected) => return false,
                 Err(mpsc::TryRecvError::Empty) => return true,
             }
@@ -464,6 +474,8 @@ fn request_id(envelope: &Envelope) -> Option<String> {
         Envelope::ViewSubscribe(m) => Some(m.id.clone()),
         Envelope::ViewUnsubscribe(m) => Some(m.id.clone()),
         Envelope::UiActionMessage(m) => Some(m.id.clone()),
+        Envelope::AssetPutMessage(m) => Some(m.id.clone()),
+        Envelope::AssetGetMessage(m) => Some(m.id.clone()),
         _ => None,
     }
 }

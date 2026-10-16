@@ -200,7 +200,10 @@ impl Pad {
             }
             Event::Theme(theme) => self.chat.update(cx, |chat, cx| chat.set_theme(&theme, cx)),
             Event::Connection(up) => self.connected = up,
-            Event::Session(_) | Event::Subscribed { .. } | Event::Connectors(_) => {}
+            Event::Session(_)
+            | Event::Subscribed { .. }
+            | Event::Connectors(_)
+            | Event::FileChanged(_) => {}
         }
         cx.notify();
     }
@@ -562,6 +565,7 @@ mod tests {
                 .args(["run", "daemon/src/main.ts"])
                 .current_dir(root)
                 .env("SUITE_AGENT", "echo")
+                .env("SUITE_SERVICES", "none")
                 .env("SUITE_SOCKET", &socket)
                 .env("SUITE_DATA_DIR", dir.join("data"))
                 .stdout(Stdio::null())

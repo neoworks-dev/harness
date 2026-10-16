@@ -20,8 +20,9 @@ use conn::{Command, Effect, Request};
 pub use socket::default_socket_path;
 pub use suite_protocol as protocol;
 use suite_protocol::{
-    AgentFocus, AgentMove, AgentMoveMessage, AppPresence, AppPresenceMessage, ConnectorInfo,
-    ConnectorsList, Envelope, ErrorInfo, SessionCancel, SessionCreate, SessionCreateParams,
+    AgentFocus, AgentMove, AgentMoveMessage, AppPresence, AppPresenceMessage, Asset,
+    AssetGetMessage, AssetPut, AssetPutMessage, AssetRef, ConnectorInfo, ConnectorsList, Envelope,
+    ErrorInfo, FileChanged, FileChangedMessage, SessionCancel, SessionCreate, SessionCreateParams,
     SessionEventRecord, SessionInfo, SessionInput, SessionInputMessage, SessionList, SessionRef,
     SessionSubscribe, SessionUnsubscribe, SubscribeParams, SubscribedPayload, Theme, UiAction,
     UiActionMessage, ViewPatch, ViewSnapshot, ViewSubscribe, ViewUnsubscribe,
@@ -123,6 +124,8 @@ pub enum Event {
     ViewSnapshot(ViewSnapshot),
     /// Changes to a followed session's view, to apply in order (see [`ViewState`]).
     ViewPatch(ViewPatch),
+    /// `file.changed`: the agent or another app changed a file.
+    FileChanged(FileChanged),
 }
 
 /// A connection to the daemon. Cheap to share behind an `Arc`; dropping it disconnects.
@@ -333,6 +336,47 @@ impl Client {
                 },
             })
         })
+    }
+
+    /// Stores a file (`path`) or bytes (`data`, base64) in the asset store. Identical content
+    /// gets the same handle.
+    pub fn put_asset(&self, asset: AssetPut) -> Result<Asset> {
+        let put = |id| Envelope::AssetPutMessage(AssetPutMessage { id, payload: asset });
+        match self.call(Effect::None, put)? {
+            Envelope::AssetInfoMessage(reply) => Ok(reply.payload),
+            _ => Err(Error::Unexpected),
+        }
+    }
+
+    /// Looks up an `asset://…` handle: its stored file's path, name and type.
+    pub fn get_asset(&self, handle: &str) -> Result<Asset> {
+        let get = |id| {
+            Envelope::AssetGetMessage(AssetGetMessage {
+                id,
+                payload: AssetRef {
+                    handle: handle.into(),
+                },
+            })
+        };
+        match self.call(Effect::None, get)? {
+            Envelope::AssetInfoMessage(reply) => Ok(reply.payload),
+            _ => Err(Error::Unexpected),
+        }
+    }
+
+    /// Tells the other clients this app changed a file (after saving it). No reply; lost if
+    /// the connection is down.
+    pub fn file_changed(&self, path: &str) -> Result<()> {
+        let envelope = Envelope::FileChangedMessage(FileChangedMessage {
+            payload: FileChanged {
+                path: path.into(),
+                app: None,
+                session: None,
+            },
+        });
+        self.commands
+            .send(Command::Send(Box::new(envelope)))
+            .map_err(|_| Error::Disconnected)
     }
 
     fn ack(&self, effect: Effect, build: impl FnOnce(String) -> Envelope) -> Result<()> {

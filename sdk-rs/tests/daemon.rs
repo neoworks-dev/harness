@@ -28,6 +28,7 @@ impl Daemon {
             .args(["run", "daemon/src/main.ts"])
             .current_dir(root)
             .env("SUITE_AGENT", "echo")
+            .env("SUITE_SERVICES", "none")
             .env("SUITE_SOCKET", &socket)
             .env("SUITE_DATA_DIR", dir.join("data"))
             .env("SUITE_PORT", "0")
@@ -229,4 +230,45 @@ fn the_agent_moves_between_apps() {
         .move_agent(Some("nowhere"), None)
         .expect_err("unknown app");
     assert!(matches!(error, suite_sdk::Error::Daemon(_)), "{error:?}");
+}
+
+#[test]
+fn assets_and_file_changes() {
+    let Some(daemon) = Daemon::start() else {
+        return;
+    };
+    let editor = daemon.connect("code-editor", None);
+    let browser = daemon.connect("browser", None);
+    let events = browser.events();
+
+    let png = daemon._dir.join("logo.png");
+    std::fs::write(&png, b"\x89PNG\r\n\x1a\n-fake").expect("write png");
+    let stored = editor
+        .put_asset(suite_protocol::AssetPut {
+            path: Some(png.display().to_string()),
+            data: None,
+            name: None,
+            mime: None,
+        })
+        .expect("put asset");
+    assert!(
+        stored.handle.starts_with("asset://img-"),
+        "{}",
+        stored.handle
+    );
+    assert_eq!(stored.mime, "image/png");
+    assert_eq!(stored.app.as_deref(), Some("code-editor"));
+    assert_eq!(browser.get_asset(&stored.handle).expect("get"), stored);
+    assert!(matches!(
+        browser.get_asset("asset://img-ffffffffffff"),
+        Err(suite_sdk::Error::Daemon(_))
+    ));
+
+    editor.file_changed("/site/src/Header.tsx").expect("send");
+    let changed = wait_for(&events, "file.changed", |e| match e {
+        Event::FileChanged(changed) => Some(changed.clone()),
+        _ => None,
+    });
+    assert_eq!(changed.path, "/site/src/Header.tsx");
+    assert_eq!(changed.app.as_deref(), Some("code-editor"));
 }
