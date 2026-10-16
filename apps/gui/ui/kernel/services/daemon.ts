@@ -74,9 +74,9 @@ export class DaemonService extends Service {
   newSession(cwd?: string): Promise<void> {
     return suite.newSession(cwd);
   }
-  /** Sends what the user typed, commands included. */
-  send(text: string): Promise<void> {
-    return suite.send(text);
+  /** Sends what the user typed, commands included, with the paths of attached images. */
+  send(text: string, images?: string[]): Promise<void> {
+    return suite.send(text, images);
   }
   cancel(): Promise<void> {
     return suite.cancel();

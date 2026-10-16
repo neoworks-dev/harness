@@ -171,9 +171,9 @@ class Suite {
   }
 
   /** Sends what the user typed, commands (`/model …`) included. */
-  async send(text: string): Promise<void> {
+  async send(text: string, images?: string[]): Promise<void> {
     if (this.sessionId === undefined) return;
-    await this.guard(this.need().input(this.sessionId, text));
+    await this.guard(this.need().input(this.sessionId, text, { images }));
   }
 
   /** Cancels the running turn. */

@@ -1,7 +1,7 @@
 // What the input side holds: the draft, the `/` menu, the history and the question panel (a
 // permission or choice card answered in place of the input). The components draw it and the
 // plugin's keys call it, so they agree on what is open.
-import { clipboard, window } from "@neoworks/svelte-gpui";
+import { clipboard, files, window } from "@neoworks/svelte-gpui";
 import type { ViewItem } from "@suite/protocol/types";
 import type { CommandsService } from "../../kernel/services/commands.ts";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
@@ -45,6 +45,8 @@ class Composer {
   private services = $state.raw<Services>();
   /** The draft in the input. Kept while a question has the input's place. */
   text = $state("");
+  /** Files picked with the paperclip, sent with the next message. */
+  attachments = $state.raw<readonly string[]>([]);
   history = $state.raw(new History());
   /** The `/` menu's highlighted row. */
   selected = $state(0);
@@ -121,8 +123,12 @@ class Composer {
       return;
     }
     const text = this.text.trim();
-    if (text === "") return;
+    if (text === "" && this.attachments.length === 0) return;
     this.text = "";
+    if (this.attachments.length > 0) {
+      this.sendWithAttachments(text);
+      return;
+    }
     const command = text.startsWith("/") ? lookup(text, this.menuEntries) : undefined;
     if (command?.run) command.run();
     else this.send(text);
@@ -150,6 +156,30 @@ class Composer {
 
   moveMenu(delta: number): void {
     this.selected = moveSelection(this.selected, delta, this.commands.length);
+  }
+
+  /** Picks files to send with the next message. */
+  async attach(): Promise<void> {
+    const picked = await files.pickFiles({ multiple: true, prompt: "Attach files" });
+    if (!picked) return;
+    this.attachments = [...new Set([...this.attachments, ...picked])];
+  }
+
+  detach(path: string): void {
+    this.attachments = this.attachments.filter((attached) => attached !== path);
+  }
+
+  /** Images go along as images; other files are named in the text for the agent to read. */
+  private sendWithAttachments(text: string): void {
+    const { images, others } = splitAttachments(this.attachments);
+    this.attachments = [];
+    const named = others.map((path) => `@${path}`).join("\n");
+    const full = [text, named].filter((part) => part !== "").join("\n\n");
+    if (text !== "") {
+      const session = this.services?.daemon.sessionId;
+      if (this.history.push(text) && session !== undefined) void appendHistory(session, text);
+    }
+    void this.services?.daemon.send(full, images);
   }
 
   private send(text: string): void {
@@ -272,3 +302,13 @@ class Composer {
 }
 
 export const composer = new Composer();
+
+const IMAGE = /\.(png|jpe?g|gif|webp)$/i;
+
+/** The attached files the agent gets as images (PNG, JPEG, GIF, WebP), and the rest. */
+export function splitAttachments(paths: readonly string[]): { images: string[]; others: string[] } {
+  return {
+    images: paths.filter((path) => IMAGE.test(path)),
+    others: paths.filter((path) => !IMAGE.test(path)),
+  };
+}

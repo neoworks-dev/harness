@@ -6,6 +6,8 @@
   import { Button, Icon, Input, Overlay, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
   import arrowUp from "@phosphor-icons/core/bold/arrow-up-bold.svg";
   import stop from "@phosphor-icons/core/fill/stop-fill.svg";
+  import paperclip from "@phosphor-icons/core/regular/paperclip.svg";
+  import xIcon from "@phosphor-icons/core/regular/x.svg";
   import type { KeyEvent, Layout } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
@@ -128,6 +130,18 @@
           {composer.prompt.title || "A question"} is waiting. Stop typing to answer it, Esc puts it aside.
         </Text>
       {/if}
+      {#if composer.attachments.length > 0}
+        <View style={{ direction: "row", wrap: true, gap: 6, paddingX: 14, paddingTop: 12 }}>
+          {#each composer.attachments as path (path)}
+            <View style={{ direction: "row", align: "center", gap: 4, paddingLeft: 10, paddingRight: 4, height: 26, radius: p.radius.s, background: p.raised }}>
+              <Text style={{ fontSize: 12, maxWidth: 220, truncate: true }}>{path.slice(path.lastIndexOf("/") + 1)}</Text>
+              <Button onpress={() => composer.detach(path)} style={{ size: 18, align: "center", justify: "center", radius: 4, color: p.muted }} hover={{ color: p.fg, background: p.hover }}>
+                <Icon svg={xIcon} size={12} />
+              </Button>
+            </View>
+          {/each}
+        </View>
+      {/if}
       <View style={{ paddingX: 16, paddingTop: 16, paddingBottom: 8 }} onpress={() => input?.focus()}>
         <View style={{ minWidth: 0 }} onlayout={layout}>
           <Scroll bind:this={scroller} style={{ maxHeight: MAX_INPUT_HEIGHT }}>
@@ -161,6 +175,13 @@
         <Pickers />
         <View style={{ flex: 1 }} />
         <Slot name="composer.right" />
+        <Button
+          onpress={() => void composer.attach()}
+          style={{ size: 28, radius: p.radius.s, align: "center", justify: "center", color: p.muted }}
+          hover={{ background: p.hover, color: p.fg }}
+        >
+          <Icon svg={paperclip} size={16} />
+        </Button>
         {#if daemon.status.running && composer.text.trim() === ""}
           <Button
             onpress={() => void daemon.cancel()}
@@ -179,7 +200,7 @@
               justify: "center",
               background: p.accent,
               color: "#ffffff",
-              opacity: composer.text.trim() === "" ? 0.64 : 1,
+              opacity: composer.text.trim() === "" && composer.attachments.length === 0 ? 0.64 : 1,
             }}
             hover={{ opacity: 0.9 }}
           >
