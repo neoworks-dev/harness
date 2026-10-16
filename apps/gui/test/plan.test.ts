@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Plan } from "@suite/protocol/types";
-import { applyPlan, glyphOf, ownFirst, progress, type PlanList } from "../ui/lib/plan.ts";
+import { applyPlan, glyphOf, ownFirst, progress, type PlanList } from "../ui/plugins/plan/plan.ts";
 
 function plan(
   agent: string | undefined,

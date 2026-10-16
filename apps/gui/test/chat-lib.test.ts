@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 import type { Block } from "@suite/protocol/types";
 import { paletteOf } from "../ui/lib/palette.ts";
-import { baseName, lineHeightOf } from "../ui/lib/components.ts";
-import { fitImage } from "../ui/lib/image.ts";
-import { isLink, linkHint, spanStyle } from "../ui/lib/runs.ts";
-import { markdownRows } from "../ui/lib/markdown.ts";
-import { columnWeights } from "../ui/lib/table.ts";
+import { baseName, lineHeightOf } from "../ui/plugins/transcript/components.ts";
+import { fitImage } from "../ui/plugins/transcript/image.ts";
+import { isLink, linkHint, spanStyle } from "../ui/plugins/transcript/runs.ts";
+import { markdownRows } from "../ui/plugins/transcript/markdown.ts";
+import { columnWeights } from "../ui/plugins/transcript/table.ts";
 
 const p = paletteOf();
 

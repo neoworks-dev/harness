@@ -8,7 +8,7 @@ import {
   timeline,
   type Detail,
   type Summary,
-} from "../ui/lib/github.ts";
+} from "../ui/plugins/github/github.ts";
 
 const NOW = 1_792_162_800_000;
 

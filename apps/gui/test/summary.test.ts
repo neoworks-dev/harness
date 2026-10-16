@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { Component } from "@suite/protocol/types";
-import { hasButtons } from "../ui/lib/components.ts";
-import { summarize, textLines } from "../ui/lib/summary.ts";
+import { hasButtons } from "../ui/plugins/transcript/components.ts";
+import { summarize, textLines } from "../ui/plugins/transcript/summary.ts";
 
 const code = (text: string): Component => ({ type: "code", code: text });
 

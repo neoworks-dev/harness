@@ -10,7 +10,7 @@ import {
   relFromPrefix,
   relativize,
   type Touches,
-} from "../ui/lib/files.ts";
+} from "../ui/plugins/files/files.ts";
 
 const NUL = "\0";
 

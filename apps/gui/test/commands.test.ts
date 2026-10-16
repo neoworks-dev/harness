@@ -6,9 +6,16 @@ import {
   lookup,
   matching,
   moveSelection,
+  type Command,
 } from "../ui/lib/commands.ts";
 
-const names = (typed: string): string[] => matching(typed).map((command) => command.name);
+// The commands plugins add for the window to run come on top of the daemon's.
+const sidebar: Command = { name: "sidebar", args: "", desc: "", needsArgs: false, run: () => {} };
+const help: Command = { name: "help", args: "", desc: "", needsArgs: false, run: () => {} };
+const all = [...COMMANDS, sidebar, help];
+
+const names = (typed: string, commands = COMMANDS): string[] =>
+  matching(typed, commands).map((command) => command.name);
 
 test("a bare slash lists every command, then the list narrows by prefix", () => {
   expect(names("/")).toHaveLength(COMMANDS.length);
@@ -18,7 +25,7 @@ test("a bare slash lists every command, then the list narrows by prefix", () => 
 });
 
 test("without a prefix match, names that contain the text are listed", () => {
-  expect(names("/idebar")).toEqual(["sidebar"]);
+  expect(names("/idebar", all)).toEqual(["sidebar"]);
   expect(names("/zzz")).toEqual([]);
 });
 
@@ -32,7 +39,9 @@ test("a slash word has no space or newline yet", () => {
 
 test("the first word names the command", () => {
   expect(lookup("/model sonnet")?.name).toBe("model");
-  expect(lookup("  /help")?.local).toBe(true);
+  expect(lookup("  /help", all)?.run).toBe(help.run);
+  expect(lookup("/model", all)?.run).toBeUndefined();
+  expect(lookup("/help")).toBeUndefined();
   expect(lookup("/nope")).toBeUndefined();
   expect(lookup("model")).toBeUndefined();
 });
