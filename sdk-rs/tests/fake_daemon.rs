@@ -92,7 +92,7 @@ fn routes_replies_and_pushed_events() {
     let daemon = thread::spawn(move || {
         let mut peer = Peer::accept(&listener);
         peer.greet();
-        peer.send(json!({"topic": "agent.focus", "payload": {"session": "s1", "app": "pad", "reason": "initial"}}));
+        peer.send(json!({"topic": "agent.focus", "payload": {"session": "s1", "app": "code-editor", "reason": "initial"}}));
 
         let list = peer.expect("session.list");
         peer.send(json!({"topic": "session.list_result", "id": list["id"],
@@ -115,14 +115,14 @@ fn routes_replies_and_pushed_events() {
         let input = peer.expect("session.input");
         assert_eq!(
             input["payload"],
-            json!({"session": "s1", "app": "pad", "text": "hi"}),
+            json!({"session": "s1", "app": "code-editor", "text": "hi"}),
         );
         peer.send(json!({"topic": "bus.ack", "id": input["id"]}));
 
         let moved = peer.expect("agent.move");
-        assert_eq!(moved["payload"], json!({"app": "pad"}));
+        assert_eq!(moved["payload"], json!({"app": "code-editor"}));
         peer.send(json!({"topic": "bus.error", "id": moved["id"],
-            "payload": {"code": "not_found", "message": "pad isn't open"}}));
+            "payload": {"code": "not_found", "message": "code-editor isn't open"}}));
 
         peer.expect("session.unsubscribe");
     });
@@ -143,7 +143,7 @@ fn routes_replies_and_pushed_events() {
     });
     assert_eq!(
         (focus.session.as_str(), focus.app.as_deref()),
-        ("s1", Some("pad"))
+        ("s1", Some("code-editor"))
     );
 
     let sessions = client.list_sessions().expect("list");
@@ -168,9 +168,9 @@ fn routes_replies_and_pushed_events() {
         matches!(e, Event::Connectors(c) if c.is_empty()).then_some(())
     });
 
-    client.input("s1", "pad", "hi", &[]).expect("input");
-    match client.move_agent(Some("pad"), None) {
-        Err(Error::Daemon(info)) => assert_eq!(info.message, "pad isn't open"),
+    client.input("s1", "code-editor", "hi", &[]).expect("input");
+    match client.move_agent(Some("code-editor"), None) {
+        Err(Error::Daemon(info)) => assert_eq!(info.message, "code-editor isn't open"),
         other => panic!("expected the daemon's error, got {other:?}"),
     }
     client
@@ -225,7 +225,7 @@ fn reconnect_restores_presence_and_resumes_without_gaps_or_repeats() {
     options.reconnect = true;
     options.presence = Some(AppPresence {
         templates: None,
-        app: "pad".into(),
+        app: "code-editor".into(),
         kind: ConnectorKind::App,
         title: Some("Pad".into()),
         open: true,
@@ -259,7 +259,7 @@ fn reconnect_restores_presence_and_resumes_without_gaps_or_repeats() {
             json!({"topic": "agent.focus", "payload": {"session": "s1", "reason": "initial"}}),
         );
         let presence = peer.expect("app.presence");
-        assert_eq!(presence["payload"]["app"], "pad");
+        assert_eq!(presence["payload"]["app"], "code-editor");
         let resume = peer.expect("session.subscribe");
         assert_eq!(resume["payload"], json!({"session": "s1", "fromSeq": 4}));
         // A daemon that replays too much must not cause repeats.

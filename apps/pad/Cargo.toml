@@ -1,6 +1,6 @@
 [package]
 name = "suite-pad"
-description = "Pad: a small GPUI app that hosts the agent's chat pane (a stand-in for Grove)"
+description = "Pad: a small GPUI app that stands in for the code editor (Grove): files, diagnostics, tools and the agent's chat pane"
 edition.workspace = true
 version.workspace = true
 publish.workspace = true

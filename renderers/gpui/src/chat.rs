@@ -6,8 +6,10 @@
 //! touched and tells the list to re-measure only those, and the list keeps following the end
 //! while the user hasn't scrolled away.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::{
@@ -29,6 +31,14 @@ use crate::theme::ChatTheme;
 const COPIED_FOR: Duration = Duration::from_millis(1500);
 /// Rendered above and below the viewport so scrolling doesn't pop.
 const OVERDRAW: f32 = 400.0;
+
+/// Finds the local file of an `asset://` handle. It may block (the host asks the daemon), so
+/// the chat view runs it on the background executor.
+type ImageResolver = Arc<dyn Fn(&str) -> Option<PathBuf> + Send + Sync>;
+
+/// How long after an image's file was found its item is measured again, once GPUI has probably
+/// decoded it.
+const REMEASURE_AFTER: Duration = Duration::from_millis(400);
 
 /// What the host has to react to.
 #[derive(Debug, Clone, PartialEq)]
@@ -63,6 +73,11 @@ pub struct ChatView {
     copied: Option<(String, usize)>,
     copy_epoch: u64,
     remote_images: bool,
+    image_resolver: Option<ImageResolver>,
+    /// `asset://` handles whose file is known.
+    assets: Rc<HashMap<String, PathBuf>>,
+    /// Handles being resolved right now (or resolved already), so each is asked once.
+    asset_asked: HashSet<String>,
 }
 
 impl EventEmitter<ChatEvent> for ChatView {}
@@ -87,6 +102,88 @@ impl ChatView {
             copied: None,
             copy_epoch: 0,
             remote_images: false,
+            image_resolver: None,
+            assets: Rc::default(),
+            asset_asked: HashSet::new(),
+        }
+    }
+
+    /// Lets the chat draw `asset://…` images: `resolve` maps a handle to the stored file's path
+    /// (`client.get_asset(handle)`), or `None` when it can't. It runs on the background
+    /// executor, once per handle (asked again when a later patch or snapshot shows the handle
+    /// after a failure); until it answers, and for handles it can't resolve, the fallback box
+    /// is shown. Only `asset://` sources are ever passed to it, and nothing else is read.
+    pub fn set_image_resolver(
+        &mut self,
+        resolve: impl Fn(&str) -> Option<PathBuf> + Send + Sync + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        self.image_resolver = Some(Arc::new(resolve));
+        self.asset_asked.clear();
+        self.request_assets(cx);
+    }
+
+    /// The file a resolved `asset://` handle was found at.
+    pub fn asset_path(&self, handle: &str) -> Option<&Path> {
+        self.assets.get(handle).map(PathBuf::as_path)
+    }
+
+    /// Starts resolving the `asset://` handles of the current items that nobody asked about yet.
+    fn request_assets(&mut self, cx: &mut Context<Self>) {
+        let Some(resolve) = self.image_resolver.clone() else {
+            return;
+        };
+        let wanted: Vec<String> = self
+            .layouts
+            .iter()
+            .flat_map(|layout| layout.asset_srcs())
+            .filter(|src| !self.assets.contains_key(*src) && !self.asset_asked.contains(*src))
+            .map(String::from)
+            .collect();
+        for handle in wanted {
+            if !self.asset_asked.insert(handle.clone()) {
+                continue;
+            }
+            let resolve = resolve.clone();
+            cx.spawn(async move |this, cx| {
+                let asked = handle.clone();
+                let path = cx
+                    .background_executor()
+                    .spawn(async move { resolve(&asked) })
+                    .await;
+                let found = this
+                    .update(cx, |this, cx| {
+                        let Some(path) = path else {
+                            // Ask again the next time the handle shows up.
+                            this.asset_asked.remove(&handle);
+                            return false;
+                        };
+                        Rc::make_mut(&mut this.assets).insert(handle.clone(), path);
+                        this.remeasure(&handle);
+                        cx.notify();
+                        true
+                    })
+                    .unwrap_or(false);
+                if found {
+                    // The picture decodes after the first draw, so measure the item again.
+                    cx.background_executor().timer(REMEASURE_AFTER).await;
+                    this.update(cx, |this, cx| {
+                        this.remeasure(&handle);
+                        cx.notify();
+                    })
+                    .ok();
+                }
+            })
+            .detach();
+        }
+    }
+
+    /// Tells the list that items showing `handle` may have a different height now.
+    fn remeasure(&mut self, handle: &str) {
+        for ix in 0..self.layouts.len() {
+            if self.layouts[ix].asset_srcs().contains(&handle) {
+                self.list.splice(ix..ix + 1, 1);
+            }
         }
     }
 
@@ -129,6 +226,7 @@ impl ChatView {
         }
         self.state.apply_snapshot(snapshot);
         self.sync(None);
+        self.request_assets(cx);
         cx.notify();
     }
 
@@ -140,6 +238,7 @@ impl ChatView {
         }
         let touched: HashSet<String> = self.state.apply_patch(patch).into_iter().collect();
         self.sync(Some(&touched));
+        self.request_assets(cx);
         cx.notify();
     }
 
@@ -151,6 +250,7 @@ impl ChatView {
         self.selected = None;
         self.expanded.clear();
         self.copied = None;
+        self.asset_asked.clear();
         cx.notify();
     }
 
@@ -450,7 +550,8 @@ impl ChatView {
                 }),
             )
         };
-        let dcx = DrawCx::new(self.fonts.clone(), press, copied, self.remote_images);
+        let dcx = DrawCx::new(self.fonts.clone(), press, copied, self.remote_images)
+            .with_assets(self.assets.clone());
 
         let frame = &layout.frame;
         let mut framed = div()
@@ -1013,5 +1114,107 @@ mod tests {
         view.update(cx, |v, _| v.scroll_to_bottom());
         draw(cx);
         assert!(pinned(cx));
+    }
+
+    fn image_item(item_ref: &str, src: &str) -> Value {
+        json!({"ref": item_ref, "kind": "tool", "label": "x", "state": "done", "component": {
+            "type": "card", "children": [{"type": "image", "src": src, "width": 40, "height": 20}]}})
+    }
+
+    #[gpui::test]
+    fn asset_images_are_resolved_off_thread_and_only_for_asset_handles(cx: &mut TestAppContext) {
+        use std::sync::Mutex;
+
+        let (view, _) = chat(cx);
+        let asked = Arc::new(Mutex::new(Vec::<String>::new()));
+        let log = asked.clone();
+        view.update(cx, |v, cx| {
+            v.set_image_resolver(
+                move |handle| {
+                    log.lock().unwrap().push(handle.to_string());
+                    (handle == "asset://img-1").then(|| PathBuf::from("/store/img-1.png"))
+                },
+                cx,
+            )
+        });
+        let items = json!([
+            image_item("a", "asset://img-1"),
+            image_item("b", "asset://img-2"),
+            image_item("c", "https://example.com/x.png"),
+            image_item("d", "/etc/passwd"),
+            image_item("e", "file:///etc/passwd"),
+            image_item("f", "asset://"),
+        ]);
+        let before = view.update(cx, |v, cx| {
+            v.apply_snapshot(snapshot("s", 1, items), cx);
+            v.dump()
+        });
+        cx.run_until_parked();
+
+        view.read_with(cx, |v, _| {
+            assert_eq!(
+                v.asset_path("asset://img-1"),
+                Some(Path::new("/store/img-1.png"))
+            );
+            assert_eq!(v.asset_path("asset://img-2"), None, "unresolvable");
+            // The layout model (and so the snapshots) doesn't depend on the resolver.
+            assert_eq!(v.dump(), before);
+        });
+        let mut seen = asked.lock().unwrap().clone();
+        seen.sort();
+        assert_eq!(
+            seen,
+            ["asset://img-1", "asset://img-2"],
+            "nothing else is asked"
+        );
+
+        // Cached: a patch asks again only about the one that failed.
+        view.update(cx, |v, cx| {
+            v.apply_patch(
+                patch(
+                    "s",
+                    2,
+                    json!([{"op": "set", "item": text_item("g", "agent", "more")}]),
+                ),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let mut seen = asked.lock().unwrap().clone();
+        seen.sort();
+        assert_eq!(
+            seen,
+            ["asset://img-1", "asset://img-2", "asset://img-2"],
+            "img-1 is cached, img-2 is retried"
+        );
+    }
+
+    #[gpui::test]
+    fn asset_images_draw_as_fallbacks_and_then_as_pictures(cx: &mut TestAppContext) {
+        let png = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"); // any readable file
+        let window = cx.add_window(|_, cx| ChatView::new(cx));
+        let view = window.root(cx).unwrap();
+        let draw = |cx: &mut TestAppContext| {
+            cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear())
+                .unwrap();
+        };
+        view.update(cx, |v, cx| {
+            v.apply_snapshot(
+                snapshot("s", 1, json!([image_item("a", "asset://img-1")])),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        assert!(view.read_with(cx, |v, _| v.asset_path("asset://img-1").is_none()));
+        let dump = view.read_with(cx, |v, _| v.dump());
+        assert!(dump.contains("source=fallback"), "{dump}");
+        draw(cx);
+
+        view.update(cx, |v, cx| {
+            v.set_image_resolver(move |_| Some(png.clone()), cx)
+        });
+        cx.run_until_parked();
+        assert!(view.read_with(cx, |v, _| v.asset_path("asset://img-1").is_some()));
+        draw(cx);
     }
 }

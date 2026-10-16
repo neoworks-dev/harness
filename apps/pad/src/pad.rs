@@ -1,53 +1,197 @@
-//! The Pad window: collapsed while the agent lives elsewhere, a chat pane while it lives here.
+//! The Pad window: the code editor stand-in. Open files on the left, the agent's chat pane on
+//! the right (collapsed while the agent lives elsewhere), a path prompt on ctrl-o.
+//!
+//! This file is the state and what happens to it (keys, bus events, tool calls); `view.rs` draws it.
 
+use std::cell::Cell;
+use std::collections::BTreeMap;
 use std::ops::Range;
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui::{
-    App, AppContext as _, Bounds, ClickEvent, Context, Entity, EntityInputHandler, FocusHandle,
-    Focusable, HighlightStyle, InteractiveElement, IntoElement, KeyBinding, MouseButton,
-    MouseDownEvent, ParentElement, Pixels, Render, StatefulInteractiveElement, Styled, StyledText,
-    UTF16Selection, Window, actions, canvas, div, hsla, px, rgb,
+    App, AppContext as _, Bounds, ClipboardItem, Context, Entity, EntityInputHandler, FocusHandle,
+    Focusable, KeyBinding, Pixels, ScrollStrategy, UTF16Selection, UniformListScrollHandle, Window,
+    actions,
 };
+use suite_protocol::{AppPresence, ConnectorKind, LaunchSpec, McpEndpoint};
 use suite_renderer_gpui::{ChatEvent, ChatFonts, ChatView};
+use suite_sdk::tools::ToolServer;
 use suite_sdk::{Client, Event};
 
+use crate::buffer::{Buffer, Pos};
+use crate::editor::{Editor, Effect, resolve_path};
 use crate::field::Field;
 use crate::focus::{Change, Follower};
+use crate::gateway::Gateway;
+use crate::tools::{self, Request};
 
 /// This app's name on the bus: its presence, and the `app` of the input it sends.
-pub const APP: &str = "pad";
+pub const APP: &str = "code-editor";
+pub const TITLE: &str = "Code editor (Pad)";
 
 /// Embedded in `main` because GPUI on Linux only knows fonts by exact family name and its
 /// default one (IBM Plex Sans) is not generally installed.
 pub const FONT: &str = "Geist";
 
-const KEY_CONTEXT: &str = "PadInput";
+pub const EDITOR_CONTEXT: &str = "PadEditor";
+pub const INPUT_CONTEXT: &str = "PadInput";
+pub const PROMPT_CONTEXT: &str = "PadPrompt";
 
 actions!(
     pad,
     [
-        Submit, CancelTurn, FocusChat, Backspace, Delete, Left, Right, Home, End, Paste
+        Enter,
+        Escape,
+        Backspace,
+        Delete,
+        Left,
+        Right,
+        Up,
+        Down,
+        Home,
+        End,
+        PageUp,
+        PageDown,
+        DocStart,
+        DocEnd,
+        SelectLeft,
+        SelectRight,
+        SelectUp,
+        SelectDown,
+        SelectHome,
+        SelectEnd,
+        SelectAll,
+        Copy,
+        Cut,
+        Paste,
+        Tab,
+        Undo,
+        Redo,
+        Save,
+        Reload,
+        OpenPrompt,
+        CloseFile,
+        NextTab,
+        PrevTab,
+        FocusEditor,
+        FocusChatPane,
+        FocusInput,
+        CycleFocus,
     ]
 );
 
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("enter", Submit, Some(KEY_CONTEXT)),
-        KeyBinding::new("escape", CancelTurn, Some(KEY_CONTEXT)),
+        // Anywhere.
+        KeyBinding::new("ctrl-1", FocusEditor, None),
+        KeyBinding::new("ctrl-2", FocusChatPane, None),
+        KeyBinding::new("ctrl-3", FocusInput, None),
+        KeyBinding::new("f6", CycleFocus, None),
+        KeyBinding::new("ctrl-o", OpenPrompt, None),
+        KeyBinding::new("ctrl-s", Save, None),
+        KeyBinding::new("ctrl-r", Reload, None),
+        KeyBinding::new("ctrl-w", CloseFile, None),
+        KeyBinding::new("ctrl-pagedown", NextTab, None),
+        KeyBinding::new("ctrl-pageup", PrevTab, None),
+        // The editor.
+        KeyBinding::new("enter", Enter, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("escape", Escape, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("backspace", Backspace, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("delete", Delete, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("left", Left, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("right", Right, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("up", Up, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("down", Down, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("home", Home, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("end", End, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("pageup", PageUp, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("pagedown", PageDown, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("ctrl-home", DocStart, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("ctrl-end", DocEnd, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("shift-left", SelectLeft, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("shift-right", SelectRight, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("shift-up", SelectUp, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("shift-down", SelectDown, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("shift-home", SelectHome, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("shift-end", SelectEnd, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("ctrl-a", SelectAll, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("ctrl-c", Copy, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("ctrl-x", Cut, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("ctrl-v", Paste, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("cmd-v", Paste, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("tab", Tab, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("ctrl-z", Undo, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("ctrl-shift-z", Redo, Some(EDITOR_CONTEXT)),
+        KeyBinding::new("ctrl-y", Redo, Some(EDITOR_CONTEXT)),
+        // The chat input.
+        KeyBinding::new("enter", Enter, Some(INPUT_CONTEXT)),
+        KeyBinding::new("escape", Escape, Some(INPUT_CONTEXT)),
         // Up from the input moves into the chat's items with buttons.
-        KeyBinding::new("up", FocusChat, Some(KEY_CONTEXT)),
-        KeyBinding::new("backspace", Backspace, Some(KEY_CONTEXT)),
-        KeyBinding::new("delete", Delete, Some(KEY_CONTEXT)),
-        KeyBinding::new("left", Left, Some(KEY_CONTEXT)),
-        KeyBinding::new("right", Right, Some(KEY_CONTEXT)),
-        KeyBinding::new("home", Home, Some(KEY_CONTEXT)),
-        KeyBinding::new("ctrl-a", Home, Some(KEY_CONTEXT)),
-        KeyBinding::new("end", End, Some(KEY_CONTEXT)),
-        KeyBinding::new("ctrl-e", End, Some(KEY_CONTEXT)),
-        KeyBinding::new("ctrl-v", Paste, Some(KEY_CONTEXT)),
-        KeyBinding::new("cmd-v", Paste, Some(KEY_CONTEXT)),
+        KeyBinding::new("up", Up, Some(INPUT_CONTEXT)),
+        KeyBinding::new("backspace", Backspace, Some(INPUT_CONTEXT)),
+        KeyBinding::new("delete", Delete, Some(INPUT_CONTEXT)),
+        KeyBinding::new("left", Left, Some(INPUT_CONTEXT)),
+        KeyBinding::new("right", Right, Some(INPUT_CONTEXT)),
+        KeyBinding::new("home", Home, Some(INPUT_CONTEXT)),
+        KeyBinding::new("ctrl-a", Home, Some(INPUT_CONTEXT)),
+        KeyBinding::new("end", End, Some(INPUT_CONTEXT)),
+        KeyBinding::new("ctrl-e", End, Some(INPUT_CONTEXT)),
+        KeyBinding::new("ctrl-v", Paste, Some(INPUT_CONTEXT)),
+        KeyBinding::new("cmd-v", Paste, Some(INPUT_CONTEXT)),
+        // The path prompt.
+        KeyBinding::new("enter", Enter, Some(PROMPT_CONTEXT)),
+        KeyBinding::new("escape", Escape, Some(PROMPT_CONTEXT)),
+        KeyBinding::new("backspace", Backspace, Some(PROMPT_CONTEXT)),
+        KeyBinding::new("delete", Delete, Some(PROMPT_CONTEXT)),
+        KeyBinding::new("left", Left, Some(PROMPT_CONTEXT)),
+        KeyBinding::new("right", Right, Some(PROMPT_CONTEXT)),
+        KeyBinding::new("home", Home, Some(PROMPT_CONTEXT)),
+        KeyBinding::new("ctrl-a", Home, Some(PROMPT_CONTEXT)),
+        KeyBinding::new("end", End, Some(PROMPT_CONTEXT)),
+        KeyBinding::new("ctrl-e", End, Some(PROMPT_CONTEXT)),
+        KeyBinding::new("ctrl-v", Paste, Some(PROMPT_CONTEXT)),
+        KeyBinding::new("cmd-v", Paste, Some(PROMPT_CONTEXT)),
     ]);
+}
+
+/// The presence: what the daemon knows about this app. `context` is the current file and line.
+pub fn presence(
+    open: bool,
+    endpoint: Option<McpEndpoint>,
+    context: Option<BTreeMap<String, String>>,
+) -> AppPresence {
+    AppPresence {
+        templates: open.then(tools::templates),
+        app: APP.into(),
+        kind: ConnectorKind::App,
+        title: Some(TITLE.into()),
+        open,
+        context: context.filter(|_| open),
+        mcp: endpoint.filter(|_| open),
+        // Lets the agent start Pad with apps_launch while it is closed.
+        launch: std::env::current_exe().ok().map(|exe| LaunchSpec {
+            command: vec![exe.to_string_lossy().into_owned()],
+            cwd: None,
+        }),
+        home: None,
+        pid: Some(i64::from(std::process::id())),
+    }
+}
+
+/// What the window needs besides the bus client.
+pub struct Setup {
+    /// The bus socket (the lsp gateway's address is found next to it).
+    pub socket: PathBuf,
+    /// Tool calls from the tool server's threads.
+    pub requests: async_channel::Receiver<Request>,
+    /// Where the tool server listens, for the presence updates.
+    pub endpoint: Option<McpEndpoint>,
+    /// Keeps the tool server alive as long as the window.
+    pub server: Option<ToolServer>,
+    /// Files to open at startup.
+    pub open: Vec<(PathBuf, Option<usize>)>,
 }
 
 /// A bus call the view wants made. They run one after another on a worker (blocking calls
@@ -71,6 +215,10 @@ enum Op {
     Move {
         app: Option<&'static str>,
     },
+    /// The current file or line changed.
+    Presence(Box<AppPresence>),
+    /// A file was saved.
+    FileChanged(String),
 }
 
 impl Op {
@@ -88,28 +236,59 @@ impl Op {
             } => client.action(session, item, action, args.clone()),
             Op::Cancel(session) => client.cancel(session),
             Op::Move { app } => client.move_agent(*app, None),
+            Op::Presence(presence) => client.set_presence((**presence).clone()),
+            Op::FileChanged(path) => client.file_changed(path),
         }
     }
 }
 
+/// Where the keyboard is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Target {
+    Editor,
+    Chat,
+    Input,
+    Prompt,
+}
+
 pub struct Pad {
     ops: async_channel::Sender<Op>,
-    follower: Follower,
+    pub(crate) follower: Follower,
     /// The app the agent is in right now (`None`: no app can host it, or not known yet).
-    agent_at: Option<String>,
-    chat: Entity<ChatView>,
-    field: Field,
-    focus: FocusHandle,
-    connected: bool,
-    /// The last failed call, shown until the next focus change.
-    notice: Option<String>,
+    pub(crate) agent_at: Option<String>,
+    pub(crate) chat: Entity<ChatView>,
+    /// The chat input.
+    pub(crate) field: Field,
+    pub(crate) input_focus: FocusHandle,
+    pub(crate) editor_focus: FocusHandle,
+    pub(crate) prompt_focus: FocusHandle,
+    pub(crate) connected: bool,
+    /// The last failed call or a short report, shown in the status line until the next action.
+    pub(crate) notice: Option<String>,
+    pub(crate) editor: Editor,
+    /// The open-file prompt (ctrl-o), while it is up.
+    pub(crate) prompt: Option<Field>,
+    pub(crate) scroll: UniformListScrollHandle,
+    /// Where the editor body was drawn, for mapping clicks to text positions.
+    pub(crate) body: Rc<Cell<Bounds<Pixels>>>,
+    gateway: Gateway,
+    endpoint: Option<McpEndpoint>,
+    _server: Option<ToolServer>,
+    last_context: Option<BTreeMap<String, String>>,
+    /// The file ctrl-w refused to close because of its edits; a second ctrl-w discards them.
+    pending_close: Option<PathBuf>,
 }
 
 impl Pad {
-    pub fn new(client: Arc<Client>, window: &mut Window, cx: &mut Context<Self>) -> Pad {
+    pub fn new(
+        client: Arc<Client>,
+        setup: Setup,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Pad {
         let (ops, queue) = async_channel::unbounded::<Op>();
 
-        // Pushed events: focus, session events, connection state.
+        // Pushed events: focus, session events, connection state, file.changed.
         let events = client.events();
         cx.spawn(async move |this, cx| {
             while let Ok(event) = events.recv().await {
@@ -119,6 +298,44 @@ impl Pad {
             }
         })
         .detach();
+
+        // Tool calls from the tool server's threads.
+        let requests = setup.requests;
+        cx.spawn(async move |this, cx| {
+            while let Ok(request) = requests.recv().await {
+                if this
+                    .update(cx, |pad, cx| pad.run_tool(request, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+
+        // Asset handles in the chat (`asset://img-…`) are files in the daemon's store.
+        let resolver_client = client.clone();
+        let chat = cx.new(|cx| {
+            let mut chat = ChatView::new(cx);
+            chat.set_fonts(
+                ChatFonts {
+                    sans: FONT.into(),
+                    ..ChatFonts::default()
+                },
+                cx,
+            );
+            chat.set_image_resolver(
+                move |handle| {
+                    resolver_client
+                        .get_asset(handle)
+                        .ok()
+                        .map(|asset| PathBuf::from(asset.path))
+                },
+                cx,
+            );
+            chat
+        });
+        cx.subscribe_in(&chat, window, Pad::on_chat).detach();
 
         // Bus calls, one at a time.
         cx.spawn(async move |this, cx| {
@@ -141,35 +358,54 @@ impl Pad {
         })
         .detach();
 
-        let chat = cx.new(|cx| {
-            let mut chat = ChatView::new(cx);
-            chat.set_fonts(
-                ChatFonts {
-                    sans: FONT.into(),
-                    ..ChatFonts::default()
-                },
-                cx,
-            );
-            chat
-        });
-        cx.subscribe_in(&chat, window, Pad::on_chat).detach();
-
-        Pad {
+        let mut pad = Pad {
             ops,
             follower: Follower::new(APP),
             agent_at: None,
             chat,
             field: Field::default(),
-            focus: cx.focus_handle(),
+            input_focus: cx.focus_handle(),
+            editor_focus: cx.focus_handle(),
+            prompt_focus: cx.focus_handle(),
             connected: true,
             notice: None,
+            editor: Editor::default(),
+            prompt: None,
+            scroll: UniformListScrollHandle::new(),
+            body: Rc::default(),
+            gateway: Gateway::beside(&setup.socket),
+            endpoint: setup.endpoint,
+            _server: setup.server,
+            last_context: None,
+            pending_close: None,
+        };
+        for (path, line) in setup.open {
+            pad.open_path(&path, line, cx);
         }
+        pad
+    }
+
+    #[cfg(test)]
+    pub fn editor(&self) -> &Editor {
+        &self.editor
+    }
+
+    #[cfg(test)]
+    pub fn editor_mut_for_test(&mut self) -> &mut Editor {
+        &mut self.editor
+    }
+
+    #[cfg(test)]
+    pub fn save_for_test(&mut self, cx: &mut Context<Self>) {
+        self.save_current(cx);
     }
 
     fn do_op(&self, op: Op) {
         // Unbounded and the worker outlives the window, so this only fails during shutdown.
         let _ = self.ops.try_send(op);
     }
+
+    // --- bus events ---
 
     fn on_event(&mut self, event: Event, cx: &mut Context<Self>) {
         match event {
@@ -200,10 +436,15 @@ impl Pad {
             }
             Event::Theme(theme) => self.chat.update(cx, |chat, cx| chat.set_theme(&theme, cx)),
             Event::Connection(up) => self.connected = up,
-            Event::Session(_)
-            | Event::Subscribed { .. }
-            | Event::Connectors(_)
-            | Event::FileChanged(_) => {}
+            Event::FileChanged(changed) => {
+                // Our own saves aren't echoed, but be safe.
+                if changed.app.as_deref() != Some(APP) {
+                    let effects = self.editor.on_file_changed(Path::new(&changed.path));
+                    self.run_effects(effects, cx);
+                    self.touched(cx, false);
+                }
+            }
+            Event::Session(_) | Event::Subscribed { .. } | Event::Connectors(_) => {}
         }
         cx.notify();
     }
@@ -227,21 +468,171 @@ impl Pad {
                 }
             }
             ChatEvent::Copied(_) => {}
-            ChatEvent::Leave => window.focus(&self.focus),
+            ChatEvent::Leave => window.focus(&self.input_focus),
         }
         cx.notify();
     }
 
-    fn focus_chat(&mut self, _: &FocusChat, window: &mut Window, cx: &mut Context<Self>) {
-        self.chat
-            .update(cx, |chat, cx| chat.focus_last_actionable(window, cx));
+    // --- effects of editor changes ---
+
+    pub(crate) fn run_effects(&mut self, effects: Vec<Effect>, cx: &mut Context<Self>) {
+        for effect in effects {
+            match effect {
+                Effect::FileChanged(path) => {
+                    self.do_op(Op::FileChanged(path.to_string_lossy().into_owned()));
+                }
+                Effect::Diagnose(path) => self.diagnose(path, cx),
+            }
+        }
     }
 
-    fn submit(&mut self, _: &Submit, _: &mut Window, cx: &mut Context<Self>) {
-        self.send_input(cx);
+    /// Asks the lsp service about a file, off the UI thread.
+    fn diagnose(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let Some(revision) = self.editor.begin_diagnose(&path) else {
+            return;
+        };
+        let gateway = self.gateway.clone();
+        cx.spawn(async move |this, cx| {
+            let asked = path.clone();
+            let result = cx
+                .background_executor()
+                .spawn(async move { gateway.diagnostics(&asked) })
+                .await;
+            this.update(cx, |pad, cx| {
+                pad.editor.finish_diagnose(&path, revision, result);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 
-    fn send_input(&mut self, cx: &mut Context<Self>) {
+    /// After anything that moved the cursor or changed the text: keep the cursor in view and
+    /// tell the daemon the new file/line when they changed.
+    pub(crate) fn touched(&mut self, cx: &mut Context<Self>, scroll: bool) {
+        if scroll && let Some(doc) = self.editor.current() {
+            self.scroll
+                .scroll_to_item(doc.buffer.cursor().line, ScrollStrategy::Top);
+        }
+        self.sync_context();
+        cx.notify();
+    }
+
+    fn sync_context(&mut self) {
+        let context = self.editor.context();
+        if context == self.last_context {
+            return;
+        }
+        self.last_context = context.clone();
+        let presence = presence(true, self.endpoint.clone(), context);
+        self.do_op(Op::Presence(Box::new(presence)));
+    }
+
+    /// Opens a file for the user (the prompt, the command line).
+    pub(crate) fn open_path(&mut self, path: &Path, line: Option<usize>, cx: &mut Context<Self>) {
+        match self.editor.open(path, line) {
+            Ok((_, effects)) => {
+                self.notice = None;
+                self.run_effects(effects, cx);
+                self.show_cursor_line();
+            }
+            Err(why) => self.notice = Some(why),
+        }
+        self.touched(cx, false);
+    }
+
+    /// Scrolls so the cursor line is in the middle of the editor.
+    fn show_cursor_line(&self) {
+        if let Some(doc) = self.editor.current() {
+            self.scroll
+                .scroll_to_item_strict(doc.buffer.cursor().line, ScrollStrategy::Center);
+        }
+    }
+
+    // --- tools ---
+
+    fn run_tool(&mut self, request: Request, cx: &mut Context<Self>) {
+        let (result, outcome) = tools::apply(&mut self.editor, request.call);
+        self.run_effects(outcome.effects, cx);
+        if let Some(line) = outcome.reveal {
+            self.scroll
+                .scroll_to_item_strict(line, ScrollStrategy::Center);
+        }
+        self.touched(cx, false);
+        let _ = request.reply.send(result);
+    }
+
+    // --- focus ---
+
+    /// Which part has the keyboard.
+    pub fn target(&self, window: &Window) -> Target {
+        if self.prompt.is_some() && self.prompt_focus.is_focused(window) {
+            Target::Prompt
+        } else if self.input_focus.is_focused(window) {
+            Target::Input
+        } else if self.editor_focus.is_focused(window) {
+            Target::Editor
+        } else {
+            Target::Chat
+        }
+    }
+
+    fn focus_editor(&mut self, _: &FocusEditor, window: &mut Window, cx: &mut Context<Self>) {
+        self.prompt = None;
+        window.focus(&self.editor_focus);
+        cx.notify();
+    }
+
+    fn focus_chat_pane(&mut self, _: &FocusChatPane, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.agent_here(cx) {
+            return;
+        }
+        self.prompt = None;
+        let handle = self.chat.read(cx).focus_handle(cx);
+        window.focus(&handle);
+        cx.notify();
+    }
+
+    fn focus_input(&mut self, _: &FocusInput, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.agent_here(cx) {
+            return;
+        }
+        self.prompt = None;
+        window.focus(&self.input_focus);
+        cx.notify();
+    }
+
+    /// The chat pane only exists while the agent is here; says so when it doesn't.
+    fn agent_here(&mut self, cx: &mut Context<Self>) -> bool {
+        let here = self.follower.pane().is_some();
+        if !here {
+            self.notice = Some("The agent isn't here: use \"Bring the agent here\".".into());
+            cx.notify();
+        }
+        here
+    }
+
+    fn cycle_focus(&mut self, _: &CycleFocus, window: &mut Window, cx: &mut Context<Self>) {
+        self.prompt = None;
+        if self.follower.pane().is_none() {
+            window.focus(&self.editor_focus);
+            cx.notify();
+            return;
+        }
+        match self.target(window) {
+            Target::Editor => {
+                let handle = self.chat.read(cx).focus_handle(cx);
+                window.focus(&handle);
+            }
+            Target::Chat => window.focus(&self.input_focus),
+            Target::Input | Target::Prompt => window.focus(&self.editor_focus),
+        }
+        cx.notify();
+    }
+
+    // --- chat input ---
+
+    pub(crate) fn send_input(&mut self, cx: &mut Context<Self>) {
         let Some(session) = self.follower.pane().map(String::from) else {
             return;
         };
@@ -254,40 +645,418 @@ impl Pad {
         cx.notify();
     }
 
-    fn cancel_turn(&mut self, _: &CancelTurn, _: &mut Window, _: &mut Context<Self>) {
-        // Idle sessions ack and ignore it, so there is no need to check the turn state.
-        if let Some(session) = self.follower.pane() {
-            self.do_op(Op::Cancel(session.into()));
+    pub(crate) fn send_home(&self) {
+        self.do_op(Op::Move { app: None });
+    }
+
+    pub(crate) fn bring_here(&self) {
+        self.do_op(Op::Move { app: Some(APP) });
+    }
+
+    // --- actions, by where the keyboard is ---
+
+    /// The single-line field the keyboard is in, if it is in one.
+    fn field_mut(&mut self, window: &Window) -> Option<&mut Field> {
+        match self.target(window) {
+            Target::Input => Some(&mut self.field),
+            Target::Prompt => self.prompt.as_mut(),
+            _ => None,
         }
     }
 
-    fn edit(&mut self, cx: &mut Context<Self>, change: impl FnOnce(&mut Field)) {
-        change(&mut self.field);
+    /// A cursor move in the editor.
+    fn nav(&mut self, cx: &mut Context<Self>, change: impl FnOnce(&mut Buffer)) {
+        self.notice = None;
+        if let Some(doc) = self.editor.current_mut() {
+            change(&mut doc.buffer);
+            doc.highlight = None;
+        }
+        self.touched(cx, true);
+    }
+
+    /// A text edit in the editor.
+    fn change(&mut self, cx: &mut Context<Self>, change: impl FnOnce(&mut Buffer)) {
+        self.nav(cx, change);
+        self.editor.note_edit();
+    }
+
+    fn page_rows(&self) -> isize {
+        let rows = self.scroll.0.borrow().last_item_size.map_or(20.0, |size| {
+            f32::from(size.item.height) / crate::view::LINE_HEIGHT
+        });
+        (rows as isize - 1).max(1)
+    }
+
+    fn on_enter(&mut self, _: &Enter, window: &mut Window, cx: &mut Context<Self>) {
+        match self.target(window) {
+            Target::Editor => self.change(cx, Buffer::newline),
+            Target::Input => self.send_input(cx),
+            Target::Prompt => self.submit_prompt(window, cx),
+            Target::Chat => {}
+        }
+    }
+
+    fn on_escape(&mut self, _: &Escape, window: &mut Window, cx: &mut Context<Self>) {
+        match self.target(window) {
+            Target::Editor => self.nav(cx, Buffer::clear_selection),
+            Target::Input => {
+                // Idle sessions ack and ignore it, so there is no need to check the turn state.
+                if let Some(session) = self.follower.pane() {
+                    self.do_op(Op::Cancel(session.into()));
+                }
+            }
+            Target::Prompt => {
+                self.prompt = None;
+                window.focus(&self.editor_focus);
+                cx.notify();
+            }
+            Target::Chat => {}
+        }
+    }
+
+    fn on_backspace(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
+        match self.target(window) {
+            Target::Editor => self.change(cx, Buffer::backspace),
+            _ => self.edit_field(window, cx, Field::backspace),
+        }
+    }
+
+    fn on_delete(&mut self, _: &Delete, window: &mut Window, cx: &mut Context<Self>) {
+        match self.target(window) {
+            Target::Editor => self.change(cx, Buffer::delete),
+            _ => self.edit_field(window, cx, Field::delete),
+        }
+    }
+
+    fn on_left(&mut self, _: &Left, window: &mut Window, cx: &mut Context<Self>) {
+        match self.target(window) {
+            Target::Editor => self.nav(cx, |b| b.move_left(false)),
+            _ => self.edit_field(window, cx, Field::left),
+        }
+    }
+
+    fn on_right(&mut self, _: &Right, window: &mut Window, cx: &mut Context<Self>) {
+        match self.target(window) {
+            Target::Editor => self.nav(cx, |b| b.move_right(false)),
+            _ => self.edit_field(window, cx, Field::right),
+        }
+    }
+
+    fn on_up(&mut self, _: &Up, window: &mut Window, cx: &mut Context<Self>) {
+        match self.target(window) {
+            Target::Editor => self.nav(cx, |b| b.move_lines(-1, false)),
+            Target::Input => {
+                self.chat
+                    .update(cx, |chat, cx| chat.focus_last_actionable(window, cx));
+            }
+            _ => {}
+        }
+    }
+
+    fn on_down(&mut self, _: &Down, window: &mut Window, cx: &mut Context<Self>) {
+        if self.target(window) == Target::Editor {
+            self.nav(cx, |b| b.move_lines(1, false));
+        }
+    }
+
+    fn on_home(&mut self, _: &Home, window: &mut Window, cx: &mut Context<Self>) {
+        match self.target(window) {
+            Target::Editor => self.nav(cx, |b| b.move_home(false)),
+            _ => self.edit_field(window, cx, Field::home),
+        }
+    }
+
+    fn on_end(&mut self, _: &End, window: &mut Window, cx: &mut Context<Self>) {
+        match self.target(window) {
+            Target::Editor => self.nav(cx, |b| b.move_end(false)),
+            _ => self.edit_field(window, cx, Field::end),
+        }
+    }
+
+    fn edit_field(
+        &mut self,
+        window: &Window,
+        cx: &mut Context<Self>,
+        change: impl FnOnce(&mut Field),
+    ) {
+        if let Some(field) = self.field_mut(window) {
+            change(field);
+            cx.notify();
+        }
+    }
+
+    fn on_page_up(&mut self, _: &PageUp, _: &mut Window, cx: &mut Context<Self>) {
+        let rows = self.page_rows();
+        self.nav(cx, |b| b.move_lines(-rows, false));
+    }
+
+    fn on_page_down(&mut self, _: &PageDown, _: &mut Window, cx: &mut Context<Self>) {
+        let rows = self.page_rows();
+        self.nav(cx, |b| b.move_lines(rows, false));
+    }
+
+    fn on_select(&mut self, cx: &mut Context<Self>, how: impl FnOnce(&mut Buffer)) {
+        self.nav(cx, how);
+    }
+
+    fn on_paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
+            return;
+        };
+        match self.target(window) {
+            Target::Editor => self.change(cx, |b| b.insert(&text)),
+            _ => self.edit_field(window, cx, |field| field.insert(&text)),
+        }
+    }
+
+    fn on_copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
+        if let Some(text) = self
+            .editor
+            .current()
+            .and_then(|doc| doc.buffer.selected_text())
+        {
+            cx.write_to_clipboard(ClipboardItem::new_string(text));
+        }
+    }
+
+    fn on_cut(&mut self, _: &Cut, _: &mut Window, cx: &mut Context<Self>) {
+        let mut cut = None;
+        self.change(cx, |b| cut = b.cut());
+        if let Some(text) = cut {
+            cx.write_to_clipboard(ClipboardItem::new_string(text));
+        }
+    }
+
+    fn on_save(&mut self, _: &Save, _: &mut Window, cx: &mut Context<Self>) {
+        self.save_current(cx);
+    }
+
+    fn save_current(&mut self, cx: &mut Context<Self>) {
+        let Some(index) = self.editor.current_index() else {
+            return;
+        };
+        match self.editor.save(index) {
+            Ok(effects) => {
+                self.notice = self
+                    .editor
+                    .current()
+                    .map(|doc| format!("Saved {}", doc.path().display()));
+                self.run_effects(effects, cx);
+            }
+            Err(why) => self.notice = Some(why),
+        }
+        self.touched(cx, false);
+    }
+
+    fn on_reload(&mut self, _: &Reload, _: &mut Window, cx: &mut Context<Self>) {
+        let Some(index) = self.editor.current_index() else {
+            return;
+        };
+        match self.editor.reload(index) {
+            Ok(effects) => {
+                self.notice = Some("Reloaded from disk".into());
+                self.run_effects(effects, cx);
+            }
+            Err(why) => self.notice = Some(why),
+        }
+        self.touched(cx, true);
+    }
+
+    fn on_close_file(&mut self, _: &CloseFile, _: &mut Window, cx: &mut Context<Self>) {
+        let Some(index) = self.editor.current_index() else {
+            return;
+        };
+        let path = self.editor.docs()[index].path().to_path_buf();
+        let force = self.pending_close.as_ref() == Some(&path);
+        if self.editor.close(index, force) {
+            self.pending_close = None;
+            self.notice = None;
+            self.show_cursor_line();
+        } else {
+            self.notice = Some("Unsaved changes: ctrl-s saves, ctrl-w again discards them.".into());
+            self.pending_close = Some(path);
+        }
+        self.touched(cx, false);
+    }
+
+    fn on_next_tab(&mut self, _: &NextTab, _: &mut Window, cx: &mut Context<Self>) {
+        self.editor.cycle(1);
+        self.show_cursor_line();
+        self.touched(cx, false);
+    }
+
+    fn on_prev_tab(&mut self, _: &PrevTab, _: &mut Window, cx: &mut Context<Self>) {
+        self.editor.cycle(-1);
+        self.show_cursor_line();
+        self.touched(cx, false);
+    }
+
+    pub(crate) fn switch_tab(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.editor.switch(index);
+        self.show_cursor_line();
+        self.touched(cx, false);
+    }
+
+    fn open_prompt(&mut self, _: &OpenPrompt, window: &mut Window, cx: &mut Context<Self>) {
+        let mut field = Field::default();
+        // Start in the current file's directory.
+        if let Some(dir) = self.editor.current().and_then(|doc| doc.path().parent()) {
+            field.insert(&format!("{}/", dir.display()));
+        }
+        self.prompt = Some(field);
+        window.focus(&self.prompt_focus);
         cx.notify();
     }
 
-    fn paste(&mut self, _: &Paste, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-            self.edit(cx, |field| field.insert(&text));
+    fn submit_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(mut field) = self.prompt.take() else {
+            return;
+        };
+        window.focus(&self.editor_focus);
+        let text = field.take();
+        let text = text.trim();
+        if text.is_empty() {
+            cx.notify();
+            return;
         }
+        // `path:line` opens at a line.
+        let (name, line) = match text.rsplit_once(':') {
+            Some((name, line)) if line.chars().all(|c| c.is_ascii_digit()) && !line.is_empty() => {
+                (name, line.parse::<usize>().ok())
+            }
+            _ => (text, None),
+        };
+        let base = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+        let path = resolve_path(name, &base);
+        self.open_path(&path, line, cx);
+    }
+
+    // --- mouse ---
+
+    /// A click or drag in line `line` at window x `x`.
+    pub(crate) fn point_at(
+        &mut self,
+        line: usize,
+        x: Pixels,
+        extend: bool,
+        cx: &mut Context<Self>,
+        char_width: Pixels,
+    ) {
+        let origin = self.body.get().origin.x + crate::view::text_left();
+        let vcol = (f32::from(x - origin) / f32::from(char_width))
+            .max(0.0)
+            .round() as usize;
+        self.nav(cx, |b| {
+            let line = line.min(b.line_count() - 1);
+            let col = crate::buffer::col_at_visual(b.line(line), vcol);
+            b.set_cursor(Pos::new(line, col), extend);
+        });
+    }
+
+    pub(crate) fn go_to(&mut self, line: usize, column: usize, cx: &mut Context<Self>) {
+        self.nav(cx, |b| b.set_cursor(Pos::new(line, column), false));
     }
 }
 
 impl Focusable for Pad {
     fn focus_handle(&self, _: &App) -> FocusHandle {
-        self.focus.clone()
+        self.editor_focus.clone()
     }
 }
+
+impl Pad {
+    /// Binds the action handlers for the root element.
+    pub(crate) fn listeners(cx: &mut Context<Self>, root: gpui::Div) -> gpui::Div {
+        use gpui::InteractiveElement as _;
+        root.on_action(cx.listener(Self::on_enter))
+            .on_action(cx.listener(Self::on_escape))
+            .on_action(cx.listener(Self::on_backspace))
+            .on_action(cx.listener(Self::on_delete))
+            .on_action(cx.listener(Self::on_left))
+            .on_action(cx.listener(Self::on_right))
+            .on_action(cx.listener(Self::on_up))
+            .on_action(cx.listener(Self::on_down))
+            .on_action(cx.listener(Self::on_home))
+            .on_action(cx.listener(Self::on_end))
+            .on_action(cx.listener(Self::on_page_up))
+            .on_action(cx.listener(Self::on_page_down))
+            .on_action(
+                cx.listener(|pad, _: &DocStart, _, cx| pad.nav(cx, |b| b.move_doc_start(false))),
+            )
+            .on_action(cx.listener(|pad, _: &DocEnd, _, cx| pad.nav(cx, |b| b.move_doc_end(false))))
+            .on_action(
+                cx.listener(|pad, _: &SelectLeft, _, cx| pad.on_select(cx, |b| b.move_left(true))),
+            )
+            .on_action(
+                cx.listener(|pad, _: &SelectRight, _, cx| {
+                    pad.on_select(cx, |b| b.move_right(true))
+                }),
+            )
+            .on_action(
+                cx.listener(|pad, _: &SelectUp, _, cx| {
+                    pad.on_select(cx, |b| b.move_lines(-1, true))
+                }),
+            )
+            .on_action(cx.listener(|pad, _: &SelectDown, _, cx| {
+                pad.on_select(cx, |b| b.move_lines(1, true))
+            }))
+            .on_action(
+                cx.listener(|pad, _: &SelectHome, _, cx| pad.on_select(cx, |b| b.move_home(true))),
+            )
+            .on_action(
+                cx.listener(|pad, _: &SelectEnd, _, cx| pad.on_select(cx, |b| b.move_end(true))),
+            )
+            .on_action(
+                cx.listener(|pad, _: &SelectAll, _, cx| pad.on_select(cx, Buffer::select_all)),
+            )
+            .on_action(cx.listener(Self::on_copy))
+            .on_action(cx.listener(Self::on_cut))
+            .on_action(cx.listener(Self::on_paste))
+            .on_action(cx.listener(|pad, _: &Tab, _, cx| pad.change(cx, Buffer::indent)))
+            .on_action(cx.listener(|pad, _: &Undo, _, cx| {
+                pad.change(cx, |b| {
+                    b.undo();
+                })
+            }))
+            .on_action(cx.listener(|pad, _: &Redo, _, cx| {
+                pad.change(cx, |b| {
+                    b.redo();
+                })
+            }))
+            .on_action(cx.listener(Self::on_save))
+            .on_action(cx.listener(Self::on_reload))
+            .on_action(cx.listener(Self::open_prompt))
+            .on_action(cx.listener(Self::on_close_file))
+            .on_action(cx.listener(Self::on_next_tab))
+            .on_action(cx.listener(Self::on_prev_tab))
+            .on_action(cx.listener(Self::focus_editor))
+            .on_action(cx.listener(Self::focus_chat_pane))
+            .on_action(cx.listener(Self::focus_input))
+            .on_action(cx.listener(Self::cycle_focus))
+    }
+}
+
+// --- the platform's input methods: typed and composed text ---
 
 impl EntityInputHandler for Pad {
     fn text_for_range(
         &mut self,
         range: Range<usize>,
         adjusted: &mut Option<Range<usize>>,
-        _: &mut Window,
+        window: &mut Window,
         _: &mut Context<Self>,
     ) -> Option<String> {
-        let (text, covered) = self.field.slice_utf16(range);
+        if self.target(window) == Target::Editor {
+            let buffer = &self.editor.current()?.buffer;
+            let (from, to) = (
+                buffer.pos_of_utf16(range.start),
+                buffer.pos_of_utf16(range.end),
+            );
+            *adjusted = Some(buffer.utf16_of(from)..buffer.utf16_of(to));
+            return Some(buffer.text_between(from, to));
+        }
+        let field = self.field_mut(window)?;
+        let (text, covered) = field.slice_utf16(range);
         *adjusted = Some(covered);
         Some(text)
     }
@@ -295,34 +1064,86 @@ impl EntityInputHandler for Pad {
     fn selected_text_range(
         &mut self,
         _: bool,
-        _: &mut Window,
+        window: &mut Window,
         _: &mut Context<Self>,
     ) -> Option<UTF16Selection> {
-        let cursor = self.field.cursor();
+        if self.target(window) == Target::Editor {
+            let buffer = &self.editor.current()?.buffer;
+            let (from, to) = buffer
+                .selection()
+                .unwrap_or((buffer.cursor(), buffer.cursor()));
+            return Some(UTF16Selection {
+                range: buffer.utf16_of(from)..buffer.utf16_of(to),
+                reversed: false,
+            });
+        }
+        let field = self.field_mut(window)?;
+        let cursor = field.cursor();
         Some(UTF16Selection {
-            range: self.field.range_to_utf16(&(cursor..cursor)),
+            range: field.range_to_utf16(&(cursor..cursor)),
             reversed: false,
         })
     }
 
-    fn marked_text_range(&self, _: &mut Window, _: &mut Context<Self>) -> Option<Range<usize>> {
-        self.field
-            .marked()
-            .map(|range| self.field.range_to_utf16(&range))
+    fn marked_text_range(
+        &self,
+        window: &mut Window,
+        _: &mut Context<Self>,
+    ) -> Option<Range<usize>> {
+        match self.target(window) {
+            Target::Editor => {
+                let buffer = &self.editor.current()?.buffer;
+                let (from, to) = buffer.marked()?;
+                Some(buffer.utf16_of(from)..buffer.utf16_of(to))
+            }
+            Target::Input => self.field.marked().map(|r| self.field.range_to_utf16(&r)),
+            Target::Prompt => {
+                let field = self.prompt.as_ref()?;
+                field.marked().map(|r| field.range_to_utf16(&r))
+            }
+            Target::Chat => None,
+        }
     }
 
-    fn unmark_text(&mut self, _: &mut Window, _: &mut Context<Self>) {
-        self.field.unmark();
+    fn unmark_text(&mut self, window: &mut Window, _: &mut Context<Self>) {
+        match self.target(window) {
+            Target::Editor => {
+                if let Some(doc) = self.editor.current_mut() {
+                    doc.buffer.unmark();
+                }
+            }
+            _ => {
+                if let Some(field) = self.field_mut(window) {
+                    field.unmark();
+                }
+            }
+        }
     }
 
     fn replace_text_in_range(
         &mut self,
         range: Option<Range<usize>>,
         text: &str,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.edit(cx, |field| field.replace_utf16(range, text));
+        match self.target(window) {
+            Target::Editor => {
+                let text = text.to_string();
+                self.change(cx, |buffer| match range {
+                    Some(range) => {
+                        let (from, to) = (
+                            buffer.pos_of_utf16(range.start),
+                            buffer.pos_of_utf16(range.end),
+                        );
+                        buffer.replace(from, to, &text);
+                    }
+                    None => buffer.insert(&text),
+                });
+            }
+            Target::Chat => {}
+            _ => self.edit_field(window, cx, |field| field.replace_utf16(range, text)),
+        }
     }
 
     fn replace_and_mark_text_in_range(
@@ -330,15 +1151,26 @@ impl EntityInputHandler for Pad {
         range: Option<Range<usize>>,
         text: &str,
         selected: Option<Range<usize>>,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.edit(cx, |field| {
-            field.replace_and_mark_utf16(range, text, selected)
-        });
+        match self.target(window) {
+            Target::Editor => {
+                let text = text.to_string();
+                self.change(cx, |buffer| {
+                    let range =
+                        range.map(|r| (buffer.pos_of_utf16(r.start), buffer.pos_of_utf16(r.end)));
+                    buffer.compose(range, &text);
+                });
+            }
+            Target::Chat => {}
+            _ => self.edit_field(window, cx, |field| {
+                field.replace_and_mark_utf16(range, text, selected)
+            }),
+        }
     }
 
-    /// Where the input method puts its candidate window: just under the input line.
+    /// Where the input method puts its candidate window: just under the focused part.
     fn bounds_for_range(
         &mut self,
         _: Range<usize>,
@@ -356,368 +1188,5 @@ impl EntityInputHandler for Pad {
         _: &mut Context<Self>,
     ) -> Option<usize> {
         None
-    }
-}
-
-impl Render for Pad {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let status = if self.connected {
-            String::new()
-        } else {
-            "daemon connection lost, retrying".to_string()
-        };
-        let body = if self.follower.pane().is_some() {
-            self.pane(window, cx).into_any_element()
-        } else {
-            self.collapsed(cx).into_any_element()
-        };
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .bg(rgb(0x1e1e1e))
-            .text_color(rgb(0xd4d4d4))
-            .font_family(FONT)
-            .text_size(px(14.))
-            .child(
-                div()
-                    .flex()
-                    .justify_between()
-                    .px_3()
-                    .py_2()
-                    .border_b_1()
-                    .border_color(rgb(0x3c3c3c))
-                    .child("Pad")
-                    .child(div().text_color(rgb(0xe5a000)).child(status)),
-            )
-            .child(body)
-    }
-}
-
-impl Pad {
-    /// Shown while the agent is in another app.
-    fn collapsed(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let place = match &self.agent_at {
-            Some(app) => format!("The agent is in {app}."),
-            None => "The agent isn't in an app.".to_string(),
-        };
-        div()
-            .flex_1()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .gap_3()
-            .child(place)
-            .child(button("bring-here", "Bring the agent here").on_click(
-                cx.listener(|pad, _: &ClickEvent, _, _| pad.do_op(Op::Move { app: Some(APP) })),
-            ))
-    }
-
-    /// The chat: transcript on top, the input line below.
-    fn pane(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let notice = self.notice.clone().unwrap_or_default();
-        let working = if self.chat.read(cx).busy() {
-            "working…"
-        } else {
-            ""
-        };
-        div()
-            .flex_1()
-            .min_h_0()
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .flex()
-                    .justify_between()
-                    .items_center()
-                    .px_3()
-                    .py_1()
-                    .child(div().text_color(rgb(0x808080)).child(working))
-                    .child(button("send-home", "Send home").on_click(
-                        cx.listener(|pad, _: &ClickEvent, _, _| pad.do_op(Op::Move { app: None })),
-                    )),
-            )
-            .child(div().flex_1().min_h_0().child(self.chat.clone()))
-            .child(div().px_3().text_color(rgb(0xf48771)).child(notice))
-            .child(self.input_line(window, cx))
-    }
-
-    fn input_line(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let entity: Entity<Pad> = cx.entity();
-        let focus = self.focus.clone();
-        let focused = self.focus.is_focused(window);
-        div()
-            .key_context(KEY_CONTEXT)
-            .track_focus(&self.focus)
-            .on_action(cx.listener(Self::submit))
-            .on_action(cx.listener(Self::cancel_turn))
-            .on_action(cx.listener(Self::focus_chat))
-            .on_action(cx.listener(Self::paste))
-            .on_action(cx.listener(|pad, _: &Backspace, _, cx| pad.edit(cx, Field::backspace)))
-            .on_action(cx.listener(|pad, _: &Delete, _, cx| pad.edit(cx, Field::delete)))
-            .on_action(cx.listener(|pad, _: &Left, _, cx| pad.edit(cx, Field::left)))
-            .on_action(cx.listener(|pad, _: &Right, _, cx| pad.edit(cx, Field::right)))
-            .on_action(cx.listener(|pad, _: &Home, _, cx| pad.edit(cx, Field::home)))
-            .on_action(cx.listener(|pad, _: &End, _, cx| pad.edit(cx, Field::end)))
-            // Clicking the line focuses it, in case focus was elsewhere when the pane opened.
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|pad, _: &MouseDownEvent, window, _| window.focus(&pad.focus)),
-            )
-            .relative()
-            .m_3()
-            .px_3()
-            .py_2()
-            .border_1()
-            .border_color(if focused {
-                rgb(0x569cd6)
-            } else {
-                rgb(0x3c3c3c)
-            })
-            .rounded_md()
-            .child(self.input_text(focused))
-            .child(
-                // Registers this view as the window's input handler while it has focus, so
-                // typed and composed text reaches `EntityInputHandler`.
-                canvas(
-                    |bounds, _, _| bounds,
-                    move |bounds, _, window, cx| {
-                        window.handle_input(
-                            &focus,
-                            gpui::ElementInputHandler::new(bounds, entity.clone()),
-                            cx,
-                        );
-                    },
-                )
-                .absolute()
-                .size_full(),
-            )
-    }
-
-    /// The typed text with a block caret on the character under it (a space at the end).
-    fn input_text(&self, focused: bool) -> impl IntoElement {
-        let caret = HighlightStyle {
-            background_color: Some(hsla(0.58, 0.6, 0.6, 0.6)),
-            ..Default::default()
-        };
-        if self.field.text().is_empty() {
-            return div()
-                .flex()
-                .child(StyledText::new(" ").with_highlights(focused.then_some((0..1, caret))))
-                .child(div().text_color(rgb(0x808080)).child("Message the agent"))
-                .into_any_element();
-        }
-        let text = self.field.text();
-        let at = self.field.cursor();
-        let width = text[at..].chars().next().map_or(1, char::len_utf8);
-        let shown = if at == text.len() {
-            format!("{text} ")
-        } else {
-            text.to_string()
-        };
-        StyledText::new(shown)
-            .with_highlights(focused.then_some((at..at + width, caret)))
-            .into_any_element()
-    }
-}
-
-fn button(id: &'static str, label: &'static str) -> gpui::Stateful<gpui::Div> {
-    div()
-        .id(id)
-        .px_3()
-        .py_1()
-        .border_1()
-        .border_color(rgb(0x3c3c3c))
-        .rounded_md()
-        .cursor_pointer()
-        .hover(|style| style.bg(rgb(0x2a2d2e)))
-        .child(label)
-}
-
-/// Drives the view against the real daemon (echo agent), headless. Skipped when bun is missing.
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-    use std::process::{Child, Command, Stdio};
-    use std::time::{Duration, Instant};
-
-    use gpui::TestAppContext;
-    use suite_protocol::{AppPresence, ConnectorKind};
-    use suite_sdk::Options;
-
-    use super::*;
-
-    struct Daemon {
-        child: Child,
-        socket: std::path::PathBuf,
-        dir: std::path::PathBuf,
-    }
-
-    impl Daemon {
-        fn start() -> Option<Daemon> {
-            let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-            let dir = std::env::temp_dir().join(format!("suite-pad-test-{}", std::process::id()));
-            std::fs::create_dir_all(&dir).ok()?;
-            let socket = dir.join("bus.sock");
-            let child = Command::new("bun")
-                .args(["run", "daemon/src/main.ts"])
-                .current_dir(root)
-                .env("SUITE_AGENT", "echo")
-                .env("SUITE_SERVICES", "none")
-                .env("SUITE_SOCKET", &socket)
-                .env("SUITE_DATA_DIR", dir.join("data"))
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .map_err(|err| eprintln!("skipping: cannot run bun ({err})"))
-                .ok()?;
-            let daemon = Daemon { child, socket, dir };
-            let deadline = Instant::now() + Duration::from_secs(20);
-            while Instant::now() < deadline {
-                if std::os::unix::net::UnixStream::connect(&daemon.socket).is_ok() {
-                    return Some(daemon);
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            panic!("daemon did not start");
-        }
-
-        fn client(&self, name: &str, presence: AppPresence) -> Arc<Client> {
-            let mut options = Options::new(name);
-            options.socket = Some(self.socket.clone());
-            options.presence = Some(presence);
-            Arc::new(Client::connect(options).expect("connect"))
-        }
-    }
-
-    impl Drop for Daemon {
-        fn drop(&mut self) {
-            let _ = self.child.kill();
-            let _ = self.child.wait();
-            let _ = std::fs::remove_dir_all(&self.dir);
-        }
-    }
-
-    fn presence(app: &str, home: bool) -> AppPresence {
-        AppPresence {
-            templates: None,
-            app: app.into(),
-            kind: ConnectorKind::App,
-            title: None,
-            open: true,
-            context: None,
-            mcp: None,
-            launch: None,
-            home: home.then_some(true),
-            pid: None,
-        }
-    }
-
-    /// Runs the app until `done` holds. Events arrive from the SDK's thread, so the executor
-    /// is polled rather than waited on.
-    fn wait_until(
-        cx: &mut TestAppContext,
-        what: &str,
-        mut done: impl FnMut(&mut TestAppContext) -> bool,
-    ) {
-        cx.executor().allow_parking();
-        let deadline = Instant::now() + Duration::from_secs(15);
-        loop {
-            cx.run_until_parked();
-            if done(cx) {
-                return;
-            }
-            assert!(Instant::now() < deadline, "timed out waiting for {what}");
-            std::thread::sleep(Duration::from_millis(10));
-        }
-    }
-
-    #[gpui::test]
-    fn the_pane_follows_the_agent(cx: &mut TestAppContext) {
-        let Some(daemon) = Daemon::start() else {
-            return;
-        };
-        let home = daemon.client("home", presence("test-home", true));
-        let client = daemon.client("pad", presence(APP, false));
-        let window = cx.add_window(|window, cx| Pad::new(client, window, cx));
-        let pad = window.root(cx).expect("root view");
-        let state = |cx: &mut TestAppContext| {
-            pad.read_with(cx, |pad, cx| {
-                (
-                    pad.agent_at.clone(),
-                    pad.follower.pane().map(String::from),
-                    // The chat as the layout model's text, one entry per line.
-                    pad.chat.read_with(cx, |chat, _| {
-                        if chat.items().is_empty() {
-                            Vec::new()
-                        } else {
-                            chat.dump().lines().map(String::from).collect::<Vec<_>>()
-                        }
-                    }),
-                )
-            })
-        };
-
-        // Drawing exercises both layouts (not the real fonts, which the test platform lacks).
-        let draw = |cx: &mut TestAppContext| {
-            cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear())
-                .expect("draw");
-        };
-        wait_until(cx, "the agent at home", |cx| {
-            state(cx).0.as_deref() == Some("test-home")
-        });
-        draw(cx);
-        assert_eq!(state(cx).1, None, "collapsed while the agent is elsewhere");
-
-        // Bring it here, and let the home app say something to it: the pane replays and follows.
-        home.move_agent(Some(APP), None).expect("move to pad");
-        wait_until(cx, "the pane to open", |cx| state(cx).1.is_some());
-        let session = state(cx).1.expect("open");
-        home.input(&session, "test-home", "hello", &[])
-            .expect("input");
-        wait_until(cx, "the echo", |cx| {
-            state(cx)
-                .2
-                .iter()
-                .any(|line| line.contains("echo #1: hello"))
-        });
-
-        draw(cx);
-        // The user's input is a bubble headed with the app it came from.
-        assert!(
-            state(cx)
-                .2
-                .iter()
-                .any(|line| line.contains("\"» test-home\"")),
-            "{:?}",
-            state(cx).2
-        );
-
-        // Typing in the pane sends input tagged as pad's.
-        pad.update(cx, |pad, cx| {
-            pad.field.insert("from pad");
-            pad.send_input(cx);
-        });
-        wait_until(cx, "the second turn", |cx| {
-            state(cx)
-                .2
-                .iter()
-                .any(|line| line.contains("echo #2: from pad"))
-        });
-
-        // Send it home: the pane collapses and forgets the chat.
-        home.move_agent(None, None).expect("move home");
-        wait_until(cx, "the pane to collapse", |cx| state(cx).1.is_none());
-        assert!(state(cx).2.is_empty());
-
-        // Back again: a fresh subscription replays everything.
-        home.move_agent(Some(APP), None).expect("move to pad again");
-        wait_until(cx, "the replay", |cx| {
-            let lines = state(cx).2;
-            lines.iter().any(|l| l.contains("echo #1: hello"))
-                && lines.iter().any(|l| l.contains("echo #2: from pad"))
-        });
     }
 }

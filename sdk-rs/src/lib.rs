@@ -82,7 +82,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Options {
     /// The daemon's socket; `None` means [`default_socket_path`].
     pub socket: Option<PathBuf>,
-    /// Client name for `bus.hello`, e.g. `pad`.
+    /// Client name for `bus.hello`, e.g. `code-editor`.
     pub client: String,
     /// Registered right after connecting, and again after every reconnect.
     pub presence: Option<AppPresence>,

@@ -10,7 +10,7 @@ One agent session shared across every app in the suite. The design is in [docs/d
 | `cli/`               | Go: `suite status / sessions / attach / tools / focus / move`    | 1-3   |
 | `sdk-ts/`, `sdk-go/` | Bus clients (sessions, presence; TS: tool server helper)         | 2     |
 | `sdk-rs/`            | Rust bus client for GPUI apps                                    | 3     |
-| `apps/pad/`          | Small GPUI app hosting the chat pane (stand-in for Grove)        | 3     |
+| `apps/pad/`          | GPUI code editor stand-in (files, diagnostics, tools, chat)      | 3, 5  |
 | `apps/browser/`      | Stand-in web browser: navigate/read/images/download tools + page | 5     |
 | `apps/photo/`        | Stand-in photo editor (Go, terminal): image tools, preview, chat | 5     |
 | `renderers/`         | web (TS), gpui (Rust), tui (Go)                                  | 4     |
@@ -50,12 +50,12 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/
 
 ## Moving the agent between apps
 
-The daemon owns where the agent is: one current session and the app whose pane shows it. The overlay is the home app. Try it with Pad:
+The daemon owns where the agent is: one current session and the app whose pane shows it. The overlay is the home app. Try it with Pad (the code editor stand-in, app id `code-editor`; [apps/pad/README.md](apps/pad/README.md)):
 
 ```sh
 bun run daemon                              # terminal 1
 cargo run --release -p suite-pad            # terminal 2: a window; the agent is still home
-bin/suite move pad                          # Pad's pane opens on the conversation
+bin/suite move code-editor                  # Pad's chat pane opens on the conversation
 bin/suite attach                            # follow the same session from the terminal
 bin/suite move                              # back home (the overlay, if it's running)
 ```

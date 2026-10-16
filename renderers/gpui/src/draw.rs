@@ -2,7 +2,9 @@
 //! `StyledText`, the rest are small compositions of divs. Nothing here decides what to show.
 
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::ops::Range;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -16,7 +18,7 @@ use suite_protocol::DiffLineKind;
 
 use crate::layout::{
     BoxNode, ButtonNode, CodeNode, DiffNode, Dir, FileNode, ImageNode, ImageSource, Insets, KvNode,
-    Node, ProgressNode, TableNode, TextNode,
+    Node, ProgressNode, TableNode, TextNode, is_asset_src,
 };
 use crate::theme::{Paint, TextStyle};
 
@@ -58,6 +60,9 @@ pub struct DrawCx {
     pub copied: Option<usize>,
     /// Draw http(s) images (needs an HTTP client installed in the app); else show the fallback.
     pub remote_images: bool,
+    /// Files the host's resolver found for `asset://` sources; images not in here show the
+    /// fallback.
+    pub assets: Rc<HashMap<String, PathBuf>>,
     /// Ids for the stateful elements (scrolling code, buttons), unique within the item.
     next_id: Cell<usize>,
 }
@@ -74,8 +79,14 @@ impl DrawCx {
             press,
             copied,
             remote_images,
+            assets: Rc::default(),
             next_id: Cell::new(0),
         }
+    }
+
+    pub fn with_assets(mut self, assets: Rc<HashMap<String, PathBuf>>) -> DrawCx {
+        self.assets = assets;
+        self
     }
 
     fn id(&self, name: &'static str) -> (SharedString, usize) {
@@ -335,6 +346,10 @@ fn image(i: &ImageNode, cx: &DrawCx) -> AnyElement {
     let picture = match &i.source {
         ImageSource::Data(data) => Some(sized(img(data.0.clone()))),
         ImageSource::Remote(url) if cx.remote_images => Some(sized(img(url.clone()))),
+        // Only handles the host resolved: the path is the asset store's file for that handle.
+        ImageSource::None if is_asset_src(&i.src) => {
+            cx.assets.get(&i.src).map(|path| sized(img(path.clone())))
+        }
         _ => None,
     };
     let picture = picture.unwrap_or_else(|| {

@@ -91,6 +91,20 @@ impl ItemLayout {
         !self.buttons.is_empty()
     }
 
+    /// The `asset://` sources of the item's images, in document order.
+    pub fn asset_srcs(&self) -> Vec<&str> {
+        fn walk<'a>(node: &'a Node, out: &mut Vec<&'a str>) {
+            match node {
+                Node::Image(image) if is_asset_src(&image.src) => out.push(&image.src),
+                Node::Box(b) => b.children.iter().for_each(|child| walk(child, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        walk(&self.body, &mut out);
+        out
+    }
+
     /// The button that `key` triggers: a button's own `key`, else its 1-based position among the
     /// item's buttons (the key shown on it, as in the TUI). The first match wins.
     pub fn button_for_key(&self, key: &str) -> Option<usize> {
@@ -248,7 +262,8 @@ pub enum ImageSource {
     Data(ImageData),
     /// An http(s) URL; drawn only when the chat view is allowed to fetch.
     Remote(String),
-    /// `asset://` handles (Phase 5), paths, unknown schemes, undecodable data.
+    /// `asset://` handles (drawn once the host's resolver has found their file, see
+    /// `ChatView::set_image_resolver`), paths, unknown schemes, undecodable data.
     None,
 }
 
@@ -428,6 +443,14 @@ pub fn safe_url(url: &str) -> bool {
     ["http://", "https://", "mailto:"]
         .iter()
         .any(|scheme| lower.starts_with(scheme))
+}
+
+/// Whether `src` is an asset-store handle (`asset://img-…`), the one other scheme the chat can
+/// draw, through the host's resolver.
+pub fn is_asset_src(src: &str) -> bool {
+    src.get(..8)
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("asset://"))
+        && src.len() > 8
 }
 
 /// Where an image's pixels come from: `data:image/` (decoded here), http(s), or nowhere.
