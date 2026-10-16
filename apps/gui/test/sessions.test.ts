@@ -1,15 +1,41 @@
 import { expect, test } from "bun:test";
 import type { SessionInfo } from "@suite/protocol/types";
 import {
+  arrange,
+  inProject,
+  matchProjects,
+  projectsOf,
+  resultLines,
+  SETTLED_SHOWN,
+  type Arranged,
+} from "../ui/plugins/sessions/arrange.ts";
+import {
+  isPinned,
+  isSettled,
+  mergeMarks,
+  NO_MARKS,
+  parseMarks,
+  pin,
+  serializeMarks,
+  settle,
+  unpin,
+  unsettle,
+} from "../ui/plugins/sessions/marks.ts";
+import { around, highlight, searchSessions, termsOf } from "../ui/plugins/sessions/search.ts";
+import {
   age,
   changedLines,
   conventionPlace,
+  elapsed,
   finishedAfter,
   groupSessions,
   jumpGroup,
+  lastSegment,
   placeOf,
   previewOf,
+  runningSinceAfter,
   sessionTitle,
+  statusOf,
   step,
   type Entry,
 } from "../ui/plugins/sessions/sessions.ts";
@@ -166,4 +192,191 @@ test("a session that finished unseen is marked until shown", () => {
   expect([...finishedAfter(marked, after, [running("b", "idle")], "b")]).toEqual([]);
   // A session running again loses nothing it had earned, and finishing twice stays one mark.
   expect([...finishedAfter(marked, before, after, "b")]).toEqual(["a"]);
+});
+
+/** A session with a last message, for the search. */
+function said(id: string, title: string, preview: string, cwd = "/w/site", at = 10): SessionInfo {
+  return { ...session(id, title, cwd, at), preview };
+}
+
+const projectName = (info: SessionInfo): string => lastSegment(placeOf(info.cwd, {}).repo);
+
+test("a search ranks the title, then the last message, then the project", () => {
+  const all = [
+    said("p", "Docs", "I fixed the login page", "/w/site", 50),
+    said("t", "Fix the login", "Done", "/w/other", 10),
+    said("r", "Release", "nothing", "/w/login-kit", 40),
+    said("x", "Login redirect", "Done", "/w/other", 20),
+  ];
+  const ids = (query: string): string[] =>
+    searchSessions(all, query, projectName).map((m) => m.info.id);
+  // A title that starts with the word comes before one that holds it, then the message, then the
+  // project.
+  expect(ids("login")).toEqual(["x", "t", "p", "r"]);
+  expect(searchSessions(all, "login", projectName).map((m) => m.field)).toEqual([
+    "title",
+    "title",
+    "preview",
+    "project",
+  ]);
+  // Every word has to be found, in any order and case.
+  expect(ids("LOGIN fix")).toEqual(["t", "p"]);
+  // Words spread over the title and the project still match.
+  expect(ids("release kit")).toEqual(["r"]);
+  expect(ids("zzz")).toEqual([]);
+  expect(ids("   ")).toEqual([]);
+});
+
+test("equal matches come newest first", () => {
+  const all = [said("a", "Fix", "", "/w", 10), said("b", "Fix", "", "/w", 30)];
+  expect(searchSessions(all, "fix", projectName).map((m) => m.info.id)).toEqual(["b", "a"]);
+});
+
+test("a match is cut into runs and a snippet that shows it", () => {
+  expect(termsOf(" Fix  fix LOGIN ")).toEqual(["fix", "login"]);
+  expect(highlight("Fix the login", ["fix", "login"])).toEqual([
+    { text: "Fix", hit: true },
+    { text: " the ", hit: false },
+    { text: "login", hit: true },
+  ]);
+  expect(highlight("aaa", ["aa"])).toEqual([{ text: "aaa", hit: true }]);
+  expect(highlight("nothing", ["zz"])).toEqual([{ text: "nothing", hit: false }]);
+  expect(highlight("", ["a"])).toEqual([{ text: "", hit: false }]);
+  const long = "I looked through the whole repository and fixed the login page";
+  expect(around(long, ["login"])).toBe("…d fixed the login page");
+  expect(around("short login", ["login"])).toBe("short login");
+  expect(around(long, ["zz"])).toBe(long);
+});
+
+test("a settled session is put away until something happens in it", () => {
+  const quiet = session("a", "Quiet", "/w", 100);
+  let marks = settle(NO_MARKS, quiet);
+  expect(isSettled(marks, quiet)).toBe(true);
+  // Any later activity brings it back, without un-settling it first.
+  expect(isSettled(marks, { ...quiet, lastActivity: 101 })).toBe(false);
+  marks = unsettle(marks, "a");
+  expect(isSettled(marks, quiet)).toBe(false);
+  expect(isSettled(NO_MARKS, quiet)).toBe(false);
+});
+
+test("a session is pinned or settled, not both", () => {
+  const a = session("a", "A", "/w", 5);
+  const pinned = pin(NO_MARKS, "a", 7);
+  expect(isPinned(pinned, "a")).toBe(true);
+  const settled = settle(pinned, a);
+  expect(isPinned(settled, "a")).toBe(false);
+  expect(isSettled(settled, a)).toBe(true);
+  const again = pin(settled, "a", 9);
+  expect(isSettled(again, a)).toBe(false);
+  expect(again.pinned).toEqual({ a: 9 });
+  expect(isPinned(unpin(again, "a"), "a")).toBe(false);
+  // Merging keeps the later say about a session.
+  const merged = mergeMarks(settle(NO_MARKS, a), pin(NO_MARKS, "a", 1));
+  expect(isPinned(merged, "a")).toBe(true);
+  expect(isSettled(merged, a)).toBe(false);
+});
+
+test("marks are read back from the file they were written to", () => {
+  const marks = pin(settle(NO_MARKS, session("s", "S", "/w", 3)), "p", 4);
+  expect(parseMarks(serializeMarks(marks))).toEqual(marks);
+  expect(parseMarks("")).toEqual(NO_MARKS);
+  expect(parseMarks("[1]")).toEqual(NO_MARKS);
+  expect(parseMarks('{"pinned":{"a":1,"b":"x"},"settled":5}')).toEqual({
+    pinned: { a: 1 },
+    settled: {},
+  });
+});
+
+/** Ids as the list draws them: labels in brackets, `↳` for a child, `~` for a slim row. */
+function drawn(arranged: Arranged): string[] {
+  return arranged.lines.map((line) => {
+    if (line.kind === "label") return `[${line.text}]`;
+    if (line.kind === "settled") return `[Settled ${line.count}${line.open ? " open" : ""}]`;
+    if (line.kind === "more") return `[more ${line.count}]`;
+    return `${line.child ? "↳" : ""}${line.slim ? "~" : ""}${line.info.id}`;
+  });
+}
+
+test("the list puts pinned first and settled last, closed until opened", () => {
+  const all = grouped();
+  const scratch = all.find((s) => s.id === "f")!;
+  const marks = settle(pin(pin(NO_MARKS, "a", 1), "e", 2), scratch);
+  const closed = arrange(all, {}, marks, { open: false, all: false });
+  // Pinned last first, the rest as they group (b, then c with its child d), settled at the end.
+  expect(drawn(closed)).toEqual(["[Pinned]", "e", "a", "b", "c", "↳d", "[Settled 1]"]);
+  expect(closed.order).toEqual(["e", "a", "b", "c", "d"]);
+  expect(closed.groupStarts).toEqual([0, 2, 3]);
+  const open = arrange(all, {}, marks, { open: true, all: false });
+  expect(drawn(open)).toEqual(["[Pinned]", "e", "a", "b", "c", "↳d", "[Settled 1 open]", "~f"]);
+  expect(open.order.at(-1)).toBe("f");
+  // New activity in a settled session puts it back among the rest.
+  const woken = all.map((s) => (s.id === "f" ? { ...s, lastActivity: 99 } : s));
+  expect(drawn(arrange(woken, {}, marks, { open: false, all: false }))).toEqual([
+    "[Pinned]",
+    "e",
+    "a",
+    "f",
+    "b",
+    "c",
+    "↳d",
+  ]);
+  // Nothing marked is the grouped list as it was.
+  expect(arrange(all, {}, NO_MARKS, { open: false, all: false }).order).toEqual(
+    groupSessions(all, {}).order,
+  );
+});
+
+test("settled sessions show ten, then the rest on request", () => {
+  const many = Array.from({ length: 14 }, (_, i) => session(`s${i}`, `S${i}`, "/w", 100 + i));
+  const marks = many.reduce((m, info) => settle(m, info), NO_MARKS);
+  const some = drawn(arrange(many, {}, marks, { open: true, all: false }));
+  expect(some).toHaveLength(1 + SETTLED_SHOWN + 1);
+  expect(some[1]).toBe("~s13");
+  expect(some.at(-1)).toBe("[more 4]");
+  const every = drawn(arrange(many, {}, marks, { open: true, all: true }));
+  expect(every).toHaveLength(1 + 14);
+  expect(every.at(-1)).toBe("~s0");
+});
+
+test("projects list by latest activity and filter the sessions", () => {
+  const all = grouped();
+  const projects = projectsOf(all, {});
+  expect(projects.map((p) => [p.name, p.count])).toEqual([
+    ["site", 5],
+    ["notes", 1],
+  ]);
+  expect(projects[0]?.repo).toBe("/w/site");
+  expect(inProject(all, {}, "/w/notes").map((s) => s.id)).toEqual(["f"]);
+  expect(inProject(all, {}, undefined)).toBe(all);
+  expect(inProject(all, {}, "/w/gone")).toEqual([]);
+  expect(matchProjects(projects, "NOT").map((p) => p.name)).toEqual(["notes"]);
+  expect(matchProjects(projects, "w si").map((p) => p.name)).toEqual(["site"]);
+  expect(matchProjects(projects, "")).toHaveLength(2);
+});
+
+test("a search lists its matches as they come", () => {
+  const all = [said("a", "Fix", "", "/w", 10), said("b", "Fixed", "", "/w", 30)];
+  const results = resultLines(searchSessions(all, "fix", projectName));
+  expect(results.order).toEqual(["b", "a"]);
+  expect(drawn(results)).toEqual(["b", "a"]);
+  expect(resultLines([]).groupStarts).toEqual([]);
+});
+
+test("a row says working, done or nothing, and for how long", () => {
+  const running = { ...session("a", "A", "/w", 1), state: "running" as const };
+  expect(statusOf(running, false, { a: 500 })).toEqual({ kind: "working", since: 500 });
+  expect(statusOf(running, true, {})).toEqual({ kind: "working", since: undefined });
+  expect(statusOf(session("a", "A", "/w", 1), true, {})).toEqual({ kind: "done" });
+  expect(statusOf(session("a", "A", "/w", 1), false, {})).toEqual({ kind: "idle" });
+  expect(elapsed(0, 12_000)).toBe("12s");
+  expect(elapsed(0, 192_000)).toBe("3m 12s");
+  expect(elapsed(0, 3_725_000)).toBe("1h 02m");
+  expect(elapsed(5000, 0)).toBe("0s");
+
+  const idle = session("b", "B", "/w", 1);
+  const since = runningSinceAfter({}, [running, idle], 900);
+  expect(since).toEqual({ a: 900 });
+  // Kept while it runs, and the same object comes back when nothing changed.
+  expect(runningSinceAfter(since, [running, idle], 5000)).toBe(since);
+  expect(runningSinceAfter(since, [idle], 6000)).toEqual({});
 });

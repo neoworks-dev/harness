@@ -186,6 +186,49 @@ export function finishedAfter(
   return same ? finished : out;
 }
 
+/** What a session's row says in place of its age. */
+export type Status =
+  | { kind: "working"; since: number | undefined }
+  | { kind: "done" }
+  | { kind: "idle" };
+
+/** The ladder: working, then finished unseen, else idle. `since` is when it was seen to start. */
+export function statusOf(
+  info: SessionInfo,
+  finished: boolean,
+  since: Readonly<Record<string, number>>,
+): Status {
+  if (info.state === "running") return { kind: "working", since: since[info.id] };
+  return finished ? { kind: "done" } : { kind: "idle" };
+}
+
+/** How long a turn has run, short: 12s, 3m 05s, 1h 02m. */
+export function elapsed(fromMs: number, nowMs: number): string {
+  const secs = Math.floor(Math.max(0, nowMs - fromMs) / 1000);
+  const two = (n: number): string => String(n).padStart(2, "0");
+  if (secs < 60) return `${secs}s`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ${two(secs % 60)}s`;
+  return `${Math.floor(secs / 3600)}h ${two(Math.floor((secs % 3600) / 60))}m`;
+}
+
+/**
+ * When each running session was first seen running: kept while it runs, set to `nowMs` when it is
+ * first seen, dropped when it stops. The daemon does not say when a turn began, so a session that
+ * was already running when the window opened counts from then.
+ */
+export function runningSinceAfter(
+  since: Readonly<Record<string, number>>,
+  next: readonly SessionInfo[],
+  nowMs: number,
+): Readonly<Record<string, number>> {
+  const out: Record<string, number> = {};
+  for (const info of next) if (info.state === "running") out[info.id] = since[info.id] ?? nowMs;
+  const same =
+    Object.keys(out).length === Object.keys(since).length &&
+    Object.entries(out).every(([id, at]) => since[id] === at);
+  return same ? since : out;
+}
+
 /** The id `delta` rows from `from` in drawn order, stopping at the ends. */
 export function step(
   order: readonly string[],
@@ -199,7 +242,7 @@ export function step(
 
 /** The first session of the previous (`-1`) or next (`1`) group. */
 export function jumpGroup(
-  grouped: Grouped,
+  grouped: Pick<Grouped, "order" | "groupStarts">,
   from: string | undefined,
   delta: number,
 ): string | undefined {
