@@ -1,5 +1,5 @@
-// The window's connection to the daemon and the session it shows, as reactive state every
-// component reads. Components never talk to the client directly: they call the methods here.
+// The window's connection to the daemon and the session it shows, as reactive state. Plugins reach
+// it through the `daemon` service (services/daemon.ts), and never talk to the client directly.
 import { invoke } from "@neoworks/svelte-gpui";
 import type {
   AgentFocus,
@@ -18,7 +18,7 @@ import {
   type DaemonAddress,
   type Unsubscribe,
 } from "@suite/sdk";
-import * as host from "../kernel/host/git.ts";
+import * as host from "./host/git.ts";
 import { paletteOf } from "../lib/palette.ts";
 import { chooseSession, pickAppId } from "../lib/startup.ts";
 import { applyEvent, initialStatus, nextApprovals, type SessionStatus } from "../lib/status.ts";

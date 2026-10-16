@@ -5,8 +5,11 @@ Every pane of the window is a plugin on [`@neoworks/extension-system`](../../../
 ```
 kernel/          the root Context, boot, host services, slots, keymap, commands
 plugins/         one folder per pane; index.ts lists them in mount order
-plugins/legacy/  panes not converted yet, mounted into the shell's slots as they were drawn
+widgets/         small shared pieces that belong to no pane (the spinner, the clock)
+lib/             pure logic more than one pane uses (palette, diff, commands, unified diffs)
 ```
+
+A pane reaches another only through a service or a slot, never by importing its modules. Pure logic that only one pane uses lives in its folder.
 
 `main.ts` calls `boot(root, services, plugins)`: the host services mount first (`kernel/services.ts`), then the plugins in the order of `plugins/index.ts`, then the window opens. `App.svelte` only renders the `root` slot; the `shell` plugin fills it.
 
@@ -35,7 +38,26 @@ export const sessionsSidebar = {
 
 Add it to `plugins/index.ts`. Everything registered goes through `ctx.effect` inside the services, so unloading the plugin undoes it. For a raw API (`setInterval`, a listener) wrap it yourself: `ctx.effect(() => { …; return () => undo(); })`.
 
-`plugins/sessions` (sidebar, keys, state) and `plugins/statusline` (declares a slot another plugin fills) are the worked examples.
+`plugins/sessions` (sidebar, keys, state) and `plugins/statusline` (declares a slot another plugin fills) are the worked examples; `plugins/transcript` (a keyed slot with a renderer per kind, a service) is the larger one.
+
+### The window's panes
+
+| Plugin       | Fills                                      | Declares                                                       | Provides     |
+| ------------ | ------------------------------------------ | -------------------------------------------------------------- | ------------ |
+| `shell`      | `root`                                     | `shell.left`, `.main` (chain), `.bottom`, `.right`, `.overlay` |              |
+| `sessions`   | `shell.left`                               |                                                                |              |
+| `statusline` | `shell.bottom` (30)                        | `statusline.right`                                             |              |
+| `transcript` | `shell.main` (100), `chat.item`, `.header` | `chat.item` (keyed by item kind), `chat.item.header`           | `transcript` |
+| `composer`   | `shell.bottom` (10), `statusline.right`    | `composer.left`, `composer.right`                              |              |
+| `agents`     | `shell.bottom` (20)                        |                                                                |              |
+| `agentview`  | `shell.main` (20)                          |                                                                | `agentview`  |
+| `sidepanel`  | `shell.right`                              | `sidepanel.section`                                            | `sidepanel`  |
+| `plan`       | `sidepanel.section` (10)                   |                                                                |              |
+| `files`      | `sidepanel.section` (20)                   |                                                                |              |
+| `github`     | `shell.main` (10)                          |                                                                |              |
+| `diff`       | `shell.overlay`                            |                                                                | `diff`       |
+
+A plugin lists the services it uses in `inject` and waits for them, so a plugin that provides one is listed before those that use it in `plugins/index.ts` (the order also decides ties in a list slot and the order of the `/` menu). A plugin provides a service by mounting a `Service` of its own: `ctx.plugin(DiffService)`; it unloads with the plugin.
 
 ## Slots
 
@@ -78,28 +100,31 @@ A component reaches the services of the plugin that registered it with `useCtx()
 
 ## Keys and commands
 
-`keymap.bind("ctrl-s", (event) => …)`: a chord is `ctrl-alt-meta-shift-` modifiers (in that order) and the lower-case key: `ctrl-s`, `shift-tab`, `escape`, `f6`. The window hands a handler every key the focused input or panel did not use. The newest binding of a chord runs first; return `false` to say the key was not yours (it passes on, and the input still gets it), anything else keeps the input from typing it. `keymap.observe(fn)` hears every key before the bindings. A chord matches exactly (`ctrl-shift-s` is not `ctrl-s`).
+`keymap.bind("ctrl-s", (event) => …)`: a chord is `ctrl-alt-meta-shift-` modifiers (in that order) and the lower-case key: `ctrl-s`, `shift-tab`, `escape`, `f6`. The window hands a handler every key the focused input or panel did not use. The newest binding of a chord runs first, unless another has a higher `priority` (`keymap.bind("escape", run, { priority: 1 })`, for an overlay that covers the window); return `false` to say the key was not yours (it passes on, and the input still gets it), anything else keeps the input from typing it. `keymap.observe(fn)` hears every key before the bindings. A chord matches exactly (`ctrl-shift-s` is not `ctrl-s`).
 
 `commands.register({ name, desc, run, args?, needsArgs? })` adds an entry to the `/` menu that the window runs itself; without a `run` the text goes to the daemon. Entries list in registration order.
 
 ## Host services
 
-| Service    | What                                                                                                          |
-| ---------- | ------------------------------------------------------------------------------------------------------------- |
-| `slots`    | `add`, `inject` (above)                                                                                       |
-| `daemon`   | the session, chat, palette, status, `open`, `send`, `newSession`, `onRecord`… (wraps `state/suite.svelte.ts`) |
-| `git`      | `status` (reactive), `branch`, `diff`, `places` (host commands)                                               |
-| `github`   | `repo`, `issues`, `prs`, `issue`, `pr`, `prDiff`, … (read-only host commands)                                 |
-| `keymap`   | `bind`, `observe`                                                                                             |
-| `commands` | `register`, `list`                                                                                            |
+| Service    | What                                                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `slots`    | `add`, `inject` (above)                                                                                                  |
+| `daemon`   | the session, chat, palette, status, `open`, `send`, `action`, `newSession`, `onRecord`… (wraps `kernel/suite.svelte.ts`) |
+| `git`      | `branch`, `status`, `diff`, `places` (host commands)                                                                     |
+| `github`   | `repo`, `issues`, `prs`, `issue`, `pr`, `prDiff`, … (read-only host commands)                                            |
+| `keymap`   | `bind`, `observe`                                                                                                        |
+| `keyboard` | `claim(held)`, `taken`: a pane that wants the keyboard claims it, and the input stays away while one is held             |
+| `commands` | `register`, `list`                                                                                                       |
 
-The old singletons (`suite`, `ui`, `composer`) are still the stores behind them, and panes not converted yet read them directly. A converted pane reads the service and keeps its own state in its folder.
+What the panes offer one another is in the table above: `diff.show(diff)`, `transcript.visible(items)` and `transcript.stub(ref)`, `agentview.open(agent)`, `sidepanel.claim(has)`. Each is in the plugin's `service.ts`.
 
 ## State, and the `$state` trap
 
 **Never put `$state` fields on a `Service` subclass.** Svelte compiles them to private fields, and `isolate`/`intercept` re-create a service with `Object.create()`, which then throws on the inherited accessor. Keep reactive state in a `.svelte.ts` store and let the Service delegate to it (see `services/daemon.ts`, `commands.svelte.ts`).
 
-A pane's own store lives in its folder (`plugins/sessions/state.svelte.ts`). A store that needs `$effect`s exposes `start(daemon): () => void` built on `$effect.root`, and the plugin runs it with `ctx.effect(() => store.start(daemon))` so unloading stops it. Other code that needs the state (the composer reads `sessions.focused`) imports the store; once more than one consumer needs it, put a service in front.
+A pane's own store lives in its folder (`plugins/sessions/state.svelte.ts`). A store that needs `$effect`s or services exposes `start(daemon): () => void` built on `$effect.root`, and the plugin runs it with `ctx.effect(() => store.start(daemon))` so unloading stops it. What another pane needs of the state goes through a service in front of the store, never an import: the composer asks `keyboard.taken`, not the sessions store.
+
+Two helpers cover what several panes repeat. `Folded` (`kernel/folded.svelte.ts`) keeps state folded from the shown session's events, restarted on a replay (the agents, the plan and the files each keep one). `Claims` (`kernel/claims.svelte.ts`) is a set of reactive yes/no claims, behind the `keyboard` and `sidepanel` services.
 
 Keep logic that tests should reach in plain `.ts` files (`bun test` cannot compile runes): `slots/registry.ts`, `keymap.ts` and `lib/*.ts` are tested that way.
 
@@ -110,10 +135,10 @@ Keep logic that tests should reach in plain `.ts` files (`bun test` cannot compi
 - A failed plugin does not block the window: `boot` rejects after mounting the rest, and the host logs it (`errors.log` without `--dev`).
 - Types and `bun test` read extension-system's built `lib/` (`bun run build` there); the bundle reads its `src/`.
 
-## Moving a legacy pane
+## Adding a pane
 
-1. A folder `plugins/<name>/` with `index.ts`; `git mv` its component, store and pure logic in.
-2. Replace `suite.*` with `useCtx().daemon`, `ui.*` flags with a store of its own, and registration in `plugins/legacy/*` with `slots.inject`.
-3. Move its keys from `legacy/shortcuts.ts` to `keymap.bind`, its slash commands to `commands.register`.
-4. If other panes sit inside it, declare slots for them with `slots: { … }` and move them in as entries.
-5. List it in `plugins/index.ts`, run `bun test`, `make typecheck`, `bunx oxlint --type-aware --deny-warnings`, build, and look at it with `apps/gui/scripts/shot.sh` (`SCENE=side`) next to the old layout.
+1. A folder `plugins/<name>/` with `index.ts`, its components, its store and the pure logic only it uses.
+2. Components read the services with `useCtx()` (`daemon.palette`, …) and keep their state in a store of the folder; a flag two panes would share is a service one of them provides.
+3. Register into the slot it belongs in with `slots.inject`, its keys with `keymap.bind`, its slash commands with `commands.register`.
+4. If other panes sit inside it, declare slots for them with `slots: { … }` and let them register as entries; put the declarations in `slots.ts`.
+5. List it in `plugins/index.ts` (after the plugins whose services it uses), run `bun test`, `make typecheck`, `bunx oxlint --type-aware --deny-warnings`, build, and look at it with `apps/gui/scripts/shot.sh` (`SCENE=side`).

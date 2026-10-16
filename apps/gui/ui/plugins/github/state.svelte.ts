@@ -2,10 +2,10 @@
 // issues and pull requests (per filter) and the details opened, each loaded once and kept until
 // the directory changes; `reload` asks again. Everything is a read through the host's
 // `gh_*` commands. Nothing here can write to GitHub.
+import type { Context } from "@neoworks/extension-system";
 import { untrack } from "svelte";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
 import type { GithubService } from "../../kernel/services/github.ts";
-import type { DiffService } from "../diff/service.ts";
 import { parseUnified } from "../../lib/unified.ts";
 import { explain, type Detail, type Kind, type Summary } from "./github.ts";
 
@@ -13,7 +13,8 @@ import { explain, type Detail, type Kind, type Summary } from "./github.ts";
 interface Services {
   daemon: DaemonService;
   host: GithubService;
-  diff: DiffService;
+  /** What shows a diff over the window: the `diff` service. */
+  diff: Context["diff"];
 }
 
 /** What a load is in: working, done or failed with something to tell the user. */

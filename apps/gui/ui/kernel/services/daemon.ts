@@ -1,9 +1,9 @@
 // The `daemon` service: the window's connection to the daemon and the session it shows, from the
-// `suite` store (state/suite.svelte.ts). Everything it reads is reactive. No `$state` of its own:
+// `suite` store (kernel/suite.svelte.ts). Everything it reads is reactive. No `$state` of its own:
 // the store has it (see the README).
 import { Service, type Context } from "@neoworks/extension-system";
 import type { ViewItem } from "@suite/protocol/types";
-import { suite } from "../../state/suite.svelte.ts";
+import { suite } from "../suite.svelte.ts";
 
 declare module "@neoworks/extension-system" {
   interface Context {
