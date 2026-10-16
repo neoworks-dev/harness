@@ -3,6 +3,7 @@
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import Chat from "./chat/Chat.svelte";
   import Composer from "./input/Composer.svelte";
+  import Shortcuts from "./input/Shortcuts.svelte";
   import StatusLine from "./input/StatusLine.svelte";
   import { suite } from "./state/suite.svelte.ts";
 
@@ -12,6 +13,8 @@
 
   const p = $derived(suite.palette);
 </script>
+
+<Shortcuts />
 
 <View style={{ flex: 1, direction: "row", background: p.bg, color: p.fg, fontSize: p.text.body }}>
   <View style={{ flex: 1, minWidth: 0 }}>
