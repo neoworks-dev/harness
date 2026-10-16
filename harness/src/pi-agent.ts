@@ -56,7 +56,7 @@ export function createPiAgent(options: PiAgentOptions): HarnessAgent {
       initialState: {
         systemPrompt: SYSTEM_PROMPT,
         model,
-        tools: createCoreTools(params.cwd, gatewayOf(params.mcpServers)),
+        tools: createCoreTools(params.cwd, gatewayOf(params.mcpServers), params.resolveAsset),
         messages: restoreMessages(history, logger),
         thinkingLevel: config.thinkingLevel,
       },

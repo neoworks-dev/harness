@@ -1,0 +1,1 @@
+{ "topic": "file.changed", "payload": { "path": "/home/user/site/a.txt" } }

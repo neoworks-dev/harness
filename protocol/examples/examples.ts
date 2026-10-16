@@ -301,4 +301,33 @@ export const examples: Record<string, Envelope> = {
       },
     },
   },
+  "asset-put": {
+    topic: "asset.put",
+    id: "20",
+    payload: { path: "/tmp/download/logo.png", name: "logo.png" },
+  },
+  "asset-put-data": {
+    topic: "asset.put",
+    id: "21",
+    payload: { data: "iVBORw0KGgo=", name: "crop.png", mime: "image/png" },
+  },
+  "asset-get": { topic: "asset.get", id: "22", payload: { handle: "asset://img-7f3a91c2" } },
+  "asset-info": {
+    topic: "asset.info",
+    id: "22",
+    payload: {
+      handle: "asset://img-7f3a91c2",
+      path: "/home/user/.local/share/suite/assets/img-7f3a91c2.png",
+      name: "logo.png",
+      mime: "image/png",
+      size: 48213,
+      app: "browser",
+      createdAt: 1760565600000,
+    },
+  },
+  "file-changed": {
+    topic: "file.changed",
+    payload: { path: "/home/user/site/src/Header.tsx", app: "agent", session },
+  },
+  "file-changed-minimal": { topic: "file.changed", payload: { path: "/home/user/site/a.txt" } },
 };

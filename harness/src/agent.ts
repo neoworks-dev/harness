@@ -37,6 +37,8 @@ export interface NewSessionParams {
   cwd: string;
   /** The daemon's MCP gateway; the agent reaches connector tools through it. */
   mcpServers: McpServer[];
+  /** Resolves an asset://… handle to its file path (undefined: unknown handle). */
+  resolveAsset?: (handle: string) => string | undefined;
 }
 
 export interface LoadSessionParams extends NewSessionParams {

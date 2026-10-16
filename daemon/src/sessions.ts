@@ -6,6 +6,7 @@ import type {
   AgentUpdate,
   ContextEvent,
   McpServer,
+  NewSessionParams,
 } from "@suite/harness/agent";
 import type { SessionEvent, SessionInfo, TurnEnded } from "@suite/protocol/types";
 import type { ConnectorSnapshot } from "./gateway/registry.ts";
@@ -74,6 +75,8 @@ export interface SessionManagerOptions {
   focus?: (sessionId: string) => FocusTarget | undefined;
   /** MCP servers handed to the agent for a session (the gateway). */
   mcpServers?: (sessionId: string) => McpServer[];
+  /** Resolves asset://… handles for the agent's file tools. */
+  resolveAsset?: (handle: string) => string | undefined;
 }
 
 export interface FocusTarget {
@@ -299,7 +302,8 @@ export class SessionManager {
     const row = this.store.getSession(sessionId);
     if (!row) throw new NotFoundError(`no session ${sessionId}`);
     const mcpServers = this.options.mcpServers?.(sessionId) ?? [];
-    const params = { sessionId, cwd: row.cwd, mcpServers };
+    const params: NewSessionParams = { sessionId, cwd: row.cwd, mcpServers };
+    if (this.options.resolveAsset) params.resolveAsset = this.options.resolveAsset;
     if (row.lastSeq === 0) return this.agent.newSession(params);
     const history = this.store.read(sessionId).map((r) => r.event);
     return this.agent.loadSession({ ...params, history });

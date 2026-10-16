@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, AssetPutMessage, AssetGetMessage, AssetInfoMessage, FileChangedMessage, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -203,6 +203,30 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "ui.action":
 		var v UiActionMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "asset.put":
+		var v AssetPutMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "asset.get":
+		var v AssetGetMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "asset.info":
+		var v AssetInfoMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "file.changed":
+		var v FileChangedMessage
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -735,6 +759,114 @@ type UiAction struct {
 	Action string `json:"action"`
 	// The button's args.
 	Args json.RawMessage `json:"args,omitempty"`
+}
+
+// AssetPutMessage: Client → daemon: store a file or bytes in the asset store. Replied to with asset.info. Identical content gets the same handle.
+type AssetPutMessage struct {
+	ID      string   `json:"id"`
+	Payload AssetPut `json:"payload"`
+}
+
+func (AssetPutMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v AssetPutMessage) MarshalJSON() ([]byte, error) {
+	type plain AssetPutMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"asset.put", plain(v)})
+}
+
+// AssetPut: Exactly one of path (copied in) or data (base64).
+type AssetPut struct {
+	// Absolute path of a file to copy in.
+	Path *string `json:"path,omitempty"`
+	// File contents, base64.
+	Data *string `json:"data,omitempty"`
+	// File name to remember (default: the path's base name, else the handle id).
+	Name *string `json:"name,omitempty"`
+	// Default: guessed from the name or the content.
+	Mime *string `json:"mime,omitempty"`
+}
+
+// AssetGetMessage: Client → daemon: look up a handle. Replied to with asset.info, or bus.error not_found.
+type AssetGetMessage struct {
+	ID      string   `json:"id"`
+	Payload AssetRef `json:"payload"`
+}
+
+func (AssetGetMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v AssetGetMessage) MarshalJSON() ([]byte, error) {
+	type plain AssetGetMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"asset.get", plain(v)})
+}
+
+type AssetRef struct {
+	// asset://<id>
+	Handle string `json:"handle"`
+}
+
+// AssetInfoMessage: Daemon → client: reply to asset.put / asset.get.
+type AssetInfoMessage struct {
+	ID      string `json:"id"`
+	Payload Asset  `json:"payload"`
+}
+
+func (AssetInfoMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v AssetInfoMessage) MarshalJSON() ([]byte, error) {
+	type plain AssetInfoMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"asset.info", plain(v)})
+}
+
+// Asset: A stored asset. Handles stay valid after the producing app disconnects.
+type Asset struct {
+	// asset://<id>, e.g. asset://img-7f3a91c2
+	Handle string `json:"handle"`
+	// Absolute path of the stored file (read-only; same machine).
+	Path string `json:"path"`
+	Name string `json:"name"`
+	Mime string `json:"mime"`
+	Size int64  `json:"size"`
+	// The app that stored it.
+	App *string `json:"app,omitempty"`
+	// Unix ms.
+	CreatedAt int64 `json:"createdAt"`
+}
+
+// FileChangedMessage: Both ways, no reply: a file was changed. The daemon sends it when the agent's write/edit changes a file; an app sends it after saving, and the daemon passes it on to every other client.
+type FileChangedMessage struct {
+	Payload FileChanged `json:"payload"`
+}
+
+func (FileChangedMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v FileChangedMessage) MarshalJSON() ([]byte, error) {
+	type plain FileChangedMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"file.changed", plain(v)})
+}
+
+type FileChanged struct {
+	// Absolute path.
+	Path string `json:"path"`
+	// Who changed it (the app, or "agent").
+	App *string `json:"app,omitempty"`
+	// The session whose agent changed it.
+	Session *string `json:"session,omitempty"`
 }
 
 // AppPresence: Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.

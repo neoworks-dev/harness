@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "typebox";
-import { resolvePath } from "./paths.ts";
+import { type AssetResolver, resolvePath } from "./paths.ts";
 import type { FileChangeDetails } from "./write.ts";
 
 const parameters = Type.Object({
@@ -35,7 +35,10 @@ function countOccurrences(text: string, needle: string): number {
   return count;
 }
 
-export function createEditTool(cwd: string): AgentTool<typeof parameters, FileChangeDetails> {
+export function createEditTool(
+  cwd: string,
+  assets?: AssetResolver,
+): AgentTool<typeof parameters, FileChangeDetails> {
   return {
     name: "edit",
     label: "edit",
@@ -47,7 +50,7 @@ export function createEditTool(cwd: string): AgentTool<typeof parameters, FileCh
     parameters,
     async execute(_toolCallId, { path, edits }) {
       if (edits.length === 0) throw new Error("edits is empty.");
-      const raw = await readFile(resolvePath(cwd, path), "utf8");
+      const raw = await readFile(resolvePath(cwd, path, assets), "utf8");
       const hasBom = raw.startsWith(BOM);
       const crlf = raw.includes("\r\n");
       const original = raw.slice(hasBom ? 1 : 0).replaceAll("\r\n", "\n");
@@ -89,7 +92,7 @@ export function createEditTool(cwd: string): AgentTool<typeof parameters, FileCh
       if (updated === original) throw new Error(`The edits make no change to ${path}.`);
 
       const eol = crlf ? updated.replaceAll("\n", "\r\n") : updated;
-      const absolute = resolvePath(cwd, path);
+      const absolute = resolvePath(cwd, path, assets);
       await writeFile(absolute, hasBom ? BOM + eol : eol);
       return {
         content: [{ type: "text", text: `Applied ${edits.length} edit(s) to ${path}.` }],

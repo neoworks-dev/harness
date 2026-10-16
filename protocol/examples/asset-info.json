@@ -1,0 +1,13 @@
+{
+  "topic": "asset.info",
+  "id": "22",
+  "payload": {
+    "handle": "asset://img-7f3a91c2",
+    "path": "/home/user/.local/share/suite/assets/img-7f3a91c2.png",
+    "name": "logo.png",
+    "mime": "image/png",
+    "size": 48213,
+    "app": "browser",
+    "createdAt": 1760565600000
+  }
+}

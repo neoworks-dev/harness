@@ -1,9 +1,11 @@
 // Wires the daemon's parts together. Used by main.ts and by tests (startTestDaemon).
 import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import type { Agent } from "@suite/harness/agent";
 import type { Theme } from "@suite/protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
 import { ActionRunner } from "./actions.ts";
+import { AssetStore } from "./assets.ts";
 import { FocusManager } from "./focus.ts";
 import { ViewManager } from "./view/views.ts";
 import { Gateway } from "./gateway/gateway.ts";
@@ -41,6 +43,7 @@ export interface Daemon {
   gateway: Gateway;
   focus: FocusManager;
   views: ViewManager;
+  assets: AssetStore;
   /** Cancels running turns (waiting up to timeoutMs), closes listeners and the database. */
   stop(timeoutMs?: number): Promise<void>;
 }
@@ -49,6 +52,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   const { paths, agent, log } = options;
   mkdirSync(paths.dataDir, { recursive: true, mode: 0o700 });
   const store = new SessionStore(paths.db);
+  const assets = new AssetStore(join(paths.dataDir, "assets"));
   const connectors = new ConnectorRegistry(store, options.connectUpstream ?? connectMcp, log);
   let focus: FocusManager | undefined;
   const gateway = new Gateway(connectors, {
@@ -65,6 +69,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   let server: BusServer | undefined;
   const sessions = new SessionManager(store, agent, {
     defaultCwd: options.defaultCwd,
+    resolveAsset: (handle) => assets.resolve(handle),
     log,
     connectors: () => connectors.snapshot(),
     focus: (sessionId) => focus?.focusOf(sessionId),
@@ -97,15 +102,24 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       focus,
       views,
       theme: options.theme ?? defaultTheme,
+      assets,
       action: (action, from) => actions.run(action, from),
     },
   );
+  // The agent's write/edit results carry diffs; each one means a file changed on disk.
+  store.onAppend(({ session, event }) => {
+    if (event.type !== "tool_call_update") return;
+    for (const content of event.content ?? []) {
+      if (content.type === "diff") hub.fileChanged({ path: content.path, app: "agent", session });
+    }
+  });
   try {
     server = await startServer(hub, {
       paths,
       port: options.port,
       protocol: PROTOCOL_VERSION,
       mcp: mcpHandler(gateway),
+      assets,
     });
   } catch (err) {
     store.close();
@@ -121,6 +135,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     gateway,
     focus,
     views,
+    assets,
     async stop(timeoutMs = 2000) {
       await started.stop();
       await sessions.shutdown(timeoutMs);

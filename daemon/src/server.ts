@@ -7,6 +7,7 @@ import { timingSafeEqual } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
+import type { AssetStore } from "./assets.ts";
 import type { ClientHandle, Hub } from "./hub.ts";
 import type { DaemonPaths } from "./paths.ts";
 
@@ -30,6 +31,8 @@ export interface ServerOptions {
   protocol: number;
   /** Handles /mcp on the TCP listener (already authenticated). */
   mcp?: (req: Request) => Promise<Response>;
+  /** Serves /assets on the TCP listener: GET /assets/<id>, POST /assets (raw bytes). */
+  assets?: AssetStore;
 }
 
 export interface BusServer {
@@ -79,6 +82,34 @@ function upgrade(req: Request, srv: Server<SocketData>): Response | undefined {
   return new Response("expected a WebSocket upgrade", { status: 426 });
 }
 
+async function serveAssets(req: Request, url: URL, assets: AssetStore): Promise<Response> {
+  if (req.method === "POST" && url.pathname === "/assets") {
+    const bytes = new Uint8Array(await req.arrayBuffer());
+    const params: Parameters<AssetStore["put"]>[0] = { bytes };
+    for (const key of ["name", "mime", "app"] as const) {
+      const value = url.searchParams.get(key);
+      if (value !== null) params[key] = value;
+    }
+    try {
+      return Response.json(assets.put(params));
+    } catch (err) {
+      return new Response(String(err), { status: 400 });
+    }
+  }
+  const id = url.pathname.slice("/assets/".length);
+  const asset = req.method === "GET" ? assets.get(id) : undefined;
+  if (!asset) return new Response("not found", { status: 404 });
+  return new Response(Bun.file(asset.path), {
+    headers: {
+      "content-type": asset.mime,
+      "cache-control": "private, max-age=31536000, immutable",
+      "x-content-type-options": "nosniff",
+      // An SVG or HTML asset must not run script on the daemon's origin.
+      "content-security-policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+    },
+  });
+}
+
 export async function startServer(hub: Hub, options: ServerOptions): Promise<BusServer> {
   const { socket, info: infoPath } = options.paths;
   mkdirSync(dirname(socket), { recursive: true, mode: 0o700 });
@@ -110,6 +141,12 @@ export async function startServer(hub: Hub, options: ServerOptions): Promise<Bus
           return new Response("unauthorized", { status: 401 });
         }
         return upgrade(req, srv);
+      }
+      if (url.pathname.startsWith("/assets") && options.assets) {
+        // GET may carry the token as a query parameter so <img src> works in browsers.
+        const given = bearer(req) ?? (req.method === "GET" ? url.searchParams.get("token") : null);
+        if (!sameToken(given, token)) return new Response("unauthorized", { status: 401 });
+        return serveAssets(req, url, options.assets);
       }
       if (url.pathname === "/mcp" && options.mcp) {
         if (!sameToken(bearer(req), token)) return new Response("unauthorized", { status: 401 });

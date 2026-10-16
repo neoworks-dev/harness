@@ -26,7 +26,11 @@ export type Envelope =
   | ViewSnapshotMessage
   | ViewPatchMessage
   | ThemeMessage
-  | UiActionMessage;
+  | UiActionMessage
+  | AssetPutMessage
+  | AssetGetMessage
+  | AssetInfoMessage
+  | FileChangedMessage;
 
 export type EnvelopeTag = Envelope["topic"];
 
@@ -276,6 +280,74 @@ export interface UiAction {
   action: string;
   /** The button's args. */
   args?: unknown;
+}
+
+/** Client → daemon: store a file or bytes in the asset store. Replied to with asset.info. Identical content gets the same handle. */
+export interface AssetPutMessage {
+  topic: "asset.put";
+  id: string;
+  payload: AssetPut;
+}
+
+/** Exactly one of path (copied in) or data (base64). */
+export interface AssetPut {
+  /** Absolute path of a file to copy in. */
+  path?: string;
+  /** File contents, base64. */
+  data?: string;
+  /** File name to remember (default: the path's base name, else the handle id). */
+  name?: string;
+  /** Default: guessed from the name or the content. */
+  mime?: string;
+}
+
+/** Client → daemon: look up a handle. Replied to with asset.info, or bus.error not_found. */
+export interface AssetGetMessage {
+  topic: "asset.get";
+  id: string;
+  payload: AssetRef;
+}
+
+export interface AssetRef {
+  /** asset://<id> */
+  handle: string;
+}
+
+/** Daemon → client: reply to asset.put / asset.get. */
+export interface AssetInfoMessage {
+  topic: "asset.info";
+  id: string;
+  payload: Asset;
+}
+
+/** A stored asset. Handles stay valid after the producing app disconnects. */
+export interface Asset {
+  /** asset://<id>, e.g. asset://img-7f3a91c2 */
+  handle: string;
+  /** Absolute path of the stored file (read-only; same machine). */
+  path: string;
+  name: string;
+  mime: string;
+  size: number;
+  /** The app that stored it. */
+  app?: string;
+  /** Unix ms. */
+  createdAt: number;
+}
+
+/** Both ways, no reply: a file was changed. The daemon sends it when the agent's write/edit changes a file; an app sends it after saving, and the daemon passes it on to every other client. */
+export interface FileChangedMessage {
+  topic: "file.changed";
+  payload: FileChanged;
+}
+
+export interface FileChanged {
+  /** Absolute path. */
+  path: string;
+  /** Who changed it (the app, or "agent"). */
+  app?: string;
+  /** The session whose agent changed it. */
+  session?: string;
 }
 
 /** Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update. */

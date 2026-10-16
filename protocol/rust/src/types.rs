@@ -47,6 +47,10 @@ pub enum Envelope {
     ViewPatchMessage(ViewPatchMessage),
     ThemeMessage(ThemeMessage),
     UiActionMessage(UiActionMessage),
+    AssetPutMessage(AssetPutMessage),
+    AssetGetMessage(AssetGetMessage),
+    AssetInfoMessage(AssetInfoMessage),
+    FileChangedMessage(FileChangedMessage),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -157,6 +161,22 @@ impl Serialize for Envelope {
                 "ui.action",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            Envelope::AssetPutMessage(v) => (
+                "asset.put",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::AssetGetMessage(v) => (
+                "asset.get",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::AssetInfoMessage(v) => (
+                "asset.info",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::FileChangedMessage(v) => (
+                "file.changed",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             Envelope::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("topic", tag, value).serialize(serializer)
@@ -248,6 +268,18 @@ impl<'de> Deserialize<'de> for Envelope {
                 .map_err(D::Error::custom),
             "ui.action" => serde_json::from_value(value)
                 .map(Envelope::UiActionMessage)
+                .map_err(D::Error::custom),
+            "asset.put" => serde_json::from_value(value)
+                .map(Envelope::AssetPutMessage)
+                .map_err(D::Error::custom),
+            "asset.get" => serde_json::from_value(value)
+                .map(Envelope::AssetGetMessage)
+                .map_err(D::Error::custom),
+            "asset.info" => serde_json::from_value(value)
+                .map(Envelope::AssetInfoMessage)
+                .map_err(D::Error::custom),
+            "file.changed" => serde_json::from_value(value)
+                .map(Envelope::FileChangedMessage)
                 .map_err(D::Error::custom),
             _ => Ok(Envelope::Unknown(value)),
         }
@@ -407,6 +439,30 @@ impl From<ThemeMessage> for Envelope {
 impl From<UiActionMessage> for Envelope {
     fn from(v: UiActionMessage) -> Self {
         Envelope::UiActionMessage(v)
+    }
+}
+
+impl From<AssetPutMessage> for Envelope {
+    fn from(v: AssetPutMessage) -> Self {
+        Envelope::AssetPutMessage(v)
+    }
+}
+
+impl From<AssetGetMessage> for Envelope {
+    fn from(v: AssetGetMessage) -> Self {
+        Envelope::AssetGetMessage(v)
+    }
+}
+
+impl From<AssetInfoMessage> for Envelope {
+    fn from(v: AssetInfoMessage) -> Self {
+        Envelope::AssetInfoMessage(v)
+    }
+}
+
+impl From<FileChangedMessage> for Envelope {
+    fn from(v: FileChangedMessage) -> Self {
+        Envelope::FileChangedMessage(v)
     }
 }
 
@@ -787,6 +843,104 @@ pub struct UiAction {
     /// The button's args.
     #[serde(rename = "args", default, skip_serializing_if = "Option::is_none")]
     pub args: Option<serde_json::Value>,
+}
+
+/// Client → daemon: store a file or bytes in the asset store. Replied to with asset.info. Identical content gets the same handle.
+/// Tagged `topic: "asset.put"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AssetPutMessage {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: AssetPut,
+}
+
+/// Exactly one of path (copied in) or data (base64).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AssetPut {
+    /// Absolute path of a file to copy in.
+    #[serde(rename = "path", default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// File contents, base64.
+    #[serde(rename = "data", default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<String>,
+    /// File name to remember (default: the path's base name, else the handle id).
+    #[serde(rename = "name", default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Default: guessed from the name or the content.
+    #[serde(rename = "mime", default, skip_serializing_if = "Option::is_none")]
+    pub mime: Option<String>,
+}
+
+/// Client → daemon: look up a handle. Replied to with asset.info, or bus.error not_found.
+/// Tagged `topic: "asset.get"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AssetGetMessage {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: AssetRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AssetRef {
+    /// asset://<id>
+    #[serde(rename = "handle")]
+    pub handle: String,
+}
+
+/// Daemon → client: reply to asset.put / asset.get.
+/// Tagged `topic: "asset.info"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AssetInfoMessage {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: Asset,
+}
+
+/// A stored asset. Handles stay valid after the producing app disconnects.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Asset {
+    /// asset://<id>, e.g. asset://img-7f3a91c2
+    #[serde(rename = "handle")]
+    pub handle: String,
+    /// Absolute path of the stored file (read-only; same machine).
+    #[serde(rename = "path")]
+    pub path: String,
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(rename = "mime")]
+    pub mime: String,
+    #[serde(rename = "size")]
+    pub size: i64,
+    /// The app that stored it.
+    #[serde(rename = "app", default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<String>,
+    /// Unix ms.
+    #[serde(rename = "createdAt")]
+    pub created_at: i64,
+}
+
+/// Both ways, no reply: a file was changed. The daemon sends it when the agent's write/edit changes a file; an app sends it after saving, and the daemon passes it on to every other client.
+/// Tagged `topic: "file.changed"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FileChangedMessage {
+    #[serde(rename = "payload")]
+    pub payload: FileChanged,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FileChanged {
+    /// Absolute path.
+    #[serde(rename = "path")]
+    pub path: String,
+    /// Who changed it (the app, or "agent").
+    #[serde(rename = "app", default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<String>,
+    /// The session whose agent changed it.
+    #[serde(rename = "session", default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
 }
 
 /// Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.

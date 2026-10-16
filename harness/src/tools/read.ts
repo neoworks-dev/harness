@@ -3,7 +3,7 @@ import { extname } from "node:path";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { ImageContent } from "@mariozechner/pi-ai";
 import { Type } from "typebox";
-import { resolvePath } from "./paths.ts";
+import { type AssetResolver, resolvePath } from "./paths.ts";
 import { MAX_BYTES, MAX_LINES, splitLines, truncateHead } from "./truncate.ts";
 
 const IMAGE_TYPES: Record<string, string> = {
@@ -42,7 +42,10 @@ export interface ReadDetails {
   truncated?: boolean;
 }
 
-export function createReadTool(cwd: string): AgentTool<typeof parameters, ReadDetails> {
+export function createReadTool(
+  cwd: string,
+  assets?: AssetResolver,
+): AgentTool<typeof parameters, ReadDetails> {
   return {
     name: "read",
     label: "read",
@@ -52,7 +55,7 @@ export function createReadTool(cwd: string): AgentTool<typeof parameters, ReadDe
       "comes first, and says how to continue with offset. Other binary files can't be read.",
     parameters,
     async execute(_toolCallId, { path, offset, limit }) {
-      const absolute = resolvePath(cwd, path);
+      const absolute = resolvePath(cwd, path, assets);
       const buffer = await readFile(absolute);
 
       const mimeType = IMAGE_TYPES[extname(absolute).toLowerCase()];

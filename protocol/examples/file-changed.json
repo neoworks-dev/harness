@@ -1,0 +1,4 @@
+{
+  "topic": "file.changed",
+  "payload": { "path": "/home/user/site/src/Header.tsx", "app": "agent", "session": "s_7k2m9q4x1c" }
+}

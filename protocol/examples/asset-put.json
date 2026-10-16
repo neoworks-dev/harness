@@ -1,0 +1,5 @@
+{
+  "topic": "asset.put",
+  "id": "20",
+  "payload": { "path": "/tmp/download/logo.png", "name": "logo.png" }
+}

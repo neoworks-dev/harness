@@ -14,4 +14,6 @@ If you need a disconnected app, ask the user to open it or use apps_launch.
 After a reconnect, earlier schemas still apply unless the event shows a new version.
 
 Tools that produce files or media return handles like asset://img-7f3.
-Pass these handles to other tools to move results between apps.`;
+Pass these handles to other tools to move results between apps. bash, read and
+write accept them too: they stand for the stored file (read-only), e.g.
+cp asset://img-7f3 ~/site/logo.png.`;

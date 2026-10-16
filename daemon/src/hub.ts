@@ -3,11 +3,13 @@
 import type {
   Envelope,
   ErrorCode,
+  FileChanged,
   SessionEventRecord,
   Theme,
   UiAction,
 } from "@suite/protocol/types";
 import { validateEnvelope } from "@suite/protocol/validate";
+import type { AssetStore } from "./assets.ts";
 import type { Logger } from "./log.ts";
 import { NotFoundError, type SessionManager } from "./sessions.ts";
 import type { SessionStore } from "./store.ts";
@@ -31,6 +33,7 @@ export interface HubParts {
   focus?: FocusManager;
   views?: ViewManager;
   theme?: Theme;
+  assets?: AssetStore;
   /** Runs a ui.action; rejects with NotFoundError/BadRequestError for impossible ones. */
   action?: (action: UiAction, from: string) => Promise<void>;
 }
@@ -114,6 +117,15 @@ export class Hub {
   }
 
   /** To every client that has said hello. */
+  /** Tells every client (except the one it came from) that a file changed. */
+  fileChanged(payload: FileChanged, except?: Client): void {
+    for (const client of this.clients) {
+      if (client !== except && client.name !== undefined) {
+        this.send(client, { topic: "file.changed", payload });
+      }
+    }
+  }
+
   private broadcastAll(envelope: Envelope): void {
     for (const client of this.clients) if (client.name !== undefined) this.send(client, envelope);
   }
@@ -297,6 +309,28 @@ export class Hub {
           payload: { connectors: this.parts.connectors?.list() ?? [] },
         });
         return;
+      case "asset.put": {
+        const assets = this.requireAssets();
+        const { path, data, name, mime } = msg.payload;
+        const params: Parameters<AssetStore["put"]>[0] = { app: client.name };
+        if (path !== undefined) params.path = path;
+        if (data !== undefined) params.bytes = Buffer.from(data, "base64");
+        if (name !== undefined) params.name = name;
+        if (mime !== undefined) params.mime = mime;
+        this.send(client, { topic: "asset.info", id: msg.id, payload: assets.put(params) });
+        return;
+      }
+      case "asset.get":
+        this.send(client, {
+          topic: "asset.info",
+          id: msg.id,
+          payload: this.requireAssets().require(msg.payload.handle),
+        });
+        return;
+      case "file.changed":
+        this.fileChanged({ ...msg.payload, app: msg.payload.app ?? client.name }, client);
+        return;
+      case "asset.info":
       case "bus.welcome":
       case "bus.ack":
       case "bus.error":
@@ -318,5 +352,10 @@ export class Hub {
         );
         return;
     }
+  }
+
+  private requireAssets(): AssetStore {
+    if (!this.parts.assets) throw new BadRequestError("this daemon has no asset store");
+    return this.parts.assets;
   }
 }
