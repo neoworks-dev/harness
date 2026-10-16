@@ -358,7 +358,7 @@ func (c *Client) restore(ws *websocket.Conn) {
 			continue // its SubscribeView call failed with the old connection
 		}
 		c.resend(ws, func(id string) protocol.EnvelopeVariant {
-			return protocol.ViewSubscribe{ID: id, Payload: protocol.SessionRef{Session: v.session}}
+			return protocol.ViewSubscribe{ID: id, Payload: protocol.ViewRef{Session: v.session}}
 		}, func(err error) {
 			var rejected *Error
 			if errors.As(err, &rejected) { // e.g. the session is gone

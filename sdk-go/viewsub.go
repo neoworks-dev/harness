@@ -103,7 +103,7 @@ func (s *ViewSubscription) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, err := request[protocol.BusAck](ctx, c, func(id string) protocol.EnvelopeVariant {
-		return protocol.ViewUnsubscribe{ID: id, Payload: protocol.SessionRef{Session: s.session}}
+		return protocol.ViewUnsubscribe{ID: id, Payload: protocol.ViewRef{Session: s.session}}
 	})
 	return err
 }
@@ -204,7 +204,7 @@ func (c *Client) SubscribeView(ctx context.Context, session string) (*ViewSubscr
 	c.mu.Unlock()
 
 	res, err := request[protocol.ViewSnapshotMessage](ctx, c, func(id string) protocol.EnvelopeVariant {
-		return protocol.ViewSubscribe{ID: id, Payload: protocol.SessionRef{Session: session}}
+		return protocol.ViewSubscribe{ID: id, Payload: protocol.ViewRef{Session: session}}
 	})
 	if err != nil {
 		c.mu.Lock()

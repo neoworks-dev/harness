@@ -185,6 +185,56 @@ fn sessions_echo_presence_and_connectors() {
 }
 
 #[test]
+fn a_view_of_one_agents_work_is_told_apart_from_the_sessions() {
+    let Some(daemon) = Daemon::start() else {
+        return;
+    };
+    let client = daemon.connect("sdk-test", None);
+    let events = client.events();
+    let session = client
+        .create_session(SessionCreateParams {
+            cwd: Some("/tmp".into()),
+            title: None,
+        })
+        .expect("create session")
+        .id;
+
+    let main = client.subscribe_view(&session).expect("session view");
+    let pi = client
+        .subscribe_agent_view(&session, "pi")
+        .expect("agent view");
+    assert_eq!(
+        (main.agent.as_deref(), pi.agent.as_deref()),
+        (None, Some("pi"))
+    );
+    // Both snapshots also arrive as events, each with its own agent.
+    let mut agents = Vec::new();
+    while agents.len() < 2 {
+        agents.push(wait_for(&events, "a view snapshot", |e| match e {
+            Event::ViewSnapshot(s) => Some(s.agent.clone()),
+            _ => None,
+        }));
+    }
+    assert_eq!(agents, [None, Some("pi".to_string())]);
+
+    // The echo agent's reply is in the session's view; pi did nothing, so its view stays empty.
+    client
+        .input(&session, "sdk-test", "hello", &[])
+        .expect("input");
+    let patch = wait_for(&events, "a patch of the session view", |e| match e {
+        Event::ViewPatch(p) => Some(p.clone()),
+        _ => None,
+    });
+    assert_eq!(
+        (patch.session.as_str(), patch.agent.as_deref()),
+        (session.as_str(), None)
+    );
+    client
+        .unsubscribe_agent_view(&session, "pi")
+        .expect("unsubscribe");
+}
+
+#[test]
 fn the_agent_moves_between_apps() {
     let Some(daemon) = Daemon::start() else {
         return;

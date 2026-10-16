@@ -48,7 +48,7 @@ async function setup(
   const gate = options.gate ?? "allow";
   if (gate !== "manual") {
     daemon.store.onAppend(({ session, event }) => {
-      if (event.type !== "permission_request" || !event.title.startsWith("Hand a task")) return;
+      if (event.type !== "permission_request" || event.title !== "Start a subagent?") return;
       void Promise.resolve().then(() =>
         daemon.actions.run(
           { session, ref: "p", action: "suite.permit", args: { id: event.id, option: gate } },
@@ -192,13 +192,16 @@ describe("delegate", () => {
     const update = log.findLast((e) => e.type === "tool_call_update");
     expect(JSON.stringify(update)).toContain(`Hello, Ada!\\n[result:${ref}]`);
 
+    // The subagent's own view draws it; the session's view folds a delegation's work away.
     const item = daemon.views
-      .get(session)
+      .get(session, "fake")
       .snapshot()
       .items.find((i) => i.ref === "c-fake:t1");
-    expect(item).toMatchObject({ kind: "tool", label: "fake: greeter.greet", state: "done" });
+    expect(item).toMatchObject({ kind: "tool", label: "greeter.greet", state: "done" });
     expect(JSON.stringify(item?.component)).toContain("Greeted ");
     expect(JSON.stringify(item?.component)).toContain("Ada");
+    const main = daemon.views.get(session).snapshot().items;
+    expect(main.filter((i) => !i.ref.startsWith("p-"))).toEqual([]);
   });
 
   test("guests don't see delegate and can't call it", async () => {
@@ -476,7 +479,14 @@ describe("starting a guest is the user's call", () => {
     const request = await answer(daemon, session, "permission_request", "reject");
     expect(request).toMatchObject({
       agent: "main",
-      title: "Hand a task to Fake: tidy up",
+      title: "Start a subagent?",
+      details: [
+        { key: "Harness", value: "Fake" },
+        { key: "Model", value: "default" },
+        { key: "Effort", value: "default" },
+        { key: "Directory", value: daemon.sessions.info(session)?.cwd },
+      ],
+      content: [{ type: "text", text: "tidy up" }],
       options: [
         { id: "allow", name: "Start Fake", kind: "allow_once" },
         { id: "always", name: "Allow Fake for this session", kind: "allow_always" },
@@ -542,7 +552,9 @@ describe("starting a guest is the user's call", () => {
     await daemon.commands.run(session, "/model fake large");
     const call = daemon.gateway.call("delegate", { agent: "fake", task: "x" }, undefined, session);
     const request = await answer(daemon, session, "permission_request", "allow");
-    expect(request).toMatchObject({ title: "Hand a task to Fake (model large): x" });
+    expect(request).toMatchObject({
+      details: expect.arrayContaining([{ key: "Model", value: "large" }]),
+    });
     await call;
   });
 });
@@ -829,7 +841,7 @@ describe("/approvals", () => {
         session,
       );
       const request = await answer(daemon, session, "permission_request", "allow");
-      expect(request).toMatchObject({ title: "Hand a task to Fake: x" });
+      expect(request).toMatchObject({ title: "Start a subagent?" });
       await call;
     }
     await daemon.commands.run(session, "/approvals auto");

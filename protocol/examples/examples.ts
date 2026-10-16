@@ -284,6 +284,34 @@ export const examples: Record<string, Envelope> = {
       },
     },
   },
+  "event-permission-request-delegate": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 6,
+      ts: 1760565600650,
+      event: {
+        type: "permission_request",
+        id: "p2",
+        agent: "claude",
+        title: "Start a subagent?",
+        details: [
+          { key: "Harness", value: "pi" },
+          { key: "Model", value: "deepseek/deepseek-v4-flash" },
+          { key: "Effort", value: "medium" },
+          {
+            key: "Directory",
+            value: "~/site/.worktrees/fix-login (new worktree, branch fix-login)",
+          },
+        ],
+        content: [{ type: "text", text: "Fix the failing login test and run the suite." }],
+        options: [
+          { id: "allow", name: "Start pi", kind: "allow_once" },
+          { id: "reject", name: "Reject", kind: "reject_once" },
+        ],
+      },
+    },
+  },
   "event-permission-resolved": {
     topic: "session.events",
     payload: {
@@ -310,6 +338,32 @@ export const examples: Record<string, Envelope> = {
         note: "use tabs instead",
         about: "claude asks: Edit src/parse.ts: Allow",
       },
+    },
+  },
+  "event-subagent-started": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 14,
+      ts: 1760565601200,
+      event: {
+        type: "subagent_started",
+        id: "d_1a2b3c4d",
+        agent: "claude",
+        task: "Fix the failing login test",
+        model: "sonnet",
+        cwd: "/home/user/site/.worktrees/fix-login",
+        child: "s_0123456789",
+      },
+    },
+  },
+  "event-subagent-ended": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 15,
+      ts: 1760565601300,
+      event: { type: "subagent_ended", id: "d_1a2b3c4d", stopReason: "end_turn" },
     },
   },
   "event-edits-reverted": {

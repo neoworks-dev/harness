@@ -7,6 +7,7 @@ import type {
   AgentSession,
   AgentUpdate,
   ConfigCategory,
+  ConfigOption,
   McpServer,
   NewSessionParams,
   PromptParams,
@@ -71,20 +72,32 @@ export class PiSubagents {
     private readonly options: SubagentOptions,
   ) {}
 
+  /** The session's pi subagent, made on first use. */
+  private subagent(session: string): Subagent {
+    const existing = this.agents.get(session);
+    if (existing) return existing;
+    const created: Subagent = {
+      session: this.create(session),
+      told: new ToldState(),
+      queue: Promise.resolve(),
+    };
+    created.session.catch(() => this.agents.delete(session));
+    this.agents.set(session, created);
+    return created;
+  }
+
+  /** pi's models and thinking levels (in-process: nothing is started for the answer). */
+  async configOptions(session: string): Promise<ConfigOption[] | undefined> {
+    try {
+      return (await this.subagent(session).session).configOptions?.();
+    } catch {
+      return undefined;
+    }
+  }
+
   /** Runs one task on the session's pi subagent (made on first use; follow-ups continue it). */
   async run(session: string, task: string, opts: RunOptions): Promise<GuestRunResult> {
-    let agent = this.agents.get(session);
-    if (!agent) {
-      const created: Subagent = {
-        session: this.create(session),
-        told: new ToldState(),
-        queue: Promise.resolve(),
-      };
-      created.session.catch(() => this.agents.delete(session));
-      this.agents.set(session, created);
-      agent = created;
-    }
-    const current = agent;
+    const current = this.subagent(session);
     let agentSession: AgentSession;
     try {
       agentSession = await current.session;

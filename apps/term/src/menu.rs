@@ -228,6 +228,7 @@ mod tests {
 
     fn info(id: &str, title: Option<&str>, cwd: &str, last: i64) -> SessionInfo {
         SessionInfo {
+            parent: None,
             id: id.into(),
             title: title.map(Into::into),
             cwd: cwd.into(),

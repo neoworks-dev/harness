@@ -47,7 +47,7 @@ function describeToolCall(name: string, args: unknown): { title: string; kind: T
     case "delegate": {
       const task = stringArg(args, "task").split("\n")[0] ?? "";
       return {
-        title: `${stringArg(args, "agent")}: ${task.slice(0, TITLE_COMMAND_CHARS)}`,
+        title: `${stringArg(args, "agent")} · ${task.slice(0, TITLE_COMMAND_CHARS)}`,
         kind: "think",
       };
     }

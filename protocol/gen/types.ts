@@ -235,18 +235,24 @@ export interface ConnectorsChanged {
   payload: ConnectorsListPayload;
 }
 
-/** Client → daemon: follow the resolved view of a session. Replied to with view.snapshot, then view.patch for every later change. Re-subscribing sends a fresh snapshot. */
+export interface ViewRef {
+  session: string;
+  /** Only the work labelled with this agent (a subagent, or a guest the user addressed): its messages, thoughts, tool calls, plan and questions, nothing of the main conversation. Without it: the session's own view, where a delegation is one tool item. */
+  agent?: string;
+}
+
+/** Client → daemon: follow the resolved view of a session, or (with agent) the view of one agent's work in it. Replied to with view.snapshot, then view.patch for every later change. Re-subscribing sends a fresh snapshot. */
 export interface ViewSubscribe {
   topic: "view.subscribe";
   id: string;
-  payload: SessionRef;
+  payload: ViewRef;
 }
 
 /** Client → daemon (acked). */
 export interface ViewUnsubscribe {
   topic: "view.unsubscribe";
   id: string;
-  payload: SessionRef;
+  payload: ViewRef;
 }
 
 /** Daemon → client: reply to view.subscribe. */
@@ -464,7 +470,9 @@ export type SessionEvent =
   | Plan
   | Usage
   | EditsReverted
-  | UserNote;
+  | UserNote
+  | SubagentStarted
+  | SubagentEnded;
 
 export type SessionEventTag = SessionEvent["type"];
 
@@ -641,6 +649,8 @@ export interface SessionInfo {
   added?: number;
   /** Lines removed by edits in this session. */
   removed?: number;
+  /** The session that delegated a task into this one (a subagent working in another directory, e.g. a worktree). Its turns run on the harness it was delegated to. */
+  parent?: string;
 }
 
 /** A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template. */
@@ -680,6 +690,36 @@ export interface UserNote {
   about?: string;
 }
 
+/** The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event. */
+export interface SubagentStarted {
+  type: "subagent_started";
+  id: string;
+  /** Harness name: pi, claude, codex… */
+  agent: string;
+  task: string;
+  /** The model it runs with, when one was chosen for this task or by the user. */
+  model?: string;
+  effort?: string;
+  /** The directory it works in, when that is not the session's. */
+  cwd?: string;
+  /** A subagent working in another directory runs as its own session (parent = this one); its id. */
+  child?: string;
+}
+
+/** The subagent started by subagent_started finished, failed or was stopped. */
+export interface SubagentEnded {
+  type: "subagent_ended";
+  id: string;
+  stopReason: StopReason;
+  error?: string;
+}
+
+/** One labelled fact of a permission request, drawn as a highlighted key–value row above the content. */
+export interface PermissionDetail {
+  key: string;
+  value: string;
+}
+
 export interface PermissionOption {
   id: string;
   name: string;
@@ -698,6 +738,8 @@ export interface PermissionRequest {
   kind?: ToolKind;
   /** What to preview: for an edit, the diff that has not been applied yet. */
   content?: ToolCallContent[];
+  /** Labelled facts shown above the content, e.g. a delegation's harness, model, effort and directory. */
+  details?: PermissionDetail[];
   options: PermissionOption[];
 }
 
@@ -902,6 +944,8 @@ export interface KvComponent {
 export interface KvItem {
   key: string;
   value: string;
+  /** Highlights the value (accent) or colors it by meaning. */
+  tone?: Tone;
 }
 
 /** A bar. TUI: ▓▓▓░░ 60%. */
@@ -1028,6 +1072,8 @@ export interface RemoveViewOp {
 /** Everything in the session as drawn, as of seq. */
 export interface ViewSnapshot {
   session: string;
+  /** Set for a per-agent view (view.subscribe with agent): only that agent's work. */
+  agent?: string;
   seq: number;
   items: ViewItem[];
 }
@@ -1035,6 +1081,8 @@ export interface ViewSnapshot {
 /** Changes caused by the session event with this seq, applied in order. */
 export interface ViewPatch {
   session: string;
+  /** Set for a per-agent view: patches of the main view have none. */
+  agent?: string;
   seq: number;
   ops: ViewOp[];
 }

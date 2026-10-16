@@ -30,6 +30,8 @@ export interface DelegateArgs {
   task: string;
   model?: string;
   effort?: string;
+  cwd?: string;
+  worktree?: string;
 }
 
 export const CORE_TOOLS: readonly CoreToolDefinition[] = data.tools.map((tool) => {

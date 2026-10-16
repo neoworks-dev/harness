@@ -192,6 +192,7 @@ h1.suite-heading, h2.suite-heading { font-size: var(--suite-title-size); }
 .suite-kv { display: grid; grid-template-columns: max-content 1fr; gap: 0 var(--suite-space-l); margin: 0; }
 .suite-kv > dt { color: var(--suite-muted); }
 .suite-kv > dd { margin: 0; }
+${toneRules((tone) => `.suite-kv > dd[data-tone="${tone}"]`, "color")}
 
 .suite-progress { display: flex; align-items: center; gap: var(--suite-space-m); }
 .suite-progress-track { flex: 1; min-width: 6em; height: 8px; border-radius: 4px; background: var(--suite-border); overflow: hidden; }

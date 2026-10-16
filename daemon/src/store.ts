@@ -11,6 +11,8 @@ export interface SessionRow {
   id: string;
   title?: string;
   cwd: string;
+  /** The session that delegated into this one. */
+  parent?: string;
   createdAt: number;
   lastActivity: number;
   lastSeq: number;
@@ -19,6 +21,7 @@ export interface SessionRow {
 interface SessionDbRow {
   id: string;
   title: string | null;
+  parent: string | null;
   cwd: string;
   created_at: number;
   last_activity: number;
@@ -93,6 +96,7 @@ function toRow(r: SessionDbRow): SessionRow {
     lastSeq: r.last_seq,
   };
   if (r.title !== null) row.title = r.title;
+  if (r.parent !== null) row.parent = r.parent;
   return row;
 }
 
@@ -113,6 +117,11 @@ export class SessionStore {
       "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;",
     );
     this.db.exec(SCHEMA);
+    // Added after the first release: sessions of an older database have no parent column.
+    const columns = this.db.query<{ name: string }, []>("PRAGMA table_info(sessions)").all();
+    if (!columns.some((column) => column.name === "parent")) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN parent TEXT");
+    }
 
     // The counter lives on the session row, so the next seq is derived inside the same
     // transaction that inserts the event: no gaps or reuse, also across restarts.
@@ -130,13 +139,19 @@ export class SessionStore {
     });
   }
 
-  createSession(params: { id: string; cwd: string; title?: string; now?: number }): SessionRow {
+  createSession(params: {
+    id: string;
+    cwd: string;
+    title?: string;
+    parent?: string;
+    now?: number;
+  }): SessionRow {
     const now = params.now ?? Date.now();
     this.db
       .query(
-        "INSERT INTO sessions (id, title, cwd, created_at, last_activity) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO sessions (id, title, parent, cwd, created_at, last_activity) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      .run(params.id, params.title ?? null, params.cwd, now, now);
+      .run(params.id, params.title ?? null, params.parent ?? null, params.cwd, now, now);
     const row = this.getSession(params.id);
     if (!row) throw new Error(`failed to create session ${params.id}`);
     return row;

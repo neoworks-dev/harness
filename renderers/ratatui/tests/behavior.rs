@@ -6,7 +6,13 @@ use common::*;
 use ratatui::style::{Color, Modifier};
 use ratatui::text::Line;
 use serde_json::json;
-use suite_renderer_ratatui::{Options, Palette, buttons, render_item};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use suite_renderer_ratatui::{
+    ImageOptions, ImageSlot, ImageStatus, Options, Palette, buttons, image_cells, image_sources,
+    plain_text, render_item, render_item_images,
+};
 
 fn pal() -> Palette {
     Palette::default()
@@ -653,6 +659,29 @@ fn kv_aligns_values_and_wraps_them() {
 }
 
 #[test]
+fn a_kv_value_with_a_tone_is_highlighted_in_the_full_and_the_compact_form() {
+    let kv = r#"{"type":"kv","items":[{"key":"Harness","value":"pi","tone":"accent"},{"key":"Model","value":"default"}]}"#;
+    let accent = pal().accent;
+    let full = render_item(&item_of("agent", "", kv), 40, &Options::default());
+    let value = |line: usize, text: &str| {
+        full[line]
+            .spans
+            .iter()
+            .find(|s| s.content == text)
+            .map(|s| s.style)
+            .expect(text)
+    };
+    assert_eq!(value(0, "pi").fg, Some(accent));
+    assert!(value(0, "pi").add_modifier.contains(Modifier::BOLD));
+    assert_eq!(value(1, "default").fg, None, "no tone, no highlight");
+
+    let compact = render_item(&tool("done", kv), 60, &Options::default());
+    let pi = compact[1].spans.iter().find(|s| s.content == "pi").unwrap();
+    assert_eq!(pi.style.fg, Some(accent));
+    assert_eq!(compact[1].to_string(), "  ⎿ Harness: pi · Model: default");
+}
+
+#[test]
 fn small_components() {
     let p = |v: &str| format!(r#"{{"type":"progress","value":{v},"label":"Compressing"}}"#);
     assert_eq!(one(&p("0.6"), 60), ["▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░ 60% Compressing"]);
@@ -824,4 +853,181 @@ fn colors_come_from_the_palette() {
     };
     let head = &render_item(&tool("done", &code("x")), 40, &opts)[0];
     assert_eq!(head.spans[0].style.fg, Some(Color::Rgb(0, 255, 0)));
+}
+
+// ---- images ----
+
+fn with_images(rows: u16, status: &[(&str, ImageStatus)]) -> Options {
+    Options {
+        images: Some(ImageOptions {
+            max_rows: rows,
+            cell: (10, 20),
+            status: Arc::new(
+                status
+                    .iter()
+                    .map(|(s, st)| (s.to_string(), st.clone()))
+                    .collect::<HashMap<_, _>>(),
+            ),
+        }),
+        ..Options::default()
+    }
+}
+
+fn ready(width: u32, height: u32) -> ImageStatus {
+    ImageStatus::Ready { width, height }
+}
+
+const PNG: &str = r#"{"type":"image","src":"/tmp/cat.png","alt":"a cat"}"#;
+
+#[test]
+fn images_off_keep_the_placeholder() {
+    let it = item_of("agent", "", PNG);
+    assert_eq!(lines(&it, 40), ["[image a cat]"]);
+    let out = render_item_images(&it, 40, &Options::default());
+    assert!(out.images.is_empty());
+    // Status that is passed but not asked for changes nothing.
+    assert_eq!(
+        lines_of(&it, 40, &with_images(12, &[])),
+        ["[image a cat] loading image…"]
+    );
+}
+
+#[test]
+fn cells_keep_the_aspect_ratio_and_never_grow() {
+    // 10x20 pixel cells: a 400x400 picture is 40 cols x 20 rows (cells are twice as tall).
+    assert_eq!(image_cells(400, 400, (10, 20), 80, 30), (40, 20));
+    assert_eq!(image_cells(400, 400, (10, 20), 80, 10), (20, 10));
+    assert_eq!(image_cells(400, 400, (10, 20), 16, 30), (16, 8));
+    assert_eq!(image_cells(1024, 768, (10, 20), 80, 12), (32, 12));
+    assert_eq!(image_cells(10, 10, (10, 20), 80, 12), (1, 1));
+    assert_eq!(image_cells(0, 0, (10, 20), 80, 12), (1, 1));
+    assert_eq!(image_cells(1000, 10, (10, 20), 40, 12), (40, 1));
+}
+
+#[test]
+fn a_known_image_reserves_rows_and_a_caption() {
+    let it = item_of("agent", "", PNG);
+    let opts = with_images(12, &[("/tmp/cat.png", ready(1024, 768))]);
+    let out = render_item_images(&it, 80, &opts);
+    let text = plain_text(&out.lines);
+    assert_eq!(text.len(), 12 + 1);
+    assert!(text[..12].iter().all(String::is_empty));
+    assert_eq!(text[12], "a cat · 1024×768");
+    assert_eq!(
+        out.images,
+        [ImageSlot {
+            line: 0,
+            x: 0,
+            cols: 32,
+            rows: 12,
+            src: "/tmp/cat.png".into()
+        }]
+    );
+    // No mark is left in the lines.
+    assert!(out.lines.iter().all(|l| l.width() <= 80));
+    assert!(
+        out.lines
+            .iter()
+            .flat_map(|l| &l.spans)
+            .all(|s| s.content != "\u{2060}")
+    );
+    // Narrower than the picture: scaled down to the width, fewer rows.
+    let out = render_item_images(&it, 16, &opts);
+    assert_eq!((out.images[0].cols, out.images[0].rows), (16, 6));
+    assert_eq!(plain_text(&out.lines).len(), 6 + 1);
+}
+
+#[test]
+fn slots_follow_the_indent_of_where_the_image_sits() {
+    let it = tool("done", PNG);
+    let opts = with_images(30, &[("/tmp/cat.png", ready(200, 100))]);
+    // Collapsed: under the elbow.
+    let out = render_item_images(&it, 40, &opts);
+    let rows = plain_text(&out.lines);
+    assert_eq!(rows[0], "● bash: ls");
+    assert_eq!((out.images[0].line, out.images[0].x), (1, 4));
+    assert_eq!(rows[1], "  ⎿");
+    assert_eq!(rows.last().unwrap(), "    a cat · 200×100");
+    // Expanded: indented 2.
+    let open = Options {
+        expanded: true,
+        ..opts
+    };
+    let out = render_item_images(&it, 40, &open);
+    assert_eq!((out.images[0].line, out.images[0].x), (1, 2));
+    // Inside a card the gutter is the indent, and later lines keep their place.
+    let card = item_of(
+        "agent",
+        "",
+        &format!(
+            r#"{{"type":"card","title":"T","children":[{PNG},{}]}}"#,
+            text("after")
+        ),
+    );
+    let out = render_item_images(&card, 40, &open);
+    assert_eq!((out.images[0].line, out.images[0].x), (1, 2));
+    let text = plain_text(&out.lines);
+    assert_eq!(text.last().unwrap(), "│ after");
+    assert_eq!(
+        text[out.images[0].line + usize::from(out.images[0].rows)],
+        "│ a cat · 200×100"
+    );
+}
+
+#[test]
+fn several_images_each_get_a_slot_in_order() {
+    let two = format!(
+        r#"{{"type":"stack","children":[{PNG},{}, {{"type":"image","src":"asset://b"}}]}}"#,
+        text("between")
+    );
+    let it = item_of("agent", "", &two);
+    let opts = with_images(
+        12,
+        &[
+            ("/tmp/cat.png", ready(100, 100)),
+            ("asset://b", ready(300, 300)),
+        ],
+    );
+    let out = render_item_images(&it, 40, &opts);
+    assert_eq!(out.images.len(), 2);
+    assert_eq!(out.images[0].src, "/tmp/cat.png");
+    assert_eq!(out.images[1].src, "asset://b");
+    assert!(out.images[1].line > out.images[0].line + 5);
+    assert_eq!(image_sources(&it), ["/tmp/cat.png", "asset://b"]);
+}
+
+#[test]
+fn unready_images_are_a_line_of_text() {
+    let it = item_of("agent", "", PNG);
+    let loading = with_images(12, &[("/tmp/cat.png", ImageStatus::Loading)]);
+    assert_eq!(
+        lines_of(&it, 40, &loading),
+        ["[image a cat] loading image…"]
+    );
+    let failed = with_images(
+        12,
+        &[("/tmp/cat.png", ImageStatus::Failed("not found".into()))],
+    );
+    let out = render_item_images(&it, 40, &failed);
+    assert_eq!(plain_text(&out.lines), ["[image a cat · not found]"]);
+    assert!(out.images.is_empty());
+}
+
+#[test]
+fn a_collapsed_tool_result_keeps_the_text_and_the_picture() {
+    let both = format!(
+        r#"{{"type":"stack","children":[{},{PNG}]}}"#,
+        code("Read image cat.png (image/png, 4 bytes).")
+    );
+    let it = tool("done", &both);
+    let opts = with_images(4, &[("/tmp/cat.png", ready(400, 400))]);
+    let out = render_item_images(&it, 60, &opts);
+    let text = plain_text(&out.lines);
+    assert_eq!(text[1], "  ⎿ Read image cat.png (image/png, 4 bytes).");
+    assert_eq!(out.images.len(), 1);
+    assert_eq!(out.images[0].line, 2);
+    assert_eq!(out.images[0].rows, 4);
+    for width in [1u16, 2, 5, 12] {
+        assert_fits(&render_item(&it, width, &opts), width);
+    }
 }

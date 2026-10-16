@@ -125,31 +125,6 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     resolveAsset: (handle) => assets.resolve(handle),
     requestPermission: (session, name) => permissions.hook(session, name),
   });
-  const gateway = new Gateway(connectors, {
-    log,
-    resolveAsset: (handle) => assets.resolve(handle),
-    recordResult: (session, result) => {
-      store.append(session, result);
-    },
-    delegate: createDelegate({
-      guests,
-      asker,
-      settings: (session, guest) => settings.get(session, guest),
-      append: (session, event) => {
-        store.append(session, event);
-      },
-      main: harnessOf,
-      autoApprove: (session) => settings.approvals(session) === "auto",
-    }),
-    focus: (app, session) => {
-      try {
-        focus?.move({ app, session }, "agent");
-        return undefined;
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    },
-  });
   const summaries = new SessionSummaries(store);
   const sessions = new SessionManager(store, agent, {
     describe: (sessionId) => summaries.get(sessionId),
@@ -168,9 +143,47 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       settings.inheritHarness(sessionId, (name) => name === agent.name || guests.has(name)),
   });
   sessions.recoverInterruptedTurns();
+  const delegate = createDelegate({
+    guests,
+    asker,
+    sessions,
+    store,
+    settings: (session, guest) => settings.get(session, guest),
+    append: (session, event) => {
+      store.append(session, event);
+    },
+    main: harnessOf,
+    approvals: (session) => settings.approvals(session),
+    cwd: (session) => store.getSession(session)?.cwd ?? options.defaultCwd,
+    autoApprove: (session) => settings.approvals(session) === "auto",
+  });
+  const gateway = new Gateway(connectors, {
+    log,
+    resolveAsset: (handle) => assets.resolve(handle),
+    recordResult: (session, result) => {
+      store.append(session, result);
+    },
+    delegate: delegate.run,
+    focus: (app, session) => {
+      try {
+        focus?.move({ app, session }, "agent");
+        return undefined;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+  });
   focus = new FocusManager(store, sessions, connectors, log);
   const views = new ViewManager(store, (tool) => connectors.template(tool), log);
-  const actions = new ActionRunner({ store, sessions, connectors, gateway, views, asker });
+  const actions = new ActionRunner({
+    store,
+    sessions,
+    connectors,
+    gateway,
+    views,
+    asker,
+    cancelAgent: delegate.cancel,
+  });
   const commands = new Commands({
     sessions,
     guests,

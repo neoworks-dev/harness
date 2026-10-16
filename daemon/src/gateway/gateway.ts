@@ -167,7 +167,7 @@ export class Gateway {
         if (typeof args.task !== "string" || args.task.trim() === "") {
           return text("delegate: task is required", true);
         }
-        for (const key of ["model", "effort"]) {
+        for (const key of ["model", "effort", "cwd", "worktree"]) {
           if (args[key] !== undefined && typeof args[key] !== "string") {
             return text(`delegate: ${key} must be a string`, true);
           }

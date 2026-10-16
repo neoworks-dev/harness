@@ -1,7 +1,7 @@
 //! Everything between the app state and the daemon: choosing the session at start, a worker
 //! thread that runs the app's blocking requests, and pumping the client's events into the app.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, mpsc};
 use std::thread;
@@ -230,6 +230,10 @@ fn work(client: &Client, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sen
     let fail = |what: &str, err: suite_sdk::Error| {
         let _ = msgs.send(Msg::Error(format!("{what}: {err}")));
     };
+    // What is followed besides the shown session: the sessions of subagents in directories of
+    // their own, and the views of single agents (transcripts). Dropped when the session changes.
+    let mut watched: HashSet<String> = HashSet::new();
+    let mut agent_views: HashSet<(String, String)> = HashSet::new();
     while let Ok(Job::Effect(effect)) = jobs.recv() {
         match effect {
             Effect::Input { session, text } => {
@@ -252,12 +256,37 @@ fn work(client: &Client, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sen
                     fail("cancel failed", err);
                 }
             }
+            Effect::Watch { session } => {
+                if watched.insert(session.clone())
+                    && let Err(err) = client.subscribe(&session, 1)
+                {
+                    watched.remove(&session);
+                    fail("following a subagent failed", err);
+                }
+            }
+            Effect::AgentView { session, agent, on } => {
+                let key = (session.clone(), agent.clone());
+                if on {
+                    agent_views.insert(key);
+                    if let Err(err) = client.subscribe_agent_view(&session, &agent) {
+                        fail("opening the transcript failed", err);
+                    }
+                } else if agent_views.remove(&key) {
+                    let _ = client.unsubscribe_agent_view(&session, &agent);
+                }
+            }
             Effect::Switch {
                 from,
                 to,
                 cwd,
                 move_agent,
             } => {
+                for (session, agent) in agent_views.drain() {
+                    let _ = client.unsubscribe_agent_view(&session, &agent);
+                }
+                for session in watched.drain().filter(|s| *s != to) {
+                    let _ = client.unsubscribe(&session);
+                }
                 if let Err(err) = switch(client, app, from.as_deref(), &to, &cwd, move_agent) {
                     fail("switching session failed", err);
                 }
@@ -419,6 +448,7 @@ mod tests {
 
     fn info(id: &str, cwd: &str, last: i64) -> SessionInfo {
         SessionInfo {
+            parent: None,
             id: id.into(),
             title: None,
             cwd: cwd.into(),

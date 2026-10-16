@@ -8,7 +8,11 @@ use crate::text::{
     clean, clip, hard_wrap, line_width, one_line, push_text, sline, truncate, truncate_spans,
     width, wrap,
 };
-use crate::{Options, Palette};
+use crate::{ImageOptions, ImageSlot, ImageStatus, Options, Palette, image_cells};
+
+/// Marks the first line reserved for an image until `item` has found its place. Zero width, so
+/// padding and clipping ignore it; it is removed before the lines leave the renderer.
+const SLOT_MARK: &str = "\u{2060}";
 
 pub(crate) type Lines = Vec<Line<'static>>;
 
@@ -20,6 +24,10 @@ pub(crate) struct Cx<'a> {
     pub(crate) next_button: usize,
     /// Lines of diffs and code still allowed in the item being drawn (None: no limit).
     budget: Option<usize>,
+    /// Rooms reserved for images so far, top to bottom: (cols, rows, src).
+    rooms: Vec<(u16, u16, String)>,
+    /// Where those rooms ended up, once the item is laid out.
+    slots: Vec<ImageSlot>,
 }
 
 impl<'a> Cx<'a> {
@@ -29,7 +37,13 @@ impl<'a> Cx<'a> {
             p: o.theme,
             next_button: 0,
             budget: None,
+            rooms: Vec::new(),
+            slots: Vec::new(),
         }
+    }
+
+    pub(crate) fn take_slots(&mut self) -> Vec<ImageSlot> {
+        std::mem::take(&mut self.slots)
     }
 
     // ---- items ----
@@ -43,8 +57,38 @@ impl<'a> Cx<'a> {
             pb::ItemKind::Tool => self.tool(it, label, w),
             pb::ItemKind::Notice => self.notice(it, w),
         };
+        self.place_rooms(&mut lines);
         clip(&mut lines, w);
         lines
+    }
+
+    /// Finds the marked lines (the rooms for images, in order), takes the marks out and notes
+    /// each room's line and column. However the components were nested, the marker line's text
+    /// before the mark is exactly the room's indent.
+    fn place_rooms(&mut self, lines: &mut Lines) {
+        let rooms = std::mem::take(&mut self.rooms);
+        let mut found: Vec<(usize, u16)> = Vec::new();
+        for (i, line) in lines.iter_mut().enumerate() {
+            while let Some(at) = line.spans.iter().position(|s| s.content == SLOT_MARK) {
+                let x = line_width(&line.spans[..at]);
+                line.spans.remove(at);
+                found.push((i, u16::try_from(x).unwrap_or(u16::MAX)));
+            }
+        }
+        if found.len() != rooms.len() {
+            return;
+        }
+        self.slots = found
+            .into_iter()
+            .zip(rooms)
+            .map(|((line, x), (cols, rows, src))| ImageSlot {
+                line,
+                x,
+                cols,
+                rows,
+                src,
+            })
+            .collect();
     }
 
     /// `› text` on a full-width band (`Palette::band`), so what the user said stands out
@@ -472,22 +516,73 @@ impl<'a> Cx<'a> {
             .collect()
     }
 
-    fn image(&self, v: &pb::ImageComponent, w: usize) -> Lines {
+    /// With images on: room for the picture when it is known, else a line of text saying why
+    /// not; then the caption. Without: `[image alt · W×H]`.
+    pub(crate) fn image(&mut self, v: &pb::ImageComponent, w: usize) -> Lines {
+        let muted = self.p.muted_style();
         let name = v
             .alt
             .as_deref()
             .map(one_line)
             .filter(|a| !a.is_empty())
             .unwrap_or_else(|| one_line(&v.src));
-        let mut s = format!("[image {name}");
-        if let (Some(iw), Some(ih)) = (v.width, v.height) {
-            s.push_str(&format!(" · {iw}×{ih}"));
-        }
-        s.push(']');
-        let mut out = wrap(&[Span::styled(s, self.p.muted_style())], w);
+        let mut out = match self.o.images.as_ref() {
+            None => {
+                let mut s = format!("[image {name}");
+                if let (Some(iw), Some(ih)) = (v.width, v.height) {
+                    s.push_str(&format!(" · {iw}×{ih}"));
+                }
+                s.push(']');
+                wrap(&[Span::styled(s, muted)], w)
+            }
+            Some(images) => match images.status.get(&v.src) {
+                Some(ImageStatus::Ready { width, height }) => {
+                    let name = v
+                        .alt
+                        .as_deref()
+                        .map(one_line)
+                        .filter(|a| !a.is_empty())
+                        .unwrap_or_else(|| file_name(&v.src));
+                    self.room(images, &v.src, (*width, *height), &name, w)
+                }
+                Some(ImageStatus::Failed(why)) => wrap(
+                    &[Span::styled(
+                        format!("[image {name} · {}]", one_line(why)),
+                        muted,
+                    )],
+                    w,
+                ),
+                _ => wrap(
+                    &[Span::styled(
+                        format!("[image {name}] loading image…"),
+                        muted,
+                    )],
+                    w,
+                ),
+            },
+        };
         if let Some(cap) = v.caption.as_deref().map(clean).filter(|c| !c.is_empty()) {
             out.extend(wrap(&[Span::raw(cap.into_owned())], w));
         }
+        out
+    }
+
+    /// The marked first line, the empty lines under it, then `name · W×H`.
+    fn room(
+        &mut self,
+        images: &ImageOptions,
+        src: &str,
+        (iw, ih): (u32, u32),
+        name: &str,
+        w: usize,
+    ) -> Lines {
+        let max_cols = u16::try_from(w).unwrap_or(u16::MAX);
+        let (cols, rows) = image_cells(iw, ih, images.cell, max_cols, images.max_rows);
+        self.rooms.push((cols, rows, src.to_string()));
+        let mut out = vec![Line::from(Span::raw(SLOT_MARK))];
+        out.resize(usize::from(rows), Line::default());
+        let caption = format!("{name} · {iw}×{ih}");
+        out.extend(wrap(&[Span::styled(caption, self.p.muted_style())], w));
         out
     }
 
@@ -540,6 +635,16 @@ impl<'a> Cx<'a> {
         out
     }
 
+    /// A kv value with a tone is highlighted: its color, bold.
+    pub(crate) fn value_style(&self, item: &pb::KvItem) -> Style {
+        match item.tone {
+            Some(tone) => Style::new()
+                .fg(self.p.tone(tone))
+                .add_modifier(Modifier::BOLD),
+            None => Style::new(),
+        }
+    }
+
     fn kv(&self, v: &pb::KvComponent, w: usize) -> Lines {
         let keys: Vec<String> = v.items.iter().map(|i| one_line(&i.key)).collect();
         let key_w = keys
@@ -556,7 +661,10 @@ impl<'a> Cx<'a> {
                 Span::raw(" ".repeat(key_w - width(&key) + 2)),
             ];
             let value = clean(&item.value).into_owned();
-            let mut body = wrap(&[Span::raw(value)], w.saturating_sub(key_w + 2).max(1));
+            let mut body = wrap(
+                &[Span::styled(value, self.value_style(item))],
+                w.saturating_sub(key_w + 2).max(1),
+            );
             if body.is_empty() {
                 body.push(Line::default());
             }
@@ -692,6 +800,25 @@ impl<'a> Cx<'a> {
             }
         }
         Line::from(truncate_spans(spans, w))
+    }
+}
+
+/// The last part of a path (the whole of anything else).
+fn file_name(src: &str) -> String {
+    match src.rsplit_once('/') {
+        Some((_, name)) if !name.is_empty() && !src.contains("://") => one_line(name),
+        _ => one_line(src),
+    }
+}
+
+/// The sources of the images that are drawn in full: not inside a table or the like.
+pub(crate) fn sources(c: &pb::Component, out: &mut Vec<String>) {
+    match c {
+        pb::Component::ImageComponent(v) => out.push(v.src.clone()),
+        pb::Component::CardComponent(v) => v.children.iter().for_each(|c| sources(c, out)),
+        pb::Component::RowComponent(v) => v.children.iter().for_each(|c| sources(c, out)),
+        pb::Component::StackComponent(v) => v.children.iter().for_each(|c| sources(c, out)),
+        _ => {}
     }
 }
 

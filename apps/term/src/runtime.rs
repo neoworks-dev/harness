@@ -10,9 +10,11 @@ use ratatui::crossterm::event::{
     Event,
 };
 use ratatui::crossterm::execute;
+use ratatui_image::picker::Picker;
 
 use crate::driver::{self, Driver, StartError, StartOptions, USAGE};
 use crate::history::HistoryStore;
+use crate::images::{self, Assets, Images};
 use crate::util::{now_ms, osc52};
 
 /// How long to wait for a key before looking at the daemon's events again.
@@ -72,6 +74,8 @@ pub fn main() -> ExitCode {
 /// Puts the terminal back when dropped, including while unwinding from a panic.
 struct Screen {
     terminal: DefaultTerminal,
+    /// What the terminal shows images with (None: `SUITE_TERM_IMAGES=off`).
+    picker: Option<Picker>,
 }
 
 impl Screen {
@@ -80,13 +84,17 @@ impl Screen {
         // that restores them; the hook is extended to end bracketed paste and mouse capture
         // too. The mouse is captured for the wheel; selecting text then takes shift-drag.
         let terminal = ratatui::init();
+        // The terminal is asked what it can draw now: after raw mode and before any key or
+        // mouse event can get mixed up with the answer.
+        let mode = images::parse_mode(std::env::var(images::ENV).ok().as_deref());
+        let picker = images::detect(mode);
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
             let _ = execute!(io::stdout(), DisableBracketedPaste, DisableMouseCapture);
             previous(info);
         }));
         execute!(io::stdout(), EnableBracketedPaste, EnableMouseCapture)?;
-        Ok(Screen { terminal })
+        Ok(Screen { terminal, picker })
     }
 }
 
@@ -99,6 +107,18 @@ impl Drop for Screen {
 
 fn run(mut app: crate::app::App, driver: Driver) -> io::Result<()> {
     let mut screen = Screen::enter()?;
+    if let Some(picker) = screen.picker.take() {
+        // `asset://` handles are looked up with the daemon, on the image thread.
+        let client = driver.client().clone();
+        let assets: Assets = std::sync::Arc::new(move |handle| {
+            client
+                .get_asset(handle)
+                .map(|asset| asset.path.into())
+                .map_err(|err| format!("asset lookup failed: {err}"))
+        });
+        let cwd = std::path::PathBuf::from(app.cwd());
+        app.set_images(Images::new(picker, cwd, Some(assets)));
+    }
     let size = screen.terminal.size()?;
     app.resize(size.width, size.height);
     loop {

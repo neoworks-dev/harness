@@ -1,0 +1,9 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 15,
+    "ts": 1760565601300,
+    "event": { "type": "subagent_ended", "id": "d_1a2b3c4d", "stopReason": "end_turn" }
+  }
+}

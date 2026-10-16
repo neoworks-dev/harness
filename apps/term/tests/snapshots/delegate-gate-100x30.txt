@@ -1,0 +1,30 @@
+▎     step 5: do the thing
+▎     step 6: do the thing
+▎     step 7: do the thing
+▎     step 8: do the thing
+▎     step 9: do the thing
+▎     step 10: do the thing                                                                        │
+▎     step 11: do the thing                                                                        │
+▎     step 12: do the thing                                                                        │
+▎   … 18 more lines (expand to see all)                                                            │
+▎                                                                                                  │
+▎   [1 Start pi]  [2 Allow pi for this session]  [3 Reject]                                        │
+────────────────────────────────────────────────────────────────────────────────────────────────────
+▎ ● claude asks: Start a subagent?
+▎   Harness    pi
+▎   Model      deepseek/deepseek-v4-flash
+▎   Effort     medium
+▎   Directory  ~/site/.worktrees/fix-login (new worktree, branch fix-login)
+▎     step 1: do the thing
+▎     step 2: do the thing
+▎     step 3: do the thing
+▎     step 4: do the thing
+▎     step 5: do the thing
+▎     step 6: do the thing
+▎   … 24 more lines (expand to see all)
+▎
+▎   [1 Start pi]  [2 Allow pi for this session]  [3 Reject]
+▎ enter start pi · ←/→ choose · tab add a note · esc dismiss
+~/site · pi
+
+? ask before acting (shift+tab to cycle)

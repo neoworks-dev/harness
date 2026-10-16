@@ -55,6 +55,8 @@ describe("protocol examples", () => {
       usage: true,
       edits_reverted: true,
       user_note: true,
+      subagent_started: true,
+      subagent_ended: true,
     };
     expect([...seen].sort()).toEqual(Object.keys(all).sort());
   });

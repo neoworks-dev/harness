@@ -71,7 +71,7 @@
     },
     {
       "name": "delegate",
-      "description": "Hand a task to a subagent: another agent harness (pi; claude: Claude Code; codex: Codex), the one you run on included. It works in this session's directory with its own tools plus the same connectors, its progress shows in this chat, and its final reply comes back as the result. The user is asked before it starts. model and effort are optional: without them it uses what the user chose for that harness, else its own defaults. Write the task so it stands alone; follow-up delegations to the same agent continue its conversation. Subagents can't delegate.",
+      "description": "Hand a task to a subagent: another agent harness (pi; claude: Claude Code; codex: Codex), the one you run on included. It works in this session's directory (or the cwd or git worktree you name, as its own session there) with its own tools plus the same connectors, and its final reply comes back as the result. The user is asked before it starts. model and effort are optional: without them it uses what the user chose for that harness, else its own defaults. Write the task so it stands alone; follow-up delegations to the same agent continue its conversation. Subagents can't delegate.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -91,6 +91,14 @@
           "effort": {
             "type": "string",
             "description": "Reasoning effort for this task, as that harness names it (e.g. low, medium, high). Default: the user's choice or the harness's own."
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Directory to work in, absolute or relative to this session's. Default: this session's directory."
+          },
+          "worktree": {
+            "type": "string",
+            "description": "Work in a git worktree of this session's repository with this name (created as .worktrees/<name> on a new branch of that name if it doesn't exist). Not together with cwd."
           }
         },
         "required": ["agent", "task"],

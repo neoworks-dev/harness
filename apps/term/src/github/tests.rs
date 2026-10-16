@@ -1287,6 +1287,7 @@ fn a_session_switch_closes_the_view_and_drops_the_cache() {
         preview: None,
         added: None,
         removed: None,
+        parent: None,
     };
     app.handle_msg(crate::app::Msg::Created(Ok(info)));
     assert!(!app.github_mut().is_open());

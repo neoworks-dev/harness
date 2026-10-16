@@ -14,7 +14,7 @@ import type { Logger } from "./log.ts";
 import { NotFoundError, type SessionManager } from "./sessions.ts";
 import type { SessionStore } from "./store.ts";
 import type { ConnectorRegistry } from "./gateway/registry.ts";
-import type { ViewManager } from "./view/views.ts";
+import { type ViewManager, viewKey } from "./view/views.ts";
 import { BadRequestError, type FocusManager } from "./focus.ts";
 
 export const PROTOCOL_VERSION = 1;
@@ -75,8 +75,9 @@ export class Hub {
   ) {
     const { connectors, focus, views } = parts;
     views?.onPatch((payload) => {
+      const key = viewKey(payload.session, payload.agent);
       for (const client of this.clients) {
-        if (client.views.has(payload.session)) this.send(client, { topic: "view.patch", payload });
+        if (client.views.has(key)) this.send(client, { topic: "view.patch", payload });
       }
     });
     focus?.onChange((payload) => this.broadcastAll({ topic: "agent.focus", payload }));
@@ -338,20 +339,20 @@ export class Hub {
         this.send(client, { topic: "bus.ack", id: msg.id });
         return;
       case "view.subscribe": {
-        const { session } = msg.payload;
+        const { session, agent } = msg.payload;
         if (!this.parts.views) {
           this.fail(client, msg.id, "bad_request", "this daemon has no view resolver");
           return;
         }
         if (!this.sessions.info(session)) throw new NotFoundError(`no session ${session}`);
         // Synchronous, like session.subscribe: no patch can slip between snapshot and live.
-        const snapshot = this.parts.views.get(session).snapshot();
-        client.views.add(session);
+        const snapshot = this.parts.views.get(session, agent).snapshot();
+        client.views.add(viewKey(session, agent));
         this.send(client, { topic: "view.snapshot", id: msg.id, payload: snapshot });
         return;
       }
       case "view.unsubscribe":
-        client.views.delete(msg.payload.session);
+        client.views.delete(viewKey(msg.payload.session, msg.payload.agent));
         this.send(client, { topic: "bus.ack", id: msg.id });
         return;
       case "ui.action": {

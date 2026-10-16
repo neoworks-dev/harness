@@ -590,8 +590,22 @@
       "required": ["topic", "payload"],
       "additionalProperties": false
     },
+    "ViewRef": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string",
+          "description": "Only the work labelled with this agent (a subagent, or a guest the user addressed): its messages, thoughts, tool calls, plan and questions, nothing of the main conversation. Without it: the session's own view, where a delegation is one tool item."
+        }
+      },
+      "required": ["session"],
+      "additionalProperties": false
+    },
     "ViewSubscribe": {
-      "description": "Client → daemon: follow the resolved view of a session. Replied to with view.snapshot, then view.patch for every later change. Re-subscribing sends a fresh snapshot.",
+      "description": "Client → daemon: follow the resolved view of a session, or (with agent) the view of one agent's work in it. Replied to with view.snapshot, then view.patch for every later change. Re-subscribing sends a fresh snapshot.",
       "type": "object",
       "properties": {
         "topic": {
@@ -601,7 +615,7 @@
           "type": "string"
         },
         "payload": {
-          "$ref": "#/$defs/SessionRef"
+          "$ref": "#/$defs/ViewRef"
         }
       },
       "required": ["topic", "id", "payload"],
@@ -618,7 +632,7 @@
           "type": "string"
         },
         "payload": {
-          "$ref": "#/$defs/SessionRef"
+          "$ref": "#/$defs/ViewRef"
         }
       },
       "required": ["topic", "id", "payload"],

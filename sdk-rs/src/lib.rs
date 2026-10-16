@@ -26,8 +26,8 @@ use suite_protocol::{
     ConnectorsList, Envelope, ErrorInfo, FileChanged, FileChangedMessage, SessionCancel,
     SessionCreate, SessionCreateParams, SessionEventRecord, SessionInfo, SessionInput,
     SessionInputMessage, SessionList, SessionRef, SessionSubscribe, SessionUnsubscribe,
-    SubscribeParams, SubscribedPayload, Theme, UiAction, UiActionMessage, ViewPatch, ViewSnapshot,
-    ViewSubscribe, ViewUnsubscribe,
+    SubscribeParams, SubscribedPayload, Theme, UiAction, UiActionMessage, ViewPatch, ViewRef,
+    ViewSnapshot, ViewSubscribe, ViewUnsubscribe,
 };
 pub use view::ViewState;
 
@@ -317,11 +317,22 @@ impl Client {
     /// Follows the session's resolved view: returns the snapshot (also sent as
     /// [`Event::ViewSnapshot`]), then [`Event::ViewPatch`]es arrive on [`Client::events`].
     pub fn subscribe_view(&self, session: &str) -> Result<ViewSnapshot> {
-        let effect = Effect::ViewSubscribe(session.into());
+        self.subscribe_view_of(session, None)
+    }
+
+    /// Follows the view of one agent's work in the session (a subagent, or a guest the user
+    /// addressed): its messages, thoughts and tool calls, none of the main conversation. Its
+    /// snapshot and patches carry `agent`, and are told apart from the session's own that way.
+    pub fn subscribe_agent_view(&self, session: &str, agent: &str) -> Result<ViewSnapshot> {
+        self.subscribe_view_of(session, Some(agent))
+    }
+
+    fn subscribe_view_of(&self, session: &str, agent: Option<&str>) -> Result<ViewSnapshot> {
+        let effect = Effect::ViewSubscribe((session.into(), agent.map(Into::into)));
         let subscribe = |id| {
             Envelope::ViewSubscribe(ViewSubscribe {
                 id,
-                payload: session_ref(session),
+                payload: view_ref(session, agent),
             })
         };
         match self.call(effect, subscribe)? {
@@ -331,11 +342,19 @@ impl Client {
     }
 
     pub fn unsubscribe_view(&self, session: &str) -> Result<()> {
-        let effect = Effect::ViewUnsubscribe(session.into());
+        self.unsubscribe_view_of(session, None)
+    }
+
+    pub fn unsubscribe_agent_view(&self, session: &str, agent: &str) -> Result<()> {
+        self.unsubscribe_view_of(session, Some(agent))
+    }
+
+    fn unsubscribe_view_of(&self, session: &str, agent: Option<&str>) -> Result<()> {
+        let effect = Effect::ViewUnsubscribe((session.into(), agent.map(Into::into)));
         self.ack(effect, |id| {
             Envelope::ViewUnsubscribe(ViewUnsubscribe {
                 id,
-                payload: session_ref(session),
+                payload: view_ref(session, agent),
             })
         })
     }
@@ -436,6 +455,13 @@ impl Drop for Client {
         if let Some(thread) = self.thread.lock().ok().and_then(|mut slot| slot.take()) {
             let _ = thread.join();
         }
+    }
+}
+
+fn view_ref(session: &str, agent: Option<&str>) -> ViewRef {
+    ViewRef {
+        session: session.into(),
+        agent: agent.map(Into::into),
     }
 }
 

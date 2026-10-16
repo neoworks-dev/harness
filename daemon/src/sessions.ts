@@ -133,13 +133,15 @@ export class SessionManager {
     });
   }
 
-  create(params: { cwd?: string; title?: string }): SessionInfo {
+  create(params: { cwd?: string; title?: string; parent?: string }): SessionInfo {
     const row = this.store.createSession({
       id: newSessionId(),
       cwd: params.cwd ?? this.options.defaultCwd,
       title: params.title,
+      parent: params.parent,
     });
-    this.options.created?.(row.id);
+    // A delegated session gets its harness and settings from the delegation, not the user's last.
+    if (params.parent === undefined) this.options.created?.(row.id);
     return this.toInfo(row);
   }
 
@@ -434,6 +436,7 @@ export class SessionManager {
       queued: rt?.queue.length ?? 0,
     };
     if (row.title !== undefined) info.title = row.title;
+    if (row.parent !== undefined) info.parent = row.parent;
     if (this.options.describe) Object.assign(info, this.options.describe(row.id));
     return info;
   }

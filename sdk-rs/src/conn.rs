@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 use std::collections::HashSet;
 
 use suite_protocol::{
-    AppPresence, AppPresenceMessage, BusHello, Envelope, Hello, SessionRef, SessionSubscribe,
-    SubscribeParams, ViewSubscribe,
+    AppPresence, AppPresenceMessage, BusHello, Envelope, Hello, SessionSubscribe, SubscribeParams,
+    ViewRef, ViewSubscribe,
 };
 use tungstenite::client::IntoClientRequest;
 use tungstenite::{Message, WebSocket};
@@ -56,9 +56,12 @@ pub(crate) enum Effect {
     Presence(AppPresence),
     /// A new context for the registered presence (kept for reconnects).
     Context(std::collections::BTreeMap<String, String>),
-    ViewSubscribe(String),
-    ViewUnsubscribe(String),
+    ViewSubscribe(ViewKey),
+    ViewUnsubscribe(ViewKey),
 }
+
+/// A followed view: the session, and the agent for a per-agent view.
+pub(crate) type ViewKey = (String, Option<String>);
 
 /// How to take an effect back when the daemon refuses the request.
 #[allow(clippy::large_enum_variant)]
@@ -66,7 +69,7 @@ enum Undo {
     None,
     Unsubscribe(String),
     Presence(Option<AppPresence>),
-    ViewUnsubscribe(String),
+    ViewUnsubscribe(ViewKey),
 }
 
 struct Pending {
@@ -90,7 +93,7 @@ pub(crate) struct Io {
     /// start at the next one; anything at or below it is dropped as a repeat.
     subs: HashMap<String, i64>,
     /// Sessions whose view is followed; resubscribed (fresh snapshot) after a reconnect.
-    views: HashSet<String>,
+    views: HashSet<ViewKey>,
     presence: Option<AppPresence>,
     next_internal: u64,
 }
@@ -291,12 +294,12 @@ impl Io {
                 }
                 Undo::None
             }
-            Effect::ViewSubscribe(session) => {
-                self.views.insert(session.clone());
-                Undo::ViewUnsubscribe(session)
+            Effect::ViewSubscribe(key) => {
+                self.views.insert(key.clone());
+                Undo::ViewUnsubscribe(key)
             }
-            Effect::ViewUnsubscribe(session) => {
-                self.views.remove(&session);
+            Effect::ViewUnsubscribe(key) => {
+                self.views.remove(&key);
                 Undo::None
             }
         }
@@ -309,8 +312,8 @@ impl Io {
                 self.subs.remove(&session);
             }
             Undo::Presence(previous) => self.presence = previous,
-            Undo::ViewUnsubscribe(session) => {
-                self.views.remove(&session);
+            Undo::ViewUnsubscribe(key) => {
+                self.views.remove(&key);
             }
         }
     }
@@ -340,7 +343,11 @@ impl Io {
                 self.emit(Event::SessionChanged(message.payload));
             }
             Envelope::ViewPatchMessage(message) => {
-                if self.views.contains(&message.payload.session) {
+                let key = (
+                    message.payload.session.clone(),
+                    message.payload.agent.clone(),
+                );
+                if self.views.contains(&key) {
                     self.emit(Event::ViewPatch(message.payload));
                 }
             }
@@ -415,16 +422,17 @@ impl Io {
             });
             self.send_internal(socket, id, message, Undo::Unsubscribe(session));
         }
-        let views: Vec<String> = self.views.iter().cloned().collect();
-        for session in views {
+        let views: Vec<ViewKey> = self.views.iter().cloned().collect();
+        for key in views {
             let id = self.internal_id();
             let message = Envelope::ViewSubscribe(ViewSubscribe {
                 id: id.clone(),
-                payload: SessionRef {
-                    session: session.clone(),
+                payload: ViewRef {
+                    session: key.0.clone(),
+                    agent: key.1.clone(),
                 },
             });
-            self.send_internal(socket, id, message, Undo::ViewUnsubscribe(session));
+            self.send_internal(socket, id, message, Undo::ViewUnsubscribe(key));
         }
     }
 

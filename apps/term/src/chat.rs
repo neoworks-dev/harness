@@ -3,15 +3,42 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use suite_protocol::{ItemState, ViewItem, ViewPatch, ViewSnapshot};
-use suite_renderer_ratatui::{ButtonRef, Options, Palette, buttons, render_item};
+use suite_renderer_ratatui::{
+    ButtonRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, buttons, image_sources,
+    render_item_images,
+};
 use suite_sdk::ViewState;
 
 /// Lines of diff or code a prompt shows before the buttons (Ctrl-O shows all of it).
-const PREVIEW_LINES: usize = 20;
+const PREVIEW_LINES: usize = 12;
+
+/// Rows an image thumbnail takes at most, and with tool results expanded (Ctrl-O).
+const IMAGE_ROWS: u16 = 12;
+const IMAGE_ROWS_EXPANDED: u16 = 30;
+
+/// What the pane knows about images: the terminal's cell size and the state of each source.
+/// Without it images stay the one-line placeholder.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChatImages {
+    pub cell: (u16, u16),
+    pub status: Arc<HashMap<String, ImageStatus>>,
+}
+
+/// An image to draw: its source and the cells it covers, relative to the pane's top left. `y`
+/// is negative while the image's top has scrolled out of view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Placement {
+    pub src: String,
+    pub x: u16,
+    pub y: i32,
+    pub cols: u16,
+    pub rows: u16,
+}
 
 /// What the pane draws besides the items.
 #[derive(Debug, Clone, PartialEq)]
@@ -33,16 +60,20 @@ struct CacheKey {
     focused: Option<usize>,
     palette: Palette,
     marker: Style,
+    /// Only for items that hold images: they redraw when an image's state changes.
+    images: Option<ChatImages>,
 }
 
 struct Cached {
     key: CacheKey,
     lines: Rc<Vec<Line<'static>>>,
+    slots: Rc<Vec<ImageSlot>>,
 }
 
 struct Entry {
     r#ref: String,
     lines: Rc<Vec<Line<'static>>>,
+    slots: Rc<Vec<ImageSlot>>,
     offset: usize,
 }
 
@@ -52,6 +83,7 @@ struct LayoutKey {
     width: u16,
     opts: ChatOpts,
     generation: u64,
+    images: Option<ChatImages>,
 }
 
 #[derive(Default)]
@@ -63,6 +95,9 @@ pub struct Chat {
     generation: u64,
     cache: HashMap<String, Cached>,
     buttons: HashMap<String, Vec<ButtonRef>>,
+    /// Sources of the images of the items that have any.
+    sources: HashMap<String, Vec<String>>,
+    images: Option<ChatImages>,
     entries: Vec<Entry>,
     layout_key: Option<LayoutKey>,
     total: usize,
@@ -93,12 +128,17 @@ impl Chat {
         self.loaded = true;
         self.revs.clear();
         self.buttons.clear();
+        self.sources.clear();
         for item in &self.state.items {
             self.next_rev += 1;
             self.revs.insert(item.r#ref.clone(), self.next_rev);
             let b = buttons(item);
             if !b.is_empty() {
                 self.buttons.insert(item.r#ref.clone(), b);
+            }
+            let srcs = image_sources(item);
+            if !srcs.is_empty() {
+                self.sources.insert(item.r#ref.clone(), srcs);
             }
         }
         self.generation += 1;
@@ -122,10 +162,17 @@ impl Chat {
                 } else {
                     self.buttons.insert(r.to_string(), b);
                 }
+                let srcs = image_sources(item);
+                if srcs.is_empty() {
+                    self.sources.remove(r);
+                } else {
+                    self.sources.insert(r.to_string(), srcs);
+                }
             }
             None => {
                 self.revs.remove(r);
                 self.buttons.remove(r);
+                self.sources.remove(r);
                 self.cache.remove(r);
             }
         }
@@ -159,6 +206,48 @@ impl Chat {
             .collect()
     }
 
+    // ---- images ----
+
+    /// Turns real images on (with what is known about them) or off. Changes take effect at the
+    /// next layout.
+    pub fn set_images(&mut self, images: Option<ChatImages>) {
+        self.images = images;
+    }
+
+    /// The sources of every image in the conversation.
+    pub fn image_sources(&self) -> impl Iterator<Item = &str> {
+        self.sources.values().flatten().map(String::as_str)
+    }
+
+    /// The images in view, as laid out last: where to draw them over the blank lines the
+    /// renderer reserved. A slot is listed while any row of it shows.
+    pub fn placements(&self) -> Vec<Placement> {
+        let top = self.top();
+        let bottom = top + self.height;
+        let first = self
+            .entries
+            .partition_point(|e| e.offset + e.lines.len() <= top);
+        let mut out = Vec::new();
+        for e in &self.entries[first..] {
+            if e.offset >= bottom {
+                break;
+            }
+            for s in e.slots.iter() {
+                let at = e.offset + s.line;
+                if at + usize::from(s.rows) > top && at < bottom {
+                    out.push(Placement {
+                        src: s.src.clone(),
+                        x: s.x,
+                        y: at as i32 - top as i32,
+                        cols: s.cols,
+                        rows: s.rows,
+                    });
+                }
+            }
+        }
+        out
+    }
+
     // ---- layout ----
 
     /// Lays the items out for `width` x `height`; reuses rendered lines of untouched items.
@@ -168,6 +257,7 @@ impl Chat {
             width,
             opts: opts.clone(),
             generation: self.generation,
+            images: self.images.clone(),
         };
         if self.layout_key.as_ref() == Some(&key) {
             return;
@@ -193,19 +283,26 @@ impl Chat {
                 focused: active,
                 palette: opts.palette,
                 marker: opts.marker,
+                images: self
+                    .sources
+                    .contains_key(r)
+                    .then(|| self.images.clone())
+                    .flatten(),
             };
-            let lines = match self.cache.get(r) {
-                Some(c) if c.key == ckey => c.lines.clone(),
+            let (lines, slots) = match self.cache.get(r) {
+                Some(c) if c.key == ckey => (c.lines.clone(), c.slots.clone()),
                 _ => {
-                    let lines = Rc::new(render(item, width, &ckey));
+                    let (lines, slots) = render(item, width, &ckey);
+                    let (lines, slots) = (Rc::new(lines), Rc::new(slots));
                     self.cache.insert(
                         r.clone(),
                         Cached {
                             key: ckey,
                             lines: lines.clone(),
+                            slots: slots.clone(),
                         },
                     );
-                    lines
+                    (lines, slots)
                 }
             };
             if lines.is_empty() {
@@ -218,6 +315,7 @@ impl Chat {
             entries.push(Entry {
                 r#ref: r.clone(),
                 lines,
+                slots,
                 offset,
             });
             offset += len;
@@ -358,23 +456,40 @@ impl Chat {
     }
 }
 
-fn render(item: &ViewItem, width: u16, key: &CacheKey) -> Vec<Line<'static>> {
+fn render(item: &ViewItem, width: u16, key: &CacheKey) -> (Vec<Line<'static>>, Vec<ImageSlot>) {
     let opts = Options {
         expanded: key.expanded,
         show_thoughts: key.thoughts,
         focused_button: key.focused,
         preview_lines: Some(PREVIEW_LINES),
         theme: key.palette,
+        images: key.images.as_ref().map(|i| ImageOptions {
+            max_rows: if key.expanded {
+                IMAGE_ROWS_EXPANDED
+            } else {
+                IMAGE_ROWS
+            },
+            cell: i.cell,
+            status: i.status.clone(),
+        }),
     };
     if key.focused.is_none() {
-        return render_item(item, width, &opts);
+        let out = render_item_images(item, width, &opts);
+        return (out.lines, out.images);
     }
     // The prompt being answered gets a bar in the margin.
     let inner = width.saturating_sub(2).max(1);
-    render_item(item, inner, &opts)
+    let out = render_item_images(item, inner, &opts);
+    let lines = out
+        .lines
         .into_iter()
         .map(|line| barred(line, key.marker))
-        .collect()
+        .collect();
+    let mut slots = out.images;
+    for slot in &mut slots {
+        slot.x += 2;
+    }
+    (lines, slots)
 }
 
 /// A line of the prompt being answered: the bar in the margin first.
@@ -400,8 +515,9 @@ pub fn panel_lines(
         focused_button: Some(focused),
         preview_lines: Some(preview),
         theme: palette,
+        images: None,
     };
-    render_item(item, width.saturating_sub(2).max(1), &opts)
+    suite_renderer_ratatui::render_item(item, width.saturating_sub(2).max(1), &opts)
         .into_iter()
         .map(|line| barred(line, marker))
         .collect()
@@ -468,6 +584,7 @@ mod tests {
 
     fn snapshot(items: Vec<ViewItem>) -> ViewSnapshot {
         ViewSnapshot {
+            agent: None,
             session: "s".into(),
             seq: 1,
             items,
@@ -518,6 +635,7 @@ mod tests {
         assert!(!c.following());
         let before = texts(&c);
         c.apply_patch(ViewPatch {
+            agent: None,
             session: "s".into(),
             seq: 2,
             ops: vec![set(item("new", "agent", "fresh"))],
@@ -573,6 +691,7 @@ mod tests {
         assert_eq!(Rc::as_ptr(&c.entries[0].lines), first);
         // A patch to the last item re-renders only that one.
         c.apply_patch(ViewPatch {
+            agent: None,
             session: "s".into(),
             seq: 2,
             ops: vec![set(item("a2", "agent", "changed"))],
@@ -598,12 +717,14 @@ mod tests {
         assert_eq!(c.pending_prompts(), ["p2", "p3"], "oldest first");
         assert_eq!(c.buttons_of("p2").len(), 2);
         c.apply_patch(ViewPatch {
+            agent: None,
             session: "s".into(),
             seq: 2,
             ops: vec![set(item("p2", "tool", "allowed"))],
         });
         assert_eq!(c.pending_prompts(), ["p3"]);
         c.apply_patch(ViewPatch {
+            agent: None,
             session: "s".into(),
             seq: 3,
             ops: vec![set(item("p3", "tool", "allowed"))],
@@ -628,6 +749,177 @@ mod tests {
                 && s.content.contains("Reject")
         });
         assert!(reversed, "{lines:?}");
+    }
+
+    fn picture(r: &str, src: &str) -> ViewItem {
+        serde_json::from_value(json!({
+            "ref": r, "kind": "agent",
+            "component": {"type":"image","src":src,"alt":"pic"}
+        }))
+        .unwrap()
+    }
+
+    fn known(sizes: &[(&str, ImageStatus)]) -> Option<ChatImages> {
+        Some(ChatImages {
+            cell: (10, 20),
+            status: Arc::new(
+                sizes
+                    .iter()
+                    .map(|(s, st)| (s.to_string(), st.clone()))
+                    .collect(),
+            ),
+        })
+    }
+
+    fn ready(width: u32, height: u32) -> ImageStatus {
+        ImageStatus::Ready { width, height }
+    }
+
+    /// Three lines of text, a 400x400 picture (24x12 cells), another line.
+    fn gallery(height: u16) -> Chat {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(vec![
+            item("a", "agent", "before"),
+            picture("p", "/tmp/p.png"),
+            item("b", "agent", "after"),
+        ]));
+        c.set_images(known(&[("/tmp/p.png", ready(400, 400))]));
+        c.layout(60, height, &opts());
+        c
+    }
+
+    #[test]
+    fn images_are_placeholders_until_they_are_turned_on() {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(vec![picture("p", "/tmp/p.png")]));
+        c.layout(60, 20, &opts());
+        assert_eq!(texts(&c), ["[image pic]"]);
+        assert!(c.placements().is_empty());
+        assert_eq!(c.image_sources().collect::<Vec<_>>(), ["/tmp/p.png"]);
+        // On, but the size not known yet.
+        c.set_images(known(&[]));
+        c.layout(60, 20, &opts());
+        assert_eq!(texts(&c), ["[image pic] loading image…"]);
+        assert!(c.placements().is_empty());
+        // Known: 12 blank rows and the caption.
+        c.set_images(known(&[("/tmp/p.png", ready(400, 400))]));
+        c.layout(60, 20, &opts());
+        assert_eq!(c.total_lines(), 13);
+        assert_eq!(texts(&c)[12], "pic · 400×400");
+        // And off again.
+        c.set_images(None);
+        c.layout(60, 20, &opts());
+        assert_eq!(texts(&c), ["[image pic]"]);
+    }
+
+    #[test]
+    fn a_placement_is_the_slot_relative_to_the_top_of_the_pane() {
+        let c = gallery(30);
+        // "before", a blank line, then the picture.
+        assert_eq!(
+            c.placements(),
+            [Placement {
+                src: "/tmp/p.png".into(),
+                x: 0,
+                y: 2,
+                cols: 24,
+                rows: 12
+            }]
+        );
+    }
+
+    #[test]
+    fn a_scrolled_image_is_clipped_and_leaves_when_out_of_view() {
+        // 2 + 12 + 1 + 1 + 1 lines in a pane of 8: following the tail shows the last 8.
+        let mut c = gallery(8);
+        let at = |c: &Chat| c.placements().first().map(|p| p.y);
+        assert_eq!(c.total_lines(), 17);
+        assert_eq!(c.top(), 9);
+        assert_eq!(at(&c), Some(2 - 9), "the top 7 rows are above the pane");
+        c.scroll_up(5);
+        assert_eq!(at(&c), Some(2 - 4));
+        c.scroll_up(2);
+        assert_eq!(at(&c), Some(0));
+        c.scroll_up(1);
+        assert_eq!(at(&c), Some(1));
+        c.to_top();
+        assert_eq!(
+            at(&c),
+            Some(2),
+            "a row of the picture at the pane's bottom edge"
+        );
+        // Rows 2..14 are the picture; a pane of 2 lines at the top does not reach it.
+        let mut c = gallery(2);
+        c.to_top();
+        assert_eq!(at(&c), None);
+        // Just the picture's last row in view (top = 13, nothing below it but the caption).
+        let mut c = gallery(2);
+        c.scroll_up(3);
+        assert_eq!(c.top(), 12);
+        assert_eq!(at(&c), Some(2 - 12));
+        c.scroll_down(1);
+        assert_eq!(c.top(), 13);
+        assert_eq!(at(&c), Some(2 - 13), "only its last row");
+        c.scroll_down(1);
+        assert_eq!(c.top(), 14);
+        assert_eq!(at(&c), None, "the caption and the next item only");
+    }
+
+    #[test]
+    fn a_wider_pane_or_ctrl_o_changes_the_size_and_a_new_status_redraws_only_pictures() {
+        let mut c = gallery(30);
+        let size = |c: &Chat| c.placements()[0].rows;
+        assert_eq!(size(&c), 12);
+        // Expanded: up to 30 rows (400x400 is 40x20 cells at most).
+        let open = ChatOpts {
+            expanded: true,
+            ..opts()
+        };
+        c.layout(60, 30, &open);
+        assert_eq!((c.placements()[0].cols, size(&c)), (40, 20));
+        // A narrower pane: capped to the width, the aspect kept.
+        c.layout(16, 30, &opts());
+        assert_eq!((c.placements()[0].cols, size(&c)), (16, 8));
+        // The picture's status changing leaves the text items' lines alone.
+        c.layout(60, 30, &opts());
+        let first_again = Rc::as_ptr(&c.entries[0].lines);
+        let pic = Rc::as_ptr(&c.entries[1].lines);
+        c.set_images(known(&[("/tmp/p.png", ready(400, 200))]));
+        c.layout(60, 30, &opts());
+        assert_eq!(Rc::as_ptr(&c.entries[0].lines), first_again);
+        assert_ne!(Rc::as_ptr(&c.entries[1].lines), pic);
+        assert_eq!((c.placements()[0].cols, size(&c)), (40, 10));
+    }
+
+    #[test]
+    fn the_prompt_marker_moves_the_slot_over() {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(vec![picture("p", "/tmp/p.png")]));
+        c.set_images(known(&[("/tmp/p.png", ready(400, 400))]));
+        let mut o = opts();
+        o.active = Some(("p".into(), 0));
+        c.layout(60, 30, &o);
+        assert_eq!(c.placements()[0].x, 2);
+    }
+
+    #[test]
+    fn items_are_found_again_after_patches() {
+        let mut c = gallery(30);
+        assert_eq!(c.image_sources().count(), 1);
+        c.apply_patch(ViewPatch {
+            agent: None,
+            session: "s".into(),
+            seq: 2,
+            ops: vec![set(item("p", "agent", "gone"))],
+        });
+        assert_eq!(c.image_sources().count(), 0);
+        c.apply_patch(ViewPatch {
+            agent: None,
+            session: "s".into(),
+            seq: 3,
+            ops: vec![set(picture("q", "/tmp/q.png"))],
+        });
+        assert_eq!(c.image_sources().collect::<Vec<_>>(), ["/tmp/q.png"]);
     }
 
     fn set(item: ViewItem) -> suite_protocol::ViewOp {

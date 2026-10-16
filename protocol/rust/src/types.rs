@@ -805,14 +805,23 @@ pub struct ConnectorsChanged {
     pub payload: ConnectorsListPayload,
 }
 
-/// Client → daemon: follow the resolved view of a session. Replied to with view.snapshot, then view.patch for every later change. Re-subscribing sends a fresh snapshot.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewRef {
+    #[serde(rename = "session")]
+    pub session: String,
+    /// Only the work labelled with this agent (a subagent, or a guest the user addressed): its messages, thoughts, tool calls, plan and questions, nothing of the main conversation. Without it: the session's own view, where a delegation is one tool item.
+    #[serde(rename = "agent", default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+}
+
+/// Client → daemon: follow the resolved view of a session, or (with agent) the view of one agent's work in it. Replied to with view.snapshot, then view.patch for every later change. Re-subscribing sends a fresh snapshot.
 /// Tagged `topic: "view.subscribe"` inside [`Envelope`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ViewSubscribe {
     #[serde(rename = "id")]
     pub id: String,
     #[serde(rename = "payload")]
-    pub payload: SessionRef,
+    pub payload: ViewRef,
 }
 
 /// Client → daemon (acked).
@@ -822,7 +831,7 @@ pub struct ViewUnsubscribe {
     #[serde(rename = "id")]
     pub id: String,
     #[serde(rename = "payload")]
-    pub payload: SessionRef,
+    pub payload: ViewRef,
 }
 
 /// Daemon → client: reply to view.subscribe.
@@ -1136,6 +1145,8 @@ pub enum SessionEvent {
     Usage(Usage),
     EditsReverted(EditsReverted),
     UserNote(UserNote),
+    SubagentStarted(SubagentStarted),
+    SubagentEnded(SubagentEnded),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -1220,6 +1231,14 @@ impl Serialize for SessionEvent {
                 "user_note",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            SessionEvent::SubagentStarted(v) => (
+                "subagent_started",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            SessionEvent::SubagentEnded(v) => (
+                "subagent_ended",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             SessionEvent::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -1296,6 +1315,12 @@ impl<'de> Deserialize<'de> for SessionEvent {
                 .map_err(D::Error::custom),
             "user_note" => serde_json::from_value(value)
                 .map(SessionEvent::UserNote)
+                .map_err(D::Error::custom),
+            "subagent_started" => serde_json::from_value(value)
+                .map(SessionEvent::SubagentStarted)
+                .map_err(D::Error::custom),
+            "subagent_ended" => serde_json::from_value(value)
+                .map(SessionEvent::SubagentEnded)
                 .map_err(D::Error::custom),
             _ => Ok(SessionEvent::Unknown(value)),
         }
@@ -1425,6 +1450,18 @@ impl From<EditsReverted> for SessionEvent {
 impl From<UserNote> for SessionEvent {
     fn from(v: UserNote) -> Self {
         SessionEvent::UserNote(v)
+    }
+}
+
+impl From<SubagentStarted> for SessionEvent {
+    fn from(v: SubagentStarted) -> Self {
+        SessionEvent::SubagentStarted(v)
+    }
+}
+
+impl From<SubagentEnded> for SessionEvent {
+    fn from(v: SubagentEnded) -> Self {
+        SessionEvent::SubagentEnded(v)
     }
 }
 
@@ -1780,6 +1817,9 @@ pub struct SessionInfo {
     /// Lines removed by edits in this session.
     #[serde(rename = "removed", default, skip_serializing_if = "Option::is_none")]
     pub removed: Option<i64>,
+    /// The session that delegated a task into this one (a subagent working in another directory, e.g. a worktree). Its turns run on the harness it was delegated to.
+    #[serde(rename = "parent", default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
 }
 
 /// A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template.
@@ -1834,6 +1874,51 @@ pub struct UserNote {
     pub about: Option<String>,
 }
 
+/// The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event.
+/// Tagged `type: "subagent_started"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubagentStarted {
+    #[serde(rename = "id")]
+    pub id: String,
+    /// Harness name: pi, claude, codex…
+    #[serde(rename = "agent")]
+    pub agent: String,
+    #[serde(rename = "task")]
+    pub task: String,
+    /// The model it runs with, when one was chosen for this task or by the user.
+    #[serde(rename = "model", default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(rename = "effort", default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    /// The directory it works in, when that is not the session's.
+    #[serde(rename = "cwd", default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    /// A subagent working in another directory runs as its own session (parent = this one); its id.
+    #[serde(rename = "child", default, skip_serializing_if = "Option::is_none")]
+    pub child: Option<String>,
+}
+
+/// The subagent started by subagent_started finished, failed or was stopped.
+/// Tagged `type: "subagent_ended"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubagentEnded {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "stopReason")]
+    pub stop_reason: StopReason,
+    #[serde(rename = "error", default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// One labelled fact of a permission request, drawn as a highlighted key–value row above the content.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PermissionDetail {
+    #[serde(rename = "key")]
+    pub key: String,
+    #[serde(rename = "value")]
+    pub value: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PermissionOption {
     #[serde(rename = "id")]
@@ -1867,6 +1952,9 @@ pub struct PermissionRequest {
     /// What to preview: for an edit, the diff that has not been applied yet.
     #[serde(rename = "content", default, skip_serializing_if = "Option::is_none")]
     pub content: Option<Vec<ToolCallContent>>,
+    /// Labelled facts shown above the content, e.g. a delegation's harness, model, effort and directory.
+    #[serde(rename = "details", default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<Vec<PermissionDetail>>,
     #[serde(rename = "options")]
     pub options: Vec<PermissionOption>,
 }
@@ -2423,6 +2511,9 @@ pub struct KvItem {
     pub key: String,
     #[serde(rename = "value")]
     pub value: String,
+    /// Highlights the value (accent) or colors it by meaning.
+    #[serde(rename = "tone", default, skip_serializing_if = "Option::is_none")]
+    pub tone: Option<Tone>,
 }
 
 /// A bar. TUI: ▓▓▓░░ 60%.
@@ -2783,6 +2874,9 @@ pub struct RemoveViewOp {
 pub struct ViewSnapshot {
     #[serde(rename = "session")]
     pub session: String,
+    /// Set for a per-agent view (view.subscribe with agent): only that agent's work.
+    #[serde(rename = "agent", default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
     #[serde(rename = "seq")]
     pub seq: i64,
     #[serde(rename = "items")]
@@ -2794,6 +2888,9 @@ pub struct ViewSnapshot {
 pub struct ViewPatch {
     #[serde(rename = "session")]
     pub session: String,
+    /// Set for a per-agent view: patches of the main view have none.
+    #[serde(rename = "agent", default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
     #[serde(rename = "seq")]
     pub seq: i64,
     #[serde(rename = "ops")]

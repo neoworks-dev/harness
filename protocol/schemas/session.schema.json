@@ -94,6 +94,12 @@
         },
         {
           "$ref": "#/$defs/UserNote"
+        },
+        {
+          "$ref": "#/$defs/SubagentStarted"
+        },
+        {
+          "$ref": "#/$defs/SubagentEnded"
         }
       ],
       "discriminator": {
@@ -504,6 +510,10 @@
           "type": "integer",
           "minimum": 0,
           "description": "Lines removed by edits in this session."
+        },
+        "parent": {
+          "type": "string",
+          "description": "The session that delegated a task into this one (a subagent working in another directory, e.g. a worktree). Its turns run on the harness it was delegated to."
         }
       },
       "required": ["id", "cwd", "createdAt", "lastActivity", "lastSeq", "state", "queued"],
@@ -597,6 +607,76 @@
       "required": ["type", "note"],
       "additionalProperties": false
     },
+    "SubagentStarted": {
+      "description": "The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "subagent_started"
+        },
+        "id": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string",
+          "description": "Harness name: pi, claude, codex…"
+        },
+        "task": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string",
+          "description": "The model it runs with, when one was chosen for this task or by the user."
+        },
+        "effort": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string",
+          "description": "The directory it works in, when that is not the session's."
+        },
+        "child": {
+          "type": "string",
+          "description": "A subagent working in another directory runs as its own session (parent = this one); its id."
+        }
+      },
+      "required": ["type", "id", "agent", "task"],
+      "additionalProperties": false
+    },
+    "SubagentEnded": {
+      "description": "The subagent started by subagent_started finished, failed or was stopped.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "subagent_ended"
+        },
+        "id": {
+          "type": "string"
+        },
+        "stopReason": {
+          "$ref": "#/$defs/StopReason"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "id", "stopReason"],
+      "additionalProperties": false
+    },
+    "PermissionDetail": {
+      "description": "One labelled fact of a permission request, drawn as a highlighted key–value row above the content.",
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": ["key", "value"],
+      "additionalProperties": false
+    },
     "PermissionOption": {
       "type": "object",
       "properties": {
@@ -643,6 +723,13 @@
             "$ref": "#/$defs/ToolCallContent"
           },
           "description": "What to preview: for an edit, the diff that has not been applied yet."
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PermissionDetail"
+          },
+          "description": "Labelled facts shown above the content, e.g. a delegation's harness, model, effort and directory."
         },
         "options": {
           "type": "array",

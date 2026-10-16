@@ -1,0 +1,28 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 6,
+    "ts": 1760565600650,
+    "event": {
+      "type": "permission_request",
+      "id": "p2",
+      "agent": "claude",
+      "title": "Start a subagent?",
+      "details": [
+        { "key": "Harness", "value": "pi" },
+        { "key": "Model", "value": "deepseek/deepseek-v4-flash" },
+        { "key": "Effort", "value": "medium" },
+        {
+          "key": "Directory",
+          "value": "~/site/.worktrees/fix-login (new worktree, branch fix-login)"
+        }
+      ],
+      "content": [{ "type": "text", "text": "Fix the failing login test and run the suite." }],
+      "options": [
+        { "id": "allow", "name": "Start pi", "kind": "allow_once" },
+        { "id": "reject", "name": "Reject", "kind": "reject_once" }
+      ]
+    }
+  }
+}

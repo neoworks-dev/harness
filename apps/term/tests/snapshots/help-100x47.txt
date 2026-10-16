@@ -18,6 +18,7 @@ keys (any key closes this)
   ctrl-s                    switch session (picker)
   ctrl-g                    sessions sidebar: focus (up/down, enter, esc)
   ctrl-r                    GitHub issues and pull requests (/github)
+  ctrl-x, down              subagents under the prompt: enter opens, x stops (down: empty input)
   diff view                 n/p hunk · h/l/0 sideways · s split/unified · f whole file · q close
   1-9, arrows, enter        answer a prompt (it takes the input's place)
   ctrl-p / ctrl-n           pick an older prompt

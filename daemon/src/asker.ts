@@ -10,6 +10,8 @@ export type Choice = Extract<SessionEvent, { type: "choice" }>;
 
 interface Pending {
   session: string;
+  /** Sessions the question was copied to (see mirror): answering there settles it too. */
+  mirrors: string[];
   kind: "permission" | "choice";
   options: string[];
   resolve: (answer: Answer) => void;
@@ -23,6 +25,8 @@ export interface Answer {
 
 export class Asker {
   private readonly pending = new Map<string, Pending>();
+  /** Session → sessions its questions are copied to, so a parent shows a child's cards. */
+  private readonly mirrored = new Map<string, Set<string>>();
 
   constructor(private readonly append: (session: string, event: SessionEvent) => void) {}
 
@@ -45,6 +49,20 @@ export class Asker {
     return option;
   }
 
+  /**
+   * Copies the questions asked in `from` to `to` (and their answers) until the returned function
+   * is called, so the user sees a delegated session's cards in the session that delegated.
+   */
+  mirror(from: string, to: string): () => void {
+    const targets = this.mirrored.get(from) ?? new Set<string>();
+    targets.add(to);
+    this.mirrored.set(from, targets);
+    return () => {
+      targets.delete(to);
+      if (targets.size === 0 && this.mirrored.get(from) === targets) this.mirrored.delete(from);
+    };
+  }
+
   /** Like ask, but the note comes back to the caller, who has to pass it on. */
   askWithNote(
     session: string,
@@ -56,8 +74,10 @@ export class Asker {
     return new Promise((resolve) => {
       const onAbort = (): void => this.settle(id, undefined);
       signal?.addEventListener("abort", onAbort, { once: true });
+      const mirrors = [...(this.mirrored.get(session) ?? [])];
       this.pending.set(id, {
         session,
+        mirrors,
         kind: question.type === "choice" ? "choice" : "permission",
         options: question.options.map((o) => o.id),
         resolve: (answer) => {
@@ -65,7 +85,9 @@ export class Asker {
           resolve(answer);
         },
       });
-      this.append(session, { ...question, id } as SessionEvent);
+      for (const target of [session, ...mirrors]) {
+        this.append(target, { ...question, id } as SessionEvent);
+      }
     });
   }
 
@@ -79,7 +101,11 @@ export class Asker {
     note?: string,
   ): void {
     const pending = this.pending.get(id);
-    if (!pending || pending.session !== session || pending.kind !== kind) {
+    if (
+      !pending ||
+      (pending.session !== session && !pending.mirrors.includes(session)) ||
+      pending.kind !== kind
+    ) {
       throw new BadRequestError(`${id} was already answered or isn't open`);
     }
     if (!pending.options.includes(option))
@@ -103,7 +129,7 @@ export class Asker {
     if (option !== undefined) event.option = option;
     if (note !== undefined) event.note = note;
     if (by !== undefined) event.by = by;
-    this.append(pending.session, event);
+    for (const target of [pending.session, ...pending.mirrors]) this.append(target, event);
     const answer: Answer = {};
     if (option !== undefined) answer.option = option;
     if (note !== undefined) answer.note = note;

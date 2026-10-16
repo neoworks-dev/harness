@@ -17,6 +17,7 @@ import type {
   RequestPermission,
 } from "@suite/harness/agent";
 import { formatPrompt } from "@suite/harness/context-events";
+import { isCoreToolName } from "@suite/protocol/core-tools";
 import type {
   PermissionOption,
   PlanEntry,
@@ -291,6 +292,8 @@ export function mcpResultText(rawOutput: unknown): ToolCallContent[] | undefined
  */
 export function describeCall(title: string, rawInput: unknown): { title: string; tool?: string } {
   const plain = title.replace(/^mcp(__|\.)suite(__|\.)/, "");
+  // The view draws a delegation by its arguments (agent, task).
+  if (plain === "delegate") return { title: plain, tool: plain };
   if (!isRecord(rawInput)) return { title: plain };
   const args = isRecord(rawInput.arguments) ? rawInput.arguments : rawInput;
   if (plain.includes("tools_call")) {
@@ -301,6 +304,27 @@ export function describeCall(title: string, rawInput: unknown): { title: string;
     if (query !== undefined) return { title: `search tools: ${query}` };
   }
   return { title: plain };
+}
+
+/**
+ * Whether a permission request is for one of the suite's own MCP tools (tools_search, tools_call,
+ * apps_launch, apps_focus, delegate), as Claude Code (`mcp__suite__tools_call`, also in its
+ * `_meta.claudeCode.toolName`) and Codex (`mcp.suite.tools_call`, or the server and tool in the
+ * input) name them. The gateway gates what needs gating, so these are not asked about twice.
+ */
+export function isSuiteTool(call: Record<string, unknown>): boolean {
+  const named = (title: string | undefined): boolean => {
+    const match = title === undefined ? null : /^mcp(?:__|\.)suite(?:__|\.)(\w+)$/.exec(title);
+    return match?.[1] !== undefined && isCoreToolName(match[1]);
+  };
+  const claude =
+    isRecord(call._meta) && isRecord(call._meta.claudeCode)
+      ? str(call._meta.claudeCode.toolName)
+      : undefined;
+  if (named(str(call.title)) || named(claude)) return true;
+  const input = call.rawInput;
+  const tool = isRecord(input) ? str(input.tool) : undefined;
+  return isRecord(input) && input.server === "suite" && tool !== undefined && isCoreToolName(tool);
 }
 
 /** ACP config options (flat or grouped selects) → ours, keyed by config id. */
@@ -537,6 +561,18 @@ export class GuestManager {
       configOptions: () => [...guest.config.values()],
       setConfigOption: (category, value) => this.setOption(guest, category, value),
     };
+  }
+
+  /**
+   * The options (models, effort levels) a harness offers, when they can be had without starting
+   * anything: pi's own, or those of an adapter that already runs. undefined: not known yet.
+   */
+  async knownOptions(session: string, name: string): Promise<ConfigOption[] | undefined> {
+    if (name === PI && this.subagents) return this.subagents.configOptions(session);
+    for (const guest of this.live) {
+      if (guest.name === name) return [...guest.config.values()];
+    }
+    return undefined;
   }
 
   /** The guest's settable options (starts it for this session if it isn't running). */
@@ -918,6 +954,10 @@ export class GuestManager {
       touches.paths = callPaths(call);
       const command = callCommand(call);
       if (command !== undefined) touches.command = command;
+    }
+    // The suite's own tools: the gateway asks where it matters (delegate's gate), in every mode.
+    if (allow && isSuiteTool(call)) {
+      return { outcome: { outcome: "selected", optionId: allow.id } };
     }
     let sensitive: string[] = [];
     if (config?.permissions !== "allow") sensitive = this.guardOpen(guest, touches);

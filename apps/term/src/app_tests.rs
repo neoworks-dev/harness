@@ -79,6 +79,7 @@ fn prompt(r: &str, state: &str, labels: &[&str]) -> ViewItem {
 
 fn show(app: &mut App, items: Vec<ViewItem>) {
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        agent: None,
         session: "s1".into(),
         seq: 1,
         items,
@@ -87,6 +88,7 @@ fn show(app: &mut App, items: Vec<ViewItem>) {
 
 fn patch(app: &mut App, item: ViewItem) {
     app.handle_event(Event::ViewPatch(ViewPatch {
+        agent: None,
         session: "s1".into(),
         seq: 2,
         ops: vec![ViewOp::SetViewOp(suite_protocol::SetViewOp { item })],
@@ -941,6 +943,7 @@ fn events_of_other_sessions_are_ignored() {
     ));
     assert!(!app.running());
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        agent: None,
         session: "other".into(),
         seq: 1,
         items: vec![item("x", "agent", "no")],
@@ -1055,6 +1058,7 @@ fn queued_inputs_are_counted_while_a_turn_runs() {
     app.handle_key(key(KeyCode::Enter));
     assert!(app.status_lines(100)[1].to_string().contains("1 queued"));
     let fx = app.handle_msg(Msg::Sessions(Ok(vec![SessionInfo {
+        parent: None,
         id: "s1".into(),
         title: None,
         cwd: "/home/me/site".into(),
@@ -1098,6 +1102,7 @@ fn clear_starts_a_fresh_view_when_the_new_session_becomes_current() {
     // Old events are ignored, new ones shown.
     show(&mut app, vec![]);
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        agent: None,
         session: "s2".into(),
         seq: 1,
         items: vec![item("n", "notice", "fresh")],
@@ -1133,6 +1138,7 @@ fn the_switcher_lists_filters_and_switches() {
     let text = screen_text(&mut app, 80, 20);
     assert!(text.contains("loading…"), "{text}");
     let info = |id: &str, title: &str, cwd: &str, last: i64| SessionInfo {
+        parent: None,
         id: id.into(),
         title: Some(title.into()),
         cwd: cwd.into(),
@@ -1181,6 +1187,7 @@ fn the_switcher_can_start_a_new_session_and_follow_it() {
         }]
     );
     let fx = app.handle_msg(Msg::Created(Ok(SessionInfo {
+        parent: None,
         id: "s9".into(),
         title: None,
         cwd: "/home/me/site".into(),
@@ -1487,6 +1494,7 @@ fn the_review_card_after_an_edits_turn_is_answered_with_keys() {
 
 fn info(id: &str, title: &str, last: i64) -> SessionInfo {
     SessionInfo {
+        parent: None,
         id: id.into(),
         title: Some(title.into()),
         cwd: "/home/me/site".into(),
@@ -1803,7 +1811,7 @@ fn help_lists_keys_and_commands() {
     let mut app = scenario();
     type_str(&mut app, "/help");
     app.handle_key(key(KeyCode::Enter));
-    snapshot("help-100x46", &screen_text(&mut app, 100, 46));
+    snapshot("help-100x47", &screen_text(&mut app, 100, 47));
     app.handle_key(key(KeyCode::Esc));
     app.handle_key(key(KeyCode::Char('?')));
     assert_eq!(app.overlay, Overlay::Help, "? on an empty editor");

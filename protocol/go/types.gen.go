@@ -665,10 +665,16 @@ func (v ConnectorsChanged) MarshalJSON() ([]byte, error) {
 	}{"connectors.changed", plain(v)})
 }
 
-// ViewSubscribe: Client → daemon: follow the resolved view of a session. Replied to with view.snapshot, then view.patch for every later change. Re-subscribing sends a fresh snapshot.
+type ViewRef struct {
+	Session string `json:"session"`
+	// Only the work labelled with this agent (a subagent, or a guest the user addressed): its messages, thoughts, tool calls, plan and questions, nothing of the main conversation. Without it: the session's own view, where a delegation is one tool item.
+	Agent *string `json:"agent,omitempty"`
+}
+
+// ViewSubscribe: Client → daemon: follow the resolved view of a session, or (with agent) the view of one agent's work in it. Replied to with view.snapshot, then view.patch for every later change. Re-subscribing sends a fresh snapshot.
 type ViewSubscribe struct {
-	ID      string     `json:"id"`
-	Payload SessionRef `json:"payload"`
+	ID      string  `json:"id"`
+	Payload ViewRef `json:"payload"`
 }
 
 func (ViewSubscribe) isEnvelope() {}
@@ -684,8 +690,8 @@ func (v ViewSubscribe) MarshalJSON() ([]byte, error) {
 
 // ViewUnsubscribe: Client → daemon (acked).
 type ViewUnsubscribe struct {
-	ID      string     `json:"id"`
-	Payload SessionRef `json:"payload"`
+	ID      string  `json:"id"`
+	Payload ViewRef `json:"payload"`
 }
 
 func (ViewUnsubscribe) isEnvelope() {}
@@ -993,7 +999,7 @@ type SessionEventRecord struct {
 }
 
 // SessionEvent: Everything that happens in a session. Views must ignore types they don't know.
-// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, UnknownSessionEvent.
+// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, SubagentStarted, SubagentEnded, UnknownSessionEvent.
 type SessionEvent struct {
 	Value SessionEventVariant
 }
@@ -1158,6 +1164,18 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "user_note":
 		var v UserNote
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "subagent_started":
+		var v SubagentStarted
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "subagent_ended":
+		var v SubagentEnded
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -1555,6 +1573,8 @@ type SessionInfo struct {
 	Added *int64 `json:"added,omitempty"`
 	// Lines removed by edits in this session.
 	Removed *int64 `json:"removed,omitempty"`
+	// The session that delegated a task into this one (a subagent working in another directory, e.g. a worktree). Its turns run on the harness it was delegated to.
+	Parent *string `json:"parent,omitempty"`
 }
 
 // ToolResult: A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template.
@@ -1634,6 +1654,56 @@ func (v UserNote) MarshalJSON() ([]byte, error) {
 	}{"user_note", plain(v)})
 }
 
+// SubagentStarted: The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event.
+type SubagentStarted struct {
+	ID string `json:"id"`
+	// Harness name: pi, claude, codex…
+	Agent string `json:"agent"`
+	Task  string `json:"task"`
+	// The model it runs with, when one was chosen for this task or by the user.
+	Model  *string `json:"model,omitempty"`
+	Effort *string `json:"effort,omitempty"`
+	// The directory it works in, when that is not the session's.
+	Cwd *string `json:"cwd,omitempty"`
+	// A subagent working in another directory runs as its own session (parent = this one); its id.
+	Child *string `json:"child,omitempty"`
+}
+
+func (SubagentStarted) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v SubagentStarted) MarshalJSON() ([]byte, error) {
+	type plain SubagentStarted
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"subagent_started", plain(v)})
+}
+
+// SubagentEnded: The subagent started by subagent_started finished, failed or was stopped.
+type SubagentEnded struct {
+	ID         string     `json:"id"`
+	StopReason StopReason `json:"stopReason"`
+	Error      *string    `json:"error,omitempty"`
+}
+
+func (SubagentEnded) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v SubagentEnded) MarshalJSON() ([]byte, error) {
+	type plain SubagentEnded
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"subagent_ended", plain(v)})
+}
+
+// PermissionDetail: One labelled fact of a permission request, drawn as a highlighted key–value row above the content.
+type PermissionDetail struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
 type PermissionOption struct {
 	ID   string               `json:"id"`
 	Name string               `json:"name"`
@@ -1650,7 +1720,9 @@ type PermissionRequest struct {
 	// What kind of action is asked about (edit, execute…), when known.
 	Kind *ToolKind `json:"kind,omitempty"`
 	// What to preview: for an edit, the diff that has not been applied yet.
-	Content []ToolCallContent  `json:"content,omitempty"`
+	Content []ToolCallContent `json:"content,omitempty"`
+	// Labelled facts shown above the content, e.g. a delegation's harness, model, effort and directory.
+	Details []PermissionDetail `json:"details,omitempty"`
 	Options []PermissionOption `json:"options"`
 }
 
@@ -2189,6 +2261,8 @@ func (v KvComponent) MarshalJSON() ([]byte, error) {
 type KvItem struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
+	// Highlights the value (accent) or colors it by meaning.
+	Tone *Tone `json:"tone,omitempty"`
 }
 
 // ProgressComponent: A bar. TUI: ▓▓▓░░ 60%.
@@ -2594,16 +2668,20 @@ func (v RemoveViewOp) MarshalJSON() ([]byte, error) {
 
 // ViewSnapshot: Everything in the session as drawn, as of seq.
 type ViewSnapshot struct {
-	Session string     `json:"session"`
-	Seq     int64      `json:"seq"`
-	Items   []ViewItem `json:"items"`
+	Session string `json:"session"`
+	// Set for a per-agent view (view.subscribe with agent): only that agent's work.
+	Agent *string    `json:"agent,omitempty"`
+	Seq   int64      `json:"seq"`
+	Items []ViewItem `json:"items"`
 }
 
 // ViewPatch: Changes caused by the session event with this seq, applied in order.
 type ViewPatch struct {
-	Session string   `json:"session"`
-	Seq     int64    `json:"seq"`
-	Ops     []ViewOp `json:"ops"`
+	Session string `json:"session"`
+	// Set for a per-agent view: patches of the main view have none.
+	Agent *string  `json:"agent,omitempty"`
+	Seq   int64    `json:"seq"`
+	Ops   []ViewOp `json:"ops"`
 }
 
 // Theme: Theme tokens served by the daemon. Web maps them to CSS variables, GPUI to its theme, TUIs to the nearest 16/256/true color.

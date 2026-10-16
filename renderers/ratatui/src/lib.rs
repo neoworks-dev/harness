@@ -20,6 +20,9 @@ mod render;
 mod summary;
 mod text;
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use ratatui::text::Line;
 use suite_protocol as pb;
 use suite_protocol::ViewItem;
@@ -41,6 +44,74 @@ pub struct Options {
     /// Highlights the n-th button of this item (index into [`buttons`]).
     pub focused_button: Option<usize>,
     pub theme: Palette,
+    /// Reserve rows for images the app can draw itself (see [`ImageOptions`]). None: an image is
+    /// a one-line `[image …]` placeholder.
+    pub images: Option<ImageOptions>,
+}
+
+/// What the app knows about an image source (`src` of an image component).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImageStatus {
+    /// Not looked at yet, or on its way.
+    Loading,
+    /// Readable, with its size in pixels.
+    Ready { width: u32, height: u32 },
+    /// Why it can't be shown.
+    Failed(String),
+}
+
+/// Images drawn by the app over lines the renderer reserves for them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageOptions {
+    /// Rows a thumbnail may take at most.
+    pub max_rows: u16,
+    /// Pixel size of a terminal cell (width, height), to keep the aspect ratio.
+    pub cell: (u16, u16),
+    /// Per source; one that is missing counts as [`ImageStatus::Loading`].
+    pub status: Arc<HashMap<String, ImageStatus>>,
+}
+
+/// Where an item's lines hold room for an image: the app draws it there. Only images that are
+/// [`ImageStatus::Ready`] get room; the others stay a line of text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageSlot {
+    /// Index of the first reserved line within the item's lines.
+    pub line: usize,
+    /// Column of the slot's left edge.
+    pub x: u16,
+    pub cols: u16,
+    pub rows: u16,
+    pub src: String,
+}
+
+/// An item's lines and the room they hold for images.
+#[derive(Debug, Clone, Default)]
+pub struct Rendered {
+    pub lines: Vec<Line<'static>>,
+    pub images: Vec<ImageSlot>,
+}
+
+/// The cells a `width`x`height` pixel image takes in a terminal whose cells are `cell` pixels:
+/// its natural size, shrunk (never grown) to fit `max_cols` x `max_rows`, aspect ratio kept.
+/// At least 1x1.
+pub fn image_cells(
+    width: u32,
+    height: u32,
+    cell: (u16, u16),
+    max_cols: u16,
+    max_rows: u16,
+) -> (u16, u16) {
+    let (cw, ch) = (u32::from(cell.0.max(1)), u32::from(cell.1.max(1)));
+    let natural = (
+        f64::from(width.div_ceil(cw).max(1)),
+        f64::from(height.div_ceil(ch).max(1)),
+    );
+    let scale = (f64::from(max_cols.max(1)) / natural.0)
+        .min(f64::from(max_rows.max(1)) / natural.1)
+        .min(1.0);
+    let cols = ((natural.0 * scale).round() as u16).clamp(1, max_cols.max(1));
+    let rows = ((natural.1 * scale).round() as u16).clamp(1, max_rows.max(1));
+    (cols, rows)
 }
 
 /// A button of an item as the app presents it.
@@ -87,10 +158,28 @@ fn collect(c: &pb::Component, out: &mut Vec<ButtonRef>) {
 
 /// The item as styled lines, none wider than `width` cells (no lines at all for width 0).
 pub fn render_item(item: &ViewItem, width: u16, opts: &Options) -> Vec<Line<'static>> {
+    render_item_images(item, width, opts).lines
+}
+
+/// [`render_item`] plus where the item's images go (see [`Options::images`]).
+pub fn render_item_images(item: &ViewItem, width: u16, opts: &Options) -> Rendered {
     if width == 0 {
-        return Vec::new();
+        return Rendered::default();
     }
-    render::Cx::new(opts).item(item, usize::from(width))
+    let mut cx = render::Cx::new(opts);
+    let lines = cx.item(item, usize::from(width));
+    Rendered {
+        lines,
+        images: cx.take_slots(),
+    }
+}
+
+/// The `src` of every image component of the item that is drawn in full (not inside a table or
+/// the like): what an app has to look at to show them.
+pub fn image_sources(item: &ViewItem) -> Vec<String> {
+    let mut out = Vec::new();
+    render::sources(&item.component, &mut out);
+    out
 }
 
 /// The visible text of lines, one string per line, trailing blanks trimmed. For tests, copying

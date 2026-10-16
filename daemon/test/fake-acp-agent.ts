@@ -13,6 +13,9 @@
 //   config        reports what session/new (or resume) and set_config_option gave it
 //   started       reports how the conversation began: "new" or "resume" (resuming a session id
 //                 that starts with "gone" fails, like an adapter that lost the conversation)
+//   suitetool <t> asks for permission to use the suite's own MCP tool <t> (titled
+//                 mcp__suite__<t>; "codex <t>": mcp.suite.<t>) and reports the answer
+//   cwd           reports the directory session/new (or resume) was given
 //   usage         sends usage_updates in the middle of one message (USD cost, then EUR cost)
 // It offers a model option (small, large) and an effort option (low, high), and one stored
 // conversation, "old-1", for session/list and session/resume.
@@ -35,6 +38,7 @@ let instructions: unknown;
 const config: Record<string, unknown> = {};
 let sessionId = "";
 let started = "new";
+let cwd = "";
 
 const VALUES: Record<string, string[]> = { model: ["small", "large"], effort: ["low", "high"] };
 const CATEGORY: Record<string, string> = { model: "model", effort: "thought_level" };
@@ -167,6 +171,17 @@ async function prompt(params: {
     update(sessionId, { sessionUpdate: "plan", entries: [] });
     say(sessionId, `answer: ${picked}`);
     return { stopReason: "end_turn" };
+  } else if (task.startsWith("suitetool ") || task.startsWith("codex ")) {
+    const [style, name = ""] = task.split(" ");
+    const title = `${style === "codex" ? "mcp.suite." : "mcp__suite__"}${name}`;
+    const picked = await permission(sessionId, { toolCallId: "t9", title, kind: "other" });
+    update(sessionId, { sessionUpdate: "plan", entries: [] });
+    say(sessionId, `answer: ${picked}`);
+    return { stopReason: "end_turn" };
+  } else if (task === "cwd") {
+    update(sessionId, { sessionUpdate: "plan", entries: [] });
+    say(sessionId, `cwd: ${cwd}`);
+    return { stopReason: "end_turn" };
   } else if (task.startsWith("runcmd ")) {
     const command = task.slice(7);
     const toolCall = {
@@ -268,6 +283,7 @@ async function handle(message: Record<string, unknown>): Promise<void> {
     } else if (method === "session/new") {
       const servers = params.mcpServers as HttpServer[];
       gateway = servers[0];
+      cwd = params.cwd as string;
       const meta = params._meta as { jetbrains?: { air?: { customInstructions?: string } } };
       instructions = meta.jetbrains?.air?.customInstructions?.slice(0, 40);
       sessionId = "acp-1";
@@ -275,6 +291,7 @@ async function handle(message: Record<string, unknown>): Promise<void> {
     } else if (method === "session/resume") {
       if ((params.sessionId as string).startsWith("gone")) throw new Error("no such session");
       gateway = (params.mcpServers as HttpServer[])[0];
+      cwd = params.cwd as string;
       sessionId = params.sessionId as string;
       started = "resume";
       result = { configOptions: configOptions() };

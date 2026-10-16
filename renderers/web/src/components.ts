@@ -337,8 +337,8 @@ export function renderComponent(ctx: RenderContext, component: Component): HTMLE
       return renderTable(doc, component);
     case "kv": {
       const list = el(doc, "dl", "suite-kv");
-      for (const { key, value } of component.items) {
-        list.append(el(doc, "dt", "", {}, key), el(doc, "dd", "", {}, value));
+      for (const { key, value, tone } of component.items) {
+        list.append(el(doc, "dt", "", {}, key), el(doc, "dd", "", { "data-tone": tone }, value));
       }
       return list;
     }

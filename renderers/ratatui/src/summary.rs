@@ -15,6 +15,10 @@ use crate::text::{clean, one_line, sline, truncate, truncate_spans, width};
 /// Lines shown before anything is cut (the `… +N lines` markers come on top).
 const BUDGET: usize = 3;
 
+fn is_image(leaf: &Leaf<'_>) -> bool {
+    matches!(leaf, Leaf::Comp(pb::Component::ImageComponent(_)))
+}
+
 enum Leaf<'c> {
     Title(&'c pb::CardComponent),
     Comp(&'c pb::Component),
@@ -43,8 +47,18 @@ impl Cx<'_> {
         let mut shown = 0;
         let mut dropped = 0;
         for (i, leaf) in all.iter().enumerate() {
+            // A picture shown for real is not text: it keeps clear of the line budget.
+            if let (Leaf::Comp(pb::Component::ImageComponent(v)), Some(_)) =
+                (leaf, self.o.images.as_ref())
+            {
+                out.extend(self.image(v, w));
+                continue;
+            }
             let room = BUDGET - shown;
-            let later = all.len() - 1 - i;
+            let later = all[i + 1..]
+                .iter()
+                .filter(|l| !(self.o.images.is_some() && is_image(l)))
+                .count();
             let avail = room.saturating_sub(later).max(room.min(1));
             let (lines, total) = self.leaf_lines(leaf, w, avail);
             if avail == 0 {
@@ -151,7 +165,8 @@ impl Cx<'_> {
                 format!("{}:", one_line(&item.key)),
                 self.p.muted_style(),
             ));
-            spans.push(Span::raw(format!(" {}", one_line(&item.value))));
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(one_line(&item.value), self.value_style(item)));
         }
         Line::from(truncate_spans(spans, w))
     }

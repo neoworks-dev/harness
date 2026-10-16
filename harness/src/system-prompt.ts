@@ -27,8 +27,8 @@ accept them as paths of the stored file (write and edit don't), e.g.
 cp asset://img-7f3 ~/site/logo.png.
 
 delegate hands a task to a subagent (pi, Claude Code or Codex) that works in the
-session's directory; use it for larger coding work. Its progress shows in the
-chat and its final reply is the tool result. <guest agent=…>…</guest> in a
+session's directory, or in a cwd or git worktree you name; use it for larger
+coding work. Its final reply is the tool result. <guest agent=…>…</guest> in a
 message is a task the user gave a guest directly, with its reply.
 
 <conversation-so-far> in a message is what was said in turns that another agent

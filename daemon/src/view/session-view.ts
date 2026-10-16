@@ -110,16 +110,37 @@ export class SessionView {
   private readonly results = new Map<string, { tool: string; rawOutput: unknown }>();
   private readonly permissions = new Map<string, PermissionRequest>();
   private readonly choices = new Map<string, Choice>();
+  /** Subagents running right now (subagent_started … subagent_ended): id → agent label. */
+  private readonly windows = new Map<string, string>();
   private seq = 0;
 
+  /**
+   * `only` makes a per-agent view: just that agent's work (what its labelled events say), with
+   * nothing of the main conversation. Without it, the session's own view: a delegation shows as
+   * the one tool item of the delegate call, and the labelled events of the subagent that runs
+   * meanwhile stay out of it (they are in the log and in the agent's own view).
+   */
   constructor(
     private readonly session: string,
     private readonly templates: TemplateLookup,
     private readonly log: Logger,
+    private readonly only?: string,
   ) {}
 
   snapshot(): ViewSnapshot {
-    return { session: this.session, seq: this.seq, items: structuredClone(this.items) };
+    const snapshot: ViewSnapshot = {
+      session: this.session,
+      seq: this.seq,
+      items: structuredClone(this.items),
+    };
+    if (this.only !== undefined) snapshot.agent = this.only;
+    return snapshot;
+  }
+
+  /** Whether an event labelled with this agent (none: the session's own agent) is drawn. */
+  private shows(agent: string | undefined): boolean {
+    if (this.only !== undefined) return agent === this.only;
+    return agent === undefined || ![...this.windows.values()].includes(agent);
   }
 
   /** Applies one event and returns the ops that bring a pane from the previous state to this one. */
@@ -131,7 +152,14 @@ export class SessionView {
   }
 
   private opsFor(event: SessionEvent, seq: number): ViewOp[] {
+    if (this.only !== undefined) return this.agentOps(event, seq, this.only);
     switch (event.type) {
+      case "subagent_started":
+        this.windows.set(event.id, event.agent);
+        return [];
+      case "subagent_ended":
+        this.windows.delete(event.id);
+        return [];
       case "user_message": {
         const children: Component[] = [text(plain(event.text))];
         for (const src of event.images ?? []) children.push({ type: "image", src });
@@ -142,34 +170,15 @@ export class SessionView {
         return [{ op: "set", item: { ref: `u${seq}`, kind: "user", label: event.app, component } }];
       }
       case "agent_message_chunk":
+        if (!this.shows(event.agent)) return [];
         return this.stream(`m-${event.messageId}`, "agent", event.text, event.agent);
       case "agent_thought_chunk":
+        if (!this.shows(event.agent)) return [];
         return this.stream(`t-${event.messageId}`, "thought", event.text, event.agent);
-      case "tool_call": {
-        const call: Call = {
-          ref: `c-${event.toolCallId}`,
-          title: event.agent === undefined ? event.title : `${event.agent}: ${event.title}`,
-          status: event.status,
-          rawInput: event.rawInput,
-        };
-        if (event.tool !== undefined) call.tool = event.tool;
-        if (event.agent !== undefined) call.agent = event.agent;
-        this.calls.set(event.toolCallId, call);
-        return [{ op: "set", item: this.toolItem(call) }];
-      }
-      case "tool_call_update": {
-        const call = this.calls.get(event.toolCallId);
-        if (!call) return [];
-        if (event.title !== undefined) {
-          call.title = call.agent === undefined ? event.title : `${call.agent}: ${event.title}`;
-        }
-        if (event.tool !== undefined) call.tool = event.tool;
-        if (event.rawInput !== undefined) call.rawInput = event.rawInput;
-        if (event.status !== undefined) call.status = event.status;
-        if (event.content !== undefined) call.content = event.content;
-        if (event.rawOutput !== undefined) call.rawOutput = event.rawOutput;
-        return [{ op: "set", item: this.toolItem(call) }];
-      }
+      case "tool_call":
+        return this.toolCallOps(event);
+      case "tool_call_update":
+        return this.toolUpdateOps(event);
       case "tool_result":
         this.results.set(event.ref, { tool: event.tool, rawOutput: event.rawOutput });
         return [];
@@ -192,6 +201,7 @@ export class SessionView {
         return [{ op: "set", item: this.choiceItem(choice, event.option ?? null, event.note) }];
       }
       case "plan":
+        if (!this.shows(event.agent)) return [];
         return this.planOps(event);
       case "setting_changed":
         // The approvals mode shows in the panes' status, not in the chat.
@@ -208,6 +218,8 @@ export class SessionView {
         return [this.notice(`n${seq}`, parts.join("; "))];
       }
       case "turn_ended": {
+        // A subagent whose end was never logged (a crash) must not hide the next turns' work.
+        this.windows.clear();
         if (event.stopReason === "end_turn") return [];
         const what = event.error ?? `stopped: ${event.stopReason.replace("_", " ")}`;
         const tone = event.stopReason === "cancelled" ? "muted" : "danger";
@@ -224,6 +236,93 @@ export class SessionView {
       default:
         return [];
     }
+  }
+
+  private toolCallOps(event: Extract<SessionEvent, { type: "tool_call" }>): ViewOp[] {
+    if (!this.shows(event.agent)) return [];
+    const prefixed = event.agent !== undefined && this.only === undefined;
+    const call: Call = {
+      ref: `c-${event.toolCallId}`,
+      title: prefixed ? `${event.agent}: ${event.title}` : event.title,
+      status: event.status,
+      rawInput: event.rawInput,
+    };
+    if (event.tool !== undefined) call.tool = event.tool;
+    if (event.agent !== undefined) call.agent = event.agent;
+    this.calls.set(event.toolCallId, call);
+    return [{ op: "set", item: this.toolItem(call) }];
+  }
+
+  private toolUpdateOps(event: Extract<SessionEvent, { type: "tool_call_update" }>): ViewOp[] {
+    const call = this.calls.get(event.toolCallId);
+    if (!call) return [];
+    if (event.title !== undefined) {
+      const prefixed = call.agent !== undefined && this.only === undefined;
+      call.title = prefixed ? `${call.agent}: ${event.title}` : event.title;
+    }
+    if (event.tool !== undefined) call.tool = event.tool;
+    if (event.rawInput !== undefined) call.rawInput = event.rawInput;
+    if (event.status !== undefined) call.status = event.status;
+    if (event.content !== undefined) call.content = event.content;
+    if (event.rawOutput !== undefined) call.rawOutput = event.rawOutput;
+    return [{ op: "set", item: this.toolItem(call) }];
+  }
+
+  /** What a per-agent view draws of an event: that agent's work, and the questions it asked. */
+  private agentOps(event: SessionEvent, seq: number, agent: string): ViewOp[] {
+    switch (event.type) {
+      case "user_message": {
+        // The user addressing the guest directly: "/claude task".
+        const task = event.text.trim().match(new RegExp(`^/${agent}\\s+([\\s\\S]+)$`))?.[1];
+        if (task === undefined) return [];
+        return [this.taskItem(`u${seq}`, task)];
+      }
+      case "subagent_started":
+        this.windows.set(event.id, event.agent);
+        if (event.agent !== agent) return [];
+        return [this.taskItem(`s-${event.id}`, event.task)];
+      case "subagent_ended": {
+        const owner = this.windows.get(event.id);
+        this.windows.delete(event.id);
+        if (owner !== agent || event.stopReason === "end_turn") return [];
+        const what = event.error ?? `stopped: ${event.stopReason.replace("_", " ")}`;
+        const tone = event.stopReason === "cancelled" ? "muted" : "danger";
+        return [this.notice(`e${seq}`, what, tone)];
+      }
+      case "agent_message_chunk":
+        if (event.agent !== agent) return [];
+        return this.stream(`m-${event.messageId}`, "agent", event.text, undefined);
+      case "agent_thought_chunk":
+        if (event.agent !== agent) return [];
+        return this.stream(`t-${event.messageId}`, "thought", event.text, undefined);
+      case "tool_call":
+        return this.toolCallOps(event);
+      case "tool_call_update":
+        return this.toolUpdateOps(event);
+      case "tool_result":
+        this.results.set(event.ref, { tool: event.tool, rawOutput: event.rawOutput });
+        return [];
+      case "plan":
+        if (event.agent !== agent) return [];
+        return this.planOps(event);
+      case "permission_request":
+        if (event.agent !== agent) return [];
+        this.permissions.set(event.id, event);
+        return [{ op: "set", item: this.permissionItem(event) }];
+      case "permission_resolved": {
+        const request = this.permissions.get(event.id);
+        if (!request) return [];
+        return [
+          { op: "set", item: this.permissionItem(request, event.option ?? null, event.note) },
+        ];
+      }
+      default:
+        return [];
+    }
+  }
+
+  private taskItem(ref: string, task: string): ViewOp {
+    return { op: "set", item: { ref, kind: "user", label: "task", component: text(plain(task)) } };
   }
 
   private notice(ref: string, message: string, tone: "muted" | "danger" = "muted"): ViewOp {
@@ -274,6 +373,15 @@ export class SessionView {
     note?: string,
   ): ViewItem {
     const label = `${request.agent} asks: ${request.title}`;
+    const details: Component[] = [];
+    if (request.details?.length) {
+      const items = request.details.map(({ key, value }) => ({
+        key,
+        value,
+        tone: "accent" as const,
+      }));
+      details.push({ type: "kv", items });
+    }
     if (answer === undefined) {
       const buttons: Component[] = request.options.map((option, i) => ({
         type: "button",
@@ -283,7 +391,7 @@ export class SessionView {
         key: String(i + 1),
       }));
       const row: Component = { type: "row", gap: "s", children: buttons };
-      const preview = this.contentComponents(request.content);
+      const preview = [...details, ...this.contentComponents(request.content)];
       const component: Component =
         preview.length === 0 ? row : { type: "stack", gap: "s", children: [...preview, row] };
       return { ref: `p-${request.id}`, kind: "tool", label, state: "pending", component };
@@ -291,12 +399,16 @@ export class SessionView {
     const option = request.options.find((o) => o.id === answer);
     const allowed = option?.kind.startsWith("allow") === true;
     const what = option ? option.name : "No answer: the turn ended.";
+    const answered = text(plain(withNote(what, note)), { tone: "muted" });
     return {
       ref: `p-${request.id}`,
       kind: "tool",
       label,
       state: allowed ? "done" : "failed",
-      component: text(plain(withNote(what, note)), { tone: "muted" }),
+      component:
+        details.length === 0
+          ? answered
+          : { type: "stack", gap: "s", children: [...details, answered] },
     };
   }
 
@@ -357,11 +469,23 @@ export class SessionView {
     return [{ op: "blocks", ref, path: [], from, blocks: blocks.slice(from) }];
   }
 
+  /** A delegation reads `pi · first line of the task`, whatever the harness called its tool. */
+  private callLabel(call: Call): string {
+    if (call.agent !== undefined || call.tool !== "delegate" || !isRecord(call.rawInput)) {
+      return call.title;
+    }
+    const { agent, task } = call.rawInput;
+    if (typeof agent !== "string" || typeof task !== "string") return call.title;
+    const first = task.split("\n").find((line) => line.trim() !== "") ?? "";
+    const line = first.trim().replace(/\s+/g, " ");
+    return `${agent} · ${line.length > 80 ? `${line.slice(0, 79)}…` : line}`;
+  }
+
   private toolItem(call: Call): ViewItem {
     return {
       ref: call.ref,
       kind: "tool",
-      label: call.title,
+      label: this.callLabel(call),
       state: STATES[call.status],
       component: this.resultView(call),
     };

@@ -17,6 +17,8 @@ interface Parts {
   gateway: Gateway;
   views: ViewManager;
   asker?: Asker;
+  /** Stops one running subagent of the session (suite.cancel_agent {id}). */
+  cancelAgent?: (session: string, id: string) => boolean;
 }
 
 function findLabel(component: Component, action: string): string | undefined {
@@ -52,6 +54,17 @@ export class ActionRunner {
       const trimmed = note?.trim();
       const added = trimmed === "" ? undefined : trimmed;
       this.parts.asker.answer(session, kind, id, option, from, added);
+      return;
+    }
+    if (action === "suite.cancel_agent") {
+      const fields: Record<string, unknown> = Object.assign({}, args);
+      const { id } = fields;
+      if (typeof id !== "string" || !this.parts.cancelAgent) {
+        throw new BadRequestError("suite.cancel_agent needs args {id}");
+      }
+      if (!this.parts.cancelAgent(session, id)) {
+        throw new BadRequestError(`${id} isn't a running subagent of this session`);
+      }
       return;
     }
     const { store, connectors, gateway, sessions, views } = this.parts;

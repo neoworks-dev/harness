@@ -57,7 +57,7 @@ async function setup(
   const gate = options.gate ?? "allow";
   if (gate !== "manual") {
     daemon.store.onAppend(({ session, event }) => {
-      if (event.type !== "permission_request" || !event.title.startsWith("Hand a task")) return;
+      if (event.type !== "permission_request" || event.title !== "Start a subagent?") return;
       void Promise.resolve().then(() =>
         daemon.actions.run(
           { session, ref: "p", action: "suite.permit", args: { id: event.id, option: gate } },
@@ -568,7 +568,11 @@ describe("delegate from a session on an ACP harness", () => {
     const { daemon, session } = await setup({ gate: "manual" });
     await daemon.commands.run(session, "/harness fake");
     await daemon.commands.run(session, "/model fake large");
-    const ask = async (args: Record<string, string>, title: string): Promise<void> => {
+    const ask = async (
+      args: Record<string, string>,
+      model: string,
+      effort: string,
+    ): Promise<void> => {
       const call = daemon.gateway.call(
         "delegate",
         { agent: "fake", task: "x", ...args },
@@ -579,15 +583,21 @@ describe("delegate from a session on an ACP harness", () => {
         },
       );
       const request = await answer(daemon, session, "permission_request", "allow");
-      expect(request).toMatchObject({ agent: "fake", title });
+      expect(request).toMatchObject({
+        agent: "fake",
+        title: "Start a subagent?",
+        details: [
+          { key: "Harness", value: "Fake" },
+          { key: "Model", value: model },
+          { key: "Effort", value: effort },
+          { key: "Directory", value: daemon.sessions.info(session)?.cwd },
+        ],
+      });
       await call;
     };
-    await ask({}, "Hand a task to Fake (model large): x");
-    await ask({ effort: "high" }, "Hand a task to Fake (model large, effort high): x");
-    await ask(
-      { model: "small", effort: "low" },
-      "Hand a task to Fake (model small, effort low): x",
-    );
+    await ask({}, "large", "default");
+    await ask({ effort: "high" }, "large", "high");
+    await ask({ model: "small", effort: "low" }, "small", "low");
   });
 
   test("model and effort apply to that task only and are not the user's settings", async () => {
@@ -607,7 +617,8 @@ describe("delegate from a session on an ACP harness", () => {
 
     const unknown = await call({ model: "huge" });
     expect(unknown.isError).toBe(true);
-    expect(resultOf(unknown)).toContain("no model huge");
+    // Refused before anything was asked or sent, with the names the adapter lists.
+    expect(resultOf(unknown)).toBe('Unknown model "huge" for Fake. Valid models: small, large.');
     // Nothing ran: no reply from the subagent for it.
     expect(replies(daemon, session, "fake")).toHaveLength(4);
   });
@@ -665,7 +676,14 @@ describe("pi subagents", () => {
     const request = await answer(daemon, session, "permission_request", "allow");
     expect(request).toMatchObject({
       agent: "main",
-      title: "Hand a task to pi (model deepseek/other-model, effort high): say hi",
+      title: "Start a subagent?",
+      details: [
+        { key: "Harness", value: "pi" },
+        { key: "Model", value: "deepseek/other-model" },
+        { key: "Effort", value: "high" },
+        { key: "Directory", value: daemon.sessions.info(session)?.cwd },
+      ],
+      content: [{ type: "text", text: "say hi" }],
       options: [
         { id: "allow", name: "Start pi" },
         { id: "always", name: "Allow pi for this session" },
@@ -714,6 +732,35 @@ describe("pi subagents", () => {
     expect(result.isError).toBe(true);
     expect(resultOf(result)).toContain('Unknown model provider "nope"');
     expect(model.requests).toHaveLength(0);
+  });
+
+  test("a model pi doesn't list is refused with the valid names; its spelling is forgiven", async () => {
+    const model = fakeModel([reply("Hi.")]);
+    const pi = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+    const { daemon, session } = await setup({ pi });
+    const unknown = await daemon.gateway.call(
+      "delegate",
+      { agent: "pi", task: "x", model: "deepseek v9 turbo" },
+      undefined,
+      { session, text: true },
+    );
+    expect(unknown.isError).toBe(true);
+    expect(resultOf(unknown)).toStartWith(
+      'Unknown model "deepseek v9 turbo" for pi. Valid models: ',
+    );
+    expect(resultOf(unknown)).toContain("deepseek/deepseek-v4-flash");
+    // Nothing was asked or run.
+    expect(events(daemon, session).some((e) => e.type === "permission_request")).toBe(false);
+    expect(model.requests).toHaveLength(0);
+
+    const spaced = await daemon.gateway.call(
+      "delegate",
+      { agent: "pi", task: "x", model: "DeepSeek V4 Flash", effort: "LOW" },
+      undefined,
+      { session, text: true },
+    );
+    expect(resultOf(spaced)).toBe("Hi.");
+    expect(model.models[0]).toEqual({ provider: "deepseek", id: "deepseek-v4-flash" });
   });
 
   test("a pi subagent may not delegate", async () => {

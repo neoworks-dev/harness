@@ -19,10 +19,12 @@ use suite_protocol::{
 use suite_renderer_ratatui::{ButtonRef, Palette};
 use suite_sdk::Event;
 
+use crate::agents::{Agents, AgentsAction, MainRow, Transcript};
 use crate::chat::{self, Chat, ChatOpts};
 use crate::editor::Editor;
 use crate::github::{Github, Outgoing};
 use crate::history::{Histories, HistoryStore};
+use crate::images::Images;
 use crate::menu::{self, Command, Entry, Switcher};
 use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction};
 use crate::status::{Approvals, HarnessSettings, Status, record_setting};
@@ -71,6 +73,16 @@ pub enum Effect {
     Cancel {
         session: String,
     },
+    /// Follow the events of a session a subagent runs as (its activity in the agents list).
+    Watch {
+        session: String,
+    },
+    /// Follow (`on`) or stop following the view of one agent's work in a session.
+    AgentView {
+        session: String,
+        agent: String,
+        on: bool,
+    },
     /// Follow another session: stop following `from`, follow `to` (view and events) and, with
     /// `move_agent`, make it current and bring the agent to this app.
     Switch {
@@ -110,6 +122,8 @@ enum Overlay {
 enum Focus {
     Sessions,
     Panel(Panel),
+    /// The subagents list under the prompt bar.
+    Agents,
 }
 
 #[derive(Debug, Clone)]
@@ -192,7 +206,14 @@ pub struct App {
 
     widgets: Widgets,
     github: Github,
+    /// The subagents running (or just ended) under the prompt bar, and the transcript of one.
+    agents: Agents,
+    transcript: Option<Transcript>,
+    /// Last whole second the agents list was painted for (its clocks run).
+    agents_tick: i64,
     chat: Chat,
+    /// Pictures in the chat; None shows the `[image …]` placeholder.
+    images: Option<Images>,
     editor: Editor,
     histories: Histories,
     overlay: Overlay,
@@ -250,6 +271,9 @@ impl App {
         App {
             widgets: Widgets::new(PathBuf::from(&config.cwd), palette),
             github: Github::new(PathBuf::from(&config.cwd), palette),
+            agents: Agents::default(),
+            transcript: None,
+            agents_tick: 0,
             styles: Styles::new(&palette, config.no_color),
             palette,
             app_id: config.app_id,
@@ -258,6 +282,7 @@ impl App {
             home: config.home,
             no_color: config.no_color,
             chat: Chat::new(),
+            images: None,
             editor: Editor::default(),
             histories: Histories::new(config.history),
             overlay: Overlay::None,
@@ -334,6 +359,12 @@ impl App {
         &self.chat
     }
 
+    /// Shows images in the chat (the runtime hands this over once it knows the terminal).
+    pub fn set_images(&mut self, images: Images) {
+        self.images = Some(images);
+        self.dirty = true;
+    }
+
     pub fn widgets(&self) -> &Widgets {
         &self.widgets
     }
@@ -371,6 +402,9 @@ impl App {
         if self.widgets.tick() {
             self.dirty = true;
         }
+        if let Some(images) = self.images.as_mut() {
+            self.dirty |= images.poll();
+        }
         let gh = self.github.tick();
         self.dirty |= gh.changed;
         if let Some(out) = gh.out {
@@ -392,6 +426,14 @@ impl App {
             self.dirty = true;
         }
         self.update_engaged();
+        if self.agents.ticks(now_ms, self.agents_tick) {
+            self.dirty = true;
+        }
+        self.agents_tick = now_ms;
+        if self.focus == Some(Focus::Agents) && !self.agents.visible(now_ms) {
+            self.focus = None;
+            self.dirty = true;
+        }
         if self
             .awaiting
             .as_ref()
@@ -426,6 +468,11 @@ impl App {
             Event::Session(record) => {
                 if record.session == self.session {
                     self.on_record(&record);
+                    for session in self.agents.take_wanted() {
+                        fx.push(Effect::Watch { session });
+                    }
+                } else if self.agents.follows(&record.session) {
+                    self.agents.on_child_record(&record);
                 }
             }
             Event::Subscribed { session, .. } => {
@@ -450,14 +497,30 @@ impl App {
             }
             Event::ViewSnapshot(snapshot) => {
                 if snapshot.session == self.session {
-                    self.chat.apply_snapshot(snapshot);
-                    self.sync_prompt();
+                    match (&snapshot.agent, self.transcript.as_mut()) {
+                        (None, _) => {
+                            self.chat.apply_snapshot(snapshot);
+                            self.sync_prompt();
+                        }
+                        (Some(agent), Some(t)) if *agent == t.agent.harness => {
+                            t.chat.apply_snapshot(snapshot);
+                        }
+                        _ => {}
+                    }
                 }
             }
             Event::ViewPatch(patch) => {
                 if patch.session == self.session {
-                    self.chat.apply_patch(patch);
-                    self.sync_prompt();
+                    match (&patch.agent, self.transcript.as_mut()) {
+                        (None, _) => {
+                            self.chat.apply_patch(patch);
+                            self.sync_prompt();
+                        }
+                        (Some(agent), Some(t)) if *agent == t.agent.harness => {
+                            t.chat.apply_patch(patch);
+                        }
+                        _ => {}
+                    }
                 }
             }
             Event::FileChanged(changed) => self.widgets.on_file_changed(&changed.path),
@@ -495,6 +558,7 @@ impl App {
 
     fn on_record(&mut self, record: &SessionEventRecord) {
         self.widgets.on_session_event(record);
+        self.agents.on_record(record);
         match &record.event {
             SessionEvent::UserMessage(_) => {
                 self.running = true;
@@ -598,6 +662,8 @@ impl App {
         self.menu_closed_for = None;
         self.widgets.reset(PathBuf::from(cwd));
         self.github.reset(PathBuf::from(cwd));
+        self.agents = Agents::default();
+        self.transcript = None;
         self.dirty = true;
     }
 
@@ -819,6 +885,10 @@ impl App {
             }
             return fx;
         }
+        if self.transcript.is_some() {
+            self.transcript_key(key, &mut fx);
+            return fx;
+        }
         let ctrl_c =
             key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL);
         if !ctrl_c && self.quit_armed_until > 0 {
@@ -854,6 +924,8 @@ impl App {
         self.dirty = true;
         if self.github.is_open() {
             self.github.wheel(down);
+        } else if let Some(t) = self.transcript.as_mut() {
+            t.wheel(down);
         } else if self.widgets.overlay_open() {
             let code = if down { KeyCode::Down } else { KeyCode::Up };
             for _ in 0..WHEEL_LINES {
@@ -915,7 +987,80 @@ impl App {
                         self.open_session(*info, fx);
                     }
                 },
+                Focus::Agents => self.agents_key(key, fx),
             },
+        }
+    }
+
+    // ---- subagents ----
+
+    /// Ctrl-X, or Down from an empty editor: the keys go to the agents list.
+    fn focus_agents(&mut self) {
+        if self.agents.visible(self.now_ms) {
+            self.agents.focus(self.now_ms);
+            self.focus = Some(Focus::Agents);
+        } else {
+            self.notify("no subagents running", false);
+        }
+    }
+
+    fn agents_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
+        match self.agents.key(key, self.now_ms) {
+            AgentsAction::Redraw => {}
+            AgentsAction::Leave => self.focus = None,
+            AgentsAction::Transcript(id) => {
+                let Some(agent) = self.agents.get(&id).cloned() else {
+                    return;
+                };
+                self.focus = None;
+                fx.push(Effect::AgentView {
+                    session: self.session.clone(),
+                    agent: agent.harness.clone(),
+                    on: true,
+                });
+                self.transcript = Some(Transcript::new(agent));
+            }
+            AgentsAction::Session(child) => {
+                self.focus = None;
+                match self.sessions.get(&child).cloned() {
+                    Some(info) => self.open_session(info, fx),
+                    None => self.notify("that session isn't known yet", false),
+                }
+            }
+            AgentsAction::Stop(id) => {
+                self.notify("stopping…", false);
+                fx.push(Effect::Action {
+                    session: self.session.clone(),
+                    item: "agents".into(),
+                    action: "suite.cancel_agent".into(),
+                    args: Some(serde_json::json!({ "id": id })),
+                });
+            }
+        }
+    }
+
+    /// Keys while a subagent's transcript is open: scrolling, expanding, and the way out.
+    fn transcript_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Enter if !ctrl => {
+                if let Some(t) = self.transcript.take() {
+                    fx.push(Effect::AgentView {
+                        session: self.session.clone(),
+                        agent: t.agent.harness,
+                        on: false,
+                    });
+                }
+            }
+            KeyCode::Char('c') if ctrl => self.ctrl_c(fx),
+            KeyCode::Char('o') if ctrl => self.expanded = !self.expanded,
+            KeyCode::Char('t') if ctrl => self.show_thoughts = !self.show_thoughts,
+            _ if !ctrl => {
+                if let Some(t) = self.transcript.as_mut() {
+                    t.scroll_key(key);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -1086,7 +1231,7 @@ impl App {
                 'n' => {
                     self.select_prompt(1);
                 }
-                'o' | 't' | 's' | 'l' | 'g' => {
+                'o' | 't' | 's' | 'l' | 'g' | 'x' => {
                     self.ctrl_key(c, fx);
                 }
                 _ => {}
@@ -1184,7 +1329,15 @@ impl App {
                 if self.menu_visible() {
                     self.move_menu(1);
                 } else if !self.editor.down() {
-                    self.history_next();
+                    // Past the end of an empty draft, Down goes on to the subagents list.
+                    if empty
+                        && !self.histories.of(&self.session).browsing()
+                        && self.agents.visible(self.now_ms)
+                    {
+                        self.focus_agents();
+                    } else {
+                        self.history_next();
+                    }
                 }
             }
             KeyCode::Home if ctrl || empty => {
@@ -1249,6 +1402,10 @@ impl App {
             }
             'g' => {
                 self.toggle_sessions_focus();
+                return false;
+            }
+            'x' => {
+                self.focus_agents();
                 return false;
             }
             'p' | 'n' => {
@@ -1431,7 +1588,9 @@ impl App {
         });
         self.editor
             .set_width(usize::from(main.width.saturating_sub(2)).max(1));
-        let h = main.height;
+        // The subagents list sits under the status lines.
+        let agents_h = self.agents_rows(main.height);
+        let h = main.height - agents_h;
         let status_h = h.saturating_sub(3).min(3);
         let rule_h = h.saturating_sub(status_h).min(1);
         let room = h - status_h - rule_h;
@@ -1465,9 +1624,39 @@ impl App {
             editor: at(chat_h + rule_h + hint_h, editor_h - hint_h),
             panel,
             status: at(chat_h + rule_h + editor_h, status_h),
+            agents: at(h, agents_h),
             side,
             left,
         }
+    }
+
+    /// Rows the subagents list takes of a pane `total` rows tall: none when the pane is small.
+    fn agents_rows(&self, total: u16) -> u16 {
+        if total < 12 {
+            return 0;
+        }
+        let want = self
+            .agents
+            .height(self.now_ms, self.focus == Some(Focus::Agents));
+        u16::try_from(want).unwrap_or(u16::MAX).min(total / 3)
+    }
+
+    fn draw_agents(&self, frame: &mut Frame, area: Rect) {
+        if area.height == 0 {
+            return;
+        }
+        let main = MainRow {
+            harness: &self.harness,
+            running: self.running,
+        };
+        let lines = self.agents.lines(
+            usize::from(area.width),
+            self.now_ms,
+            &main,
+            self.focus == Some(Focus::Agents),
+            &self.styles,
+        );
+        frame.render_widget(Paragraph::new(lines), area);
     }
 
     pub fn draw(&mut self, frame: &mut Frame) {
@@ -1487,6 +1676,7 @@ impl App {
         match self.focus {
             Some(Focus::Panel(_)) if !self.sidebar_shown => self.focus = None,
             Some(Focus::Sessions) if !self.sessions_shown => self.focus = None,
+            Some(Focus::Agents) if !self.agents.visible(self.now_ms) => self.focus = None,
             _ => {}
         }
         self.sync_prompt();
@@ -1496,6 +1686,17 @@ impl App {
                 .draw(frame, areas.chat, self.now_ms, &self.styles);
         } else if self.widgets.overlay_open() {
             self.widgets.draw_overlay(frame, areas.chat);
+        } else if self.transcript.is_some() {
+            let opts = ChatOpts {
+                expanded: self.expanded,
+                show_thoughts: self.show_thoughts,
+                palette: self.palette,
+                active: None,
+                marker: self.styles.accent,
+            };
+            if let Some(t) = self.transcript.as_mut() {
+                t.draw(frame, areas.chat, &opts, &self.styles);
+            }
         } else {
             match self.overlay {
                 Overlay::None => self.draw_chat(frame, areas.chat),
@@ -1537,6 +1738,7 @@ impl App {
             frame.render_widget(Paragraph::new(areas.panel), areas.editor);
         }
         self.draw_status(frame, areas.status);
+        self.draw_agents(frame, areas.agents);
     }
 
     /// The sessions on the left: the list, then a border and a gap before the chat.
@@ -1592,6 +1794,10 @@ impl App {
             ..area
         };
         let opts = self.chat_opts();
+        if let Some(images) = self.images.as_mut() {
+            images.request(self.chat.image_sources());
+            self.chat.set_images(Some(images.chat_view()));
+        }
         self.chat.layout(content.width, content.height, &opts);
         if self.chat.items().is_empty() {
             let hint = if self.chat.loaded() {
@@ -1609,6 +1815,11 @@ impl App {
             return;
         }
         frame.render_widget(Paragraph::new(self.chat.visible()), content);
+        if let Some(images) = self.images.as_mut() {
+            for at in self.chat.placements() {
+                images.draw(frame.buffer_mut(), content, &at, self.styles.muted);
+            }
+        }
         let total = self.chat.total_lines();
         let height = usize::from(content.height);
         if total > height && area.width >= 20 {
@@ -1812,7 +2023,10 @@ impl App {
 
     /// The terminal cursor sits in the editor unless something else has the keys.
     fn editor_has_cursor(&self) -> bool {
-        self.focus.is_none() && self.overlay != Overlay::Switcher && !self.github.is_open()
+        self.focus.is_none()
+            && self.overlay != Overlay::Switcher
+            && !self.github.is_open()
+            && self.transcript.is_none()
     }
 
     fn status_lines(&self, width: usize) -> [Line<'static>; 3] {
@@ -1886,6 +2100,10 @@ impl App {
             key("ctrl-s", "switch session (picker)"),
             key("ctrl-g", "sessions sidebar: focus (up/down, enter, esc)"),
             key("ctrl-r", "GitHub issues and pull requests (/github)"),
+            key(
+                "ctrl-x, down",
+                "subagents under the prompt: enter opens, x stops (down: empty input)",
+            ),
             key(
                 "diff view",
                 "n/p hunk · h/l/0 sideways · s split/unified · f whole file · q close",
@@ -1990,6 +2208,8 @@ struct Areas {
     /// The prompt's lines when it has taken the editor's place.
     panel: Vec<Line<'static>>,
     status: Rect,
+    /// The subagents list under the status lines.
+    agents: Rect,
     side: Option<Rect>,
     /// The sessions sidebar.
     left: Option<Rect>,
@@ -1998,3 +2218,7 @@ struct Areas {
 #[cfg(test)]
 #[path = "app_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "agents_app_tests.rs"]
+mod agents_app_tests;
