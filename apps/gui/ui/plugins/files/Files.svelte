@@ -5,6 +5,7 @@
   import branchIcon from "@phosphor-icons/core/regular/git-branch.svg";
   import diffIcon from "@phosphor-icons/core/regular/git-diff.svg";
   import Card from "../../widgets/Card.svelte";
+  import FileIcon from "../../widgets/FileIcon.svelte";
   import { useCtx } from "../../kernel/slots/context.ts";
   import { parseUnified } from "../../lib/unified.ts";
   import {
@@ -80,11 +81,12 @@
           hover={canDiff(entry) ? { background: p.hover } : undefined}
           style={{ direction: "row", align: "center", gap: 8, height: 26, paddingX: 6, radius: p.radius.s, cursor: canDiff(entry) ? "pointer" : "default" }}
         >
-          <Text style={{ width: 12, fontFamily: "mono", fontSize: 12, color: colorOf(entry.mark) }}>{glyphOfMark(entry.mark)}</Text>
-          <Text style={{ flex: 1, minWidth: 0, truncate: true }}>
+          <FileIcon path={entry.rel} />
+          <Text style={{ flex: 1, minWidth: 0, truncate: true, color: entry.mark === "deleted" ? p.muted : p.fg, strikethrough: entry.mark === "deleted" }}>
             {entry.orig === undefined ? entry.rel.slice(slash + 1) : `${entry.orig} → ${entry.rel}`}{#if entry.orig === undefined && slash > 0}<Text style={{ color: p.muted, fontSize: 12 }}>{"  "}{entry.rel.slice(0, slash)}</Text>{/if}
           </Text>
           {#if entry.tags.length > 0}<Text style={{ color: p.muted, fontSize: 12 }}>{entry.tags.join(", ")}</Text>{/if}
+          <Text style={{ width: 12, fontFamily: "mono", fontSize: 12, textAlign: "right", color: colorOf(entry.mark) }}>{glyphOfMark(entry.mark)}</Text>
         </View>
       {/each}
     </View>
