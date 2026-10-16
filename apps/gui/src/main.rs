@@ -8,8 +8,10 @@
 //! ```
 
 mod commands;
+mod desktop;
 mod git;
 mod github;
+mod workspace;
 
 use svelte_gpui::Options;
 
