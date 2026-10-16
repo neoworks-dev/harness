@@ -1,8 +1,8 @@
 // The git status of the shown session's directory, for the files panel: asked for when the
 // session changes, when its events say files were edited or a turn ended (a moment later, so a
 // burst of edits is one ask), and every few seconds anyway because the user edits too.
-import { invoke } from "@neoworks/svelte-gpui";
 import { untrack } from "svelte";
+import * as host from "../kernel/host/git.ts";
 import { parseStatus, type GitStatus } from "../lib/files.ts";
 import { suite } from "../state/suite.svelte.ts";
 import { activity } from "./activity.svelte.ts";
@@ -48,7 +48,7 @@ class Git {
     this.asking = true;
     const cwd = suite.cwd;
     try {
-      const answer = await invoke("git_status", { cwd }).catch(() => null);
+      const answer = await host.status(cwd).catch(() => null);
       if (cwd !== suite.cwd) return;
       this.status = answer === null ? undefined : parseStatus(answer.out, answer.prefix);
     } finally {

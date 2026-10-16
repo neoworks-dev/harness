@@ -18,6 +18,7 @@ import {
   type DaemonAddress,
   type Unsubscribe,
 } from "@suite/sdk";
+import * as host from "../kernel/host/git.ts";
 import { paletteOf } from "../lib/palette.ts";
 import { chooseSession, pickAppId } from "../lib/startup.ts";
 import { applyEvent, initialStatus, nextApprovals, type SessionStatus } from "../lib/status.ts";
@@ -219,7 +220,7 @@ class Suite {
   }
 
   private async refreshBranch(): Promise<void> {
-    this.branch = await invoke("git_branch", { cwd: this.cwd }).catch(() => null);
+    this.branch = await host.branch(this.cwd).catch(() => null);
   }
 
   private async guard(request: Promise<void>): Promise<void> {

@@ -1,7 +1,8 @@
 // What the input side holds: the draft, the `/` menu, the history and the question panel (a
 // permission or choice card answered in place of the input). The components draw it and the
-// window shortcuts (Shortcuts.svelte) call it, so they agree on what is open.
+// window shortcuts (plugins/legacy/shortcuts.ts) call it, so they agree on what is open.
 import { clipboard, window } from "@neoworks/svelte-gpui";
+import { commandStore } from "../kernel/commands.svelte.ts";
 import {
   completion,
   isSlashWord,
@@ -63,7 +64,7 @@ class Composer {
       !this.helpOpen &&
       isSlashWord(this.text) &&
       this.menuClosedFor !== this.text &&
-      matching(this.text).length > 0,
+      matching(this.text, commandStore.list).length > 0,
   );
   /** The commands the menu lists, if it is open. */
   commands = $derived(this.listCommands());
@@ -73,7 +74,7 @@ class Composer {
 
   private listCommands(): Command[] {
     if (!this.menuVisible) return [];
-    return matching(this.text);
+    return matching(this.text, commandStore.list);
   }
 
   // ---- typing ----
@@ -97,8 +98,8 @@ class Composer {
     const text = this.text.trim();
     if (text === "") return;
     this.text = "";
-    const command = text.startsWith("/") ? lookup(text) : undefined;
-    if (command?.local) this.runLocal(command);
+    const command = text.startsWith("/") ? lookup(text, commandStore.list) : undefined;
+    if (command?.run) command.run();
     else this.send(text);
   }
 
@@ -110,7 +111,7 @@ class Composer {
       return;
     }
     this.text = "";
-    if (command.local) this.runLocal(command);
+    if (command.run) command.run();
     else this.send(`/${command.name}`);
   }
 
@@ -130,29 +131,6 @@ class Composer {
     const session = suite.sessionId;
     if (this.history.push(text) && session !== undefined) void appendHistory(session, text);
     void suite.send(text);
-  }
-
-  private runLocal(command: Command): void {
-    switch (command.name) {
-      case "sidebar":
-        ui.sidebarOpen = !ui.sidebarOpen;
-        break;
-      case "expand":
-        ui.expanded = !ui.expanded;
-        break;
-      case "thoughts":
-        ui.showThoughts = !ui.showThoughts;
-        break;
-      case "github":
-        ui.githubOpen = !ui.githubOpen;
-        break;
-      case "help":
-        this.helpOpen = true;
-        break;
-      case "quit":
-        window.close();
-        break;
-    }
   }
 
   // ---- history ----

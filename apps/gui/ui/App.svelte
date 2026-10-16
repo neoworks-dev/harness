@@ -4,7 +4,6 @@
   import Chat from "./chat/Chat.svelte";
   import DiffOverlay from "./chat/DiffOverlay.svelte";
   import Composer from "./input/Composer.svelte";
-  import Shortcuts from "./input/Shortcuts.svelte";
   import StatusLine from "./input/StatusLine.svelte";
   import AgentView from "./side/AgentView.svelte";
   import Agents from "./side/Agents.svelte";
@@ -12,6 +11,7 @@
   import { agentView } from "./side/agentview.svelte.ts";
   import SidePanels from "./side/SidePanels.svelte";
   import Sessions from "./side/Sessions.svelte";
+  import Keys from "./kernel/Keys.svelte";
   import { suite } from "./state/suite.svelte.ts";
   import { ui } from "./state/ui.svelte.ts";
 
@@ -22,7 +22,7 @@
   const p = $derived(suite.palette);
 </script>
 
-<Shortcuts />
+<Keys />
 
 <View style={{ flex: 1, direction: "row", background: p.bg, color: p.fg, fontSize: p.text.body }}>
   <Sessions />

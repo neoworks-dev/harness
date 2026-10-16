@@ -2,8 +2,8 @@
 // issues and pull requests (per filter) and the details opened, each loaded once and kept until
 // the directory changes; `reload` asks again. Everything is a read through the host's
 // `gh_*` commands. Nothing here can write to GitHub.
-import { invoke } from "@neoworks/svelte-gpui";
 import { untrack } from "svelte";
+import * as host from "../kernel/host/github.ts";
 import { explain, type Detail, type Kind, type Summary } from "../lib/github.ts";
 import { parseUnified } from "../lib/unified.ts";
 import { suite } from "../state/suite.svelte.ts";
@@ -106,7 +106,7 @@ class GitHub {
     const cwd = this.cwd;
     this.repoState = { status: "loading" };
     try {
-      const name = await invoke("gh_repo", { cwd });
+      const name = await host.repo(cwd);
       if (cwd !== this.cwd) return;
       this.repoState = { status: "ready", value: name };
       this.ensureList();
@@ -128,7 +128,7 @@ class GitHub {
     if (previous?.status !== "ready") this.lists = { ...this.lists, [key]: { status: "loading" } };
     try {
       const args = { cwd, repo, all, query };
-      const rows = await (tab === "issue" ? invoke("gh_issues", args) : invoke("gh_prs", args));
+      const rows = await (tab === "issue" ? host.issues(args) : host.prs(args));
       if (cwd !== this.cwd) return;
       this.lists = { ...this.lists, [key]: { status: "ready", value: rows } };
       this.selected = Math.min(this.selected, Math.max(0, rows.length - 1));
@@ -159,7 +159,7 @@ class GitHub {
     }
     try {
       const args = { cwd, repo, number };
-      const detail = await (kind === "issue" ? invoke("gh_issue", args) : invoke("gh_pr", args));
+      const detail = await (kind === "issue" ? host.issue(args) : host.pr(args));
       if (cwd !== this.cwd) return;
       this.details = { ...this.details, [key]: { status: "ready", value: detail } };
     } catch (error) {
@@ -176,9 +176,7 @@ class GitHub {
     if (repo?.status !== "ready") return;
     try {
       const args = { cwd: this.cwd, repo: repo.value, number };
-      const text = await (kind === "issue"
-        ? invoke("gh_issue_text", args)
-        : invoke("gh_pr_text", args));
+      const text = await (kind === "issue" ? host.issueText(args) : host.prText(args));
       ui.githubOpen = false;
       await suite.send(text);
     } catch (error) {
@@ -192,7 +190,7 @@ class GitHub {
     if (repo?.status !== "ready") return;
     try {
       const key = String(number);
-      this.diffs[key] ??= await invoke("gh_pr_diff", { cwd: this.cwd, repo: repo.value, number });
+      this.diffs[key] ??= await host.prDiff({ cwd: this.cwd, repo: repo.value, number });
       const files = parseUnified(this.diffs[key] ?? "");
       const lines = files.flatMap((file) => [
         { kind: "hunk" as const, text: file.path },

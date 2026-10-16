@@ -1,8 +1,8 @@
 <script lang="ts">
   // The files panel: what git says changed in the session's directory, plus the files the agent
   // and its guests touched, tagged by who. Pressing a file shows its diff over the window.
-  import { invoke } from "@neoworks/svelte-gpui";
   import { Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
+  import * as host from "../kernel/host/git.ts";
   import {
     branchLabel,
     fileEntries,
@@ -43,7 +43,7 @@
     if (!canDiff(entry)) return;
     const untracked = entry.mark === "untracked" || (git.status === undefined && entry.mark === "added");
     try {
-      const text = await invoke("git_diff", { cwd: suite.cwd, path: entry.rel, untracked });
+      const text = await host.diff({ cwd: suite.cwd, path: entry.rel, untracked });
       const lines = parseUnified(text).flatMap((file) => file.lines);
       ui.diff = {
         type: "diff",
