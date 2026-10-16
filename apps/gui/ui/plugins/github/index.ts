@@ -4,6 +4,7 @@
 import type { Context } from "@neoworks/extension-system";
 import "../shell/slots.ts";
 import GitHub from "./GitHub.svelte";
+import ToolbarButton from "./ToolbarButton.svelte";
 import { github } from "./state.svelte.ts";
 
 export const githubPane = {
@@ -15,6 +16,9 @@ export const githubPane = {
 
     slots.inject("shell.main", (slot) => {
       slot.add({ component: GitHub, order: 10, select: () => github.shown });
+    });
+    slots.inject("shell.toolbar", (slot) => {
+      slot.add({ component: ToolbarButton, order: 20 });
     });
     keyboard.claim(() => github.shown);
 

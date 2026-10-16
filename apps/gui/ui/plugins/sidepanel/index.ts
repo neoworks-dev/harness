@@ -5,6 +5,7 @@ import type { Context } from "@neoworks/extension-system";
 import "../shell/slots.ts";
 import { SidePanelService } from "./service.ts";
 import SidePanel from "./SidePanel.svelte";
+import ToolbarButton from "./ToolbarButton.svelte";
 import "./slots.ts";
 
 export const sidePanel = {
@@ -16,6 +17,9 @@ export const sidePanel = {
 
     slots.inject("shell.right", (slot) => {
       slot.add({ component: SidePanel, slots: { "sidepanel.section": "list" } });
+    });
+    slots.inject("shell.toolbar", (slot) => {
+      slot.add({ component: ToolbarButton, order: 10 });
     });
   },
 };

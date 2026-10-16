@@ -12,6 +12,9 @@ export const shell = {
       component: Shell,
       slots: {
         "shell.left": "list",
+        "shell.top": "list",
+        "shell.top.right": "list",
+        "shell.toolbar": "list",
         "shell.main": "chain",
         "shell.bottom": "list",
         "shell.right": "list",

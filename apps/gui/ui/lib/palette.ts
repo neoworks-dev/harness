@@ -77,8 +77,8 @@ export function blend(base: string, over: string, percent: number): string {
  */
 const NEUTRAL = {
   fg: "#ededed",
-  bg: "#0e0e0f",
-  surface: "#161617",
+  bg: "#111113",
+  surface: "#19191b",
   border: "#262628",
   muted: "#9a9a9f",
   sidebar: "#0b0b0c",

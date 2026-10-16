@@ -3,7 +3,9 @@
 // wants to know whether it is shown reads `sessions.open` there.
 import type { Context } from "@neoworks/extension-system";
 import "../shell/slots.ts";
+import Breadcrumb from "./Breadcrumb.svelte";
 import Sessions from "./Sessions.svelte";
+import SidebarToggle from "./SidebarToggle.svelte";
 import { sessions } from "./state.svelte.ts";
 
 export const sessionsSidebar = {
@@ -16,6 +18,10 @@ export const sessionsSidebar = {
 
     slots.inject("shell.left", (slot) => {
       slot.add({ component: Sessions });
+    });
+    slots.inject("shell.top", (slot) => {
+      slot.add({ component: SidebarToggle, order: 0 });
+      slot.add({ component: Breadcrumb, order: 10 });
     });
 
     // The input leaves the keyboard alone while the sidebar has it.

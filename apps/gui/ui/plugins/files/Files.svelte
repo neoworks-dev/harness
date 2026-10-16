@@ -1,7 +1,10 @@
 <script lang="ts">
   // The files panel: what git says changed in the session's directory, plus the files the agent
   // and its guests touched, tagged by who. Pressing a file shows its diff over the window.
-  import { Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
+  import { Icon, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
+  import branchIcon from "@phosphor-icons/core/regular/git-branch.svg";
+  import diffIcon from "@phosphor-icons/core/regular/git-diff.svg";
+  import Card from "../../widgets/Card.svelte";
   import { useCtx } from "../../kernel/slots/context.ts";
   import { parseUnified } from "../../lib/unified.ts";
   import {
@@ -56,25 +59,34 @@
   }
 </script>
 
-<View style={{ gap: p.space.s, minHeight: 0, flex: 1 }}>
-  <View style={{ direction: "row", gap: p.space.s }}>
-    <Text style={{ color: p.muted, fontWeight: "bold" }}>Files</Text>
-    {#if git.status}<Text style={{ color: p.muted, flex: 1, minWidth: 0, truncate: true }}>{"· "}{branchLabel(git.status)}</Text>{/if}
-  </View>
+<Card title="Changes" icon={diffIcon} grow>
+  {#snippet end()}
+    {#if git.status}
+      <View style={{ direction: "row", align: "center", gap: 4, maxWidth: 140 }}>
+        <Icon svg={branchIcon} size={12} />
+        <Text style={{ fontSize: 12, truncate: true }}>{branchLabel(git.status)}</Text>
+      </View>
+    {/if}
+  {/snippet}
   <Scroll style={{ flex: 1, minHeight: 0 }}>
-    <View>
+    <View style={{ gap: 1 }}>
+      {#if entries.length === 0}
+        <Text style={{ color: p.muted, fontSize: 13 }}>No changes yet.</Text>
+      {/if}
       {#each entries as entry (entry.rel)}
+        {@const slash = entry.rel.replace(/\/$/, "").lastIndexOf("/")}
         <View
           onpress={() => void showDiff(entry)}
-          hover={canDiff(entry) ? { background: p.surface } : undefined}
-          style={{ direction: "row", gap: p.space.m, paddingY: 1, cursor: canDiff(entry) ? "pointer" : "default" }}
+          hover={canDiff(entry) ? { background: p.hover } : undefined}
+          style={{ direction: "row", align: "center", gap: 8, height: 26, paddingX: 6, radius: p.radius.s, cursor: canDiff(entry) ? "pointer" : "default" }}
         >
-          <Text style={{ width: 12, color: colorOf(entry.mark) }}>{glyphOfMark(entry.mark)}</Text>
-          <Text style={{ flex: 1, minWidth: 0, truncate: true, color: colorOf(entry.mark) }}>
-            {entry.orig === undefined ? entry.rel : `${entry.orig} → ${entry.rel}`}{#if entry.tags.length > 0}<Text style={{ color: p.muted }}>{" "}({entry.tags.join(", ")})</Text>{/if}
+          <Text style={{ width: 12, fontFamily: "mono", fontSize: 12, color: colorOf(entry.mark) }}>{glyphOfMark(entry.mark)}</Text>
+          <Text style={{ flex: 1, minWidth: 0, truncate: true }}>
+            {entry.orig === undefined ? entry.rel.slice(slash + 1) : `${entry.orig} → ${entry.rel}`}{#if entry.orig === undefined && slash > 0}<Text style={{ color: p.muted, fontSize: 12 }}>{"  "}{entry.rel.slice(0, slash)}</Text>{/if}
           </Text>
+          {#if entry.tags.length > 0}<Text style={{ color: p.muted, fontSize: 12 }}>{entry.tags.join(", ")}</Text>{/if}
         </View>
       {/each}
     </View>
   </Scroll>
-</View>
+</Card>

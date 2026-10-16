@@ -135,8 +135,6 @@
       width: WIDTH,
       shrink: 0,
       background: p.side.bg,
-      borderRightWidth: 1,
-      borderColor: p.side.border,
     }}
   >
     <View
