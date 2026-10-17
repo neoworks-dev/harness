@@ -1,5 +1,5 @@
 // A bigger working tree for measuring the viewer:
-//   SCENE=side SCENE_SETUP='bun run apps/gui/scripts/scene-big.ts' apps/gui/scripts/shot.sh …
+//   SCENE=side SCENE_SETUP="bun run $PWD/apps/gui/scripts/scene-big.ts" apps/gui/scripts/shot.sh …
 // commits nine files of a few hundred lines in different languages, then edits every fourth
 // function of each, so the diff has thousands of lines and many hunks. Runs in the repository.
 import { mkdirSync, writeFileSync } from "node:fs";

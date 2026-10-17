@@ -37,7 +37,9 @@
   let above = 0;
   let flushing = false;
 
-  const heightOf = (item: T): number => measured.get(key(item)) ?? height(item);
+  /** What a row came to when it was measured, as long as it is one that is; else what `height` says. */
+  const heightOf = (item: T): number =>
+    (measure?.(item) ? measured.get(key(item)) : undefined) ?? height(item);
   /** Reading `version` as an argument is how a derived learns that `measured` changed. */
   const settled = (_version: number): void => {};
   const starts = $derived.by(() => {
@@ -73,7 +75,9 @@
 
   /** A flagged row came to `size`. */
   function report(at: string, index: number, size: number): void {
-    const known = untrack(() => measured.get(at) ?? height(items[index] as T));
+    const item = items[index];
+    if (item === undefined) return;
+    const known = untrack(() => heightOf(item));
     if (Math.abs(known - size) < 1) return;
     measured.set(at, size);
     if ((untrack(() => starts[index + 1]) ?? 0) <= top) above += size - known;

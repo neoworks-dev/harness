@@ -153,7 +153,10 @@ test("rows are a header and the folded lines of each file; a collapsed file is i
 
 test("the split layout has a row per pair", () => {
   const rows = buildRows([{ path: "a.ts", lines: file(8, [4]) }], layout({ split: true }));
-  expect(rows.map((row) => row.kind)).toEqual(["file", ...Array<string>(8).fill("pair")]);
+  expect(rows.map((row) => row.kind)).toEqual([
+    "file",
+    ...Array.from({ length: 8 }, () => "pair" as const),
+  ]);
 });
 
 test("the editor goes under the last selected line, or at the end of the file's rows", () => {

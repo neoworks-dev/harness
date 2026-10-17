@@ -38,7 +38,8 @@ if [ -n "${SCENE:-}" ]; then
   git -C "$tmp/work" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m first
   printf 'one\nthree\n' >"$tmp/work/a.txt"
   printf 'fresh\n' >"$tmp/work/new.txt"
-  # SCENE_SETUP is a shell snippet run in the repository, e.g. SCENE_SETUP='git branch side'.
+  # SCENE_SETUP is a shell snippet run in the repository, e.g. SCENE_SETUP='git branch side', or
+  # "bun run $PWD/apps/gui/scripts/scene-big.ts" for a diff of thousands of lines.
   if [ -n "${SCENE_SETUP:-}" ]; then (cd "$tmp/work" && bash -c "$SCENE_SETUP"); fi
   mkdir -p "$tmp/work/extra"
   printf 'export const one = 1;\n' >"$tmp/work/extra/one.ts"
