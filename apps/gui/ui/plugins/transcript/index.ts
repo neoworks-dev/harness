@@ -1,35 +1,59 @@
 // The conversation: the session's items in the shell's middle, as long as nothing else claims it.
-// Each item kind is drawn by an entry in `chat.item`, so a plugin can draw a kind of its own;
-// the transcript keeps the toggles for results (Ctrl-O) and thoughts (Ctrl-T) and offers a
-// service to the panes that draw items or answer them.
+// The items become rows (rows.ts): a finished turn's work folded, tool calls grouped. Each row
+// kind is drawn by an entry in `chat.row`, and the rows that are a single item by `chat.item`
+// (one entry per item kind), so a plugin can draw a kind of its own. The transcript keeps the
+// toggles for results (Ctrl-O) and thoughts (Ctrl-T) and offers a service to the panes that draw
+// items or answer them.
 import type { Context } from "@neoworks/extension-system";
 import "../shell/slots.ts";
 import AgentItem from "./AgentItem.svelte";
 import AppTag from "./AppTag.svelte";
 import Chat from "./Chat.svelte";
 import FallbackItem from "./FallbackItem.svelte";
+import FoldRow from "./FoldRow.svelte";
+import ItemRow from "./ItemRow.svelte";
+import MessageRow from "./MessageRow.svelte";
 import NoticeItem from "./NoticeItem.svelte";
 import { TranscriptService } from "./service.ts";
 import "./slots.ts";
 import { transcript } from "./state.svelte.ts";
+import StoppedRow from "./StoppedRow.svelte";
 import ThoughtItem from "./ThoughtItem.svelte";
+import { timeline } from "./timeline.svelte.ts";
 import ToolItem from "./ToolItem.svelte";
 import UserItem from "./UserItem.svelte";
+import Work from "./Work.svelte";
+import WorkingRow from "./WorkingRow.svelte";
 
 export const transcriptPane = {
   name: "transcript",
   inject: ["slots", "daemon", "keymap", "commands", "viewer"],
   apply(ctx: Context) {
-    const { slots, keymap, commands } = ctx;
+    const { slots, daemon, keymap, commands } = ctx;
     ctx.plugin(TranscriptService);
+    timeline.follow(daemon);
 
     slots.inject("shell.main", (slot) => {
       slot.add({
         component: Chat,
         order: 100,
         select: () => true,
-        slots: { "chat.item": { kind: "keyed", fallback: FallbackItem } },
+        slots: {
+          "chat.row": { kind: "keyed", fallback: ItemRow },
+          "chat.item": { kind: "keyed", fallback: FallbackItem },
+        },
       });
+    });
+
+    // One renderer per kind of row; the rows that are one item (the user's message, a notice)
+    // are drawn by `chat.item`.
+    slots.inject("chat.row", (slot) => {
+      slot.add({ component: ItemRow, key: "item" });
+      slot.add({ component: MessageRow, key: "message" });
+      slot.add({ component: Work, key: "work" });
+      slot.add({ component: FoldRow, key: "fold" });
+      slot.add({ component: StoppedRow, key: "stopped" });
+      slot.add({ component: WorkingRow, key: "working" });
     });
 
     // One renderer per kind of item.
@@ -59,7 +83,7 @@ export const transcriptPane = {
     });
     commands.register({
       name: "thoughts",
-      desc: "show or hide the agent's thoughts (ctrl-t)",
+      desc: "open or close the agent's thoughts (ctrl-t)",
       run: toggleThoughts,
     });
   },

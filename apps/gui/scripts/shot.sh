@@ -43,7 +43,8 @@ if [ -n "${SCENE:-}" ]; then
   mkdir -p "$tmp/work/extra"
   printf 'export const one = 1;\n' >"$tmp/work/extra/one.ts"
   sed -i 's/^const value20 = .*/const value20 = computeSomethingMuchLongerThanBefore(20, "a string long enough to wrap in a narrow panel");/; s/^const value37 = .*/const value37 = 37;/' "$tmp/work/src/lib.ts"
-  SCENE_CWD="$tmp/work" SCENE_ELSEWHERE="$tmp/elsewhere" bun run "$root/apps/gui/scripts/scene-daemon.ts" >"$tmp/daemon.log" 2>&1 &
+  # SCENE_SCRIPT names another script of scripts/: scene-chat.ts is a long conversation.
+  SCENE_CWD="$tmp/work" SCENE_ELSEWHERE="$tmp/elsewhere" bun run "$root/apps/gui/scripts/${SCENE_SCRIPT:-scene-daemon.ts}" >"$tmp/daemon.log" 2>&1 &
 else
   bun run "$root/daemon/src/main.ts" >"$tmp/daemon.log" 2>&1 &
 fi

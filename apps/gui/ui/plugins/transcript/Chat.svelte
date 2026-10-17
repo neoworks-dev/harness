@@ -1,25 +1,37 @@
 <script lang="ts">
-  // The session's chat: every item the daemon resolved, each drawn by the renderer registered for
-  // its kind (`chat.item`), following the end as the agent writes. Thoughts only show with Ctrl-T.
+  // The session's chat: its items as rows (rows.ts: a finished turn's work folded, tool calls
+  // grouped), each drawn by the renderer registered for its kind (`chat.row`), following the end
+  // as the agent writes.
   import { window } from "@neoworks/svelte-gpui";
   import { List } from "@neoworks/svelte-gpui/ui";
-  import type { ViewItem } from "@suite/protocol/types";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
+  import { opened } from "./opened.svelte.ts";
+  import { buildRows, type Row } from "./rows.ts";
   import { transcript } from "./state.svelte.ts";
+  import { timeline } from "./timeline.svelte.ts";
 
   const { daemon } = useCtx();
 
-  const items = $derived(transcript.visible(daemon.items));
+  const rows = $derived(
+    buildRows({
+      items: daemon.items,
+      timeline: timeline.value,
+      cwd: daemon.cwd,
+      running: daemon.status.running,
+      startedAt: daemon.status.turnStartedAt,
+      isOpen: (key) => transcript.expanded || opened.has(`${daemon.sessionId}/${key}`),
+    }),
+  );
 
   let list: { scrollToIndex(index: number, options: { align: "end" }): void } | undefined = $state();
 
-  // `stickToEnd` follows new items only once the list is at its end, which a session that has
+  // `stickToEnd` follows new rows only once the list is at its end, which a session that has
   // just been opened (all its items at once) never is: start such a chat at its end.
   let started: string | undefined;
   $effect(() => {
     const session = daemon.sessionId;
-    const count = items.length;
+    const count = rows.length;
     const start = `${session}@${width}`;
     if (session === undefined || count === 0 || started === start) return;
     started = start;
@@ -35,13 +47,13 @@
 {#key width}
 <List
   bind:this={list}
-  {items}
-  key={(item: ViewItem) => item.ref}
+  items={rows}
+  key={(row: Row) => row.key}
   stickToEnd
   style={{ flex: 1, minHeight: 0 }}
 >
-  {#snippet row(item: ViewItem)}
-    <Slot name="chat.item" key={item.kind} props={{ item }} />
+  {#snippet row(row: Row)}
+    <Slot name="chat.row" key={row.kind} props={{ row }} />
   {/snippet}
 </List>
 {/key}
