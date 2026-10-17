@@ -14,7 +14,7 @@
 
 {#if row.kind === "stopped"}
 <ItemFrame gap={8}>
-  <View style={{ paddingTop: 4, paddingBottom: 8, borderBottomWidth: 1, borderColor: softBorder(p), fontSize: 14, color: p.muted }}>
+  <View style={{ paddingX: 4, paddingTop: 4, paddingBottom: 8, borderBottomWidth: 1, borderColor: softBorder(p), fontSize: 14, color: p.muted }}>
     <Text>{row.label}</Text>
   </View>
 </ItemFrame>

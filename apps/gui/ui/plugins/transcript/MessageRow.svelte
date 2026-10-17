@@ -24,7 +24,7 @@
 {#if it}
 
 <ItemFrame gap={8}>
-  <View onhover={(h: boolean) => (hover = h)}>
+  <View style={{ paddingTop: 6 }} onhover={(h: boolean) => (hover = h)}>
     <Slot name="chat.item" key="agent" props={{ item: it.item }} />
     {#if it.final && it.changes.length > 0}
       <ChangedFiles files={it.changes} />

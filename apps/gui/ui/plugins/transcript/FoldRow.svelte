@@ -25,6 +25,7 @@
       direction: "row",
       align: "center",
       gap: 4,
+      paddingX: 4,
       paddingBottom: 8,
       borderBottomWidth: 1,
       borderColor: softBorder(p),

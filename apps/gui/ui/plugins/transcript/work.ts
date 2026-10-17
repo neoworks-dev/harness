@@ -462,6 +462,7 @@ export function classify(item: ViewItem, context: ClassifyContext): WorkEntry {
     const owner = /^(.+): /.exec(label)?.[1];
     return {
       ...entry,
+      live: false,
       kind: "plan",
       label: owner === undefined ? "Plan updated" : `${owner}: Plan updated`,
       plan: lines,

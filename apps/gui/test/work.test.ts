@@ -1,13 +1,14 @@
 import { expect, test } from "bun:test";
 import type { Component, DiffLine, ViewItem } from "@suite/protocol/types";
 import { blocksText, componentText } from "../ui/plugins/transcript/components.ts";
-import { clockTime, count, duration } from "../ui/plugins/transcript/format.ts";
+import { clockTime, count, duration, tailLines } from "../ui/plugins/transcript/format.ts";
 import {
   changedFiles,
   classify,
   combinedDiff,
   groupLabel,
   groupSummary,
+  leadKind,
   isPlanCall,
   isQuestion,
   relativePath,
@@ -385,6 +386,20 @@ test("a group's header is its one entry's label, the live entry's while it runs"
   if (command === undefined || read === undefined) throw new Error("two entries");
   expect(groupLabel([command, { ...read, live: true }], true)).toBe("label 1");
   expect(groupLabel([{ ...command, live: true }, read], true)).toBe("label 0");
+});
+
+test("a group wears the icon of its most important work", () => {
+  expect(leadKind(made(["read", "a"], ["command"]))).toBe("command");
+  expect(leadKind(made(["tool"], ["web"], ["thought"]))).toBe("web");
+  expect(leadKind(made(["thought"]))).toBe("thought");
+  expect(leadKind([])).toBe("tool");
+});
+
+test("the end of a long output is what is kept", () => {
+  const text = Array.from({ length: 10 }, (_, i) => `l${i}`).join("\n");
+  expect(tailLines(text, 20)).toEqual({ text, hidden: 0 });
+  expect(tailLines(text, 3)).toEqual({ text: "l7\nl8\nl9", hidden: 7 });
+  expect(tailLines(text, 9)).toEqual({ text, hidden: 0 });
 });
 
 test("a turn's changed files add up across its edits, with one diff each", () => {
