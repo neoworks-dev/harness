@@ -171,11 +171,29 @@ class Suite {
         if (this.view.applyPatch(patch).length > 0) this.items = [...this.view.items];
       },
     });
+    // The history arrives one event per message, and the chat redraws after each message: a
+    // session of thousands of events froze the window for seconds. So the replay is kept until
+    // it is over and then applied at once, which redraws the chat once.
+    let replay: SessionEventRecord[] | undefined = [];
+    const apply = (record: SessionEventRecord): void => {
+      this.status = applyEvent(this.status, record);
+      for (const listener of this.recordListeners) listener(record);
+    };
     const stopEvents = client.subscribe(id, {
       onEvent: (event, record) => {
-        this.status = applyEvent(this.status, record);
+        if (replay !== undefined) {
+          replay.push(record);
+          return;
+        }
+        apply(record);
         if (event.type === "setting_changed") this.askOffered();
-        for (const listener of this.recordListeners) listener(record);
+      },
+      onLive: () => {
+        if (replay === undefined) return;
+        const records = replay;
+        replay = undefined;
+        for (const record of records) apply(record);
+        if (records.some((record) => record.event.type === "setting_changed")) this.askOffered();
       },
     });
     this.stopSession = () => {
