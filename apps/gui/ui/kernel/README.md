@@ -42,20 +42,21 @@ Add it to `plugins/index.ts`. Everything registered goes through `ctx.effect` in
 
 ### The window's panes
 
-| Plugin       | Fills                                      | Declares                                                       | Provides     |
-| ------------ | ------------------------------------------ | -------------------------------------------------------------- | ------------ |
-| `shell`      | `root`                                     | `shell.left`, `.main` (chain), `.bottom`, `.right`, `.overlay` |              |
-| `sessions`   | `shell.left`                               |                                                                |              |
-| `statusline` | `shell.bottom` (30)                        | `statusline.right`                                             |              |
-| `transcript` | `shell.main` (100), `chat.item`, `.header` | `chat.item` (keyed by item kind), `chat.item.header`           | `transcript` |
-| `composer`   | `shell.bottom` (10), `statusline.right`    | `composer.left`, `composer.right`                              |              |
-| `agents`     | `shell.bottom` (20)                        |                                                                |              |
-| `agentview`  | `shell.main` (20)                          |                                                                | `agentview`  |
-| `sidepanel`  | `shell.right`                              | `sidepanel.section`                                            | `sidepanel`  |
-| `plan`       | `sidepanel.section` (10)                   |                                                                |              |
-| `files`      | `sidepanel.section` (20)                   |                                                                |              |
-| `github`     | `shell.main` (10)                          |                                                                |              |
-| `diff`       | `shell.overlay`                            |                                                                | `diff`       |
+| Plugin       | Fills                                      | Declares                                                                | Provides     |
+| ------------ | ------------------------------------------ | ----------------------------------------------------------------------- | ------------ |
+| `shell`      | `root`                                     | `shell.left`, `.main` (chain), `.bottom`, `.right`, `.card`, `.overlay` |              |
+| `sessions`   | `shell.left`                               |                                                                         |              |
+| `statusline` | `shell.bottom` (30)                        | `statusline.right`                                                      |              |
+| `transcript` | `shell.main` (100), `chat.item`, `.header` | `chat.item` (keyed by item kind), `chat.item.header`                    | `transcript` |
+| `composer`   | `shell.bottom` (10), `statusline.right`    | `composer.left`, `composer.right`                                       |              |
+| `agents`     | `shell.bottom` (20)                        |                                                                         |              |
+| `agentview`  | `shell.main` (20)                          |                                                                         | `agentview`  |
+| `sidepanel`  | `shell.right`                              | `sidepanel.section`                                                     | `sidepanel`  |
+| `plan`       | `sidepanel.section` (10)                   |                                                                         |              |
+| `files`      | `sidepanel.section` (20)                   |                                                                         |              |
+| `github`     | `shell.main` (10)                          |                                                                         |              |
+| `diff`       | `shell.overlay`                            |                                                                         | `diff`       |
+| `workspace`  | `shell.card`, `shell.toolbar` (30)         |                                                                         |              |
 
 A plugin lists the services it uses in `inject` and waits for them, so a plugin that provides one is listed before those that use it in `plugins/index.ts` (the order also decides ties in a list slot and the order of the `/` menu). A plugin provides a service by mounting a `Service` of its own: `ctx.plugin(DiffService)`; it unloads with the plugin.
 

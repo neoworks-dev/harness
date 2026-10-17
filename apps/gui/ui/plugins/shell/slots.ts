@@ -17,6 +17,8 @@ declare module "../../kernel/slots/types.ts" {
     "shell.bottom": List;
     /** Columns after the conversation. */
     "shell.right": List;
+    /** Floating cards at the conversation's top right, 12px from its edges. */
+    "shell.card": List;
     /** Drawn over everything. */
     "shell.overlay": List;
   }

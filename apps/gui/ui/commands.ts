@@ -3,6 +3,7 @@
 import type { DaemonAddress } from "@suite/sdk";
 import type { Detail, Summary } from "./plugins/github/github.ts";
 import type { Place } from "./plugins/sessions/sessions.ts";
+import type { Committed, Editor, Overview } from "./plugins/workspace/workspace.ts";
 
 export interface Startup {
   /** Where the window was started. */
@@ -49,6 +50,28 @@ declare module "@neoworks/svelte-gpui" {
       args: { cwd: string; path: string; untracked?: boolean; full?: boolean };
       result: string;
     };
+    // The workspace card: where the directory stands in git, the little it changes, the editors
+    // and the file manager. Failures carry git's own words, shortened.
+    /** This machine's name. */
+    hostname: { args: null; result: string };
+    /** The known editors found on PATH. */
+    editors: { args: null; result: Editor[] };
+    open_in_editor: { args: { editor: string; path: string }; result: null };
+    /** Shows a folder in the system's file manager. */
+    open_folder: { args: { path: string }; result: null };
+    /** The branch, its upstream and what changed in the directory's repository; null outside one. */
+    git_workspace: { args: { cwd: string }; result: Overview | null };
+    /** The local branches, the latest commit first, and the one checked out. */
+    git_branches: {
+      args: { cwd: string };
+      result: { branches: string[]; current: string | null };
+    };
+    /** Switches branch; refuses when the tree has changes. */
+    git_checkout: { args: { cwd: string; branch: string }; result: null };
+    /** Commits all changes, then pushes when asked and there is an upstream. */
+    git_commit: { args: { cwd: string; message: string; push: boolean }; result: Committed };
+    /** The unified diff of everything changed against HEAD, new files included. */
+    git_diff_all: { args: { cwd: string }; result: string };
     // The GitHub view. Read-only: the host runs `gh` through an allowlist and refuses anything
     // else. Failures carry the code GhMissing, NotRepo, NotAuth or GhFailed.
     gh_repo: { args: { cwd: string }; result: string };

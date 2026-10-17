@@ -15,6 +15,7 @@ import { shell } from "./shell/index.ts";
 import { sidePanel } from "./sidepanel/index.ts";
 import { statusLine } from "./statusline/index.ts";
 import { transcriptPane } from "./transcript/index.ts";
+import { workspaceCard } from "./workspace/index.ts";
 
 export const plugins: Plugin[] = [
   shell,
@@ -29,4 +30,5 @@ export const plugins: Plugin[] = [
   sidePanel,
   planPanel,
   filesPanel,
+  workspaceCard,
 ];
