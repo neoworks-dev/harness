@@ -1,6 +1,6 @@
 // Small questions about view components that the chat's drawing code asks over and over. Plain
 // TypeScript so they can be tested without a window.
-import type { Component, Space, Tone } from "@suite/protocol/types";
+import type { Block, Component, Space, Tone } from "@suite/protocol/types";
 import type { Palette } from "../../lib/palette.ts";
 
 /** Whether the component is, or contains, a button: such an item is a question to answer. */
@@ -41,6 +41,56 @@ export function lineHeightOf(size: number): number {
 /** Collapses whitespace and line breaks, for the one-line forms. */
 export function oneLine(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+/** Markdown blocks as plain text, for copying and one-line previews: blocks apart by a blank line. */
+export function blocksText(blocks: readonly Block[]): string {
+  return blocks.map(blockText).join("\n\n");
+}
+
+function blockText(block: Block): string {
+  switch (block.type) {
+    case "paragraph":
+    case "heading":
+      return block.spans.map((span) => span.text).join("");
+    case "code_block":
+      return block.code.replace(/\n+$/, "");
+    case "quote":
+      return blocksText(block.blocks)
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n");
+    case "list":
+      return block.items
+        .map((item, index) => {
+          const marker = block.ordered ? `${(block.start ?? 1) + index}.` : "-";
+          return `${marker} ${blocksText(item.blocks)}`;
+        })
+        .join("\n");
+    case "rule":
+      return "---";
+  }
+}
+
+/** What a component says as plain text: its texts, code and key-value lines, one per line. */
+export function componentText(component: Component): string {
+  switch (component.type) {
+    case "text":
+      return blocksText(component.blocks);
+    case "code":
+      return component.code.replace(/\n+$/, "");
+    case "card":
+    case "row":
+    case "stack":
+      return component.children
+        .map(componentText)
+        .filter((text) => text !== "")
+        .join("\n");
+    case "kv":
+      return component.items.map((item) => `${item.key}: ${item.value}`).join("\n");
+    default:
+      return "";
+  }
 }
 
 /**
