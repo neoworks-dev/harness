@@ -131,12 +131,20 @@ const BY_NAME: Record<string, string> = {
 
 const urls = new Map<string, string>();
 
+/** The icon's SVG for a file name: by the whole name, else by its extension, else a plain file. */
+function iconMarkup(name: string): string {
+  const named = BY_NAME[name];
+  if (named !== undefined) return named;
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0) return file;
+  const byExtension = BY_EXTENSION[name.slice(dot + 1).toLowerCase()];
+  if (byExtension !== undefined) return byExtension;
+  return file;
+}
+
 /** The `data:` URL of the icon for a path, by its file name, else its extension. */
 export function fileIcon(path: string): string {
-  const name = path.slice(path.lastIndexOf("/") + 1);
-  const dot = name.lastIndexOf(".");
-  const extension = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
-  const markup = BY_NAME[name] ?? BY_EXTENSION[extension] ?? file;
+  const markup = iconMarkup(path.slice(path.lastIndexOf("/") + 1));
   let url = urls.get(markup);
   if (url === undefined) {
     url = svgDataUrl(markup);

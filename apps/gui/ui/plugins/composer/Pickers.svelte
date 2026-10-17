@@ -14,8 +14,14 @@
   import PickerMenu, { type Choice } from "./PickerMenu.svelte";
 
   /** The approvals modes, as the daemon describes them (protocol: SettingChanged). */
+  const SUPERVISED: Choice = {
+    value: "ask",
+    label: "Supervised",
+    icon: lock,
+    description: "Ask before edits, commands and starting a guest.",
+  };
   const APPROVALS: readonly Choice[] = [
-    { value: "ask", label: "Supervised", icon: lock, description: "Ask before edits, commands and starting a guest." },
+    SUPERVISED,
     { value: "review", label: "Review edits", icon: eye, description: "Write each edit, then keep or revert it. Ask for the rest." },
     { value: "edits", label: "Auto-accept edits", icon: pencil, description: "Write edits right away, revertible after the turn. Ask for the rest." },
     { value: "auto", label: "Full access", icon: lockOpen, description: "Ask for nothing, except reading secrets." },
@@ -29,7 +35,14 @@
   const levels = $derived<Choice[]>(
     (reasoning?.values ?? []).map((value) => ({ value: value.value, label: value.name, description: value.description })),
   );
-  const approvals = $derived(APPROVALS.find((mode) => mode.value === status.approvals) ?? APPROVALS[0]!);
+  const approvals = $derived(approvalsChoice(status.approvals));
+
+  /** The menu entry of an approvals mode; Supervised for one this list doesn't know. */
+  function approvalsChoice(mode: string): Choice {
+    const found = APPROVALS.find((choice) => choice.value === mode);
+    if (found) return found;
+    return SUPERVISED;
+  }
 
   function run(command: string): void {
     void daemon.send(command);
