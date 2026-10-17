@@ -101,8 +101,14 @@
     return starts[Math.min(Math.max(index, 0), items.length)] ?? 0;
   }
 
-  /** Brings row `index` into view: to the top of the window (the default), or only as far as it takes. */
-  export function scrollToIndex(index: number, options: { align?: "start" | "nearest" } = {}): void {
+  /**
+   * Brings row `index` into view: to the top of the window (the default, `inset` pixels into the
+   * row), or only as far as it takes.
+   */
+  export function scrollToIndex(
+    index: number,
+    options: { align?: "start" | "nearest"; inset?: number } = {},
+  ): void {
     if (items.length === 0) return;
     const target = Math.min(Math.max(Math.round(index), 0), items.length - 1);
     const begin = topOf(target);
@@ -113,7 +119,7 @@
       scroller?.scrollTo(Math.min(begin < top ? begin : end - viewport, furthest));
       return;
     }
-    scroller?.scrollTo(Math.min(begin, furthest));
+    scroller?.scrollTo(Math.min(begin + (options.inset ?? 0), furthest));
   }
 </script>
 

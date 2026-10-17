@@ -32,6 +32,10 @@
   }}
   hover={onpress ? { background: p.raised, color: p.fg } : undefined}
 >
-  {#if onpress}<Icon svg={unfoldIcon} size={12} />{/if}
-  <Text style={{ fontSize: 11, truncate: true, fontFamily: onpress ? "sans" : "mono", opacity: 0.8 }}>{text}</Text>
+  {#if onpress}
+    <Icon svg={unfoldIcon} size={12} />
+    <Text style={{ fontSize: 11, shrink: 0, opacity: 0.8 }}>{text}</Text>
+  {:else}
+    <Text style={{ fontSize: 11, truncate: true, fontFamily: "mono", opacity: 0.8 }}>{text}</Text>
+  {/if}
 </View>

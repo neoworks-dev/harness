@@ -95,7 +95,8 @@
     const at = rows.findIndex((row) => row.kind === "file" && row.path === target.path);
     if (at >= 0) {
       untrack(() => {
-        list?.scrollToIndex(at);
+        // The header goes to the top, under the gap that sets its file apart.
+        list?.scrollToIndex(at, { inset: target.path === viewer.diffs[0]?.path ? 0 : FILE_GAP });
         viewer.reveal = undefined;
       });
     } else if (!viewer.busy && (viewer.changes !== undefined || viewer.scope === "turn")) {
