@@ -321,7 +321,7 @@ class Viewer {
 
   private async readWorkingTree(git: GitService, cwd: string): Promise<Changes> {
     try {
-      const answer = await git.status(cwd);
+      const answer = await git.status(cwd, true);
       if (answer === null)
         return { files: NO_FILES, error: "This directory is not in a git repository." };
       const status = parseStatus(answer.out, answer.prefix);

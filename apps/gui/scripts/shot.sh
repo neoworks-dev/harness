@@ -27,7 +27,7 @@ cleanup() {
 trap cleanup EXIT
 
 # SCENE=side runs a daemon with scripted sessions and events instead (scripts/scene-daemon.ts), in
-# a git repository with two changed files and an untracked one.
+# a git repository with two changed files, an untracked one and an untracked directory.
 if [ -n "${SCENE:-}" ]; then
   mkdir -p "$tmp/work" "$tmp/elsewhere"
   git -C "$tmp/work" init -q
@@ -38,6 +38,8 @@ if [ -n "${SCENE:-}" ]; then
   git -C "$tmp/work" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m first
   printf 'one\nthree\n' >"$tmp/work/a.txt"
   printf 'fresh\n' >"$tmp/work/new.txt"
+  mkdir -p "$tmp/work/extra"
+  printf 'export const one = 1;\n' >"$tmp/work/extra/one.ts"
   sed -i 's/^const value20 = .*/const value20 = computeSomethingMuchLongerThanBefore(20, "a string long enough to wrap in a narrow panel");/; s/^const value37 = .*/const value37 = 37;/' "$tmp/work/src/lib.ts"
   SCENE_CWD="$tmp/work" SCENE_ELSEWHERE="$tmp/elsewhere" bun run "$root/apps/gui/scripts/scene-daemon.ts" >"$tmp/daemon.log" 2>&1 &
 else

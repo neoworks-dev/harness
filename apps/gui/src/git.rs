@@ -29,7 +29,8 @@ pub fn register(commands: Commands) -> Commands {
             Ok::<_, CommandError>(Value::Object(places.collect()))
         })
         .command("git_status", |args| {
-            Ok::<_, CommandError>(status(args["cwd"].as_str().unwrap_or("")))
+            let all = args["all"].as_bool().unwrap_or(false);
+            Ok::<_, CommandError>(status(args["cwd"].as_str().unwrap_or(""), all))
         })
         .command("git_diff", |args| {
             let cwd = args["cwd"].as_str().unwrap_or("");
@@ -106,14 +107,18 @@ pub fn place_of(cwd: &str) -> (String, Option<String>) {
 }
 
 /// `git status --porcelain=v2 --branch -z` for `cwd`, and where `cwd` sits inside the repository
-/// (`src/a/`, empty at the root), for the UI to read. Null outside a repository.
-pub fn status(cwd: &str) -> Value {
+/// (`src/a/`, empty at the root), for the UI to read. Null outside a repository. `all` lists the
+/// files of an untracked directory one by one, not the directory.
+pub fn status(cwd: &str, all: bool) -> Value {
     if cwd.is_empty() {
         return Value::Null;
     }
-    let out = git(cwd)
-        .args(["status", "--porcelain=v2", "--branch", "-z"])
-        .output();
+    let mut command = git(cwd);
+    command.args(["status", "--porcelain=v2", "--branch", "-z"]);
+    if all {
+        command.arg("--untracked-files=all");
+    }
+    let out = command.output();
     let Some(out) = out.ok().filter(|out| out.status.success()) else {
         return Value::Null;
     };
@@ -228,15 +233,24 @@ mod tests {
     fn status_and_diff_of_a_real_repository() {
         let dir = temp("status");
         let path = dir.to_string_lossy().to_string();
-        assert_eq!(status("/nonexistent-dir"), Value::Null);
+        assert_eq!(status("/nonexistent-dir", false), Value::Null);
         run(&dir, &["init", "-q"]);
         std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
         run(&dir, &["add", "a.txt"]);
         run(&dir, &["commit", "-q", "-m", "first"]);
         std::fs::write(dir.join("a.txt"), "one\nthree\n").unwrap();
         std::fs::write(dir.join("new.txt"), "fresh\n").unwrap();
+        std::fs::create_dir(dir.join("fresh")).unwrap();
+        std::fs::write(dir.join("fresh/inner.txt"), "inside\n").unwrap();
 
-        let status = status(&path);
+        // An untracked directory is one entry, unless every file is asked for.
+        let collapsed = status(&path, false);
+        assert!(collapsed["out"].as_str().unwrap().contains("fresh/"));
+        assert!(!collapsed["out"].as_str().unwrap().contains("inner.txt"));
+        let all = status(&path, true);
+        assert!(all["out"].as_str().unwrap().contains("fresh/inner.txt"));
+
+        let status = status(&path, false);
         let out = status["out"].as_str().unwrap();
         assert!(out.contains("# branch.head"));
         assert!(out.contains("a.txt") && out.contains("new.txt"));
