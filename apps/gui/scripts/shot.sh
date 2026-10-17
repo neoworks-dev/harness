@@ -36,7 +36,8 @@ if [ -n "${SCENE:-}" ]; then
   git -C "$tmp/work" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m first
   printf 'one\nthree\n' >"$tmp/work/a.txt"
   printf 'fresh\n' >"$tmp/work/new.txt"
-  SCENE_CWD="$tmp/work" SCENE_ELSEWHERE="$tmp/elsewhere" bun run "$root/apps/gui/scripts/scene-daemon.ts" >"$tmp/daemon.log" 2>&1 &
+  # SCENE_SCRIPT names another script of scripts/: scene-chat.ts is a long conversation.
+  SCENE_CWD="$tmp/work" SCENE_ELSEWHERE="$tmp/elsewhere" bun run "$root/apps/gui/scripts/${SCENE_SCRIPT:-scene-daemon.ts}" >"$tmp/daemon.log" 2>&1 &
 else
   bun run "$root/daemon/src/main.ts" >"$tmp/daemon.log" 2>&1 &
 fi
