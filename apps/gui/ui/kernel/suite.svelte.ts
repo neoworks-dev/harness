@@ -162,19 +162,23 @@ class Suite {
     this.status = initialStatus();
     this.offered = [];
     this.askOffered();
+    // The history arrives one event per message, and the chat redraws after each message: a
+    // session of thousands of events froze the window for seconds. So the replay is kept until
+    // it is over and then applied at once. The items wait for it too: the chat's rows depend on
+    // what the events say (which turns ended), and rows built before would all be built again.
+    let replay: SessionEventRecord[] | undefined = [];
+    const showItems = (): void => {
+      if (replay === undefined) this.items = [...this.view.items];
+    };
     const stopView = client.subscribeView(id, {
       onSnapshot: (snapshot) => {
         this.view.applySnapshot(snapshot);
-        this.items = [...this.view.items];
+        showItems();
       },
       onPatch: (patch) => {
-        if (this.view.applyPatch(patch).length > 0) this.items = [...this.view.items];
+        if (this.view.applyPatch(patch).length > 0) showItems();
       },
     });
-    // The history arrives one event per message, and the chat redraws after each message: a
-    // session of thousands of events froze the window for seconds. So the replay is kept until
-    // it is over and then applied at once, which redraws the chat once.
-    let replay: SessionEventRecord[] | undefined = [];
     const apply = (record: SessionEventRecord): void => {
       this.status = applyEvent(this.status, record);
       for (const listener of this.recordListeners) listener(record);
@@ -194,6 +198,7 @@ class Suite {
         replay = undefined;
         for (const record of records) apply(record);
         if (records.some((record) => record.event.type === "setting_changed")) this.askOffered();
+        showItems();
       },
     });
     this.stopSession = () => {
