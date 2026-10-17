@@ -6,16 +6,16 @@
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import type { Layout } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
-  import { diffStats } from "../../lib/diff.ts";
   import CommentEditor from "./CommentEditor.svelte";
   import DiffToolbar from "./DiffToolbar.svelte";
   import FileHeader from "./FileHeader.svelte";
+  import FileTree from "./FileTree.svelte";
   import FoldRow from "./FoldRow.svelte";
   import LineRow from "./LineRow.svelte";
   import { CHAR_WIDTH, numberWidth } from "./look.ts";
   import PairRow from "./PairRow.svelte";
   import { forDiff } from "./highlights.ts";
-  import { buildRows, guessHeight, headers, HEADER_HEIGHT, maybeWraps, withEditor, type Row } from "./rows.ts";
+  import { buildRows, FILE_GAP, guessHeight, headers, HEADER_HEIGHT, maybeWraps, withEditor, type Row } from "./rows.ts";
   import { span } from "./selection.ts";
   import { diffView, viewer } from "./state.svelte.ts";
   import type { Token } from "./syntax.ts";
@@ -26,6 +26,10 @@
 
   let list: ReturnType<typeof VirtualList<Row>> | undefined = $state();
   let width = $state(0);
+  let height = $state(0);
+  /** The room of the tree and the diff together. */
+  let total = $state(0);
+  const treeWidth = $derived(Math.min(256, Math.max(188, Math.round(total * 0.36))));
   let scrollY = $state(0);
 
   const split = $derived(viewer.layout === "split");
@@ -55,12 +59,34 @@
   const sticky = $derived.by(() => {
     if (list === undefined || scrollY <= 0) return undefined;
     const file = rows[list.at(scrollY)]?.file;
-    if (file === undefined || list.topOf(heads[file] ?? 0) >= scrollY) return undefined;
+    if (file === undefined || list.topOf(heads[file] ?? 0) + (file > 0 ? FILE_GAP : 0) >= scrollY) {
+      return undefined;
+    }
     const next = heads[file + 1];
-    const push = next === undefined ? 0 : Math.min(0, list.topOf(next) - scrollY - HEADER_HEIGHT);
+    const push =
+      next === undefined ? 0 : Math.min(0, list.topOf(next) + FILE_GAP - scrollY - HEADER_HEIGHT);
     return { file, push };
   });
-  const stuck = $derived(sticky === undefined ? undefined : viewer.diffs[sticky.file]);
+  /** The header row of the file that is stuck. */
+  const stuck = $derived.by(() => {
+    const row = sticky === undefined ? undefined : rows[heads[sticky.file] ?? -1];
+    return row?.kind === "file" ? row : undefined;
+  });
+
+  // The file the tree marks: the one at the top of the window, or the one the tree was pressed on
+  // while its header is still in view.
+  $effect(() => {
+    if (list === undefined || rows.length === 0) return;
+    const { pinned } = viewer;
+    const at = pinned === undefined ? -1 : rows.findIndex((row) => row.kind === "file" && row.path === pinned);
+    const top = at < 0 ? Number.NaN : list.topOf(at);
+    if (top >= scrollY - 1 && top < scrollY + height) {
+      viewer.current = pinned;
+      return;
+    }
+    untrack(() => (viewer.pinned = undefined));
+    viewer.current = viewer.diffs[rows[list.at(scrollY)]?.file ?? 0]?.path;
+  });
 
   // A file asked for (the changes card): bring its header to the top once its rows exist.
   $effect(() => {
@@ -100,6 +126,7 @@
 
   function sized(box: Layout): void {
     width = box.width;
+    height = box.height;
   }
 
   /** What the list says when there is nothing to list. */
@@ -118,7 +145,9 @@
     <Text style={{ color: p.muted, fontSize: 13, textAlign: "center" }}>{empty}</Text>
   </View>
 {:else}
-  <View style={{ flex: 1, minHeight: 0 }} onresize={sized}>
+  <View style={{ flex: 1, minHeight: 0, direction: "row" }} onresize={(box: Layout) => (total = box.width)}>
+    {#if viewer.treeShown}<FileTree width={treeWidth} />{/if}
+  <View style={{ flex: 1, minWidth: 0, minHeight: 0 }} onresize={sized}>
     <VirtualList
       bind:this={list}
       items={rows}
@@ -130,7 +159,14 @@
     >
       {#snippet row(entry: Row)}
         {#if entry.kind === "file"}
-          <FileHeader path={entry.path} added={entry.added} removed={entry.removed} collapsed={entry.collapsed} />
+          <FileHeader
+            path={entry.path}
+            added={entry.added}
+            removed={entry.removed}
+            status={entry.status}
+            collapsed={entry.collapsed}
+            gap={entry.file > 0}
+          />
         {:else if entry.kind === "line"}
           <LineRow path={pathOf(entry.file)} index={entry.index} line={entry.line} tokens={runsOf(entry.file, entry.index)} />
         {:else if entry.kind === "pair"}
@@ -158,10 +194,16 @@
       {/snippet}
     </VirtualList>
     {#if stuck && sticky}
-      {@const stats = diffStats(stuck.lines)}
       <View style={{ position: "absolute", top: sticky.push, left: 0, right: 0 }}>
-        <FileHeader path={stuck.path} added={stats.added} removed={stats.removed} collapsed={viewer.collapsed.has(stuck.path)} />
+        <FileHeader
+          path={stuck.path}
+          added={stuck.added}
+          removed={stuck.removed}
+          status={stuck.status}
+          collapsed={stuck.collapsed}
+        />
       </View>
     {/if}
+  </View>
   </View>
 {/if}

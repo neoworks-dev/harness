@@ -4,12 +4,15 @@
 import type { DiffLine } from "@suite/protocol/types";
 import { diffStats } from "../../lib/diff.ts";
 import type { FileDiff } from "../../lib/unified.ts";
+import { fileStatus, type Status } from "./filetree.ts";
 import { fold } from "./fold.ts";
 import { splitRows, type Cell } from "./split.ts";
 
-export const HEADER_HEIGHT = 32;
+export const HEADER_HEIGHT = 36;
+/** The room above every file's header but the first, which sets the files apart. */
+export const FILE_GAP = 8;
 export const LINE_HEIGHT = 20;
-export const FOLD_HEIGHT = 24;
+export const FOLD_HEIGHT = 28;
 export const EDITOR_HEIGHT = 132;
 
 interface Base {
@@ -20,7 +23,14 @@ interface Base {
 }
 
 export type Row =
-  | (Base & { kind: "file"; path: string; added: number; removed: number; collapsed: boolean })
+  | (Base & {
+      kind: "file";
+      path: string;
+      added: number;
+      removed: number;
+      status: Status;
+      collapsed: boolean;
+    })
   | (Base & { kind: "line"; index: number; line: DiffLine })
   | (Base & { kind: "pair"; left?: Cell; right?: Cell })
   | (Base & { kind: "fold"; id: number; count: number })
@@ -49,6 +59,7 @@ export function buildRows(files: readonly FileDiff[], layout: Layout): Row[] {
       path: file.path,
       added: stats.added,
       removed: stats.removed,
+      status: fileStatus(file.lines),
       collapsed,
     });
     if (collapsed) return;
@@ -121,7 +132,7 @@ export function guessHeight(row: Row, chars: number): number {
     Math.max(1, Math.ceil(text.length / chars)) * LINE_HEIGHT;
   switch (row.kind) {
     case "file":
-      return HEADER_HEIGHT;
+      return HEADER_HEIGHT + (row.file > 0 ? FILE_GAP : 0);
     case "fold":
     case "hunk":
       return FOLD_HEIGHT;

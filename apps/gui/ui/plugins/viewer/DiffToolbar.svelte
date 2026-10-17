@@ -7,6 +7,7 @@
   import clockwise from "@phosphor-icons/core/regular/arrow-clockwise.svg";
   import columns from "@phosphor-icons/core/regular/columns.svg";
   import rows from "@phosphor-icons/core/regular/rows.svg";
+  import treeIcon from "@phosphor-icons/core/regular/tree-structure.svg";
   import wrapIcon from "@phosphor-icons/core/regular/arrow-u-down-left.svg";
   import { useCtx } from "../../kernel/slots/context.ts";
   import IconButton from "./IconButton.svelte";
@@ -36,6 +37,9 @@
     borderColor: p.border,
   }}
 >
+  {#if viewer.diffs.length > 1}
+    <IconButton svg={treeIcon} label="File tree" active={viewer.treeShown} onpress={() => viewer.toggleTree()} />
+  {/if}
   {#if patch}
     <Text style={{ fontSize: 12, fontWeight: "medium", flex: 1, minWidth: 0, truncate: true, paddingLeft: 4 }}>{patch.title}</Text>
   {:else}

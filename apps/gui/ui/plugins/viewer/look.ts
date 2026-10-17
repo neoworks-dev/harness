@@ -42,3 +42,16 @@ export function backgrounds(
   if (kind === "remove") return { body: colors.remove, numbers: colors.removeNumbers };
   return { body: "transparent", numbers: colors.numbers };
 }
+
+/** How many squares a file's diffstat bar has. */
+export const BAR_SQUARES = 5;
+
+/** A diffstat as squares, as GitHub draws it: the added lines' share green, the removed lines' red. */
+export function statBar(added: number, removed: number): ("add" | "remove" | "none")[] {
+  const total = added + removed;
+  if (total === 0) return Array.from({ length: BAR_SQUARES }, () => "none");
+  let green = Math.round((added / total) * BAR_SQUARES);
+  if (added > 0 && green === 0) green = 1;
+  if (removed > 0 && green === BAR_SQUARES) green = BAR_SQUARES - 1;
+  return Array.from({ length: BAR_SQUARES }, (_, i) => (i < green ? "add" : "remove"));
+}

@@ -17,6 +17,8 @@ import { NO_TURN, applyTurn, turnDiffs, turnEdits, type Turn } from "./turn.ts";
 
 export const MIN_WIDTH = 360;
 export const DEFAULT_WIDTH = 540;
+/** The panel is this wide or wider: the file tree opens by itself. */
+export const TREE_WIDTH = 700;
 
 /** Files bigger than this are not read. */
 const FILE_BYTES = 5 * 1024 * 1024;
@@ -117,6 +119,14 @@ class Viewer {
   draft = $state("");
   /** The file the diff tab should bring into view: a new `seq` asks again. */
   reveal = $state.raw<{ path: string; seq: number }>();
+  /** The file at the top of the diff (or the one pressed in the tree, while its header is in view). */
+  current = $state<string>();
+  /** The file the tree was pressed on, until the diff scrolls it out of view. */
+  pinned = $state<string>();
+  /** Whether the file tree is asked for or not; undefined leaves it to the panel's width. */
+  treeChoice = $state<boolean>();
+  /** Folders of the file tree that are folded. */
+  closedDirs = $state.raw<ReadonlySet<string>>(new Set());
   texts = $state.raw<Readonly<Record<string, FileText>>>({});
 
   private readonly turnFold = new Folded<Turn>(NO_TURN, (state, record, daemon) =>
@@ -140,6 +150,12 @@ class Viewer {
     if (this.scope === "turn") return turnDiffs(turnEdits(this.turn));
     return this.changes?.files ?? NO_FILES;
   });
+
+  /** The file tree is drawn beside the diff: when asked for, else when the panel is wide and there is more than a file. */
+  get treeShown(): boolean {
+    if (this.treeChoice !== undefined) return this.treeChoice;
+    return this.diffs.length > 1 && (this.maximized || this.width >= TREE_WIDTH);
+  }
 
   /** Lines added and removed in all of them. */
   totals = $derived.by(() => {
@@ -215,6 +231,9 @@ class Viewer {
     this.active = "diff";
     this.collapsed = new Set();
     this.unfolded = new Set();
+    this.closedDirs = new Set();
+    this.current = undefined;
+    this.pinned = undefined;
     this.texts = {};
     this.clearSelection();
   }
@@ -293,6 +312,23 @@ class Viewer {
     const next = new Set(this.collapsed);
     if (!next.delete(path)) next.add(path);
     this.collapsed = next;
+  }
+
+  toggleTree(): void {
+    this.treeChoice = !this.treeShown;
+  }
+
+  toggleDir(path: string): void {
+    const next = new Set(this.closedDirs);
+    if (!next.delete(path)) next.add(path);
+    this.closedDirs = next;
+  }
+
+  /** Brings a file's diff to the top, from the tree. */
+  goto(path: string): void {
+    this.current = path;
+    this.pinned = path;
+    this.reveal = { path, seq: (this.revealSeq += 1) };
   }
 
   /** Every file folded to its header, or, when all are, every one open. */
