@@ -17,6 +17,7 @@
   import folderPlus from "@phosphor-icons/core/regular/folder-plus.svg";
   import newSession from "@phosphor-icons/core/regular/note-pencil.svg";
   import pinIcon from "@phosphor-icons/core/regular/push-pin.svg";
+  import sparkle from "@phosphor-icons/core/regular/sparkle.svg";
   import undoIcon from "@phosphor-icons/core/regular/arrow-counter-clockwise.svg";
   import { arrange, inProject, projectsOf, resultLines, type Line } from "./arrange.ts";
   import HeaderButton from "./HeaderButton.svelte";
@@ -255,6 +256,11 @@
         onselect: () => sessions.toggleSettle(info.info, settled),
       },
       { separator: true },
+      {
+        label: "Regenerate title",
+        icon: sparkle,
+        onselect: () => void daemon.sendTo(info.info.id, "/title"),
+      },
       {
         label: "New session in this folder",
         icon: newSession,

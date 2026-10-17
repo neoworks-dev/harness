@@ -197,6 +197,11 @@ class Suite {
     await this.guard(this.need().input(this.sessionId, text, { images }));
   }
 
+  /** Sends a command (`/title`) to a session that may not be the one shown. */
+  async sendTo(session: string, text: string): Promise<void> {
+    await this.guard(this.need().input(session, text));
+  }
+
   /**
    * What each harness the session can switch to offers (models, reasoning levels). Asking may
    * start a guest's adapter; `known` starts nothing and leaves out what is not known yet.

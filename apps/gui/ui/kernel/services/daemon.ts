@@ -74,6 +74,10 @@ export class DaemonService extends Service {
   newSession(cwd?: string): Promise<void> {
     return suite.newSession(cwd);
   }
+  /** Sends a command to a session that may not be the shown one, such as `/title` from the sidebar. */
+  sendTo(session: string, text: string): Promise<void> {
+    return suite.sendTo(session, text);
+  }
   /** Sends what the user typed, commands included, with the paths of attached images. */
   send(text: string, images?: string[]): Promise<void> {
     return suite.send(text, images);
