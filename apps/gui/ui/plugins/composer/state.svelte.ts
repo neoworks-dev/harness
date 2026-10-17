@@ -1,6 +1,7 @@
 // What the input side holds: the draft, the `/` menu, the history and the question panel (a
 // permission or choice card answered in place of the input). The components draw it and the
 // plugin's keys call it, so they agree on what is open.
+import type { Context } from "@neoworks/extension-system";
 import { clipboard, files, invoke, window } from "@neoworks/svelte-gpui";
 import type { ViewItem } from "@suite/protocol/types";
 import type { CommandsService } from "../../kernel/services/commands.ts";
@@ -30,10 +31,13 @@ import { appendHistory, loadHistory } from "./history-store.ts";
 interface Services {
   daemon: DaemonService;
   commands: CommandsService;
+  /** Comments on code, from the viewer, to go with the next message. */
+  comments: Context["comments"];
 }
 
 const NO_ITEMS: readonly ViewItem[] = [];
 const NO_COMMANDS: readonly Command[] = [];
+const NO_COMMENTS: Context["comments"]["list"] = [];
 
 /** How long "copied" stays in the status line. */
 const COPIED_NOTICE_MS = 1500;
@@ -90,6 +94,11 @@ class Composer {
     return () => (this.services = undefined);
   }
 
+  /** The comments on code waiting for the next message. */
+  get comments(): Context["comments"]["list"] {
+    return this.services?.comments.list ?? NO_COMMENTS;
+  }
+
   private get items(): readonly ViewItem[] {
     return this.services?.daemon.items ?? NO_ITEMS;
   }
@@ -123,7 +132,7 @@ class Composer {
       return;
     }
     const text = this.text.trim();
-    if (text === "" && this.attachments.length === 0) return;
+    if (text === "" && this.attachments.length === 0 && this.comments.length === 0) return;
     this.text = "";
     if (this.attachments.length > 0) {
       this.sendWithAttachments(text);
@@ -132,6 +141,17 @@ class Composer {
     const command = text.startsWith("/") ? lookup(text, this.menuEntries) : undefined;
     if (command?.run) command.run();
     else this.send(text);
+  }
+
+  /** Takes a comment back: the chip's button. */
+  uncomment(id: string): void {
+    this.services?.comments.remove(id);
+  }
+
+  /** `text` with the comments on code after it. A `/command` for the daemon leaves them for later. */
+  private withComments(text: string): string {
+    if (text.startsWith("/")) return text;
+    return this.services?.comments.take(text) ?? text;
   }
 
   /** A menu pick (Enter or a press): runs the command, or leaves room for its arguments. */
@@ -188,13 +208,13 @@ class Composer {
       const session = this.services?.daemon.sessionId;
       if (this.history.push(text) && session !== undefined) void appendHistory(session, text);
     }
-    void this.services?.daemon.send(full, images);
+    void this.services?.daemon.send(this.withComments(full), images);
   }
 
   private send(text: string): void {
     const session = this.services?.daemon.sessionId;
     if (this.history.push(text) && session !== undefined) void appendHistory(session, text);
-    void this.services?.daemon.send(text);
+    void this.services?.daemon.send(this.withComments(text));
   }
 
   // ---- history ----

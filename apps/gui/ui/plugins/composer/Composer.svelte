@@ -6,10 +6,12 @@
   import { Button, Icon, Input, Overlay, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
   import arrowUp from "@phosphor-icons/core/bold/arrow-up-bold.svg";
   import stop from "@phosphor-icons/core/fill/stop-fill.svg";
+  import chatText from "@phosphor-icons/core/regular/chat-text.svg";
   import paperclip from "@phosphor-icons/core/regular/paperclip.svg";
   import xIcon from "@phosphor-icons/core/regular/x.svg";
   import type { KeyEvent, Layout } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
+  import { preview, rangeLabel } from "../../lib/comments.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
   import CommandMenu from "./CommandMenu.svelte";
   import Help from "./Help.svelte";
@@ -132,12 +134,23 @@
           {composer.prompt.title || "A question"} is waiting. Stop typing to answer it, Esc puts it aside.
         </Text>
       {/if}
-      {#if composer.attachments.length > 0}
+      {#if composer.attachments.length > 0 || composer.comments.length > 0}
         <View style={{ direction: "row", wrap: true, gap: 6, paddingX: 14, paddingTop: 12 }}>
           {#each composer.attachments as path (path)}
             <View style={{ direction: "row", align: "center", gap: 4, paddingLeft: 10, paddingRight: 4, height: 26, radius: p.radius.s, background: p.raised }}>
               <Text style={{ fontSize: 12, maxWidth: 220, truncate: true }}>{path.slice(path.lastIndexOf("/") + 1)}</Text>
               <Button onpress={() => composer.detach(path)} style={{ size: 18, align: "center", justify: "center", radius: 4, color: p.muted }} hover={{ color: p.fg, background: p.hover }}>
+                <Icon svg={xIcon} size={12} />
+              </Button>
+            </View>
+          {/each}
+          {#each composer.comments as comment (comment.id)}
+            <View style={{ direction: "row", align: "center", gap: 6, paddingLeft: 8, paddingRight: 4, height: 26, maxWidth: "100%", radius: p.radius.s, background: p.raised }}>
+              <Icon svg={chatText} size={13} />
+              <Text style={{ fontSize: 12, minWidth: 0, shrink: 1, truncate: true }}>
+                {rangeLabel(comment)}<Text style={{ color: p.muted }}>{"  "}{preview(comment.text, 40)}</Text>
+              </Text>
+              <Button onpress={() => composer.uncomment(comment.id)} style={{ size: 18, align: "center", justify: "center", radius: 4, color: p.muted }} hover={{ color: p.fg, background: p.hover }}>
                 <Icon svg={xIcon} size={12} />
               </Button>
             </View>
@@ -184,7 +197,7 @@
         >
           <Icon svg={paperclip} size={16} />
         </Button>
-        {#if daemon.status.running && composer.text.trim() === ""}
+        {#if daemon.status.running && composer.text.trim() === "" && composer.comments.length === 0}
           <Button
             onpress={() => void daemon.cancel()}
             style={{ size: 32, radius: 16, align: "center", justify: "center", background: p.danger, color: "#ffffff" }}
@@ -202,7 +215,7 @@
               justify: "center",
               background: p.accent,
               color: "#ffffff",
-              opacity: composer.text.trim() === "" && composer.attachments.length === 0 ? 0.64 : 1,
+              opacity: composer.text.trim() === "" && composer.attachments.length === 0 && composer.comments.length === 0 ? 0.64 : 1,
             }}
             hover={{ opacity: 0.9 }}
           >

@@ -1,6 +1,6 @@
 <script lang="ts">
   // What a question is about, compact: details, a few lines of a diff or code, text. A diff opens
-  // side by side over the window.
+  // in the viewer beside the chat.
   import { Button, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { Component } from "@suite/protocol/types";
   import { useCtx } from "../../kernel/slots/context.ts";
@@ -12,7 +12,7 @@
 
   let { components }: Props = $props();
 
-  const { daemon, diff } = useCtx();
+  const { daemon, viewer } = useCtx();
 
   const p = $derived(daemon.palette);
   const PREVIEW = 8;
@@ -37,11 +37,11 @@
           ).length}
         </Text>
         <Button
-          onpress={() => diff.show(component)}
+          onpress={() => viewer.showDiff(component)}
           style={{ paddingX: p.space.m, paddingY: 2, radius: 5, background: p.surface, borderWidth: 1, borderColor: p.border }}
           hover={{ borderColor: p.accent }}
         >
-          <Text style={{ color: p.accent }}>open side by side</Text>
+          <Text style={{ color: p.accent }}>open in the viewer</Text>
         </Button>
       </View>
       <View style={{ background: p.surface, radius: 6, padding: p.space.m }}>

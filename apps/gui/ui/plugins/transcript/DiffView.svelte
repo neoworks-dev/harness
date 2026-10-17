@@ -1,6 +1,6 @@
 <script lang="ts">
   // A diff in the chat: unified, with the added and removed colouring and line numbers. Cut to a
-  // few lines unless expanded. Pressing it opens the side-by-side view over the window.
+  // few lines unless expanded. Pressing it opens the viewer beside the chat.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import type { DiffComponent } from "@suite/protocol/types";
   import { lineHeightOf } from "./components.ts";
@@ -14,11 +14,11 @@
     limit?: number;
   }
 
-  /** The most lines drawn in the chat; the overlay is virtualised and shows all. */
+  /** The most lines drawn in the chat; the viewer is virtualised and shows all. */
   const CAP = 400;
 
   let { diff, limit }: Props = $props();
-  const { daemon, diff: overlay } = useCtx();
+  const { daemon, viewer } = useCtx();
   const p = $derived(daemon.palette);
   const colors = $derived(diffColors(p));
 
@@ -47,7 +47,7 @@
 </script>
 
 <View
-  onpress={() => overlay.show(diff)}
+  onpress={() => viewer.showDiff(diff)}
   style={{ background: p.surface, radius: 6, cursor: "pointer", overflow: "hidden" }}
   hover={{ background: p.band }}
 >
@@ -55,7 +55,7 @@
     <Text style={{ fontWeight: "bold", flex: 1, minWidth: 0, truncate: true }}>{diff.path ?? "diff"}</Text>
     <Text style={{ color: p.success }}>+{stats.added}</Text>
     <Text style={{ color: p.danger }}>−{stats.removed}</Text>
-    <Text style={{ color: p.muted }}>open side by side</Text>
+    <Text style={{ color: p.muted }}>open in the viewer</Text>
   </View>
   {#each clipped.shown as line}
     {#if line.kind === "hunk"}

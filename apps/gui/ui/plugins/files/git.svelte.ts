@@ -4,7 +4,7 @@
 import { untrack } from "svelte";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
 import type { GitService } from "../../kernel/services/git.ts";
-import { parseStatus, type GitStatus } from "./files.ts";
+import { parseStatus, type GitStatus } from "../../lib/git-status.ts";
 
 const DEBOUNCE_MS = 200;
 const REFRESH_MS = 10_000;

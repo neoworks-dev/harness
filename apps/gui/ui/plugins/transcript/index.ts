@@ -18,7 +18,7 @@ import UserItem from "./UserItem.svelte";
 
 export const transcriptPane = {
   name: "transcript",
-  inject: ["slots", "daemon", "keymap", "commands", "diff"],
+  inject: ["slots", "daemon", "keymap", "commands", "viewer"],
   apply(ctx: Context) {
     const { slots, keymap, commands } = ctx;
     ctx.plugin(TranscriptService);

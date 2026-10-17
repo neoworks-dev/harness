@@ -24,25 +24,28 @@ suite gui --new             # a new session in this directory
   - Where a row shows its age it shows what the session is doing instead: a blue spinner and `Working 12s` while it runs (counted from when the window first saw it run), a green `Done` once it finished while you looked elsewhere.
 - **The chat** (middle), the input under it, and the status line at the bottom.
 - **Agents** (under the input). While a subagent or guest runs, and for a few seconds after, one row each: its harness and model, what it is doing, how long it has run and its tokens. Press a row (or Enter on it) to read that agent's own chat, `stop` (or `x`) to end it. An agent working in a worktree of its own opens that session instead.
-- **Plan and files** (right, only when there is something to show and the window is wide enough). The plan is the agent's todo list, and each guest's. Files are what git says changed in the session's directory plus what the agent touched, tagged by who (`(agent)`, `(claude)`); press one to see its diff.
-- **Workspace** (Ctrl-G shows or hides it), a card floating at the conversation's top right: this machine and the session's folder (copy the path, show it in the file manager), **Open in** the editor last used (the others found on `PATH`: zed, code, cursor, windsurf, idea, subl), the branch (switch to a local one; it refuses while the tree has changes), **Commit & push** (Enter in the message field commits everything, and pushes if the branch has an upstream; or leave the commit to the agent) and **Changes** with the lines added and removed, which opens the whole diff.
+- **Plan and files** (right, only when there is something to show and the window is wide enough). The plan is the agent's todo list, and each guest's. Files are what git says changed in the session's directory plus what the agent touched, tagged by who (`(agent)`, `(claude)`); press one to see its diff in the viewer.
+- **Workspace** (Ctrl-G shows or hides it), a card floating at the conversation's top right: this machine and the session's folder (copy the path, show it in the file manager), **Open in** the editor last used (the others found on `PATH`: zed, code, cursor, windsurf, idea, subl), the branch (switch to a local one; it refuses while the tree has changes), **Commit & push** (Enter in the message field commits everything, and pushes if the branch has an upstream; or leave the commit to the agent) and **Changes** with the lines added and removed, which opens the viewer.
+- **The viewer** (beside the chat, Ctrl-D or the diff button at the window's right edge; it takes the side panel's place while open). The **Diff** tab lists every file git sees changed (**Uncommitted**) or the files the agent edited in the latest turn (**Latest turn**), each under a header that stays at the top as you scroll: the path (press it to open the file in a tab of its own), what it changed and a button to copy the path. Unmodified lines are folded away, press the fold to show them. The toolbar switches between unified and split lines, wraps long lines, folds every file and reloads; the panel's left edge drags to resize it, and its button makes it take the conversation's place (the input stays under it). A diff the agent shows in the chat, and a pull request's diff from the GitHub view, open here too.
+- **Comments on code.** Press a line number in the diff or in a file (shift-press another to stretch the selection) and write what you think of those lines. The comment waits as a chip over the input, with the lines marked in the viewer, and goes with your next message as a block: the file, the lines, the quoted code and your words. A message of comments alone is fine.
 - **GitHub** (Ctrl-R), in place of the chat. The issues and pull requests of the project's repository, as `gh` finds it. Open one to read its description, comments, reviews and checks; **Send to the model** puts it into the conversation. It only reads: the app never writes to GitHub. It needs the [GitHub CLI](https://cli.github.com) installed and logged in (`gh auth login`).
 
 ## Keys
 
-| Key          | What                                                        |
-| ------------ | ----------------------------------------------------------- |
-| Ctrl-S       | show or hide the sessions                                   |
-| F6           | the sessions get the keyboard (again to leave)              |
-| Ctrl-N       | a new session                                               |
-| Ctrl-Shift-F | search the sessions                                         |
-| Ctrl-X       | the agents list gets the keyboard (again, or Esc, to leave) |
-| Ctrl-R       | the GitHub view (again to close)                            |
-| Ctrl-G       | show or hide the workspace card                             |
-| Ctrl-O       | tool results in full                                        |
-| Ctrl-T       | the agent's thoughts                                        |
-| Shift-Tab    | approvals: ask, review, edits, auto                         |
-| Esc          | closes what is open; else cancels the running turn          |
+| Key          | What                                                            |
+| ------------ | --------------------------------------------------------------- |
+| Ctrl-S       | show or hide the sessions                                       |
+| F6           | the sessions get the keyboard (again to leave)                  |
+| Ctrl-N       | a new session                                                   |
+| Ctrl-Shift-F | search the sessions                                             |
+| Ctrl-X       | the agents list gets the keyboard (again, or Esc, to leave)     |
+| Ctrl-R       | the GitHub view (again to close)                                |
+| Ctrl-D       | the viewer: the diff and files beside the chat (again to close) |
+| Ctrl-G       | show or hide the workspace card                                 |
+| Ctrl-O       | tool results in full                                            |
+| Ctrl-T       | the agent's thoughts                                            |
+| Shift-Tab    | approvals: ask, review, edits, auto                             |
+| Esc          | closes what is open; else cancels the running turn              |
 
 In the sessions: Up/Down (or j/k) move, `[` and `]` jump between projects and worktrees, Home/End go to the ends, Enter opens, Esc leaves.
 

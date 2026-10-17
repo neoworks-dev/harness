@@ -9,10 +9,10 @@ import { github } from "./state.svelte.ts";
 
 export const githubPane = {
   name: "github",
-  inject: ["slots", "daemon", "github", "diff", "keymap", "keyboard", "commands"],
+  inject: ["slots", "daemon", "github", "viewer", "keymap", "keyboard", "commands"],
   apply(ctx: Context) {
-    const { slots, daemon, github: host, diff, keymap, keyboard, commands } = ctx;
-    ctx.effect(() => github.start({ daemon, host, diff }), "github state");
+    const { slots, daemon, github: host, viewer, keymap, keyboard, commands } = ctx;
+    ctx.effect(() => github.start({ daemon, host, viewer }), "github state");
 
     slots.inject("shell.main", (slot) => {
       slot.add({ component: GitHub, order: 10, select: () => github.shown });

@@ -6,7 +6,7 @@ Every pane of the window is a plugin on [`@neoworks/extension-system`](../../../
 kernel/          the root Context, boot, host services, slots, keymap, commands
 plugins/         one folder per pane; index.ts lists them in mount order
 widgets/         small shared pieces that belong to no pane (the spinner, the clock)
-lib/             pure logic more than one pane uses (palette, diff, commands, unified diffs)
+lib/             pure logic more than one pane uses (palette, diff, commands, unified diffs, git status, comments)
 ```
 
 A pane reaches another only through a service or a slot, never by importing its modules. Pure logic that only one pane uses lives in its folder.
@@ -42,23 +42,24 @@ Add it to `plugins/index.ts`. Everything registered goes through `ctx.effect` in
 
 ### The window's panes
 
-| Plugin       | Fills                                      | Declares                                                                | Provides     |
-| ------------ | ------------------------------------------ | ----------------------------------------------------------------------- | ------------ |
-| `shell`      | `root`                                     | `shell.left`, `.main` (chain), `.bottom`, `.right`, `.card`, `.overlay` |              |
-| `sessions`   | `shell.left`                               |                                                                         |              |
-| `statusline` | `shell.bottom` (30)                        | `statusline.right`                                                      |              |
-| `transcript` | `shell.main` (100), `chat.item`, `.header` | `chat.item` (keyed by item kind), `chat.item.header`                    | `transcript` |
-| `composer`   | `shell.bottom` (10), `statusline.right`    | `composer.left`, `composer.right`                                       |              |
-| `agents`     | `shell.bottom` (20)                        |                                                                         |              |
-| `agentview`  | `shell.main` (20)                          |                                                                         | `agentview`  |
-| `sidepanel`  | `shell.right`                              | `sidepanel.section`                                                     | `sidepanel`  |
-| `plan`       | `sidepanel.section` (10)                   |                                                                         |              |
-| `files`      | `sidepanel.section` (20)                   |                                                                         |              |
-| `github`     | `shell.main` (10)                          |                                                                         |              |
-| `diff`       | `shell.overlay`                            |                                                                         | `diff`       |
-| `workspace`  | `shell.card`, `shell.toolbar` (30)         |                                                                         |              |
+| Plugin       | Fills                                                       | Declares                                                                | Provides     |
+| ------------ | ----------------------------------------------------------- | ----------------------------------------------------------------------- | ------------ |
+| `shell`      | `root`                                                      | `shell.left`, `.main` (chain), `.bottom`, `.right`, `.card`, `.overlay` |              |
+| `sessions`   | `shell.left`                                                |                                                                         |              |
+| `statusline` | `shell.bottom` (30)                                         | `statusline.right`                                                      |              |
+| `transcript` | `shell.main` (100), `chat.item`, `.header`                  | `chat.item` (keyed by item kind), `chat.item.header`                    | `transcript` |
+| `composer`   | `shell.bottom` (10), `statusline.right`                     | `composer.left`, `composer.right`                                       |              |
+| `agents`     | `shell.bottom` (20)                                         |                                                                         |              |
+| `agentview`  | `shell.main` (20)                                           |                                                                         | `agentview`  |
+| `sidepanel`  | `shell.right`                                               | `sidepanel.section`                                                     | `sidepanel`  |
+| `plan`       | `sidepanel.section` (10)                                    |                                                                         |              |
+| `files`      | `sidepanel.section` (20)                                    |                                                                         |              |
+| `github`     | `shell.main` (10)                                           |                                                                         |              |
+| `comments`   |                                                             |                                                                         | `comments`   |
+| `viewer`     | `shell.right` (-10), `shell.main` (5), `shell.toolbar` (15) |                                                                         | `viewer`     |
+| `workspace`  | `shell.card`, `shell.toolbar` (30)                          |                                                                         |              |
 
-A plugin lists the services it uses in `inject` and waits for them, so a plugin that provides one is listed before those that use it in `plugins/index.ts` (the order also decides ties in a list slot and the order of the `/` menu). A plugin provides a service by mounting a `Service` of its own: `ctx.plugin(DiffService)`; it unloads with the plugin.
+A plugin lists the services it uses in `inject` and waits for them, so a plugin that provides one is listed before those that use it in `plugins/index.ts` (the order also decides ties in a list slot and the order of the `/` menu). A plugin provides a service by mounting a `Service` of its own: `ctx.plugin(ViewerService)`; it unloads with the plugin.
 
 ## Slots
 
@@ -117,7 +118,7 @@ A component reaches the services of the plugin that registered it with `useCtx()
 | `keyboard` | `claim(held)`, `taken`: a pane that wants the keyboard claims it, and the input stays away while one is held             |
 | `commands` | `register`, `list`                                                                                                       |
 
-What the panes offer one another is in the table above: `diff.show(diff)`, `transcript.visible(items)` and `transcript.stub(ref)`, `agentview.open(agent)`, `sidepanel.claim(has)`. Each is in the plugin's `service.ts`.
+What the panes offer one another is in the table above: `viewer.showChanges(path)`, `viewer.showDiff(diff)` and `viewer.openFile(path)`, `comments.add(comment)` and `comments.take(text)`, `transcript.visible(items)` and `transcript.stub(ref)`, `agentview.open(agent)`, `sidepanel.claim(has)` and `sidepanel.cover(when)`. Each is in the plugin's `service.ts`.
 
 ## State, and the `$state` trap
 

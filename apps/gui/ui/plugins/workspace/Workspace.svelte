@@ -140,7 +140,7 @@
 
       <View style={{ height: 1, background: p.border }} />
       <View style={{ padding: 8, paddingBottom: 10 }}>
-        <Row onpress={() => void workspace.showChanges()} disabled={counts.files === 0}>
+        <Row onpress={() => workspace.showChanges()} disabled={counts.files === 0}>
           <Icon svg={gitDiff} size={16} color={p.muted} />
           <Text style={{ flex: 1, minWidth: 0 }}>Changes</Text>
           {#if counts.files === 0}

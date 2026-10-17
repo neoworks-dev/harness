@@ -6,7 +6,6 @@ import type { Context } from "@neoworks/extension-system";
 import { clipboard } from "@neoworks/svelte-gpui";
 import { untrack } from "svelte";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
-import { parseUnified } from "../../lib/unified.ts";
 import * as host from "./host.ts";
 import {
   ASK_AGENT_TO_COMMIT,
@@ -28,8 +27,8 @@ const NOTICE_MS = 7000;
 
 interface Services {
   daemon: DaemonService;
-  /** What shows a diff over the window: the `diff` service. */
-  diff: Context["diff"];
+  /** What shows the diff of the changes: the `viewer` service. */
+  viewer: Context["viewer"];
 }
 
 /** A line under the card. */
@@ -280,23 +279,9 @@ class Workspace {
     }
   }
 
-  /** Everything changed against HEAD, over the window. */
-  async showChanges(): Promise<void> {
-    try {
-      const text = await host.diffAll(this.need.daemon.cwd);
-      const files = parseUnified(text);
-      const lines = files.flatMap((file) => [
-        { kind: "hunk" as const, text: file.path },
-        ...file.lines,
-      ]);
-      this.need.diff.show({
-        type: "diff",
-        path: "Changes",
-        lines: lines.length > 0 ? lines : [{ kind: "context", text: "no changes" }],
-      });
-    } catch (error) {
-      this.tell(errorText(error), true);
-    }
+  /** Everything changed against HEAD, in the viewer. */
+  showChanges(): void {
+    this.need.viewer.showChanges();
   }
 }
 

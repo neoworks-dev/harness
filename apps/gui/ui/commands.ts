@@ -44,7 +44,7 @@ declare module "@neoworks/svelte-gpui" {
     /** Where each directory works (repository and worktree), found from the `.git` files. */
     places: { args: { cwds: string[] }; result: Record<string, Place> };
     /** `git status --porcelain=v2 --branch -z` and the directory's place in the repository; null outside one. */
-    git_status: { args: { cwd: string }; result: GitStatusOutput | null };
+    git_status: { args: { cwd: string; all?: boolean }; result: GitStatusOutput | null };
     /** The unified diff of one file against HEAD, or the whole untracked file as added. */
     git_diff: {
       args: { cwd: string; path: string; untracked?: boolean; full?: boolean };

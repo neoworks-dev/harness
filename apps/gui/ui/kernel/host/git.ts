@@ -18,8 +18,12 @@ export const branch = (cwd: string): Reply<"git_branch"> => invoke("git_branch",
 /** Where each directory works (repository and worktree), read from the `.git` files. */
 export const places = (cwds: string[]): Reply<"places"> => invoke("places", { cwds });
 
-/** `git status --porcelain=v2 --branch -z` of `cwd`; null outside a repository. */
-export const status = (cwd: string): Reply<"git_status"> => invoke("git_status", { cwd });
+/**
+ * `git status --porcelain=v2 --branch -z` of `cwd`; null outside a repository. `all` lists the files
+ * of an untracked directory one by one, not the directory.
+ */
+export const status = (cwd: string, all = false): Reply<"git_status"> =>
+  invoke("git_status", all ? { cwd, all } : { cwd });
 
 /** The unified diff of one file against HEAD. */
 export const diff = (args: DiffArgs): Reply<"git_diff"> => invoke("git_diff", args);

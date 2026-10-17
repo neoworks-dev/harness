@@ -2,7 +2,7 @@
 // the session's folder, the editor to open it in, the branch, a commit button and the changes.
 // It fills the shell's `shell.card` slot and the toolbar strip, and owns its toggle and key. The
 // host does the work (apps/gui/src/desktop.rs, workspace.rs); the diff of the changes is shown by
-// the `diff` service.
+// the `viewer` service.
 import type { Context } from "@neoworks/extension-system";
 import "../shell/slots.ts";
 import ToolbarButton from "./ToolbarButton.svelte";
@@ -11,10 +11,10 @@ import Workspace from "./Workspace.svelte";
 
 export const workspaceCard = {
   name: "workspace",
-  inject: ["slots", "daemon", "diff", "keymap", "keyboard", "commands"],
+  inject: ["slots", "daemon", "viewer", "keymap", "keyboard", "commands"],
   apply(ctx: Context) {
-    const { slots, daemon, diff, keymap, keyboard, commands } = ctx;
-    ctx.effect(() => workspace.start({ daemon, diff }), "workspace state");
+    const { slots, daemon, viewer, keymap, keyboard, commands } = ctx;
+    ctx.effect(() => workspace.start({ daemon, viewer }), "workspace state");
 
     slots.inject("shell.card", (slot) => {
       slot.add({ component: Workspace });
