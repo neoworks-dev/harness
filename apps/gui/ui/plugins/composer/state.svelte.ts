@@ -334,10 +334,15 @@ export const composer = new Composer();
 
 const IMAGE = /\.(png|jpe?g|gif|webp)$/i;
 
-/** The attached files the agent gets as images (PNG, JPEG, GIF, WebP), and the rest. */
+/** Whether the agent gets an attached file as an image (PNG, JPEG, GIF, WebP). */
+export function isImage(path: string): boolean {
+  return IMAGE.test(path);
+}
+
+/** The attached files the agent gets as images, and the rest. */
 export function splitAttachments(paths: readonly string[]): { images: string[]; others: string[] } {
   return {
-    images: paths.filter((path) => IMAGE.test(path)),
-    others: paths.filter((path) => !IMAGE.test(path)),
+    images: paths.filter(isImage),
+    others: paths.filter((path) => !isImage(path)),
   };
 }

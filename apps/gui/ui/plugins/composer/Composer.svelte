@@ -17,7 +17,8 @@
   import Help from "./Help.svelte";
   import Pickers from "./Pickers.svelte";
   import PromptPanel from "./PromptPanel.svelte";
-  import { composer } from "./state.svelte.ts";
+  import Thumbnail from "./Thumbnail.svelte";
+  import { composer, isImage } from "./state.svelte.ts";
 
   const { daemon, keyboard, transcript } = useCtx();
 
@@ -137,12 +138,16 @@
       {#if composer.attachments.length > 0 || composer.comments.length > 0}
         <View style={{ direction: "row", wrap: true, gap: 6, paddingX: 14, paddingTop: 12 }}>
           {#each composer.attachments as path (path)}
-            <View style={{ direction: "row", align: "center", gap: 4, paddingLeft: 10, paddingRight: 4, height: 26, radius: p.radius.s, background: p.raised }}>
-              <Text style={{ fontSize: 12, maxWidth: 220, truncate: true }}>{path.slice(path.lastIndexOf("/") + 1)}</Text>
-              <Button onpress={() => composer.detach(path)} style={{ size: 18, align: "center", justify: "center", radius: 4, color: p.muted }} hover={{ color: p.fg, background: p.hover }}>
-                <Icon svg={xIcon} size={12} />
-              </Button>
-            </View>
+            {#if isImage(path)}
+              <Thumbnail {path} onremove={() => composer.detach(path)} />
+            {:else}
+              <View style={{ direction: "row", align: "center", gap: 4, paddingLeft: 10, paddingRight: 4, height: 26, radius: p.radius.s, background: p.raised }}>
+                <Text style={{ fontSize: 12, maxWidth: 220, truncate: true }}>{path.slice(path.lastIndexOf("/") + 1)}</Text>
+                <Button onpress={() => composer.detach(path)} style={{ size: 18, align: "center", justify: "center", radius: 4, color: p.muted }} hover={{ color: p.fg, background: p.hover }}>
+                  <Icon svg={xIcon} size={12} />
+                </Button>
+              </View>
+            {/if}
           {/each}
           {#each composer.comments as comment (comment.id)}
             <View style={{ direction: "row", align: "center", gap: 6, paddingLeft: 8, paddingRight: 4, height: 26, maxWidth: "100%", radius: p.radius.s, background: p.raised }}>
