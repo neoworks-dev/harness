@@ -147,6 +147,7 @@ for (const [path, blocks] of bodies) {
   const edited = blocks.map((block, n) => {
     if (n % 4 !== 1) return block;
     const next = [...block];
+    next[1] = (next[1] ?? "").replace(/(\w+)(?=[(:{ ])/, "$1_renamed");
     next[2] = `${next[2] ?? ""} // changed`;
     next.splice(4, 0, "  /* inserted line */");
     next.splice(6, 1);

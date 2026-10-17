@@ -168,7 +168,7 @@
             gap={entry.file > 0}
           />
         {:else if entry.kind === "line"}
-          <LineRow path={pathOf(entry.file)} index={entry.index} line={entry.line} tokens={runsOf(entry.file, entry.index)} />
+          <LineRow path={pathOf(entry.file)} index={entry.index} line={entry.line} tokens={runsOf(entry.file, entry.index)} partner={entry.partner} />
         {:else if entry.kind === "pair"}
           <PairRow
             path={pathOf(entry.file)}

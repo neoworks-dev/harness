@@ -7,6 +7,7 @@
   import { viewerColors } from "../../lib/diff-colors.ts";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Code from "./Code.svelte";
+  import { withMarks } from "./inline.ts";
   import { selected as isSelected } from "./selection.ts";
   import { LINE_HEIGHT } from "./rows.ts";
   import { backgrounds, markOf, numberWidth } from "./look.ts";
@@ -18,9 +19,11 @@
     line: DiffLine;
     /** The line's runs, from the syntax highlighting. */
     tokens?: Token[];
+    /** The text this line was rewritten from or to, to mark what changed in it. */
+    partner?: string;
   }
 
-  let { path, index, line, tokens }: Props = $props();
+  let { path, index, line, tokens, partner }: Props = $props();
 
   const { daemon, comments } = useCtx();
   const p = $derived(daemon.palette);
@@ -28,6 +31,7 @@
   const view = $derived(diffView(path));
   const on = $derived(isSelected(viewer.selection, view, index));
   const look = $derived(backgrounds(colors, line.kind, on));
+  const runs = $derived(withMarks(line.text, tokens, partner));
   const width = $derived(numberWidth(viewer.digits));
   const marked = $derived(
     line.kind === "remove"
@@ -71,7 +75,7 @@
       color: line.kind === "add" ? p.success : p.danger,
     }}
   >{markOf(line.kind)}</Text>
-  <Code text={line.text} {tokens} />
+  <Code text={line.text} tokens={runs} mark={look.mark} />
   {#if marked}
     <View style={{ position: "absolute", left: 3, top: 7, size: 6, radius: 3, background: p.accent }} />
   {/if}

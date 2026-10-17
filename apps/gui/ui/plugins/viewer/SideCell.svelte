@@ -5,6 +5,7 @@
   import { viewerColors } from "../../lib/diff-colors.ts";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Code from "./Code.svelte";
+  import { withMarks } from "./inline.ts";
   import { backgrounds, markOf, numberWidth } from "./look.ts";
   import { LINE_HEIGHT } from "./rows.ts";
   import { selected as isSelected } from "./selection.ts";
@@ -17,9 +18,11 @@
     cell?: Cell;
     side: "old" | "new";
     tokens?: Token[];
+    /** The text on the other side of the row, to mark what changed in this one. */
+    partner?: string;
   }
 
-  let { path, cell, side, tokens }: Props = $props();
+  let { path, cell, side, tokens, partner }: Props = $props();
 
   const { daemon, comments } = useCtx();
   const p = $derived(daemon.palette);
@@ -29,6 +32,7 @@
   const no = $derived(side === "old" ? line?.old : line?.new);
   const on = $derived(cell !== undefined && isSelected(viewer.selection, view, cell.index));
   const look = $derived(backgrounds(colors, line?.kind ?? "context", on));
+  const runs = $derived(line === undefined ? undefined : withMarks(line.text, tokens, partner));
   const marked = $derived(no !== undefined && comments.marked(path, side, no));
 </script>
 
@@ -63,7 +67,7 @@
         color: line.kind === "add" ? p.success : p.danger,
       }}
     >{markOf(line.kind)}</Text>
-    <Code text={line.text} {tokens} />
+    <Code text={line.text} tokens={runs} mark={look.mark} />
     {#if marked}
       <View style={{ position: "absolute", left: 3, top: 7, size: 6, radius: 3, background: p.accent }} />
     {/if}

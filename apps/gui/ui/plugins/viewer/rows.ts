@@ -6,6 +6,7 @@ import { diffStats } from "../../lib/diff.ts";
 import type { FileDiff } from "../../lib/unified.ts";
 import { fileStatus, type Status } from "./filetree.ts";
 import { fold } from "./fold.ts";
+import { partners } from "./inline.ts";
 import { splitRows, type Cell } from "./split.ts";
 
 export const HEADER_HEIGHT = 36;
@@ -31,7 +32,7 @@ export type Row =
       status: Status;
       collapsed: boolean;
     })
-  | (Base & { kind: "line"; index: number; line: DiffLine })
+  | (Base & { kind: "line"; index: number; line: DiffLine; partner?: string })
   | (Base & { kind: "pair"; left?: Cell; right?: Cell })
   | (Base & { kind: "fold"; id: number; count: number })
   | (Base & { kind: "hunk"; text: string })
@@ -69,10 +70,14 @@ export function buildRows(files: readonly FileDiff[], layout: Layout): Row[] {
     }
     const blocks = fold(file.lines, (id) => layout.isOpen(file.path, id));
     if (!layout.split) {
+      const rewritten = partners(file.lines);
       for (const block of blocks) {
         if (block.kind === "line") {
           const { index, line } = block;
-          rows.push({ kind: "line", key: `${f}:${index}`, file: f, index, line });
+          const partner = rewritten.get(index);
+          const row: Row = { kind: "line", key: `${f}:${index}`, file: f, index, line };
+          if (partner !== undefined) row.partner = partner;
+          rows.push(row);
         } else if (block.kind === "hunk") {
           rows.push({ kind: "hunk", key: `${f}:h${block.index}`, file: f, text: block.text });
         } else {

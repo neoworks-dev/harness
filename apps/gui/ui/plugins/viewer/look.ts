@@ -36,11 +36,14 @@ export function backgrounds(
   colors: ViewerColors,
   kind: DiffLine["kind"],
   selected: boolean,
-): { body: string; numbers: string } {
-  if (selected) return { body: colors.selected, numbers: colors.selectedNumbers };
-  if (kind === "add") return { body: colors.add, numbers: colors.addNumbers };
-  if (kind === "remove") return { body: colors.remove, numbers: colors.removeNumbers };
-  return { body: "transparent", numbers: colors.numbers };
+): { body: string; numbers: string; mark: string } {
+  if (selected)
+    return { body: colors.selected, numbers: colors.selectedNumbers, mark: colors.selected };
+  if (kind === "add") return { body: colors.add, numbers: colors.addNumbers, mark: colors.addMark };
+  if (kind === "remove") {
+    return { body: colors.remove, numbers: colors.removeNumbers, mark: colors.removeMark };
+  }
+  return { body: "transparent", numbers: colors.numbers, mark: "transparent" };
 }
 
 /** How many squares a file's diffstat bar has. */

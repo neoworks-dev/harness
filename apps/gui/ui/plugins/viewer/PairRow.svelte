@@ -23,10 +23,12 @@
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
   const colors = $derived(viewerColors(p));
+  /** A removed line opposite an added one: each shows what changed against the other. */
+  const rewritten = $derived(left?.line.kind === "remove" && right?.line.kind === "add");
 </script>
 
 <View style={{ direction: "row", minHeight: LINE_HEIGHT, height: viewer.wrap ? undefined : LINE_HEIGHT }}>
-  <SideCell {path} cell={left} side="old" tokens={leftTokens} />
+  <SideCell {path} cell={left} side="old" tokens={leftTokens} partner={rewritten ? right?.line.text : undefined} />
   <View style={{ width: 1, background: colors.numbers }} />
-  <SideCell {path} cell={right} side="new" tokens={rightTokens} />
+  <SideCell {path} cell={right} side="new" tokens={rightTokens} partner={rewritten ? left?.line.text : undefined} />
 </View>
