@@ -1,11 +1,12 @@
 // What the transcript shows beyond the items: whether results and thoughts are shown in full,
-// and which item another pane is answering.
+// and which item another pane is answering. What the user opened by pressing a row is in
+// opened.svelte.ts.
 import type { ViewItem } from "@suite/protocol/types";
 
 class Transcript {
   /** Ctrl-O: tool results and cards in full. */
   expanded = $state(false);
-  /** Ctrl-T: the agent's thoughts. */
+  /** Ctrl-T: the agent's thoughts, open in the chat; in another agent's chat, shown at all. */
   showThoughts = $state(false);
   /**
    * The ref of the item (a permission or choice card) a pane answers in place of the transcript;

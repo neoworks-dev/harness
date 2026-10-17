@@ -23,14 +23,14 @@
 
 {#if it}
 
-<ItemFrame gap={12}>
+<ItemFrame gap={8}>
   <View onhover={(h: boolean) => (hover = h)}>
     <Slot name="chat.item" key="agent" props={{ item: it.item }} />
     {#if it.final && it.changes.length > 0}
       <ChangedFiles files={it.changes} />
     {/if}
-    <View style={{ direction: "row", align: "center", gap: 6, paddingX: 4, paddingTop: 4, opacity: hover ? 1 : 0, color: p.muted }}>
-      <CopyButton text={componentText(it.item.component)} />
+    <View style={{ direction: "row", align: "center", gap: 6, paddingX: 4, paddingTop: 2, opacity: hover ? 1 : 0, color: p.muted }}>
+      <CopyButton text={componentText(it.item.component)} size={22} />
       {#if it.at !== undefined}
         <Text style={{ fontSize: 12 }}>{clockTime(it.at)}</Text>
       {/if}

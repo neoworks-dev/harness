@@ -150,7 +150,13 @@ at(1, {
 at(4, { type: "permission_resolved", id: "perm1", option: "a" });
 at(20, { type: "turn_ended", stopReason: "cancelled" });
 
-// Turn 5: running now, forty seconds in.
+// Turn 5: one that ended in an error.
+at(100, { type: "user_message", app: "desktop", text: "deploy it" });
+call("b4", "bash: ./deploy.sh", "execute", { command: "./deploy.sh" }, "bash");
+done("b4", [{ type: "text", text: "deploying…" }]);
+at(5, { type: "turn_ended", stopReason: "error", error: "The provider is overloaded, try again." });
+
+// Turn 6: running now, forty seconds in.
 clock = Date.now() - 40 * 1000;
 at(0, { type: "user_message", app: "desktop", text: "now do the footer too" });
 at(2, {
@@ -162,6 +168,16 @@ call("r5", "read src/footer.ts", "read", { path: `${cwd}/src/footer.ts` }, "read
 done("r5", [{ type: "text", text: "export const footer = {}" }]);
 call("b5", "bash: bun run build", "execute", { command: "bun run build" }, "bash");
 at(1, { type: "tool_call_update", toolCallId: "b5", status: "in_progress" });
+at(1, {
+  type: "permission_request",
+  id: "perm2",
+  agent: "claude",
+  title: "rm -rf dist",
+  options: [
+    { id: "a", name: "Allow", kind: "allow_once" },
+    { id: "r", name: "Deny", kind: "reject_once" },
+  ],
+});
 
 writeFileSync(join(dirname(paths.socket), "scene-ready"), "");
 

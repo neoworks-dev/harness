@@ -1,3 +1,8 @@
+<script lang="ts" module>
+  /** The width the last frame measured: the next starts with it, so a row has its height at once. */
+  let known = 0;
+</script>
+
 <script lang="ts">
   // The room around one chat item, whatever it is: the conversation's column, and space below.
   // The content gets the column's width in pixels, measured, and not a share of it: text in a
@@ -14,14 +19,14 @@
   const framed = getContext<boolean | undefined>(FRAMED) === true;
   setContext(FRAMED, true);
 
-  let width = $state(0);
+  let width = $state(known);
 </script>
 
 {#if framed}
   {@render children()}
 {:else}
   <Column style={{ paddingBottom: gap }}>
-    <View onlayout={(box: Layout) => (width = box.width)}>
+    <View onlayout={(box: Layout) => (width = known = box.width)}>
       {#if width > 0}
         <View style={{ width }}>
           {@render children()}

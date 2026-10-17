@@ -37,6 +37,8 @@
   const stub = $derived(asks && transcript.stubbed === entry.id && !transcript.expanded);
   let hover = $state(false);
 
+  /** A question that waits for its answer is not work in progress. */
+  const spins = $derived(entry.live && entry.kind !== "question");
   const tint = $derived.by(() => {
     if (entry.failed) return p.danger;
     if (entry.kind === "plan") return p.success;
@@ -64,8 +66,8 @@
       cursor: asks ? undefined : "pointer",
     }}
   >
-    <View style={{ width: GUTTER, height: 24, align: "center", justify: "center", color: tint, opacity: entry.live || tint ? 1 : 0.7 }}>
-      {#if entry.live}
+    <View style={{ width: GUTTER, height: 24, align: "center", justify: "center", color: tint, opacity: spins || tint ? 1 : 0.7 }}>
+      {#if spins}
         <Spinner />
       {:else if entry.failed && entry.kind !== "command"}
         <Icon svg={warning} size={16} />
