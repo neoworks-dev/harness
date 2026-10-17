@@ -291,23 +291,26 @@ test("marks are read back from the file they were written to", () => {
 function drawn(arranged: Arranged): string[] {
   return arranged.lines.map((line) => {
     if (line.kind === "label") return `[${line.text}]`;
-    if (line.kind === "settled") return `[Settled ${line.count}${line.open ? " open" : ""}]`;
+    if (line.kind === "settled") return `[Settled ${line.count} ${line.open}]`;
     if (line.kind === "more") return `[more ${line.count}]`;
-    return `${line.child ? "↳" : ""}${line.slim ? "~" : ""}${line.info.id}`;
+    let mark = "";
+    if (line.child) mark += "↳";
+    if (line.slim) mark += "~";
+    return mark + line.info.id;
   });
 }
 
 test("the list puts pinned first and settled last, closed until opened", () => {
   const all = grouped();
-  const scratch = all.find((s) => s.id === "f")!;
+  const scratch = session("f", "Scratch", "/w/notes", 40);
   const marks = settle(pin(pin(NO_MARKS, "a", 1), "e", 2), scratch);
   const closed = arrange(all, {}, marks, { open: false, all: false });
   // Pinned last first, the rest as they group (b, then c with its child d), settled at the end.
-  expect(drawn(closed)).toEqual(["[Pinned]", "e", "a", "b", "c", "↳d", "[Settled 1]"]);
+  expect(drawn(closed)).toEqual(["[Pinned]", "e", "a", "b", "c", "↳d", "[Settled 1 false]"]);
   expect(closed.order).toEqual(["e", "a", "b", "c", "d"]);
   expect(closed.groupStarts).toEqual([0, 2, 3]);
   const open = arrange(all, {}, marks, { open: true, all: false });
-  expect(drawn(open)).toEqual(["[Pinned]", "e", "a", "b", "c", "↳d", "[Settled 1 open]", "~f"]);
+  expect(drawn(open)).toEqual(["[Pinned]", "e", "a", "b", "c", "↳d", "[Settled 1 true]", "~f"]);
   expect(open.order.at(-1)).toBe("f");
   // New activity in a settled session puts it back among the rest.
   const woken = all.map((s) => (s.id === "f" ? { ...s, lastActivity: 99 } : s));

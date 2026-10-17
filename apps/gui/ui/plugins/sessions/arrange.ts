@@ -108,7 +108,11 @@ export function resultLines(matches: readonly Match[]): Arranged {
     slim: false,
     field,
   }));
-  return { lines, order: matches.map(({ info }) => info.id), groupStarts: matches.length > 0 ? [0] : [] };
+  return {
+    lines,
+    order: matches.map(({ info }) => info.id),
+    groupStarts: matches.slice(0, 1).map(() => 0),
+  };
 }
 
 /** A project (a repository, or a directory outside one) that has sessions. */
@@ -134,9 +138,7 @@ export function projectsOf(
     project.latest = Math.max(project.latest, info.lastActivity);
     projects.set(repo, project);
   }
-  return [...projects.values()].sort(
-    (a, b) => b.latest - a.latest || (a.repo < b.repo ? -1 : 1),
-  );
+  return [...projects.values()].sort((a, b) => b.latest - a.latest || (a.repo < b.repo ? -1 : 1));
 }
 
 /** The sessions of one project; all of them when `repo` is not set. */

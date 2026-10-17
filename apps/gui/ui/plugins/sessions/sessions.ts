@@ -188,9 +188,7 @@ export function finishedAfter(
 
 /** What a session's row says in place of its age. */
 export type Status =
-  | { kind: "working"; since: number | undefined }
-  | { kind: "done" }
-  | { kind: "idle" };
+  { kind: "working"; since: number | undefined } | { kind: "done" } | { kind: "idle" };
 
 /** The ladder: working, then finished unseen, else idle. `since` is when it was seen to start. */
 export function statusOf(
