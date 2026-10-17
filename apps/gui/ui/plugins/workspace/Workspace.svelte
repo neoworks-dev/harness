@@ -49,7 +49,6 @@
   const editorItems = $derived<MenuItem[]>(
     workspace.editors.map((e) => ({
       label: e.name,
-      icon: code,
       checked: e.id === editor?.id,
       onselect: () => void workspace.openEditor(e.id),
     })),
