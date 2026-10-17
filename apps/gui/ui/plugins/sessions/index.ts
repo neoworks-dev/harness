@@ -37,6 +37,8 @@ export const sessionsSidebar = {
       sessions.focused = !sessions.focused;
     });
     keymap.bind("ctrl-n", () => void daemon.newSession());
+    // Ctrl-F is left free for finding in a file; this one searches the sessions.
+    keymap.bind("ctrl-shift-f", () => sessions.focusSearch());
     commands.register({
       name: "sidebar",
       desc: "show or hide the sessions sidebar (ctrl-s)",

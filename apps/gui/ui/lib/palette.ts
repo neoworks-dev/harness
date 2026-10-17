@@ -12,6 +12,8 @@ export interface Palette {
   muted: string;
   success: string;
   danger: string;
+  /** Work in progress, as on a running session. Used sparingly. */
+  info: string;
   /** The band behind the user's own messages and the input: bg with a little fg mixed in. */
   band: string;
   /** The sessions column: its background, rows under the pointer and the shown row, its border, icons. */
@@ -86,6 +88,9 @@ const NEUTRAL = {
   raised: "#222225",
 };
 
+/** A sky blue that does not follow the theme's accent: what is running. */
+const INFO = "#38bdf8";
+
 /** The sessions column, a shade darker than the window. */
 const SIDE = {
   bg: NEUTRAL.sidebar,
@@ -101,6 +106,7 @@ export function paletteOf(theme: Theme = DEFAULT_THEME): Palette {
   return {
     ...colors,
     ...NEUTRAL,
+    info: INFO,
     band: NEUTRAL.raised,
     side: SIDE,
     message: "#1a1a1c",
