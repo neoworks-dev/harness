@@ -150,9 +150,24 @@ export interface AgentSession {
   setConfigOption?(category: ConfigCategory, value: string): Promise<void>;
 }
 
+/** What generateText takes. */
+export interface GenerateTextParams {
+  /** The model to ask: a value of the harness's model setting; absent: the harness's own default. */
+  model?: string;
+  system: string;
+  prompt: string;
+  signal?: AbortSignal;
+}
+
 export interface Agent {
   /** Short name, e.g. "pi"; also used as HarnessMessage.harness. */
   readonly name: string;
   newSession(params: NewSessionParams): Promise<AgentSession>;
   loadSession(params: LoadSessionParams): Promise<AgentSession>;
+  /**
+   * One model call outside any session, with no tools and nothing logged, for short generated text
+   * (a session's title). Resolves with the model's reply; rejects with a message the user can read.
+   * Absent when the harness can't do it.
+   */
+  generateText?(params: GenerateTextParams): Promise<string>;
 }

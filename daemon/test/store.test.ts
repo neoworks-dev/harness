@@ -12,6 +12,32 @@ const chunk = (text: string): AgentMessageChunk => ({
 });
 
 describe("SessionStore", () => {
+  test("a title knows where it came from; one without a source is the user's", () => {
+    const dir = mkdtempSync(join(tmpdir(), "suite-store-"));
+    const path = join(dir, "events.db");
+    const store = new SessionStore(path);
+    store.createSession({ id: "a", cwd: "/", title: "Given" });
+    store.createSession({ id: "b", cwd: "/" });
+    expect(store.getSession("a")).toMatchObject({ title: "Given" });
+    expect(store.getSession("a")?.titleSource).toBeUndefined();
+    expect(store.getSession("b")?.title).toBeUndefined();
+    store.setTitle("b", "The start of it", "first_line");
+    expect(store.getSession("b")).toMatchObject({
+      title: "The start of it",
+      titleSource: "first_line",
+    });
+    store.setTitle("b", "Written by a model", "generated");
+    store.setTitle("a", "Typed by the user");
+    store.close();
+    const again = new SessionStore(path);
+    expect(again.getSession("b")).toMatchObject({
+      title: "Written by a model",
+      titleSource: "generated",
+    });
+    expect(again.getSession("a")?.titleSource).toBeUndefined();
+    again.close();
+  });
+
   test("sequence numbers start at 1 and are gap-free per session", () => {
     const store = new SessionStore(":memory:");
     store.createSession({ id: "a", cwd: "/" });

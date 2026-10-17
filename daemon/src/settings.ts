@@ -1,14 +1,15 @@
 // What the user chose for this session: each harness's settings (/model, /effort, /mode), the
 // harness the session runs on (/harness) and the suite's approvals mode (/approvals). They are
 // setting_changed events in the session's log; the last harness settings and the last harness
-// choice are kept as the defaults for new sessions (approvals is not: a new session asks).
+// choice are kept as the defaults for new sessions (approvals is not: a new session asks). The
+// model that writes session titles (/title-model) is the user's last choice, for every session.
 // Nothing is set that the user didn't choose: each harness keeps its own defaults.
 import type { ConfigCategory } from "@suite/harness/agent";
 import type { SettingName } from "@suite/protocol/types";
 import type { SessionStore } from "./store.ts";
 
 /** The settings that belong to a harness (approvals and harness are the suite's own). */
-export type HarnessSettingName = Exclude<SettingName, "approvals" | "harness">;
+export type HarnessSettingName = Exclude<SettingName, "approvals" | "harness" | "title_model">;
 
 export const CATEGORIES: Record<HarnessSettingName, ConfigCategory> = {
   model: "model",
@@ -41,6 +42,24 @@ export function nextApprovals(mode: Approvals): Approvals {
   return APPROVALS[(APPROVALS.indexOf(mode) + 1) % APPROVALS.length] ?? "ask";
 }
 
+/** The model that writes session titles: one of a harness's models, or the harness's own default. */
+export interface TitleModel {
+  harness: string;
+  model?: string;
+}
+
+/** How a TitleModel is written in a command, an event and the store: `claude haiku`, `pi`. */
+export function titleModelText(value: TitleModel): string {
+  return value.model === undefined ? value.harness : `${value.harness} ${value.model}`;
+}
+
+/** The TitleModel in `text`; undefined for `default` and for nothing. */
+export function parseTitleModel(text: string): TitleModel | undefined {
+  const [harness, model] = text.trim().split(/\s+/);
+  if (harness === undefined || harness === "" || harness === "default") return undefined;
+  return model === undefined ? { harness } : { harness, model };
+}
+
 export class Settings {
   /** `main`: the harness a session runs on until the user picks another (the daemon's agent). */
   constructor(
@@ -65,6 +84,24 @@ export class Settings {
   set(session: string, harness: string, option: HarnessSettingName, value: string): void {
     this.store.append(session, { type: "setting_changed", harness, option, value });
     this.store.setMeta(metaKey(harness, option), value);
+  }
+
+  /** What the user chose to write titles, or undefined: the suite's choice (see titles.ts). */
+  titleModel(): TitleModel | undefined {
+    const last = this.store.getMeta(metaKey("suite", "title_model"));
+    return last === undefined ? undefined : parseTitleModel(last);
+  }
+
+  /** `undefined` goes back to the suite's choice. Logged in the session it was set in. */
+  setTitleModel(session: string, value: TitleModel | undefined): void {
+    const text = value === undefined ? "default" : titleModelText(value);
+    this.store.append(session, {
+      type: "setting_changed",
+      harness: "suite",
+      option: "title_model",
+      value: text,
+    });
+    this.store.setMeta(metaKey("suite", "title_model"), text);
   }
 
   /** The harness the session's turns run on: the last /harness choice in its log, else main. */

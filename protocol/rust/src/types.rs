@@ -648,7 +648,16 @@ pub struct SessionSettings {
     #[serde(rename = "id")]
     pub id: String,
     #[serde(rename = "payload")]
-    pub payload: SessionRef,
+    pub payload: SessionSettingsQuery,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionSettingsQuery {
+    #[serde(rename = "session")]
+    pub session: String,
+    /// Only what the harnesses can say without starting anything: pi's own options and those of an adapter that already runs; the others are listed with `options: []` and no error. For a client that only needs the display name of the value the session shows (the label of the model it runs), not a picker.
+    #[serde(rename = "known", default, skip_serializing_if = "Option::is_none")]
+    pub known: Option<bool>,
 }
 
 /// Tagged `topic: "session.settings_result"` inside [`Envelope`].
@@ -2125,7 +2134,7 @@ pub enum PermissionOptionKind {
     RejectAlways,
 }
 
-/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set.
+/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness "suite", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for the suite's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session.
 /// Tagged `type: "setting_changed"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SettingChanged {
@@ -2150,6 +2159,8 @@ pub enum SettingName {
     Approvals,
     #[serde(rename = "harness")]
     Harness,
+    #[serde(rename = "title_model")]
+    TitleModel,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

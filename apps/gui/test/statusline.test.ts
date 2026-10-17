@@ -50,6 +50,21 @@ test("an idle session shows branch, harness, the harness's settings and approval
   expect(segments.at(-1)?.tone).toBe("danger");
 });
 
+test("the model shows under the name the harness gives it", () => {
+  const status: SessionStatus = {
+    ...initialStatus(),
+    harness: "claude",
+    settings: { claude: { model: "haiku" } },
+  };
+  expect(statusSegments({ ...idle, status, model: "Haiku 5.5" }).map((s) => s.text)).toEqual([
+    "main",
+    "claude",
+    "Haiku 5.5",
+    "ask",
+  ]);
+  expect(statusSegments({ ...idle, status }).map((s) => s.text)).toContain("haiku");
+});
+
 test("a running turn shows elapsed time, the queue, usage and a lost connection", () => {
   const status: SessionStatus = {
     ...initialStatus(),

@@ -1,6 +1,7 @@
 // What a session overview shows besides state: a one-line preview of the latest message and the
 // lines its edits added and removed. Built from the log on first use, then kept current from
-// appends. Also names untitled sessions after their first message.
+// appends. Also names untitled sessions after their first message, until a model writes a better
+// title (titles.ts).
 import type { SessionEvent } from "@suite/protocol/types";
 import type { SessionStore } from "./store.ts";
 import { diffLines } from "./view/diff.ts";
@@ -77,7 +78,7 @@ export class SessionSummaries {
     const row = this.store.getSession(session);
     if (!row || row.title !== undefined) return undefined;
     const title = oneLine(text, TITLE_CHARS);
-    if (title !== undefined) this.store.setTitle(session, title);
+    if (title !== undefined) this.store.setTitle(session, title, "first_line");
     return title;
   }
 }

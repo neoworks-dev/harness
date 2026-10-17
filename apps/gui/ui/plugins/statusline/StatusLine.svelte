@@ -5,6 +5,7 @@
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
+  import { currentSettings } from "../../lib/status.ts";
   import { statusSegments, type Tone } from "./segments.ts";
 
   const { daemon } = useCtx();
@@ -20,10 +21,12 @@
     return () => clearInterval(timer);
   });
 
+  const model = $derived(currentSettings(daemon.status).model);
   const segments = $derived(
     statusSegments({
       branch: daemon.branch,
       status: daemon.status,
+      model: model === undefined ? undefined : daemon.label("model", model),
       queued: daemon.session?.queued ?? 0,
       connection: daemon.connection,
       now,

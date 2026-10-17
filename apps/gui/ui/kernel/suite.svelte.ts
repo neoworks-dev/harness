@@ -4,6 +4,7 @@ import { invoke } from "@neoworks/svelte-gpui";
 import type {
   AgentFocus,
   AppPresence,
+  HarnessSettings,
   SessionEventRecord,
   SessionInfo,
   SessionSettingsPayload,
@@ -22,7 +23,16 @@ import {
 import * as host from "./host/git.ts";
 import { paletteOf } from "../lib/palette.ts";
 import { chooseSession, pickAppId } from "../lib/startup.ts";
-import { applyEvent, initialStatus, nextApprovals, type SessionStatus } from "../lib/status.ts";
+import {
+  applyEvent,
+  initialStatus,
+  nextApprovals,
+  optionLabel,
+  type SessionStatus,
+} from "../lib/status.ts";
+
+/** How long the settings that arrive together (a replay) have to come before asking. */
+const OFFERED_DELAY_MS = 50;
 
 type RecordListener = (record: SessionEventRecord) => void;
 
@@ -59,6 +69,12 @@ class Suite {
   status = $state.raw<SessionStatus>(initialStatus());
   /** The git branch checked out in `cwd`, if any. */
   branch = $state<string | null>(null);
+  /**
+   * What the harnesses offered when last asked, for the names of the values the status shows
+   * (`Haiku 5.5` for the model `haiku`). Asked without starting anything when the session or one
+   * of its settings changes, and again when a picker asks for all of it.
+   */
+  offered = $state.raw<readonly HarnessSettings[]>([]);
 
   private client?: Client;
   private readonly view = new ViewState();
@@ -66,6 +82,7 @@ class Suite {
   /** The session this window asked the agent to move to, until the daemon confirms it. */
   private movingTo?: string;
   private readonly recordListeners = new Set<RecordListener>();
+  private offeredScheduled = false;
 
   /** The session shown now, from the live list. */
   get session(): SessionInfo | undefined {
@@ -143,6 +160,8 @@ class Suite {
     this.view.reset();
     this.items = [];
     this.status = initialStatus();
+    this.offered = [];
+    this.askOffered();
     const stopView = client.subscribeView(id, {
       onSnapshot: (snapshot) => {
         this.view.applySnapshot(snapshot);
@@ -153,8 +172,9 @@ class Suite {
       },
     });
     const stopEvents = client.subscribe(id, {
-      onEvent: (_event, record) => {
+      onEvent: (event, record) => {
         this.status = applyEvent(this.status, record);
+        if (event.type === "setting_changed") this.askOffered();
         for (const listener of this.recordListeners) listener(record);
       },
     });
@@ -177,10 +197,42 @@ class Suite {
     await this.guard(this.need().input(this.sessionId, text, { images }));
   }
 
-  /** What each harness the session can switch to offers (models, reasoning levels). */
-  async settings(): Promise<SessionSettingsPayload | undefined> {
-    if (this.sessionId === undefined) return undefined;
-    return this.need().sessionSettings(this.sessionId);
+  /** Sends a command (`/title`) to a session that may not be the one shown. */
+  async sendTo(session: string, text: string): Promise<void> {
+    await this.guard(this.need().input(session, text));
+  }
+
+  /**
+   * What each harness the session can switch to offers (models, reasoning levels). Asking may
+   * start a guest's adapter; `known` starts nothing and leaves out what is not known yet.
+   */
+  async settings(known = false): Promise<SessionSettingsPayload | undefined> {
+    const session = this.sessionId;
+    if (session === undefined) return undefined;
+    const reply = await this.need().sessionSettings(session, known);
+    if (this.sessionId === session) {
+      this.offered = known ? mergeKnown(this.offered, reply.harnesses) : reply.harnesses;
+    }
+    return reply;
+  }
+
+  /** The name a harness (by default the session's) gives a value of a setting, else the value. */
+  label(
+    category: "model" | "thought_level" | "mode",
+    value: string,
+    harness = this.status.harness,
+  ): string {
+    return optionLabel(this.offered, harness, category, value);
+  }
+
+  /** Asks what the harnesses offer, once for the settings that arrive together (a replay). */
+  private askOffered(): void {
+    if (this.offeredScheduled) return;
+    this.offeredScheduled = true;
+    setTimeout(() => {
+      this.offeredScheduled = false;
+      void this.settings(true).catch(() => {});
+    }, OFFERED_DELAY_MS);
   }
 
   /** Cancels the running turn. */
@@ -259,3 +311,15 @@ class Suite {
 }
 
 export const suite = new Suite();
+
+/** Known options fill in a harness that had none; they never take away what a full ask found. */
+function mergeKnown(
+  before: readonly HarnessSettings[],
+  asked: readonly HarnessSettings[],
+): HarnessSettings[] {
+  return asked.map((entry) => {
+    const had = before.find((old) => old.name === entry.name);
+    if (entry.options.length === 0 && had !== undefined) return { ...entry, options: had.options };
+    return entry;
+  });
+}

@@ -416,8 +416,8 @@ type SessionListPayload struct {
 
 // SessionSettings: Client → daemon: what the session's harnesses offer to set (model, effort, mode), for a picker. Replied to with session.settings_result. Setting a value needs no request of its own: send /model, /effort, /mode [harness] [value] and /harness <name> as session.input.
 type SessionSettings struct {
-	ID      string     `json:"id"`
-	Payload SessionRef `json:"payload"`
+	ID      string               `json:"id"`
+	Payload SessionSettingsQuery `json:"payload"`
 }
 
 func (SessionSettings) isEnvelope() {}
@@ -429,6 +429,12 @@ func (v SessionSettings) MarshalJSON() ([]byte, error) {
 		Tag string `json:"topic"`
 		plain
 	}{"session.settings", plain(v)})
+}
+
+type SessionSettingsQuery struct {
+	Session string `json:"session"`
+	// Only what the harnesses can say without starting anything: pi's own options and those of an adapter that already runs; the others are listed with `options: []` and no error. For a client that only needs the display name of the value the session shows (the label of the model it runs), not a picker.
+	Known *bool `json:"known,omitempty"`
 }
 
 type SessionSettingsResult struct {
@@ -1880,7 +1886,7 @@ const (
 	PermissionOptionKindRejectAlways PermissionOptionKind = "reject_always"
 )
 
-// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set.
+// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness "suite", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for the suite's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session.
 type SettingChanged struct {
 	// pi, claude, codex…
 	Harness string      `json:"harness"`
@@ -1902,11 +1908,12 @@ func (v SettingChanged) MarshalJSON() ([]byte, error) {
 type SettingName string
 
 const (
-	SettingNameModel     SettingName = "model"
-	SettingNameEffort    SettingName = "effort"
-	SettingNameMode      SettingName = "mode"
-	SettingNameApprovals SettingName = "approvals"
-	SettingNameHarness   SettingName = "harness"
+	SettingNameModel      SettingName = "model"
+	SettingNameEffort     SettingName = "effort"
+	SettingNameMode       SettingName = "mode"
+	SettingNameApprovals  SettingName = "approvals"
+	SettingNameHarness    SettingName = "harness"
+	SettingNameTitleModel SettingName = "title_model"
 )
 
 type ChoiceOption struct {

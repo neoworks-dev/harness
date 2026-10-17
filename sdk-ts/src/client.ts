@@ -188,10 +188,11 @@ export class Client {
    * and the current values, for a picker. A harness that could not be asked has `options: []`
    * and an `error`. Setting is done by sending `/model [harness] <value>`, `/effort`, `/mode` or
    * `/harness <name>` as the session's input. Asking may start a guest's adapter, so it can take
-   * seconds.
+   * seconds; with `known`, nothing is started and a harness whose options are not known yet has
+   * `options: []`.
    */
-  sessionSettings(session: string): Promise<SessionSettingsPayload> {
-    return this.connection.request("session.settings", { session });
+  sessionSettings(session: string, known?: boolean): Promise<SessionSettingsPayload> {
+    return this.connection.request("session.settings", known ? { session, known } : { session });
   }
 
   /** Starts a new session (in `params.cwd`, by default the daemon's home directory). */

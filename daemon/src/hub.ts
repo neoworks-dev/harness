@@ -40,7 +40,7 @@ export interface HubParts {
   /** A command typed as input (/model…): its work, or undefined when the text isn't one. */
   command?: (session: string, text: string) => Promise<void> | undefined;
   /** The harnesses a session can switch to with their options (session.settings). */
-  settings?: (session: string) => Promise<HarnessSettings[]>;
+  settings?: (session: string, known?: boolean) => Promise<HarnessSettings[]>;
 }
 
 export interface DaemonInfo {
@@ -271,11 +271,11 @@ export class Hub {
         });
         return;
       case "session.settings": {
-        const { session } = msg.payload;
+        const { session, known } = msg.payload;
         const { settings } = this.parts;
         if (!settings) throw new BadRequestError("this daemon has no harness settings");
         if (!this.sessions.info(session)) throw new NotFoundError(`no session ${session}`);
-        settings(session).then(
+        settings(session, known).then(
           (harnesses) =>
             this.send(client, {
               topic: "session.settings_result",

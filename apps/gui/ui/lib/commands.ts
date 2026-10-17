@@ -28,6 +28,8 @@ export const COMMANDS: readonly Command[] = [
   daemon("claude", "<task>", "give a task to Claude Code", true),
   daemon("codex", "<task>", "give a task to Codex", true),
   daemon("harness", "[pi|claude|codex]", "switch this session's agent: pi, claude, codex"),
+  daemon("title", "", "write this session's title again, with a model"),
+  daemon("title-model", "[harness] [model|default]", "show or set the model that writes titles"),
   daemon(
     "approvals",
     "[ask|review|edits|auto]",

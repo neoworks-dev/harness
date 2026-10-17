@@ -1,7 +1,12 @@
 // What the status line shows about a session, folded from its events: whether a turn runs, the
 // harness and its settings, the approvals mode and the agent's usage. Plain functions, so they
 // are tested without a window.
-import type { SessionEventRecord, Usage } from "@suite/protocol/types";
+import type {
+  ConfigCategory,
+  HarnessSettings as Offered,
+  SessionEventRecord,
+  Usage,
+} from "@suite/protocol/types";
 
 export type Approvals = "ask" | "review" | "edits" | "auto";
 
@@ -75,4 +80,30 @@ export function applyEvent(status: SessionStatus, record: SessionEventRecord): S
 /** The settings of the harness the session runs on now. */
 export function currentSettings(status: SessionStatus): HarnessSettings {
   return status.settings[status.harness] ?? {};
+}
+
+/**
+ * The name a harness gives a value of one of its settings (`Haiku 5.5` for the model `haiku`),
+ * from what it offers; undefined when it doesn't list the value.
+ */
+export function optionName(
+  offered: readonly Offered[],
+  harness: string,
+  category: ConfigCategory,
+  value: string,
+): string | undefined {
+  const option = offered
+    .find((entry) => entry.name === harness)
+    ?.options.find((o) => o.category === category);
+  return option?.values.find((entry) => entry.value === value)?.name;
+}
+
+/** What to show for a setting's value: the harness's name for it, else the value itself. */
+export function optionLabel(
+  offered: readonly Offered[],
+  harness: string,
+  category: ConfigCategory,
+  value: string,
+): string {
+  return optionName(offered, harness, category, value) ?? value;
 }

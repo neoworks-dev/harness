@@ -44,6 +44,8 @@ export function formatCost(cost: number | undefined): string | undefined {
 
 export interface StatusInput {
   branch: string | null;
+  /** What to show for the chosen model, `Haiku 5.5` for the `haiku` it holds; it as chosen if absent. */
+  model?: string;
   status: SessionStatus;
   queued: number;
   connection: ConnectionState | "starting";
@@ -61,7 +63,7 @@ export function statusSegments(input: StatusInput): Segment[] {
 
   add(input.branch);
   add(status.harness);
-  add(settings.model);
+  add(input.model ?? settings.model);
   add(settings.effort);
   add(settings.mode);
   add(status.approvals, approvalsTone(status.approvals));

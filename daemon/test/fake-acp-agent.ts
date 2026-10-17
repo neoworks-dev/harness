@@ -11,6 +11,8 @@
 //   editfile <p> <text>  asks to edit the file, and when allowed writes it and reports the
 //                 completed tool call with its diff (like an adapter that asks before it writes)
 //   config        reports what session/new (or resume) and set_config_option gave it
+//   title <t>     replies {"title": "<t>"} (plus " (<model>)" once a model was set): a title
+//                 generateText asked for (the prompt's last line)
 //   started       reports how the conversation began: "new" or "resume" (resuming a session id
 //                 that starts with "gone" fails, like an adapter that lost the conversation)
 //   suitetool <t> asks for permission to use the suite's own MCP tool <t> (titled
@@ -248,6 +250,12 @@ async function prompt(params: {
     update(sessionId, { sessionUpdate: "plan", entries: [] });
     say(sessionId, JSON.stringify({ instructions, config, session: sessionId }));
     return { stopReason: "end_turn" };
+  } else if (task.startsWith("title ")) {
+    // What generateText asks: the reply is a title (with the model it was asked on, if one was set).
+    let title = task.slice(6);
+    if (typeof config.model === "string") title += ` (${config.model})`;
+    say(sessionId, JSON.stringify({ title }));
+    return { stopReason: "end_turn" };
   } else if (task === "started") {
     say(sessionId, `started: ${started}`);
     return { stopReason: "end_turn" };
@@ -299,7 +307,9 @@ async function handle(message: Record<string, unknown>): Promise<void> {
       const servers = params.mcpServers as HttpServer[];
       gateway = servers[0];
       cwd = params.cwd as string;
-      const meta = params._meta as { jetbrains?: { air?: { customInstructions?: string } } };
+      const meta = (params._meta ?? {}) as {
+        jetbrains?: { air?: { customInstructions?: string } };
+      };
       instructions = meta.jetbrains?.air?.customInstructions?.slice(0, 40);
       sessionId = "acp-1";
       result = { sessionId, configOptions: configOptions() };

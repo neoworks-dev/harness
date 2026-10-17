@@ -23,7 +23,9 @@
 
   /** The session's harness: what the daemon lists, else what its events said last. */
   const running = $derived(daemon.session?.harness ?? status.harness);
-  const label = $derived(currentSettings(status).model ?? running);
+  const chosen = $derived(currentSettings(status).model);
+  /** The harness's name for the model (Haiku 5.5, not haiku); the harness itself until one is chosen. */
+  const label = $derived(chosen === undefined ? running : daemon.label("model", chosen));
   const harness = $derived(
     settings.harnesses.find((h) => h.name === viewed) ?? settings.harnesses.find((h) => h.current),
   );
