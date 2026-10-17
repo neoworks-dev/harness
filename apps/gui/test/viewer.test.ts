@@ -111,6 +111,15 @@ test("split rows pair removed and added lines from the top, context on both side
   expect(pair?.kind === "pair" && [pair.left?.index, pair.right?.index]).toEqual([1, 3]);
 });
 
+test("a change with the additions first still pairs from the top", () => {
+  const lines: DiffLine[] = [
+    { kind: "add", text: "b", new: 1 },
+    { kind: "remove", text: "a", old: 1 },
+  ];
+  const [row] = splitRows(fold(lines, closed));
+  expect(row?.kind === "pair" && [row.left?.line.text, row.right?.line.text]).toEqual(["a", "b"]);
+});
+
 const layout = (over: Partial<Layout> = {}): Layout => ({
   split: false,
   collapsed: new Set(),

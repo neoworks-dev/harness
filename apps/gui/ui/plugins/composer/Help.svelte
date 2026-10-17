@@ -18,6 +18,7 @@
     ["Ctrl-S", "sessions sidebar"],
     ["Ctrl-X", "agents list"],
     ["Ctrl-R", "GitHub"],
+    ["Ctrl-D", "the diff and files"],
     ["Ctrl-N", "new session"],
     ["Esc", "close what is open, then cancel the turn"],
     ["Ctrl-C twice", "quit; the session keeps running"],

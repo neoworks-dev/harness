@@ -1,13 +1,12 @@
 <script lang="ts">
   // The files panel: what git says changed in the session's directory, plus the files the agent
-  // and its guests touched, tagged by who. Pressing a file shows its diff over the window.
+  // and its guests touched, tagged by who. Pressing a file shows its diff in the viewer.
   import { Icon, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
   import branchIcon from "@phosphor-icons/core/regular/git-branch.svg";
   import diffIcon from "@phosphor-icons/core/regular/git-diff.svg";
   import Card from "../../widgets/Card.svelte";
   import FileIcon from "../../widgets/FileIcon.svelte";
   import { useCtx } from "../../kernel/slots/context.ts";
-  import { parseUnified } from "../../lib/unified.ts";
   import { branchLabel } from "../../lib/git-status.ts";
   import {
     fileEntries,
@@ -18,7 +17,7 @@
   import { git } from "./git.svelte.ts";
   import { touched } from "./state.svelte.ts";
 
-  const { daemon, diff, git: gitService } = useCtx();
+  const { daemon, viewer } = useCtx();
 
   const p = $derived(daemon.palette);
   const entries = $derived(fileEntries(git.status, touched.touches.touched));
@@ -43,20 +42,8 @@
     return !entry.rel.endsWith("/") && (git.status !== undefined || entry.mark === "added");
   }
 
-  async function showDiff(entry: FileEntry): Promise<void> {
-    if (!canDiff(entry)) return;
-    const untracked = entry.mark === "untracked" || (git.status === undefined && entry.mark === "added");
-    try {
-      const text = await gitService.diff({ cwd: daemon.cwd, path: entry.rel, untracked });
-      const lines = parseUnified(text).flatMap((file) => file.lines);
-      diff.show({
-        type: "diff",
-        path: entry.rel,
-        lines: lines.length > 0 ? lines : [{ kind: "context", text: "no changes" }],
-      });
-    } catch (error) {
-      daemon.error = error instanceof Error ? error.message : String(error);
-    }
+  function showDiff(entry: FileEntry): void {
+    if (canDiff(entry)) viewer.showChanges(entry.rel);
   }
 </script>
 
@@ -77,7 +64,7 @@
       {#each entries as entry (entry.rel)}
         {@const slash = entry.rel.replace(/\/$/, "").lastIndexOf("/")}
         <View
-          onpress={() => void showDiff(entry)}
+          onpress={() => showDiff(entry)}
           hover={canDiff(entry) ? { background: p.hover } : undefined}
           style={{ direction: "row", align: "center", gap: 8, height: 26, paddingX: 6, radius: p.radius.s, cursor: canDiff(entry) ? "pointer" : "default" }}
         >

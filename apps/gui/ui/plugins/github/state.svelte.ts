@@ -13,8 +13,8 @@ import { explain, type Detail, type Kind, type Summary } from "./github.ts";
 interface Services {
   daemon: DaemonService;
   host: GithubService;
-  /** What shows a diff over the window: the `diff` service. */
-  diff: Context["diff"];
+  /** What shows a diff beside the chat: the `viewer` service. */
+  viewer: Context["viewer"];
 }
 
 /** What a load is in: working, done or failed with something to tell the user. */
@@ -211,23 +211,14 @@ class GitHub {
     }
   }
 
-  /** A pull request's diff over the window, all files one after the other. */
+  /** A pull request's diff beside the chat, a section for each file. */
   async showDiff(number: number): Promise<void> {
     const repo = this.repoState;
     if (repo?.status !== "ready") return;
     try {
       const key = String(number);
       this.diffs[key] ??= await this.need.host.prDiff({ cwd: this.cwd, repo: repo.value, number });
-      const files = parseUnified(this.diffs[key] ?? "");
-      const lines = files.flatMap((file) => [
-        { kind: "hunk" as const, text: file.path },
-        ...file.lines,
-      ]);
-      this.need.diff.show({
-        type: "diff",
-        path: `#${number} ${repo.value}`,
-        lines: lines.length > 0 ? lines : [{ kind: "context", text: "no changes" }],
-      });
+      this.need.viewer.showPatch(`#${number} ${repo.value}`, parseUnified(this.diffs[key] ?? ""));
     } catch (error) {
       this.need.daemon.error = failure(error).message;
     }

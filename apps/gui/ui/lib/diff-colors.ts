@@ -16,3 +16,32 @@ export function diffColors(p: Palette): DiffColors {
     gutter: p.muted,
   };
 }
+
+export interface ViewerColors {
+  /** A changed line's background, and its line numbers' (a little stronger). */
+  add: string;
+  addNumbers: string;
+  remove: string;
+  removeNumbers: string;
+  /** The line numbers of unchanged lines. */
+  numbers: string;
+  /** The empty half of a split row. */
+  empty: string;
+  /** The lines selected for a comment, and their line numbers. */
+  selected: string;
+  selectedNumbers: string;
+}
+
+/** What the viewer's diff and file lines are drawn with: the changes mixed into the card's own colour. */
+export function viewerColors(p: Palette): ViewerColors {
+  return {
+    add: blend(p.bg, p.success, 15),
+    addNumbers: blend(p.bg, p.success, 25),
+    remove: blend(p.bg, p.danger, 15),
+    removeNumbers: blend(p.bg, p.danger, 25),
+    numbers: blend(p.bg, p.fg, 4),
+    empty: blend(p.bg, p.fg, 2),
+    selected: blend(p.bg, p.accent, 20),
+    selectedNumbers: blend(p.bg, p.accent, 32),
+  };
+}

@@ -14,7 +14,7 @@ import { composer } from "./state.svelte.ts";
 
 export const composerPane = {
   name: "composer",
-  inject: ["slots", "daemon", "keymap", "keyboard", "commands", "transcript", "diff", "comments"],
+  inject: ["slots", "daemon", "keymap", "keyboard", "commands", "transcript", "viewer", "comments"],
   apply(ctx: Context) {
     const { slots, daemon, keymap, commands, comments } = ctx;
     ctx.effect(() => composer.start({ daemon, commands, comments }), "composer state");

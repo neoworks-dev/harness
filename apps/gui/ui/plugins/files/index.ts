@@ -1,6 +1,6 @@
 // The files panel, in the column at the right: what git says changed in the session's directory,
-// plus the files the agent and its guests touched. Pressing a file shows its diff over the
-// window (the diff plugin).
+// plus the files the agent and its guests touched. Pressing a file shows its diff in the
+// viewer.
 import type { Context } from "@neoworks/extension-system";
 import "../sidepanel/slots.ts";
 import Files from "./Files.svelte";
@@ -10,7 +10,7 @@ import { touched } from "./state.svelte.ts";
 
 export const filesPanel = {
   name: "files",
-  inject: ["slots", "daemon", "git", "sidepanel", "diff"],
+  inject: ["slots", "daemon", "git", "sidepanel", "viewer"],
   apply(ctx: Context) {
     const { slots, daemon, git: gitService, sidepanel } = ctx;
     touched.follow(daemon);

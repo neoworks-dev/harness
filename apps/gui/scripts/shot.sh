@@ -27,15 +27,18 @@ cleanup() {
 trap cleanup EXIT
 
 # SCENE=side runs a daemon with scripted sessions and events instead (scripts/scene-daemon.ts), in
-# a git repository with a changed and an untracked file.
+# a git repository with two changed files and an untracked one.
 if [ -n "${SCENE:-}" ]; then
   mkdir -p "$tmp/work" "$tmp/elsewhere"
   git -C "$tmp/work" init -q
   printf 'one\ntwo\n' >"$tmp/work/a.txt"
-  git -C "$tmp/work" add a.txt
+  mkdir -p "$tmp/work/src"
+  for i in $(seq 1 40); do echo "const value$i = compute($i);"; done >"$tmp/work/src/lib.ts"
+  git -C "$tmp/work" add a.txt src/lib.ts
   git -C "$tmp/work" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m first
   printf 'one\nthree\n' >"$tmp/work/a.txt"
   printf 'fresh\n' >"$tmp/work/new.txt"
+  sed -i 's/^const value20 = .*/const value20 = computeSomethingMuchLongerThanBefore(20, "a string long enough to wrap in a narrow panel");/; s/^const value37 = .*/const value37 = 37;/' "$tmp/work/src/lib.ts"
   SCENE_CWD="$tmp/work" SCENE_ELSEWHERE="$tmp/elsewhere" bun run "$root/apps/gui/scripts/scene-daemon.ts" >"$tmp/daemon.log" 2>&1 &
 else
   bun run "$root/daemon/src/main.ts" >"$tmp/daemon.log" 2>&1 &
