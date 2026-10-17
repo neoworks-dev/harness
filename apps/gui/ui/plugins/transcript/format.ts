@@ -16,6 +16,13 @@ export function clockTime(ts: number): string {
   return `${two(date.getHours())}:${two(date.getMinutes())}`;
 }
 
+/** The last `cap` lines of `text`, and how many came before them: the end of an output is what matters. */
+export function tailLines(text: string, cap: number): { text: string; hidden: number } {
+  const lines = text.split("\n");
+  if (lines.length <= cap + 1) return { text, hidden: 0 };
+  return { text: lines.slice(-cap).join("\n"), hidden: lines.length - cap };
+}
+
 /** `1 file`, `3 files`. */
 export function count(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;

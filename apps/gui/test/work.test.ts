@@ -25,7 +25,11 @@ const text = (value: string): Component => ({
 const code = (value: string): Component => ({ type: "code", code: value });
 const lines = (added: number, removed: number): DiffLine[] => [
   { kind: "hunk", text: "@@ -1,1 +1,1 @@" },
-  ...Array.from({ length: removed }, (_, i): DiffLine => ({ kind: "remove", text: "x", old: i + 1 })),
+  ...Array.from({ length: removed }, (_, i): DiffLine => ({
+    kind: "remove",
+    text: "x",
+    old: i + 1,
+  })),
   ...Array.from({ length: added }, (_, i): DiffLine => ({ kind: "add", text: "y", new: i + 1 })),
 ];
 const diff = (path: string, added: number, removed: number): Component => ({
@@ -40,8 +44,11 @@ const tool = (
   ref = "c-1",
 ): ViewItem => ({ ref, kind: "tool", label, state, component });
 
-const entry = (item: ViewItem, facts?: Parameters<typeof classify>[1]["facts"], active = false) =>
-  classify(item, { facts, cwd: CWD, active });
+const entry = (
+  item: ViewItem,
+  facts?: Parameters<typeof classify>[1]["facts"],
+  active = false,
+): WorkEntry => classify(item, { facts, cwd: CWD, active });
 
 test("durations read as seconds, then minutes, then hours", () => {
   expect(duration(0)).toBe("0s");
@@ -85,8 +92,17 @@ test("paths are shown relative to the session's directory", () => {
 
 test("a command is its text, without the shell, and its output follows", () => {
   const item = tool("bash: ls", code("a.txt\nb.txt"));
-  const made = entry(item, { kind: "execute", tool: "bash", rawInput: { command: "bash -lc 'ls'" } });
-  expect(made).toMatchObject({ kind: "command", command: "ls", label: "ls", output: "a.txt\nb.txt" });
+  const made = entry(item, {
+    kind: "execute",
+    tool: "bash",
+    rawInput: { command: "bash -lc 'ls'" },
+  });
+  expect(made).toMatchObject({
+    kind: "command",
+    command: "ls",
+    label: "ls",
+    output: "a.txt\nb.txt",
+  });
   expect(made.exit).toBeUndefined();
 });
 
@@ -151,7 +167,10 @@ test("a guest's name in front of a title does not hide what it is", () => {
 });
 
 test("reads list their paths, the first in the label", () => {
-  const one = entry(tool("read a.ts", code("x")), { kind: "read", rawInput: { path: `${CWD}/a.ts` } });
+  const one = entry(tool("read a.ts", code("x")), {
+    kind: "read",
+    rawInput: { path: `${CWD}/a.ts` },
+  });
   expect(one).toMatchObject({ kind: "read", paths: ["a.ts"], label: "Read a.ts" });
   const many = entry(tool("read", code("x")), {
     kind: "read",
@@ -164,7 +183,11 @@ test("an edit counts the files its diffs name, with their changes", () => {
   const made = entry(
     tool("edit a.txt", {
       type: "stack",
-      children: [code("Successfully replaced"), diff(`${CWD}/a.txt`, 2, 1), diff(`${CWD}/a.txt`, 1, 0)],
+      children: [
+        code("Successfully replaced"),
+        diff(`${CWD}/a.txt`, 2, 1),
+        diff(`${CWD}/a.txt`, 1, 0),
+      ],
     }),
     { kind: "edit", tool: "edit" },
   );
@@ -217,7 +240,10 @@ test("a plan is an event row with its lines", () => {
           ordered: false,
           items: [
             { checked: true, blocks: [{ type: "paragraph", spans: [{ text: "Read it" }] }] },
-            { checked: false, blocks: [{ type: "paragraph", spans: [{ text: "◐ Write it", bold: true }] }] },
+            {
+              checked: false,
+              blocks: [{ type: "paragraph", spans: [{ text: "◐ Write it", bold: true }] }],
+            },
             { checked: false, blocks: [{ type: "paragraph", spans: [{ text: "Test it" }] }] },
           ],
         },
@@ -247,10 +273,14 @@ test("the call that wrote a plan is not a row of its own", () => {
 });
 
 test("a delegation is a subagent with a status", () => {
-  const made = entry(tool("pi · Write the palette", text("done"), "running"), {
-    kind: "think",
-    tool: "delegate",
-  }, true);
+  const made = entry(
+    tool("pi · Write the palette", text("done"), "running"),
+    {
+      kind: "think",
+      tool: "delegate",
+    },
+    true,
+  );
   expect(made).toMatchObject({ kind: "agent", label: "pi · Write the palette", status: "running" });
 });
 
@@ -307,7 +337,14 @@ test("a thought is a line: its heading, else its first sentence", () => {
 function made(...specs: [WorkEntry["kind"], string?][]): WorkEntry[] {
   return specs.map(([kind, path], index) => {
     const item = tool(`t${index}`, code(""), "done", `c-${index}`);
-    const base: WorkEntry = { id: item.ref, kind, item, label: `label ${index}`, live: false, failed: false };
+    const base: WorkEntry = {
+      id: item.ref,
+      kind,
+      item,
+      label: `label ${index}`,
+      live: false,
+      failed: false,
+    };
     if (kind === "edit") base.files = [{ path: path ?? `f${index}`, added: 1, removed: 0 }];
     if (kind === "read") base.paths = [path ?? `p${index}`];
     return base;
@@ -330,9 +367,9 @@ test("what does not fit the two main kinds is other actions", () => {
   expect(groupSummary(made(["command"], ["edit", "a"], ["read", "a"]))).toBe(
     "Ran 1 command, changed 1 file, and performed 1 other action",
   );
-  expect(
-    groupSummary(made(["command"], ["edit", "a"], ["read", "a"], ["search"], ["tool"])),
-  ).toBe("Ran 1 command, changed 1 file, and performed 3 other actions");
+  expect(groupSummary(made(["command"], ["edit", "a"], ["read", "a"], ["search"], ["tool"]))).toBe(
+    "Ran 1 command, changed 1 file, and performed 3 other actions",
+  );
 });
 
 test("thoughts only count when nothing else was done", () => {
@@ -344,15 +381,20 @@ test("a group's header is its one entry's label, the live entry's while it runs"
   const entries = made(["command"], ["read", "a"]);
   expect(groupLabel(entries.slice(0, 1), false)).toBe("label 0");
   expect(groupLabel(entries, false)).toBe("Ran 1 command and read 1 file");
-  const live = [entries[0]!, { ...entries[1]!, live: true }, ...made(["tool"]).slice(0, 0)];
-  expect(groupLabel(live, true)).toBe("label 1");
-  expect(groupLabel([{ ...entries[0]!, live: true }, entries[1]!], true)).toBe("label 0");
+  const [command, read] = entries;
+  if (command === undefined || read === undefined) throw new Error("two entries");
+  expect(groupLabel([command, { ...read, live: true }], true)).toBe("label 1");
+  expect(groupLabel([{ ...command, live: true }, read], true)).toBe("label 0");
 });
 
 test("a turn's changed files add up across its edits, with one diff each", () => {
   const entries = made(["edit", "a.ts"], ["command"], ["edit", "a.ts"], ["edit", "b.ts"]);
   for (const e of entries) {
-    if (e.files) e.files = e.files.map((f) => ({ ...f, diff: { type: "diff", path: f.path, lines: lines(1, 0) } }));
+    if (e.files)
+      e.files = e.files.map((f) => ({
+        ...f,
+        diff: { type: "diff", path: f.path, lines: lines(1, 0) },
+      }));
   }
   const files = changedFiles(entries);
   expect(files.map((f) => [f.path, f.added, f.removed])).toEqual([
@@ -361,7 +403,7 @@ test("a turn's changed files add up across its edits, with one diff each", () =>
   ]);
   expect(files[0]?.diff?.lines).toHaveLength(4);
   expect(changedFiles(made(["edit", "a.ts"]))).toEqual([]);
-  expect(combinedDiff([files[0]!]).lines).toHaveLength(4);
+  expect(combinedDiff(files.slice(0, 1)).lines).toHaveLength(4);
   const both = combinedDiff(files);
   expect(both.path).toBe("2 files");
   expect(both.lines[0]).toEqual({ kind: "hunk", text: "a.ts" });

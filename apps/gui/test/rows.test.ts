@@ -253,7 +253,11 @@ test("the timeline learns turns, stamps and facts from events", () => {
   ]);
   expect(timeline.stamps.get("m-m")).toEqual({ first: 4000, last: 5000 });
   expect(timeline.stamps.get("c-a")?.first).toBe(2000);
-  expect(timeline.facts.get("c-a")).toMatchObject({ kind: "execute", tool: "bash", rawInput: { command: "ls" } });
+  expect(timeline.facts.get("c-a")).toMatchObject({
+    kind: "execute",
+    tool: "bash",
+    rawInput: { command: "ls" },
+  });
   expect(timeline.turns.get("u1")).toMatchObject({
     startedAt: 1000,
     endedAt: 7000,

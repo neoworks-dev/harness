@@ -7,14 +7,7 @@
 import type { ViewItem } from "@suite/protocol/types";
 import { duration } from "./format.ts";
 import type { Timeline } from "./timeline.ts";
-import {
-  changedFiles,
-  classify,
-  isPlanCall,
-  isQuestion,
-  type FileChange,
-  type WorkEntry,
-} from "./work.ts";
+import { changedFiles, classify, isPlanCall, type FileChange, type WorkEntry } from "./work.ts";
 
 export type Row =
   /** An item drawn by `chat.item`: the user's message, a notice. */
@@ -51,6 +44,9 @@ export interface RowsInput {
   /** Whether the fold of a turn is open. */
   isOpen: (foldKey: string) => boolean;
 }
+
+const NONE: FileChange[] = [];
+const NO_ENTRIES: WorkEntry[] = [];
 
 /** One item of a turn, as the rows will draw it. */
 type Part =
@@ -90,7 +86,11 @@ function partsOf(turn: Turn, active: boolean, input: RowsInput): Part[] {
       if (isPlanCall(item, facts)) return;
       const writing = active && index === turn.body.length - 1;
       const at = timeline.stamps.get(item.ref)?.first;
-      parts.push({ type: "work", item, entry: classify(item, { facts, cwd, active, writing, at }) });
+      parts.push({
+        type: "work",
+        item,
+        entry: classify(item, { facts, cwd, active, writing, at }),
+      });
     }
   });
   return parts;
@@ -135,7 +135,7 @@ function bodyRows(
         key: part.item.ref,
         item: part.item,
         final,
-        changes: final ? changes : [],
+        changes: final ? changes : NONE,
         at: timeline.stamps.get(part.item.ref)?.last,
       });
     } else if (info?.noticeRef === part.item.ref && info.stopReason === "cancelled") {
@@ -160,7 +160,9 @@ function lastMessage(parts: readonly Part[]): number {
 }
 
 function entriesOf(parts: readonly Part[]): WorkEntry[] {
-  return parts.flatMap((part) => (part.type === "work" ? [part.entry] : []));
+  const entries: WorkEntry[] = [];
+  for (const part of parts) if (part.type === "work") entries.push(part.entry);
+  return entries;
 }
 
 /** "Worked for 3m 43s": from the turn's first item to its last, as far as the events say. */
@@ -182,12 +184,15 @@ function turnRows(turn: Turn, active: boolean, input: RowsInput): Row[] {
   const info = turn.user === undefined ? undefined : input.timeline.turns.get(turn.user.ref);
   // A finished turn's last reply stands out; while it runs nothing is last yet.
   const finalAt = active ? -1 : lastMessage(parts);
-  const changes = finalAt < 0 ? [] : changedFiles(entriesOf(parts));
+  const changes = changedFiles(finalAt < 0 ? NO_ENTRIES : entriesOf(parts));
   const failed =
     (info?.stopReason !== undefined && info.stopReason !== "end_turn") ||
-    parts.some((part) => part.type === "work" && part.entry.failed && part.entry.kind !== "question");
+    parts.some(
+      (part) => part.type === "work" && part.entry.failed && part.entry.kind !== "question",
+    );
   const cut = finalAt < 0 ? parts.length : finalAt;
-  const hidden = active || failed ? [] : parts.slice(0, cut).filter((part) => part.type !== "notice");
+  const foldable = !active && !failed;
+  const hidden = parts.slice(0, foldable ? cut : 0).filter((part) => part.type !== "notice");
   if (hidden.length === 0 || turn.user === undefined) {
     return [...rows, ...bodyRows(parts, finalAt, changes, input, turn)];
   }
@@ -203,7 +208,7 @@ function turnRows(turn: Turn, active: boolean, input: RowsInput): Row[] {
   // What stays in view: notices before the reply, then the reply and what follows it.
   const rest = parts.filter((part, index) => part.type === "notice" || index >= cut);
   const restFinal = rest.findIndex((part) => part === parts[finalAt]);
-  if (open) rows.push(...bodyRows(hidden, -1, [], input, turn));
+  if (open) rows.push(...bodyRows(hidden, -1, NONE, input, turn));
   rows.push(...bodyRows(rest, restFinal, changes, input, turn));
   return rows;
 }

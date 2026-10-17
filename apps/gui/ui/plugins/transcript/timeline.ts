@@ -2,12 +2,7 @@
 // each happened, which turn it belongs to and how that ended, and the tool calls' kind and input.
 // Items carry none of it, so the transcript folds the events (timeline.svelte.ts) and looks the
 // rest up by the item's `ref`. Plain functions, tested without a window.
-import type {
-  SessionEvent,
-  SessionEventRecord,
-  StopReason,
-  ToolKind,
-} from "@suite/protocol/types";
+import type { SessionEvent, SessionEventRecord, StopReason, ToolKind } from "@suite/protocol/types";
 
 /** When an item first and last had something to say, in Unix milliseconds. */
 export interface Stamp {
@@ -87,7 +82,8 @@ export function applyRecord(timeline: Timeline, record: SessionEventRecord): Tim
       timeline.current = `u${seq}`;
       break;
     case "turn_ended": {
-      const turn = timeline.current === undefined ? undefined : timeline.turns.get(timeline.current);
+      const turn =
+        timeline.current === undefined ? undefined : timeline.turns.get(timeline.current);
       if (turn === undefined) break;
       turn.endedAt = ts;
       turn.stopReason = event.stopReason;

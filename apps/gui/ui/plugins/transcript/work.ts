@@ -7,7 +7,7 @@
 // window.
 import type { Component, DiffComponent, DiffLine, ViewItem } from "@suite/protocol/types";
 import { diffStats } from "../../lib/diff.ts";
-import { componentText, hasButtons, oneLine } from "./components.ts";
+import { blocksText, componentText, hasButtons, oneLine } from "./components.ts";
 import { count } from "./format.ts";
 import type { ToolFacts } from "./timeline.ts";
 
@@ -148,7 +148,11 @@ function commandOf(input: unknown): string | undefined {
 }
 
 /** Every component of a tree that `pick` accepts, in order. */
-function collect<T>(component: Component, pick: (c: Component) => T | undefined, out: T[] = []): T[] {
+function collect<T>(
+  component: Component,
+  pick: (c: Component) => T | undefined,
+  out: T[] = [],
+): T[] {
   const found = pick(component);
   if (found !== undefined) out.push(found);
   if (component.type === "card" || component.type === "row" || component.type === "stack") {
@@ -289,10 +293,7 @@ function planLines(component: Component): PlanLine[] {
     for (const block of text.blocks) {
       if (block.type !== "list") continue;
       for (const entry of block.items) {
-        const raw = entry.blocks
-          .map((b) => (b.type === "paragraph" ? b.spans.map((s) => s.text).join("") : ""))
-          .join(" ")
-          .trim();
+        const raw = blocksText(entry.blocks).trim();
         const active = raw.startsWith("◐");
         lines.push({
           text: active ? raw.replace(/^◐\s*/, "") : raw,
@@ -411,6 +412,29 @@ function inputText(input: unknown): string | undefined {
   return text === undefined || text === "{}" ? undefined : text.slice(0, 4000);
 }
 
+/** The paths a call's input names, else the one its title ends with. */
+function pathsOf(input: unknown, rest: string): string[] {
+  const named = [...stringsOf(input, PATH_KEYS), ...stringsOf(input, PATHS_KEYS)];
+  if (named.length > 0) return named;
+  if (rest === "") return named;
+  return [rest];
+}
+
+/** What was run: the input's command, else the result's `command` line, else the title's. */
+function commandText(
+  input: unknown,
+  kv: readonly { key: string; value: string }[],
+  verb: string,
+  rest: string,
+  label: string,
+): string {
+  const given = commandOf(input);
+  if (given !== undefined) return given;
+  const listed = kv.find((entry) => entry.key.toLowerCase() === "command");
+  if (listed !== undefined) return listed.value;
+  return /^(?:bash|sh|shell|zsh|run|exec|execute)$/.test(verb) ? rest : label;
+}
+
 /** Makes the entry of one view item: a tool call, a thought, a plan or a question. */
 export function classify(item: ViewItem, context: ClassifyContext): WorkEntry {
   const { facts, cwd, active } = context;
@@ -451,10 +475,7 @@ export function classify(item: ViewItem, context: ClassifyContext): WorkEntry {
       const kv = collect(item.component, (c) => (c.type === "kv" ? c : undefined)).flatMap(
         (c) => c.items,
       );
-      const command =
-        commandOf(input) ??
-        kv.find((entry) => entry.key.toLowerCase() === "command")?.value ??
-        (/^(?:bash|sh|shell|zsh|run|exec|execute)$/.test(verb) ? rest : label);
+      const command = commandText(input, kv, verb, rest, label);
       const output = collect(item.component, (c) => (c.type === "code" ? c.code : undefined))
         .join("\n")
         .replace(/\n+$/, "");
@@ -471,10 +492,7 @@ export function classify(item: ViewItem, context: ClassifyContext): WorkEntry {
       };
     }
     case "read": {
-      const named = [...stringsOf(input, PATH_KEYS), ...stringsOf(input, PATHS_KEYS)];
-      const paths = (named.length > 0 ? named : rest === "" ? [] : [rest]).map((path) =>
-        relativePath(path, cwd),
-      );
+      const paths = pathsOf(input, rest).map((path) => relativePath(path, cwd));
       return { ...entry, kind, paths, label: readLabel(paths) };
     }
     case "edit": {
@@ -482,13 +500,10 @@ export function classify(item: ViewItem, context: ClassifyContext): WorkEntry {
         ...c,
         path: relativePath(c.path, cwd),
       }));
-      const files =
-        changes.length > 0
-          ? changes
-          : [...stringsOf(input, PATH_KEYS), ...stringsOf(input, PATHS_KEYS)]
-              .concat(rest === "" ? [] : [rest])
-              .slice(0, 1)
-              .map((path) => ({ path: relativePath(path, cwd), added: 0, removed: 0 }));
+      const asked = pathsOf(input, rest)
+        .slice(0, 1)
+        .map((path) => ({ path: relativePath(path, cwd), added: 0, removed: 0 }));
+      const files = changes.length > 0 ? changes : asked;
       return {
         ...entry,
         kind,
@@ -503,10 +518,16 @@ export function classify(item: ViewItem, context: ClassifyContext): WorkEntry {
         ...entry,
         kind,
         label: searchLabel(query, target === undefined ? undefined : relativePath(target, cwd)),
+        output: componentText(item.component),
       };
     }
     case "web":
-      return { ...entry, kind, label: webLabel(facts, rest) };
+      return {
+        ...entry,
+        kind,
+        label: webLabel(facts, rest),
+        output: componentText(item.component),
+      };
     case "agent":
       return {
         ...entry,
@@ -581,6 +602,13 @@ const SUMMARY: readonly {
   { kind: "tool", amount: (e) => e.length, say: (n) => `used ${count(n, "tool")}` },
   { kind: "plan", amount: (e) => e.length, say: () => "updated the plan" },
 ];
+
+/** The kind of work that stands for a group: its most important, whose icon its header wears. */
+export function leadKind(entries: readonly WorkEntry[]): WorkKind {
+  for (const spec of SUMMARY)
+    if (entries.some((entry) => entry.kind === spec.kind)) return spec.kind;
+  return entries[0]?.kind ?? "tool";
+}
 
 /** `A and B`, `A, B, and C`. */
 function joinParts(parts: readonly string[]): string {

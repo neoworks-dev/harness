@@ -6,7 +6,7 @@
   import { useCtx } from "../../kernel/slots/context.ts";
   import Component from "./Component.svelte";
   import ItemFrame from "./ItemFrame.svelte";
-  import { PREVIEW_LINES } from "./layout.ts";
+  import { PREVIEW_LINES, proseColor } from "./layout.ts";
   import { transcript } from "./state.svelte.ts";
 
   let { item }: { item: ViewItem } = $props();
@@ -16,7 +16,7 @@
 </script>
 
 <ItemFrame gap={item.component.type === "text" ? 8 : 16}>
-  <View style={{ paddingX: 4, gap: p.space.s, color: p.prose }}>
+  <View style={{ paddingX: 4, gap: p.space.s, color: proseColor(p) }}>
     {#if item.label}
       <Text style={{ color: p.muted, fontSize: 12, fontWeight: "medium" }}>{item.label}</Text>
     {/if}
