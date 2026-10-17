@@ -115,7 +115,7 @@ export function withEditor(rows: readonly Row[], file: number, line: number): Ro
   return [...rows.slice(0, at + 1), editor, ...rows.slice(at + 1)];
 }
 
-/** How tall a row is expected to be, for placing the sticky header; `chars` fit a line of code. */
+/** How tall a row is, or (a wrapped line) is expected to be; `chars` fit a line of code. */
 export function guessHeight(row: Row, chars: number): number {
   const wrapped = (text: string): number =>
     Math.max(1, Math.ceil(text.length / chars)) * LINE_HEIGHT;
@@ -136,31 +136,20 @@ export function guessHeight(row: Row, chars: number): number {
   }
 }
 
-/** Where each row begins, and (last) where the list ends, from the guessed heights. */
-export function offsets(rows: readonly Row[], chars: number): number[] {
-  const out: number[] = [];
-  let y = 0;
-  for (const row of rows) {
-    out.push(y);
-    y += guessHeight(row, chars);
-  }
-  out.push(y);
-  return out;
+/** Whether a row's text may wrap at `chars` characters, so that its height is only a guess. */
+export function maybeWraps(row: Row, chars: number): boolean {
+  const long = (text: string): boolean => text.length > chars * 0.7;
+  if (row.kind === "line") return long(row.line.text);
+  if (row.kind === "pair")
+    return long(row.left?.line.text ?? "") || long(row.right?.line.text ?? "");
+  return false;
 }
 
-/** The file whose rows are at scroll position `y`. */
-export function fileAt(
-  rows: readonly Row[],
-  starts: readonly number[],
-  y: number,
-): number | undefined {
-  if (rows.length === 0) return undefined;
-  let low = 0;
-  let high = rows.length - 1;
-  while (low < high) {
-    const mid = Math.ceil((low + high) / 2);
-    if ((starts[mid] ?? 0) <= y) low = mid;
-    else high = mid - 1;
-  }
-  return rows[low]?.file;
+/** Where each file's header is among the rows. */
+export function headers(rows: readonly Row[]): number[] {
+  const out: number[] = [];
+  rows.forEach((row, index) => {
+    if (row.kind === "file") out[row.file] = index;
+  });
+  return out;
 }

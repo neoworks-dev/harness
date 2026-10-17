@@ -1,10 +1,10 @@
 <script lang="ts">
   // The diff tab: the toolbar, then every changed file as a header and its lines in one list that
   // builds only the rows near the window. The header of the file at the top stays there as the
-  // list scrolls.
+  // list scrolls, until the next file's header pushes it up.
   import { untrack } from "svelte";
-  import { List, Text, View } from "@neoworks/svelte-gpui/ui";
-  import type { Layout, ScrollPosition } from "@neoworks/svelte-gpui/ui";
+  import { Text, View } from "@neoworks/svelte-gpui/ui";
+  import type { Layout } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
   import { diffStats } from "../../lib/diff.ts";
   import CommentEditor from "./CommentEditor.svelte";
@@ -14,14 +14,15 @@
   import LineRow from "./LineRow.svelte";
   import { CHAR_WIDTH, numberWidth } from "./look.ts";
   import PairRow from "./PairRow.svelte";
-  import { buildRows, fileAt, offsets, withEditor, type Row } from "./rows.ts";
+  import { buildRows, guessHeight, headers, HEADER_HEIGHT, maybeWraps, withEditor, type Row } from "./rows.ts";
   import { span } from "./selection.ts";
   import { diffView, viewer } from "./state.svelte.ts";
+  import VirtualList from "./VirtualList.svelte";
 
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
 
-  let list: ReturnType<typeof List<Row>> | undefined = $state();
+  let list: ReturnType<typeof VirtualList<Row>> | undefined = $state();
   let width = $state(0);
   let scrollY = $state(0);
 
@@ -41,15 +42,23 @@
     return file < 0 ? undefined : { file, line: span(selection).to };
   });
   const rows = $derived(editing ? withEditor(base, editing.file, editing.line) : base);
-  /** How many characters of code fit a row, for guessing where a wrapped list's rows are. */
+  /** How many characters of code fit a row, for guessing how tall a wrapped line is. */
   const chars = $derived.by(() => {
     if (!viewer.wrap) return Number.POSITIVE_INFINITY;
     const room = width - numberWidth(viewer.digits) * (split ? 1 : 2) - 18;
     return Math.max(10, Math.floor(room / CHAR_WIDTH / (split ? 2 : 1)));
   });
-  const starts = $derived(offsets(rows, chars));
-  const sticky = $derived(scrollY > 0 ? fileAt(rows, starts, scrollY) : undefined);
-  const stuck = $derived(sticky === undefined ? undefined : viewer.diffs[sticky]);
+  const heads = $derived(headers(rows));
+  /** The file whose header is above the window, and how far the next one pushes it up. */
+  const sticky = $derived.by(() => {
+    if (list === undefined || scrollY <= 0) return undefined;
+    const file = rows[list.at(scrollY)]?.file;
+    if (file === undefined || list.topOf(heads[file] ?? 0) >= scrollY) return undefined;
+    const next = heads[file + 1];
+    const push = next === undefined ? 0 : Math.min(0, list.topOf(next) - scrollY - HEADER_HEIGHT);
+    return { file, push };
+  });
+  const stuck = $derived(sticky === undefined ? undefined : viewer.diffs[sticky.file]);
 
   // A file asked for (the changes card): bring its header to the top once its rows exist.
   $effect(() => {
@@ -58,7 +67,7 @@
     const at = rows.findIndex((row) => row.kind === "file" && row.path === target.path);
     if (at >= 0) {
       untrack(() => {
-        list?.scrollToIndex(at, { align: "start" });
+        list?.scrollToIndex(at);
         viewer.reveal = undefined;
       });
     } else if (!viewer.busy && (viewer.changes !== undefined || viewer.scope === "turn")) {
@@ -78,10 +87,6 @@
 
   function pathOf(file: number): string {
     return viewer.diffs[file]?.path ?? "";
-  }
-
-  function scrolled(position: ScrollPosition): void {
-    scrollY = position.y;
   }
 
   function sized(box: Layout): void {
@@ -105,7 +110,15 @@
   </View>
 {:else}
   <View style={{ flex: 1, minHeight: 0 }} onresize={sized}>
-    <List bind:this={list} items={rows} key={(row) => row.key} onscroll={scrolled} style={{ flex: 1, minHeight: 0 }}>
+    <VirtualList
+      bind:this={list}
+      items={rows}
+      key={(row) => row.key}
+      height={(row) => guessHeight(row, chars)}
+      measure={(row) => viewer.wrap && maybeWraps(row, chars)}
+      onscroll={(y) => (scrollY = y)}
+      style={{ flex: 1, minHeight: 0 }}
+    >
       {#snippet row(entry: Row)}
         {#if entry.kind === "file"}
           <FileHeader path={entry.path} added={entry.added} removed={entry.removed} collapsed={entry.collapsed} />
@@ -128,10 +141,10 @@
           <CommentEditor />
         {/if}
       {/snippet}
-    </List>
-    {#if stuck}
+    </VirtualList>
+    {#if stuck && sticky}
       {@const stats = diffStats(stuck.lines)}
-      <View style={{ position: "absolute", top: 0, left: 0, right: 0 }}>
+      <View style={{ position: "absolute", top: sticky.push, left: 0, right: 0 }}>
         <FileHeader path={stuck.path} added={stats.added} removed={stats.removed} collapsed={viewer.collapsed.has(stuck.path)} />
       </View>
     {/if}

@@ -43,6 +43,31 @@ interface Changes {
   error?: string;
 }
 
+/** A file's diff as git said it, and what it parsed to. */
+interface Reading {
+  text: string;
+  file: FileDiff;
+}
+
+/** Files git is asked about at once. */
+const ASKS = 8;
+
+function diffLines(text: string): FileDiff["lines"] {
+  return parseUnified(text)
+    .flatMap((file) => file.lines)
+    .filter((line) => line.kind !== "hunk");
+}
+
+/** Whether two readings list the very same files. */
+function sameChanges(a: Changes | undefined, b: Changes): boolean {
+  return (
+    a !== undefined &&
+    a.error === b.error &&
+    a.files.length === b.files.length &&
+    a.files.every((file, i) => file === b.files[i])
+  );
+}
+
 /** A file tab's text, as far as it is read. */
 export type FileText =
   | { status: "loading" }
@@ -100,6 +125,8 @@ class Viewer {
   private services?: Services;
   private asking = false;
   private again = false;
+  /** What the last reading made of each file, to keep the object of one that did not change. */
+  private seen = new Map<string, Reading>();
   private revealSeq = 0;
 
   /** What the agent did this turn. */
@@ -308,7 +335,8 @@ class Viewer {
     const cwd = services.daemon.cwd;
     try {
       const read = await this.readWorkingTree(services.git, cwd);
-      if (cwd === services.daemon.cwd) this.changes = read;
+      // The same files as before are no news: nothing downstream rebuilds.
+      if (cwd === services.daemon.cwd && !sameChanges(this.changes, read)) this.changes = read;
     } finally {
       this.asking = false;
       this.busy = false;
@@ -329,19 +357,25 @@ class Viewer {
         .map((entry) => ({ rel: relFromPrefix(status.prefix, entry.path), change: entry.change }))
         .filter((entry) => !entry.rel.endsWith("/"));
       const listed: FileDiff[] = [];
-      for (const entry of entries) {
-        const text = await git.diff({
-          cwd,
-          path: entry.rel,
-          untracked: entry.change === "untracked",
-          full: true,
+      const kept = new Map<string, Reading>();
+      for (let at = 0; at < entries.length; at += ASKS) {
+        const batch = entries.slice(at, at + ASKS);
+        const texts = await Promise.all(
+          batch.map((entry) =>
+            git.diff({ cwd, path: entry.rel, untracked: entry.change === "untracked", full: true }),
+          ),
+        );
+        batch.forEach((entry, i) => {
+          const text = texts[i] ?? "";
+          const before = this.seen.get(entry.rel);
+          // The whole file is one hunk; its header says nothing the lines do not.
+          const file =
+            before?.text === text ? before.file : { path: entry.rel, lines: diffLines(text) };
+          kept.set(entry.rel, { text, file });
+          listed.push(file);
         });
-        // The whole file is one hunk; its header says nothing the lines do not.
-        const lines = parseUnified(text)
-          .flatMap((file) => file.lines)
-          .filter((line) => line.kind !== "hunk");
-        listed.push({ path: entry.rel, lines });
       }
+      this.seen = kept;
       return { files: listed };
     } catch (error) {
       return { files: NO_FILES, error: failure(error) };

@@ -68,13 +68,27 @@ function chained(edits: readonly TurnEdit[]): TurnEdit[] {
   return out;
 }
 
+/** The last diffs made, so an edit coming in does not diff the earlier ones again. */
+const made = new Map<string, FileDiff["lines"]>();
+const MADE = 24;
+
+function diffOf(edit: TurnEdit): FileDiff["lines"] {
+  const id = `${edit.oldText ?? "\0none"}\0${edit.newText}`;
+  const known = made.get(id);
+  if (known !== undefined) return known;
+  const lines = lineDiff(edit.oldText, edit.newText);
+  if (made.size >= MADE) made.delete(made.keys().next().value ?? "");
+  made.set(id, lines);
+  return lines;
+}
+
 /** The turn's edits as one diff per file, left out where the edits cancel. Files by first edit. */
 export function turnDiffs(edits: readonly TurnEdit[]): FileDiff[] {
   const paths = [...new Set(edits.map((edit) => edit.path))];
   const files: FileDiff[] = [];
   for (const path of paths) {
     for (const edit of chained(edits.filter((other) => other.path === path))) {
-      const lines = lineDiff(edit.oldText, edit.newText);
+      const lines = diffOf(edit);
       if (lines.some((line) => line.kind !== "context")) files.push({ path, lines });
     }
   }
