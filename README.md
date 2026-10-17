@@ -64,8 +64,15 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/
 | `SUITE_PORT`                          | 127.0.0.1 port for `/bus` + `/mcp` (default: any free port) |
 | `SUITE_GUESTS`                        | `claude,codex`; `none` turns guest agents off               |
 | `SUITE_GUEST_PERMISSIONS`             | `ask` (buttons in the chat) or `allow`                      |
+| `SUITE_TITLES`                        | `off`: no model writes session titles (`/title` still does) |
 
 `model` and `thinkingLevel` can also be set in `~/.config/suite/config.json`; env wins.
+
+## Session titles
+
+A session is named after the start of its first message at once, and then a model writes a short title for it (3 to 8 words: what the session is about and what it should achieve, not a cut-off copy of the message). `/title` writes it again from the conversation so far (the GUI's session menu has it as "Regenerate title"); it also replaces a title you gave the session yourself, which nothing else does.
+
+Which model writes titles is your choice, for every session: `/title-model <harness> <model>` (`/title-model claude haiku`; a harness alone uses its own default model; no arguments pick from a list; `/title-model default` goes back). Until you choose, the suite asks Claude Code's `haiku` when that guest is configured, else the daemon's own agent on the model it is configured with. Each title is one call outside the session, logged nowhere and with no tools. A model that cannot be reached leaves the start of the message as the title, and `/title` says why. Claude Code and Codex write theirs in a conversation of their own in a temporary directory, which they may keep in their own history. `SUITE_TITLES=off` stops the automatic title.
 
 ## Guest agents
 

@@ -2,6 +2,7 @@ import { Agent, type StreamFn, type ThinkingLevel } from "@mariozechner/pi-agent
 import {
   getModels,
   getProviders,
+  streamSimple,
   type Api,
   type AssistantMessage,
   type KnownProvider,
@@ -12,6 +13,7 @@ import type {
   AgentSession,
   ConfigCategory,
   ConfigOption,
+  GenerateTextParams,
   LoadSessionParams,
   McpServer,
   NewSessionParams,
@@ -238,9 +240,38 @@ export function createPiAgent(options: PiAgentOptions): HarnessAgent {
     };
   }
 
+  /** One call to a model (the given one, else the configured one) with no tools and no session. */
+  async function generateText({
+    model: setting,
+    system,
+    prompt,
+    signal,
+  }: GenerateTextParams): Promise<string> {
+    const model = setting === undefined ? defaultModel : modelFromSetting(setting);
+    const apiKey = resolveApiKey(config, model.provider);
+    if (!apiKey) throw new Error(missingApiKeyMessage(config, model.provider));
+    const stream = await (streamFn ?? streamSimple)(
+      model,
+      {
+        systemPrompt: system,
+        messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
+      },
+      { apiKey, signal },
+    );
+    const reply = await stream.result();
+    if (reply.stopReason === "error" || reply.stopReason === "aborted") {
+      throw new Error(reply.errorMessage || "The model request failed.");
+    }
+    return reply.content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+  }
+
   return {
     name: HARNESS_NAME,
     newSession: (params) => Promise.resolve(createSession(params, [])),
     loadSession: (params) => Promise.resolve(createSession(params, params.history)),
+    generateText,
   };
 }

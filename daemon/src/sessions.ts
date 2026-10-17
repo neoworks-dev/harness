@@ -446,6 +446,11 @@ export class SessionManager {
     this.stateListeners.push(listener);
   }
 
+  /** Something in the session's info changed that no event says, such as its title. */
+  changed(sessionId: string): void {
+    this.stateChanged(sessionId);
+  }
+
   private stateChanged(sessionId: string): void {
     for (const listener of this.stateListeners) listener(sessionId);
   }

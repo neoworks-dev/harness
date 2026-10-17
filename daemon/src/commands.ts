@@ -4,6 +4,8 @@
 //   /resume [guest]                           pick a stored guest conversation to continue
 //   /approvals [ask|review|edits|auto]        how much the agents ask first; no value: next mode
 //   /harness [name]                           the harness the session runs on; no name: pick one
+//   /title                                    write the session's title again, with a model
+//   /title-model [harness] [model|default]    the model that writes titles (for every session)
 // The harness defaults to the one the session runs on. Nothing is chosen for the user.
 import type { ConfigOption } from "@suite/harness/agent";
 import type { HarnessSettings } from "@suite/protocol/types";
@@ -21,7 +23,10 @@ import {
   nextApprovals,
   parseApprovals,
   type Settings,
+  type TitleModel,
+  titleModelText,
 } from "./settings.ts";
+import type { Titles } from "./titles.ts";
 
 /** How long a harness gets to tell its options before the picker shows it without them. */
 export const SETTINGS_TIMEOUT_MS = 5000;
@@ -33,6 +38,7 @@ export interface CommandParts {
   sessions: SessionManager;
   guests: GuestManager;
   settings: Settings;
+  titles: Titles;
   asker: Asker;
   log: Logger;
   /** The daemon's own agent's harness name, e.g. pi. */
@@ -64,6 +70,8 @@ export class Commands {
     if (name === "resume") return this.resume(session, args);
     if (name === "approvals") return this.approvals(session, args);
     if (name === "harness") return this.harness(session, args);
+    if (name === "title") return this.titleCommand(session, args);
+    if (name === "title-model") return this.titleModel(session, args);
     return undefined;
   }
 
@@ -220,6 +228,97 @@ export class Commands {
       })
       .catch((err: unknown) => this.parts.log.warn(`/harness: ${String(err)}`));
     return Promise.resolve();
+  }
+
+  private async titleCommand(session: string, args: string[]): Promise<void> {
+    if (args.length > 0) throw new BadRequestError("usage: /title");
+    await this.parts.titles.regenerate(session);
+  }
+
+  /**
+   * /title-model: no value opens a choice of harness and then of its model; `default` goes back
+   * to the suite's choice; a harness alone is its own default model.
+   */
+  private async titleModel(session: string, args: string[]): Promise<void> {
+    const { guests, main, settings, titles } = this.parts;
+    const names = this.parts.harnesses().filter((name) => name === main || guests.has(name));
+    const usage = `usage: /title-model [${names.join("|")}] [model], or /title-model default`;
+    const [harness, model, ...extra] = args;
+    if (extra.length > 0 || (harness === "default" && model !== undefined)) {
+      throw new BadRequestError(usage);
+    }
+    if (harness === "default") {
+      settings.setTitleModel(session, undefined);
+      return;
+    }
+    if (harness !== undefined && !names.includes(harness)) throw new BadRequestError(usage);
+    if (harness !== undefined && model !== undefined) {
+      await this.setTitleModel(session, { harness, model });
+      return;
+    }
+    const { model: now, chosen } = titles.current();
+    let current = titleModelText(now);
+    if (!chosen) current += ", the default";
+    // The answers come later, from buttons; the command is done once the choice is shown.
+    const picked =
+      harness !== undefined
+        ? Promise.resolve(harness)
+        : this.parts.asker.ask(session, {
+            type: "choice",
+            title: `Title model (now: ${current})`,
+            options: [
+              { id: "default", name: "Default", description: "The suite's choice" },
+              ...names.map((id) => ({ id, name: id === main ? id : guests.title(id) })),
+            ],
+            current: chosen ? now.harness : "default",
+          });
+    void picked
+      .then(async (name) => {
+        if (name === undefined) return;
+        if (name === "default") settings.setTitleModel(session, undefined);
+        else await this.askTitleModel(session, name);
+      })
+      .catch((err: unknown) => this.parts.log.warn(`/title-model: ${String(err)}`));
+  }
+
+  /** The second step of /title-model: which of the harness's models, if it lists any. */
+  private async askTitleModel(session: string, harness: string): Promise<void> {
+    const options = await this.options(session, harness);
+    const option = options.find((o) => o.category === "model");
+    if (!option || option.values.length === 0) {
+      await this.setTitleModel(session, { harness });
+      return;
+    }
+    const picked = await this.parts.asker.ask(session, {
+      type: "choice",
+      title: `${this.title(harness)} model for titles`,
+      options: option.values.map((v) => {
+        const entry = { id: v.value, name: v.name };
+        return v.description === undefined ? entry : { ...entry, description: v.description };
+      }),
+    });
+    if (picked !== undefined) await this.setTitleModel(session, { harness, model: picked });
+  }
+
+  private async setTitleModel(session: string, value: TitleModel): Promise<void> {
+    const { main, settings } = this.parts;
+    // A guest lists the models it takes; pi takes any provider/model.
+    let listed: ConfigOption["values"] | undefined;
+    if (value.harness !== main) {
+      const known = await this.knownOptions(session, value.harness);
+      listed = known.find((o) => o.category === "model")?.values;
+    }
+    if (
+      value.model !== undefined &&
+      listed?.length &&
+      !listed.some((v) => v.value === value.model)
+    ) {
+      const values = listed.map((v) => v.value).join(", ");
+      throw new BadRequestError(
+        `${this.title(value.harness)} has no model ${value.model}: ${values}`,
+      );
+    }
+    settings.setTitleModel(session, value);
   }
 
   private async resume(session: string, args: string[]): Promise<void> {

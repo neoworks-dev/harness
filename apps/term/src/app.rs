@@ -573,6 +573,7 @@ impl App {
                     SettingName::Mode => "mode",
                     SettingName::Approvals => "approvals",
                     SettingName::Harness => "harness",
+                    SettingName::TitleModel => "title_model",
                 };
                 self.on_setting(&change.harness, option, &change.value);
             }

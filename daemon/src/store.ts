@@ -7,9 +7,16 @@ import type {
   SessionEventRecord,
 } from "@suite/protocol/types";
 
+/**
+ * Where a session's title came from, when the suite made it: the start of the first message
+ * (until a model has written one), or a model. A title without one was given by the user.
+ */
+export type TitleSource = "first_line" | "generated";
+
 export interface SessionRow {
   id: string;
   title?: string;
+  titleSource?: TitleSource;
   cwd: string;
   /** The session that delegated into this one. */
   parent?: string;
@@ -21,6 +28,7 @@ export interface SessionRow {
 interface SessionDbRow {
   id: string;
   title: string | null;
+  title_source: string | null;
   parent: string | null;
   cwd: string;
   created_at: number;
@@ -96,6 +104,9 @@ function toRow(r: SessionDbRow): SessionRow {
     lastSeq: r.last_seq,
   };
   if (r.title !== null) row.title = r.title;
+  if (r.title_source === "first_line" || r.title_source === "generated") {
+    row.titleSource = r.title_source;
+  }
   if (r.parent !== null) row.parent = r.parent;
   return row;
 }
@@ -121,6 +132,9 @@ export class SessionStore {
     const columns = this.db.query<{ name: string }, []>("PRAGMA table_info(sessions)").all();
     if (!columns.some((column) => column.name === "parent")) {
       this.db.exec("ALTER TABLE sessions ADD COLUMN parent TEXT");
+    }
+    if (!columns.some((column) => column.name === "title_source")) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN title_source TEXT");
     }
 
     // The counter lives on the session row, so the next seq is derived inside the same
@@ -157,8 +171,11 @@ export class SessionStore {
     return row;
   }
 
-  setTitle(id: string, title: string): void {
-    this.db.query("UPDATE sessions SET title = ? WHERE id = ?").run(title, id);
+  /** Without `source` the title counts as the user's own: the suite never replaces it by itself. */
+  setTitle(id: string, title: string, source?: TitleSource): void {
+    this.db
+      .query("UPDATE sessions SET title = ?, title_source = ? WHERE id = ?")
+      .run(title, source ?? null, id);
   }
 
   getSession(id: string): SessionRow | undefined {

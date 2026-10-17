@@ -823,7 +823,7 @@ export interface PermissionResolved {
 
 export type PermissionOptionKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
 
-/** The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. */
+/** The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness "suite", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for the suite's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session. */
 export interface SettingChanged {
   type: "setting_changed";
   /** pi, claude, codex… */
@@ -832,7 +832,7 @@ export interface SettingChanged {
   value: string;
 }
 
-export type SettingName = "model" | "effort" | "mode" | "approvals" | "harness";
+export type SettingName = "model" | "effort" | "mode" | "approvals" | "harness" | "title_model";
 
 export interface ChoiceOption {
   id: string;

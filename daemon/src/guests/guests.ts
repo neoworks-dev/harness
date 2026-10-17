@@ -4,7 +4,9 @@
 // session's own agent when the user runs it on that harness (/harness claude), which has no
 // label in the log and gets the session's context events. pi subagents (subagent.ts) are
 // delegated to the same way.
-import { extname } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { extname, join } from "node:path";
 import type {
   Agent,
   AgentSession,
@@ -12,6 +14,7 @@ import type {
   ConfigCategory,
   ConfigOption,
   ContextEvent,
+  GenerateTextParams,
   McpServer,
   PromptResult,
   RequestPermission,
@@ -637,6 +640,71 @@ export class GuestManager {
       return out;
     } finally {
       conn.kill();
+    }
+  }
+
+  /**
+   * One prompt to the guest's adapter outside any session, for short generated text: a throwaway
+   * adapter process and conversation in an empty temporary directory, nothing allowed (a tool
+   * asking is turned down) and nothing logged, ended once the reply is in. Resolves with the
+   * agent's last message; rejects with a message the user can read.
+   */
+  async generateText(name: string, params: GenerateTextParams): Promise<string> {
+    const config = this.options.configs[name];
+    if (!config) throw new BadRequestError(`no guest named ${name}`);
+    const title = this.title(name);
+    const cwd = await mkdtemp(join(tmpdir(), "suite-text-"));
+    const messages = new Map<string, string>();
+    const conn = AcpConnection.spawn({
+      command: config.command,
+      cwd,
+      env: config.env,
+      onNotification: (method, update) => {
+        if (method !== "session/update" || !isRecord(update) || !isRecord(update.update)) return;
+        const chunk = update.update;
+        if (chunk.sessionUpdate !== "agent_message_chunk" || !isRecord(chunk.content)) return;
+        const text = str(chunk.content.text);
+        const id = str(chunk.messageId) ?? "";
+        if (text !== undefined) messages.set(id, (messages.get(id) ?? "") + text);
+      },
+      onRequest: (method) => {
+        if (method === "session/request_permission") {
+          return Promise.resolve({ outcome: { outcome: "cancelled" } });
+        }
+        return Promise.reject(new AcpError(`${method} is not supported`, -32601));
+      },
+    });
+    let acpSession: string | undefined;
+    const cancel = (): void => {
+      if (acpSession !== undefined) conn.notify("session/cancel", { sessionId: acpSession });
+    };
+    params.signal?.addEventListener("abort", cancel);
+    try {
+      await this.initialize(conn);
+      const created = await conn.request("session/new", { cwd, mcpServers: [] });
+      acpSession = isRecord(created) ? str(created.sessionId) : undefined;
+      if (acpSession === undefined) throw new Error("session/new returned no sessionId");
+      if (params.model !== undefined) {
+        const options = configOptionsOf(isRecord(created) ? created.configOptions : undefined);
+        const entry = [...options].find(([, option]) => option.category === "model");
+        if (!entry) throw new BadRequestError(`${title} has no model setting`);
+        await conn.request("session/set_config_option", {
+          sessionId: acpSession,
+          configId: entry[0],
+          value: params.model,
+        });
+      }
+      await conn.request("session/prompt", {
+        sessionId: acpSession,
+        prompt: [{ type: "text", text: `${params.system}\n\n${params.prompt}` }],
+      });
+      return [...messages.values()].join("").trim();
+    } catch (err) {
+      throw new Error(`${title}: ${errorText(err)}`);
+    } finally {
+      params.signal?.removeEventListener("abort", cancel);
+      conn.kill();
+      await rm(cwd, { recursive: true, force: true });
     }
   }
 

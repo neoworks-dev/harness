@@ -206,6 +206,9 @@ export class SessionView {
       case "setting_changed":
         // The approvals mode shows in the panes' status, not in the chat.
         if (event.option === "approvals") return [];
+        if (event.option === "title_model") {
+          return [this.notice(`n${seq}`, `title model: ${event.value}`)];
+        }
         // The session's harness is not one harness's setting: "harness: claude".
         if (event.option === "harness") return [this.notice(`n${seq}`, `harness: ${event.value}`)];
         return [this.notice(`n${seq}`, `${event.harness} ${event.option}: ${event.value}`)];

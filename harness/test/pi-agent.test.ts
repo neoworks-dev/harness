@@ -584,3 +584,47 @@ test("reading a picture shows it: the result carries the file as image content",
     { type: "image", src: join(cwd, "dot.png"), mimeType: "image/png" },
   ]);
 });
+
+test("generateText asks the configured model, or the one given, with the system prompt and no tools", async () => {
+  const model = fakeModel([
+    reply("one"),
+    reply([
+      { type: "text", text: "tw" },
+      { type: "text", text: "o" },
+    ]),
+  ]);
+  const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  expect(await agent.generateText?.({ system: "Be brief.", prompt: "Hello" })).toBe("one");
+  expect(model.models[0]).toEqual({ provider: "deepseek", id: "deepseek-v4-flash" });
+  expect(model.requests[0]).toMatchObject([{ role: "user", content: "Hello" }]);
+  expect(model.reasoning[0]).toBeUndefined();
+  const given = { system: "s", prompt: "p", model: "deepseek/deepseek-v4" };
+  expect(await agent.generateText?.(given)).toBe("two");
+  expect(model.models[1]).toEqual({ provider: "deepseek", id: "deepseek-v4" });
+});
+
+test("generateText rejects with the model's error, and for an unknown provider or no key", async () => {
+  const model = fakeModel([reply([], "error", "rate limited")]);
+  const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const asking = async (target: typeof agent, setting?: string): Promise<string> => {
+    try {
+      await target.generateText?.({ system: "s", prompt: "p", model: setting });
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+    return "";
+  };
+  expect(await asking(agent)).toContain("rate limited");
+  expect(await asking(agent, "nowhere/x")).toContain('Unknown model provider "nowhere"');
+  const keyless = createPiAgent({
+    config: { ...TEST_CONFIG, apiKey: undefined },
+    streamFn: fakeModel([]).streamFn,
+  });
+  const saved = process.env.DEEPSEEK_API_KEY;
+  delete process.env.DEEPSEEK_API_KEY;
+  try {
+    expect(await asking(keyless)).toContain('No API key for provider "deepseek"');
+  } finally {
+    if (saved !== undefined) process.env.DEEPSEEK_API_KEY = saved;
+  }
+});

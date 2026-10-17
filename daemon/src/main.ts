@@ -2,6 +2,7 @@
 //
 // Env: SUITE_SOCKET, SUITE_DATA_DIR (see paths.ts), SUITE_PORT (TCP, default: any free port);
 // SUITE_AGENT=pi|echo (default pi); SUITE_SERVICES=none skips the background services (lsp);
+// SUITE_TITLES=off keeps a model from writing session titles (/title still does, see titles.ts);
 // guests (Claude Code, Codex) are configured in guests/config.ts (SUITE_GUESTS=none: none);
 // model and API key settings are read by the harness (see harness/src/config.ts).
 import { homedir } from "node:os";
@@ -35,6 +36,7 @@ async function main(): Promise<void> {
     defaultCwd: homedir(),
     theme: loadTheme(process.env, log),
     guests: loadGuestConfigs(),
+    titles: process.env.SUITE_TITLES !== "off",
   });
   log.info(`listening on ${paths.socket} and ${daemon.info.url}, data in ${paths.dataDir}`);
   const commands: string[][] = [];

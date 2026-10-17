@@ -43,6 +43,8 @@ export async function startTestDaemon(
     guests?: Record<string, GuestConfig>;
     /** The pi that delegate {agent: "pi"} uses, when the agent isn't pi. */
     pi?: Agent;
+    /** A model writes titles after a first message: off unless a test is about them. */
+    titles?: boolean;
     settingsTimeoutMs?: number;
   } = {},
 ): Promise<TestDaemon> {
@@ -56,6 +58,7 @@ export async function startTestDaemon(
     defaultCwd: dir,
     guests: options.guests,
     pi: options.pi,
+    titles: options.titles ?? false,
     settingsTimeoutMs: options.settingsTimeoutMs,
   });
   return { ...daemon, env, dir };

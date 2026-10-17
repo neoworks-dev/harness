@@ -27,6 +27,7 @@ import type { DaemonPaths } from "./paths.ts";
 import { type BusServer, type DaemonInfoFile, startServer } from "./server.ts";
 import { SessionManager } from "./sessions.ts";
 import { SessionStore } from "./store.ts";
+import { Titles } from "./titles.ts";
 
 import { VERSION } from "./version.ts";
 
@@ -48,6 +49,8 @@ export interface DaemonOptions {
    * `agent` when that is pi; tests give one with a fake model.
    */
   pi?: Agent;
+  /** Whether a model writes a session's title after its first message (default: yes). */
+  titles?: boolean;
   /** How long a harness gets to tell its options for session.settings; for tests. */
   settingsTimeoutMs?: number;
 }
@@ -66,6 +69,7 @@ export interface Daemon {
   actions: ActionRunner;
   commands: Commands;
   settings: Settings;
+  titles: Titles;
   /** Cancels running turns (waiting up to timeoutMs), closes listeners and the database. */
   stop(timeoutMs?: number): Promise<void>;
 }
@@ -145,6 +149,21 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     created: (sessionId) =>
       settings.inheritHarness(sessionId, (name) => name === agent.name || guests.has(name)),
   });
+  // After the summaries, so the start of a first message names the session before a model does.
+  const titles = new Titles({
+    store,
+    settings,
+    log,
+    main: agent.name,
+    can: (harness) =>
+      harness === agent.name ? agent.generateText !== undefined : guests.has(harness),
+    generate: (harness, params) =>
+      harness === agent.name && agent.generateText
+        ? agent.generateText(params)
+        : guests.generateText(harness, params),
+    changed: (session) => sessions.changed(session),
+    auto: options.titles ?? true,
+  });
   sessions.recoverInterruptedTurns();
   const delegate = createDelegate({
     guests,
@@ -191,6 +210,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     sessions,
     guests,
     settings,
+    titles,
     asker,
     log,
     main: agent.name,
@@ -256,6 +276,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     actions,
     commands,
     settings,
+    titles,
     async stop(timeoutMs = 2000) {
       await started.stop();
       await sessions.shutdown(timeoutMs);
