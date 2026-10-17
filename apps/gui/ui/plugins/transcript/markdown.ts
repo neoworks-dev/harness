@@ -28,7 +28,7 @@ export type MarkdownRow = RowBase &
   (
     | { kind: "paragraph"; spans: readonly Span[] }
     | { kind: "heading"; level: number; spans: readonly Span[] }
-    | { kind: "code"; code: string }
+    | { kind: "code"; code: string; language?: string }
     | { kind: "rule" }
   );
 
@@ -85,7 +85,7 @@ function flatten(blocks: readonly Block[], context: Context, out: MarkdownRow[])
         out.push({ ...base, kind: "heading", level: block.level, spans: block.spans });
         break;
       case "code_block":
-        out.push({ ...base, kind: "code", code: block.code });
+        out.push({ ...base, kind: "code", code: block.code, language: block.language });
         break;
       case "rule":
         out.push({ ...base, kind: "rule" });

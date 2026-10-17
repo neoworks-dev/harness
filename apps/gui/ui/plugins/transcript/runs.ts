@@ -22,8 +22,9 @@ export function spanStyle(span: Span, p: Palette): RunStyle {
   if (span.strike) style.strikethrough = true;
   if (span.code) {
     style.fontFamily = "mono";
-    style.fontSize = p.text.code;
-    style.background = p.surface;
+    // A run takes a background, no border or rounded corners: the chip is flat.
+    style.fontSize = 12;
+    style.background = p.raised;
   }
   if (isLink(span)) {
     style.color = p.accent;

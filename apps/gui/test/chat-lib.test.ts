@@ -9,10 +9,10 @@ import { columnWeights } from "../ui/plugins/transcript/table.ts";
 
 const p = paletteOf();
 
-test("inline code is mono on the surface, links are accent and underlined", () => {
+test("inline code is mono on a raised chip, links are accent and underlined", () => {
   expect(spanStyle({ text: "x", code: true }, p)).toMatchObject({
     fontFamily: "mono",
-    background: p.surface,
+    background: p.raised,
   });
   expect(spanStyle({ text: "x", bold: true, italic: true }, p)).toEqual({
     fontWeight: "bold",
