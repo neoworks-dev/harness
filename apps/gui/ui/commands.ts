@@ -54,6 +54,8 @@ declare module "@neoworks/svelte-gpui" {
     // and the file manager. Failures carry git's own words, shortened.
     /** This machine's name. */
     hostname: { args: null; result: string };
+    /** The clipboard's image saved to a file, or null when it holds none. */
+    clipboard_image: { args: null; result: string | null };
     /** The known editors found on PATH. */
     editors: { args: null; result: Editor[] };
     open_in_editor: { args: { editor: string; path: string }; result: null };

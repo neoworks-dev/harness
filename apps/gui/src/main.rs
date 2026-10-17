@@ -7,6 +7,7 @@
 //! cargo run --release -p suite-gui -- --bundle apps/gui/dist/gui.js
 //! ```
 
+mod clipboard;
 mod commands;
 mod desktop;
 mod git;

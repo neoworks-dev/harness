@@ -66,6 +66,8 @@
   });
 
   function key(event: KeyEvent): void {
+    // Ctrl-V also attaches an image on the clipboard; the input pastes any text itself.
+    if (event.ctrl && !event.alt && event.key.toLowerCase() === "v") void composer.pasteImage();
     const plain = !event.ctrl && !event.alt && !event.meta;
     switch (event.key) {
       case "Enter":

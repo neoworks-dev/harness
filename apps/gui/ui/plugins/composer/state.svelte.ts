@@ -1,7 +1,7 @@
 // What the input side holds: the draft, the `/` menu, the history and the question panel (a
 // permission or choice card answered in place of the input). The components draw it and the
 // plugin's keys call it, so they agree on what is open.
-import { clipboard, files, window } from "@neoworks/svelte-gpui";
+import { clipboard, files, invoke, window } from "@neoworks/svelte-gpui";
 import type { ViewItem } from "@suite/protocol/types";
 import type { CommandsService } from "../../kernel/services/commands.ts";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
@@ -163,6 +163,15 @@ class Composer {
     const picked = await files.pickFiles({ multiple: true, prompt: "Attach files" });
     if (!picked) return;
     this.attachments = [...new Set([...this.attachments, ...picked])];
+  }
+
+  /**
+   * Ctrl-V: attaches the clipboard's image, if it holds one. Text still pastes into the input as
+   * usual; this only adds the image.
+   */
+  async pasteImage(): Promise<void> {
+    const path = await invoke("clipboard_image", null).catch(() => null);
+    if (path) this.attachments = [...this.attachments, path];
   }
 
   detach(path: string): void {

@@ -6,7 +6,7 @@ use std::process::Command;
 use serde_json::{Value, json};
 use svelte_gpui::{CommandError, Commands};
 
-use crate::{desktop, git, github, workspace};
+use crate::{clipboard, desktop, git, github, workspace};
 
 pub fn all() -> Commands {
     let commands = Commands::new()
@@ -15,8 +15,8 @@ pub fn all() -> Commands {
         .command("git_branch", |args| {
             Ok::<_, CommandError>(json!(git_branch(args["cwd"].as_str().unwrap_or(""))))
         });
-    desktop::register(workspace::register(github::register(git::register(
-        commands,
+    clipboard::register(desktop::register(workspace::register(github::register(
+        git::register(commands),
     ))))
 }
 
