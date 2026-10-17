@@ -17,7 +17,11 @@ suite gui --new             # a new session in this directory
 
 ## What you see
 
-- **Sessions** (left, Ctrl-S shows or hides it). Every session, grouped by project and, under it, by worktree (`<repo>/.worktrees/<name>` or any linked worktree). The newest activity is first. Each shows its title, the lines its edits changed (`+12 −3`), the last thing said and how long ago. The session you are in has a bar in the margin; one that is working has a spinner; one that finished while you looked elsewhere has a green dot and a bold title until you open it, and the header counts them (`3 done`). A session that another one delegated to sits under its parent with `↳`. Press a row to open it, `+ New` to start a session in this directory.
+- **Sessions** (left, Ctrl-S shows or hides it). Every session, grouped by project and, under it, by worktree (`<repo>/.worktrees/<name>` or any linked worktree). The newest activity is first. Each shows its title, the lines its edits changed (`+12 −3`), the last thing said and how long ago. The session you are in has a bar in the margin; one that finished while you looked elsewhere has a bold title until you open it, and the header counts them (`3 done`). A session that another one delegated to sits under its parent with `↳`. Press a row to open it.
+  - **Search** (Ctrl-Shift-F) replaces the list with the sessions whose title, last message or project holds every word typed, titles first; Up and Down walk the results, Enter opens one, Esc clears. It searches what the daemon lists, not whole conversations.
+  - The header's buttons **filter by project** (a popover of the projects; the choice is kept while the window is open), **add a project** (the system's folder picker, then a new session in the folder) and start a **new session** in the shown session's project (Shift asks which project).
+  - **Pin** a session to keep it at the top, or **settle** it to fold it away under "Settled (n)" at the bottom until it does something again. Both are in the row's right-press menu, with the folder and id to copy and a project filter; hovering a row shows a Settle button where its age is. Pins and settled sessions are kept in `suite-gui/sessions.json` in the data directory.
+  - Where a row shows its age it shows what the session is doing instead: a blue spinner and `Working 12s` while it runs (counted from when the window first saw it run), a green `Done` once it finished while you looked elsewhere.
 - **The chat** (middle), the input under it, and the status line at the bottom.
 - **Agents** (under the input). While a subagent or guest runs, and for a few seconds after, one row each: its harness and model, what it is doing, how long it has run and its tokens. Press a row (or Enter on it) to read that agent's own chat, `stop` (or `x`) to end it. An agent working in a worktree of its own opens that session instead.
 - **Plan and files** (right, only when there is something to show and the window is wide enough). The plan is the agent's todo list, and each guest's. Files are what git says changed in the session's directory plus what the agent touched, tagged by who (`(agent)`, `(claude)`); press one to see its diff.
@@ -25,17 +29,18 @@ suite gui --new             # a new session in this directory
 
 ## Keys
 
-| Key       | What                                                        |
-| --------- | ----------------------------------------------------------- |
-| Ctrl-S    | show or hide the sessions                                   |
-| F6        | the sessions get the keyboard (again to leave)              |
-| Ctrl-N    | a new session                                               |
-| Ctrl-X    | the agents list gets the keyboard (again, or Esc, to leave) |
-| Ctrl-R    | the GitHub view (again to close)                            |
-| Ctrl-O    | tool results in full                                        |
-| Ctrl-T    | the agent's thoughts                                        |
-| Shift-Tab | approvals: ask, review, edits, auto                         |
-| Esc       | closes what is open; else cancels the running turn          |
+| Key          | What                                                        |
+| ------------ | ----------------------------------------------------------- |
+| Ctrl-S       | show or hide the sessions                                   |
+| F6           | the sessions get the keyboard (again to leave)              |
+| Ctrl-N       | a new session                                               |
+| Ctrl-Shift-F | search the sessions                                         |
+| Ctrl-X       | the agents list gets the keyboard (again, or Esc, to leave) |
+| Ctrl-R       | the GitHub view (again to close)                            |
+| Ctrl-O       | tool results in full                                        |
+| Ctrl-T       | the agent's thoughts                                        |
+| Shift-Tab    | approvals: ask, review, edits, auto                         |
+| Esc          | closes what is open; else cancels the running turn          |
 
 In the sessions: Up/Down (or j/k) move, `[` and `]` jump between projects and worktrees, Home/End go to the ends, Enter opens, Esc leaves.
 
