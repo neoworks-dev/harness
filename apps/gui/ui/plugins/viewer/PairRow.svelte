@@ -6,6 +6,7 @@
   import { useCtx } from "../../kernel/slots/context.ts";
   import { LINE_HEIGHT } from "./rows.ts";
   import type { Cell } from "./split.ts";
+  import type { Token } from "./syntax.ts";
   import SideCell from "./SideCell.svelte";
   import { viewer } from "./state.svelte.ts";
 
@@ -13,17 +14,21 @@
     path: string;
     left?: Cell;
     right?: Cell;
+    leftTokens?: Token[];
+    rightTokens?: Token[];
   }
 
-  let { path, left, right }: Props = $props();
+  let { path, left, right, leftTokens, rightTokens }: Props = $props();
 
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
   const colors = $derived(viewerColors(p));
+  /** A removed line opposite an added one: each shows what changed against the other. */
+  const rewritten = $derived(left?.line.kind === "remove" && right?.line.kind === "add");
 </script>
 
 <View style={{ direction: "row", minHeight: LINE_HEIGHT, height: viewer.wrap ? undefined : LINE_HEIGHT }}>
-  <SideCell {path} cell={left} side="old" />
+  <SideCell {path} cell={left} side="old" tokens={leftTokens} partner={rewritten ? right?.line.text : undefined} />
   <View style={{ width: 1, background: colors.numbers }} />
-  <SideCell {path} cell={right} side="new" />
+  <SideCell {path} cell={right} side="new" tokens={rightTokens} partner={rewritten ? left?.line.text : undefined} />
 </View>

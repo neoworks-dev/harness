@@ -2,7 +2,8 @@
   // A file opened from the diff: its text as it is on disk, with line numbers (pressing one selects
   // the line for a comment). Long files show their first lines, with a notice.
   import { untrack } from "svelte";
-  import { List, Text, View } from "@neoworks/svelte-gpui/ui";
+  import { Text, View } from "@neoworks/svelte-gpui/ui";
+  import type { Layout } from "@neoworks/svelte-gpui/ui";
   import clockwise from "@phosphor-icons/core/regular/arrow-clockwise.svg";
   import wrapIcon from "@phosphor-icons/core/regular/arrow-u-down-left.svg";
   import { useCtx } from "../../kernel/slots/context.ts";
@@ -11,9 +12,12 @@
   import CopyPath from "./CopyPath.svelte";
   import IconButton from "./IconButton.svelte";
   import FileLine from "./FileLine.svelte";
-  import { numberWidth } from "./look.ts";
+  import { forFile } from "./highlights.ts";
+  import { CHAR_WIDTH, numberWidth } from "./look.ts";
+  import { EDITOR_HEIGHT, LINE_HEIGHT } from "./rows.ts";
   import { span } from "./selection.ts";
   import { FILE_LINES, fileView, viewer } from "./state.svelte.ts";
+  import VirtualList from "./VirtualList.svelte";
 
   type Entry =
     | { kind: "line"; key: string; index: number; text: string }
@@ -41,8 +45,10 @@
     if (text.total === 0) return "The file is empty.";
     return undefined;
   });
+  const light = $derived(text?.status === "ready" ? forFile(path, text.lines) : undefined);
   const cut = $derived(text?.status === "ready" && text.total > FILE_LINES ? text.total : undefined);
-  let list: ReturnType<typeof List<Entry>> | undefined = $state();
+  let list: ReturnType<typeof VirtualList<Entry>> | undefined = $state();
+  let width = $state(0);
 
   // A new selection opens the comment's editor: bring it into view.
   $effect(() => {
@@ -54,6 +60,15 @@
   });
 
   const digits = $derived(text?.status === "ready" ? String(text.lines.length).length : 1);
+  /** How many characters of code fit a row, for guessing how tall a wrapped line is. */
+  const chars = $derived(
+    viewer.wrap ? Math.max(10, Math.floor((width - numberWidth(digits) - 10) / CHAR_WIDTH)) : Number.POSITIVE_INFINITY,
+  );
+
+  function heightOf(entry: Entry): number {
+    if (entry.kind === "editor") return EDITOR_HEIGHT;
+    return Math.max(1, Math.ceil(entry.text.length / chars)) * LINE_HEIGHT;
+  }
 </script>
 
 <View
@@ -92,13 +107,28 @@
       </Text>
     </View>
   {/if}
-  <List bind:this={list} items={entries} key={(entry) => entry.key} style={{ flex: 1, minHeight: 0 }}>
-    {#snippet row(entry: Entry)}
-      {#if entry.kind === "line"}
-        <FileLine {path} index={entry.index} text={entry.text} width={numberWidth(digits)} />
-      {:else}
-        <CommentEditor />
-      {/if}
-    {/snippet}
-  </List>
+  <View style={{ flex: 1, minHeight: 0 }} onresize={(box: Layout) => (width = box.width)}>
+    <VirtualList
+      bind:this={list}
+      items={entries}
+      key={(entry) => entry.key}
+      height={heightOf}
+      measure={(entry) => viewer.wrap && entry.kind === "line" && entry.text.length > chars * 0.7}
+      style={{ flex: 1, minHeight: 0 }}
+    >
+      {#snippet row(entry: Entry)}
+        {#if entry.kind === "line"}
+          <FileLine
+            {path}
+            index={entry.index}
+            text={entry.text}
+            width={numberWidth(digits)}
+            tokens={light?.tokens(entry.index)}
+          />
+        {:else}
+          <CommentEditor />
+        {/if}
+      {/snippet}
+    </VirtualList>
+  </View>
 {/if}

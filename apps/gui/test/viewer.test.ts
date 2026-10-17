@@ -1,7 +1,16 @@
 import { expect, test } from "bun:test";
 import type { DiffLine } from "@suite/protocol/types";
 import { fold } from "../ui/plugins/viewer/fold.ts";
-import { buildRows, fileAt, offsets, withEditor, type Layout } from "../ui/plugins/viewer/rows.ts";
+import {
+  buildRows,
+  guessHeight,
+  headers,
+  LINE_HEIGHT,
+  maybeWraps,
+  withEditor,
+  type Layout,
+  type Row,
+} from "../ui/plugins/viewer/rows.ts";
 import { quoteDiff, quoteFile, select, selected, span } from "../ui/plugins/viewer/selection.ts";
 import { splitRows } from "../ui/plugins/viewer/split.ts";
 
@@ -144,7 +153,10 @@ test("rows are a header and the folded lines of each file; a collapsed file is i
 
 test("the split layout has a row per pair", () => {
   const rows = buildRows([{ path: "a.ts", lines: file(8, [4]) }], layout({ split: true }));
-  expect(rows.map((row) => row.kind)).toEqual(["file", ...Array<string>(8).fill("pair")]);
+  expect(rows.map((row) => row.kind)).toEqual([
+    "file",
+    ...Array.from({ length: 8 }, () => "pair" as const),
+  ]);
 });
 
 test("the editor goes under the last selected line, or at the end of the file's rows", () => {
@@ -162,29 +174,31 @@ test("the editor goes under the last selected line, or at the end of the file's 
   expect(far.at(-1)?.kind).toBe("editor");
 });
 
-test("the sticky header follows the file at the top of the list", () => {
+test("each file's header is found among the rows", () => {
   const files = [
     { path: "a.ts", lines: file(8, [4]) },
     { path: "b.ts", lines: file(8, [4]) },
   ];
   const rows = buildRows(files, layout());
-  const starts = offsets(rows, 80);
-  expect(starts).toHaveLength(rows.length + 1);
-  expect(fileAt(rows, starts, 0)).toBe(0);
-  const second = rows.findIndex((row) => row.kind === "file" && row.file === 1);
-  expect(fileAt(rows, starts, (starts[second] ?? 0) - 1)).toBe(0);
-  expect(fileAt(rows, starts, starts[second] ?? 0)).toBe(1);
-  expect(fileAt(rows, starts, 99999)).toBe(1);
-  expect(fileAt([], [0], 0)).toBeUndefined();
+  const starts = headers(rows);
+  expect(starts).toHaveLength(2);
+  expect(starts[0]).toBe(0);
+  expect(rows[starts[1] ?? -1]).toMatchObject({ kind: "file", file: 1 });
 });
 
-test("a wrapped line is guessed taller", () => {
+test("a wrapped line is guessed taller, and only a line that may wrap is measured", () => {
   const rows = buildRows(
     [{ path: "a.ts", lines: [{ kind: "add", text: "x".repeat(100), new: 1 }] }],
     layout(),
   );
-  expect(offsets(rows, 40).at(-1)).toBe(32 + 3 * 20);
-  expect(offsets(rows, 400).at(-1)).toBe(32 + 20);
+  const line = rows[1] as Row;
+  expect(guessHeight(line, 40)).toBe(3 * LINE_HEIGHT);
+  expect(guessHeight(line, 400)).toBe(LINE_HEIGHT);
+  expect(maybeWraps(line, 40)).toBe(true);
+  expect(maybeWraps(line, 120)).toBe(true);
+  expect(maybeWraps(line, 400)).toBe(false);
+  expect(maybeWraps(line, Number.POSITIVE_INFINITY)).toBe(false);
+  expect(maybeWraps(rows[0] as Row, 10)).toBe(false);
 });
 
 test("pressing a line selects it, shift stretches the range within the same view", () => {

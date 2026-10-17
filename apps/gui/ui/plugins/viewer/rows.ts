@@ -4,12 +4,16 @@
 import type { DiffLine } from "@suite/protocol/types";
 import { diffStats } from "../../lib/diff.ts";
 import type { FileDiff } from "../../lib/unified.ts";
+import { fileStatus, type Status } from "./filetree.ts";
 import { fold } from "./fold.ts";
+import { partners } from "./inline.ts";
 import { splitRows, type Cell } from "./split.ts";
 
-export const HEADER_HEIGHT = 32;
+export const HEADER_HEIGHT = 36;
+/** The room above every file's header but the first, which sets the files apart. */
+export const FILE_GAP = 8;
 export const LINE_HEIGHT = 20;
-export const FOLD_HEIGHT = 24;
+export const FOLD_HEIGHT = 28;
 export const EDITOR_HEIGHT = 132;
 
 interface Base {
@@ -20,8 +24,15 @@ interface Base {
 }
 
 export type Row =
-  | (Base & { kind: "file"; path: string; added: number; removed: number; collapsed: boolean })
-  | (Base & { kind: "line"; index: number; line: DiffLine })
+  | (Base & {
+      kind: "file";
+      path: string;
+      added: number;
+      removed: number;
+      status: Status;
+      collapsed: boolean;
+    })
+  | (Base & { kind: "line"; index: number; line: DiffLine; partner?: string })
   | (Base & { kind: "pair"; left?: Cell; right?: Cell })
   | (Base & { kind: "fold"; id: number; count: number })
   | (Base & { kind: "hunk"; text: string })
@@ -49,6 +60,7 @@ export function buildRows(files: readonly FileDiff[], layout: Layout): Row[] {
       path: file.path,
       added: stats.added,
       removed: stats.removed,
+      status: fileStatus(file.lines),
       collapsed,
     });
     if (collapsed) return;
@@ -58,10 +70,14 @@ export function buildRows(files: readonly FileDiff[], layout: Layout): Row[] {
     }
     const blocks = fold(file.lines, (id) => layout.isOpen(file.path, id));
     if (!layout.split) {
+      const rewritten = partners(file.lines);
       for (const block of blocks) {
         if (block.kind === "line") {
           const { index, line } = block;
-          rows.push({ kind: "line", key: `${f}:${index}`, file: f, index, line });
+          const partner = rewritten.get(index);
+          const row: Row = { kind: "line", key: `${f}:${index}`, file: f, index, line };
+          if (partner !== undefined) row.partner = partner;
+          rows.push(row);
         } else if (block.kind === "hunk") {
           rows.push({ kind: "hunk", key: `${f}:h${block.index}`, file: f, text: block.text });
         } else {
@@ -115,13 +131,13 @@ export function withEditor(rows: readonly Row[], file: number, line: number): Ro
   return [...rows.slice(0, at + 1), editor, ...rows.slice(at + 1)];
 }
 
-/** How tall a row is expected to be, for placing the sticky header; `chars` fit a line of code. */
+/** How tall a row is, or (a wrapped line) is expected to be; `chars` fit a line of code. */
 export function guessHeight(row: Row, chars: number): number {
   const wrapped = (text: string): number =>
     Math.max(1, Math.ceil(text.length / chars)) * LINE_HEIGHT;
   switch (row.kind) {
     case "file":
-      return HEADER_HEIGHT;
+      return HEADER_HEIGHT + (row.file > 0 ? FILE_GAP : 0);
     case "fold":
     case "hunk":
       return FOLD_HEIGHT;
@@ -136,31 +152,20 @@ export function guessHeight(row: Row, chars: number): number {
   }
 }
 
-/** Where each row begins, and (last) where the list ends, from the guessed heights. */
-export function offsets(rows: readonly Row[], chars: number): number[] {
-  const out: number[] = [];
-  let y = 0;
-  for (const row of rows) {
-    out.push(y);
-    y += guessHeight(row, chars);
-  }
-  out.push(y);
-  return out;
+/** Whether a row's text may wrap at `chars` characters, so that its height is only a guess. */
+export function maybeWraps(row: Row, chars: number): boolean {
+  const long = (text: string): boolean => text.length > chars * 0.7;
+  if (row.kind === "line") return long(row.line.text);
+  if (row.kind === "pair")
+    return long(row.left?.line.text ?? "") || long(row.right?.line.text ?? "");
+  return false;
 }
 
-/** The file whose rows are at scroll position `y`. */
-export function fileAt(
-  rows: readonly Row[],
-  starts: readonly number[],
-  y: number,
-): number | undefined {
-  if (rows.length === 0) return undefined;
-  let low = 0;
-  let high = rows.length - 1;
-  while (low < high) {
-    const mid = Math.ceil((low + high) / 2);
-    if ((starts[mid] ?? 0) <= y) low = mid;
-    else high = mid - 1;
-  }
-  return rows[low]?.file;
+/** Where each file's header is among the rows. */
+export function headers(rows: readonly Row[]): number[] {
+  const out: number[] = [];
+  rows.forEach((row, index) => {
+    if (row.kind === "file") out[row.file] = index;
+  });
+  return out;
 }

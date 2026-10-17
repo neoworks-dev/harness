@@ -33,6 +33,21 @@ export interface Palette {
   /** Pixels. */
   space: { s: number; m: number; l: number };
   text: { title: number; body: number; code: number };
+  /** What code is highlighted with: a colour for each kind of word, light enough for the dark greys. */
+  syntax: Syntax;
+}
+
+export interface Syntax {
+  keyword: string;
+  string: string;
+  number: string;
+  comment: string;
+  function: string;
+  type: string;
+  constant: string;
+  tag: string;
+  attr: string;
+  property: string;
 }
 
 /** protocol/themes/default.json; a test keeps the two in step. */
@@ -101,6 +116,25 @@ const SIDE = {
   muted: NEUTRAL.muted,
 };
 
+/**
+ * The theme's own colours where it has the hue (the accent for functions, success for strings,
+ * danger for tags), and a few more that no theme names, tuned for the near-black greys.
+ */
+function syntaxOf(colors: Theme["colors"]): Syntax {
+  return {
+    keyword: "#bb9af7",
+    string: colors.success,
+    number: "#ff9e64",
+    comment: blend(NEUTRAL.muted, NEUTRAL.bg, 22),
+    function: colors.accent,
+    type: "#2ac3de",
+    constant: "#e0af68",
+    tag: colors.danger,
+    attr: "#73daca",
+    property: "#7dcfff",
+  };
+}
+
 export function paletteOf(theme: Theme = DEFAULT_THEME): Palette {
   const { colors, spacing, text } = theme;
   return {
@@ -114,5 +148,6 @@ export function paletteOf(theme: Theme = DEFAULT_THEME): Palette {
     radius: { s: 8, m: 10, l: 18 },
     space: { s: spacing.s, m: spacing.m, l: spacing.l },
     text: { title: text.title.size, body: text.body.size, code: text.code.size },
+    syntax: syntaxOf(colors),
   };
 }

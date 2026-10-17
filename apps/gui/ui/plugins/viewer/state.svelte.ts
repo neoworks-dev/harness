@@ -17,6 +17,8 @@ import { NO_TURN, applyTurn, turnDiffs, turnEdits, type Turn } from "./turn.ts";
 
 export const MIN_WIDTH = 360;
 export const DEFAULT_WIDTH = 540;
+/** The panel is this wide or wider: the file tree opens by itself. */
+export const TREE_WIDTH = 700;
 
 /** Files bigger than this are not read. */
 const FILE_BYTES = 5 * 1024 * 1024;
@@ -41,6 +43,31 @@ const NO_FILES: readonly FileDiff[] = [];
 interface Changes {
   files: readonly FileDiff[];
   error?: string;
+}
+
+/** A file's diff as git said it, and what it parsed to. */
+interface Reading {
+  text: string;
+  file: FileDiff;
+}
+
+/** Files git is asked about at once. */
+const ASKS = 8;
+
+function diffLines(text: string): FileDiff["lines"] {
+  return parseUnified(text)
+    .flatMap((file) => file.lines)
+    .filter((line) => line.kind !== "hunk");
+}
+
+/** Whether two readings list the very same files. */
+function sameChanges(a: Changes | undefined, b: Changes): boolean {
+  return (
+    a !== undefined &&
+    a.error === b.error &&
+    a.files.length === b.files.length &&
+    a.files.every((file, i) => file === b.files[i])
+  );
 }
 
 /** A file tab's text, as far as it is read. */
@@ -92,6 +119,14 @@ class Viewer {
   draft = $state("");
   /** The file the diff tab should bring into view: a new `seq` asks again. */
   reveal = $state.raw<{ path: string; seq: number }>();
+  /** The file at the top of the diff (or the one pressed in the tree, while its header is in view). */
+  current = $state<string>();
+  /** The file the tree was pressed on, until the diff scrolls it out of view. */
+  pinned = $state<string>();
+  /** Whether the file tree is asked for or not; undefined leaves it to the panel's width. */
+  treeChoice = $state<boolean>();
+  /** Folders of the file tree that are folded. */
+  closedDirs = $state.raw<ReadonlySet<string>>(new Set());
   texts = $state.raw<Readonly<Record<string, FileText>>>({});
 
   private readonly turnFold = new Folded<Turn>(NO_TURN, (state, record, daemon) =>
@@ -100,6 +135,8 @@ class Viewer {
   private services?: Services;
   private asking = false;
   private again = false;
+  /** What the last reading made of each file, to keep the object of one that did not change. */
+  private seen = new Map<string, Reading>();
   private revealSeq = 0;
 
   /** What the agent did this turn. */
@@ -113,6 +150,12 @@ class Viewer {
     if (this.scope === "turn") return turnDiffs(turnEdits(this.turn));
     return this.changes?.files ?? NO_FILES;
   });
+
+  /** The file tree is drawn beside the diff: when asked for, else when the panel is wide and there is more than a file. */
+  get treeShown(): boolean {
+    if (this.treeChoice !== undefined) return this.treeChoice;
+    return this.diffs.length > 1 && (this.maximized || this.width >= TREE_WIDTH);
+  }
 
   /** Lines added and removed in all of them. */
   totals = $derived.by(() => {
@@ -188,6 +231,9 @@ class Viewer {
     this.active = "diff";
     this.collapsed = new Set();
     this.unfolded = new Set();
+    this.closedDirs = new Set();
+    this.current = undefined;
+    this.pinned = undefined;
     this.texts = {};
     this.clearSelection();
   }
@@ -268,6 +314,23 @@ class Viewer {
     this.collapsed = next;
   }
 
+  toggleTree(): void {
+    this.treeChoice = !this.treeShown;
+  }
+
+  toggleDir(path: string): void {
+    const next = new Set(this.closedDirs);
+    if (!next.delete(path)) next.add(path);
+    this.closedDirs = next;
+  }
+
+  /** Brings a file's diff to the top, from the tree. */
+  goto(path: string): void {
+    this.current = path;
+    this.pinned = path;
+    this.reveal = { path, seq: (this.revealSeq += 1) };
+  }
+
   /** Every file folded to its header, or, when all are, every one open. */
   toggleAll(): void {
     const paths = this.diffs.map((file) => file.path);
@@ -308,7 +371,8 @@ class Viewer {
     const cwd = services.daemon.cwd;
     try {
       const read = await this.readWorkingTree(services.git, cwd);
-      if (cwd === services.daemon.cwd) this.changes = read;
+      // The same files as before are no news: nothing downstream rebuilds.
+      if (cwd === services.daemon.cwd && !sameChanges(this.changes, read)) this.changes = read;
     } finally {
       this.asking = false;
       this.busy = false;
@@ -329,19 +393,25 @@ class Viewer {
         .map((entry) => ({ rel: relFromPrefix(status.prefix, entry.path), change: entry.change }))
         .filter((entry) => !entry.rel.endsWith("/"));
       const listed: FileDiff[] = [];
-      for (const entry of entries) {
-        const text = await git.diff({
-          cwd,
-          path: entry.rel,
-          untracked: entry.change === "untracked",
-          full: true,
+      const kept = new Map<string, Reading>();
+      for (let at = 0; at < entries.length; at += ASKS) {
+        const batch = entries.slice(at, at + ASKS);
+        const texts = await Promise.all(
+          batch.map((entry) =>
+            git.diff({ cwd, path: entry.rel, untracked: entry.change === "untracked", full: true }),
+          ),
+        );
+        batch.forEach((entry, i) => {
+          const text = texts[i] ?? "";
+          const before = this.seen.get(entry.rel);
+          // The whole file is one hunk; its header says nothing the lines do not.
+          const file =
+            before?.text === text ? before.file : { path: entry.rel, lines: diffLines(text) };
+          kept.set(entry.rel, { text, file });
+          listed.push(file);
         });
-        // The whole file is one hunk; its header says nothing the lines do not.
-        const lines = parseUnified(text)
-          .flatMap((file) => file.lines)
-          .filter((line) => line.kind !== "hunk");
-        listed.push({ path: entry.rel, lines });
       }
+      this.seen = kept;
       return { files: listed };
     } catch (error) {
       return { files: NO_FILES, error: failure(error) };
@@ -371,7 +441,13 @@ class Viewer {
       }
       const all = splitLines(await disk.readText(target));
       const lines = all.length > FILE_LINES ? all.slice(0, FILE_LINES) : all;
-      if (this.tabs.some((tab) => tab.id === fileView(path))) {
+      const before = this.texts[path];
+      // A file that did not change keeps its lines, and what was worked out of them.
+      const same =
+        before?.status === "ready" &&
+        before.total === all.length &&
+        before.lines.every((line, i) => line === lines[i]);
+      if (!same && this.tabs.some((tab) => tab.id === fileView(path))) {
         this.setText(path, { status: "ready", lines, total: all.length });
       }
     } catch (error) {
