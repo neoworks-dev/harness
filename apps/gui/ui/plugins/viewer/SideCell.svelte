@@ -9,15 +9,17 @@
   import { LINE_HEIGHT } from "./rows.ts";
   import { selected as isSelected } from "./selection.ts";
   import type { Cell } from "./split.ts";
+  import type { Token } from "./syntax.ts";
   import { diffView, viewer } from "./state.svelte.ts";
 
   interface Props {
     path: string;
     cell?: Cell;
     side: "old" | "new";
+    tokens?: Token[];
   }
 
-  let { path, cell, side }: Props = $props();
+  let { path, cell, side, tokens }: Props = $props();
 
   const { daemon, comments } = useCtx();
   const p = $derived(daemon.palette);
@@ -61,7 +63,7 @@
         color: line.kind === "add" ? p.success : p.danger,
       }}
     >{markOf(line.kind)}</Text>
-    <Code text={line.text} />
+    <Code text={line.text} {tokens} />
     {#if marked}
       <View style={{ position: "absolute", left: 3, top: 7, size: 6, radius: 3, background: p.accent }} />
     {/if}

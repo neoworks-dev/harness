@@ -6,6 +6,7 @@
   import { LINE_HEIGHT } from "./rows.ts";
   import Code from "./Code.svelte";
   import { selected as isSelected } from "./selection.ts";
+  import type { Token } from "./syntax.ts";
   import { fileView, viewer } from "./state.svelte.ts";
 
   interface Props {
@@ -15,9 +16,10 @@
     text: string;
     /** The width of the numbers' column. */
     width: number;
+    tokens?: Token[];
   }
 
-  let { path, index, text, width }: Props = $props();
+  let { path, index, text, width, tokens }: Props = $props();
 
   const { daemon, comments } = useCtx();
   const p = $derived(daemon.palette);
@@ -43,7 +45,7 @@
       style={{ width, textAlign: "right", paddingRight: 8, fontFamily: "mono", fontSize: 12, lineHeight: LINE_HEIGHT, color: p.muted }}
     >{index + 1}</Text>
   </View>
-  <Code {text} inset={10} />
+  <Code {text} {tokens} inset={10} />
   {#if marked}
     <View style={{ position: "absolute", left: 3, top: 7, size: 6, radius: 3, background: p.accent }} />
   {/if}

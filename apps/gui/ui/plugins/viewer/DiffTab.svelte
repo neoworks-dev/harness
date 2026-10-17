@@ -14,9 +14,11 @@
   import LineRow from "./LineRow.svelte";
   import { CHAR_WIDTH, numberWidth } from "./look.ts";
   import PairRow from "./PairRow.svelte";
+  import { forDiff } from "./highlights.ts";
   import { buildRows, guessHeight, headers, HEADER_HEIGHT, maybeWraps, withEditor, type Row } from "./rows.ts";
   import { span } from "./selection.ts";
   import { diffView, viewer } from "./state.svelte.ts";
+  import type { Token } from "./syntax.ts";
   import VirtualList from "./VirtualList.svelte";
 
   const { daemon } = useCtx();
@@ -89,6 +91,13 @@
     return viewer.diffs[file]?.path ?? "";
   }
 
+  /** The runs of line `index` of file `file`, scanned when the row is first drawn. */
+  function runsOf(file: number, index: number | undefined): Token[] | undefined {
+    const diff = viewer.diffs[file];
+    if (diff === undefined || index === undefined) return undefined;
+    return forDiff(diff.path, diff.lines)?.tokens(index);
+  }
+
   function sized(box: Layout): void {
     width = box.width;
   }
@@ -123,9 +132,15 @@
         {#if entry.kind === "file"}
           <FileHeader path={entry.path} added={entry.added} removed={entry.removed} collapsed={entry.collapsed} />
         {:else if entry.kind === "line"}
-          <LineRow path={pathOf(entry.file)} index={entry.index} line={entry.line} />
+          <LineRow path={pathOf(entry.file)} index={entry.index} line={entry.line} tokens={runsOf(entry.file, entry.index)} />
         {:else if entry.kind === "pair"}
-          <PairRow path={pathOf(entry.file)} left={entry.left} right={entry.right} />
+          <PairRow
+            path={pathOf(entry.file)}
+            left={entry.left}
+            right={entry.right}
+            leftTokens={runsOf(entry.file, entry.left?.index)}
+            rightTokens={runsOf(entry.file, entry.right?.index)}
+          />
         {:else if entry.kind === "fold"}
           <FoldRow
             text={`${entry.count} unmodified lines`}

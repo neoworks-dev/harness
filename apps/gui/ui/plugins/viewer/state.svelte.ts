@@ -405,7 +405,13 @@ class Viewer {
       }
       const all = splitLines(await disk.readText(target));
       const lines = all.length > FILE_LINES ? all.slice(0, FILE_LINES) : all;
-      if (this.tabs.some((tab) => tab.id === fileView(path))) {
+      const before = this.texts[path];
+      // A file that did not change keeps its lines, and what was worked out of them.
+      const same =
+        before?.status === "ready" &&
+        before.total === all.length &&
+        before.lines.every((line, i) => line === lines[i]);
+      if (!same && this.tabs.some((tab) => tab.id === fileView(path))) {
         this.setText(path, { status: "ready", lines, total: all.length });
       }
     } catch (error) {

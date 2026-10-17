@@ -3,6 +3,7 @@
   // the line for a comment), the mark and the text, on the green or red of a change.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import type { DiffLine } from "@suite/protocol/types";
+  import type { Token } from "./syntax.ts";
   import { viewerColors } from "../../lib/diff-colors.ts";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Code from "./Code.svelte";
@@ -15,9 +16,11 @@
     path: string;
     index: number;
     line: DiffLine;
+    /** The line's runs, from the syntax highlighting. */
+    tokens?: Token[];
   }
 
-  let { path, index, line }: Props = $props();
+  let { path, index, line, tokens }: Props = $props();
 
   const { daemon, comments } = useCtx();
   const p = $derived(daemon.palette);
@@ -68,7 +71,7 @@
       color: line.kind === "add" ? p.success : p.danger,
     }}
   >{markOf(line.kind)}</Text>
-  <Code text={line.text} />
+  <Code text={line.text} {tokens} />
   {#if marked}
     <View style={{ position: "absolute", left: 3, top: 7, size: 6, radius: 3, background: p.accent }} />
   {/if}

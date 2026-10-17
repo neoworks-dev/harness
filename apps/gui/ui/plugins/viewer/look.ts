@@ -15,13 +15,13 @@ const NBSP = "\u00a0";
 
 /**
  * A line of code as text that may wrap at its spaces yet keeps its indentation and the runs of
- * spaces inside it. `pre` text does not wrap, and plain text collapses its spaces.
+ * spaces inside it. `pre` text does not wrap, and plain text collapses its spaces. A run in the
+ * middle of a line (`start` false) may wrap at the spaces it starts with.
  */
-export function wrappable(text: string): string {
-  return text
-    .replace(/\t/g, NBSP.repeat(4))
-    .replace(/^ +/, (lead) => NBSP.repeat(lead.length))
-    .replace(/ {2,}/g, (run) => `${NBSP.repeat(run.length - 1)} `);
+export function wrappable(text: string, start = true): string {
+  const tabbed = text.replace(/\t/g, NBSP.repeat(4));
+  const indented = start ? tabbed.replace(/^ +/, (lead) => NBSP.repeat(lead.length)) : tabbed;
+  return indented.replace(/ {2,}/g, (run) => `${NBSP.repeat(run.length - 1)} `);
 }
 
 /** The mark in front of a changed line's text. */

@@ -12,6 +12,7 @@
   import CopyPath from "./CopyPath.svelte";
   import IconButton from "./IconButton.svelte";
   import FileLine from "./FileLine.svelte";
+  import { forFile } from "./highlights.ts";
   import { CHAR_WIDTH, numberWidth } from "./look.ts";
   import { EDITOR_HEIGHT, LINE_HEIGHT } from "./rows.ts";
   import { span } from "./selection.ts";
@@ -44,6 +45,7 @@
     if (text.total === 0) return "The file is empty.";
     return undefined;
   });
+  const light = $derived(text?.status === "ready" ? forFile(path, text.lines) : undefined);
   const cut = $derived(text?.status === "ready" && text.total > FILE_LINES ? text.total : undefined);
   let list: ReturnType<typeof VirtualList<Entry>> | undefined = $state();
   let width = $state(0);
@@ -116,7 +118,13 @@
     >
       {#snippet row(entry: Entry)}
         {#if entry.kind === "line"}
-          <FileLine {path} index={entry.index} text={entry.text} width={numberWidth(digits)} />
+          <FileLine
+            {path}
+            index={entry.index}
+            text={entry.text}
+            width={numberWidth(digits)}
+            tokens={light?.tokens(entry.index)}
+          />
         {:else}
           <CommentEditor />
         {/if}
