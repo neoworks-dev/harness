@@ -21,6 +21,7 @@ suite gui --new             # a new session in this directory
 - **The chat** (middle), the input under it, and the status line at the bottom.
 - **Agents** (under the input). While a subagent or guest runs, and for a few seconds after, one row each: its harness and model, what it is doing, how long it has run and its tokens. Press a row (or Enter on it) to read that agent's own chat, `stop` (or `x`) to end it. An agent working in a worktree of its own opens that session instead.
 - **Plan and files** (right, only when there is something to show and the window is wide enough). The plan is the agent's todo list, and each guest's. Files are what git says changed in the session's directory plus what the agent touched, tagged by who (`(agent)`, `(claude)`); press one to see its diff.
+- **Workspace** (Ctrl-G shows or hides it), a card floating at the conversation's top right: this machine and the session's folder (copy the path, show it in the file manager), **Open in** the editor last used (the others found on `PATH`: zed, code, cursor, windsurf, idea, subl), the branch (switch to a local one; it refuses while the tree has changes), **Commit & push** (Enter in the message field commits everything, and pushes if the branch has an upstream; or leave the commit to the agent) and **Changes** with the lines added and removed, which opens the whole diff.
 - **GitHub** (Ctrl-R), in place of the chat. The issues and pull requests of the project's repository, as `gh` finds it. Open one to read its description, comments, reviews and checks; **Send to the model** puts it into the conversation. It only reads: the app never writes to GitHub. It needs the [GitHub CLI](https://cli.github.com) installed and logged in (`gh auth login`).
 
 ## Keys
@@ -32,6 +33,7 @@ suite gui --new             # a new session in this directory
 | Ctrl-N    | a new session                                               |
 | Ctrl-X    | the agents list gets the keyboard (again, or Esc, to leave) |
 | Ctrl-R    | the GitHub view (again to close)                            |
+| Ctrl-G    | show or hide the workspace card                             |
 | Ctrl-O    | tool results in full                                        |
 | Ctrl-T    | the agent's thoughts                                        |
 | Shift-Tab | approvals: ask, review, edits, auto                         |

@@ -36,6 +36,8 @@ if [ -n "${SCENE:-}" ]; then
   git -C "$tmp/work" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m first
   printf 'one\nthree\n' >"$tmp/work/a.txt"
   printf 'fresh\n' >"$tmp/work/new.txt"
+  # SCENE_SETUP is a shell snippet run in the repository, e.g. SCENE_SETUP='git branch side'.
+  if [ -n "${SCENE_SETUP:-}" ]; then (cd "$tmp/work" && bash -c "$SCENE_SETUP"); fi
   SCENE_CWD="$tmp/work" SCENE_ELSEWHERE="$tmp/elsewhere" bun run "$root/apps/gui/scripts/scene-daemon.ts" >"$tmp/daemon.log" 2>&1 &
 else
   bun run "$root/daemon/src/main.ts" >"$tmp/daemon.log" 2>&1 &
