@@ -72,8 +72,9 @@ export class Commands {
    * /model, /effort, /mode and /harness offer as choices). Asks the harnesses in parallel; one that
    * fails or is too slow is listed without options and with the reason. Fetching a guest's options
    * starts its adapter for this session if it isn't running (it stays up, so asking again is quick).
+   * With `known`, nothing is started: a harness whose options aren't known yet is listed without.
    */
-  settings(session: string): Promise<HarnessSettings[]> {
+  settings(session: string, known = false): Promise<HarnessSettings[]> {
     const current = this.parts.harness(session);
     return Promise.all(
       this.parts.harnesses().map(async (name): Promise<HarnessSettings> => {
@@ -84,7 +85,9 @@ export class Commands {
           options: [],
         };
         try {
-          entry.options = await this.withTimeout(this.options(session, name), name);
+          entry.options = known
+            ? await this.knownOptions(session, name)
+            : await this.withTimeout(this.options(session, name), name);
         } catch (err) {
           entry.error = err instanceof Error ? err.message : String(err);
           this.parts.log.warn(`settings: ${name}: ${entry.error}`);
@@ -151,6 +154,12 @@ export class Commands {
   /** Whether the session manager runs it (the daemon's agent, the session's harness), not a guest. */
   private isSessionAgent(session: string, harness: string): boolean {
     return harness === this.parts.main || harness === this.parts.harness(session);
+  }
+
+  /** What a harness offers without starting anything; none when that isn't known yet. */
+  private async knownOptions(session: string, harness: string): Promise<ConfigOption[]> {
+    if (harness === this.parts.main) return this.parts.sessions.configOptions(session, harness);
+    return (await this.parts.guests.knownOptions(session, harness)) ?? [];
   }
 
   private options(session: string, harness: string): Promise<ConfigOption[]> {

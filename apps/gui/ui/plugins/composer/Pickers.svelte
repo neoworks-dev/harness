@@ -57,7 +57,7 @@
   <ModelPicker />
   {@render separator()}
   <PickerMenu
-    label={settings.effort ?? reasoning?.current ?? "Reasoning"}
+    label={settings.effort === undefined ? (reasoning?.current ?? "Reasoning") : daemon.label("thought_level", settings.effort)}
     title="Reasoning"
     choices={levels}
     current={settings.effort ?? reasoning?.current}

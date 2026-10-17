@@ -416,8 +416,8 @@ type SessionListPayload struct {
 
 // SessionSettings: Client → daemon: what the session's harnesses offer to set (model, effort, mode), for a picker. Replied to with session.settings_result. Setting a value needs no request of its own: send /model, /effort, /mode [harness] [value] and /harness <name> as session.input.
 type SessionSettings struct {
-	ID      string     `json:"id"`
-	Payload SessionRef `json:"payload"`
+	ID      string               `json:"id"`
+	Payload SessionSettingsQuery `json:"payload"`
 }
 
 func (SessionSettings) isEnvelope() {}
@@ -429,6 +429,12 @@ func (v SessionSettings) MarshalJSON() ([]byte, error) {
 		Tag string `json:"topic"`
 		plain
 	}{"session.settings", plain(v)})
+}
+
+type SessionSettingsQuery struct {
+	Session string `json:"session"`
+	// Only what the harnesses can say without starting anything: pi's own options and those of an adapter that already runs; the others are listed with `options: []` and no error. For a client that only needs the display name of the value the session shows (the label of the model it runs), not a picker.
+	Known *bool `json:"known,omitempty"`
 }
 
 type SessionSettingsResult struct {

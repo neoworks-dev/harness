@@ -309,10 +309,24 @@
           "type": "string"
         },
         "payload": {
-          "$ref": "#/$defs/SessionRef"
+          "$ref": "#/$defs/SessionSettingsQuery"
         }
       },
       "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "SessionSettingsQuery": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string"
+        },
+        "known": {
+          "type": "boolean",
+          "description": "Only what the harnesses can say without starting anything: pi's own options and those of an adapter that already runs; the others are listed with `options: []` and no error. For a client that only needs the display name of the value the session shows (the label of the model it runs), not a picker."
+        }
+      },
+      "required": ["session"],
       "additionalProperties": false
     },
     "SessionSettingsResult": {

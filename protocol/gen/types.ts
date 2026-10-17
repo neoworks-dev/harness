@@ -118,7 +118,13 @@ export interface SessionListPayload {
 export interface SessionSettings {
   topic: "session.settings";
   id: string;
-  payload: SessionRef;
+  payload: SessionSettingsQuery;
+}
+
+export interface SessionSettingsQuery {
+  session: string;
+  /** Only what the harnesses can say without starting anything: pi's own options and those of an adapter that already runs; the others are listed with `options: []` and no error. For a client that only needs the display name of the value the session shows (the label of the model it runs), not a picker. */
+  known?: boolean;
 }
 
 export interface SessionSettingsResult {

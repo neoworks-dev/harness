@@ -211,7 +211,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       assets,
       action: (action, from) => actions.run(action, from),
       command: (session, text) => commands.run(session, text),
-      settings: (session) => commands.settings(session),
+      settings: (session, known) => commands.settings(session, known),
     },
   );
   // The agent's write/edit results carry diffs; each one means a file changed on disk.

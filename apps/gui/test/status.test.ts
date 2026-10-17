@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
-import type { SessionEvent } from "@suite/protocol/types";
+import type { HarnessSettings, SessionEvent } from "@suite/protocol/types";
 import {
   applyEvent,
   currentSettings,
   initialStatus,
   nextApprovals,
+  optionLabel,
+  optionName,
   type SessionStatus,
 } from "../ui/lib/status.ts";
 
@@ -54,4 +56,36 @@ test("only the session's own agent's usage is shown", () => {
 test("approvals cycle ask, review, edits, auto", () => {
   expect(nextApprovals("ask")).toBe("review");
   expect(nextApprovals("auto")).toBe("ask");
+});
+
+const offered: HarnessSettings[] = [
+  {
+    name: "claude",
+    title: "Claude Code",
+    current: true,
+    options: [
+      {
+        category: "model",
+        current: "haiku",
+        values: [
+          { value: "default", name: "Default" },
+          { value: "haiku", name: "Haiku 5.5" },
+        ],
+      },
+    ],
+  },
+  { name: "codex", title: "Codex", current: false, options: [] },
+];
+
+test("a model shows under the name its harness gives it", () => {
+  expect(optionName(offered, "claude", "model", "haiku")).toBe("Haiku 5.5");
+  expect(optionLabel(offered, "claude", "model", "haiku")).toBe("Haiku 5.5");
+});
+
+test("a value the harness does not list shows as it is", () => {
+  expect(optionLabel(offered, "claude", "model", "opus")).toBe("opus");
+  expect(optionLabel(offered, "claude", "thought_level", "high")).toBe("high");
+  expect(optionLabel(offered, "codex", "model", "haiku")).toBe("haiku");
+  expect(optionLabel(offered, "unknown", "model", "haiku")).toBe("haiku");
+  expect(optionLabel([], "claude", "model", "haiku")).toBe("haiku");
 });

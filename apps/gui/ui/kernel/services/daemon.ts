@@ -78,9 +78,20 @@ export class DaemonService extends Service {
   send(text: string, images?: string[]): Promise<void> {
     return suite.send(text, images);
   }
-  /** What each harness the session can switch to offers. Asking may start a guest's adapter. */
-  settings(): ReturnType<typeof suite.settings> {
-    return suite.settings();
+  /**
+   * What each harness the session can switch to offers. Asking may start a guest's adapter,
+   * unless `known`: then it starts nothing and leaves out what is not known yet.
+   */
+  settings(known = false): ReturnType<typeof suite.settings> {
+    return suite.settings(known);
+  }
+  /** What the harnesses offered when last asked (the pickers' and the status line's names). */
+  get offered(): Store["offered"] {
+    return suite.offered;
+  }
+  /** The name a harness (by default the session's) gives a value of a setting (`Haiku 5.5`), else the value. */
+  label(category: "model" | "thought_level" | "mode", value: string, harness?: string): string {
+    return suite.label(category, value, harness);
   }
   cancel(): Promise<void> {
     return suite.cancel();

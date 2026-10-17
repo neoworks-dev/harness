@@ -648,7 +648,16 @@ pub struct SessionSettings {
     #[serde(rename = "id")]
     pub id: String,
     #[serde(rename = "payload")]
-    pub payload: SessionRef,
+    pub payload: SessionSettingsQuery,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionSettingsQuery {
+    #[serde(rename = "session")]
+    pub session: String,
+    /// Only what the harnesses can say without starting anything: pi's own options and those of an adapter that already runs; the others are listed with `options: []` and no error. For a client that only needs the display name of the value the session shows (the label of the model it runs), not a picker.
+    #[serde(rename = "known", default, skip_serializing_if = "Option::is_none")]
+    pub known: Option<bool>,
 }
 
 /// Tagged `topic: "session.settings_result"` inside [`Envelope`].

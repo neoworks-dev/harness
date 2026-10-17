@@ -250,7 +250,7 @@ describe("/harness", () => {
 });
 
 /** Asks for session.settings over the hub, as a client would; resolves with the reply frame. */
-function askSettings(daemon: TestDaemon, session: string): Promise<Envelope> {
+function askSettings(daemon: TestDaemon, session: string, known?: boolean): Promise<Envelope> {
   return new Promise((resolve, reject) => {
     const handle = daemon.hub.connect({
       send(frame) {
@@ -261,12 +261,20 @@ function askSettings(daemon: TestDaemon, session: string): Promise<Envelope> {
     });
     const send = (frame: Record<string, unknown>): void => handle.receive(JSON.stringify(frame));
     send({ topic: "bus.hello", payload: { protocol: 1, client: "test" } });
-    send({ topic: "session.settings", id: "1", payload: { session } });
+    send({
+      topic: "session.settings",
+      id: "1",
+      payload: known === undefined ? { session } : { session, known },
+    });
   });
 }
 
-async function settingsOf(daemon: TestDaemon, session: string): Promise<HarnessSettings[]> {
-  const reply = await askSettings(daemon, session);
+async function settingsOf(
+  daemon: TestDaemon,
+  session: string,
+  known?: boolean,
+): Promise<HarnessSettings[]> {
+  const reply = await askSettings(daemon, session, known);
   if (reply.topic !== "session.settings_result") throw new Error(`got ${reply.topic}`);
   expect(reply.id).toBe("1");
   return reply.payload.harnesses;
@@ -338,6 +346,27 @@ describe("session.settings", () => {
       "small",
       "high",
     ]);
+  });
+
+  test("known: starts nothing, so a guest is listed with options only once its adapter runs", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/harness fake");
+    const names = (harnesses: HarnessSettings[], harness: string): string[] =>
+      harnesses
+        .find((h) => h.name === harness)
+        ?.options.find((o) => o.category === "model")
+        ?.values.map((v) => v.name) ?? [];
+    const before = await settingsOf(daemon, session, true);
+    expect(before.map((h) => [h.name, h.current, h.options.length, h.error])).toEqual([
+      ["main", false, 0, undefined],
+      ["fake", true, 0, undefined],
+      ["other", false, 0, undefined],
+    ]);
+    // A turn starts the session's adapter; then its models are known, and the other guest's still not.
+    await say(daemon, session, "hello");
+    const after = await settingsOf(daemon, session, true);
+    expect(names(after, "fake")).toEqual(["SMALL", "LARGE"]);
+    expect(names(after, "other")).toEqual([]);
   });
 
   test("a guest that fails to start, or is too slow, is listed without options and with why", async () => {
