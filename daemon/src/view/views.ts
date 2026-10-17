@@ -33,7 +33,7 @@ export class ViewManager {
     let view = this.views.get(key);
     if (!view) {
       view = new SessionView(session, this.templates, this.log, agent);
-      for (const record of this.store.read(session)) view.apply(record);
+      view.replay(this.store.read(session));
       this.views.set(key, view);
     }
     return view;

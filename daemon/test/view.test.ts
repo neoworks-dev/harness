@@ -62,6 +62,25 @@ describe("session view", () => {
     expect(late?.op === "blocks" && late.from).toBeGreaterThan(0);
   });
 
+  test("a view built from the log is the one its events build one by one, and streams on alike", () => {
+    const events: SessionEvent[] = [
+      { type: "user_message", app: "cli", text: "do it" },
+      ...chunks("m1", "# Plan\n\nFirst I'll copy the file.\n\n- one\n- two"),
+      { type: "user_message", app: "cli", text: "and then?" },
+      ...chunks("m2", "Then **this**.\n\n```ts\nconst a = 1;\n```"),
+    ];
+    const records = events.map((event, i) => ({ session: "s", seq: i + 1, ts: 0, event }));
+    const { view: live } = feed(events);
+    const replayed = new SessionView("s", () => undefined, silentLogger);
+    replayed.replay(records);
+    expect(replayed.snapshot()).toEqual(live.snapshot());
+
+    const more: SessionEvent = { type: "agent_message_chunk", messageId: "m2", text: "\n\nDone." };
+    const next = { session: "s", seq: records.length + 1, ts: 0, event: more };
+    expect(replayed.apply(next)).toEqual(live.apply(next));
+    expect(replayed.snapshot()).toEqual(live.snapshot());
+  });
+
   test("tool results use the app's template, or a fallback from text, diffs or structured data", () => {
     const template = { type: "kv", items: { Notes: "{{data.count}}" } };
     const { view } = feed(

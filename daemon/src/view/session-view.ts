@@ -113,6 +113,9 @@ export class SessionView {
   /** Subagents running right now (subagent_started … subagent_ended): id → agent label. */
   private readonly windows = new Map<string, string>();
   private seq = 0;
+  /** Inside `replay`, and the streams whose text has grown since they were parsed. */
+  private replaying = false;
+  private readonly unparsed = new Set<string>();
 
   /**
    * `only` makes a per-agent view: just that agent's work (what its labelled events say), with
@@ -141,6 +144,27 @@ export class SessionView {
   private shows(agent: string | undefined): boolean {
     if (this.only !== undefined) return agent === this.only;
     return agent === undefined || ![...this.windows.values()].includes(agent);
+  }
+
+  /**
+   * Builds the view from a session's log. Streamed text is only collected meanwhile, and each
+   * message parsed once at the end: parsing it again for every chunk, as a live stream does,
+   * made a long session take most of a second to open.
+   */
+  replay(records: Iterable<SessionEventRecord>): void {
+    this.replaying = true;
+    try {
+      for (const record of records) this.apply(record);
+    } finally {
+      this.replaying = false;
+    }
+    for (const ref of this.unparsed) {
+      const stream = this.streams.get(ref);
+      if (stream === undefined) continue;
+      stream.blocks = parseMarkdown(stream.raw);
+      this.applyOp({ op: "blocks", ref, path: [], from: 0, blocks: stream.blocks });
+    }
+    this.unparsed.clear();
   }
 
   /** Applies one event and returns the ops that bring a pane from the previous state to this one. */
@@ -460,6 +484,10 @@ export class SessionView {
     const existing = this.streams.get(ref);
     const stream = existing ?? { ref, raw: "", blocks: [] };
     stream.raw += chunk;
+    if (existing && this.replaying) {
+      this.unparsed.add(ref);
+      return [];
+    }
     const blocks = parseMarkdown(stream.raw);
     const from = firstChange(stream.blocks, blocks);
     stream.blocks = blocks;
