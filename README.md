@@ -59,7 +59,8 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/
 | `SUITE_MODEL`                         | `deepseek/deepseek-flash` (`provider/model-id`)             |
 | `SUITE_IMAGES`                        | `1`/`0`: the model takes images (default: pi's registry)    |
 | `SUITE_THINKING`                      | `off` (`minimal`…`xhigh`)                                   |
-| `<PROVIDER>_API_KEY`, `SUITE_API_KEY` | falls back to API-key entries in `~/.pi/agent/auth.json`    |
+| `<PROVIDER>_API_KEY`, `SUITE_API_KEY` | else `SUITE_AUTH`, then pi's `~/.pi/agent/auth.json`        |
+| `SUITE_AUTH`                          | `auth.json` in `SUITE_DATA_DIR`: API keys, OAuth logins     |
 | `SUITE_AGENT`                         | `neo`; `echo` is an offline scripted agent for tests        |
 | `SUITE_PORT`                          | 127.0.0.1 port for `/bus` + `/mcp` (default: any free port) |
 | `SUITE_GUESTS`                        | `claude,codex`; `none` turns guest agents off               |

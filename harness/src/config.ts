@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ThinkingLevel } from "./loop/index.ts";
 import { getEnvApiKey } from "@mariozechner/pi-ai";
+import { resolveAccount, type AuthDeps, type ResolvedAccount } from "./auth.ts";
 import { isRecord } from "./util.ts";
 
 const DEFAULT_MODEL = "deepseek/deepseek-flash";
@@ -26,7 +27,9 @@ export interface HarnessConfig {
   images?: boolean;
   /** From SUITE_API_KEY; used when the provider's own env var is not set. */
   apiKey?: string;
-  /** pi's auth file, read lazily as the last key source. */
+  /** The suite's own accounts file (SUITE_AUTH), read per request and written by /login. */
+  authPath: string;
+  /** pi's auth file, read lazily as the last key source; also refreshed in place. */
   piAuthPath: string;
 }
 
@@ -98,10 +101,16 @@ export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): Harness
     thinkingSource = "SUITE_THINKING";
   }
 
+  // Where the daemon keeps its data (daemon/src/paths.ts).
+  const dataDir =
+    env.SUITE_DATA_DIR ||
+    (env.XDG_DATA_HOME ? join(env.XDG_DATA_HOME, "suite") : join(home, ".local", "share", "suite"));
+
   const config: HarnessConfig = {
     ...parseModel(model, modelSource),
     thinkingLevel: parseThinkingLevel(thinking, thinkingSource),
     apiKey: env.SUITE_API_KEY || undefined,
+    authPath: env.SUITE_AUTH || join(dataDir, "auth.json"),
     piAuthPath: env.SUITE_PI_AUTH || join(home, ".pi", "agent", "auth.json"),
   };
   if (env.SUITE_IMAGES) config.images = parseImages(env.SUITE_IMAGES, "SUITE_IMAGES");
@@ -109,33 +118,34 @@ export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): Harness
   return config;
 }
 
-/** API-key entries of pi's auth file only; OAuth entries are skipped. */
-function readPiAuthKey(path: string, provider: string): string | undefined {
-  let auth: unknown;
-  try {
-    auth = readJson(path);
-  } catch {
-    return undefined;
-  }
-  if (!isRecord(auth)) return undefined;
-  const entry = auth[provider];
-  if (!isRecord(entry) || typeof entry.key !== "string" || entry.key === "") return undefined;
-  return entry.key;
-}
-
 /**
- * Provider env var (pi-ai) -> SUITE_API_KEY -> pi's auth file. Called per request so a key
- * added while the daemon runs is picked up. `provider` defaults to the configured one; pass
- * another when the session uses a model of a different provider.
+ * Provider env var (pi-ai) -> SUITE_API_KEY -> the suite's auth file -> pi's auth file. In the
+ * files an API key counts as it is and an OAuth login as its access token, refreshed first (and
+ * written back to the file it came from) when expired. Called per request, so a login added while
+ * the daemon runs is picked up. `provider` defaults to the configured one; pass another when the
+ * session uses a model of a different provider. Throws when a refresh fails.
  */
-export function resolveApiKey(
+export async function resolveAuth(
   config: HarnessConfig,
   provider: string = config.provider,
-): string | undefined {
+  deps?: AuthDeps,
+): Promise<ResolvedAccount | undefined> {
   const fromEnv = getEnvApiKey(provider);
-  if (fromEnv) return fromEnv;
-  if (config.apiKey) return config.apiKey;
-  return readPiAuthKey(config.piAuthPath, provider);
+  if (fromEnv) return { apiKey: fromEnv };
+  if (config.apiKey) return { apiKey: config.apiKey };
+  return (
+    (await resolveAccount(config.authPath, provider, deps)) ??
+    (await resolveAccount(config.piAuthPath, provider, deps))
+  );
+}
+
+/** The key alone; see resolveAuth. */
+export async function resolveApiKey(
+  config: HarnessConfig,
+  provider: string = config.provider,
+  deps?: AuthDeps,
+): Promise<string | undefined> {
+  return (await resolveAuth(config, provider, deps))?.apiKey;
 }
 
 export function missingApiKeyMessage(
@@ -144,7 +154,8 @@ export function missingApiKeyMessage(
 ): string {
   const providerVar = `${provider.toUpperCase().replaceAll("-", "_")}_API_KEY`;
   return (
-    `No API key for provider "${provider}". Set ${providerVar} or SUITE_API_KEY ` +
-    `in the daemon's environment.`
+    `No API key or login for provider "${provider}". Set ${providerVar} or SUITE_API_KEY ` +
+    `in the daemon's environment, or add it to ${config.authPath} (pi's ${config.piAuthPath} ` +
+    `works too).`
   );
 }

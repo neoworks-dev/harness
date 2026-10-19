@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxToolCall } from "@mariozechner/pi-ai";
+import {
+  getOAuthProvider,
+  registerOAuthProvider,
+  unregisterOAuthProvider,
+} from "@mariozechner/pi-ai/oauth";
 import type { PlanEntry, SessionEvent } from "@suite/protocol/types";
 import type {
   AgentSession,
@@ -10,6 +15,7 @@ import type {
   ConfigOption,
   PromptResult,
 } from "../src/agent.ts";
+import type { StreamFn } from "../src/loop/index.ts";
 import { createNeoAgent } from "../src/neo-agent.ts";
 import { SYSTEM_PROMPT } from "../src/system-prompt.ts";
 import {
@@ -540,6 +546,75 @@ test("the API key follows the model's provider", async () => {
     if (saved.deepseek === undefined) delete process.env.DEEPSEEK_API_KEY;
     else process.env.DEEPSEEK_API_KEY = saved.deepseek;
     if (saved.openai !== undefined) process.env.OPENAI_API_KEY = saved.openai;
+  }
+});
+
+const COPILOT_ENV = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"];
+
+async function withAccount<T>(
+  provider: string,
+  account: unknown,
+  body: (config: typeof TEST_CONFIG) => Promise<T>,
+): Promise<T> {
+  const authPath = join(await tempDir(), "auth.json");
+  await writeFile(authPath, JSON.stringify({ [provider]: account }));
+  const saved = COPILOT_ENV.map((name) => process.env[name]);
+  for (const name of COPILOT_ENV) delete process.env[name];
+  try {
+    return await body({ ...TEST_CONFIG, apiKey: undefined, authPath, provider, modelId: "x" });
+  } finally {
+    COPILOT_ENV.forEach((name, i) => {
+      const value = saved[i];
+      if (value !== undefined) process.env[name] = value;
+    });
+  }
+}
+
+test("a Copilot login is sent as its token, to the base URL its token names", async () => {
+  const token = "tid=1;exp=2;proxy-ep=proxy.business.githubcopilot.com";
+  const account = { type: "oauth", access: token, refresh: "r", expires: Date.now() + 3_600_000 };
+  await withAccount("github-copilot", account, async (config) => {
+    const seen: { baseUrl: string; apiKey: string | undefined }[] = [];
+    const inner = fakeModel([reply("ok")]);
+    const streamFn: StreamFn = (model, context, options) => {
+      seen.push({ baseUrl: model.baseUrl, apiKey: options?.apiKey });
+      return inner.streamFn(model, context, options);
+    };
+    const agent = createNeoAgent({ config, streamFn });
+    const session = await agent.newSession({
+      sessionId: "s",
+      cwd: await tempDir(),
+      mcpServers: [],
+    });
+    expect((await run(session, "hi")).result).toEqual({ stopReason: "end_turn" });
+    expect(seen).toEqual([{ baseUrl: "https://api.business.githubcopilot.com", apiKey: token }]);
+  });
+});
+
+test("a login that can't be refreshed ends the turn with an error, without calling the model", async () => {
+  const original = getOAuthProvider("openai-codex");
+  if (!original) throw new Error("pi-ai has no openai-codex provider");
+  registerOAuthProvider({
+    ...original,
+    refreshToken: () => Promise.reject(new Error("invalid_grant")),
+  });
+  try {
+    const account = { type: "oauth", access: "a", refresh: "r", expires: Date.now() - 1000 };
+    await withAccount("openai-codex", account, async (config) => {
+      const model = fakeModel([reply("never")]);
+      const agent = createNeoAgent({ config, streamFn: model.streamFn });
+      const session = await agent.newSession({
+        sessionId: "s",
+        cwd: await tempDir(),
+        mcpServers: [],
+      });
+      const { result } = await run(session, "hi");
+      expect(result.stopReason).toBe("error");
+      expect(result.error).toContain("Log in again");
+      expect(model.requests).toEqual([]);
+    });
+  } finally {
+    unregisterOAuthProvider("openai-codex");
   }
 });
 

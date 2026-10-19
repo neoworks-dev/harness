@@ -2,6 +2,7 @@ import { Agent, type StreamFn, type ThinkingLevel } from "./loop/index.ts";
 import {
   getModels,
   getProviders,
+  streamSimple,
   type Api,
   type AssistantMessage,
   type KnownProvider,
@@ -21,7 +22,7 @@ import type {
 import { formatPrompt } from "./context-events.ts";
 import {
   missingApiKeyMessage,
-  resolveApiKey,
+  resolveAuth,
   THINKING_LEVELS,
   type HarnessConfig,
 } from "./config.ts";
@@ -131,6 +132,8 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
     const initial = initialSettings(params);
     // Told once per session, in its first prompt (older logs: the first prompt after loading).
     let cwdTold = JSON.stringify(messages).includes("<session cwd=");
+    // How the account a request just resolved changes the model (Copilot's base URL).
+    const adjustModels = new Map<string, ((model: Model<Api>) => Model<Api>) | undefined>();
     const agent = new Agent({
       initialState: {
         systemPrompt: SYSTEM_PROMPT,
@@ -144,10 +147,19 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
         messages,
         thinkingLevel: initial.thinkingLevel,
       },
-      getApiKey: (provider) => resolveApiKey(config, provider),
+      getApiKey: async (provider) => {
+        const account = await resolveAuth(config, provider);
+        adjustModels.set(provider, account?.adjustModel);
+        return account?.apiKey;
+      },
       sessionId: params.sessionId,
       toolExecution: "sequential",
-      streamFn,
+      streamFn: (model, context, options) =>
+        (streamFn ?? streamSimple)(
+          adjustModels.get(model.provider)?.(model) ?? model,
+          context,
+          options,
+        ),
     });
     // Counts every message ever logged, including failed ones the context no longer holds.
     const usage = createUsageTracker(
@@ -166,8 +178,15 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
     }: PromptParams): Promise<PromptResult> {
       if (running) return { stopReason: "error", error: "A turn is already running." };
       const provider = agent.state.model.provider;
-      if (!resolveApiKey(config, provider)) {
-        return { stopReason: "error", error: missingApiKeyMessage(config, provider) };
+      try {
+        if (!(await resolveAuth(config, provider))) {
+          return { stopReason: "error", error: missingApiKeyMessage(config, provider) };
+        }
+      } catch (error) {
+        return {
+          stopReason: "error",
+          error: error instanceof Error ? error.message : String(error),
+        };
       }
       running = true;
       cancelRequested = false;
