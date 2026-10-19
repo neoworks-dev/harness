@@ -282,7 +282,12 @@ impl Agents {
             .selected
             .as_deref()
             .and_then(|id| self.shown(now_ms).into_iter().find(|a| a.id == id).cloned());
+        let first = self.shown(now_ms).first().map(|a| a.id.clone());
         match key.code {
+            // Up from the top row goes back to the editor, as Down came from it.
+            KeyCode::Up | KeyCode::Char('k') if current.is_none() || self.selected == first => {
+                return AgentsAction::Leave;
+            }
             KeyCode::Up | KeyCode::Char('k') => self.move_by(-1, now_ms),
             KeyCode::Down | KeyCode::Char('j') => self.move_by(1, now_ms),
             KeyCode::Esc | KeyCode::Char('q') | KeyCode::Left | KeyCode::Char('h') => {

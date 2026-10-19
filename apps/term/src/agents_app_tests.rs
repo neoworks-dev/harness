@@ -243,6 +243,19 @@ fn down_from_an_empty_editor_or_ctrl_x_focuses_the_list() {
     );
 }
 
+#[test]
+fn up_from_the_top_row_goes_back_to_the_editor() {
+    let mut app = busy();
+    app.handle_key(key(KeyCode::Down));
+    assert_eq!(app.focus, Some(Focus::Agents));
+    // On claude, the last row; up to neo, then out.
+    app.handle_key(key(KeyCode::Up));
+    assert_eq!(app.focus, Some(Focus::Agents));
+    app.handle_key(key(KeyCode::Up));
+    assert_eq!(app.focus, None);
+    assert!(app.editor_has_cursor());
+}
+
 fn app_without_agents() -> App {
     app()
 }
