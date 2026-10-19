@@ -1432,7 +1432,13 @@ impl App {
                 self.editor.insert_char(c);
             }
             KeyCode::Enter if alt || shift => self.editor.newline(),
-            KeyCode::Enter => self.enter(fx),
+            KeyCode::Enter => {
+                if self.enter(fx) {
+                    // Sent: the typing is over (see send), not just paused.
+                    self.histories.of(&self.session).reset();
+                    edited = false;
+                }
+            }
             KeyCode::BackTab => {
                 self.cycle_approvals(fx);
                 edited = false;
@@ -1634,23 +1640,24 @@ impl App {
         }
     }
 
-    fn enter(&mut self, fx: &mut Vec<Effect>) {
+    /// Enter in the editor; true when the text was sent or run, false when there's more to type.
+    fn enter(&mut self, fx: &mut Vec<Effect>) -> bool {
         let matches = self.menu_matches();
         if !matches.is_empty() {
             let cmd = matches[self.menu_sel.min(matches.len() - 1)];
             if cmd.needs_args {
                 self.editor.set_text(&format!("/{} ", cmd.name));
                 self.menu_sel = 0;
-                return;
+                return false;
             }
             self.editor.clear();
             self.menu_sel = 0;
             self.run_command(cmd.name, &format!("/{}", cmd.name), fx);
-            return;
+            return true;
         }
         let text = self.editor.text().trim().to_string();
         if text.is_empty() {
-            return;
+            return false;
         }
         self.editor.clear();
         self.menu_sel = 0;
@@ -1663,6 +1670,7 @@ impl App {
             Some(cmd) => self.run_command(cmd.name, &text, fx),
             None => self.send(text, fx),
         }
+        true
     }
 
     fn run_command(&mut self, name: &str, text: &str, fx: &mut Vec<Effect>) {
@@ -1698,6 +1706,9 @@ impl App {
     fn send(&mut self, text: String, fx: &mut Vec<Effect>) {
         self.histories.record(&self.session, &text);
         self.chat.follow();
+        // Sending ends the typing: a card it brings (/model's choice) takes the editor's place at
+        // once instead of showing in the chat first.
+        self.prompt.typed_ms = 0;
         if self.running {
             self.queued += 1;
         }

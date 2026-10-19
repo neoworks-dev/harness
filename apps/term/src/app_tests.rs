@@ -709,6 +709,16 @@ fn a_prompt_arriving_while_idle_takes_the_editors_place_at_once() {
 }
 
 #[test]
+fn a_prompt_right_after_sending_takes_the_editors_place_at_once() {
+    let mut app = app();
+    type_str(&mut app, "/model");
+    app.handle_key(key(KeyCode::Enter));
+    app.tick(NOW + 100);
+    show(&mut app, vec![prompt("p1", "pending", &["Yes", "No"])]);
+    assert!(app.prompt.engaged, "sending ended the typing");
+}
+
+#[test]
 fn a_prompt_waits_while_the_user_types_and_takes_over_after_a_pause() {
     let mut app = typing_then_prompt(100);
     assert!(!app.prompt.engaged);

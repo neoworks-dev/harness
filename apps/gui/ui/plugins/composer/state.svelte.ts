@@ -163,6 +163,8 @@ class Composer {
   }
 
   private send(text: string): void {
+    // Sending ends the typing: a question it brings (/model's choice) takes over at once.
+    this.typedAt = 0;
     const session = this.services?.daemon.sessionId;
     if (this.history.push(text) && session !== undefined) void appendHistory(session, text);
     void this.services?.daemon.send(text);
