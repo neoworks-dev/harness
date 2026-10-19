@@ -47,6 +47,8 @@ pub enum Envelope {
     ViewPatchMessage(ViewPatchMessage),
     ThemeMessage(ThemeMessage),
     UiActionMessage(UiActionMessage),
+    SecretRequestMessage(SecretRequestMessage),
+    SecretAnswerMessage(SecretAnswerMessage),
     AssetPutMessage(AssetPutMessage),
     AssetGetMessage(AssetGetMessage),
     AssetInfoMessage(AssetInfoMessage),
@@ -161,6 +163,14 @@ impl Serialize for Envelope {
             }
             Envelope::UiActionMessage(v) => (
                 "ui.action",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::SecretRequestMessage(v) => (
+                "secret.request",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::SecretAnswerMessage(v) => (
+                "secret.answer",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
             Envelope::AssetPutMessage(v) => (
@@ -278,6 +288,12 @@ impl<'de> Deserialize<'de> for Envelope {
                 .map_err(D::Error::custom),
             "ui.action" => serde_json::from_value(value)
                 .map(Envelope::UiActionMessage)
+                .map_err(D::Error::custom),
+            "secret.request" => serde_json::from_value(value)
+                .map(Envelope::SecretRequestMessage)
+                .map_err(D::Error::custom),
+            "secret.answer" => serde_json::from_value(value)
+                .map(Envelope::SecretAnswerMessage)
                 .map_err(D::Error::custom),
             "asset.put" => serde_json::from_value(value)
                 .map(Envelope::AssetPutMessage)
@@ -455,6 +471,18 @@ impl From<ThemeMessage> for Envelope {
 impl From<UiActionMessage> for Envelope {
     fn from(v: UiActionMessage) -> Self {
         Envelope::UiActionMessage(v)
+    }
+}
+
+impl From<SecretRequestMessage> for Envelope {
+    fn from(v: SecretRequestMessage) -> Self {
+        Envelope::SecretRequestMessage(v)
+    }
+}
+
+impl From<SecretAnswerMessage> for Envelope {
+    fn from(v: SecretAnswerMessage) -> Self {
+        Envelope::SecretAnswerMessage(v)
     }
 }
 
@@ -882,6 +910,51 @@ pub struct UiAction {
     /// The button's args.
     #[serde(rename = "args", default, skip_serializing_if = "Option::is_none")]
     pub args: Option<serde_json::Value>,
+}
+
+/// Daemon → only the client whose command asked: a question whose answer is a secret (an API key, a login code). Never a session event and never stored or logged. Answered with secret.answer.
+/// Tagged `topic: "secret.request"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecretRequestMessage {
+    #[serde(rename = "payload")]
+    pub payload: SecretRequest,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecretRequest {
+    /// Echoed by secret.answer.
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "session")]
+    pub session: String,
+    /// What is asked for, e.g. DeepSeek API key.
+    #[serde(rename = "title")]
+    pub title: String,
+    /// Hint shown in the empty field, e.g. sk-…
+    #[serde(
+        rename = "placeholder",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub placeholder: Option<String>,
+}
+
+/// Client → daemon: the answer to a secret.request, from the client that was asked (any other gets bus.error bad_request). The value is never stored or logged, not even in errors. Without a value the question was cancelled.
+/// Tagged `topic: "secret.answer"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecretAnswerMessage {
+    #[serde(rename = "payload")]
+    pub payload: SecretAnswer,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecretAnswer {
+    /// The secret.request's id; an unknown one gets bus.error not_found.
+    #[serde(rename = "id")]
+    pub id: String,
+    /// What the user typed. Absent: cancelled.
+    #[serde(rename = "value", default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
 }
 
 /// Client → daemon: store a file or bytes in the asset store. Replied to with asset.info. Identical content gets the same handle.

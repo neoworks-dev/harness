@@ -250,6 +250,10 @@ The session lives in the daemon; every chat UI is a view of it.
 | `ui.action`      | `{ref, action, args}`                                                                  | Button presses, routed to an app or the agent                           |
 | `file.changed`   | `{path}`                                                                               | Open apps reload or show a diff                                         |
 
+### Asking for a secret
+
+A command that needs an API key or a pasted login code asks with `secret.request {id, session, title, placeholder?}`. The daemon sends it to the one client that typed the command, and that client answers with `secret.answer {id, value?}` (no value: cancelled). It is not a card. A card is a session event: it is stored in the log for good, shown to every app on the session, and the note on its answer is logged too. A secret must be in none of those places. So the question is kept in memory by the hub only, an answer from any other client gets `bus.error`, and the question is dropped when its client disconnects. The daemon never logs the value, and a command must not put it in an error message. Apps draw it as a masked field.
+
 ### Moving the agent between apps
 
 1. User drags the agent onto another app, or the agent calls `apps_focus`.

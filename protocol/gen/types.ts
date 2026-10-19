@@ -27,6 +27,8 @@ export type Envelope =
   | ViewPatchMessage
   | ThemeMessage
   | UiActionMessage
+  | SecretRequestMessage
+  | SecretAnswerMessage
   | AssetPutMessage
   | AssetGetMessage
   | AssetInfoMessage
@@ -288,6 +290,35 @@ export interface UiAction {
   action: string;
   /** The button's args. */
   args?: unknown;
+}
+
+/** Daemon → only the client whose command asked: a question whose answer is a secret (an API key, a login code). Never a session event and never stored or logged. Answered with secret.answer. */
+export interface SecretRequestMessage {
+  topic: "secret.request";
+  payload: SecretRequest;
+}
+
+export interface SecretRequest {
+  /** Echoed by secret.answer. */
+  id: string;
+  session: string;
+  /** What is asked for, e.g. DeepSeek API key. */
+  title: string;
+  /** Hint shown in the empty field, e.g. sk-… */
+  placeholder?: string;
+}
+
+/** Client → daemon: the answer to a secret.request, from the client that was asked (any other gets bus.error bad_request). The value is never stored or logged, not even in errors. Without a value the question was cancelled. */
+export interface SecretAnswerMessage {
+  topic: "secret.answer";
+  payload: SecretAnswer;
+}
+
+export interface SecretAnswer {
+  /** The secret.request's id; an unknown one gets bus.error not_found. */
+  id: string;
+  /** What the user typed. Absent: cancelled. */
+  value?: string;
 }
 
 /** Client → daemon: store a file or bytes in the asset store. Replied to with asset.info. Identical content gets the same handle. */

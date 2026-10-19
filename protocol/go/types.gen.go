@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, AssetPutMessage, AssetGetMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -203,6 +203,18 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "ui.action":
 		var v UiActionMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "secret.request":
+		var v SecretRequestMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "secret.answer":
+		var v SecretAnswerMessage
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -778,6 +790,55 @@ type UiAction struct {
 	Action string `json:"action"`
 	// The button's args.
 	Args json.RawMessage `json:"args,omitempty"`
+}
+
+// SecretRequestMessage: Daemon → only the client whose command asked: a question whose answer is a secret (an API key, a login code). Never a session event and never stored or logged. Answered with secret.answer.
+type SecretRequestMessage struct {
+	Payload SecretRequest `json:"payload"`
+}
+
+func (SecretRequestMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v SecretRequestMessage) MarshalJSON() ([]byte, error) {
+	type plain SecretRequestMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"secret.request", plain(v)})
+}
+
+type SecretRequest struct {
+	// Echoed by secret.answer.
+	ID      string `json:"id"`
+	Session string `json:"session"`
+	// What is asked for, e.g. DeepSeek API key.
+	Title string `json:"title"`
+	// Hint shown in the empty field, e.g. sk-…
+	Placeholder *string `json:"placeholder,omitempty"`
+}
+
+// SecretAnswerMessage: Client → daemon: the answer to a secret.request, from the client that was asked (any other gets bus.error bad_request). The value is never stored or logged, not even in errors. Without a value the question was cancelled.
+type SecretAnswerMessage struct {
+	Payload SecretAnswer `json:"payload"`
+}
+
+func (SecretAnswerMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v SecretAnswerMessage) MarshalJSON() ([]byte, error) {
+	type plain SecretAnswerMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"secret.answer", plain(v)})
+}
+
+type SecretAnswer struct {
+	// The secret.request's id; an unknown one gets bus.error not_found.
+	ID string `json:"id"`
+	// What the user typed. Absent: cancelled.
+	Value *string `json:"value,omitempty"`
 }
 
 // AssetPutMessage: Client → daemon: store a file or bytes in the asset store. Replied to with asset.info. Identical content gets the same handle.

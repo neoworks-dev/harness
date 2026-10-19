@@ -10,6 +10,7 @@ import type { ConfigOption } from "@suite/harness/agent";
 import type { Asker, Choice } from "./asker.ts";
 import { BadRequestError } from "./focus.ts";
 import type { GuestManager, StoredConversation } from "./guests/guests.ts";
+import type { CommandContext } from "./hub.ts";
 import type { Logger } from "./log.ts";
 import type { SessionManager } from "./sessions.ts";
 import {
@@ -50,7 +51,7 @@ export class Commands {
   constructor(private readonly parts: CommandParts) {}
 
   /** Runs a command; undefined when the text isn't one (it goes to the agent then). */
-  run(session: string, text: string): Promise<void> | undefined {
+  run(session: string, text: string, _context?: CommandContext): Promise<void> | undefined {
     const [head, ...args] = text.trim().split(/\s+/);
     if (head?.startsWith("/") !== true) return undefined;
     const name = head.slice(1);

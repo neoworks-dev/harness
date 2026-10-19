@@ -568,6 +568,16 @@ export const examples: Record<string, Envelope> = {
       },
     },
   },
+  "secret-request": {
+    topic: "secret.request",
+    payload: { id: "s1", session, title: "DeepSeek API key", placeholder: "sk-…" },
+  },
+  "secret-request-minimal": {
+    topic: "secret.request",
+    payload: { id: "s2", session, title: "Login code" },
+  },
+  "secret-answer": { topic: "secret.answer", payload: { id: "s1", value: "sk-example" } },
+  "secret-answer-cancelled": { topic: "secret.answer", payload: { id: "s1" } },
   "asset-put": {
     topic: "asset.put",
     id: "20",

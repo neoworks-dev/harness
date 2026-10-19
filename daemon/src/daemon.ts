@@ -207,7 +207,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       theme: options.theme ?? defaultTheme,
       assets,
       action: (action, from) => actions.run(action, from),
-      command: (session, text) => commands.run(session, text),
+      command: (session, text, context) => commands.run(session, text, context),
     },
   );
   // The agent's write/edit results carry diffs; each one means a file changed on disk.

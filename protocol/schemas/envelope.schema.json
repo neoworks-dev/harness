@@ -86,6 +86,12 @@
           "$ref": "#/$defs/UiActionMessage"
         },
         {
+          "$ref": "#/$defs/SecretRequestMessage"
+        },
+        {
+          "$ref": "#/$defs/SecretAnswerMessage"
+        },
+        {
           "$ref": "#/$defs/AssetPutMessage"
         },
         {
@@ -718,6 +724,71 @@
         }
       },
       "required": ["session", "ref", "action"],
+      "additionalProperties": false
+    },
+    "SecretRequestMessage": {
+      "description": "Daemon → only the client whose command asked: a question whose answer is a secret (an API key, a login code). Never a session event and never stored or logged. Answered with secret.answer.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "secret.request"
+        },
+        "payload": {
+          "$ref": "#/$defs/SecretRequest"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "SecretRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Echoed by secret.answer."
+        },
+        "session": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "description": "What is asked for, e.g. DeepSeek API key."
+        },
+        "placeholder": {
+          "type": "string",
+          "description": "Hint shown in the empty field, e.g. sk-…"
+        }
+      },
+      "required": ["id", "session", "title"],
+      "additionalProperties": false
+    },
+    "SecretAnswerMessage": {
+      "description": "Client → daemon: the answer to a secret.request, from the client that was asked (any other gets bus.error bad_request). The value is never stored or logged, not even in errors. Without a value the question was cancelled.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "secret.answer"
+        },
+        "payload": {
+          "$ref": "#/$defs/SecretAnswer"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "SecretAnswer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The secret.request's id; an unknown one gets bus.error not_found."
+        },
+        "value": {
+          "type": "string",
+          "description": "What the user typed. Absent: cancelled."
+        }
+      },
+      "required": ["id"],
       "additionalProperties": false
     },
     "AssetPutMessage": {
