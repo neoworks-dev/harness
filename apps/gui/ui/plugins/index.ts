@@ -10,6 +10,7 @@ import { diffOverlay } from "./diff/index.ts";
 import { filesPanel } from "./files/index.ts";
 import { githubPane } from "./github/index.ts";
 import { planPanel } from "./plan/index.ts";
+import { secretPane } from "./secret/index.ts";
 import { sessionsSidebar } from "./sessions/index.ts";
 import { shell } from "./shell/index.ts";
 import { sidePanel } from "./sidepanel/index.ts";
@@ -24,6 +25,7 @@ export const plugins: Plugin[] = [
   transcriptPane,
   githubPane,
   composerPane,
+  secretPane,
   agentViewPane,
   agentsList,
   sidePanel,

@@ -1,7 +1,7 @@
 // What the daemon announces to every client: where the agent lives (agent.focus, agent.move),
 // connectors, sessions, the theme and file changes.
 import { describe, expect, test } from "bun:test";
-import type { AgentFocus, ConnectorInfo, FileChanged } from "@suite/protocol/types";
+import type { AgentFocus, ConnectorInfo, FileChanged, SecretRequest } from "@suite/protocol/types";
 import type { TestDaemon } from "@suite/daemon/testing";
 import { createToolServer } from "@suite/sdk-tools";
 import { connect, fixedAddress, SuiteError, TimeoutError, type Client } from "../src/index.ts";
@@ -272,5 +272,35 @@ describe("file changes", () => {
     await Bun.sleep(100);
     expect(seen).toHaveLength(1);
     expect(own).toHaveLength(0);
+  });
+});
+
+describe("secret requests", () => {
+  test("a request reaches the callback and the answer goes back with or without a value", async () => {
+    const { daemon, client } = await fakeRig();
+    const asked: SecretRequest[] = [];
+    const stop = client.onSecretRequest((request) => asked.push(request));
+    daemon.broadcast({
+      topic: "secret.request",
+      payload: { id: "s1", session: "a", title: "DeepSeek API key", placeholder: "sk-" },
+    });
+    await until(() => asked.length === 1, "secret.request");
+    expect(asked[0]).toEqual({
+      id: "s1",
+      session: "a",
+      title: "DeepSeek API key",
+      placeholder: "sk-",
+    });
+
+    client.answerSecret("s1", "k-123");
+    client.answerSecret("s2");
+    await until(() => daemon.topics().filter((t) => t === "secret.answer").length === 2, "answers");
+    const answers = daemon.received.filter((e) => e.topic === "secret.answer");
+    expect(answers.map((e) => e.payload)).toEqual([{ id: "s1", value: "k-123" }, { id: "s2" }]);
+
+    stop();
+    daemon.broadcast({ topic: "secret.request", payload: { id: "s3", session: "a", title: "x" } });
+    await Bun.sleep(50);
+    expect(asked).toHaveLength(1);
   });
 });

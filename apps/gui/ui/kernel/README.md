@@ -49,6 +49,7 @@ Add it to `plugins/index.ts`. Everything registered goes through `ctx.effect` in
 | `statusline` | `shell.bottom` (30)                        | `statusline.right`                                             |              |
 | `transcript` | `shell.main` (100), `chat.item`, `.header` | `chat.item` (keyed by item kind), `chat.item.header`           | `transcript` |
 | `composer`   | `shell.bottom` (10), `statusline.right`    | `composer.left`, `composer.right`                              |              |
+| `secret`     | `shell.bottom` (5)                         |
 | `agents`     | `shell.bottom` (20)                        |                                                                |              |
 | `agentview`  | `shell.main` (20)                          |                                                                | `agentview`  |
 | `sidepanel`  | `shell.right`                              | `sidepanel.section`                                            | `sidepanel`  |
