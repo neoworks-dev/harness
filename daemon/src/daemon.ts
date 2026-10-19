@@ -197,15 +197,16 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     asker,
     cancelAgent: delegate.cancel,
   });
+  const notice = (session: string, text: string, tone?: "muted" | "danger"): void => {
+    store.append(
+      session,
+      tone === undefined ? { type: "notice", text } : { type: "notice", text, tone },
+    );
+  };
   const login = new Login({
     asker,
     log,
-    notice: (session, text, tone) => {
-      store.append(
-        session,
-        tone === undefined ? { type: "notice", text } : { type: "notice", text, tone },
-      );
-    },
+    notice,
     authPath,
     piAuthPath,
     oauthProviders: getOAuthProviders,
@@ -219,6 +220,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     asker,
     login,
     log,
+    notice,
     main: agent.name,
     harness: harnessOf,
     harnesses: () => [agent.name, ...guests.names()],

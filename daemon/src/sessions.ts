@@ -8,6 +8,7 @@ import type {
   AgentUpdate,
   ConfigCategory,
   ConfigOption,
+  FollowUp,
   ContextEvent,
   McpServer,
   NewSessionParams,
@@ -199,6 +200,20 @@ export class SessionManager {
     } catch (err) {
       throw new BadRequestError(err instanceof Error ? err.message : String(err));
     }
+  }
+
+  /**
+   * The second step a harness asks for after a setting was set (neo: which OpenRouter host);
+   * undefined when it has none.
+   */
+  async followUp(
+    sessionId: string,
+    category: ConfigCategory,
+    value: string,
+    harness = this.harness(sessionId),
+  ): Promise<FollowUp | undefined> {
+    const agentSession = await this.agentSession(sessionId, harness);
+    return agentSession.followUp?.(category, value);
   }
 
   private agentSession(sessionId: string, harness: string): Promise<AgentSession> {

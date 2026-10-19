@@ -36,6 +36,8 @@ export interface CommandParts {
   asker: Asker;
   login: Login;
   log: Logger;
+  /** Tells the user something in the session's log. */
+  notice: (session: string, text: string, tone?: "muted" | "danger") => void;
   /** The daemon's own agent's harness name, e.g. neo. */
   main: string;
   /** The harness the session runs on now. */
@@ -93,6 +95,7 @@ export class Commands {
     const value = args[0];
     if (value !== undefined) {
       await this.apply(session, harness, name, value);
+      this.followUp(session, harness, name, value);
       return;
     }
     const option = (await this.options(session, harness)).find(
@@ -116,9 +119,45 @@ export class Commands {
     void this.parts.asker
       .ask(session, choice)
       .then(async (picked) => {
-        if (picked !== undefined) await this.apply(session, harness, name, picked);
+        if (picked === undefined) return;
+        await this.apply(session, harness, name, picked);
+        this.followUp(session, harness, name, picked);
       })
       .catch((err: unknown) => this.parts.log.warn(`/${name}: ${String(err)}`));
+  }
+
+  /**
+   * Once a setting is set, the harness may have a second question (neo: which OpenRouter host
+   * runs the model). It is asked after the command returns, as it may look something up; the
+   * answer is applied like a typed value but is not followed up again.
+   */
+  private followUp(
+    session: string,
+    harness: string,
+    name: HarnessSettingName,
+    value: string,
+  ): void {
+    if (!this.isSessionAgent(session, harness)) return;
+    const { sessions, asker, log } = this.parts;
+    void sessions
+      .followUp(session, CATEGORIES[name], value, harness)
+      .then(async (next) => {
+        if (!next) return;
+        if (next.notice !== undefined) this.parts.notice(session, next.notice, "muted");
+        if (!next.choice) return;
+        const { title, options } = next.choice;
+        const choice: Omit<Choice, "id"> = {
+          type: "choice",
+          title,
+          options: options.map((o) => {
+            const entry = { id: o.value, name: o.name };
+            return o.description === undefined ? entry : { ...entry, description: o.description };
+          }),
+        };
+        const picked = await asker.ask(session, choice);
+        if (picked !== undefined) await this.apply(session, harness, name, picked);
+      })
+      .catch((err: unknown) => log.warn(`/${name}: ${String(err)}`));
   }
 
   /** Whether the session manager runs it (the daemon's agent, the session's harness), not a guest. */
