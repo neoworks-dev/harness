@@ -31,7 +31,7 @@ commands
   /resume [claude|codex]              continue an earlier Claude Code / Codex conversation
   /claude <task>                      give a task to Claude Code
   /codex <task>                       give a task to Codex
-  /harness [neo|claude|codex]         switch this session's agent: neo, claude, codex
+  /harness [neo|claude|codex]         switch this session's agent: neo (based on pi), claude, codex
   /approvals [ask|review|edits|auto]  ask, review each edit, accept edits, or auto (no value: next)
   /sessions                           switch to another session (ctrl-s)
   /sidebar                            show or hide the sessions sidebar (ctrl-g focuses it)

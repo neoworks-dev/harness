@@ -62,7 +62,7 @@ pub const COMMANDS: &[Command] = &[
     daemon(
         "harness",
         "[neo|claude|codex]",
-        "switch this session's agent: neo, claude, codex",
+        "switch this session's agent: neo (based on pi), claude, codex",
     ),
     daemon(
         "approvals",
