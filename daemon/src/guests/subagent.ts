@@ -164,6 +164,7 @@ export class NeoSubagents {
         },
       };
       if (opts.images) params.images = opts.images;
+      if (opts.takeMessages) params.takeMessages = opts.takeMessages;
       const result = await agentSession.prompt(params);
       return { ...result, text: text() };
     } finally {

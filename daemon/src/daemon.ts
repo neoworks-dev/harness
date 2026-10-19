@@ -19,6 +19,7 @@ import { type GatewayRole, type GuestConfig, GuestManager } from "./guests/guest
 import { Asker } from "./asker.ts";
 import { Commands } from "./commands.ts";
 import { Login } from "./login.ts";
+import { MESSAGES_APP, Messenger } from "./messages.ts";
 import { handoffSummary } from "./handoff.ts";
 import { Permissions } from "./permissions.ts";
 import { Review } from "./review.ts";
@@ -139,6 +140,17 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     requestPermission: (session, name) => permissions.hook(session, name),
   });
   const summaries = new SessionSummaries(store);
+  const messenger = new Messenger({
+    append: (session, event) => {
+      store.append(session, event);
+    },
+    wake: (session) => sessions.wake(session),
+  });
+  // Whatever the user writes gives agents a fresh allowance of messages.
+  store.onAppend(({ session, event }) => {
+    if (event.type !== "user_message") return;
+    if (event.app !== MESSAGES_APP && event.app !== "delegate") messenger.newRound(session);
+  });
   const sessions = new SessionManager(store, agent, {
     describe: (sessionId) => summaries.get(sessionId),
     defaultCwd: options.defaultCwd,
@@ -155,6 +167,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     safeSearch: () => settings.safeSearch(),
     created: (sessionId) =>
       settings.inheritHarness(sessionId, (name) => name === agent.name || guests.has(name)),
+    takeMessages: (sessionId) => messenger.take(sessionId, undefined),
   });
   sessions.recoverInterruptedTurns();
   const delegate = createDelegate({
@@ -162,6 +175,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     asker,
     sessions,
     store,
+    messenger,
     settings: (session, guest) => settings.get(session, guest),
     append: (session, event) => {
       store.append(session, event);
@@ -171,6 +185,10 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     cwd: (session) => store.getSession(session)?.cwd ?? options.defaultCwd,
     autoApprove: (session) => settings.approvals(session) === "auto",
   });
+  // The user cancelling a turn stops the session's background subagents with it.
+  sessions.onCancel((session) => {
+    delegate.stopBackground(session);
+  });
   const gateway = new Gateway(connectors, {
     log,
     resolveAsset: (handle) => assets.resolve(handle),
@@ -179,6 +197,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     },
     delegate: delegate.run,
     models: delegate.models,
+    messages: messenger,
     focus: (app, session) => {
       try {
         focus?.move({ app, session }, "agent");
@@ -287,6 +306,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     async stop(timeoutMs = 2000) {
       await started.stop();
       await sessions.shutdown(timeoutMs);
+      await delegate.shutdown(timeoutMs);
       asker.dropAll();
       guests.shutdown();
       await connectors.close();

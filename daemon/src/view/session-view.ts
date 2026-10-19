@@ -16,6 +16,7 @@ import type {
   ViewSnapshot,
 } from "@suite/protocol/types";
 import type { Logger } from "../log.ts";
+import { MAIN, MESSAGES_APP } from "../messages.ts";
 import { diffLines } from "./diff.ts";
 import { parseMarkdown } from "./markdown.ts";
 import { resolveTemplate, TemplateError } from "./template.ts";
@@ -42,6 +43,7 @@ interface Call {
 }
 
 type Plan = Extract<SessionEvent, { type: "plan" }>;
+type AgentMessage = Extract<SessionEvent, { type: "agent_message" }>;
 type PermissionRequest = Extract<SessionEvent, { type: "permission_request" }>;
 type Choice = Extract<SessionEvent, { type: "choice" }>;
 
@@ -89,6 +91,12 @@ function connectedNotice(event: Extract<SessionEvent, { type: "app_connected" }>
   return `${event.app} updated (v${event.v}): ${what}`;
 }
 
+/** Who a message is from or to: `main`, or `claude d_1a2b3c4d`. */
+function partyLabel(id: string, agent: string | undefined): string {
+  if (id === MAIN) return MAIN;
+  return agent === undefined ? id : `${agent} ${id}`;
+}
+
 /** The first index where two block lists differ. */
 function firstChange(before: Block[], after: Block[]): number {
   let i = 0;
@@ -112,6 +120,8 @@ export class SessionView {
   private readonly choices = new Map<string, Choice>();
   /** Subagents running right now (subagent_started … subagent_ended): id → agent label. */
   private readonly windows = new Map<string, string>();
+  /** Those of them that outlive a turn (started in the background). */
+  private readonly background = new Set<string>();
   private seq = 0;
 
   /**
@@ -156,11 +166,17 @@ export class SessionView {
     switch (event.type) {
       case "subagent_started":
         this.windows.set(event.id, event.agent);
+        if (event.background === true) this.background.add(event.id);
         return [];
       case "subagent_ended":
         this.windows.delete(event.id);
+        this.background.delete(event.id);
         return [];
+      case "agent_message":
+        return [this.messageOp(event, seq)];
       case "user_message": {
+        // The turn that messages from other agents start: their rows are what the chat shows.
+        if (event.app === MESSAGES_APP) return [];
         const children: Component[] = [text(plain(event.text))];
         for (const src of event.images ?? []) children.push({ type: "image", src });
         const component: Component =
@@ -220,8 +236,11 @@ export class SessionView {
       case "notice":
         return [this.notice(`n${seq}`, event.text, event.tone ?? "muted")];
       case "turn_ended": {
-        // A subagent whose end was never logged (a crash) must not hide the next turns' work.
-        this.windows.clear();
+        // A subagent whose end was never logged (a crash) must not hide the next turns' work. One
+        // in the background runs on past the turn.
+        for (const id of [...this.windows.keys()]) {
+          if (!this.background.has(id)) this.windows.delete(id);
+        }
         if (event.stopReason === "end_turn") return [];
         const what = event.error ?? `stopped: ${event.stopReason.replace("_", " ")}`;
         const tone = event.stopReason === "cancelled" ? "muted" : "danger";
@@ -283,6 +302,22 @@ export class SessionView {
         this.windows.set(event.id, event.agent);
         if (event.agent !== agent) return [];
         return [this.taskItem(`s-${event.id}`, event.task)];
+      case "agent_message": {
+        // Written to this agent: like the task, a turn's input. Written by it: a row, but not its
+        // final reply, which is its last message already.
+        if (event.toAgent === agent) {
+          const from = partyLabel(event.from, event.fromAgent);
+          const item: ViewItem = {
+            ref: `a${seq}`,
+            kind: "user",
+            label: `from ${from}`,
+            component: text(parseMarkdown(event.text)),
+          };
+          return [{ op: "set", item }];
+        }
+        if (event.fromAgent !== agent || event.reply === true) return [];
+        return [this.messageOp(event, seq)];
+      }
       case "subagent_ended": {
         const owner = this.windows.get(event.id);
         this.windows.delete(event.id);
@@ -321,6 +356,20 @@ export class SessionView {
       default:
         return [];
     }
+  }
+
+  /** A message between agents, a compact row: `message: main → claude d_1a2b3c4d`, expands. */
+  private messageOp(event: AgentMessage, seq: number): ViewOp {
+    const from = partyLabel(event.from, event.fromAgent);
+    const to = partyLabel(event.to, event.toAgent);
+    const item: ViewItem = {
+      ref: `a${seq}`,
+      kind: "tool",
+      label: `${event.reply === true ? "reply" : "message"}: ${from} → ${to}`,
+      state: "done",
+      component: text(parseMarkdown(event.text)),
+    };
+    return { op: "set", item };
   }
 
   private taskItem(ref: string, task: string): ViewOp {

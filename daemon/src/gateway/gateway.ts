@@ -1,6 +1,6 @@
-// The core connector tools: tools_search, tools_call, apps_launch, apps_focus, delegate, models.
-// Every outcome is a normal tool result (isError for failures), so the model can read it and
-// correct itself.
+// The core connector tools: tools_search, tools_call, apps_launch, apps_focus, delegate, models,
+// send_message, wait. Every outcome is a normal tool result (isError for failures), so the model
+// can read it and correct itself.
 import { spawn } from "node:child_process";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type {
@@ -8,12 +8,15 @@ import type {
   CoreToolName,
   DelegateArgs,
   ModelsArgs,
+  SendMessageArgs,
   ToolsCallArgs,
   ToolsSearchArgs,
+  WaitArgs,
 } from "@suite/protocol/core-tools";
 import type { ToolResult } from "@suite/protocol/types";
 import Ajv2020, { type ValidateFunction } from "ajv/dist/2020.js";
 import type { Logger } from "../log.ts";
+import type { MessageTools } from "../messages.ts";
 import type { StoredConnector, StoredTool } from "../store.ts";
 import type { ConnectorRegistry } from "./registry.ts";
 import { type SearchHit, searchTools } from "./search.ts";
@@ -29,6 +32,8 @@ export interface GatewayOptions {
   delegate?: (session: string, args: DelegateArgs, signal?: AbortSignal) => Promise<CallToolResult>;
   /** What the subagent harnesses take for delegate's model and effort. */
   models?: (session: string, args: ModelsArgs) => Promise<CallToolResult>;
+  /** send_message, wait, and the messages an ACP agent gets with its tool results. */
+  messages?: MessageTools;
   /** Stores a result a guest gets as text with [result:ref], so views can draw it. */
   recordResult?: (session: string, result: ToolResult) => void;
   /** The file behind an asset:// handle, named in results for guests. */
@@ -130,12 +135,32 @@ export class Gateway {
     private readonly options: GatewayOptions,
   ) {}
 
-  /** `caller` says whose agent calls: a session id, or the session and what kind of client. */
+  /**
+   * `caller` says whose agent calls: a session id, or the session and what kind of client. An
+   * ACP agent can't be told anything mid-turn, so what other agents wrote to it comes with the
+   * result of its next suite tool.
+   */
   async call(
     name: CoreToolName,
     args: unknown,
     signal?: AbortSignal,
     caller: Caller | string = {},
+  ): Promise<CallToolResult> {
+    const result = await this.dispatch(name, args, signal, caller);
+    if (typeof caller === "string") return result;
+    const { session, guest, text: wantsText } = caller;
+    if (wantsText !== true || session === undefined) return result;
+    const waiting = this.options.messages?.take(session, guest) ?? [];
+    if (waiting.length === 0) return result;
+    const note: CallToolResult["content"][number] = { type: "text", text: waiting.join("\n\n") };
+    return { ...result, content: [...result.content, note] };
+  }
+
+  private async dispatch(
+    name: CoreToolName,
+    args: unknown,
+    signal: AbortSignal | undefined,
+    caller: Caller | string,
   ): Promise<CallToolResult> {
     const {
       session,
@@ -175,6 +200,9 @@ export class Gateway {
             return text(`delegate: ${key} must be a string`, true);
           }
         }
+        if (args.background !== undefined && typeof args.background !== "boolean") {
+          return text("delegate: background must be a boolean", true);
+        }
         if (guest !== undefined) return text("Subagents can't delegate.", true);
         if (!this.options.delegate || session === undefined) {
           return text("No other agents are available here.", true);
@@ -191,6 +219,34 @@ export class Gateway {
           return text("No other agents are available here.", true);
         }
         return this.options.models(session, args as ModelsArgs);
+      case "send_message":
+        if (typeof args.to !== "string" || args.to.trim() === "") {
+          return text("send_message: to is required", true);
+        }
+        if (typeof args.text !== "string" || args.text.trim() === "") {
+          return text("send_message: text is required", true);
+        }
+        if (!this.options.messages || session === undefined) {
+          return text("No other agents are available here.", true);
+        }
+        return this.options.messages.send(session, guest, args as unknown as SendMessageArgs);
+      case "wait": {
+        const names: unknown = args.for;
+        if (
+          names !== undefined &&
+          !(Array.isArray(names) && names.every((n) => typeof n === "string"))
+        ) {
+          return text("wait: for must be a list of subagent ids", true);
+        }
+        const seconds: unknown = args.timeoutSeconds;
+        if (seconds !== undefined && (typeof seconds !== "number" || !Number.isFinite(seconds))) {
+          return text("wait: timeoutSeconds must be a number", true);
+        }
+        if (!this.options.messages || session === undefined) {
+          return text("No other agents are available here.", true);
+        }
+        return this.options.messages.wait(session, guest, args as WaitArgs, signal);
+      }
     }
   }
 

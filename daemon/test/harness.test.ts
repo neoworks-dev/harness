@@ -566,6 +566,8 @@ describe("delegate from a session on an ACP harness", () => {
     const guest = await connect({ "x-suite-text": "1", "x-suite-guest": "fake" });
     expect(await names(guest)).not.toContain("delegate");
     expect(await names(guest)).not.toContain("models");
+    expect(await names(guest)).toContain("send_message");
+    expect(await names(guest)).toContain("wait");
     const subagent = await connect({ "x-suite-guest": "neo" });
     expect(await names(subagent)).not.toContain("delegate");
     expect(await names(subagent)).not.toContain("models");

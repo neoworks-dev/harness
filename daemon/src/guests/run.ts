@@ -21,4 +21,9 @@ export interface RunOptions {
    * back afterwards. They are not recorded as the user's choices.
    */
   settings?: HarnessSettings;
+  /**
+   * Takes the messages other agents sent this one (see messages.ts): neo reads them as its turn
+   * goes, an adapter when the turn starts (the gateway adds later ones to its tool results).
+   */
+  takeMessages?: () => string[];
 }

@@ -325,7 +325,8 @@ export function describeCall(title: string, rawInput: unknown): { title: string;
   const plain = title.replace(/^mcp(__|\.)suite(__|\.)/, "");
   // The view draws a delegation by its arguments (agent, task).
   if (plain === "delegate") return { title: plain, tool: plain };
-  if (!isRecord(rawInput)) return { title: plain };
+  const named = plain === "wait" ? "wait for messages" : plain;
+  if (!isRecord(rawInput)) return { title: named };
   const args = isRecord(rawInput.arguments) ? rawInput.arguments : rawInput;
   if (plain.includes("tools_call")) {
     const name = str(args.name);
@@ -333,15 +334,19 @@ export function describeCall(title: string, rawInput: unknown): { title: string;
   } else if (plain.includes("tools_search")) {
     const query = str(args.query);
     if (query !== undefined) return { title: `search tools: ${query}` };
+  } else if (plain === "send_message") {
+    const to = str(args.to);
+    const first = (str(args.text) ?? "").split("\n")[0] ?? "";
+    if (to !== undefined) return { title: `message ${to}: ${first.slice(0, 80)}` };
   }
-  return { title: plain };
+  return { title: named };
 }
 
 /**
  * Whether a permission request is for one of the suite's own MCP tools (tools_search, tools_call,
- * apps_launch, apps_focus, delegate), as Claude Code (`mcp__suite__tools_call`, also in its
- * `_meta.claudeCode.toolName`) and Codex (`mcp.suite.tools_call`, or the server and tool in the
- * input) name them. The gateway gates what needs gating, so these are not asked about twice.
+ * apps_launch, apps_focus, delegate, models, send_message, wait), as Claude Code
+ * (`mcp__suite__tools_call`, also in its `_meta.claudeCode.toolName`) and Codex
+ * (`mcp.suite.tools_call`, or the server and tool in the input) name them. The gateway gates what needs gating, so these are not asked about twice.
  */
 export function isSuiteTool(call: Record<string, unknown>): boolean {
   const named = (title: string | undefined): boolean => {
@@ -582,6 +587,7 @@ export class GuestManager {
           images: params.images,
           events: params.pendingEvents,
         };
+        if (params.takeMessages) opts.takeMessages = params.takeMessages;
         if (summary !== undefined) opts.summary = summary;
         const result = await this.enqueue(current, params.text, opts);
         const out: PromptResult = { stopReason: result.stopReason };
@@ -971,8 +977,14 @@ export class GuestManager {
     opts.signal?.addEventListener("abort", onAbort);
     guest.run = run;
     try {
+      // What arrived before this turn, ahead of the task (the gateway adds what comes during the
+      // turn to its tool results).
+      const waiting = opts.takeMessages?.() ?? [];
       const prompt = [
-        { type: "text", text: formatPrompt(task, events, undefined, opts.summary) },
+        {
+          type: "text",
+          text: [...waiting, formatPrompt(task, events, undefined, opts.summary)].join("\n\n"),
+        },
         ...(await imageBlocks(opts.images)),
       ];
       const result = await guest.conn.request("session/prompt", {

@@ -22,6 +22,10 @@
 //                 and the params of an authenticate request (Codex's gateway sign-in; header values are the
 //                 first 12 hex digits of their sha256, so the report holds no key)
 //   usage         sends usage_updates in the middle of one message (USD cost, then EUR cost)
+//   send <to> <text>  calls the suite's send_message and reports "sent: …" (or the error)
+//   spam <to>     sends 25 messages to <to> and reports how many were taken and the last answer
+//   listen        calls the suite's wait (5 s) and reports "heard: …"
+//   poll          calls tools_search until a message rides on a result, and reports it
 // It offers a model option (small, large) and an effort option (low, high), and one stored
 // conversation, "old-1", for session/list and session/resume.
 //   anything else sends a plan (one entry with an unknown status), a usage_update, and replies
@@ -82,6 +86,26 @@ function update(sessionId: string, value: Record<string, unknown>): void {
 
 function say(sessionId: string, text: string, kind = "agent_message_chunk"): void {
   update(sessionId, { sessionUpdate: kind, content: { type: "text", text } });
+}
+
+let suiteClient: Promise<Client> | undefined;
+
+/** A call of one of the suite's core tools as this agent: the text of the result, and whether it failed. */
+async function suite(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ text: string; isError: boolean }> {
+  if (!gateway) throw new Error("no MCP server");
+  const { url, headers } = gateway;
+  suiteClient ??= (async () => {
+    const client = new Client({ name: "fake-guest", version: "1" });
+    const requestInit = { headers: Object.fromEntries(headers.map((h) => [h.name, h.value])) };
+    await client.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit }));
+    return client;
+  })();
+  const result = await (await suiteClient).callTool({ name, arguments: args });
+  const blocks = result.content as { text?: string }[];
+  return { text: blocks.map((b) => b.text ?? "").join("\n"), isError: result.isError === true };
 }
 
 async function greet(sessionId: string, name: string): Promise<void> {
@@ -179,6 +203,33 @@ async function prompt(params: {
     say(sessionId, "\n\n");
     update(sessionId, { sessionUpdate: "plan", entries: [] });
     say(sessionId, `answer: ${answer.outcome.optionId ?? answer.outcome.outcome}`);
+    return { stopReason: "end_turn" };
+  } else if (task.startsWith("send ")) {
+    const [to = "", ...rest] = task.slice(5).split(" ");
+    const sent = await suite("send_message", { to, text: rest.join(" ") });
+    say(sessionId, `${sent.isError ? "refused" : "sent"}: ${sent.text}`);
+    return { stopReason: "end_turn" };
+  } else if (task.startsWith("spam ")) {
+    let taken = 0;
+    let last = "";
+    for (let i = 0; i < 25; i++) {
+      const sent = await suite("send_message", { to: task.slice(5), text: `ping ${i}` });
+      if (!sent.isError) taken += 1;
+      last = sent.text;
+    }
+    say(sessionId, `taken: ${taken}; last: ${last}`);
+    return { stopReason: "end_turn" };
+  } else if (task === "listen") {
+    const heard = await suite("wait", { timeoutSeconds: 5 });
+    say(sessionId, `heard: ${heard.text}`);
+    return { stopReason: "end_turn" };
+  } else if (task === "poll") {
+    let text = "";
+    for (let i = 0; i < 200 && !text.includes("<message"); i++) {
+      text = (await suite("tools_search", { query: "zzz" })).text;
+      await Bun.sleep(30);
+    }
+    say(sessionId, `polled: ${text}`);
     return { stopReason: "end_turn" };
   } else if (task.startsWith("readfile ")) {
     const path = task.slice(9);
