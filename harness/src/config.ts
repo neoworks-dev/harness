@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ThinkingLevel } from "./loop/index.ts";
-import { getEnvApiKey } from "@mariozechner/pi-ai";
-import { resolveAccount, type AuthDeps, type ResolvedAccount } from "./auth.ts";
+import { getEnvApiKey, getProviders } from "@mariozechner/pi-ai";
+import { accountProviders, resolveAccount, type AuthDeps, type ResolvedAccount } from "./auth.ts";
 import { isRecord } from "./util.ts";
 
 const DEFAULT_MODEL = "deepseek/deepseek-flash";
@@ -158,4 +158,35 @@ export function missingApiKeyMessage(
     `in the daemon's environment, or add it to ${config.authPath} (pi's ${config.piAuthPath} ` +
     `works too).`
   );
+}
+
+/** Where a provider's credential comes from; the first that has one, in resolveAuth's order. */
+export type CredentialSource = "env" | "config" | "suite" | "pi";
+
+export interface ProviderCredential {
+  provider: string;
+  source: CredentialSource;
+}
+
+/**
+ * Every pi-ai provider with a credential resolveAuth would find: its env var, SUITE_API_KEY (for
+ * the configured provider only), an entry in the suite's auth file or in pi's. Reads, never
+ * refreshes or writes. In pi-ai's provider order.
+ */
+export function providersWithCredential(
+  config: HarnessConfig,
+  deps: Pick<AuthDeps, "oauthProvider"> = {},
+): ProviderCredential[] {
+  const ours = new Set(accountProviders(config.authPath, deps.oauthProvider));
+  const pis = new Set(accountProviders(config.piAuthPath, deps.oauthProvider));
+  const found: ProviderCredential[] = [];
+  for (const provider of getProviders()) {
+    let source: CredentialSource | undefined;
+    if (getEnvApiKey(provider)) source = "env";
+    else if (config.apiKey && provider === config.provider) source = "config";
+    else if (ours.has(provider)) source = "suite";
+    else if (pis.has(provider)) source = "pi";
+    if (source) found.push({ provider, source });
+  }
+  return found;
 }

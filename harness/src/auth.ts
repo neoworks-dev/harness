@@ -8,6 +8,7 @@
 // entry would log the user out. Every write, and a refresh, happens under pi's lock
 // (proper-lockfile on the file itself, the lock being `<file>.lock`), and the entry is read again
 // once the lock is held: whoever lost the race finds a fresh token and refreshes nothing.
+import { readFileSync } from "node:fs";
 import { chmod, mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Api, Model } from "@mariozechner/pi-ai";
@@ -112,6 +113,30 @@ export async function readAccounts(path: string): Promise<Accounts> {
     if (account) accounts[provider] = account;
   }
   return accounts;
+}
+
+/**
+ * The providers an auth file has something usable for: an API key, or an OAuth login whose
+ * provider pi-ai knows (an expired token counts, it refreshes on use). Reads the file and nothing
+ * else: no token is refreshed and nothing is written. [] when the file is missing or broken.
+ */
+export function accountProviders(
+  path: string,
+  oauthProvider: AuthDeps["oauthProvider"] = getOAuthProvider,
+): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return [];
+  }
+  if (!isRecord(parsed)) return [];
+  return Object.entries(parsed)
+    .filter(([provider, value]) => {
+      const account = parseAccount(value);
+      return account?.type === "api_key" || (account && oauthProvider(provider) !== undefined);
+    })
+    .map(([provider]) => provider);
 }
 
 /** Replaces the file's content (mode 0600) without readers ever seeing half of it. */

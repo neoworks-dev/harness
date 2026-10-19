@@ -22,6 +22,7 @@ import type {
 import { formatPrompt } from "./context-events.ts";
 import {
   missingApiKeyMessage,
+  providersWithCredential,
   resolveAuth,
   THINKING_LEVELS,
   type HarnessConfig,
@@ -73,8 +74,12 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
   const defaultModel = resolveModel(config.provider, config.modelId, logger, config.images);
 
   /**
-   * "provider/id", or a bare id on the configured provider. Throws a readable Error for an
-   * unknown provider; an unknown id on a known provider is fine (the registry lags).
+   * "provider/id", or a bare id on the configured provider. The id may contain a slash itself
+   * (openrouter's): "openrouter/anthropic/claude-haiku-4.5". "head/rest" means provider `head`
+   * when it has a model `rest` (what /model lists always has this form); else a bare id with a
+   * slash on the configured provider; else an id the registry lacks, on provider `head`. Throws a
+   * readable Error for an unknown provider; an unknown id on a known provider is fine (the
+   * registry lags).
    */
   function modelFromSetting(value: string): Model<Api> {
     const providers: readonly string[] = getProviders();
@@ -83,13 +88,16 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
     let id = value;
     if (slash >= 0) {
       const head = value.slice(0, slash);
-      const isConfiguredModel = getModels(config.provider as KnownProvider).some(
+      const rest = value.slice(slash + 1);
+      const headHasIt =
+        providers.includes(head) &&
+        getModels(head as KnownProvider).some((candidate) => candidate.id === rest);
+      const configuredHasIt = getModels(config.provider as KnownProvider).some(
         (candidate) => candidate.id === value,
       );
-      // An id that itself contains a slash (openrouter) on the configured provider.
-      if (!isConfiguredModel) {
+      if (headHasIt || !configuredHasIt) {
         provider = head;
-        id = value.slice(slash + 1);
+        id = rest;
       }
     }
     if (!provider || !id) throw new Error(`Model must look like "provider/id", got "${value}".`);
@@ -215,16 +223,35 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       }
     }
 
-    function configOptions(): ConfigOption[] {
+    /**
+     * The current model first, then the models of every provider with a credential (the current
+     * one's provider first). With several providers a name says whose model it is.
+     */
+    function modelValues(): { value: string; name: string }[] {
       const current = agent.state.model;
       const currentValue = modelValue(current);
-      const models: Model<Api>[] = getModels(current.provider as KnownProvider);
-      const values = models.map((model) => ({ value: modelValue(model), name: model.name }));
-      if (!values.some((entry) => entry.value === currentValue)) {
-        values.unshift({ value: currentValue, name: current.name });
-      }
+      const providers = [
+        current.provider,
+        ...providersWithCredential(config)
+          .map((credential) => credential.provider)
+          .filter((provider) => provider !== current.provider),
+      ];
+      const values = providers.flatMap((provider) =>
+        getModels(provider as KnownProvider).map((model) => ({
+          value: modelValue(model),
+          name: providers.length > 1 ? `${model.name} · ${provider}` : model.name,
+        })),
+      );
+      const at = values.findIndex((entry) => entry.value === currentValue);
+      const known = at >= 0 ? values.splice(at, 1)[0] : undefined;
+      values.unshift(known ?? { value: currentValue, name: current.name });
+      return values;
+    }
+
+    function configOptions(): ConfigOption[] {
+      const currentValue = modelValue(agent.state.model);
       return [
-        { category: "model", current: currentValue, values },
+        { category: "model", current: currentValue, values: modelValues() },
         {
           category: "thought_level",
           current: agent.state.thinkingLevel,
