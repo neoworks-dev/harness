@@ -178,6 +178,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       store.append(session, result);
     },
     delegate: delegate.run,
+    models: delegate.models,
     focus: (app, session) => {
       try {
         focus?.move({ app, session }, "agent");

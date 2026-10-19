@@ -71,7 +71,7 @@
     },
     {
       "name": "delegate",
-      "description": "Hand a task to a subagent: another agent harness (neo; claude: Claude Code; codex: Codex), the one you run on included. It works in this session's directory (or the cwd or git worktree you name, as its own session there) with its own tools plus the same connectors, and its final reply comes back as the result. The user is asked before it starts. model and effort are optional: without them it uses what the user chose for that harness, else its own defaults. Write the task so it stands alone; follow-up delegations to the same agent continue its conversation. Subagents can't delegate.",
+      "description": "Hand a task to a subagent: another agent harness (neo; claude: Claude Code; codex: Codex), the one you run on included. It works in this session's directory (or the cwd or git worktree you name, as its own session there) with its own tools plus the same connectors, and its final reply comes back as the result. The user is asked before it starts. model and effort are optional: without them it uses what the user chose for that harness, else its own defaults; models lists the names each harness takes. Write the task so it stands alone; follow-up delegations to the same agent continue its conversation. Subagents can't delegate.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -102,6 +102,25 @@
           }
         },
         "required": ["agent", "task"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "models",
+      "description": "The models and reasoning efforts a subagent harness takes, by the names delegate's model and effort want, with the one the user chose for it and the harness's default marked. Without agent it lists every harness. A harness that isn't running yet is started to ask it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "enum": ["neo", "claude", "codex"],
+            "description": "Which harness. Default: all of them."
+          },
+          "query": {
+            "type": "string",
+            "description": "Only models whose name or id contains one of these words (e.g. sonnet, deepseek). Default: all, the first 40."
+          }
+        },
         "additionalProperties": false
       }
     }

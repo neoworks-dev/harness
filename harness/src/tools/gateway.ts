@@ -1,4 +1,4 @@
-// tools_search, tools_call, apps_launch, apps_focus, delegate: native definitions from
+// tools_search, tools_call, apps_launch, apps_focus, delegate, models: native definitions from
 // protocol/core-tools.json (so the tool list is fixed whatever is connected), executed by the
 // daemon's MCP gateway. The harness is an MCP client of the gateway (design §4).
 import type { AgentTool, AgentToolResult } from "../loop/index.ts";
@@ -23,6 +23,7 @@ const LABELS: Record<CoreToolName, string> = {
   apps_launch: "Launch app",
   apps_focus: "Focus app",
   delegate: "Delegate",
+  models: "Models",
 };
 
 // A guest can work for a long time; cancelling the turn aborts it through the signal.

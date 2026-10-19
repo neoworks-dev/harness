@@ -38,7 +38,8 @@ cp asset://img-7f3 ~/site/logo.png.
 
 delegate hands a task to a subagent (neo, Claude Code or Codex) that works in the
 session's directory, or in a cwd or git worktree you name; use it for larger
-coding work. Its final reply is the tool result. <guest agent=…>…</guest> in a
+coding work. Its final reply is the tool result; models lists the models and efforts each
+harness takes. <guest agent=…>…</guest> in a
 message is a task the user gave a guest directly, with its reply.
 
 <conversation-so-far> in a message is what was said in turns that another agent

@@ -216,6 +216,29 @@ describe("the gate", () => {
   });
 });
 
+describe("the models tool", () => {
+  test("starts a harness that isn't running to list what it takes, by delegate's names", async () => {
+    const { daemon, session } = await setup();
+    const all = await daemon.gateway.call("models", {}, undefined, session);
+    expect(all.isError).toBeUndefined();
+    const listed = resultOf(all);
+    expect(listed).toContain("fake (Fake)\n  models:\n    small");
+    expect(listed).toContain("    large");
+    expect(listed).toContain("  efforts:\n    low");
+    expect(listed).toContain("Give delegate a value as its model or effort.");
+
+    const narrowed = resultOf(
+      await daemon.gateway.call("models", { agent: "fake", query: "lar" }, undefined, session),
+    );
+    expect(narrowed).toContain("    large");
+    expect(narrowed).not.toContain("    small");
+
+    const unknown = await daemon.gateway.call("models", { agent: "nope" }, undefined, session);
+    expect(unknown.isError).toBe(true);
+    expect(resultOf(unknown)).toStartWith("No guest named nope");
+  });
+});
+
 describe("a model or effort the harness lists and doesn't know", () => {
   test("is refused with the valid names before anything is asked", async () => {
     const { daemon, session } = await setup();

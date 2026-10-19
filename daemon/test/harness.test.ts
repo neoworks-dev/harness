@@ -565,8 +565,10 @@ describe("delegate from a session on an ACP harness", () => {
 
     const guest = await connect({ "x-suite-text": "1", "x-suite-guest": "fake" });
     expect(await names(guest)).not.toContain("delegate");
+    expect(await names(guest)).not.toContain("models");
     const subagent = await connect({ "x-suite-guest": "neo" });
     expect(await names(subagent)).not.toContain("delegate");
+    expect(await names(subagent)).not.toContain("models");
     const neo = await subagent.callTool({ name: "tools_search", arguments: { query: "greet" } });
     expect(neo.structuredContent).toBeDefined();
   });

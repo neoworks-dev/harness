@@ -11,7 +11,7 @@
 // parent waits for that session's turn and returns its final reply.
 import { homedir } from "node:os";
 import type { AgentUpdate, ConfigCategory, ConfigOption } from "@suite/harness/agent";
-import type { DelegateArgs } from "@suite/protocol/core-tools";
+import type { DelegateArgs, ModelsArgs } from "@suite/protocol/core-tools";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type {
   PermissionDetail,
@@ -25,6 +25,7 @@ import type { SessionManager } from "../sessions.ts";
 import { type Approvals, CATEGORIES, type HarnessSettings } from "../settings.ts";
 import type { SessionStore } from "../store.ts";
 import type { GuestManager } from "./guests.ts";
+import { NEO } from "./subagent.ts";
 import { createWorktree, resolveTarget, type Target } from "./worktree.ts";
 
 /** Valid names listed in a refusal before it says how many more there are. */
@@ -51,6 +52,8 @@ export interface DelegateParts {
 /** What the daemon exposes of the tool: the gateway calls `run`, `x` in a pane calls `cancel`. */
 export interface Delegate {
   run: (session: string, args: DelegateArgs, signal?: AbortSignal) => Promise<CallToolResult>;
+  /** The models tool: what each harness takes for model and effort. */
+  models: (session: string, args: ModelsArgs) => Promise<CallToolResult>;
   /** Stops one running subagent (its id is in subagent_started); false when it isn't running. */
   cancel: (session: string, id: string) => boolean;
 }
@@ -310,6 +313,75 @@ export function createDelegate(parts: DelegateParts): Delegate {
     }
   }
 
+  /** One harness's models and efforts, for the models tool. */
+  async function harnessModels(session: string, agent: string, query?: string): Promise<string> {
+    const head = `${agent} (${guests.title(agent)})`;
+    let options: ConfigOption[] | undefined;
+    try {
+      // neo answers in-process; a guest is started (once per session) to ask it.
+      options =
+        agent === NEO
+          ? await guests.knownOptions(session, agent)
+          : await guests.configOptions(session, agent);
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      return `${head}: couldn't start it to ask (${why}).`;
+    }
+    const chosen = parts.settings(session, agent);
+    const lines = [head];
+    const words = (query ?? "")
+      .split(/[\s,]+/)
+      .map(norm)
+      .filter((w) => w !== "");
+    for (const [category, label] of [
+      ["model", "models"],
+      ["thought_level", "efforts"],
+    ] as const) {
+      const option = options?.find((o) => o.category === category);
+      if (!option || option.values.length === 0) {
+        lines.push(`  ${label}: no list; it takes what its own docs name.`);
+        continue;
+      }
+      const matches = (v: { value: string; name: string }): boolean =>
+        category !== "model" ||
+        words.length === 0 ||
+        words.some((w) => norm(v.value).includes(w) || norm(v.name).includes(w));
+      const values = option.values.filter(matches);
+      if (values.length === 0) {
+        lines.push(`  ${label}: none match "${query ?? ""}" of ${option.values.length}.`);
+        continue;
+      }
+      const shown = values.slice(0, LISTED).map((v) => {
+        const marks: string[] = [];
+        if (v.value === chosen[category]) marks.push("the user's choice");
+        if (v.value === option.current) marks.push("default");
+        let line = v.value;
+        if (norm(v.name) !== norm(v.value)) line += ` ${v.name}`;
+        if (marks.length > 0) line += ` [${marks.join(", ")}]`;
+        return line;
+      });
+      if (values.length > LISTED)
+        shown.push(`… ${values.length - LISTED} more (narrow with query)`);
+      lines.push(`  ${label}:`, ...shown.map((v) => `    ${v}`));
+    }
+    if (agent === NEO) lines.push("  neo also takes any provider/model id.");
+    return lines.join("\n");
+  }
+
+  const models: Delegate["models"] = async (session, { agent, query }) => {
+    const harnesses = guests.harnesses();
+    if (agent !== undefined && !harnesses.includes(agent)) {
+      const known = harnesses.length > 0 ? harnesses.join(", ") : "none are configured";
+      return text(`No guest named ${agent} (${known}).`, true);
+    }
+    const names = agent === undefined ? harnesses : [agent];
+    if (names.length === 0) return text("No subagent harnesses are configured.", true);
+    const blocks = await Promise.all(names.map((name) => harnessModels(session, name, query)));
+    const how =
+      "Give delegate a value as its model or effort. Without them the user's choice runs, else the default.";
+    return text([...blocks, how].join("\n\n"));
+  };
+
   const run: Delegate["run"] = async (session, args, signal) => {
     const { agent, task } = args;
     const harnesses = guests.harnesses();
@@ -400,6 +472,7 @@ export function createDelegate(parts: DelegateParts): Delegate {
 
   return {
     run,
+    models,
     cancel: (session, id) => {
       const entry = running.get(id);
       if (!entry || entry.session !== session) return false;

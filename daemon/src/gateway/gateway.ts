@@ -1,12 +1,13 @@
-// The core connector tools: tools_search, tools_call, apps_launch, apps_focus, delegate. Every
-// outcome is a normal tool result (isError for failures), so the model can read it and correct
-// itself.
+// The core connector tools: tools_search, tools_call, apps_launch, apps_focus, delegate, models.
+// Every outcome is a normal tool result (isError for failures), so the model can read it and
+// correct itself.
 import { spawn } from "node:child_process";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type {
   AppArgs,
   CoreToolName,
   DelegateArgs,
+  ModelsArgs,
   ToolsCallArgs,
   ToolsSearchArgs,
 } from "@suite/protocol/core-tools";
@@ -26,6 +27,8 @@ export interface GatewayOptions {
   launchTimeoutMs?: number;
   /** Runs a subagent for delegate; its final reply is the result. */
   delegate?: (session: string, args: DelegateArgs, signal?: AbortSignal) => Promise<CallToolResult>;
+  /** What the subagent harnesses take for delegate's model and effort. */
+  models?: (session: string, args: ModelsArgs) => Promise<CallToolResult>;
   /** Stores a result a guest gets as text with [result:ref], so views can draw it. */
   recordResult?: (session: string, result: ToolResult) => void;
   /** The file behind an asset:// handle, named in results for guests. */
@@ -177,6 +180,17 @@ export class Gateway {
           return text("No other agents are available here.", true);
         }
         return this.options.delegate(session, args as unknown as DelegateArgs, signal);
+      case "models":
+        for (const key of ["agent", "query"]) {
+          if (args[key] !== undefined && typeof args[key] !== "string") {
+            return text(`models: ${key} must be a string`, true);
+          }
+        }
+        if (guest !== undefined) return text("Subagents can't delegate.", true);
+        if (!this.options.models || session === undefined) {
+          return text("No other agents are available here.", true);
+        }
+        return this.options.models(session, args as ModelsArgs);
     }
   }
 

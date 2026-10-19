@@ -50,6 +50,10 @@ function describeToolCall(name: string, args: unknown): { title: string; kind: T
     }
     case "web_fetch":
       return { title: `fetch ${stringArg(args, "url")}`, kind: "fetch" };
+    case "models": {
+      const agent = stringArg(args, "agent");
+      return { title: agent ? `models of ${agent}` : "models of the harnesses", kind: "search" };
+    }
     case "todo_write":
       return { title: "update todos", kind: "think" };
     case "delegate": {
