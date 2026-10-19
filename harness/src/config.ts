@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ThinkingLevel } from "./loop/index.ts";
 import { getEnvApiKey, getProviders } from "@mariozechner/pi-ai";
+import type { SafeSearch } from "@neoworks/websearch";
 import { accountProviders, resolveAccount, type AuthDeps, type ResolvedAccount } from "./auth.ts";
 import { isRecord } from "./util.ts";
 
@@ -31,6 +32,50 @@ export interface HarnessConfig {
   authPath: string;
   /** pi's auth file, read lazily as the last key source; also refreshed in place. */
   piAuthPath: string;
+  /** For web_search and web_fetch. */
+  web: WebConfig;
+}
+
+/** The web tools' settings: the user's to choose, never the agent's. */
+export interface WebConfig {
+  /** How much adult content web_search may return (see @neoworks/websearch). */
+  safeSearch: SafeSearch;
+  /** A SearXNG instance to search alongside the other engines. */
+  searxngUrl?: string;
+}
+
+const SAFE_SEARCH: readonly SafeSearch[] = ["strict", "moderate", "off"];
+
+function parseSafeSearch(value: string, source: string): SafeSearch {
+  const level = SAFE_SEARCH.find((candidate) => candidate === value);
+  if (level) return level;
+  throw new Error(`${source}: safe search must be one of ${SAFE_SEARCH.join(", ")}`);
+}
+
+/**
+ * The `web` object of config.json (`safeSearch`, `searxng`), overridden by SUITE_SAFE_SEARCH and
+ * SUITE_SEARXNG_URL.
+ */
+function parseWeb(
+  file: Record<string, unknown> | undefined,
+  path: string,
+  env: NodeJS.ProcessEnv,
+): WebConfig {
+  const section = file?.web;
+  if (section !== undefined && !isRecord(section))
+    throw new Error(`${path}: web must be an object`);
+  let safeSearch: SafeSearch = "moderate";
+  if (typeof section?.safeSearch === "string") {
+    safeSearch = parseSafeSearch(section.safeSearch, `${path} web.safeSearch`);
+  }
+  if (env.SUITE_SAFE_SEARCH)
+    safeSearch = parseSafeSearch(env.SUITE_SAFE_SEARCH, "SUITE_SAFE_SEARCH");
+  const web: WebConfig = { safeSearch };
+  if (env.SUITE_SEARXNG_URL) web.searxngUrl = env.SUITE_SEARXNG_URL;
+  else if (typeof section?.searxng === "string" && section.searxng) {
+    web.searxngUrl = section.searxng;
+  }
+  return web;
 }
 
 /** Parses a JSON file; undefined if it doesn't exist. Throws on invalid JSON. */
@@ -87,7 +132,8 @@ export function authPaths(env: NodeJS.ProcessEnv = process.env): {
 
 /**
  * Reads `$XDG_CONFIG_HOME/suite/config.json` (optional; keys `model` = "provider/id",
- * `thinkingLevel` and `images`), overridden by SUITE_MODEL, SUITE_THINKING and SUITE_IMAGES.
+ * `thinkingLevel`, `images` and `web`), overridden by SUITE_MODEL, SUITE_THINKING, SUITE_IMAGES,
+ * SUITE_SAFE_SEARCH and SUITE_SEARXNG_URL.
  */
 export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): HarnessConfig {
   const home = env.HOME || homedir();
@@ -122,6 +168,7 @@ export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): Harness
     thinkingLevel: parseThinkingLevel(thinking, thinkingSource),
     apiKey: env.SUITE_API_KEY || undefined,
     ...authPaths(env),
+    web: parseWeb(file, path, env),
   };
   if (env.SUITE_IMAGES) config.images = parseImages(env.SUITE_IMAGES, "SUITE_IMAGES");
   else if (file && typeof file.images === "boolean") config.images = file.images;

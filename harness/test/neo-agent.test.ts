@@ -284,6 +284,8 @@ test("the system prompt and tools are sent unchanged on every request", async ()
       "write",
       "edit",
       "todo_write",
+      "web_search",
+      "web_fetch",
       "tools_search",
       "tools_call",
       "apps_launch",

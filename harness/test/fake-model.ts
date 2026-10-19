@@ -16,6 +16,7 @@ export const TEST_CONFIG: HarnessConfig = {
   apiKey: "test-key-not-real",
   authPath: "/nonexistent/suite-auth.json",
   piAuthPath: "/nonexistent/auth.json",
+  web: { safeSearch: "moderate" },
 };
 
 export type Step =

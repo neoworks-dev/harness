@@ -42,6 +42,13 @@ function describeToolCall(name: string, args: unknown): { title: string; kind: T
       return { title: `launch ${stringArg(args, "app")}`, kind: "other" };
     case "apps_focus":
       return { title: `focus ${stringArg(args, "app")}`, kind: "other" };
+    case "web_search": {
+      const kind = stringArg(args, "kind");
+      const what = kind === "news" || kind === "images" ? kind : "the web";
+      return { title: `search ${what}: ${stringArg(args, "query")}`, kind: "search" };
+    }
+    case "web_fetch":
+      return { title: `fetch ${stringArg(args, "url")}`, kind: "fetch" };
     case "todo_write":
       return { title: "update todos", kind: "think" };
     case "delegate": {

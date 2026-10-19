@@ -15,6 +15,11 @@ Other apps don't share it: give them absolute paths.
 
 For work with several steps, keep a todo list with todo_write.
 
+web_search lists what several search engines found, as they found it. web_fetch
+saves a page as markdown in a file and returns its path and outline: grep and
+read the parts you need. Prefer the sources over what you remember for anything
+that changes (versions, prices, news).
+
 The most recent <focus> event says where the user is now.
 
 When a connector disconnects, its tools stop working until it reconnects;

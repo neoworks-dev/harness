@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Agent, type StreamFn, type ThinkingLevel } from "./loop/index.ts";
 import {
   getModels,
@@ -20,6 +22,7 @@ import type {
   PromptParams,
   PromptResult,
 } from "./agent.ts";
+import { resolveAccount } from "./auth.ts";
 import { formatPrompt } from "./context-events.ts";
 import {
   missingApiKeyMessage,
@@ -43,6 +46,7 @@ import { createUpdateMapper } from "./updates.ts";
 import { HARNESS_NAME, loggedMessages, restoreMessages } from "./restore.ts";
 import { SYSTEM_PROMPT } from "./system-prompt.ts";
 import { createCoreTools } from "./tools/core.ts";
+import type { WebToolsOptions } from "./tools/web.ts";
 import { connectGateway, type GatewayConnection } from "./tools/gateway.ts";
 import { loadImages } from "./tools/read.ts";
 import { createUsageTracker } from "./usage.ts";
@@ -118,6 +122,20 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
   /** OpenRouter's live models once fetched (never waits for them), else pi-ai's. */
   const openRouterModels = (): Model<Api>[] => catalog.cached() ?? bundledOpenRouterModels();
   const defaultModel = resolveModel(config.provider, config.modelId, logger, config.images);
+
+  /**
+   * The web tools' settings for a session. Fetched pages go to a temp directory of its own,
+   * which the system clears; TinyFish is searched too when the user has a key (its env var, or a
+   * "tinyfish" API key in the suite's accounts file).
+   */
+  function webToolsFor(sessionId: string): WebToolsOptions {
+    return {
+      config: config.web,
+      dir: join(tmpdir(), "neo-web", sessionId),
+      tinyfishKey: async () =>
+        process.env.TINYFISH_API_KEY || (await resolveAccount(config.authPath, "tinyfish"))?.apiKey,
+    };
+  }
 
   /** A provider's models: OpenRouter's live list once there is one, else pi-ai's. */
   function modelsOf(provider: string): Model<Api>[] {
@@ -234,6 +252,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
           gatewayOf(params.mcpServers),
           params.resolveAsset,
           params.requestPermission,
+          webToolsFor(params.sessionId),
         ),
         messages,
         thinkingLevel: initial.thinkingLevel,

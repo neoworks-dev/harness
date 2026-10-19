@@ -37,6 +37,7 @@ test("defaults without a config file", async () => {
     apiKey: undefined,
     authPath: join(home, ".local", "share", "suite", "auth.json"),
     piAuthPath: join(home, ".pi", "agent", "auth.json"),
+    web: { safeSearch: "moderate" },
   });
 });
 
@@ -47,6 +48,24 @@ test("the config file overrides the defaults; ids may contain slashes", async ()
   expect(config.provider).toBe("openrouter");
   expect(config.modelId).toBe("anthropic/claude-x");
   expect(config.thinkingLevel).toBe("high");
+});
+
+test("the web tools' settings: config.json's web object, then the environment", async () => {
+  const home = await tempDir();
+  await writeConfig(home, { web: { safeSearch: "strict", searxng: "http://127.0.0.1:8888" } });
+  expect(loadHarnessConfig({ HOME: home }).web).toEqual({
+    safeSearch: "strict",
+    searxngUrl: "http://127.0.0.1:8888",
+  });
+  const fromEnv = loadHarnessConfig({
+    HOME: home,
+    SUITE_SAFE_SEARCH: "off",
+    SUITE_SEARXNG_URL: "http://searx.lan",
+  });
+  expect(fromEnv.web).toEqual({ safeSearch: "off", searxngUrl: "http://searx.lan" });
+  expect(() => loadHarnessConfig({ HOME: home, SUITE_SAFE_SEARCH: "none" })).toThrow(
+    "SUITE_SAFE_SEARCH: safe search must be one of strict, moderate, off",
+  );
 });
 
 test("XDG_CONFIG_HOME moves the config file", async () => {

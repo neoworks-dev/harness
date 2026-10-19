@@ -12,6 +12,7 @@
   "dependencies": {
     "@mariozechner/pi-ai": "0.73.1",
     "@modelcontextprotocol/sdk": "^1.32.1",
+    "@neoworks/websearch": "workspace:*",
     "@suite/protocol": "workspace:*",
     "proper-lockfile": "^4.1.2",
     "typebox": "^1.3.37"

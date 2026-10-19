@@ -57,6 +57,7 @@ async function configWith(
     thinkingLevel: "off",
     authPath,
     piAuthPath,
+    web: { safeSearch: "moderate" },
     ...extra,
   };
 }

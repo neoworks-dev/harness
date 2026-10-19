@@ -7,6 +7,7 @@ One agent session shared across every app in the suite. The design is in [docs/d
 | `protocol/`          | JSON Schemas (source of truth) + generated TS, Go, Rust types     | 0     |
 | `daemon/`            | TS on Bun: session store, bus hub, turn queue                     | 1     |
 | `harness/`           | TS on Bun: neo, our agent (loop, core tools, system prompt)       | 1     |
+| `websearch/`         | Web, news and image search across engines; pages as markdown      | 6     |
 | `cli/`               | Go: `suite status / sessions / attach / tools / focus / move`     | 1-3   |
 | `sdk-ts/`, `sdk-go/` | Bus clients (sessions, presence; TS tool server: `sdk-ts-tools/`) | 2     |
 | `sdk-rs/`            | Rust bus client for GPUI apps                                     | 3     |
@@ -59,6 +60,9 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/
 | `SUITE_MODEL`                         | `deepseek/deepseek-flash` (`provider/model-id`)             |
 | `SUITE_IMAGES`                        | `1`/`0`: the model takes images (default: pi's registry)    |
 | `SUITE_THINKING`                      | `off` (`minimal`…`xhigh`)                                   |
+| `SUITE_SAFE_SEARCH`                   | `moderate` (`strict`, `off`): neo's web search              |
+| `SUITE_SEARXNG_URL`                   | a SearXNG instance neo's web search asks too                |
+| `TINYFISH_API_KEY`                    | TinyFish's search API, asked too (free tier)                |
 | `<PROVIDER>_API_KEY`, `SUITE_API_KEY` | else `SUITE_AUTH`, then pi's `~/.pi/agent/auth.json`        |
 | `SUITE_AUTH`                          | `auth.json` in `SUITE_DATA_DIR`: what `/login` writes       |
 | `SUITE_AGENT`                         | `neo`; `echo` is an offline scripted agent for tests        |
@@ -66,7 +70,9 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/
 | `SUITE_GUESTS`                        | `claude,codex`; `none` turns guest agents off               |
 | `SUITE_GUEST_PERMISSIONS`             | `ask` (buttons in the chat) or `allow`                      |
 
-`model` and `thinkingLevel` can also be set in `~/.config/suite/config.json`; env wins.
+`model`, `thinkingLevel` and `web` (`{"safeSearch": "strict", "searxng": "http://…"}`) can also be set in `~/.config/suite/config.json`; env wins.
+
+neo searches the web itself: `web_search` asks several engines at once (web, news or images; no key needed) and lists what they found, and `web_fetch` saves a page as markdown in a file that the agent greps and reads in parts. You're asked before each fetch unless approvals is `auto`. Safe search is your setting, not the agent's. The search engines are in [websearch](websearch/README.md).
 
 Keys and accounts: `/login` adds an API key or an account (ChatGPT, GitHub Copilot, Claude Pro/Max, which neo only may use), `/logout` removes one, `/accounts` lists them. Keys are typed into a hidden field, never into the chat.
 
