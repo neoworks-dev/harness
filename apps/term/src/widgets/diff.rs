@@ -131,6 +131,9 @@ pub(crate) struct DiffView {
     rx: Option<Receiver<Result<String, String>>>,
     /// The unified view.
     lines: Vec<DiffLine>,
+    /// The line number of each unified line (the new file's; a removed line's in the old
+    /// one); None for headers and notes.
+    numbers: Vec<Option<usize>>,
     /// The split view.
     aligned: Aligned,
     /// The widest unified line, in cells.
@@ -192,6 +195,7 @@ impl DiffView {
             full: false,
             rx: None,
             lines: Vec::new(),
+            numbers: Vec::new(),
             aligned: Aligned::default(),
             uni_w: 0,
             syntax: Highlights::default(),
@@ -255,6 +259,7 @@ impl DiffView {
             let _ = tx.send(highlight(path.as_deref(), &copy, &aligned));
         });
         self.syntax_rx = Some(rx);
+        self.numbers = line_numbers(&lines);
         self.lines = lines;
         self.adds = adds;
         self.dels = dels;
@@ -466,7 +471,9 @@ impl DiffView {
         let split = geom.is_some();
         let head = if split { 2 } else { 1 };
         let rows = (area.height as usize).saturating_sub(head);
-        let col_w = geom.map_or(w.saturating_sub(1), |g| g.left - g.gutter - 3);
+        let col_w = geom.map_or(w.saturating_sub(1 + self.uni_gutter(w)), |g| {
+            g.left - g.gutter - 3
+        });
         // A resize (or `s`) changed the mode: land on the same hunk.
         if self.scroll_split.get() != split {
             let pos = self.convert(self.scroll.get(), self.scroll_split.get());
@@ -628,6 +635,17 @@ impl DiffView {
         out
     }
 
+    /// Cells the line numbers of the unified view take, with the space after them; none when
+    /// no line has one (a note) or `w` leaves too little room for the text.
+    fn uni_gutter(&self, w: usize) -> usize {
+        let gutter = self.aligned.gutter.max(3) + 1;
+        if self.numbers.iter().any(Option::is_some) && w >= gutter + MIN_TEXT {
+            gutter
+        } else {
+            0
+        }
+    }
+
     /// `rows` lines of the unified view from line `first`.
     fn unified_lines(
         &self,
@@ -656,8 +674,15 @@ impl DiffView {
                         .split_at(l.text.chars().next().map_or(0, char::len_utf8)),
                     _ => ("", l.text.as_str()),
                 };
-                let mut spans = vec![Span::styled(mark.to_string(), style)];
-                let avail = w - width(mark);
+                let gutter = self.uni_gutter(w);
+                let mut spans = Vec::new();
+                if gutter > 0 {
+                    let no = self.numbers.get(index).copied().flatten();
+                    let no = no.map_or_else(String::new, |n| n.to_string());
+                    spans.push(Span::styled(format!("{no:>0$} ", gutter - 1), look.muted));
+                }
+                spans.push(Span::styled(mark.to_string(), style));
+                let avail = w.saturating_sub(width(mark) + gutter);
                 let classes = self
                     .syntax
                     .unified
@@ -1085,6 +1110,35 @@ pub(crate) fn parse_diff(text: &str) -> (Vec<DiffLine>, usize, usize) {
         });
     }
     (lines, adds, dels)
+}
+
+/// The line number of every unified line, counted from the hunk headers: the new file's for
+/// context and additions, the old file's for removals.
+fn line_numbers(lines: &[DiffLine]) -> Vec<Option<usize>> {
+    let (mut old, mut new) = (1, 1);
+    lines
+        .iter()
+        .map(|l| match l.kind {
+            Kind::Hunk => {
+                (old, new) = hunk_start(&l.text);
+                None
+            }
+            Kind::Context => {
+                old += 1;
+                new += 1;
+                Some(new - 1)
+            }
+            Kind::Add => {
+                new += 1;
+                Some(new - 1)
+            }
+            Kind::Del => {
+                old += 1;
+                Some(old - 1)
+            }
+            Kind::Header | Kind::Note => None,
+        })
+        .collect()
 }
 
 /// The old and new first line numbers of `@@ -a,b +c,d @@`.
@@ -1678,13 +1732,15 @@ index 1111111..2222222 100644
         let out = draw_to(&v, &mut t);
         let first = out.lines().next().unwrap();
         assert_eq!(first, "src/a.ts  +1 −2   1–7/10");
-        assert_eq!(out.lines().nth(1).unwrap(), "diff --git a/src/a.ts b…");
+        // Headers get an empty gutter, so the code lines up under them.
+        assert_eq!(out.lines().nth(1).unwrap(), "    diff --git a/src/a.…");
         assert_eq!(out.lines().count(), 8);
         // Colors.
         let p = Palette::default();
         let buf = t.backend().buffer();
         assert_eq!(buf[(0, 5)].fg, p.muted); // @@
-        assert_eq!(buf[(0, 7)].fg, p.danger); // -old line
+        assert_eq!(buf[(0, 7)].fg, p.muted); // its line number
+        assert_eq!(buf[(4, 7)].fg, p.danger); // -old line
         assert_eq!(buf[(10, 0)].fg, p.success); // +1 in the title
     }
 
@@ -1813,7 +1869,7 @@ index 1111111..2222222 100644
                 .all(|(fg, _)| *fg == string)
         );
         // The sign keeps the change's color.
-        assert_eq!(buf[(0, 6)].fg, Palette::default().success);
+        assert_eq!(buf[(4, 6)].fg, Palette::default().success);
     }
 
     #[test]
@@ -1890,21 +1946,21 @@ index 1111111..2222222 100644
         draw_to(&v, &mut t); // learns the height
         assert!(!press(&mut v, KeyCode::Down));
         let out = draw_to(&v, &mut t);
-        assert!(line(&out, 1).starts_with("+line 0"));
+        assert!(line(&out, 1).starts_with("  1 +line 0"));
         assert!(line(&out, 0).ends_with("lines 2–11 of 41"));
         press(&mut v, KeyCode::Char('G'));
         let out = draw_to(&v, &mut t);
-        assert!(out.lines().last().unwrap().starts_with("+line 39"));
+        assert!(out.lines().last().unwrap().starts_with(" 40 +line 39"));
         assert!(line(&out, 0).ends_with("lines 32–41 of 41"));
         press(&mut v, KeyCode::Down);
-        assert_eq!(draw_to(&v, &mut t).lines().last().unwrap(), "+line 39");
+        assert_eq!(draw_to(&v, &mut t).lines().last().unwrap(), " 40 +line 39");
         press(&mut v, KeyCode::PageUp);
         assert!(
             draw_to(&v, &mut t)
                 .lines()
                 .last()
                 .unwrap()
-                .starts_with("+line 30")
+                .starts_with(" 31 +line 30")
         );
         v.key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
         assert!(
@@ -1912,7 +1968,7 @@ index 1111111..2222222 100644
                 .lines()
                 .last()
                 .unwrap()
-                .starts_with("+line 25")
+                .starts_with(" 26 +line 25")
         );
         v.key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL));
         assert!(
@@ -1920,7 +1976,7 @@ index 1111111..2222222 100644
                 .lines()
                 .last()
                 .unwrap()
-                .starts_with("+line 30")
+                .starts_with(" 31 +line 30")
         );
         press(&mut v, KeyCode::PageDown);
         assert!(
@@ -1928,14 +1984,14 @@ index 1111111..2222222 100644
                 .lines()
                 .last()
                 .unwrap()
-                .starts_with("+line 39")
+                .starts_with(" 40 +line 39")
         );
         press(&mut v, KeyCode::Char('g'));
-        assert!(line(&draw_to(&v, &mut t), 1).starts_with("@@"));
+        assert!(line(&draw_to(&v, &mut t), 1).starts_with("    @@"));
         ch(&mut v, 'j');
         ch(&mut v, 'j');
         ch(&mut v, 'k');
-        assert!(line(&draw_to(&v, &mut t), 1).starts_with("+line 0"));
+        assert!(line(&draw_to(&v, &mut t), 1).starts_with("  1 +line 0"));
         assert!(press(&mut v, KeyCode::Esc));
         assert!(ch(&mut v, 'q'));
     }
@@ -2070,7 +2126,7 @@ index 1111111..2222222 100644
             out.lines()
                 .nth(1)
                 .unwrap()
-                .starts_with("@@ -41,12 +41,12 @@ section 2"),
+                .starts_with("    @@ -41,12 +41,12 @@ section 2"),
             "{out}"
         );
         ch(&mut v, 'p');
@@ -2079,7 +2135,7 @@ index 1111111..2222222 100644
                 .lines()
                 .nth(1)
                 .unwrap()
-                .starts_with("@@ -21,12")
+                .starts_with("    @@ -21,12")
         );
         ch(&mut v, 's');
         let out = draw_to(&v, &mut t);

@@ -302,16 +302,16 @@ fn overlay_takes_keys_until_closed() {
     };
     assert_eq!(
         draw(&w),
-        "a.rs  +20 −0   lines 1–5 of 21\n@@ -1 +1 @@\n+l0\n+l1\n+l2\n+l3"
+        "a.rs  +20 −0   lines 1–5 of 21\n    @@ -1 +1 @@\n  1 +l0\n  2 +l1\n  3 +l2\n  4 +l3"
     );
     // Whatever panel is focused, the overlay gets the keys.
     assert_eq!(
         w.handle_key(Panel::Plan, key(KeyCode::Char('j'))),
         WidgetAction::Redraw
     );
-    assert!(draw(&w).contains("+l0\n+l1\n+l2\n+l3\n+l4"));
+    assert!(draw(&w).contains("  1 +l0\n  2 +l1\n  3 +l2\n  4 +l3\n  5 +l4"));
     w.handle_key(Panel::Files, key(KeyCode::Char('G')));
-    assert!(draw(&w).ends_with("+l19"));
+    assert!(draw(&w).ends_with(" 20 +l19"));
     assert_eq!(
         w.handle_key(Panel::Files, key(KeyCode::Esc)),
         WidgetAction::Redraw
