@@ -51,6 +51,17 @@ export interface ConfigOption {
   values: { value: string; name: string; description?: string }[];
 }
 
+/** What a harness wants to ask or tell the user after a setting was set (see followUp). */
+export interface FollowUp {
+  /** A second question. Picking a value sets the same category again; no pick: nothing happens. */
+  choice?: {
+    title: string;
+    options: { value: string; name: string; description?: string }[];
+  };
+  /** Something to tell the user (a lookup failed and the step was skipped). */
+  notice?: string;
+}
+
 /** What an agent's own tool asks the user before it acts. */
 export interface PermissionAsk {
   /** What it wants to do: the file to write, the command to run. */
@@ -150,6 +161,12 @@ export interface AgentSession {
   loadConfigOptions?(): Promise<ConfigOption[]>;
   /** Sets one for the following turns. Rejects with a message the user can read. */
   setConfigOption?(category: ConfigCategory, value: string): Promise<void>;
+  /**
+   * Asked by the daemon after a successful setConfigOption the user made with /model, /effort or
+   * /mode: a second step the harness knows about (neo: which OpenRouter host runs the model).
+   * Never rejects; undefined: nothing more to ask.
+   */
+  followUp?(category: ConfigCategory, value: string): Promise<FollowUp | undefined>;
 }
 
 export interface Agent {

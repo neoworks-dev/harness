@@ -103,7 +103,9 @@ test("a broken auth file is skipped, not an error", async () => {
 });
 
 async function sessionFor(config: HarnessConfig, model?: string): Promise<AgentSession> {
-  const agent = createNeoAgent({ config, streamFn: fakeModel([]).streamFn });
+  // OpenRouter's live list is not reachable here: the bundled one is what these tests list.
+  const offline = (): Promise<Response> => Promise.reject(new Error("offline"));
+  const agent = createNeoAgent({ config, streamFn: fakeModel([]).streamFn, fetch: offline });
   return agent.newSession({
     sessionId: "s1",
     cwd: await tempDir(),

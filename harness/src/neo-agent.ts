@@ -13,6 +13,7 @@ import type {
   AgentSession,
   ConfigCategory,
   ConfigOption,
+  FollowUp,
   LoadSessionParams,
   McpServer,
   NewSessionParams,
@@ -29,6 +30,15 @@ import {
 } from "./config.ts";
 import type { Logger } from "./logger.ts";
 import { resolveModel } from "./model.ts";
+import {
+  bundledOpenRouterModels,
+  endpointLabel,
+  hostOf,
+  OpenRouterCatalog,
+  pinnedTo,
+  type FetchFn,
+  type OpenRouterEndpoint,
+} from "./openrouter.ts";
 import { createUpdateMapper } from "./updates.ts";
 import { HARNESS_NAME, loggedMessages, restoreMessages } from "./restore.ts";
 import { SYSTEM_PROMPT } from "./system-prompt.ts";
@@ -42,6 +52,8 @@ export interface NeoAgentOptions {
   logger?: Logger;
   /** Replaces the model call; for tests. */
   streamFn?: StreamFn;
+  /** Replaces the network for OpenRouter's model and host lists; for tests. */
+  fetch?: FetchFn;
 }
 
 function toResult(final: AssistantMessage | undefined, cancelled: boolean): PromptResult {
@@ -60,7 +72,38 @@ function parseThinkingLevel(value: string): ThinkingLevel {
   throw new Error(`Unknown thinking level "${value}"; use one of ${THINKING_LEVELS.join(", ")}.`);
 }
 
-const modelValue = (model: Model<Api>): string => `${model.provider}/${model.id}`;
+const baseValue = (model: Model<Api>): string => `${model.provider}/${model.id}`;
+
+/** "provider/id", plus "@host" when an OpenRouter model is pinned to one. */
+function modelValue(model: Model<Api>): string {
+  const host = hostOf(model);
+  return host === undefined ? baseValue(model) : `${baseValue(model)}@${host}`;
+}
+
+const OPENROUTER = "openrouter";
+
+/** One host of the card that follows /model: its value is the model with "@tag". */
+function hostOption(
+  plain: string,
+  endpoint: OpenRouterEndpoint,
+): { value: string; name: string; description?: string } {
+  const option: { value: string; name: string; description?: string } = {
+    value: `${plain}@${endpoint.tag}`,
+    name: endpointLabel(endpoint),
+  };
+  if (endpoint.status !== undefined && endpoint.status < 0) {
+    option.description = "Having trouble right now";
+  }
+  return option;
+}
+
+/** A model setting taken apart: "openrouter/deepseek/x@deepinfra/fp8". */
+interface ModelSetting {
+  provider: string;
+  id: string;
+  /** OpenRouter's endpoint tag after the last "@". */
+  host?: string;
+}
 
 /** The daemon's gateway, if it handed us one (it's named "suite"). */
 function gatewayOf(servers: McpServer[]): GatewayConnection | undefined {
@@ -71,7 +114,22 @@ function gatewayOf(servers: McpServer[]): GatewayConnection | undefined {
 /** The harness built on our loop: one Agent per session, the session log owns history. */
 export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
   const { config, logger, streamFn } = options;
+  const catalog = new OpenRouterCatalog({ logger, fetch: options.fetch });
+  /** OpenRouter's live models once fetched (never waits for them), else pi-ai's. */
+  const openRouterModels = (): Model<Api>[] => catalog.cached() ?? bundledOpenRouterModels();
   const defaultModel = resolveModel(config.provider, config.modelId, logger, config.images);
+
+  /** A provider's models: OpenRouter's live list once there is one, else pi-ai's. */
+  function modelsOf(provider: string): Model<Api>[] {
+    if (provider === OPENROUTER) return openRouterModels();
+    const models: Model<Api>[] = getModels(provider as KnownProvider);
+    return models;
+  }
+
+  /** Whether the provider has a model with this id (OpenRouter: also in its live list). */
+  function hasModel(provider: string, id: string): boolean {
+    return modelsOf(provider).some((candidate) => candidate.id === id);
+  }
 
   /**
    * "provider/id", or a bare id on the configured provider. The id may contain a slash itself
@@ -81,7 +139,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
    * readable Error for an unknown provider; an unknown id on a known provider is fine (the
    * registry lags).
    */
-  function modelFromSetting(value: string): Model<Api> {
+  function locate(value: string): { provider: string; id: string } {
     const providers: readonly string[] = getProviders();
     const slash = value.indexOf("/");
     let provider = config.provider;
@@ -89,20 +147,45 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
     if (slash >= 0) {
       const head = value.slice(0, slash);
       const rest = value.slice(slash + 1);
-      const headHasIt =
-        providers.includes(head) &&
-        getModels(head as KnownProvider).some((candidate) => candidate.id === rest);
-      const configuredHasIt = getModels(config.provider as KnownProvider).some(
-        (candidate) => candidate.id === value,
-      );
-      if (headHasIt || !configuredHasIt) {
+      const headHasIt = providers.includes(head) && hasModel(head, rest);
+      if (headHasIt || !hasModel(config.provider, value)) {
         provider = head;
         id = rest;
       }
     }
     if (!provider || !id) throw new Error(`Model must look like "provider/id", got "${value}".`);
     if (!providers.includes(provider)) throw new Error(`Unknown model provider "${provider}".`);
-    return resolveModel(provider, id, logger, config.images);
+    return { provider, id };
+  }
+
+  /**
+   * A setting may end in "@<OpenRouter endpoint tag>" ("…@deepinfra/fp8"; tags have slashes, so
+   * the last "@" splits). Not when the whole value is a model that has an "@" in its id.
+   */
+  function parseSetting(value: string): ModelSetting {
+    const at = value.lastIndexOf("@");
+    if (at > 0 && at < value.length - 1) {
+      const whole = locate(value);
+      if (!hasModel(whole.provider, whole.id)) {
+        const base = locate(value.slice(0, at));
+        const host = value.slice(at + 1);
+        if (base.provider !== OPENROUTER) {
+          throw new Error(
+            `"@${host}" picks an OpenRouter host, but ${base.provider} is not OpenRouter.`,
+          );
+        }
+        return { ...base, host };
+      }
+      return whole;
+    }
+    return locate(value);
+  }
+
+  function modelFromSetting(value: string): Model<Api> {
+    const { provider, id, host } = parseSetting(value);
+    const live = provider === OPENROUTER ? openRouterModels() : undefined;
+    const model = resolveModel(provider, id, logger, config.images, live);
+    return host === undefined ? model : pinnedTo(model, host);
   }
 
   /** The model and thinking level a new session starts with: its settings, else the defaults. */
@@ -225,7 +308,8 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
 
     /**
      * The current model first, then the models of every provider with a credential (the current
-     * one's provider first). With several providers a name says whose model it is.
+     * one's provider first). With several providers a name says whose model it is. OpenRouter's
+     * list is the live one once it has arrived.
      */
     function modelValues(): { value: string; name: string }[] {
       const current = agent.state.model;
@@ -237,14 +321,20 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
           .filter((provider) => provider !== current.provider),
       ];
       const values = providers.flatMap((provider) =>
-        getModels(provider as KnownProvider).map((model) => ({
-          value: modelValue(model),
+        modelsOf(provider).map((model) => ({
+          value: baseValue(model),
           name: providers.length > 1 ? `${model.name} · ${provider}` : model.name,
         })),
       );
-      const at = values.findIndex((entry) => entry.value === currentValue);
-      const known = at >= 0 ? values.splice(at, 1)[0] : undefined;
-      values.unshift(known ?? { value: currentValue, name: current.name });
+      const host = hostOf(current);
+      const at = values.findIndex((entry) => entry.value === baseValue(current));
+      // A pinned model keeps its plain entry too: picking that one asks for a host again.
+      let known = values[at];
+      if (at >= 0 && host === undefined) known = values.splice(at, 1)[0];
+      const entry = known ?? { value: baseValue(current), name: current.name };
+      values.unshift(
+        host === undefined ? entry : { value: currentValue, name: `${entry.name} @ ${host}` },
+      );
       return values;
     }
 
@@ -272,6 +362,51 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       }
     }
 
+    /** After /model picks an OpenRouter model without a host: which host should run it. */
+    async function followUp(
+      category: ConfigCategory,
+      value: string,
+    ): Promise<FollowUp | undefined> {
+      if (category !== "model") return undefined;
+      let setting: ModelSetting;
+      let name: string;
+      try {
+        setting = parseSetting(value);
+        name = modelFromSetting(value).name;
+      } catch {
+        return undefined;
+      }
+      if (setting.provider !== OPENROUTER || setting.host !== undefined) return undefined;
+      const plain = `${OPENROUTER}/${setting.id}`;
+      let endpoints;
+      try {
+        endpoints = await catalog.endpoints(setting.id);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        return { notice: `Could not list the hosts for ${name} (${reason}); OpenRouter chooses.` };
+      }
+      if (endpoints.length === 0) {
+        return { notice: `OpenRouter lists no hosts for ${name}; it chooses.` };
+      }
+      return {
+        choice: {
+          title: `Host for ${name}`,
+          options: [
+            { value: plain, name: "Any (OpenRouter chooses)" },
+            ...endpoints.map((endpoint) => hostOption(plain, endpoint)),
+          ],
+        },
+      };
+    }
+
+    // The live model list is fetched in the background; start it before /model asks.
+    if (
+      initial.model.provider === OPENROUTER ||
+      providersWithCredential(config).some((credential) => credential.provider === OPENROUTER)
+    ) {
+      void catalog.refresh();
+    }
+
     return {
       prompt,
       cancel() {
@@ -281,6 +416,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       },
       configOptions,
       setConfigOption,
+      followUp,
     };
   }
 

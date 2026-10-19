@@ -13,8 +13,11 @@ export function resolveModel(
   modelId: string,
   logger?: Logger,
   imagesSetting?: boolean,
+  /** Models to look in before the registry (openrouter's live list). */
+  live?: readonly Model<Api>[],
 ): Model<Api> {
-  const model = lookup(provider, modelId, logger);
+  const model =
+    live?.find((candidate) => candidate.id === modelId) ?? lookup(provider, modelId, logger);
   const images = imagesSetting ?? (VISION.has(`${provider}/${modelId}`) ? true : undefined);
   if (images === undefined) return model;
   const input: Model<Api>["input"] = images ? ["text", "image"] : ["text"];
