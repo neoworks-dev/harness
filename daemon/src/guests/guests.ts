@@ -37,7 +37,7 @@ import { BadRequestError } from "../focus.ts";
 import type { ConnectorSnapshot } from "../gateway/registry.ts";
 import type { Logger } from "../log.ts";
 import { NotFoundError } from "../sessions.ts";
-import type { Guard, Touches } from "../permissions.ts";
+import { type Guard, RUN_TITLE, type Touches } from "../permissions.ts";
 import type { Approvals, HarnessSettings } from "../settings.ts";
 import { type FocusTarget, ToldState } from "../told.ts";
 import { AcpConnection, AcpError } from "./acp.ts";
@@ -1121,6 +1121,11 @@ export class GuestManager {
     }
     if (kind !== undefined) request.kind = kind;
     if (content?.length) request.content = content;
+    else if (kind === "execute" && touches.command !== undefined) {
+      // The command as code to read, under a plain question.
+      request.content = [{ type: "text", text: touches.command }];
+      if (sensitive.length === 0) request.title = RUN_TITLE;
+    }
     const toolCallId = str(call.toolCallId);
     if (toolCallId !== undefined) {
       request.toolCallId = `${guest.main ? `${guest.name}-main` : guest.name}:${toolCallId}`;

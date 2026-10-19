@@ -92,7 +92,9 @@ describe("the agent's own tools by approvals mode", () => {
     if (request?.type !== "permission_request") throw new Error("no request");
     expect(request).toMatchObject({
       agent: "neo",
-      title: "ls",
+      // The command is shown as code, under a plain question.
+      title: "Run this command?",
+      content: [{ type: "text", text: "ls" }],
       kind: "execute",
       toolCallId: "tc1",
       options: [
@@ -285,7 +287,7 @@ describe("review mode, the agent's own tools", () => {
     expect(requests(daemon, session)).toEqual([]);
     const pending = ask({ title: "ls", kind: "execute" });
     const request = await nextRequest(daemon, session, 0);
-    expect(request.title).toBe("ls");
+    expect(request.content).toEqual([{ type: "text", text: "ls" }]);
     await press(daemon, session, request.id, "allow");
     expect(await pending).toEqual({ allowed: true });
   });

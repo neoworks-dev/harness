@@ -410,3 +410,27 @@ describe("view over the bus", () => {
     });
   });
 });
+
+describe("permission requests", () => {
+  test("a command to run is previewed as bash code", () => {
+    const { view } = feed([
+      {
+        type: "permission_request",
+        id: "r1",
+        agent: "neo",
+        title: "Run this command?",
+        kind: "execute",
+        content: [{ type: "text", text: "cd /tmp && ls\n" }],
+        options: [{ id: "allow", name: "Allow", kind: "allow_once" }],
+      },
+    ]);
+    const [item] = view.snapshot().items;
+    expect(item?.label).toBe("neo asks: Run this command?");
+    if (item?.component.type !== "stack") throw new Error("no preview");
+    expect(item.component.children[0]).toEqual({
+      type: "code",
+      code: "cd /tmp && ls",
+      language: "bash",
+    });
+  });
+});

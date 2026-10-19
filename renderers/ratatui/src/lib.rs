@@ -47,6 +47,9 @@ pub struct Options {
     /// Draws a button as `[Label]` without the key that triggers it (a card that takes its
     /// keys for something else, such as a filter).
     pub hide_keys: bool,
+    /// Prose (paragraphs, headings, lists, quotes) wraps at this many cells at most, however
+    /// wide the item; tables and code still use the whole width. None: the whole width.
+    pub prose_width: Option<usize>,
     pub theme: Palette,
     /// Reserve rows for images the app can draw itself (see [`ImageOptions`]). None: an image is
     /// a one-line `[image …]` placeholder.

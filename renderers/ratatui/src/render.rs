@@ -188,28 +188,19 @@ impl<'a> Cx<'a> {
     }
 
     /// A header line (`● label`, the bullet colored by state), then the result: summarized
-    /// under `⎿`, or in full when expanded. Items with buttons are always shown in full:
-    /// the buttons are what the item is for.
+    /// under `⎿` in muted, or in full when expanded. Items with buttons are always shown in
+    /// full: the buttons are what the item is for.
     fn tool(&mut self, it: &pb::ViewItem, label: Option<String>, w: usize) -> Lines {
+        // Done is the usual case and stays quiet, so a failure stands out.
         let color = match it.state {
             Some(pb::ItemState::Running) => self.p.accent,
-            Some(pb::ItemState::Done) => self.p.success,
             Some(pb::ItemState::Failed) => self.p.danger,
-            Some(pb::ItemState::Pending) | None => self.p.muted,
+            Some(pb::ItemState::Done | pb::ItemState::Pending) | None => self.p.muted,
         };
         let bullet = vec![Span::styled("● ", Style::new().fg(color))];
         let mut out = match label {
             Some(label) => {
-                let bold = Style::new().add_modifier(Modifier::BOLD);
-                // neo's commands ("bash: ls -la") get their command highlighted.
-                let spans = match label.strip_prefix("bash: ") {
-                    Some(command) => {
-                        let mut spans = vec![Span::styled("bash: ".to_string(), bold)];
-                        spans.extend(crate::shell::highlight(command, &self.p, Style::new()));
-                        spans
-                    }
-                    None => vec![Span::styled(label, bold)],
-                };
+                let spans = self.tool_label(&label);
                 let head = wrap(&spans, w.saturating_sub(2).max(1));
                 prefixed(head, bullet, vec![Span::raw("  ")])
             }
@@ -221,11 +212,36 @@ impl<'a> Cx<'a> {
             let body = self.comp(&it.component, w.saturating_sub(2).max(1));
             out.extend(indented(body, 2));
         } else {
-            let summary = self.summary(&it.component, w.saturating_sub(4).max(1));
+            let mut summary = self.summary(&it.component, w.saturating_sub(4).max(1));
+            tint(&mut summary, self.p.muted);
             let elbow = vec![Span::styled("  ⎿ ", self.p.muted_style())];
             out.extend(prefixed(summary, elbow, vec![Span::raw("    ")]));
         }
         out
+    }
+
+    /// The verb bold, what it acts on in the normal weight: `read` `src/a.rs`, `search the web:`
+    /// `query`. neo's commands (`bash: ls -la`) get the command highlighted.
+    fn tool_label(&self, label: &str) -> Vec<Span<'static>> {
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        if let Some(command) = label.strip_prefix("bash: ") {
+            let mut spans = vec![Span::styled("bash: ".to_string(), bold)];
+            spans.extend(crate::shell::highlight(command, &self.p, Style::new()));
+            return spans;
+        }
+        // A short lead-in ending in a colon is the verb; else the first word is.
+        let split = label
+            .find(": ")
+            .filter(|&at| label[..at].split(' ').count() <= 3)
+            .map(|at| at + 2)
+            .or_else(|| label.find(' ').map(|at| at + 1));
+        match split {
+            Some(at) => vec![
+                Span::styled(label[..at].to_string(), bold),
+                Span::raw(label[at..].to_string()),
+            ],
+            None => vec![Span::styled(label.to_string(), bold)],
+        }
     }
 
     // ---- components ----
@@ -240,7 +256,7 @@ impl<'a> Cx<'a> {
             pb::Component::ImageComponent(v) => self.image(v, w),
             pb::Component::FileComponent(v) => self.file(v, w),
             pb::Component::CodeComponent(v) => {
-                let lines = self.code(&v.code, v.language.as_deref(), w);
+                let lines = self.code(&v.code, v.language.as_deref(), true, w);
                 self.preview(lines)
             }
             pb::Component::DiffComponent(v) => {
@@ -416,17 +432,17 @@ impl<'a> Cx<'a> {
 
     fn block(&self, b: &pb::Block, w: usize) -> Lines {
         match b {
-            pb::Block::ParagraphBlock(v) => wrap(&self.spans(&v.spans), w),
+            pb::Block::ParagraphBlock(v) => wrap(&self.spans(&v.spans), self.prose(w)),
             pb::Block::HeadingBlock(v) => {
                 let style = self.heading_style(v.level);
                 let mut spans = self.spans(&v.spans);
                 for s in &mut spans {
                     s.style = style.patch(s.style);
                 }
-                wrap(&spans, w)
+                wrap(&spans, self.prose(w))
             }
             pb::Block::ListBlock(v) => self.list(v, w),
-            pb::Block::CodeBlock(v) => self.code(&v.code, v.language.as_deref(), w),
+            pb::Block::CodeBlock(v) => self.code(&v.code, v.language.as_deref(), false, w),
             pb::Block::QuoteBlock(v) => {
                 let mut inner = self.blocks(&v.blocks, w.saturating_sub(2).max(1), true);
                 tint(&mut inner, self.p.muted);
@@ -444,19 +460,26 @@ impl<'a> Cx<'a> {
                     })
                     .collect()
             }
-            pb::Block::RuleBlock(_) => vec![sline("─".repeat(w), Style::new().fg(self.p.border))],
+            pb::Block::RuleBlock(_) => vec![sline(
+                "─".repeat(self.prose(w)),
+                Style::new().fg(self.p.border),
+            )],
             pb::Block::TableBlock(v) => self.table_block(v, w),
             pb::Block::Unknown(_) => vec![self.placeholder("[unsupported block]", w)],
         }
     }
 
-    /// Level 1 bold, underlined and in the accent color, level 2 bold in the accent color, the
-    /// rest bold.
+    /// Where prose wraps: the width, or `prose_width` when that is narrower.
+    fn prose(&self, w: usize) -> usize {
+        self.o.prose_width.map_or(w, |cap| w.min(cap.max(1)))
+    }
+
+    /// Levels 1 and 2 bold in the accent color, the rest bold. Not underlined: that is how
+    /// links look.
     fn heading_style(&self, level: i64) -> Style {
         let bold = Style::new().add_modifier(Modifier::BOLD);
         match level {
-            1 => bold.fg(self.p.accent).add_modifier(Modifier::UNDERLINED),
-            2 => bold.fg(self.p.accent),
+            1 | 2 => bold.fg(self.p.accent),
             _ => bold,
         }
     }
@@ -668,11 +691,19 @@ impl<'a> Cx<'a> {
     }
 
     /// Monospace on the surface color, indented 2, hard-wrapped, the band filling the width.
-    fn code(&self, code: &str, language: Option<&str>, w: usize) -> Lines {
+    /// Shell is highlighted; with `reflow` (a command to approve, not code the model wrote in
+    /// its reply) long lines also break after `&&`, `|` and `;`.
+    fn code(&self, code: &str, language: Option<&str>, reflow: bool, w: usize) -> Lines {
         let st = self.p.code_style();
         if crate::shell::is_shell(language) {
-            let spans = crate::shell::highlight(&clean(code), &self.p, st);
             let inner = w.saturating_sub(2).max(1);
+            let code = clean(code);
+            let code = if reflow {
+                crate::shell::reflow(&code, inner).into()
+            } else {
+                code
+            };
+            let spans = crate::shell::highlight(&code, &self.p, st);
             return hard_wrap_spans(&spans, inner)
                 .into_iter()
                 .map(|mut line| {

@@ -133,7 +133,8 @@ fn tool_bullets_show_the_state() {
     for (state, color) in [
         ("pending", pal().muted),
         ("running", pal().accent),
-        ("done", pal().success),
+        // Done is the usual case and stays quiet, so failures stand out.
+        ("done", pal().muted),
         ("failed", pal().danger),
     ] {
         let it = tool(state, &code("x"));
@@ -143,6 +144,90 @@ fn tool_bullets_show_the_state() {
         let label: String = head.spans[1..].iter().map(|s| s.content.as_ref()).collect();
         assert_eq!(label, "bash: ls");
     }
+}
+
+#[test]
+fn the_verb_is_bold_and_the_summary_muted() {
+    let bold = |s: &ratatui::text::Span<'_>| s.style.add_modifier.contains(Modifier::BOLD);
+    for (label, verb, rest) in [
+        ("fetch https://a.dev", "fetch ", "https://a.dev"),
+        ("search the web: a b: c", "search the web: ", "a b: c"),
+        ("update", "update", ""),
+    ] {
+        let it = item_of(
+            "tool",
+            &format!(r#""label":{},"state":"done","#, json!(label)),
+            &code("out"),
+        );
+        let lines = render_item(&it, 60, &Options::default());
+        let head = &lines[0].spans[1..];
+        assert_eq!((head[0].content.as_ref(), bold(&head[0])), (verb, true));
+        if !rest.is_empty() {
+            assert_eq!((head[1].content.as_ref(), bold(&head[1])), (rest, false));
+        }
+        let out = lines[1]
+            .spans
+            .iter()
+            .find(|s| s.content.contains("out"))
+            .unwrap();
+        assert_eq!(out.style.fg, Some(pal().muted));
+    }
+}
+
+#[test]
+fn prose_wraps_at_the_prose_width_but_code_does_not() {
+    let words = "word ".repeat(40);
+    let c = json!({"type": "text", "blocks": [
+        {"type": "paragraph", "spans": [{"text": words}]},
+        {"type": "code_block", "code": "x".repeat(150)}
+    ]});
+    let opts = Options {
+        prose_width: Some(50),
+        ..Options::default()
+    };
+    let lines = render_item(&item_of("agent", "", &c.to_string()), 160, &opts);
+    let widest = |text: bool| {
+        lines
+            .iter()
+            .filter(|l| text == !l.to_string().contains('x'))
+            .map(Line::width)
+            .max()
+            .unwrap()
+    };
+    assert!(widest(true) <= 52, "bullet + 50");
+    assert_eq!(widest(false), 160);
+}
+
+#[test]
+fn a_command_to_approve_is_highlighted_and_broken_at_its_operators() {
+    let c = json!({"type": "stack", "gap": "s", "children": [
+        {"type": "code", "language": "bash", "code": "cd /tmp/some/dir && cargo test --workspace 2>&1 | tail -20"},
+        {"type": "button", "label": "Allow", "action": "suite.permit", "key": "1"}
+    ]});
+    let it = item_of(
+        "tool",
+        r#""label":"neo asks: Run this command?","state":"pending","#,
+        &c.to_string(),
+    );
+    let lines = render_item(&it, 40, &Options::default());
+    let text: Vec<String> = lines
+        .iter()
+        .map(|l| l.to_string().trim_end().to_string())
+        .collect();
+    assert_eq!(
+        text[1..4],
+        [
+            "    cd /tmp/some/dir &&",
+            "      cargo test --workspace 2>&1 |",
+            "      tail -20",
+        ]
+    );
+    let cargo = lines[2]
+        .spans
+        .iter()
+        .find(|s| s.content == "cargo")
+        .unwrap();
+    assert_eq!(cargo.style.fg, Some(pal().accent), "the command name");
 }
 
 #[test]
@@ -840,12 +925,12 @@ fn ten_columns_never_overflow() {
 fn colors_come_from_the_palette() {
     let mut theme: suite_protocol::Theme =
         serde_json::from_str(include_str!("../../../protocol/themes/default.json")).unwrap();
-    theme.colors.success = "#00ff00".into();
+    theme.colors.danger = "#00ff00".into();
     let opts = Options {
         theme: Palette::from_theme(&theme),
         ..Options::default()
     };
-    let head = &render_item(&tool("done", &code("x")), 40, &opts)[0];
+    let head = &render_item(&tool("failed", &code("x")), 40, &opts)[0];
     assert_eq!(head.spans[0].style.fg, Some(Color::Rgb(0, 255, 0)));
 }
 
@@ -1163,10 +1248,9 @@ fn headings_stand_out_by_level() {
     };
     let h1 = heading(1);
     assert_eq!(h1.fg, Some(pal().accent));
-    assert!(
-        h1.add_modifier
-            .contains(Modifier::BOLD | Modifier::UNDERLINED)
-    );
+    // Not underlined: that is how links look.
+    assert!(h1.add_modifier.contains(Modifier::BOLD));
+    assert!(!h1.add_modifier.contains(Modifier::UNDERLINED));
     assert_eq!(heading(2).fg, Some(pal().accent));
     assert!(!heading(2).add_modifier.contains(Modifier::UNDERLINED));
     assert!(heading(3).add_modifier.contains(Modifier::BOLD));

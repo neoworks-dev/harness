@@ -7,7 +7,8 @@ import { tailBytes } from "./tools/truncate.ts";
 import type { UsageTracker } from "./usage.ts";
 import { isRecord } from "./util.ts";
 
-// Live output shown while a tool runs; the final result carries what the model got.
+// Live output shown while a tool runs; the final result carries what the model got (for web
+// tools with a shorter first line, see shownText).
 const LIVE_OUTPUT_BYTES = 8 * 1024;
 const TITLE_COMMAND_CHARS = 80;
 
@@ -85,6 +86,30 @@ function imagesOf(content: unknown, details: unknown): ToolCallContent[] {
   return [out];
 }
 
+/**
+ * What the chat shows of a result whose first line says little at a glance: a fetch's `Saved
+ * <url> as markdown: <path> (N lines).` (the header has the URL already) becomes `N lines ·
+ * title`, a search gets its count on top. The rest stays, for the expanded view.
+ */
+function shownText(toolName: string, output: string, details: unknown): string {
+  if (!isRecord(details)) return output;
+  if (toolName === "web_fetch" && typeof details.lines === "number") {
+    const parts = [`${details.lines} lines`];
+    const title = text(details.title);
+    const file = text(details.path)?.split("/").pop();
+    if (title) parts.push(title);
+    else if (file) parts.push(file);
+    const lines = [parts.join(" · "), ...output.split("\n").slice(1)];
+    return lines.join("\n").trimEnd();
+  }
+  if (toolName === "web_search" && Array.isArray(details.results) && details.results.length > 0) {
+    const n = details.results.length;
+    const noun = details.kind === "images" ? "image" : "result";
+    return `${n} ${n === 1 ? noun : `${noun}s`}\n\n${output}`;
+  }
+  return output;
+}
+
 function diffOf(toolName: string, details: unknown): ToolCallContent[] {
   if (toolName !== "write" && toolName !== "edit") return [];
   if (!isRecord(details) || typeof details.path !== "string") return [];
@@ -157,7 +182,8 @@ export function createUpdateMapper(
       case "tool_execution_end": {
         const images: ToolCallContent[] = [];
         if (!event.isError) images.push(...imagesOf(event.result?.content, event.result?.details));
-        const output = contentText(event.result?.content, images.length > 0);
+        let output = contentText(event.result?.content, images.length > 0);
+        if (!event.isError) output = shownText(event.toolName, output, event.result?.details);
         const content: ToolCallContent[] = [{ type: "text", text: output }];
         if (!event.isError) content.push(...diffOf(event.toolName, event.result?.details));
         content.push(...images);

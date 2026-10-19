@@ -17,6 +17,12 @@ use suite_sdk::ViewState;
 /// Lines of diff or code a prompt shows before the buttons (Ctrl-O shows all of it).
 const PREVIEW_LINES: usize = 12;
 
+/// Prose wraps at this many columns however wide the pane; tables and code use all of it.
+const PROSE_WIDTH: usize = 100;
+
+/// Finished tool calls in a row fold into one line from this many on (Ctrl-O shows them).
+const FOLD_MIN: usize = 3;
+
 /// Rows an image thumbnail takes at most, and with tool results expanded (Ctrl-O).
 const IMAGE_ROWS: u16 = 12;
 const IMAGE_ROWS_EXPANDED: u16 = 30;
@@ -270,22 +276,57 @@ impl Chat {
             return;
         }
         let was_total = self.total;
-        let mut entries = Vec::with_capacity(self.state.items.len());
+        let items = &self.state.items;
+        let last = items.len().saturating_sub(1);
+        // The items drawn, and whether each is the thinking line.
+        let shown: Vec<(usize, bool)> = items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| {
+                // A question the user allowed has done its job: the tool's own row says the rest.
+                if is_allowed_question(item) {
+                    return None;
+                }
+                // Hidden thoughts show while the agent thinks, as one animated line, and then go.
+                let thinking = item.kind == ItemKind::Thought && !opts.show_thoughts;
+                (!thinking || index == last).then_some((index, thinking))
+            })
+            .collect();
+        let mut entries: Vec<Entry> = Vec::with_capacity(shown.len());
         let mut offset = 0;
-        let mut live: usize = 0;
-        let last = self.state.items.len().saturating_sub(1);
-        for (index, item) in self.state.items.iter().enumerate() {
-            live += 1;
+        // Tool rows follow each other without a blank line; prose and questions get one.
+        let mut after_tool = false;
+        let mut k = 0;
+        while k < shown.len() {
+            let (index, thinking) = shown[k];
+            let item = &items[index];
             let r = &item.r#ref;
-            // A question the user allowed has done its job: the tool's own row says the rest.
-            if is_allowed_question(item) {
-                continue;
+            let tool_row = item.kind == ItemKind::Tool && !self.buttons.contains_key(r);
+            // A run of finished calls that something came after is folded to one line.
+            if !opts.expanded && foldable(item, &self.buttons) {
+                let end = (k..shown.len())
+                    .find(|&j| !foldable(&items[shown[j].0], &self.buttons))
+                    .unwrap_or(shown.len());
+                if end - k >= FOLD_MIN && end < shown.len() {
+                    let run: Vec<&ViewItem> =
+                        shown[k..end].iter().map(|&(i, _)| &items[i]).collect();
+                    if !entries.is_empty() && !after_tool {
+                        offset += 1;
+                    }
+                    entries.push(Entry {
+                        r#ref: r.clone(),
+                        thinking: false,
+                        lines: Rc::new(vec![folded_line(&run, usize::from(width), &opts.palette)]),
+                        slots: Rc::new(Vec::new()),
+                        offset,
+                    });
+                    offset += 1;
+                    after_tool = true;
+                    k = end;
+                    continue;
+                }
             }
-            // Hidden thoughts show while the agent thinks, as one animated line, and then go.
-            let thinking = item.kind == ItemKind::Thought && !opts.show_thoughts;
-            if thinking && index != last {
-                continue;
-            }
+            k += 1;
             let rev = self.revs.get(r).copied().unwrap_or(0);
             let active = opts
                 .active
@@ -329,9 +370,10 @@ impl Chat {
             if lines.is_empty() {
                 continue;
             }
-            if !entries.is_empty() {
+            if !entries.is_empty() && !(after_tool && tool_row) {
                 offset += 1;
             }
+            after_tool = tool_row;
             let len = lines.len();
             entries.push(Entry {
                 r#ref: r.clone(),
@@ -342,6 +384,7 @@ impl Chat {
             });
             offset += len;
         }
+        let live = items.len();
         if self.cache.len() > live {
             let items = &self.state.items;
             self.cache
@@ -487,6 +530,58 @@ impl Chat {
     }
 }
 
+/// A tool call that can fold into a run: finished, not a question (`p-`/`q-`, which say what was
+/// answered).
+fn foldable(item: &ViewItem, buttons: &HashMap<String, Vec<ButtonRef>>) -> bool {
+    item.kind == ItemKind::Tool
+        && matches!(item.state, Some(ItemState::Done | ItemState::Failed))
+        && !buttons.contains_key(&item.r#ref)
+        && !item.r#ref.starts_with("p-")
+        && !item.r#ref.starts_with("q-")
+}
+
+/// A folded run: `● 15 tool calls · 7 fetch, 5 bash, 3 search · 1 failed`, all muted but the
+/// failures.
+fn folded_line(run: &[&ViewItem], width: usize, p: &Palette) -> Line<'static> {
+    let mut verbs: Vec<(String, usize)> = Vec::new();
+    for item in run {
+        let label = item.label.as_deref().unwrap_or("tool");
+        let verb = label
+            .split_whitespace()
+            .next()
+            .unwrap_or("tool")
+            .trim_end_matches(':')
+            .to_string();
+        match verbs.iter_mut().find(|(v, _)| *v == verb) {
+            Some((_, n)) => *n += 1,
+            None => verbs.push((verb, 1)),
+        }
+    }
+    // Most first; ties in the order they came.
+    verbs.sort_by(|a, b| b.1.cmp(&a.1));
+    let counts: Vec<String> = verbs.iter().map(|(v, n)| format!("{n} {v}")).collect();
+    let failed = run
+        .iter()
+        .filter(|i| i.state == Some(ItemState::Failed))
+        .count();
+    let muted = Style::new().fg(p.muted);
+    let mut text = format!("{} tool calls · {}", run.len(), counts.join(", "));
+    let tail = (failed > 0).then(|| format!(" · {failed} failed"));
+    let room = width.saturating_sub(2 + tail.as_ref().map_or(0, |t| t.chars().count()));
+    if text.chars().count() > room {
+        text = text
+            .chars()
+            .take(room.saturating_sub(1))
+            .collect::<String>()
+            + "…";
+    }
+    let mut spans = vec![Span::styled("● ", muted), Span::styled(text, muted)];
+    if let Some(tail) = tail {
+        spans.push(Span::styled(tail, Style::new().fg(p.danger)));
+    }
+    Line::from(spans)
+}
+
 /// A permission question that was answered with an allow: the session view marks it done.
 fn is_allowed_question(item: &ViewItem) -> bool {
     item.kind == ItemKind::Tool
@@ -542,6 +637,7 @@ fn render(item: &ViewItem, width: u16, key: &CacheKey) -> (Vec<Line<'static>>, V
         show_thoughts: key.thoughts,
         focused_button: key.focused,
         hide_keys: false,
+        prose_width: Some(PROSE_WIDTH),
         preview_lines: Some(PREVIEW_LINES),
         theme: key.palette,
         images: key.images.as_ref().map(|i| ImageOptions {
@@ -597,6 +693,7 @@ pub fn panel_lines(
         show_thoughts: false,
         focused_button: Some(focused),
         hide_keys,
+        prose_width: Some(PROSE_WIDTH),
         preview_lines: Some(preview),
         theme: palette,
         images: None,
@@ -775,6 +872,77 @@ mod tests {
         assert!(c.following());
         assert_eq!(texts(&c).last().unwrap(), "● line 9");
         assert_eq!(texts(&c).len(), 10);
+    }
+
+    fn call(r: &str, label: &str, state: &str) -> ViewItem {
+        serde_json::from_value(json!({
+            "ref": r, "kind": "tool", "label": label, "state": state,
+            "component": {"type":"code","code":"out"}
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn tool_rows_follow_each_other_without_a_blank_line() {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(vec![
+            call("t1", "read a", "done"),
+            call("t2", "read b", "running"),
+            prompt("p1", "pending", &["Allow"]),
+        ]));
+        c.layout(40, 20, &opts());
+        let t = texts(&c);
+        assert_eq!(t[..4], ["● read a", "  ⎿ out", "● read b", "  ⎿ out"]);
+        assert_eq!(t[4], "", "a question gets room");
+    }
+
+    #[test]
+    fn a_finished_run_of_calls_folds_into_one_line() {
+        let mut c = Chat::new();
+        let mut items = vec![
+            call("t1", "fetch https://a", "done"),
+            call("t2", "bash: ls", "done"),
+            call("t3", "fetch https://b", "failed"),
+            call("t4", "search the web: x", "done"),
+        ];
+        c.apply_snapshot(snapshot(items.clone()));
+        c.layout(80, 20, &opts());
+        assert_eq!(
+            c.total_lines(),
+            8,
+            "the tail run is still going: shown in full"
+        );
+
+        items.push(item("a1", "agent", "Done."));
+        c.apply_snapshot(snapshot(items.clone()));
+        c.layout(80, 20, &opts());
+        assert_eq!(
+            texts(&c),
+            [
+                "● 4 tool calls · 2 fetch, 1 bash, 1 search · 1 failed",
+                "",
+                "● Done."
+            ]
+        );
+        // Ctrl-O shows every call.
+        c.layout(
+            80,
+            20,
+            &ChatOpts {
+                expanded: true,
+                ..opts()
+            },
+        );
+        assert!(texts(&c).contains(&"● bash: ls".to_string()));
+
+        // Two are not worth folding.
+        c.apply_snapshot(snapshot(vec![
+            items[0].clone(),
+            items[1].clone(),
+            items[4].clone(),
+        ]));
+        c.layout(80, 20, &opts());
+        assert_eq!(texts(&c)[0], "● fetch https://a");
     }
 
     #[test]

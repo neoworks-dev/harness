@@ -1,2 +1,2 @@
 ⟦danger|● ⟧⟦bold|bash: ⟧⟦accent bold|npm⟧ test
-⟦muted|  ⎿ ⟧> site@1.0.0 test⟦muted|  … +8 lines⟧
+⟦muted|  ⎿ ⟧⟦muted|> site@1.0.0 test⟧⟦muted|  … +8 lines⟧

@@ -1,2 +1,2 @@
-⟦success|● ⟧⟦bold|files.list⟧
-⟦muted|  ⎿ ⟧⟦bold|~/site/public⟧⟦muted|  … +2 lines⟧
+⟦muted|● ⟧⟦bold|files.list⟧
+⟦muted|  ⎿ ⟧⟦muted bold|~/site/public⟧⟦muted|  … +2 lines⟧

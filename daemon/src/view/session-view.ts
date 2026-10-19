@@ -393,7 +393,9 @@ export class SessionView {
         key: String(i + 1),
       }));
       const row: Component = { type: "row", gap: "s", children: buttons };
-      const preview = [...details, ...this.contentComponents(request.content)];
+      // A command to run is shell, highlighted and broken where it is long.
+      const language = request.kind === "execute" ? "bash" : undefined;
+      const preview = [...details, ...this.contentComponents(request.content, language)];
       const component: Component =
         preview.length === 0 ? row : { type: "stack", gap: "s", children: [...preview, row] };
       return { ref: `p-${request.id}`, kind: "tool", label, state: "pending", component };
@@ -525,7 +527,10 @@ export class SessionView {
   }
 
   /** Diffs, images and text output as components (a diff, an image, or the text as code). */
-  private contentComponents(content: ToolCallContent[] | undefined): Component[] {
+  private contentComponents(
+    content: ToolCallContent[] | undefined,
+    language?: string,
+  ): Component[] {
     const children: Component[] = [];
     for (const item of content ?? []) {
       if (item.type === "diff") {
@@ -537,7 +542,10 @@ export class SessionView {
       } else if (item.type === "image") {
         children.push({ type: "image", src: item.src });
       } else if (item.text.trim() !== "") {
-        children.push({ type: "code", code: item.text.replace(/\n+$/, "") });
+        const code = item.text.replace(/\n+$/, "");
+        children.push(
+          language === undefined ? { type: "code", code } : { type: "code", code, language },
+        );
       }
     }
     return children;
