@@ -2,6 +2,7 @@
 // lines its edits added and removed. Built from the log on first use, then kept current from
 // appends. Also names untitled sessions after their first message.
 import type { SessionEvent } from "@suite/protocol/types";
+import { MESSAGES_APP } from "./messages.ts";
 import type { SessionStore } from "./store.ts";
 import { diffLines } from "./view/diff.ts";
 
@@ -42,7 +43,9 @@ export class SessionSummaries {
     store.onAppend(({ session, event }) => {
       const state = this.states.get(session);
       if (state) apply(state, event);
-      if (event.type === "user_message") this.nameAfter(session, event.text);
+      if (event.type === "user_message" && event.app !== MESSAGES_APP) {
+        this.nameAfter(session, event.text);
+      }
     });
   }
 
@@ -53,7 +56,9 @@ export class SessionSummaries {
       state = { diffs: new Map() };
       let first: string | undefined;
       for (const { event } of this.store.read(session)) {
-        if (first === undefined && event.type === "user_message") first = event.text;
+        if (first === undefined && event.type === "user_message" && event.app !== MESSAGES_APP) {
+          first = event.text;
+        }
         apply(state, event);
       }
       this.states.set(session, state);
@@ -85,6 +90,8 @@ export class SessionSummaries {
 function apply(state: State, event: SessionEvent): void {
   switch (event.type) {
     case "user_message":
+      // The turn that agents' messages start isn't something the user said.
+      if (event.app === MESSAGES_APP) return;
       state.user = event.text;
       state.agent = undefined;
       return;

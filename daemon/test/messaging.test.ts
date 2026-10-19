@@ -211,6 +211,59 @@ describe("a delegation the agent waits for", () => {
   });
 });
 
+describe("the tools", () => {
+  test("check their arguments and who calls", async () => {
+    const { daemon, session } = await setup();
+    const call = (
+      name: "send_message" | "wait" | "delegate",
+      args: Record<string, unknown>,
+    ): Promise<CallToolResult> => daemon.gateway.call(name, args, undefined, session);
+    expect(resultOf(await call("send_message", { text: "x" }))).toBe(
+      "send_message: to is required",
+    );
+    expect(resultOf(await call("send_message", { to: "main", text: " " }))).toBe(
+      "send_message: text is required",
+    );
+    expect(resultOf(await call("wait", { for: "d_1" }))).toBe(
+      "wait: for must be a list of subagent ids",
+    );
+    expect(resultOf(await call("wait", { timeoutSeconds: "soon" }))).toBe(
+      "wait: timeoutSeconds must be a number",
+    );
+    expect(resultOf(await call("delegate", { agent: "fake", task: "x", background: "yes" }))).toBe(
+      "delegate: background must be a boolean",
+    );
+    // The agent writing to itself, and to nobody.
+    expect(resultOf(await call("send_message", { to: "main", text: "me" }))).toContain(
+      "That's you",
+    );
+    expect(resultOf(await call("send_message", { to: "fake", text: "you" }))).toContain(
+      'No running subagent "fake". No subagent is running.',
+    );
+    // A guest that no delegation started (the user's own /claude turn) is nobody.
+    const stranger = await daemon.gateway.call(
+      "send_message",
+      { to: "main", text: "hi" },
+      undefined,
+      { session, guest: "fake", text: true },
+    );
+    expect(stranger.isError).toBe(true);
+    expect(resultOf(stranger)).toContain("for the session's agent and the subagents");
+  });
+
+  test("a subagent's delegate is refused", async () => {
+    const { daemon, session } = await setup();
+    const asGuest = { session, guest: "fake", text: true };
+    const refused = await daemon.gateway.call(
+      "delegate",
+      { agent: "fake", task: "x" },
+      undefined,
+      asGuest,
+    );
+    expect(resultOf(refused)).toBe("Subagents can't delegate.");
+  });
+});
+
 describe("limits", () => {
   test("a subagent that sends too many gets the limit as the answer", async () => {
     const { daemon, session, main } = await setup();

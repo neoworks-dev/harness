@@ -436,6 +436,13 @@ describe("adapter shapes", () => {
       title: "search tools: greet",
     });
     expect(describeCall("mcp__suite__apps_focus", {})).toEqual({ title: "apps_focus" });
+    expect(
+      describeCall("mcp__suite__send_message", { to: "main", text: "Which db?\nstaging or prod" }),
+    ).toEqual({ title: "message main: Which db?" });
+    expect(describeCall("mcp.suite.wait", { arguments: {} })).toEqual({
+      title: "wait for messages",
+    });
+    expect(describeCall("mcp__suite__wait", undefined)).toEqual({ title: "wait for messages" });
     expect(describeCall("Edit a.ts", undefined)).toEqual({ title: "Edit a.ts" });
   });
 
