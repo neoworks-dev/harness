@@ -41,6 +41,7 @@ import type { Guard, Touches } from "../permissions.ts";
 import type { Approvals, HarnessSettings } from "../settings.ts";
 import { type FocusTarget, ToldState } from "../told.ts";
 import { AcpConnection, AcpError } from "./acp.ts";
+import type { GuestAccounts, Route, RouteKind } from "./accounts.ts";
 import { GUEST_PROMPT, MAIN_PROMPT } from "./prompt.ts";
 import type { GuestRunResult, RunOptions } from "./run.ts";
 import { NEO, NeoSubagents, type SubagentOptions } from "./subagent.ts";
@@ -51,6 +52,11 @@ export interface GuestConfig {
   /** The ACP adapter. */
   command: string[];
   env?: Record<string, string>;
+  /**
+   * Which of the suite's API keys the guest can run on (see accounts.ts): `/model <name>
+   * provider/model` then starts it on that key. Unset: only its own login.
+   */
+  route?: RouteKind;
   /** ask: permission requests show as buttons in the chat; allow: the first allow option wins. */
   permissions: "ask" | "allow";
 }
@@ -98,6 +104,8 @@ export interface GuestManagerOptions {
   storeImage?: StoreImage;
   /** The hook a neo subagent's own bash, write and edit ask through. */
   requestPermission?: (session: string, agent: string) => RequestPermission;
+  /** The suite's API keys, for guests with a `route`. */
+  accounts?: GuestAccounts;
 }
 
 /** A conversation the adapter has stored (session/list), for /resume. */
@@ -135,6 +143,8 @@ interface Guest {
   run?: Run;
   /** The adapter's config options (session/new, set_config_option), by ACP config id. */
   config: Map<string, ConfigOption>;
+  /** The API key it runs on, when the user picked one; else it uses its own login. */
+  route?: Route;
 }
 
 const KINDS = new Set<string>([
@@ -579,7 +589,10 @@ export class GuestManager {
       },
       cancel: () => controller?.abort(),
       configOptions: () => [...guest.config.values()],
-      setConfigOption: (category, value) => this.setOption(guest, category, value),
+      loadConfigOptions: () => this.optionsOf(guest),
+      setConfigOption: async (category, value) => {
+        guest = await this.configureGuest(guest, category, value);
+      },
     };
   }
 
@@ -597,8 +610,27 @@ export class GuestManager {
 
   /** The guest's settable options (starts it for this session if it isn't running). */
   async configOptions(session: string, name: string): Promise<ConfigOption[]> {
-    const guest = await this.guest(session, name);
-    return [...guest.config.values()];
+    return this.optionsOf(await this.guest(session, name));
+  }
+
+  /**
+   * The guest's options, with the suite's accounts added to its models (a guest with a `route`):
+   * `provider/model` values that start it on that key.
+   */
+  private async optionsOf(guest: Guest): Promise<ConfigOption[]> {
+    const options = [...guest.config.values()];
+    const kind = this.options.configs[guest.name]?.route;
+    const { accounts } = this.options;
+    if (kind === undefined || !accounts) return options;
+    const extra = await accounts.models(kind);
+    return options.map((option) => {
+      if (option.category !== "model") return option;
+      const known = new Set(option.values.map((v) => v.value));
+      const values = [...option.values, ...extra.filter((m) => !known.has(m.value))];
+      const out: ConfigOption = { ...option, values };
+      if (guest.route !== undefined) out.current = guest.route.id;
+      return out;
+    });
   }
 
   /**
@@ -611,8 +643,50 @@ export class GuestManager {
     category: ConfigCategory,
     value: string,
   ): Promise<void> {
+    const key = `${session}\0${name}`;
     const guest = await this.guest(session, name);
-    await this.setOption(guest, category, value);
+    const changed = await this.configureGuest(guest, category, value);
+    if (changed !== guest) this.guests.set(key, Promise.resolve(changed));
+  }
+
+  /**
+   * Sets an option. A model that is `provider/model` of a suite account, or a plain model after
+   * one, restarts the adapter on the other key (continuing its conversation); the guest it
+   * returns is the one to keep using.
+   */
+  private async configureGuest(
+    guest: Guest,
+    category: ConfigCategory,
+    value: string,
+  ): Promise<Guest> {
+    const kind = this.options.configs[guest.name]?.route;
+    const { accounts } = this.options;
+    if (category !== "model" || kind === undefined || !accounts) {
+      await this.setOption(guest, category, value);
+      return guest;
+    }
+    const route = await accounts.route(kind, value);
+    if (route === undefined && guest.route === undefined) {
+      await this.setOption(guest, category, value);
+      return guest;
+    }
+    const next = route?.id === guest.route?.id ? guest : await this.reroute(guest, route);
+    if (route === undefined) await this.setOption(next, category, value);
+    return next;
+  }
+
+  /** Starts the adapter again on another key (or its own login), in the same conversation. */
+  private async reroute(guest: Guest, route: Route | undefined): Promise<Guest> {
+    // A turn that is running finishes first.
+    await guest.queue;
+    this.live.delete(guest);
+    guest.conn.kill();
+    return this.start(guest.session, guest.name, {
+      main: guest.main,
+      resume: guest.acpSession,
+      route: route ?? null,
+      lenient: true,
+    });
   }
 
   /** Conversations the guest has stored for this directory, newest first (session/list). */
@@ -677,24 +751,41 @@ export class GuestManager {
   }
 
   /** `target` gets the guest once it exists: the connection's updates and requests are its. */
-  private spawn(name: string, cwd: string, target: { guest?: Guest }): AcpConnection {
+  private spawn(
+    name: string,
+    cwd: string,
+    target: { guest?: Guest },
+    route?: Route,
+  ): AcpConnection {
     const config = this.options.configs[name];
     if (!config) throw new NotFoundError(`no guest ${name}`);
     return AcpConnection.spawn({
       command: config.command,
       cwd,
-      env: config.env,
+      env: route ? { ...config.env, ...route.env } : config.env,
       onNotification: (method, params) => this.onNotification(target.guest, method, params),
       onRequest: (method, params) => this.onRequest(target.guest, method, params),
     });
   }
 
-  private async initialize(conn: AcpConnection): Promise<void> {
+  private async initialize(conn: AcpConnection, route?: Route): Promise<void> {
+    const clientCapabilities: Record<string, unknown> = {
+      fs: { readTextFile: false, writeTextFile: false },
+      terminal: false,
+    };
+    // Codex's adapter takes a custom gateway only from a client that says it can sign in to one.
+    if (route?.gateway) clientCapabilities.auth = { _meta: { gateway: true } };
     await conn.request("initialize", {
       protocolVersion: 1,
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+      clientCapabilities,
       clientInfo: { name: "suite", version: "0.6.0" },
     });
+    if (route?.gateway) {
+      await conn.request("authenticate", {
+        methodId: "gateway",
+        _meta: { gateway: route.gateway },
+      });
+    }
   }
 
   /**
@@ -704,19 +795,41 @@ export class GuestManager {
   private async start(
     session: string,
     name: string,
-    opts: { main?: boolean; resume?: string },
+    opts: {
+      main?: boolean;
+      resume?: string;
+      /** The key to run on; null: the guest's own login; unset: what the session's model says. */
+      route?: Route | null;
+      /** Start a new conversation when the stored one can't be resumed (default: for main). */
+      lenient?: boolean;
+    },
   ): Promise<Guest> {
-    const { main = false, resume } = opts;
-    if (main && resume !== undefined) {
+    const { main = false, resume, route } = opts;
+    const { lenient = main } = opts;
+    if (lenient && resume !== undefined) {
       try {
-        return await this.open(session, name, main, resume);
+        return await this.open(session, name, main, resume, route);
       } catch (err) {
         this.options.log.warn(
           `${name} for ${session}: resuming ${resume} failed (${errorText(err)}); starting anew`,
         );
       }
+      return this.open(session, name, main, undefined, route);
     }
-    return this.open(session, name, main, main ? undefined : resume);
+    return this.open(session, name, main, resume, route);
+  }
+
+  /** The key the session's model setting names, if any (the guest is restarting or new). */
+  private async routeFromSettings(session: string, name: string): Promise<Route | undefined> {
+    const kind = this.options.configs[name]?.route;
+    const model = this.options.settings(session, name).model;
+    if (kind === undefined || model === undefined || !this.options.accounts) return undefined;
+    try {
+      return await this.options.accounts.route(kind, model);
+    } catch (err) {
+      this.options.log.warn(`${name} for ${session}: ${errorText(err)}; using its own login`);
+      return undefined;
+    }
   }
 
   private async open(
@@ -724,11 +837,13 @@ export class GuestManager {
     name: string,
     main: boolean,
     resume: string | undefined,
+    chosen?: Route | null,
   ): Promise<Guest> {
     const { log } = this.options;
     const cwd = this.options.cwd(session);
     const target: { guest?: Guest } = {};
-    const conn = this.spawn(name, cwd, target);
+    const route = chosen === undefined ? await this.routeFromSettings(session, name) : chosen;
+    const conn = this.spawn(name, cwd, target, route ?? undefined);
     void conn.exited.then((code) => {
       log.info(`${name} for ${session} exited (${code})`);
       const { guest } = target;
@@ -740,7 +855,7 @@ export class GuestManager {
       void this.guests.get(key)?.then((current) => current === guest && this.guests.delete(key));
     });
     try {
-      await this.initialize(conn);
+      await this.initialize(conn, route ?? undefined);
       const mcpServers = this.options
         .mcpServers(session, { name, guest: !main, text: true })
         .map((server) => ({ type: "http", ...server }));
@@ -769,10 +884,13 @@ export class GuestManager {
         queue: Promise.resolve(),
         config,
       };
+      if (route) guest.route = route;
       target.guest = guest;
       this.live.add(guest);
       // Only what the user chose: everything else stays the guest's own default.
       for (const [category, value] of Object.entries(this.options.settings(session, name))) {
+        // The model of a key was given at launch.
+        if (route && category === "model") continue;
         try {
           await this.setOption(guest, category as ConfigCategory, value);
         } catch (err) {
@@ -793,7 +911,11 @@ export class GuestManager {
       return guest;
     } catch (err) {
       conn.kill();
-      throw err;
+      if (!route) throw err;
+      // What the adapter says may quote the request that carried the key.
+      let text = errorText(err);
+      for (const secret of route.secrets) text = text.replaceAll(secret, "***");
+      throw new Error(text);
     }
   }
 

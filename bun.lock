@@ -40,15 +40,13 @@
     "daemon": {
       "name": "@suite/daemon",
       "dependencies": {
+        "@mariozechner/pi-ai": "0.73.1",
         "@modelcontextprotocol/sdk": "^1.32.1",
         "@suite/harness": "workspace:*",
         "@suite/protocol": "workspace:*",
         "ajv": "^8.20.0",
         "diff": "^9.0.0",
         "marked": "^18.1.1",
-      },
-      "devDependencies": {
-        "@mariozechner/pi-ai": "0.73.1",
       },
     },
     "harness": {

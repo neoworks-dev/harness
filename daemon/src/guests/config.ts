@@ -18,6 +18,7 @@ function defaults(): Record<string, GuestConfig> {
   const claude: GuestConfig = {
     title: "Claude Code",
     command: ["bunx", "@agentclientprotocol/claude-agent-acp@0.91.0"],
+    route: "claude",
     permissions: "ask",
   };
   if (claudeCli !== null) claude.env = { CLAUDE_CODE_EXECUTABLE: claudeCli };
@@ -26,6 +27,7 @@ function defaults(): Record<string, GuestConfig> {
     codex: {
       title: "Codex",
       command: ["bunx", "@agentclientprotocol/codex-acp@2.2.2"],
+      route: "codex",
       permissions: "ask",
     },
   };

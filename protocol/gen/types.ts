@@ -502,6 +502,7 @@ export type SessionEvent =
   | Usage
   | EditsReverted
   | UserNote
+  | Notice
   | SubagentStarted
   | SubagentEnded;
 
@@ -727,6 +728,16 @@ export interface UserNote {
   /** What was answered: the question's title and the picked option. */
   about?: string;
 }
+
+/** A line for the user in the chat, from the daemon: the outcome of /login, /logout and /accounts, a login URL to open. Never a secret. Not a context event: the agent doesn't see it. */
+export interface Notice {
+  type: "notice";
+  text: string;
+  tone?: NoticeTone;
+}
+
+/** muted unless set. */
+export type NoticeTone = "muted" | "danger";
 
 /** The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event. */
 export interface SubagentStarted {

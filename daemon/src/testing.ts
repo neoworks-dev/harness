@@ -7,7 +7,7 @@ import type { Agent } from "@suite/harness/agent";
 import { createDaemon, type Daemon } from "./daemon.ts";
 import type { GuestConfig } from "./guests/guests.ts";
 import { createEchoAgent } from "./echo-agent.ts";
-import { silentLogger } from "./log.ts";
+import { type Logger, silentLogger } from "./log.ts";
 import { resolvePaths } from "./paths.ts";
 
 export interface TestDaemon extends Daemon {
@@ -43,6 +43,10 @@ export async function startTestDaemon(
     guests?: Record<string, GuestConfig>;
     /** The neo that delegate {agent: "neo"} uses, when the agent isn't neo. */
     neo?: Agent;
+    /** Default: a file in `dir`'s data directory and no pi file. */
+    accounts?: { authPath?: string; piAuthPath?: string };
+    /** Default: silent. */
+    log?: Logger;
   } = {},
 ): Promise<TestDaemon> {
   const dir = options.dir ?? mkdtempSync(join(tmpdir(), `${PREFIX}${process.pid}-`));
@@ -50,11 +54,12 @@ export async function startTestDaemon(
   const daemon = await createDaemon({
     paths: resolvePaths(env),
     agent: options.agent ?? createEchoAgent(),
-    log: silentLogger,
+    log: options.log ?? silentLogger,
     port: 0,
     defaultCwd: dir,
     guests: options.guests,
     neo: options.neo,
+    accounts: options.accounts,
   });
   return { ...daemon, env, dir };
 }

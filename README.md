@@ -60,13 +60,15 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/
 | `SUITE_IMAGES`                        | `1`/`0`: the model takes images (default: pi's registry)    |
 | `SUITE_THINKING`                      | `off` (`minimal`…`xhigh`)                                   |
 | `<PROVIDER>_API_KEY`, `SUITE_API_KEY` | else `SUITE_AUTH`, then pi's `~/.pi/agent/auth.json`        |
-| `SUITE_AUTH`                          | `auth.json` in `SUITE_DATA_DIR`: API keys, OAuth logins     |
+| `SUITE_AUTH`                          | `auth.json` in `SUITE_DATA_DIR`: what `/login` writes       |
 | `SUITE_AGENT`                         | `neo`; `echo` is an offline scripted agent for tests        |
 | `SUITE_PORT`                          | 127.0.0.1 port for `/bus` + `/mcp` (default: any free port) |
 | `SUITE_GUESTS`                        | `claude,codex`; `none` turns guest agents off               |
 | `SUITE_GUEST_PERMISSIONS`             | `ask` (buttons in the chat) or `allow`                      |
 
 `model` and `thinkingLevel` can also be set in `~/.config/suite/config.json`; env wins.
+
+Keys and accounts: `/login` adds an API key or an account (ChatGPT, GitHub Copilot, Claude Pro/Max, which neo only may use), `/logout` removes one, `/accounts` lists them. Keys are typed into a hidden field, never into the chat.
 
 ## Guest agents
 
@@ -77,6 +79,8 @@ How much asks first is the session's approvals mode: `/approvals ask|review|edit
 Each session runs on one harness that you pick: neo (the default), Claude Code or Codex. `/harness claude` switches (no name: a list; your last choice is the default for new sessions), and the next turn goes to the new one, which first gets a short summary of what was said while another harness ran. The agent can hand work to any harness, also its own, with `delegate`, optionally naming the model and effort; you are asked first (unless approvals is auto) with one card, "Start a subagent?": the harness, model, effort and directory that will run, highlighted, and the task. A model or effort the harness lists and doesn't know is refused before anything is asked, with the valid names. `delegate` can also name a `cwd` or a git `worktree` (created as `.worktrees/<name>` on a branch of that name): the subagent then runs as a session of its own in that directory, which the terminal app's sidebar groups under its worktree.
 
 You choose the models: `/model` (the session's harness) or `/model claude` shows what that harness offers (for neo: the models of every provider you are logged in to or have a key for, as `provider/model-id`), `/model claude sonnet` sets it; `/effort` and `/mode` work the same way. Choices hold for the session and become the default for new ones; until you choose, each harness uses its own defaults. `/resume` lists earlier Claude Code / Codex conversations in the session's directory (also ones started outside the suite) and continues the one you pick.
+
+Claude Code and Codex use their own logins. To run one on an API key from `/login`, pick a model of that provider: `/model codex openrouter/openai/gpt-5-mini` (OpenAI, OpenRouter, Groq, xAI, Fireworks and Vercel AI Gateway work, as Codex needs the Responses API), `/model claude deepseek/deepseek-v4-pro` (Anthropic, DeepSeek, OpenRouter, Moonshot, Z.ai and MiniMax work). `/model codex` and `/model claude` list them. A model without a provider goes back to the harness's own login. A Claude Pro/Max login is for neo only.
 
 ## Moving the agent between apps
 

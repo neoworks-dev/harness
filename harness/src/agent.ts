@@ -146,6 +146,8 @@ export interface AgentSession {
   cancel(): void;
   /** The options the user can set; absent when the harness has none. */
   configOptions?(): ConfigOption[];
+  /** Like configOptions, for a harness that has to look something up first; preferred when set. */
+  loadConfigOptions?(): Promise<ConfigOption[]>;
   /** Sets one for the following turns. Rejects with a message the user can read. */
   setConfigOption?(category: ConfigCategory, value: string): Promise<void>;
 }

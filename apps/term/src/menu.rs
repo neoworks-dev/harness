@@ -69,6 +69,13 @@ pub const COMMANDS: &[Command] = &[
         "[ask|review|edits|auto]",
         "ask, review each edit, accept edits, or auto (no value: next)",
     ),
+    daemon(
+        "login",
+        "[provider]",
+        "add an API key or an account (ChatGPT, Copilot, Claude Pro/Max)",
+    ),
+    daemon("logout", "[provider]", "remove a stored API key or account"),
+    daemon("accounts", "", "list the API keys and accounts in use"),
     local("sessions", "switch to another session (ctrl-s)"),
     local(
         "sidebar",

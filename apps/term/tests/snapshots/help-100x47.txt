@@ -33,13 +33,13 @@ commands
   /codex <task>                       give a task to Codex
   /harness [neo|claude|codex]         switch this session's agent: neo (based on pi), claude, codex
   /approvals [ask|review|edits|auto]  ask, review each edit, accept edits, or auto (no value: next)
+  /login [provider]                   add an API key or an account (ChatGPT, Copilot, Claude Pro/Ma…
+  /logout [provider]                  remove a stored API key or account
+  /accounts                           list the API keys and accounts in use
   /sessions                           switch to another session (ctrl-s)
   /sidebar                            show or hide the sessions sidebar (ctrl-g focuses it)
   /expand                             toggle full tool results (ctrl-o)
   /thoughts                           show or hide the agent's thoughts (ctrl-t)
-  /github                             GitHub issues and pull requests (ctrl-r)
-  /help                               keys and commands
-  /quit                               leave; the session keeps running
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 > message the agent · / for commands
 ~/site · neo

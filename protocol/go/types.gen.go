@@ -1060,7 +1060,7 @@ type SessionEventRecord struct {
 }
 
 // SessionEvent: Everything that happens in a session. Views must ignore types they don't know.
-// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, SubagentStarted, SubagentEnded, UnknownSessionEvent.
+// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, Notice, SubagentStarted, SubagentEnded, UnknownSessionEvent.
 type SessionEvent struct {
 	Value SessionEventVariant
 }
@@ -1225,6 +1225,12 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "user_note":
 		var v UserNote
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "notice":
+		var v Notice
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -1737,6 +1743,31 @@ func (v UserNote) MarshalJSON() ([]byte, error) {
 		plain
 	}{"user_note", plain(v)})
 }
+
+// Notice: A line for the user in the chat, from the daemon: the outcome of /login, /logout and /accounts, a login URL to open. Never a secret. Not a context event: the agent doesn't see it.
+type Notice struct {
+	Text string      `json:"text"`
+	Tone *NoticeTone `json:"tone,omitempty"`
+}
+
+func (Notice) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v Notice) MarshalJSON() ([]byte, error) {
+	type plain Notice
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"notice", plain(v)})
+}
+
+// NoticeTone: muted unless set.
+type NoticeTone string
+
+const (
+	NoticeToneMuted  NoticeTone = "muted"
+	NoticeToneDanger NoticeTone = "danger"
+)
 
 // SubagentStarted: The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event.
 type SubagentStarted struct {

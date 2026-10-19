@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     "./agent": "./src/agent.ts",
+    "./auth": "./src/auth.ts",
     "./config": "./src/config.ts",
     "./context-events": "./src/context-events.ts",
     "./neo": "./src/neo-agent.ts"

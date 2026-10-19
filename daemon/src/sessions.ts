@@ -179,6 +179,7 @@ export class SessionManager {
     harness = this.harness(sessionId),
   ): Promise<ConfigOption[]> {
     const agentSession = await this.agentSession(sessionId, harness);
+    if (agentSession.loadConfigOptions) return agentSession.loadConfigOptions();
     return agentSession.configOptions?.() ?? [];
   }
 

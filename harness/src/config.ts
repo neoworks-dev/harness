@@ -69,6 +69,22 @@ function parseImages(value: string, source: string): boolean {
   throw new Error(`${source}: expected 1 or 0, got "${value}"`);
 }
 
+/** The suite's accounts file (SUITE_AUTH, else in the data dir) and pi's, which is read only. */
+export function authPaths(env: NodeJS.ProcessEnv = process.env): {
+  authPath: string;
+  piAuthPath: string;
+} {
+  const home = env.HOME || homedir();
+  // Where the daemon keeps its data (daemon/src/paths.ts).
+  const dataDir =
+    env.SUITE_DATA_DIR ||
+    (env.XDG_DATA_HOME ? join(env.XDG_DATA_HOME, "suite") : join(home, ".local", "share", "suite"));
+  return {
+    authPath: env.SUITE_AUTH || join(dataDir, "auth.json"),
+    piAuthPath: env.SUITE_PI_AUTH || join(home, ".pi", "agent", "auth.json"),
+  };
+}
+
 /**
  * Reads `$XDG_CONFIG_HOME/suite/config.json` (optional; keys `model` = "provider/id",
  * `thinkingLevel` and `images`), overridden by SUITE_MODEL, SUITE_THINKING and SUITE_IMAGES.
@@ -101,17 +117,11 @@ export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): Harness
     thinkingSource = "SUITE_THINKING";
   }
 
-  // Where the daemon keeps its data (daemon/src/paths.ts).
-  const dataDir =
-    env.SUITE_DATA_DIR ||
-    (env.XDG_DATA_HOME ? join(env.XDG_DATA_HOME, "suite") : join(home, ".local", "share", "suite"));
-
   const config: HarnessConfig = {
     ...parseModel(model, modelSource),
     thinkingLevel: parseThinkingLevel(thinking, thinkingSource),
     apiKey: env.SUITE_API_KEY || undefined,
-    authPath: env.SUITE_AUTH || join(dataDir, "auth.json"),
-    piAuthPath: env.SUITE_PI_AUTH || join(home, ".pi", "agent", "auth.json"),
+    ...authPaths(env),
   };
   if (env.SUITE_IMAGES) config.images = parseImages(env.SUITE_IMAGES, "SUITE_IMAGES");
   else if (file && typeof file.images === "boolean") config.images = file.images;
