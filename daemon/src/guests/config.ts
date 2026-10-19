@@ -32,12 +32,9 @@ export function codexConfig(
   } catch {
     // Not JSON: the adapter would refuse it, and so we replace it.
   }
-  const features = isRecord(config.features) ? config.features : {};
-  return JSON.stringify({
-    ...config,
-    features: { multi_agent: false, multi_agent_v2: false, ...features },
-    ...extra,
-  });
+  const features: Record<string, unknown> = { multi_agent: false, multi_agent_v2: false };
+  if (isRecord(config.features)) Object.assign(features, config.features);
+  return JSON.stringify({ ...config, features, ...extra });
 }
 
 function defaults(env: NodeJS.ProcessEnv): Record<string, GuestConfig> {
