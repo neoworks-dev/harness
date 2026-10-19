@@ -111,6 +111,22 @@ test("a turn that ends interrupts what still runs", () => {
   expect(fold(rows, 2000, { type: "turn_ended", stopReason: "end_turn" })).toBe(rows);
 });
 
+test("an agent started in the background runs on past the end of a turn", () => {
+  let rows = fold([], 0, started("d1", "claude", { background: true }));
+  rows = fold(rows, 10, started("d2", "neo"));
+  rows = fold(rows, 1000, { type: "turn_ended", stopReason: "end_turn" });
+  expect(rows.map((r) => r.state)).toEqual(["running", "failed"]);
+  expect(rows[0]).toMatchObject({ background: true });
+});
+
+test("a message to or from a running agent is what it does now", () => {
+  let rows = fold([], 0, started("d1", "claude", { background: true }));
+  rows = fold(rows, 1, { type: "agent_message", from: "main", to: "d1", text: "hi" });
+  expect(rows[0]?.activity).toBe("← main");
+  rows = fold(rows, 2, { type: "agent_message", from: "d1", to: "main", text: "hi" });
+  expect(rows[0]?.activity).toBe("→ main");
+});
+
 test("an agent in a directory of its own reports what its session says", () => {
   const rows = fold([], 0, started("d1", "neo", { child: "s_child", cwd: "/w/site/.worktrees/x" }));
   const sessions = [

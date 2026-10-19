@@ -4,7 +4,9 @@
 //! (or, for a subagent working as a session of its own in another directory, that session), `x`
 //! stops it. The rows are built from the session's log: `subagent_started` / `subagent_ended`
 //! mark a delegation, and the events labelled with the subagent's name (or, for a session of its
-//! own, the events of that session) say what it does.
+//! own, the events of that session) say what it does. One started in the background lives on past
+//! the turn that started it (`[bg]` after its name); a message to or from a subagent shows as its
+//! activity (`← main`, `→ main`).
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -46,6 +48,8 @@ pub struct Agent {
     pub cwd: Option<String>,
     /// The session it runs as, when it works in a directory of its own.
     pub child: Option<String>,
+    /// Started with `background`: it keeps running when the turn that started it ends.
+    pub background: bool,
     pub state: AgentState,
     pub started_ms: i64,
     pub ended_ms: Option<i64>,
@@ -151,6 +155,7 @@ impl Agents {
                     task: e.task.clone(),
                     cwd: e.cwd.clone(),
                     child: e.child.clone(),
+                    background: e.background.unwrap_or(false),
                     state: AgentState::Running,
                     started_ms: record.ts,
                     ended_ms: None,
@@ -175,16 +180,28 @@ impl Agents {
                     };
                 }
             }
-            // A delegation lives inside a turn: when the turn is over nothing still runs.
+            // A delegation lives inside a turn: when the turn is over nothing still runs, but for
+            // the ones that were started in the background.
             SessionEvent::TurnEnded(_) => {
                 for agent in self
                     .rows
                     .iter_mut()
-                    .filter(|a| a.state == AgentState::Running)
+                    .filter(|a| a.state == AgentState::Running && !a.background)
                 {
                     agent.state = AgentState::Failed;
                     agent.ended_ms = Some(record.ts);
                     agent.activity = "interrupted".into();
+                }
+            }
+            SessionEvent::AgentMessage(m) => {
+                for (id, arrow, other) in [(&m.to, "←", &m.from), (&m.from, "→", &m.to)] {
+                    if let Some(agent) = self
+                        .rows
+                        .iter_mut()
+                        .find(|a| a.id == *id && a.state == AgentState::Running)
+                    {
+                        agent.activity = format!("{arrow} {other}");
+                    }
                 }
             }
             SessionEvent::ToolCall(c) => self.note(c.agent.as_deref(), Some(&c.title), None),
@@ -383,6 +400,9 @@ fn row(agent: &Agent, w: usize, now_ms: i64, styles: &Styles) -> Line<'static> {
     {
         let dir = dir.trim_end_matches('/').rsplit('/').next().unwrap_or(dir);
         name.push_str(&format!(" ⎇ {dir}"));
+    }
+    if agent.background {
+        name.push_str(" [bg]");
     }
     let end = agent.ended_ms.unwrap_or(now_ms);
     let mut stats = elapsed(end - agent.started_ms);

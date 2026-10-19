@@ -172,6 +172,47 @@ fn a_turn_that_ended_leaves_nothing_running() {
 }
 
 #[test]
+fn a_background_subagent_runs_on_past_the_end_of_a_turn() {
+    let mut a = Agents::default();
+    a.on_record(&started("d1", "claude", 0, json!({"background": true})));
+    a.on_record(&started("d2", "neo", 0, json!({})));
+    a.on_record(&rec(
+        "s1",
+        5,
+        4_000,
+        json!({"type": "turn_ended", "stopReason": "end_turn"}),
+    ));
+    assert_eq!(a.get("d1").unwrap().state, AgentState::Running);
+    assert_eq!(a.get("d2").unwrap().state, AgentState::Failed);
+    let got = text(&a.lines(80, 5_000, &MAIN, false, &styles()));
+    assert!(got[1].starts_with("○ claude [bg]  starting…"), "{got:?}");
+    // It ends when it says so.
+    a.on_record(&ended("d1", 6_000, "end_turn"));
+    assert_eq!(a.get("d1").unwrap().state, AgentState::Done);
+}
+
+#[test]
+fn a_message_shows_as_the_activity_of_the_subagent_it_is_to_or_from() {
+    let mut a = Agents::default();
+    a.on_record(&started("d1", "claude", 0, json!({"background": true})));
+    let message = |from: &str, to: &str| {
+        rec(
+            "s1",
+            3,
+            100,
+            json!({"type": "agent_message", "from": from, "to": to, "text": "hi"}),
+        )
+    };
+    a.on_record(&message("main", "d1"));
+    assert_eq!(a.get("d1").unwrap().activity, "← main");
+    a.on_record(&message("d1", "main"));
+    assert_eq!(a.get("d1").unwrap().activity, "→ main");
+    // Between two other agents: nothing here.
+    a.on_record(&message("d8", "d9"));
+    assert_eq!(a.get("d1").unwrap().activity, "→ main");
+}
+
+#[test]
 fn a_subagent_in_a_directory_of_its_own_is_followed_through_its_session() {
     let mut a = Agents::default();
     a.on_record(&started(
