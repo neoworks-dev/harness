@@ -135,6 +135,81 @@ export function startButton(buttons: readonly PromptButton[]): number {
   return current < 0 ? 0 : current;
 }
 
+/** The number keys stop at 9: a choice with more options than that gets a filter field. */
+export const FILTER_FROM = 9;
+
+/** Whether the buttons are a choice long enough to filter. Permission cards never are. */
+export function isLongChoice(buttons: readonly PromptButton[]): boolean {
+  return buttons.length > FILTER_FROM && buttons.every((b) => b.action === "suite.choose");
+}
+
+/** The option's id, as the daemon knows it (`openrouter/anthropic/claude-haiku-4.5`). */
+function optionId(button: PromptButton): string {
+  const args = button.args;
+  if (typeof args !== "object" || args === null || !("option" in args)) return "";
+  const { option } = args;
+  if (typeof option === "string") return option;
+  return "";
+}
+
+/**
+ * The positions of the buttons that match the filter, in their order: every word must occur, in
+ * any case, in the label, the option id or the description.
+ */
+export function matchingButtons(buttons: readonly PromptButton[], filter: string): number[] {
+  const words = filter.toLowerCase().split(/\s+/).filter(Boolean);
+  const matches: number[] = [];
+  buttons.forEach((button, index) => {
+    const text = [button.label, optionId(button), button.description]
+      .filter((part) => part !== undefined)
+      .join("\n")
+      .toLowerCase();
+    if (words.every((word) => text.includes(word))) matches.push(index);
+  });
+  return matches;
+}
+
+/**
+ * The focus after moving `delta` places among the matches, wrapping at the ends. Focus on
+ * something that is no match goes to the end the move heads for.
+ */
+export function moveFocus(matches: readonly number[], focused: number, delta: number): number {
+  const count = matches.length;
+  if (count === 0) return focused;
+  const at = matches.indexOf(focused);
+  if (at < 0) return (delta >= 0 ? matches[0] : matches[count - 1]) ?? focused;
+  return matches[(((at + delta) % count) + count) % count] ?? focused;
+}
+
+/**
+ * Where the focus goes when the filter changed: the first match, or with an empty filter the
+ * option in effect now. Undefined when nothing matches (the focus stays, Enter does nothing).
+ */
+export function focusAfterFilter(
+  buttons: readonly PromptButton[],
+  filter: string,
+): number | undefined {
+  if (filter.trim() === "") return startButton(buttons);
+  return matchingButtons(buttons, filter)[0];
+}
+
+/**
+ * Where to scroll a list of equal rows to show row `row`, or undefined when it shows already.
+ * `top` is the scroll offset and `viewport` the height of the window.
+ */
+export function scrollToRow(
+  row: number,
+  rowHeight: number,
+  top: number,
+  viewport: number,
+): number | undefined {
+  const start = row * rowHeight;
+  if (viewport <= 0) return undefined;
+  if (start < top) return start;
+  if (start + rowHeight > top + viewport) return start + rowHeight - viewport;
+  return undefined;
+}
+
 /** Whether Tab can add a note: permission and choice answers carry one, other buttons do not. */
 export function takesNote(button: PromptButton | undefined): boolean {
   if (button === undefined) return false;

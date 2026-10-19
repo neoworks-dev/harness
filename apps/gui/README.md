@@ -42,4 +42,6 @@ In the sessions: Up/Down (or j/k) move, `[` and `]` jump between projects and wo
 
 In the agents list: Up/Down select, Enter opens that agent's chat (Esc or Enter comes back), `x` stops it.
 
+In a long choice (more than 9 options, such as `/model` with several providers): type to filter, digits included. Every word must occur in the option's name, id or description. Up/Down move over the matches, Enter picks one, Ctrl-U clears, and Esc clears the filter before it puts the question aside.
+
 In the GitHub view: Tab (or 1 and 2) switches between issues and pull requests, Up/Down move, Enter opens, `/` searches (GitHub's search syntax, such as `label:bug author:alice`), `o` switches between open and all, `r` reloads, `s` sends the item to the model, `d` shows a pull request's diff, Esc goes back and then closes.
