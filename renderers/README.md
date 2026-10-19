@@ -18,6 +18,8 @@ So the chat behaves the same everywhere (consistent structure and behavior, not 
 
 Tool states: `pending` ○ (muted), `running` ◐ (accent; animated where possible), `done` ✓ (success), `failed` ✗ (danger).
 
+A message between agents is a `done` `tool` item labelled `message: main → claude d_1a2b3c4d` (`reply: …` for a background subagent's final reply) whose component is the text, so it is as compact as any tool result; a per-agent transcript shows what was written to that agent as a `user` item labelled `from main`. The turn an idle agent starts for a message has no item of its own.
+
 **Components** (TUI column per the design §8)
 
 - `card`: box with optional title; `tone` colors the border/title. TUI: box-drawn frame (`╭─ title ─╮`), or indentation when narrower than 20 columns.
