@@ -103,6 +103,9 @@
         },
         {
           "$ref": "#/$defs/SubagentEnded"
+        },
+        {
+          "$ref": "#/$defs/AgentMessage"
         }
       ],
       "discriminator": {
@@ -683,6 +686,10 @@
         "child": {
           "type": "string",
           "description": "A subagent working in another directory runs as its own session (parent = this one); its id."
+        },
+        "background": {
+          "type": "boolean",
+          "description": "The delegate call returned at once and the subagent outlives the turn: a turn's end does not close it, and its final reply reaches the main agent as an agent_message."
         }
       },
       "required": ["type", "id", "agent", "task"],
@@ -706,6 +713,38 @@
         }
       },
       "required": ["type", "id", "stopReason"],
+      "additionalProperties": false
+    },
+    "AgentMessage": {
+      "description": "One agent told another something with send_message, or a background subagent's final reply (`reply`). `from` and `to` are `main` (the session's own agent) or a subagent's id (the one in subagent_started). Not a context event: the daemon delivers it to the recipient itself (appended to its next tool result, or as the turn an idle agent starts).",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "agent_message"
+        },
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "fromAgent": {
+          "type": "string",
+          "description": "Harness name of the sender, when it is a subagent."
+        },
+        "toAgent": {
+          "type": "string",
+          "description": "Harness name of the recipient, when it is a subagent."
+        },
+        "text": {
+          "type": "string"
+        },
+        "reply": {
+          "type": "boolean",
+          "description": "The sender's final reply: a background subagent finished and this is what it gives back."
+        }
+      },
+      "required": ["type", "from", "to", "text"],
       "additionalProperties": false
     },
     "PermissionDetail": {

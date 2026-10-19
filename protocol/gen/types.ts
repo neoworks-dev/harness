@@ -504,7 +504,8 @@ export type SessionEvent =
   | UserNote
   | Notice
   | SubagentStarted
-  | SubagentEnded;
+  | SubagentEnded
+  | AgentMessage;
 
 export type SessionEventTag = SessionEvent["type"];
 
@@ -753,6 +754,8 @@ export interface SubagentStarted {
   cwd?: string;
   /** A subagent working in another directory runs as its own session (parent = this one); its id. */
   child?: string;
+  /** The delegate call returned at once and the subagent outlives the turn: a turn's end does not close it, and its final reply reaches the main agent as an agent_message. */
+  background?: boolean;
 }
 
 /** The subagent started by subagent_started finished, failed or was stopped. */
@@ -761,6 +764,20 @@ export interface SubagentEnded {
   id: string;
   stopReason: StopReason;
   error?: string;
+}
+
+/** One agent told another something with send_message, or a background subagent's final reply (`reply`). `from` and `to` are `main` (the session's own agent) or a subagent's id (the one in subagent_started). Not a context event: the daemon delivers it to the recipient itself (appended to its next tool result, or as the turn an idle agent starts). */
+export interface AgentMessage {
+  type: "agent_message";
+  from: string;
+  to: string;
+  /** Harness name of the sender, when it is a subagent. */
+  fromAgent?: string;
+  /** Harness name of the recipient, when it is a subagent. */
+  toAgent?: string;
+  text: string;
+  /** The sender's final reply: a background subagent finished and this is what it gives back. */
+  reply?: boolean;
 }
 
 /** One labelled fact of a permission request, drawn as a highlighted key–value row above the content. */

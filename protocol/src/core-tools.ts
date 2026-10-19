@@ -1,5 +1,5 @@
 // The connector-facing core tools (tools_search, tools_call, apps_launch, apps_focus, delegate,
-// models),
+// models, send_message, wait),
 // shared by the harness (native definitions) and the MCP gateway (which implements them).
 import data from "../core-tools.json";
 
@@ -10,7 +10,14 @@ export interface CoreToolDefinition {
 }
 
 export type CoreToolName =
-  "tools_search" | "tools_call" | "apps_launch" | "apps_focus" | "delegate" | "models";
+  | "tools_search"
+  | "tools_call"
+  | "apps_launch"
+  | "apps_focus"
+  | "delegate"
+  | "models"
+  | "send_message"
+  | "wait";
 
 export interface ToolsSearchArgs {
   query: string;
@@ -33,11 +40,22 @@ export interface DelegateArgs {
   effort?: string;
   cwd?: string;
   worktree?: string;
+  background?: boolean;
 }
 
 export interface ModelsArgs {
   agent?: string;
   query?: string;
+}
+
+export interface SendMessageArgs {
+  to: string;
+  text: string;
+}
+
+export interface WaitArgs {
+  for?: string[];
+  timeoutSeconds?: number;
 }
 
 export const CORE_TOOLS: readonly CoreToolDefinition[] = data.tools.map((tool) => {
@@ -46,7 +64,14 @@ export const CORE_TOOLS: readonly CoreToolDefinition[] = data.tools.map((tool) =
 });
 
 export function isCoreToolName(name: string): name is CoreToolName {
-  return ["tools_search", "tools_call", "apps_launch", "apps_focus", "delegate", "models"].includes(
-    name,
-  );
+  return [
+    "tools_search",
+    "tools_call",
+    "apps_launch",
+    "apps_focus",
+    "delegate",
+    "models",
+    "send_message",
+    "wait",
+  ].includes(name);
 }

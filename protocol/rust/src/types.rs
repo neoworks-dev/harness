@@ -1221,6 +1221,7 @@ pub enum SessionEvent {
     Notice(Notice),
     SubagentStarted(SubagentStarted),
     SubagentEnded(SubagentEnded),
+    AgentMessage(AgentMessage),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -1316,6 +1317,10 @@ impl Serialize for SessionEvent {
                 "subagent_ended",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            SessionEvent::AgentMessage(v) => (
+                "agent_message",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             SessionEvent::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -1401,6 +1406,9 @@ impl<'de> Deserialize<'de> for SessionEvent {
                 .map_err(D::Error::custom),
             "subagent_ended" => serde_json::from_value(value)
                 .map(SessionEvent::SubagentEnded)
+                .map_err(D::Error::custom),
+            "agent_message" => serde_json::from_value(value)
+                .map(SessionEvent::AgentMessage)
                 .map_err(D::Error::custom),
             _ => Ok(SessionEvent::Unknown(value)),
         }
@@ -1548,6 +1556,12 @@ impl From<SubagentStarted> for SessionEvent {
 impl From<SubagentEnded> for SessionEvent {
     fn from(v: SubagentEnded) -> Self {
         SessionEvent::SubagentEnded(v)
+    }
+}
+
+impl From<AgentMessage> for SessionEvent {
+    fn from(v: AgentMessage) -> Self {
+        SessionEvent::AgentMessage(v)
     }
 }
 
@@ -2024,6 +2038,13 @@ pub struct SubagentStarted {
     /// A subagent working in another directory runs as its own session (parent = this one); its id.
     #[serde(rename = "child", default, skip_serializing_if = "Option::is_none")]
     pub child: Option<String>,
+    /// The delegate call returned at once and the subagent outlives the turn: a turn's end does not close it, and its final reply reaches the main agent as an agent_message.
+    #[serde(
+        rename = "background",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub background: Option<bool>,
 }
 
 /// The subagent started by subagent_started finished, failed or was stopped.
@@ -2036,6 +2057,27 @@ pub struct SubagentEnded {
     pub stop_reason: StopReason,
     #[serde(rename = "error", default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+/// One agent told another something with send_message, or a background subagent's final reply (`reply`). `from` and `to` are `main` (the session's own agent) or a subagent's id (the one in subagent_started). Not a context event: the daemon delivers it to the recipient itself (appended to its next tool result, or as the turn an idle agent starts).
+/// Tagged `type: "agent_message"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentMessage {
+    #[serde(rename = "from")]
+    pub from: String,
+    #[serde(rename = "to")]
+    pub to: String,
+    /// Harness name of the sender, when it is a subagent.
+    #[serde(rename = "fromAgent", default, skip_serializing_if = "Option::is_none")]
+    pub from_agent: Option<String>,
+    /// Harness name of the recipient, when it is a subagent.
+    #[serde(rename = "toAgent", default, skip_serializing_if = "Option::is_none")]
+    pub to_agent: Option<String>,
+    #[serde(rename = "text")]
+    pub text: String,
+    /// The sender's final reply: a background subagent finished and this is what it gives back.
+    #[serde(rename = "reply", default, skip_serializing_if = "Option::is_none")]
+    pub reply: Option<bool>,
 }
 
 /// One labelled fact of a permission request, drawn as a highlighted key–value row above the content.

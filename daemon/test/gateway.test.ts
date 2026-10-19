@@ -535,6 +535,8 @@ describe("over real MCP", () => {
       "apps_focus",
       "delegate",
       "models",
+      "send_message",
+      "wait",
     ]);
     const found = await client.callTool({ name: "tools_search", arguments: { query: "hello" } });
     expect(JSON.stringify(found.content)).toContain("greeter.greet");

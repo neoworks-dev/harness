@@ -363,6 +363,7 @@ export const examples: Record<string, Envelope> = {
         model: "sonnet",
         cwd: "/home/user/site/.worktrees/fix-login",
         child: "s_0123456789",
+        background: true,
       },
     },
   },
@@ -373,6 +374,21 @@ export const examples: Record<string, Envelope> = {
       seq: 15,
       ts: 1760565601300,
       event: { type: "subagent_ended", id: "d_1a2b3c4d", stopReason: "end_turn" },
+    },
+  },
+  "event-agent-message": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 16,
+      ts: 1760565601350,
+      event: {
+        type: "agent_message",
+        from: "main",
+        to: "d_1a2b3c4d",
+        toAgent: "claude",
+        text: "Also run the e2e tests before you finish.",
+      },
     },
   },
   "event-edits-reverted": {

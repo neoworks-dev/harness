@@ -1060,7 +1060,7 @@ type SessionEventRecord struct {
 }
 
 // SessionEvent: Everything that happens in a session. Views must ignore types they don't know.
-// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, Notice, SubagentStarted, SubagentEnded, UnknownSessionEvent.
+// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, Notice, SubagentStarted, SubagentEnded, AgentMessage, UnknownSessionEvent.
 type SessionEvent struct {
 	Value SessionEventVariant
 }
@@ -1243,6 +1243,12 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "subagent_ended":
 		var v SubagentEnded
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "agent_message":
+		var v AgentMessage
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -1782,6 +1788,8 @@ type SubagentStarted struct {
 	Cwd *string `json:"cwd,omitempty"`
 	// A subagent working in another directory runs as its own session (parent = this one); its id.
 	Child *string `json:"child,omitempty"`
+	// The delegate call returned at once and the subagent outlives the turn: a turn's end does not close it, and its final reply reaches the main agent as an agent_message.
+	Background *bool `json:"background,omitempty"`
 }
 
 func (SubagentStarted) isSessionEvent() {}
@@ -1811,6 +1819,30 @@ func (v SubagentEnded) MarshalJSON() ([]byte, error) {
 		Tag string `json:"type"`
 		plain
 	}{"subagent_ended", plain(v)})
+}
+
+// AgentMessage: One agent told another something with send_message, or a background subagent's final reply (`reply`). `from` and `to` are `main` (the session's own agent) or a subagent's id (the one in subagent_started). Not a context event: the daemon delivers it to the recipient itself (appended to its next tool result, or as the turn an idle agent starts).
+type AgentMessage struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	// Harness name of the sender, when it is a subagent.
+	FromAgent *string `json:"fromAgent,omitempty"`
+	// Harness name of the recipient, when it is a subagent.
+	ToAgent *string `json:"toAgent,omitempty"`
+	Text    string  `json:"text"`
+	// The sender's final reply: a background subagent finished and this is what it gives back.
+	Reply *bool `json:"reply,omitempty"`
+}
+
+func (AgentMessage) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v AgentMessage) MarshalJSON() ([]byte, error) {
+	type plain AgentMessage
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"agent_message", plain(v)})
 }
 
 // PermissionDetail: One labelled fact of a permission request, drawn as a highlighted key–value row above the content.
