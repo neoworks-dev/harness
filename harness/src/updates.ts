@@ -54,6 +54,15 @@ function describeToolCall(name: string, args: unknown): { title: string; kind: T
       const agent = stringArg(args, "agent");
       return { title: agent ? `models of ${agent}` : "models of the harnesses", kind: "search" };
     }
+    case "send_message": {
+      const first = stringArg(args, "text").split("\n")[0] ?? "";
+      return {
+        title: `message ${stringArg(args, "to")}: ${first.slice(0, TITLE_COMMAND_CHARS)}`,
+        kind: "other",
+      };
+    }
+    case "wait":
+      return { title: "wait for messages", kind: "other" };
     case "todo_write":
       return { title: "update todos", kind: "think" };
     case "delegate": {

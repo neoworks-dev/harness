@@ -287,6 +287,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       images,
       pendingEvents,
       summary,
+      takeMessages,
       onUpdate,
     }: PromptParams): Promise<PromptResult> {
       if (running) return { stopReason: "error", error: "A turn is already running." };
@@ -310,6 +311,13 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
         if (event.type !== "agent_end") return;
         for (const message of event.messages) if (message.role === "assistant") final = message;
       });
+      // Messages from other agents join the conversation after the user's, and after each tool batch.
+      agent.incoming = () =>
+        (takeMessages?.() ?? []).map((message) => ({
+          role: "user",
+          content: [{ type: "text", text: message }],
+          timestamp: Date.now(),
+        }));
       try {
         const cwd = cwdTold ? undefined : params.cwd;
         cwdTold = true;
@@ -323,6 +331,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
         logger?.error(`neo agent failed: ${message}`);
         return { stopReason: "error", error: message };
       } finally {
+        agent.incoming = undefined;
         unsubscribe();
         running = false;
       }

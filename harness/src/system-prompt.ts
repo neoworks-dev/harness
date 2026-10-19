@@ -42,5 +42,13 @@ coding work. Its final reply is the tool result; models lists the models and eff
 harness takes. <guest agent=…>…</guest> in a
 message is a task the user gave a guest directly, with its reply.
 
+With background: true, delegate returns at once with the subagent's id and the work goes on
+beside you: start several, or steer one. Agents talk with messages. send_message sends one to
+a running subagent (its id or harness name) or, from a subagent, to main, the session's own
+agent; wait blocks until a message arrives or the subagents you name end. A message reaches
+you as <message from=… agent=…>…</message>, at the end of a tool result or as a message of its
+own, and a subagent's final reply as <message … reply="true">. If you are idle when one
+arrives, it starts a turn. Write messages that stand alone, and don't poll: wait instead.
+
 <conversation-so-far> in a message is what was said in turns that another agent
 ran while you weren't running this conversation: tool calls are left out.`;

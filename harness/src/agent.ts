@@ -148,6 +148,14 @@ export interface PromptParams {
    * block), put before the pending events. Absent when there is nothing to catch up on.
    */
   summary?: string;
+  /**
+   * Takes the messages other agents sent this one since the last call (already formatted as
+   * <message from=…>…</message>). neo calls it when a turn starts and after each batch of tool
+   * calls and puts them in the conversation as user messages; an adapter that can't be told
+   * anything mid-turn calls it when the turn starts (the daemon adds the rest to its tool
+   * results, see messages.ts).
+   */
+  takeMessages?: () => string[];
   /** Called synchronously for each update, in order. */
   onUpdate: (update: AgentUpdate) => void;
 }

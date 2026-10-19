@@ -94,6 +94,52 @@ test("pending events are prepended to the text sent to the model", async () => {
   expect(model.requests[0]?.[0]).toMatchObject({ role: "user", content: [{ text: expected }] });
 });
 
+test("messages from other agents join the conversation after each tool batch, once", async () => {
+  const model = fakeModel([
+    reply([fauxToolCall("todo_write", { todos: [] }, { id: "t1" })], "toolUse"),
+    reply("ok"),
+  ]);
+  const { session } = await newSession(model);
+  const waiting = ['<message from="d_1" agent="claude">\nlook at x\n</message>'];
+  const updates: AgentUpdate[] = [];
+  const result = await session.prompt({
+    text: "go",
+    app: "cli",
+    pendingEvents: [],
+    // Nothing yet when the turn starts; a message by the time the tool has run.
+    takeMessages: () => {
+      if (!updates.some((u) => u.type === "tool_call_update")) return [];
+      return waiting.splice(0);
+    },
+    onUpdate: (update) => updates.push(update),
+  });
+  expect(result.stopReason).toBe("end_turn");
+  // The second request has it after the tool result; the third (there is none) would not repeat it.
+  const second = model.requests[1] ?? [];
+  expect(second.map((m) => m.role)).toEqual(["user", "assistant", "toolResult", "user"]);
+  expect(JSON.stringify(second.at(-1))).toContain("look at x");
+  // It is part of the logged conversation, so a reload keeps it.
+  const logged = harnessMessages(updates).map((m) => JSON.stringify(m));
+  expect(logged.some((m) => m.includes("look at x"))).toBe(true);
+});
+
+test("messages that are there when the turn starts come after the user's text", async () => {
+  const model = fakeModel([reply("ok")]);
+  const { session } = await newSession(model);
+  const waiting = ['<message from="main">\nbegin with y\n</message>'];
+  await session.prompt({
+    text: "the task",
+    app: "delegate",
+    pendingEvents: [],
+    takeMessages: () => waiting.splice(0),
+    onUpdate: () => {},
+  });
+  const request = model.requests[0] ?? [];
+  expect(request.map((m) => m.role)).toEqual(["user", "user"]);
+  expect(JSON.stringify(request[0])).toContain("the task");
+  expect(JSON.stringify(request[1])).toContain("begin with y");
+});
+
 test("the working directory is told once per session, also across a reload", async () => {
   const model = fakeModel([reply("one"), reply("two"), reply("three")]);
   const { session, cwd } = await newSession(model);

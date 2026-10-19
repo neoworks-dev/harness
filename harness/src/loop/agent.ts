@@ -302,6 +302,12 @@ export class Agent {
     return this.steeringQueue.hasItems() || this.followUpQueue.hasItems();
   }
 
+  /**
+   * Messages from elsewhere (other agents), asked for wherever the steering queue is polled: at
+   * the start of a run and after each batch of tool calls, also when the agent would stop.
+   */
+  public incoming?: () => AgentMessage[];
+
   /** Active abort signal for the current run, if any. */
   get signal(): AbortSignal | undefined {
     return this.activeRun?.abortController.signal;
@@ -455,7 +461,7 @@ export class Agent {
           skipInitialSteeringPoll = false;
           return Promise.resolve([]);
         }
-        return Promise.resolve(this.steeringQueue.drain());
+        return Promise.resolve([...this.steeringQueue.drain(), ...(this.incoming?.() ?? [])]);
       },
       getFollowUpMessages: () => Promise.resolve(this.followUpQueue.drain()),
     };
