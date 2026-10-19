@@ -32,7 +32,8 @@ const STDERR_LINES = 20;
 export interface AcpOptions {
   command: string[];
   cwd: string;
-  env?: Record<string, string>;
+  /** Added to the daemon's environment; undefined removes a variable. */
+  env?: Record<string, string | undefined>;
   onRequest: RequestHandler;
   onNotification: NotificationHandler;
   /** The agent's stderr, line by line. */
@@ -64,9 +65,11 @@ export class AcpConnection {
   }
 
   static spawn(options: AcpOptions): AcpConnection {
+    const env: Record<string, string | undefined> = { ...process.env, ...options.env };
+    for (const [name, value] of Object.entries(env)) if (value === undefined) delete env[name];
     const proc = Bun.spawn(options.command, {
       cwd: options.cwd,
-      env: { ...process.env, ...options.env },
+      env,
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",

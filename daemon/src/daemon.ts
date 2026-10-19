@@ -13,6 +13,7 @@ import { ViewManager } from "./view/views.ts";
 import { Gateway } from "./gateway/gateway.ts";
 import { mcpHandler } from "./gateway/mcp-server.ts";
 import { ConnectorRegistry } from "./gateway/registry.ts";
+import { createGuestAccounts } from "./guests/accounts.ts";
 import { createDelegate } from "./guests/delegate.ts";
 import { type GatewayRole, type GuestConfig, GuestManager } from "./guests/guests.ts";
 import { Asker } from "./asker.ts";
@@ -114,7 +115,10 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     const name = settings.harness(session);
     return name === agent.name || guests.has(name) ? name : agent.name;
   };
+  const authPath = options.accounts?.authPath ?? join(paths.dataDir, "auth.json");
+  const piAuthPath = options.accounts?.piAuthPath ?? join(paths.dataDir, "pi-auth.json");
   const guests = new GuestManager({
+    accounts: createGuestAccounts({ authPath, piAuthPath }),
     configs: options.guests ?? {},
     log,
     append: (session, event) => {
@@ -202,8 +206,8 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
         tone === undefined ? { type: "notice", text } : { type: "notice", text, tone },
       );
     },
-    authPath: options.accounts?.authPath ?? join(paths.dataDir, "auth.json"),
-    piAuthPath: options.accounts?.piAuthPath ?? join(paths.dataDir, "pi-auth.json"),
+    authPath,
+    piAuthPath,
     oauthProviders: getOAuthProviders,
     apiProviders: getProviders,
     envKeys: (provider) => findEnvKeys(provider) ?? [],

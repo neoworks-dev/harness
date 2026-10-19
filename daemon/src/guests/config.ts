@@ -26,6 +26,7 @@ function defaults(): Record<string, GuestConfig> {
     codex: {
       title: "Codex",
       command: ["bunx", "@agentclientprotocol/codex-acp@2.2.2"],
+      route: "codex",
       permissions: "ask",
     },
   };
