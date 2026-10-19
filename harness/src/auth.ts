@@ -134,16 +134,14 @@ async function withLock<T>(
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
   }
-  let compromised: Error | undefined;
   const release = await lockfile.lock(path, {
     ...LOCK_OPTIONS,
-    onCompromised: (error) => {
-      compromised = error;
-    },
+    // A lock lost mid-refresh (stale after 30s) still writes: the provider has already rotated
+    // the refresh token, so dropping the new one would log the user out for sure.
+    onCompromised: () => {},
   });
   try {
     const { result, next } = await fn(await readRaw(path));
-    if (compromised) throw compromised;
     if (next) await writeRaw(path, next);
     return result;
   } finally {
