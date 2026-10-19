@@ -2,7 +2,7 @@
 // its own login (Claude Code's, Codex's). When the user picks a model as `provider/model`
 // (`/model codex openrouter/openai/gpt-5-mini`) and the suite has an API key for that provider,
 // the guest starts on that key instead: Codex through the adapter's custom gateway sign-in,
-// (Claude Code follows.) Nothing is set for a guest the user didn't point at
+// Claude Code through ANTHROPIC_* variables. Nothing is set for a guest the user didn't point at
 // an account.
 //
 // Only API keys are handed out, never an account: a Claude Pro/Max login may be used by neo only,
@@ -12,7 +12,7 @@ import { type Accounts, readAccounts } from "@suite/harness/auth";
 import { BadRequestError } from "../focus.ts";
 
 /** Which guest the route is for. */
-export type RouteKind = "codex";
+export type RouteKind = "codex" | "claude";
 
 /** How a guest process is started on one provider's key and model. */
 export interface Route {
@@ -63,11 +63,50 @@ const CODEX_PROVIDERS: Record<string, { name: string; baseUrl: string }> = {
   "vercel-ai-gateway": { name: "Vercel AI Gateway", baseUrl: "https://ai-gateway.vercel.sh/v1" },
 };
 
+/**
+ * The Anthropic-compatible endpoint of a provider; none: Anthropic itself (the key only). From the
+ * providers' own Claude Code guides: DeepSeek (https://api-docs.deepseek.com/guides/anthropic_api),
+ * OpenRouter (https://openrouter.ai/docs/guides/guides/claude-code-integration), Moonshot
+ * (https://platform.kimi.ai/docs/guide/claude-code-kimi), Z.ai (https://docs.z.ai/devpack/tool/claude),
+ * MiniMax (https://platform.minimax.io/docs/token-plan/claude-code). Others that pi-ai knows
+ * (Fireworks, Vercel AI Gateway, Kimi Code) have such an endpoint too but are not checked here.
+ */
+const CLAUDE_PROVIDERS: Record<string, { name: string; baseUrl?: string }> = {
+  anthropic: { name: "Anthropic" },
+  deepseek: { name: "DeepSeek", baseUrl: "https://api.deepseek.com/anthropic" },
+  openrouter: { name: "OpenRouter", baseUrl: "https://openrouter.ai/api" },
+  moonshotai: { name: "Moonshot", baseUrl: "https://api.moonshot.ai/anthropic" },
+  zai: { name: "Z.ai", baseUrl: "https://api.z.ai/api/anthropic" },
+  minimax: { name: "MiniMax", baseUrl: "https://api.minimax.io/anthropic" },
+};
+
+/**
+ * Variables that would outrank or mix with the route's credential in Claude Code's order
+ * (https://code.claude.com/docs/en/authentication.md#authentication-precedence): a cloud
+ * provider, then ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY, apiKeyHelper, CLAUDE_CODE_OAUTH_TOKEN,
+ * profiles, the /login. The ones the route sets come after the clearing.
+ */
+const CLAUDE_CREDENTIALS = [
+  "CLAUDE_CODE_USE_BEDROCK",
+  "CLAUDE_CODE_USE_VERTEX",
+  "CLAUDE_CODE_USE_FOUNDRY",
+  "ANTHROPIC_PROFILE",
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_BASE_URL",
+  "ANTHROPIC_MODEL",
+  "ANTHROPIC_DEFAULT_OPUS_MODEL",
+  "ANTHROPIC_DEFAULT_SONNET_MODEL",
+  "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+  "ANTHROPIC_SMALL_FAST_MODEL",
+  "CLAUDE_CODE_OAUTH_TOKEN",
+];
+
 /** How many of a provider's models /model lists; any other can still be typed. */
 const LISTED_MODELS = 8;
 
-function table(_kind: RouteKind): Record<string, { name: string; baseUrl?: string }> {
-  return CODEX_PROVIDERS;
+function table(kind: RouteKind): Record<string, { name: string; baseUrl?: string }> {
+  return kind === "codex" ? CODEX_PROVIDERS : CLAUDE_PROVIDERS;
 }
 
 function modelsOf(provider: string): { id: string; reasoning: boolean }[] {
@@ -107,6 +146,28 @@ export function codexRoute(provider: string, model: string, key: string): Route 
   };
 }
 
+export function claudeRoute(provider: string, model: string, key: string): Route {
+  const known = CLAUDE_PROVIDERS[provider];
+  if (!known) throw new BadRequestError(`Claude Code can't use ${provider}`);
+  // Whatever Claude Code would pick up from the daemon's environment is cleared first: an
+  // environment credential outranks its own login, so only the chosen one may be set.
+  const env: Record<string, string | undefined> = {};
+  for (const name of CLAUDE_CREDENTIALS) env[name] = undefined;
+  if (known.baseUrl === undefined) {
+    env.ANTHROPIC_API_KEY = key;
+    env.ANTHROPIC_MODEL = model;
+  } else {
+    // The aliases (opus, sonnet, haiku) would ask the endpoint for Claude models.
+    env.ANTHROPIC_BASE_URL = known.baseUrl;
+    env.ANTHROPIC_AUTH_TOKEN = key;
+    env.ANTHROPIC_MODEL = model;
+    env.ANTHROPIC_DEFAULT_OPUS_MODEL = model;
+    env.ANTHROPIC_DEFAULT_SONNET_MODEL = model;
+    env.ANTHROPIC_DEFAULT_HAIKU_MODEL = model;
+  }
+  return { id: `${provider}/${model}`, provider, model, env, secrets: [key] };
+}
+
 export interface AccountFiles {
   /** The suite's accounts file. */
   authPath: string;
@@ -130,13 +191,21 @@ async function apiKey(files: AccountFiles, provider: string): Promise<string | u
   for (const name of findEnvKeys(provider) ?? []) {
     if (name.includes("OAUTH")) continue;
     const value = process.env[name];
-    if (value) return value;
+    if (value && !isSubscriptionToken(value)) return value;
   }
   for (const path of [files.authPath, files.piAuthPath]) {
     const account = (await readOr(path))[provider];
-    if (account?.type === "api_key") return account.key;
+    if (account?.type === "api_key" && !isSubscriptionToken(account.key)) return account.key;
   }
   return undefined;
+}
+
+/**
+ * A Claude subscription token (`claude setup-token`, pi's Anthropic login) pasted where an API
+ * key goes. It may be used by neo only, so no guest gets it.
+ */
+function isSubscriptionToken(key: string): boolean {
+  return key.startsWith("sk-ant-oat");
 }
 
 export function createGuestAccounts(files: AccountFiles): GuestAccounts {
@@ -168,7 +237,9 @@ export function createGuestAccounts(files: AccountFiles): GuestAccounts {
       if (key === undefined) {
         throw new BadRequestError(`No API key for ${provider}. /login ${provider} adds one.`);
       }
-      return codexRoute(provider, model, key);
+      return kind === "codex"
+        ? codexRoute(provider, model, key)
+        : claudeRoute(provider, model, key);
     },
   };
 }

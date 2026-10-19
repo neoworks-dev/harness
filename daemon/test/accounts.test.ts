@@ -17,6 +17,8 @@ function hashed(value: string): string {
   return new Bun.CryptoHasher("sha256").update(value).digest("hex").slice(0, 12);
 }
 const OTHER_KEY = "gsk-test-key-444555666777";
+const DS_KEY = "ds-test-key-888999000111";
+const ANTHROPIC_KEY = "sk-ant-api03-test-key-1234567";
 
 const FAKE: GuestConfig = {
   title: "Fake",
@@ -29,6 +31,18 @@ const saved: Record<string, string | undefined> = {};
 
 /** Variables that would change what a guest gets: the developer's own, not the test's. */
 const VARS = [
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_BASE_URL",
+  "ANTHROPIC_MODEL",
+  "ANTHROPIC_OAUTH_TOKEN",
+  "ANTHROPIC_PROFILE",
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "CLAUDE_CODE_USE_BEDROCK",
+  "DEEPSEEK_API_KEY",
+  "ZAI_API_KEY",
+  "MOONSHOT_API_KEY",
+  "MINIMAX_API_KEY",
   "CODEX_CONFIG",
   "MODEL_PROVIDER",
   "OPENROUTER_API_KEY",
@@ -72,7 +86,15 @@ async function setup(): Promise<Setup> {
   };
   const daemon = await startTestDaemon({
     agent: new FakeAgent("main"),
-    guests: { codex: { ...FAKE, title: "Codex", route: "codex" } },
+    guests: {
+      codex: { ...FAKE, title: "Codex", route: "codex" },
+      claude: {
+        ...FAKE,
+        title: "Claude Code",
+        route: "claude",
+        env: { CLAUDE_CODE_EXECUTABLE: "/usr/bin/claude" },
+      },
+    },
     log,
   });
   cleanups.push(async () => {
@@ -108,22 +130,26 @@ async function until(check: () => boolean, what: string): Promise<void> {
   throw new Error(`timed out waiting for ${what}`);
 }
 
-/** Runs `/codex route` and returns what the adapter reported about how it was started. */
-async function routeReport(s: Setup): Promise<{
+/** Runs `/<guest> route` and returns what the adapter reported about how it was started. */
+async function routeReport(
+  s: Setup,
+  guest = "codex",
+): Promise<{
   env: Record<string, string>;
   initialize: { clientCapabilities: Record<string, unknown> };
   authenticated?: { methodId: string; _meta: { gateway: Record<string, unknown> } };
 }> {
   const before = events(s).filter((e) => e.type === "turn_ended").length;
-  s.daemon.sessions.input(s.session, "cli", "/codex route");
+  s.daemon.sessions.input(s.session, "cli", `/${guest} route`);
   await until(() => events(s).filter((e) => e.type === "turn_ended").length > before, "the turn");
   return JSON.parse(messages(s).findLast((t) => t.startsWith("{")) ?? "null");
 }
 
-/** The options of the model card `/model codex` shows. */
-async function modelCard(s: Setup): Promise<ChoiceOption[]> {
-  await s.daemon.commands.run(s.session, "/model codex");
-  await until(() => events(s).some((e) => e.type === "choice"), "the card");
+/** The options of the model card `/model <guest>` shows (and answers it). */
+async function modelCard(s: Setup, guest = "codex"): Promise<ChoiceOption[]> {
+  const asked = events(s).filter((e) => e.type === "choice").length;
+  await s.daemon.commands.run(s.session, `/model ${guest}`);
+  await until(() => events(s).filter((e) => e.type === "choice").length > asked, "the card");
   const card = events(s).findLast((e) => e.type === "choice");
   if (card?.type !== "choice") throw new Error("no card");
   await s.daemon.actions.run(
@@ -301,5 +327,174 @@ describe("codexRoute", () => {
     });
     expect(route.gateway?.baseUrl).toBe("https://api.groq.com/openai/v1");
     expect(route.secrets).toEqual([OTHER_KEY]);
+  });
+});
+
+describe("Claude Code on the suite's API keys", () => {
+  test("without a pick it keeps its own login: nothing of ours is set", async () => {
+    const s = await setup();
+    await setAccount(s.authPath, "deepseek", { type: "api_key", key: DS_KEY });
+    await setAccount(s.authPath, "anthropic", {
+      type: "oauth",
+      access: "a-oauth-token-1",
+      refresh: "r-oauth-token-1",
+      expires: Date.now() + 3_600_000,
+    });
+    const report = await routeReport(s, "claude");
+    expect(report.env).toEqual({ CLAUDE_CODE_EXECUTABLE: "/usr/bin/claude" });
+    expect(report.authenticated).toBeUndefined();
+  });
+
+  test("an Anthropic-compatible provider: base URL, token and its model for every alias", async () => {
+    const s = await setup();
+    await setAccount(s.authPath, "deepseek", { type: "api_key", key: DS_KEY });
+    // What the daemon was started with must not mix in.
+    process.env.ANTHROPIC_API_KEY = "ambient-api-key";
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "ambient-oauth";
+    process.env.CLAUDE_CODE_USE_BEDROCK = "1";
+    await s.daemon.commands.run(s.session, "/model claude deepseek/deepseek-v4-flash");
+    expect(s.daemon.settings.get(s.session, "claude")).toEqual({
+      model: "deepseek/deepseek-v4-flash",
+    });
+    const report = await routeReport(s, "claude");
+    expect(report.env).toEqual({
+      CLAUDE_CODE_EXECUTABLE: "/usr/bin/claude",
+      ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic",
+      ANTHROPIC_AUTH_TOKEN: DS_KEY,
+      ANTHROPIC_MODEL: "deepseek-v4-flash",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek-v4-flash",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek-v4-flash",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "deepseek-v4-flash",
+    });
+    // Claude Code has no gateway sign-in to make; that is Codex's.
+    expect(report.authenticated).toBeUndefined();
+    expect(JSON.stringify(s.daemon.settings.get(s.session, "claude"))).not.toContain(DS_KEY);
+    expect(s.logged.join("\n")).not.toContain(DS_KEY);
+  });
+
+  test("the other providers use their own endpoints", async () => {
+    const s = await setup();
+    const urls: Record<string, string> = {
+      openrouter: "https://openrouter.ai/api",
+      moonshotai: "https://api.moonshot.ai/anthropic",
+      zai: "https://api.z.ai/api/anthropic",
+      minimax: "https://api.minimax.io/anthropic",
+    };
+    for (const [provider, url] of Object.entries(urls)) {
+      await setAccount(s.authPath, provider, { type: "api_key", key: `${provider}-key-1234567` });
+      await s.daemon.commands.run(s.session, `/model claude ${provider}/some-model`);
+      const report = await routeReport(s, "claude");
+      expect(report.env.ANTHROPIC_BASE_URL).toBe(url);
+      expect(report.env.ANTHROPIC_AUTH_TOKEN).toBe(`${provider}-key-1234567`);
+      expect(report.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("some-model");
+    }
+  });
+
+  test("an Anthropic API key goes in ANTHROPIC_API_KEY, with no endpoint", async () => {
+    const s = await setup();
+    await setAccount(s.authPath, "anthropic", { type: "api_key", key: ANTHROPIC_KEY });
+    process.env.ANTHROPIC_AUTH_TOKEN = "ambient-token";
+    process.env.ANTHROPIC_BASE_URL = "https://gateway.example";
+    await s.daemon.commands.run(s.session, "/model claude anthropic/claude-test-model");
+    const report = await routeReport(s, "claude");
+    expect(report.env).toEqual({
+      CLAUDE_CODE_EXECUTABLE: "/usr/bin/claude",
+      ANTHROPIC_API_KEY: ANTHROPIC_KEY,
+      ANTHROPIC_MODEL: "claude-test-model",
+    });
+  });
+
+  test("a Claude subscription is never handed over, however it is stored", async () => {
+    const s = await setup();
+    // pi's login, the suite's login, a subscription token pasted as a key, and the variable.
+    await setAccount(s.piAuthPath, "anthropic", {
+      type: "oauth",
+      access: "sk-ant-oat01-access-token",
+      refresh: "sk-ant-ort01-refresh-token",
+      expires: Date.now() + 3_600_000,
+    });
+    await setAccount(s.authPath, "anthropic", {
+      type: "api_key",
+      key: "sk-ant-oat01-pasted-token",
+    });
+    process.env.ANTHROPIC_OAUTH_TOKEN = "sk-ant-oat01-env-token";
+    process.env.ANTHROPIC_API_KEY = "sk-ant-oat01-other-env-token";
+    const models = (await modelCard(s, "claude")).map((o) => o.id);
+    expect(models.some((id) => id.startsWith("anthropic/"))).toBe(false);
+    expect(
+      s.daemon.commands.run(s.session, "/model claude anthropic/claude-test-model"),
+    ).rejects.toThrow("No API key for anthropic. /login anthropic adds one.");
+    expect(JSON.stringify(s.daemon.settings.get(s.session, "claude"))).not.toContain("anthropic");
+    // Nor does Codex get any of it.
+    expect(
+      s.daemon.commands.run(s.session, "/model codex anthropic/claude-test-model"),
+    ).rejects.toThrow("no model anthropic/claude-test-model");
+  });
+
+  test("/model claude lists the models of Anthropic-compatible providers that have a key", async () => {
+    const s = await setup();
+    expect((await modelCard(s, "claude")).map((o) => o.id)).toEqual(["small", "large"]);
+    await setAccount(s.authPath, "deepseek", { type: "api_key", key: DS_KEY });
+    await setAccount(s.authPath, "groq", { type: "api_key", key: OTHER_KEY });
+    const ids = (await modelCard(s, "claude")).map((o) => o.id);
+    expect(ids).toContain("deepseek/deepseek-v4-flash");
+    expect(ids).toContain("deepseek/deepseek-v4-pro");
+    // Groq only has the OpenAI API, so it is Codex's.
+    expect(ids.some((id) => id.startsWith("groq/"))).toBe(false);
+    const codex = (await modelCard(s, "codex")).map((o) => o.id);
+    expect(codex.some((id) => id.startsWith("groq/"))).toBe(true);
+    expect(codex.some((id) => id.startsWith("deepseek/"))).toBe(false);
+  });
+
+  test("a plain model afterwards goes back to Claude Code's own login", async () => {
+    const s = await setup();
+    await setAccount(s.authPath, "deepseek", { type: "api_key", key: DS_KEY });
+    await s.daemon.commands.run(s.session, "/model claude deepseek/deepseek-v4-pro");
+    expect((await routeReport(s, "claude")).env.ANTHROPIC_AUTH_TOKEN).toBe(DS_KEY);
+    await s.daemon.commands.run(s.session, "/model claude large");
+    expect((await routeReport(s, "claude")).env).toEqual({
+      CLAUDE_CODE_EXECUTABLE: "/usr/bin/claude",
+    });
+  });
+
+  test("Codex and Claude Code in one session pick their accounts apart", async () => {
+    const s = await setup();
+    await setAccount(s.authPath, "openrouter", { type: "api_key", key: KEY });
+    await s.daemon.commands.run(s.session, "/model claude openrouter/some/model");
+    expect((await routeReport(s, "codex")).authenticated).toBeUndefined();
+    expect((await routeReport(s, "claude")).env.ANTHROPIC_BASE_URL).toBe(
+      "https://openrouter.ai/api",
+    );
+    await s.daemon.commands.run(s.session, "/model codex openrouter/openai/gpt-5-mini");
+    expect((await routeReport(s, "codex")).authenticated?.methodId).toBe("gateway");
+    expect((await routeReport(s, "claude")).env.ANTHROPIC_MODEL).toBe("some/model");
+  });
+
+  test("a start that fails never says the key", async () => {
+    const s = await setup();
+    await setAccount(s.authPath, "deepseek", { type: "api_key", key: DS_KEY });
+    // An adapter that cannot start: the error text is cut of the key.
+    const broken = await startTestDaemon({
+      guests: {
+        claude: {
+          title: "Claude Code",
+          command: ["bun", "-e", `console.error(${JSON.stringify(DS_KEY)}); process.exit(3)`],
+          route: "claude",
+          permissions: "ask",
+        },
+      },
+      accounts: { authPath: s.authPath, piAuthPath: s.piAuthPath },
+    });
+    cleanups.push(() => broken.stop());
+    const session = broken.sessions.create({}).id;
+    broken.settings.set(session, "claude", "model", "deepseek/deepseek-v4-flash");
+    let message = "";
+    try {
+      await broken.guests.configOptions(session, "claude");
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain("exited");
+    expect(message).not.toContain(DS_KEY);
   });
 });

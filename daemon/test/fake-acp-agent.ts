@@ -17,7 +17,7 @@
 //                 mcp__suite__<t>; "codex <t>": mcp.suite.<t>) and reports the answer
 //   cwd           reports the directory session/new (or resume) was given
 //   route         reports how the process was started: the CODEX_CONFIG, ANTHROPIC_*,
-//                 CLAUDE_CODE_* and MODEL_PROVIDER variables it has, the initialize params
+//                 CLAUDE_CODE_{OAUTH,USE_,EXECUTABLE} and MODEL_PROVIDER variables it has, the initialize params
 //                 and the params of an authenticate request (Codex's gateway sign-in; header values are the
 //                 first 12 hex digits of their sha256, so the report holds no key)
 //   usage         sends usage_updates in the middle of one message (USD cost, then EUR cost)
@@ -200,7 +200,7 @@ async function prompt(params: {
   } else if (task === "route") {
     const env = Object.fromEntries(
       Object.entries(process.env).filter(([name]) =>
-        /^(CODEX_CONFIG|MODEL_PROVIDER|ANTHROPIC_|CLAUDE_CODE_OAUTH)/.test(name),
+        /^(CODEX_CONFIG|MODEL_PROVIDER|ANTHROPIC_|CLAUDE_CODE_(OAUTH|USE_|EXECUTABLE))/.test(name),
       ),
     );
     update(sessionId, { sessionUpdate: "plan", entries: [] });
