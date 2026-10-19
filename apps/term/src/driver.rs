@@ -356,6 +356,7 @@ pub struct StartOptions {
     pub home: Option<String>,
     pub no_color: bool,
     pub history: HistoryStore,
+    pub prefs: crate::theme::Prefs,
     pub args: Args,
 }
 
@@ -421,6 +422,7 @@ pub fn start(options: StartOptions) -> Result<Started, StartError> {
         home: options.home,
         no_color: options.no_color,
         history: options.history,
+        prefs: options.prefs,
     });
     let driver = Driver::new(Arc::new(client), &app_id);
     // The sidebar's overview starts from this list; session.changed events keep it current.

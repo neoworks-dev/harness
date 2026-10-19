@@ -18,6 +18,13 @@ Old favicon stays. See the docs
 
   <img src="/logo.png" alt="Logo" />
 
+┌─────────────────┬────────┬─────────┐
+│ File            │ Change │   Lines │
+├─────────────────┼────────┼─────────┤
+│ src/Header.tsx  │ edited │   +4 −1 │
+│ public/logo.png │  new   │ 512×512 │
+└─────────────────┴────────┴─────────┘
+
 ────────────────────────────────────────
 
 Anything else?

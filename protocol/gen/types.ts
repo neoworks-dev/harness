@@ -1028,7 +1028,8 @@ export interface LinkComponent {
 }
 
 /** A block of parsed markdown. */
-export type Block = ParagraphBlock | HeadingBlock | ListBlock | CodeBlock | QuoteBlock | RuleBlock;
+export type Block =
+  ParagraphBlock | HeadingBlock | ListBlock | CodeBlock | QuoteBlock | RuleBlock | TableBlock;
 
 export type BlockTag = Block["type"];
 
@@ -1071,6 +1072,21 @@ export interface QuoteBlock {
 export interface RuleBlock {
   type: "rule";
 }
+
+/** A markdown table. Renderers that can't draw a grid show the cells as aligned monospace text. */
+export interface TableBlock {
+  type: "table_block";
+  header: TableCell[];
+  rows: TableCell[][];
+  /** Per column, as the separator row says; a column without one is left-aligned. */
+  align?: ColumnAlign[];
+}
+
+export interface TableCell {
+  spans: Span[];
+}
+
+export type ColumnAlign = "left" | "center" | "right";
 
 /** A run of inline text with uniform style. */
 export interface Span {

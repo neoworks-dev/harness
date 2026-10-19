@@ -19,6 +19,7 @@ fn app() -> App {
         home: Some("/home/me".into()),
         no_color: false,
         history: HistoryStore::default(),
+        prefs: crate::theme::Prefs::default(),
     });
     app.tick(NOW);
     app.awaiting = None;
@@ -448,7 +449,9 @@ fn the_delegation_gate_is_a_compact_card_with_highlighted_values() {
     let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
     terminal.draw(|f| app.draw(f)).unwrap();
     let buffer = terminal.backend().buffer();
-    let accent = RenderPalette::default().accent;
+    let accent = crate::theme::Theme::default()
+        .palette(&RenderPalette::default())
+        .accent;
     let styled = (0..30)
         .flat_map(|y| (0..100).map(move |x| (x, y)))
         .any(|(x, y)| {

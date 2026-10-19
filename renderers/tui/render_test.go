@@ -253,6 +253,42 @@ func TestTableWideCharsAndTinyWidths(t *testing.T) {
 	}
 }
 
+func TestTableBlockWrapsCellsAndRulesTheRows(t *testing.T) {
+	cell := func(text string) protocol.TableCell {
+		return protocol.TableCell{Spans: []protocol.Span{{Text: text}}}
+	}
+	tbl := protocol.TableBlock{
+		Header: []protocol.TableCell{cell("step"), cell("what happens")},
+		Rows: [][]protocol.TableCell{
+			{cell("1"), cell("the daemon parses the markdown")},
+			{cell("2"), cell("it draws")},
+		},
+		Align: []protocol.ColumnAlign{protocol.ColumnAlignRight},
+	}
+	text := protocol.TextComponent{Blocks: []protocol.Block{{Value: tbl}}}
+	want := strings.Join([]string{
+		"┌──────┬──────────────────┐",
+		"│ step │ what happens     │",
+		"├──────┼──────────────────┤",
+		"│    1 │ the daemon       │",
+		"│      │ parses the       │",
+		"│      │ markdown         │",
+		"├──────┼──────────────────┤",
+		"│    2 │ it draws         │",
+		"└──────┴──────────────────┘",
+	}, "\n")
+	if got := render(t, text, 27); got != want {
+		t.Errorf("table:\n%s\nwant:\n%s", got, want)
+	}
+	for _, w := range []int{10, 11, 12, 16, 40} { // 10 is the narrowest the renderer draws
+		for _, l := range strings.Split(render(t, text, w), "\n") {
+			if Width(l) > w {
+				t.Errorf("width %d: line %q is %d wide", w, l, Width(l))
+			}
+		}
+	}
+}
+
 func TestWrapKeepsWideCharsWithinWidth(t *testing.T) {
 	spans := []protocol.Span{{Text: "日本語のテキストを折り返す test with ascii words 混在 and a-very-long-unbreakable-token-here"}}
 	for _, w := range []int{10, 11, 17, 33} {

@@ -16,6 +16,7 @@ use unicode_width::UnicodeWidthChar;
 
 use super::files::Mark;
 use super::git::git;
+use super::syntax::{self, Class, Highlighter, syntax_for};
 use super::text::{clean_line, truncate, truncate_start, width};
 
 /// More lines than this are dropped (a generated file diff can be megabytes).
@@ -134,6 +135,11 @@ pub(crate) struct DiffView {
     aligned: Aligned,
     /// The widest unified line, in cells.
     uni_w: usize,
+    /// What each char of the code is, for colors: per unified line (its text after the sign)
+    /// and per split row (left, right). Empty: not highlighted (yet).
+    syntax: Highlights,
+    /// The highlighting being worked out on a thread; the code shows plain until it arrives.
+    syntax_rx: Option<Receiver<Highlights>>,
     adds: usize,
     dels: usize,
     loaded: bool,
@@ -149,18 +155,32 @@ pub(crate) struct DiffView {
 }
 
 impl DiffView {
-    /// Starts `git diff` for `req` on a thread.
+    /// Starts `git diff` for `req` on a thread: the changes with a few lines around them.
+    #[cfg(test)]
     pub(crate) fn open(cwd: PathBuf, req: DiffRequest) -> DiffView {
+        DiffView::start(cwd, req, false)
+    }
+
+    fn start(cwd: PathBuf, req: DiffRequest, full: bool) -> DiffView {
         let title = match &req.orig {
             Some(orig) => format!("{orig} → {}", req.rel),
             None => req.rel.clone(),
         };
-        let rx = spawn(cwd.clone(), req.clone(), false);
+        let rx = spawn(cwd.clone(), req.clone(), full);
         DiffView {
             cwd,
             req: Some(req),
             rx: Some(rx),
+            full,
             ..DiffView::blank(title)
+        }
+    }
+
+    /// The whole file with its changes marked, unified: what Enter on a file opens.
+    pub(crate) fn open_file(cwd: PathBuf, req: DiffRequest) -> DiffView {
+        DiffView {
+            force: Some(false),
+            ..DiffView::start(cwd, req, true)
         }
     }
 
@@ -174,6 +194,8 @@ impl DiffView {
             lines: Vec::new(),
             aligned: Aligned::default(),
             uni_w: 0,
+            syntax: Highlights::default(),
+            syntax_rx: None,
             adds: 0,
             dels: 0,
             loaded: false,
@@ -225,6 +247,14 @@ impl DiffView {
             self.aligned = Aligned::default();
         }
         self.uni_w = lines.iter().map(|l| width(&l.text)).max().unwrap_or(0);
+        let path = self.req.as_ref().map(|r| r.rel.clone());
+        self.syntax = Highlights::default();
+        let (tx, rx) = mpsc::channel();
+        let (copy, aligned) = (lines.clone(), self.aligned.clone());
+        std::thread::spawn(move || {
+            let _ = tx.send(highlight(path.as_deref(), &copy, &aligned));
+        });
+        self.syntax_rx = Some(rx);
         self.lines = lines;
         self.adds = adds;
         self.dels = dels;
@@ -240,8 +270,15 @@ impl DiffView {
         }
     }
 
-    /// Picks up the loaded diff. True when it arrived.
+    /// Picks up the loaded diff, or its highlighting. True when something arrived.
     pub(crate) fn poll(&mut self) -> bool {
+        if let Some(rx) = &self.syntax_rx
+            && let Ok(syntax) = rx.try_recv()
+        {
+            self.syntax = syntax;
+            self.syntax_rx = None;
+            return true;
+        }
         let Some(rx) = &self.rx else {
             return false;
         };
@@ -537,32 +574,38 @@ impl DiffView {
     ) -> Vec<Line<'static>> {
         let total = g.left + 1 + g.right;
         let mut out = Vec::with_capacity(rows);
-        for row in self.aligned.rows.iter().skip(first).take(rows) {
+        for (index, row) in self.aligned.rows.iter().enumerate().skip(first).take(rows) {
             let spans = match row {
                 Row::Hunk(text) => {
                     let style = with_bg(look.muted, look.band);
                     let text = format!("⋯ {text}");
                     let chars = text.chars().map(|c| (c, 0));
-                    windowed(chars, width(&text), 0, total, [style; 3], true)
+                    windowed(chars, width(&text), 0, total, &[style; 3], true)
                 }
                 Row::Note(text) => {
                     let chars = text.chars().map(|c| (c, 0));
-                    windowed(chars, width(text), 0, total, [look.muted; 3], true)
+                    windowed(chars, width(text), 0, total, &[look.muted; 3], true)
                 }
                 Row::Line {
                     left,
                     right,
                     changed,
                 } => {
+                    let (lc, rc) = match self.syntax.split.get(index) {
+                        Some((l, r)) => (l.as_slice(), r.as_slice()),
+                        None => (&[][..], &[][..]),
+                    };
                     let (lt, rt) = if *changed {
                         (Tone::Del, Tone::Add)
                     } else {
                         (Tone::Ctx, Tone::Ctx)
                     };
-                    let mut spans = side_spans(left.as_ref(), lt, g.gutter, g.left, hscroll, look);
+                    let mut spans =
+                        side_spans(left.as_ref(), lc, lt, g.gutter, g.left, hscroll, look);
                     spans.push(Span::styled("│", look.border));
                     spans.extend(side_spans(
                         right.as_ref(),
+                        rc,
                         rt,
                         g.gutter,
                         g.right,
@@ -596,9 +639,10 @@ impl DiffView {
     ) -> Vec<Line<'static>> {
         self.lines
             .iter()
+            .enumerate()
             .skip(first)
             .take(rows)
-            .map(|l| {
+            .map(|(index, l)| {
                 let style = match l.kind {
                     Kind::Add => Style::new().fg(look.success),
                     Kind::Del => Style::new().fg(look.danger),
@@ -614,14 +658,39 @@ impl DiffView {
                 };
                 let mut spans = vec![Span::styled(mark.to_string(), style)];
                 let avail = w - width(mark);
-                let chars = body.chars().map(|c| (c, 0));
+                let classes = self
+                    .syntax
+                    .unified
+                    .get(index)
+                    .map_or(&[][..], Vec::as_slice);
+                // Highlighted code keeps the change's color as a background tint.
+                let tone = match l.kind {
+                    Kind::Add => Tone::Add,
+                    Kind::Del => Tone::Del,
+                    _ => Tone::Ctx,
+                };
+                let lit = !classes.is_empty() && look.syntax.is_some();
+                let base = if lit {
+                    with_bg(Style::new(), look.bg(tone))
+                } else {
+                    style
+                };
+                let mut styles = vec![base, base, base];
+                let chars: Vec<(char, usize)> = body
+                    .chars()
+                    .enumerate()
+                    .map(|(i, c)| match look.code(classes.get(i).copied()) {
+                        Some(code) => (c, style_id(&mut styles, base.patch(code))),
+                        None => (c, 0),
+                    })
+                    .collect();
                 spans.extend(windowed(
-                    chars,
+                    chars.into_iter(),
                     width(body),
                     hscroll,
                     avail,
-                    [style; 3],
-                    false,
+                    &styles,
+                    lit && tone != Tone::Ctx,
                 ));
                 Line::from(spans)
             })
@@ -657,6 +726,8 @@ struct Look {
     add_hl: Option<Color>,
     /// The blank half of an uneven run, and the bands (hunk separators, column headers).
     band: Option<Color>,
+    /// The colors of code, by class; None without true colors (code stays plain).
+    syntax: Option<[Style; 7]>,
 }
 
 impl Look {
@@ -671,7 +742,13 @@ impl Look {
             add_bg: blend(p.bg, p.success, 16),
             add_hl: blend(p.bg, p.success, 38),
             band: matches!(p.surface, Color::Rgb(..)).then_some(p.surface),
+            syntax: code_colors(p),
         }
+    }
+
+    /// The style a class of code is drawn with (patched over the row's), if code is colored.
+    fn code(&self, class: Option<Class>) -> Option<Style> {
+        Some(self.syntax?[class? as usize])
     }
 
     fn bg(&self, tone: Tone) -> Option<Color> {
@@ -706,6 +783,121 @@ impl Look {
     }
 }
 
+/// Colors of code, picked for a dark or a light background rather than taken from the theme:
+/// its few colors (an accent as green as its success color) can't tell five classes apart.
+fn code_colors(p: &Palette) -> Option<[Style; 7]> {
+    let (Color::Rgb(r, g, b), Color::Rgb(..)) = (p.bg, p.fg) else {
+        return None;
+    };
+    let dark = u32::from(r) * 299 + u32::from(g) * 587 + u32::from(b) * 114 < 128_000;
+    let rgb = |c: u32| Color::Rgb((c >> 16) as u8, (c >> 8) as u8, c as u8);
+    let [keyword, string, constant, function, kind] = if dark {
+        [0xc7_92ea, 0xc3_e88d, 0xf7_8c6c, 0x82_aaff, 0xff_cb6b]
+    } else {
+        [0x7c_3aed, 0x1a_7f37, 0xb4_5309, 0x1f_5fcc, 0x9a_6700]
+    };
+    let fg = |c: u32| Style::new().fg(rgb(c));
+    // In the order of `Class`.
+    Some([
+        Style::new().fg(p.fg),
+        Style::new().fg(p.muted).add_modifier(Modifier::ITALIC),
+        fg(string),
+        fg(keyword),
+        fg(constant),
+        fg(function),
+        fg(kind),
+    ])
+}
+
+/// What each char of a diff is, per unified line and per split row (left, right).
+#[derive(Debug, Default)]
+struct Highlights {
+    unified: Vec<Vec<Class>>,
+    split: Vec<(Vec<Class>, Vec<Class>)>,
+}
+
+/// Highlights the diff's lines with the grammar for `path` (a pull request's diff: the path in
+/// each file's `+++ b/` header). Old and new lines are parsed apart, each in order, and a hunk
+/// starts the parse over.
+fn highlight(path: Option<&str>, lines: &[DiffLine], aligned: &Aligned) -> Highlights {
+    let mut out = Highlights::default();
+    if lines.len() > syntax::MAX_LINES {
+        return out;
+    }
+    let header_path = |l: &DiffLine| l.text.strip_prefix("+++ b/").map(str::to_string);
+    let first = path
+        .map(str::to_string)
+        .or_else(|| lines.iter().find_map(header_path));
+    let pair = |path: Option<&str>| {
+        path.and_then(syntax_for)
+            .map(|s| (Highlighter::new(s), Highlighter::new(s)))
+    };
+    let mut hl = pair(first.as_deref());
+    for l in lines {
+        let body = l
+            .text
+            .get(l.text.chars().next().map_or(0, char::len_utf8)..)
+            .unwrap_or("");
+        let classes = match (l.kind, hl.as_mut()) {
+            (Kind::Header, _) => {
+                if path.is_none()
+                    && let Some(p) = header_path(l)
+                {
+                    hl = pair(Some(&p));
+                }
+                Vec::new()
+            }
+            (Kind::Hunk, Some((old, new))) => {
+                old.reset();
+                new.reset();
+                Vec::new()
+            }
+            (Kind::Context, Some((old, new))) => {
+                old.line(body);
+                new.line(body)
+            }
+            (Kind::Add, Some((_, new))) => new.line(body),
+            (Kind::Del, Some((old, _))) => old.line(body),
+            _ => Vec::new(),
+        };
+        out.unified.push(classes);
+    }
+    let Some((mut old, mut new)) = pair(first.as_deref()) else {
+        return out;
+    };
+    for row in &aligned.rows {
+        let classes = match row {
+            Row::Hunk(_) => {
+                old.reset();
+                new.reset();
+                (Vec::new(), Vec::new())
+            }
+            Row::Line {
+                left,
+                right,
+                changed: false,
+            } => {
+                let l = left.as_ref().map(|s| old.line(&s.text)).unwrap_or_default();
+                let r = right
+                    .as_ref()
+                    .map(|s| new.line(&s.text))
+                    .unwrap_or_default();
+                (l, r)
+            }
+            Row::Line { left, right, .. } => (
+                left.as_ref().map(|s| old.line(&s.text)).unwrap_or_default(),
+                right
+                    .as_ref()
+                    .map(|s| new.line(&s.text))
+                    .unwrap_or_default(),
+            ),
+            Row::Note(_) => (Vec::new(), Vec::new()),
+        };
+        out.split.push(classes);
+    }
+    out
+}
+
 fn with_bg(style: Style, bg: Option<Color>) -> Style {
     match bg {
         Some(c) => style.bg(c),
@@ -733,6 +925,7 @@ fn fit(s: &str, n: usize) -> String {
 /// `skip` on (or a blank filler when this side has no line).
 fn side_spans(
     side: Option<&Side>,
+    classes: &[Class],
     tone: Tone,
     gutter: usize,
     col: usize,
@@ -759,26 +952,50 @@ fn side_spans(
     ];
     let avail = col.saturating_sub(gutter + 3);
     let hl = side.hl.filter(|_| tone != Tone::Ctx);
-    let text = side.text.chars().enumerate().map(|(i, c)| {
-        let id = hl.is_some_and(|(a, b)| (a..b).contains(&i)) as usize;
-        (c, id)
-    });
+    // Highlighted code keeps the change's color as a background tint.
+    let mut styles = vec![base, look.changed(tone), bg.patch(look.muted)];
+    let chars: Vec<(char, usize)> = side
+        .text
+        .chars()
+        .enumerate()
+        .map(|(i, c)| {
+            let changed = usize::from(hl.is_some_and(|(a, b)| (a..b).contains(&i)));
+            let id = match look.code(classes.get(i).copied()) {
+                Some(code) => {
+                    let style = styles[changed].patch(code);
+                    style_id(&mut styles, style)
+                }
+                None => changed,
+            };
+            (c, id)
+        })
+        .collect();
     let eol = side
         .no_eol
         .then_some(NO_EOL)
         .into_iter()
         .flat_map(str::chars);
     let total = width(&side.text) + if side.no_eol { width(NO_EOL) } else { 0 };
-    let styles = [base, look.changed(tone), bg.patch(look.muted)];
     spans.extend(windowed(
-        text.chain(eol.map(|c| (c, 2))),
+        chars.into_iter().chain(eol.map(|c| (c, 2))),
         total,
         skip,
         avail,
-        styles,
+        &styles,
         true,
     ));
     spans
+}
+
+/// The index of `style` in `styles`, added when it isn't there yet.
+fn style_id(styles: &mut Vec<Style>, style: Style) -> usize {
+    match styles.iter().position(|s| *s == style) {
+        Some(i) => i,
+        None => {
+            styles.push(style);
+            styles.len() - 1
+        }
+    }
 }
 
 /// The cells `skip..skip + avail` of a line of `(char, style index)`, as spans. A wide
@@ -789,7 +1006,7 @@ fn windowed(
     total: usize,
     skip: usize,
     avail: usize,
-    styles: [Style; 3],
+    styles: &[Style],
     pad: bool,
 ) -> Vec<Span<'static>> {
     if avail == 0 {
@@ -1038,9 +1255,43 @@ fn intra(old: &str, new: &str) -> (Option<Range>, Option<Range>) {
 fn spawn(cwd: PathBuf, req: DiffRequest, full: bool) -> Receiver<Result<String, String>> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let _ = tx.send(load(&cwd, &req, full));
+        let loaded = load(&cwd, &req, full);
+        // The whole file asked for, and git sees no change in it: the file as it is.
+        let loaded = match loaded {
+            Ok(text) if full && text.trim().is_empty() => file_as_diff(&cwd, &req.rel),
+            other => other,
+        };
+        let _ = tx.send(loaded);
     });
     rx
+}
+
+/// Files larger than this aren't shown whole.
+const FILE_LIMIT: u64 = 2 << 20;
+
+/// A file without changes, as a diff of only context lines, so the view shows it like any other.
+fn file_as_diff(cwd: &Path, rel: &str) -> Result<String, String> {
+    let path = cwd.join(rel);
+    let meta = std::fs::metadata(&path).map_err(|e| format!("{rel}: {e}"))?;
+    if meta.len() > FILE_LIMIT {
+        return Err(format!("{rel} is larger than 2 MB"));
+    }
+    let bytes = std::fs::read(&path).map_err(|e| format!("{rel}: {e}"))?;
+    if bytes.contains(&0) {
+        return Err(format!("{rel} is a binary file"));
+    }
+    let text = String::from_utf8_lossy(&bytes);
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out = format!(
+        "--- a/{rel}\n+++ b/{rel}\n@@ -1,{n} +1,{n} @@\n",
+        n = lines.len()
+    );
+    for line in lines {
+        out.push(' ');
+        out.push_str(line);
+        out.push('\n');
+    }
+    Ok(out)
 }
 
 fn run(cmd: &mut std::process::Command, no_index: bool) -> Result<String, String> {
@@ -1389,7 +1640,7 @@ index 1111111..2222222 100644
                 width(s),
                 skip,
                 avail,
-                [Style::new(); 3],
+                &[Style::new(); 3],
                 true,
             );
             let out: String = spans.iter().map(|s| s.content.as_ref()).collect();
@@ -1413,7 +1664,7 @@ index 1111111..2222222 100644
                 3,
                 0,
                 0,
-                [Style::new(); 3],
+                &[Style::new(); 3],
                 true
             )
             .is_empty()
@@ -1514,6 +1765,75 @@ index 1111111..2222222 100644
             "{out}"
         );
         assert!(out.contains("│ working tree · new.rs"));
+    }
+
+    impl DiffView {
+        fn wait_for_syntax(&mut self) {
+            if let Some(rx) = self.syntax_rx.take() {
+                self.syntax = rx.recv().unwrap();
+            }
+        }
+    }
+
+    /// The cells showing `text` on row `y`, by where it is found.
+    fn cells_of(buf: &ratatui::buffer::Buffer, y: u16, text: &str) -> Vec<(Color, Color)> {
+        let row: String = (0..buf.area.width)
+            .map(|x| buf[(x, y)].symbol().to_string())
+            .collect();
+        let at = row.find(text).expect("the text on the row");
+        let x = row[..at].chars().count() as u16;
+        (x..x + text.chars().count() as u16)
+            .map(|x| (buf[(x, y)].fg, buf[(x, y)].bg))
+            .collect()
+    }
+
+    #[test]
+    fn code_is_colored_by_its_grammar_on_the_change_tint() {
+        let diff = "--- a/src/m.rs\n+++ b/src/m.rs\n@@ -1,2 +1,2 @@\n fn keep() {}\n-let a = \"x\";\n+let a = \"y\";\n";
+        let mut v = DiffView::from_text("src/m.rs", diff);
+        v.wait_for_syntax();
+        let mut t = Terminal::new(TestBackend::new(60, 8)).unwrap();
+        draw_to(&v, &mut t);
+        let buf = t.backend().buffer();
+        let colors = code_colors(&Palette::default()).unwrap();
+        let keyword = colors[Class::Keyword as usize].fg.unwrap();
+        let string = colors[Class::String as usize].fg.unwrap();
+        // Unified at this width: under the title, the headers and the hunk, the context line,
+        // then the removal and the addition.
+        assert!(cells_of(buf, 4, "fn").iter().all(|(fg, _)| *fg == keyword));
+        let removed = cells_of(buf, 5, "let");
+        assert!(
+            removed
+                .iter()
+                .all(|(fg, bg)| *fg == keyword && *bg != Color::Reset)
+        );
+        assert!(
+            cells_of(buf, 6, "\"y\"")
+                .iter()
+                .all(|(fg, _)| *fg == string)
+        );
+        // The sign keeps the change's color.
+        assert_eq!(buf[(0, 6)].fg, Palette::default().success);
+    }
+
+    #[test]
+    fn a_big_file_is_highlighted_quickly() {
+        let mut text = String::from("--- a/big.rs\n+++ b/big.rs\n@@ -1,5000 +1,5000 @@\n");
+        for i in 0..5000 {
+            text.push_str(&format!(
+                " fn f{i}(x: u32) -> u32 {{ x * {i} + \"s\".len() as u32 }} // {i}\n"
+            ));
+        }
+        let started = std::time::Instant::now();
+        let mut v = DiffView::from_text("big.rs", &text);
+        // The text is there right away; the colors follow.
+        assert!(started.elapsed() < std::time::Duration::from_millis(500));
+        assert!(v.syntax.unified.is_empty());
+        v.wait_for_syntax();
+        let took = started.elapsed();
+        assert_eq!(v.syntax.unified.len(), v.lines.len());
+        eprintln!("5000 lines highlighted in {took:?}");
+        assert!(took < std::time::Duration::from_secs(60), "{took:?}");
     }
 
     #[test]

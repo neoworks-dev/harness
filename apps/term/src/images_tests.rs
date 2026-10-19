@@ -374,6 +374,7 @@ fn app_with(images: Option<Images>, dir: &Dir) -> App {
         home: None,
         no_color: false,
         history: HistoryStore::default(),
+        prefs: crate::theme::Prefs::default(),
     });
     if let Some(images) = images {
         app.set_images(images);

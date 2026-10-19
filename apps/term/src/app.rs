@@ -33,6 +33,7 @@ use crate::secret::{self, Secret, SecretValue};
 use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction};
 use crate::status::{Approvals, HarnessSettings, Status, record_setting};
 use crate::style::{Styles, plain_palette};
+use crate::theme::{Prefs, Theme};
 use crate::util::{fit_line, shorten_home, truncate, width};
 use crate::widgets::{Panel, WidgetAction, Widgets};
 
@@ -212,6 +213,8 @@ pub struct Config {
     pub home: Option<String>,
     pub no_color: bool,
     pub history: HistoryStore,
+    /// Where `/theme` is kept.
+    pub prefs: Prefs,
 }
 
 pub struct App {
@@ -220,7 +223,12 @@ pub struct App {
     cwd: String,
     home: Option<String>,
     no_color: bool,
+    /// What is drawn with: the theme's colors (`/theme`) made of the daemon's.
     palette: Palette,
+    /// The daemon's theme, as it last said.
+    daemon_palette: Palette,
+    theme: Theme,
+    prefs: Prefs,
     styles: Styles,
 
     widgets: Widgets,
@@ -282,10 +290,11 @@ pub struct App {
 
 impl App {
     pub fn new(config: Config) -> App {
+        let theme = config.prefs.theme();
         let palette = if config.no_color {
             plain_palette()
         } else {
-            Palette::default()
+            theme.palette(&Palette::default())
         };
         let now = crate::util::now_ms();
         let session = config.session.clone();
@@ -297,6 +306,9 @@ impl App {
             agents_tick: 0,
             styles: Styles::new(&palette, config.no_color),
             palette,
+            daemon_palette: Palette::default(),
+            theme,
+            prefs: config.prefs,
             app_id: config.app_id,
             session: config.session,
             cwd: config.cwd,
@@ -433,7 +445,7 @@ impl App {
             self.take_github(out, &mut fx);
         }
         if self.running || self.sessions_shown && self.sessions.any_running() {
-            let frame = now_ms / 125;
+            let frame = now_ms / 80;
             if frame != self.last_spin {
                 self.last_spin = frame;
                 self.dirty = true;
@@ -464,6 +476,41 @@ impl App {
             self.awaiting = None;
         }
         fx
+    }
+
+    /// Draws with the theme's colors from now on (none with `NO_COLOR`).
+    fn apply_palette(&mut self) {
+        if self.no_color {
+            return;
+        }
+        self.palette = self.theme.palette(&self.daemon_palette);
+        self.styles = Styles::new(&self.palette, false);
+        self.widgets.set_palette(self.palette);
+        self.github.set_palette(self.palette);
+    }
+
+    /// `/theme [dark|light|terminal]`; no name: the next one.
+    fn switch_theme(&mut self, text: &str) {
+        let arg = text.split_whitespace().nth(1);
+        let theme = match arg {
+            None => self.theme.next(),
+            Some(name) => match Theme::parse(name) {
+                Some(theme) => theme,
+                None => {
+                    self.notify("usage: /theme [dark|light|terminal]", true);
+                    return;
+                }
+            },
+        };
+        self.theme = theme;
+        self.apply_palette();
+        match self.prefs.set_theme(theme) {
+            Ok(()) if self.no_color => {
+                self.notify(format!("theme: {} (NO_COLOR is set)", theme.name()), false)
+            }
+            Ok(()) => self.notify(format!("theme: {}", theme.name()), false),
+            Err(why) => self.notify(format!("theme: {} (not kept: {why})", theme.name()), true),
+        }
     }
 
     fn notify(&mut self, text: impl Into<String>, error: bool) {
@@ -517,12 +564,8 @@ impl App {
             }
             Event::Secret(request) => self.on_secret(request, &mut fx),
             Event::Theme(theme) => {
-                if !self.no_color {
-                    self.palette = Palette::from_theme(&theme);
-                    self.styles = Styles::new(&self.palette, false);
-                    self.widgets.set_palette(self.palette);
-                    self.github.set_palette(self.palette);
-                }
+                self.daemon_palette = Palette::from_theme(&theme);
+                self.apply_palette();
             }
             Event::ViewSnapshot(snapshot) => {
                 if snapshot.session == self.session {
@@ -1232,6 +1275,17 @@ impl App {
         }
     }
 
+    /// `/files`: the files panel gets the keys.
+    fn focus_files(&mut self) {
+        if self.sidebar_shown {
+            self.focus = Some(Focus::Panel(Panel::Files));
+        } else if self.widgets.wants_sidebar(u16::MAX) {
+            self.notify("terminal too narrow for the files panel", false);
+        } else {
+            self.notify("no changed files", false);
+        }
+    }
+
     /// `/sidebar`: show or hide the sessions sidebar.
     fn toggle_sessions(&mut self) {
         self.sessions_on = !self.sessions_on;
@@ -1596,14 +1650,21 @@ impl App {
     fn history_prev(&mut self) {
         let current = self.editor.text().to_string();
         if let Some(text) = self.histories.of(&self.session).older(&current) {
-            self.editor.set_text(&text);
+            self.recall(&text);
         }
     }
 
     fn history_next(&mut self) {
         if let Some(text) = self.histories.of(&self.session).newer() {
-            self.editor.set_text(&text);
+            self.recall(&text);
         }
+    }
+
+    /// A recalled `/command` keeps the menu closed, or the next Up/Down would move in it
+    /// instead of going on through the history.
+    fn recall(&mut self, text: &str) {
+        self.editor.set_text(text);
+        self.menu_closed_for = Some(text.to_string());
     }
 
     // ---- sending and commands ----
@@ -1681,6 +1742,8 @@ impl App {
             "thoughts" => self.show_thoughts = !self.show_thoughts,
             "help" => self.overlay = Overlay::Help,
             "github" => self.github.open(),
+            "theme" => self.switch_theme(text),
+            "files" => self.focus_files(),
             "quit" => fx.push(Effect::Quit),
             _ => self.send(text.to_string(), fx),
         }
@@ -1905,6 +1968,9 @@ impl App {
         }
         self.draw_status(frame, areas.status);
         self.draw_agents(frame, areas.agents);
+        if !self.no_color && self.theme.paints() {
+            crate::theme::paint(frame.buffer_mut(), &self.palette);
+        }
     }
 
     /// The sessions on the left: the list, then a border and a gap before the chat.
@@ -1981,7 +2047,10 @@ impl App {
             );
             return;
         }
-        frame.render_widget(Paragraph::new(self.chat.visible()), content);
+        frame.render_widget(
+            Paragraph::new(self.chat.visible_at(Some(self.now_ms))),
+            content,
+        );
         if let Some(images) = self.images.as_mut() {
             for at in self.chat.placements() {
                 images.draw(frame.buffer_mut(), content, &at, self.styles.muted);

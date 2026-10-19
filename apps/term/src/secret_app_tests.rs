@@ -18,6 +18,7 @@ fn app_with(history: HistoryStore) -> App {
         home: Some("/home/me".into()),
         no_color: false,
         history,
+        prefs: crate::theme::Prefs::default(),
     });
     app.tick(NOW);
     app.awaiting = None;

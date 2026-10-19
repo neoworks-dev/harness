@@ -117,6 +117,22 @@ describe("markdown", () => {
     ]);
   });
 
+  test("tables become table blocks with styled cells and the columns' alignment", () => {
+    expect(parseMarkdown("| Name | Size |\n|---|--:|\n| **a** | 1 |\n| `b` | 22 |")).toEqual([
+      {
+        type: "table_block",
+        header: [{ spans: [{ text: "Name" }] }, { spans: [{ text: "Size" }] }],
+        rows: [
+          [{ spans: [{ text: "a", bold: true }] }, { spans: [{ text: "1" }] }],
+          [{ spans: [{ text: "b", code: true }] }, { spans: [{ text: "22" }] }],
+        ],
+        align: ["left", "right"],
+      },
+    ]);
+    // Without alignment in the separator row there is none in the block.
+    expect(parseMarkdown("| a |\n|---|\n| b |")[0]).not.toHaveProperty("align");
+  });
+
   test("streaming prefixes parse to a growing block list", () => {
     const full = "# T\n\npara one\n\n- a\n- b";
     const partial = parseMarkdown(full.slice(0, 12));

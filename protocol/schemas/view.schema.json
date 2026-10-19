@@ -234,7 +234,8 @@
         { "$ref": "#/$defs/ListBlock" },
         { "$ref": "#/$defs/CodeBlock" },
         { "$ref": "#/$defs/QuoteBlock" },
-        { "$ref": "#/$defs/RuleBlock" }
+        { "$ref": "#/$defs/RuleBlock" },
+        { "$ref": "#/$defs/TableBlock" }
       ],
       "discriminator": { "propertyName": "type" }
     },
@@ -301,6 +302,37 @@
       "properties": { "type": { "const": "rule" } },
       "required": ["type"],
       "additionalProperties": false
+    },
+    "TableBlock": {
+      "description": "A markdown table. Renderers that can't draw a grid show the cells as aligned monospace text.",
+      "type": "object",
+      "properties": {
+        "type": { "const": "table_block" },
+        "header": { "type": "array", "items": { "$ref": "#/$defs/TableCell" } },
+        "rows": {
+          "type": "array",
+          "items": { "type": "array", "items": { "$ref": "#/$defs/TableCell" } }
+        },
+        "align": {
+          "type": "array",
+          "description": "Per column, as the separator row says; a column without one is left-aligned.",
+          "items": { "$ref": "#/$defs/ColumnAlign" }
+        }
+      },
+      "required": ["type", "header", "rows"],
+      "additionalProperties": false
+    },
+    "TableCell": {
+      "type": "object",
+      "properties": {
+        "spans": { "type": "array", "items": { "$ref": "#/$defs/Span" } }
+      },
+      "required": ["spans"],
+      "additionalProperties": false
+    },
+    "ColumnAlign": {
+      "type": "string",
+      "enum": ["left", "center", "right"]
     },
     "Span": {
       "description": "A run of inline text with uniform style.",

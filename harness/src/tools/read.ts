@@ -6,7 +6,8 @@ import { Type } from "typebox";
 import type { RequestPermission } from "../agent.ts";
 import { type AssetResolver, resolvePath } from "./paths.ts";
 import { askToProceed, withNote } from "./permission.ts";
-import { MAX_BYTES, MAX_LINES, splitLines, truncateHead } from "./truncate.ts";
+import { fileLines, tagLines } from "./hashline.ts";
+import { MAX_BYTES, MAX_LINES, truncateHead } from "./truncate.ts";
 
 const IMAGE_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -53,9 +54,11 @@ export function createReadTool(
     name: "read",
     label: "read",
     description:
-      "Read a file. Text files are returned as plain lines (no line numbers); png, jpeg, gif " +
-      "and webp images are returned as images. Output is cut to 2000 lines or 50KB, whichever " +
-      "comes first, and says how to continue with offset. Other binary files can't be read.",
+      "Read a file. Each line of a text file comes tagged with its number and a two-character " +
+      'hash of its text, "12:k3|const a = 1;": edit names lines by these tags ("12:k3"). png, ' +
+      "jpeg, gif and webp images are returned as images. Output is cut to 2000 lines or 50KB, " +
+      "whichever comes first, and says how to continue with offset. Other binary files can't " +
+      "be read.",
     parameters,
     async execute(toolCallId, { path, offset, limit }, signal) {
       const absolute = resolvePath(cwd, path, assets);
@@ -89,13 +92,13 @@ export function createReadTool(
         .toString("utf8")
         .replace(/^\uFEFF/, "")
         .replaceAll("\r\n", "\n");
-      const lines = splitLines(text);
+      const lines = fileLines(text);
       const start = Math.max(1, Math.floor(offset ?? 1));
-      if (start > lines.length && !(start === 1 && lines.length <= 1)) {
+      if (start > lines.length && !(start === 1 && lines.length === 0)) {
         throw new Error(`offset ${start} is beyond the end of ${path} (${lines.length} lines).`);
       }
       const end = limit === undefined ? lines.length : Math.min(lines.length, start - 1 + limit);
-      const slice = truncateHead(lines.slice(start - 1, end).join("\n"));
+      const slice = truncateHead(tagLines(lines.slice(start - 1, end), start).join("\n"));
 
       if (slice.shownLines === 0 && slice.totalLines > 0) {
         const note = `line ${start} is longer than ${MAX_BYTES} bytes`;

@@ -93,6 +93,27 @@
               "code": "<img src=\"/logo.png\" alt=\"Logo\" />",
               "language": "tsx"
             },
+            {
+              "type": "table_block",
+              "header": [
+                { "spans": [{ "text": "File" }] },
+                { "spans": [{ "text": "Change" }] },
+                { "spans": [{ "text": "Lines" }] }
+              ],
+              "rows": [
+                [
+                  { "spans": [{ "text": "src/Header.tsx", "code": true }] },
+                  { "spans": [{ "text": "edited" }] },
+                  { "spans": [{ "text": "+4 −1" }] }
+                ],
+                [
+                  { "spans": [{ "text": "public/logo.png", "code": true }] },
+                  { "spans": [{ "text": "new", "bold": true }] },
+                  { "spans": [{ "text": "512×512" }] }
+                ]
+              ],
+              "align": ["left", "center", "right"]
+            },
             { "type": "rule" },
             { "type": "paragraph", "spans": [{ "text": "Anything else?" }] }
           ]

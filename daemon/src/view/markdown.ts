@@ -1,6 +1,13 @@
 // Markdown → the view format's blocks and spans, so renderers never parse markdown themselves.
-import { Lexer, type Token } from "marked";
-import type { Block, ListItem, Span } from "@suite/protocol/types";
+import { Lexer, type Token, type Tokens } from "marked";
+import type {
+  Block,
+  ColumnAlign,
+  ListItem,
+  Span,
+  TableBlock,
+  TableCell,
+} from "@suite/protocol/types";
 
 type Style = Omit<Span, "text">;
 
@@ -66,6 +73,20 @@ function inline(tokens: Token[] | undefined, style: Style, spans: Span[]): Span[
   return spans;
 }
 
+function table(token: Tokens.Table): TableBlock {
+  const cell = (c: Tokens.TableCell): TableCell => ({ spans: inline(c.tokens, {}, []) });
+  const block: TableBlock = {
+    type: "table_block",
+    header: token.header.map(cell),
+    rows: token.rows.map((row) => row.map(cell)),
+  };
+  // marked says null for a column the separator row doesn't align.
+  if (token.align.some((a) => a !== null)) {
+    block.align = token.align.map((a): ColumnAlign => a ?? "left");
+  }
+  return block;
+}
+
 function blocks(tokens: Token[]): Block[] {
   const out: Block[] = [];
   for (const token of tokens) {
@@ -110,8 +131,11 @@ function blocks(tokens: Token[]): Block[] {
       case "hr":
         out.push({ type: "rule" });
         break;
+      case "table":
+        out.push(table(token as Tokens.Table));
+        break;
       default:
-        // Tables, HTML and anything else: kept as monospace source rather than dropped.
+        // HTML and anything else: kept as monospace source rather than dropped.
         out.push({ type: "code_block", code: token.raw.replace(/\n+$/, "") });
     }
   }

@@ -46,6 +46,11 @@ export function plainText(blocks: readonly Block[]): string {
       case "quote":
         lines.push(plainText(block.blocks));
         break;
+      case "table_block":
+        for (const row of [block.header, ...block.rows]) {
+          lines.push(row.map((cell) => spans(cell.spans)).join(" | "));
+        }
+        break;
       case "rule":
         break;
     }

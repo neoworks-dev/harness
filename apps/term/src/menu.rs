@@ -90,6 +90,14 @@ pub const COMMANDS: &[Command] = &[
     local("thoughts", "show or hide the agent's thoughts (ctrl-t)"),
     local("github", "GitHub issues and pull requests (ctrl-r)"),
     local("help", "keys and commands"),
+    local(
+        "files",
+        "the changed files: a tree, enter opens a file (tab also gets there)",
+    ),
+    Command {
+        args: "[dark|light|terminal]",
+        ..local("theme", "dark or light background, or the terminal's own")
+    },
     local("quit", "leave; the session keeps running"),
 ];
 

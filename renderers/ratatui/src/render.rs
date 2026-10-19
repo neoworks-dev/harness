@@ -5,8 +5,8 @@ use ratatui::text::{Line, Span};
 use suite_protocol as pb;
 
 use crate::text::{
-    clean, clip, hard_wrap, line_width, one_line, push_text, sline, truncate, truncate_spans,
-    width, wrap,
+    clean, clip, hard_wrap, hard_wrap_spans, line_width, one_line, push_text, sline, truncate,
+    truncate_spans, width, wrap,
 };
 use crate::{ImageOptions, ImageSlot, ImageStatus, Options, Palette, image_cells};
 
@@ -200,8 +200,17 @@ impl<'a> Cx<'a> {
         let bullet = vec![Span::styled("● ", Style::new().fg(color))];
         let mut out = match label {
             Some(label) => {
-                let bold = Span::styled(label, Style::new().add_modifier(Modifier::BOLD));
-                let head = wrap(&[bold], w.saturating_sub(2).max(1));
+                let bold = Style::new().add_modifier(Modifier::BOLD);
+                // neo's commands ("bash: ls -la") get their command highlighted.
+                let spans = match label.strip_prefix("bash: ") {
+                    Some(command) => {
+                        let mut spans = vec![Span::styled("bash: ".to_string(), bold)];
+                        spans.extend(crate::shell::highlight(command, &self.p, Style::new()));
+                        spans
+                    }
+                    None => vec![Span::styled(label, bold)],
+                };
+                let head = wrap(&spans, w.saturating_sub(2).max(1));
                 prefixed(head, bullet, vec![Span::raw("  ")])
             }
             None => vec![Line::from(bullet)],
@@ -231,7 +240,7 @@ impl<'a> Cx<'a> {
             pb::Component::ImageComponent(v) => self.image(v, w),
             pb::Component::FileComponent(v) => self.file(v, w),
             pb::Component::CodeComponent(v) => {
-                let lines = self.code(&v.code, w);
+                let lines = self.code(&v.code, v.language.as_deref(), w);
                 self.preview(lines)
             }
             pb::Component::DiffComponent(v) => {
@@ -409,14 +418,15 @@ impl<'a> Cx<'a> {
         match b {
             pb::Block::ParagraphBlock(v) => wrap(&self.spans(&v.spans), w),
             pb::Block::HeadingBlock(v) => {
+                let style = self.heading_style(v.level);
                 let mut spans = self.spans(&v.spans);
                 for s in &mut spans {
-                    s.style = s.style.add_modifier(Modifier::BOLD);
+                    s.style = style.patch(s.style);
                 }
                 wrap(&spans, w)
             }
             pb::Block::ListBlock(v) => self.list(v, w),
-            pb::Block::CodeBlock(v) => self.code(&v.code, w),
+            pb::Block::CodeBlock(v) => self.code(&v.code, v.language.as_deref(), w),
             pb::Block::QuoteBlock(v) => {
                 let mut inner = self.blocks(&v.blocks, w.saturating_sub(2).max(1), true);
                 tint(&mut inner, self.p.muted);
@@ -435,8 +445,167 @@ impl<'a> Cx<'a> {
                     .collect()
             }
             pb::Block::RuleBlock(_) => vec![sline("─".repeat(w), Style::new().fg(self.p.border))],
+            pb::Block::TableBlock(v) => self.table_block(v, w),
             pb::Block::Unknown(_) => vec![self.placeholder("[unsupported block]", w)],
         }
+    }
+
+    /// Level 1 bold, underlined and in the accent color, level 2 bold in the accent color, the
+    /// rest bold.
+    fn heading_style(&self, level: i64) -> Style {
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        match level {
+            1 => bold.fg(self.p.accent).add_modifier(Modifier::UNDERLINED),
+            2 => bold.fg(self.p.accent),
+            _ => bold,
+        }
+    }
+
+    /// A markdown table in a box. Cells wrap inside their column; columns that don't fit share
+    /// the room (the widest give first). Once a row takes more than one line, rules separate the
+    /// rows too. Too narrow for the box: each row as `header: cell` lines.
+    fn table_block(&self, v: &pb::TableBlock, w: usize) -> Lines {
+        let cols = v
+            .rows
+            .iter()
+            .map(Vec::len)
+            .chain([v.header.len()])
+            .max()
+            .unwrap_or(0);
+        if cols == 0 {
+            return Vec::new();
+        }
+        let cells = |row: &[pb::TableCell]| -> Vec<Vec<Span<'static>>> {
+            (0..cols)
+                .map(|c| {
+                    row.get(c)
+                        .map(|cell| self.spans(&cell.spans))
+                        .unwrap_or_default()
+                })
+                .collect()
+        };
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        let mut header = cells(&v.header);
+        for cell in &mut header {
+            for s in cell.iter_mut() {
+                s.style = bold.patch(s.style);
+            }
+        }
+        let body: Vec<_> = v.rows.iter().map(|r| cells(r)).collect();
+
+        // "│ " before each column, " │" after the last, " │ " between.
+        let frame = 3 * cols + 1;
+        if w < frame + cols {
+            return self.stacked_table(&header, &body, w);
+        }
+        let natural = |cell: &[Span<'static>]| {
+            wrap(cell, usize::MAX / 2)
+                .iter()
+                .map(|l| line_width(&l.spans))
+                .max()
+                .unwrap_or(0)
+        };
+        let mut widths: Vec<usize> = (0..cols)
+            .map(|c| {
+                body.iter()
+                    .chain([&header])
+                    .map(|row| natural(&row[c]))
+                    .max()
+                    .unwrap_or(0)
+                    .max(1)
+            })
+            .collect();
+        fit_columns(&mut widths, w - frame);
+
+        let align = |c: usize| {
+            v.align
+                .as_ref()
+                .and_then(|a| a.get(c).copied())
+                .unwrap_or(pb::ColumnAlign::Left)
+        };
+        let border = Style::new().fg(self.p.border);
+        let row_lines = |row: &[Vec<Span<'static>>]| -> Lines {
+            let wrapped: Vec<Lines> = row
+                .iter()
+                .zip(&widths)
+                .map(|(cell, cw)| wrap(cell, *cw))
+                .collect();
+            let height = wrapped.iter().map(Vec::len).max().unwrap_or(0).max(1);
+            (0..height)
+                .map(|i| {
+                    let mut spans = vec![Span::styled("│ ", border)];
+                    for (c, cw) in widths.iter().enumerate() {
+                        if c > 0 {
+                            spans.push(Span::styled(" │ ", border));
+                        }
+                        let line = wrapped[c]
+                            .get(i)
+                            .map(|l| l.spans.clone())
+                            .unwrap_or_default();
+                        let room = cw.saturating_sub(line_width(&line));
+                        let (left, right) = match align(c) {
+                            pb::ColumnAlign::Left => (0, room),
+                            pb::ColumnAlign::Right => (room, 0),
+                            pb::ColumnAlign::Center => (room / 2, room - room / 2),
+                        };
+                        if left > 0 {
+                            spans.push(Span::raw(" ".repeat(left)));
+                        }
+                        spans.extend(line);
+                        if right > 0 {
+                            spans.push(Span::raw(" ".repeat(right)));
+                        }
+                    }
+                    spans.push(Span::styled(" │", border));
+                    Line::from(spans)
+                })
+                .collect()
+        };
+        let rule = |l: &str, m: &str, r: &str| {
+            let inner: Vec<String> = widths.iter().map(|cw| "─".repeat(cw + 2)).collect();
+            sline(format!("{l}{}{r}", inner.join(m)), border)
+        };
+        let rows: Vec<Lines> = body.iter().map(|r| row_lines(r)).collect();
+        let ruled = rows.iter().any(|r| r.len() > 1);
+        let mut out = vec![rule("┌", "┬", "┐")];
+        out.extend(row_lines(&header));
+        out.push(rule("├", "┼", "┤"));
+        for (i, row) in rows.into_iter().enumerate() {
+            if ruled && i > 0 {
+                out.push(rule("├", "┼", "┤"));
+            }
+            out.extend(row);
+        }
+        out.push(rule("└", "┴", "┘"));
+        clip(&mut out, w);
+        out
+    }
+
+    /// A table too narrow for its box: each row's cells as `header: cell`, rows apart.
+    fn stacked_table(
+        &self,
+        header: &[Vec<Span<'static>>],
+        body: &[Vec<Vec<Span<'static>>>],
+        w: usize,
+    ) -> Lines {
+        let mut out = Vec::new();
+        for row in body {
+            if !out.is_empty() {
+                out.push(Line::default());
+            }
+            for (name, cell) in header.iter().zip(row) {
+                let mut spans = name.clone();
+                if !spans.is_empty() {
+                    spans.push(Span::styled(
+                        ": ",
+                        Style::new().add_modifier(Modifier::BOLD),
+                    ));
+                }
+                spans.extend(cell.iter().cloned());
+                out.extend(wrap(&spans, w));
+            }
+        }
+        out
     }
 
     fn spans(&self, spans: &[pb::Span]) -> Vec<Span<'static>> {
@@ -499,8 +668,23 @@ impl<'a> Cx<'a> {
     }
 
     /// Monospace on the surface color, indented 2, hard-wrapped, the band filling the width.
-    fn code(&self, code: &str, w: usize) -> Lines {
+    fn code(&self, code: &str, language: Option<&str>, w: usize) -> Lines {
         let st = self.p.code_style();
+        if crate::shell::is_shell(language) {
+            let spans = crate::shell::highlight(&clean(code), &self.p, st);
+            let inner = w.saturating_sub(2).max(1);
+            return hard_wrap_spans(&spans, inner)
+                .into_iter()
+                .map(|mut line| {
+                    let used = line_width(&line);
+                    if w >= 4 {
+                        line.insert(0, Span::styled("  ", st));
+                        line.push(Span::styled(" ".repeat(inner - used), st));
+                    }
+                    Line::from(line)
+                })
+                .collect();
+        }
         if w < 4 {
             return hard_wrap(code, w)
                 .into_iter()
@@ -698,27 +882,7 @@ impl<'a> Cx<'a> {
                     .clamp(1, w)
             })
             .collect();
-        let avail = w.saturating_sub(3 * (cols - 1));
-        let mut total: usize = widths.iter().sum();
-        while total > avail {
-            let max = widths.iter().copied().max().unwrap_or(1);
-            if max <= 1 {
-                break;
-            }
-            // Cut the widest columns down towards the next widest in one go.
-            let next = widths
-                .iter()
-                .copied()
-                .filter(|w| *w < max)
-                .max()
-                .unwrap_or(1);
-            let ties = widths.iter().filter(|w| **w == max).count();
-            let cut = (max - next).min((total - avail).div_ceil(ties)).max(1);
-            for w in widths.iter_mut().filter(|w| **w == max) {
-                *w -= cut.min(*w - 1);
-            }
-            total = widths.iter().sum();
-        }
+        fit_columns(&mut widths, w.saturating_sub(3 * (cols - 1)));
 
         let border = Style::new().fg(self.p.border);
         let row_line = |row: &[String], st: Style| {
@@ -819,6 +983,30 @@ fn file_name(src: &str) -> String {
 }
 
 /// The sources of the images that are drawn in full: not inside a table or the like.
+/// Narrows the widest columns until they fit `avail` cells together (each keeps one).
+fn fit_columns(widths: &mut [usize], avail: usize) {
+    let mut total: usize = widths.iter().sum();
+    while total > avail {
+        let max = widths.iter().copied().max().unwrap_or(1);
+        if max <= 1 {
+            break;
+        }
+        // Cut the widest columns down towards the next widest in one go.
+        let next = widths
+            .iter()
+            .copied()
+            .filter(|w| *w < max)
+            .max()
+            .unwrap_or(1);
+        let ties = widths.iter().filter(|w| **w == max).count();
+        let cut = (max - next).min((total - avail).div_ceil(ties)).max(1);
+        for w in widths.iter_mut().filter(|w| **w == max) {
+            *w -= cut.min(*w - 1);
+        }
+        total = widths.iter().sum();
+    }
+}
+
 pub(crate) fn sources(c: &pb::Component, out: &mut Vec<String>) {
     match c {
         pb::Component::ImageComponent(v) => out.push(v.src.clone()),

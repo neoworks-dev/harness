@@ -2696,6 +2696,7 @@ pub enum Block {
     CodeBlock(CodeBlock),
     QuoteBlock(QuoteBlock),
     RuleBlock(RuleBlock),
+    TableBlock(TableBlock),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -2718,6 +2719,10 @@ impl Serialize for Block {
             ),
             Block::QuoteBlock(v) => ("quote", serde_json::to_value(v).map_err(S::Error::custom)?),
             Block::RuleBlock(v) => ("rule", serde_json::to_value(v).map_err(S::Error::custom)?),
+            Block::TableBlock(v) => (
+                "table_block",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             Block::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -2749,6 +2754,9 @@ impl<'de> Deserialize<'de> for Block {
                 .map_err(D::Error::custom),
             "rule" => serde_json::from_value(value)
                 .map(Block::RuleBlock)
+                .map_err(D::Error::custom),
+            "table_block" => serde_json::from_value(value)
+                .map(Block::TableBlock)
                 .map_err(D::Error::custom),
             _ => Ok(Block::Unknown(value)),
         }
@@ -2788,6 +2796,12 @@ impl From<QuoteBlock> for Block {
 impl From<RuleBlock> for Block {
     fn from(v: RuleBlock) -> Self {
         Block::RuleBlock(v)
+    }
+}
+
+impl From<TableBlock> for Block {
+    fn from(v: TableBlock) -> Self {
+        Block::TableBlock(v)
     }
 }
 
@@ -2847,6 +2861,35 @@ pub struct QuoteBlock {
 /// Tagged `type: "rule"` inside [`Block`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuleBlock {}
+
+/// A markdown table. Renderers that can't draw a grid show the cells as aligned monospace text.
+/// Tagged `type: "table_block"` inside [`Block`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TableBlock {
+    #[serde(rename = "header")]
+    pub header: Vec<TableCell>,
+    #[serde(rename = "rows")]
+    pub rows: Vec<Vec<TableCell>>,
+    /// Per column, as the separator row says; a column without one is left-aligned.
+    #[serde(rename = "align", default, skip_serializing_if = "Option::is_none")]
+    pub align: Option<Vec<ColumnAlign>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TableCell {
+    #[serde(rename = "spans")]
+    pub spans: Vec<Span>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ColumnAlign {
+    #[serde(rename = "left")]
+    Left,
+    #[serde(rename = "center")]
+    Center,
+    #[serde(rename = "right")]
+    Right,
+}
 
 /// A run of inline text with uniform style.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

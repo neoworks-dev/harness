@@ -89,6 +89,7 @@ impl Daemon {
             home: Some("/nonexistent-home".into()),
             no_color: true,
             history: HistoryStore::new(Some(self.dir.join("history"))),
+            prefs: suite_term::theme::Prefs::default(),
             args,
         }) {
             Ok(started) => started,

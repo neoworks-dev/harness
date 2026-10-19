@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use suite_protocol::{ItemState, ViewItem, ViewPatch, ViewSnapshot};
+use suite_protocol::{ItemKind, ItemState, ViewItem, ViewPatch, ViewSnapshot};
 use suite_renderer_ratatui::{
     ButtonRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, buttons, image_sources,
     render_item_images,
@@ -75,6 +75,8 @@ struct Cached {
 
 struct Entry {
     r#ref: String,
+    /// The agent is thinking (thoughts hidden): drawn as the animated line instead.
+    thinking: bool,
     lines: Rc<Vec<Line<'static>>>,
     slots: Rc<Vec<ImageSlot>>,
     offset: usize,
@@ -111,6 +113,8 @@ pub struct Chat {
     unseen: bool,
     /// Whether a snapshot has arrived for the shown session.
     loaded: bool,
+    /// The colors of the last layout, for the thinking animation.
+    palette: Palette,
 }
 
 impl Chat {
@@ -269,9 +273,19 @@ impl Chat {
         let mut entries = Vec::with_capacity(self.state.items.len());
         let mut offset = 0;
         let mut live: usize = 0;
-        for item in &self.state.items {
+        let last = self.state.items.len().saturating_sub(1);
+        for (index, item) in self.state.items.iter().enumerate() {
             live += 1;
             let r = &item.r#ref;
+            // A question the user allowed has done its job: the tool's own row says the rest.
+            if is_allowed_question(item) {
+                continue;
+            }
+            // Hidden thoughts show while the agent thinks, as one animated line, and then go.
+            let thinking = item.kind == ItemKind::Thought && !opts.show_thoughts;
+            if thinking && index != last {
+                continue;
+            }
             let rev = self.revs.get(r).copied().unwrap_or(0);
             let active = opts
                 .active
@@ -321,6 +335,7 @@ impl Chat {
             let len = lines.len();
             entries.push(Entry {
                 r#ref: r.clone(),
+                thinking,
                 lines,
                 slots,
                 offset,
@@ -333,6 +348,7 @@ impl Chat {
                 .retain(|r, _| items.iter().any(|i| &i.r#ref == r));
         }
         self.entries = entries;
+        self.palette = opts.palette;
         self.total = offset;
         self.layout_key = Some(key);
         if self.top.is_some() && self.total > was_total {
@@ -364,8 +380,13 @@ impl Chat {
         self.unseen
     }
 
-    /// The lines in view (at most the pane's height).
+    /// The lines in view (at most the pane's height), the thinking line still.
     pub fn visible(&self) -> Vec<Line<'static>> {
+        self.visible_at(None)
+    }
+
+    /// The lines in view, the thinking line animated for the time `now_ms`.
+    pub fn visible_at(&self, now_ms: Option<i64>) -> Vec<Line<'static>> {
         let top = self.top();
         let bottom = top + self.height;
         let mut out: Vec<Line<'static>> = Vec::with_capacity(self.height);
@@ -386,7 +407,10 @@ impl Chat {
                 if at >= bottom {
                     break;
                 }
-                out.push(line.clone());
+                match now_ms {
+                    Some(now) if e.thinking => out.push(thinking_line(line, now, &self.palette)),
+                    _ => out.push(line.clone()),
+                }
                 at += 1;
             }
         }
@@ -461,6 +485,55 @@ impl Chat {
             self.top = Some(0);
         }
     }
+}
+
+/// A permission question that was answered with an allow: the session view marks it done.
+fn is_allowed_question(item: &ViewItem) -> bool {
+    item.kind == ItemKind::Tool
+        && item.r#ref.starts_with("p-")
+        && item.state == Some(ItemState::Done)
+}
+
+/// How long the light takes to sweep across the thinking line.
+const SWEEP_MS: i64 = 1600;
+
+/// The thinking line with a light sweeping over it: muted text, the accent color where the light
+/// is. Without true colors the lit characters are the accent color and bold.
+fn thinking_line(line: &Line<'static>, now_ms: i64, p: &Palette) -> Line<'static> {
+    let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len() as f32;
+    // From before the start to past the end, so the light comes in and leaves.
+    let phase = now_ms.rem_euclid(SWEEP_MS) as f32 / SWEEP_MS as f32;
+    let center = -4.0 + phase * (n + 8.0);
+    let spans = chars
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let light = (1.0 - (i as f32 - center).abs() / 4.0).max(0.0);
+            let style = match mix(p.muted, p.accent, light) {
+                Some(color) => Style::new().fg(color),
+                None if light > 0.5 => Style::new().fg(p.accent).add_modifier(Modifier::BOLD),
+                None => Style::new().fg(p.muted),
+            };
+            Span::styled(c.to_string(), style)
+        })
+        .collect::<Vec<_>>();
+    Line::from(spans)
+}
+
+/// `b` mixed into `a` by `t` (0 to 1); None unless both are true colors.
+fn mix(
+    a: ratatui::style::Color,
+    b: ratatui::style::Color,
+    t: f32,
+) -> Option<ratatui::style::Color> {
+    use ratatui::style::Color;
+    let (Color::Rgb(r0, g0, b0), Color::Rgb(r1, g1, b1)) = (a, b) else {
+        return None;
+    };
+    let m = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * t).round() as u8;
+    Some(Color::Rgb(m(r0, r1), m(g0, g1), m(b0, b1)))
 }
 
 fn render(item: &ViewItem, width: u16, key: &CacheKey) -> (Vec<Line<'static>>, Vec<ImageSlot>) {
@@ -650,6 +723,46 @@ mod tests {
 
     fn texts(c: &Chat) -> Vec<String> {
         plain_text(&c.visible())
+    }
+
+    #[test]
+    fn allowed_questions_and_finished_thoughts_are_left_out() {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(vec![
+            item("u", "user", "go"),
+            item("t1", "thought", "hmm"),
+            prompt("p-1", "done", &[]),
+            prompt("p-2", "failed", &[]),
+            item("a", "agent", "ok"),
+            item("t2", "thought", "next"),
+        ]));
+        c.layout(40, 20, &opts());
+        let shown = texts(&c);
+        // The refused question stays; the allowed one and the earlier thought go; the agent is
+        // thinking again at the end.
+        assert_eq!(shown.iter().filter(|l| l.contains("asks")).count(), 1);
+        assert_eq!(shown.iter().filter(|l| l.contains("thinking")).count(), 1);
+        assert_eq!(shown.last().map(String::as_str), Some("∴ thinking"));
+    }
+
+    #[test]
+    fn the_thinking_line_has_a_light_that_moves() {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(vec![item("t", "thought", "x")]));
+        c.layout(40, 5, &opts());
+        let colors = |now: i64| -> Vec<Option<ratatui::style::Color>> {
+            let lines = c.visible_at(Some(now));
+            lines[0].spans.iter().map(|s| s.style.fg).collect()
+        };
+        let p = Palette::default();
+        let early = colors(SWEEP_MS / 3);
+        let late = colors(SWEEP_MS * 2 / 3);
+        assert_ne!(early, late);
+        // Somewhere lit (towards the accent), somewhere not.
+        assert!(early.contains(&Some(p.muted)));
+        assert!(early.iter().any(|c| *c != Some(p.muted)));
+        // The text itself is the same.
+        assert_eq!(plain_text(&c.visible_at(Some(5))), ["∴ thinking"]);
     }
 
     #[test]

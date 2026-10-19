@@ -6,6 +6,7 @@ import type { PermissionAnswer, PermissionAsk, RequestPermission } from "../src/
 import { createBashTool } from "../src/tools/bash.ts";
 import { createCoreTools } from "../src/tools/core.ts";
 import { createEditTool } from "../src/tools/edit.ts";
+import { lineHash, tagLines } from "../src/tools/hashline.ts";
 import { createReadTool } from "../src/tools/read.ts";
 import { createWriteTool } from "../src/tools/write.ts";
 import { errorMessage, tempDir } from "./helpers.ts";
@@ -61,7 +62,7 @@ test("a refused write fails with a message for the model and writes nothing", as
 test("edit asks with the computed result; refused leaves the file alone", async () => {
   const cwd = await tempDir();
   await writeFile(join(cwd, "f.txt"), "alpha\nbeta\n");
-  const edits = [{ oldText: "beta", newText: "BETA" }];
+  const edits = [{ start: `2:${lineHash("beta")}`, newText: "BETA" }];
   const refuse = hook(false);
   const message = await errorMessage(
     createEditTool(cwd, refuse.ask).execute("t", { path: "f.txt", edits }),
@@ -86,7 +87,7 @@ test("an edit that fails to match never asks", async () => {
   await errorMessage(
     createEditTool(cwd, ask).execute("t", {
       path: "f.txt",
-      edits: [{ oldText: "nope", newText: "x" }],
+      edits: [{ start: "5:00", newText: "x" }],
     }),
   );
   expect(asked).toEqual([]);
@@ -189,13 +190,13 @@ test("a note goes to the model: with the result when allowed, with the refusal w
 
   const read = script([{ allowed: true, note: "only the top" }]);
   const got = await createReadTool(cwd, undefined, read.ask).execute("t", { path: "f.txt" });
-  expect(resultText(got)).toBe("alpha\n\nThe user added: only the top");
+  expect(resultText(got)).toBe(`1:${lineHash("alpha")}|alpha\n\nThe user added: only the top`);
 
   const refuse = script([{ allowed: false, note: "edit f.txt by hand instead" }]);
   const message = await errorMessage(
     createEditTool(cwd, refuse.ask).execute("t", {
       path: "f.txt",
-      edits: [{ oldText: "alpha", newText: "beta" }],
+      edits: [{ start: `1:${lineHash("alpha")}`, newText: "beta" }],
     }),
   );
   expect(message).toBe(
@@ -217,7 +218,7 @@ test("review: the edit is written before the second question; keep leaves it", a
   };
   const result = await createEditTool(cwd, ask).execute("t1", {
     path: "f.txt",
-    edits: [{ oldText: "beta", newText: "BETA" }],
+    edits: [{ start: `2:${lineHash("beta")}`, newText: "BETA" }],
   });
   expect(onDisk).toEqual(["alpha\nbeta\n", "alpha\nBETA\n"]);
   expect(asked.map((a) => a.phase)).toEqual([undefined, "after"]);
@@ -227,7 +228,9 @@ test("review: the edit is written before the second question; keep leaves it", a
     toolCallId: "t1",
     content: [{ type: "diff", oldText: "alpha\nbeta\n", newText: "alpha\nBETA\n" }],
   });
-  expect(resultText(result)).toBe("Applied 1 edit(s) to f.txt.");
+  expect(resultText(result)).toBe(
+    `Applied 1 edit(s) to f.txt.\n\n${tagLines(["alpha", "BETA"]).join("\n")}`,
+  );
 
   // Keep with a note: the note is in the result.
   onDisk = [];

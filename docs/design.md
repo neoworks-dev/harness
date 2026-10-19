@@ -100,9 +100,9 @@ A general-purpose agent with a minimal core. Its own package, running in-process
 | Tool                                                      | Purpose                                                                                                    |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `bash`                                                    | Run shell commands                                                                                         |
-| `read`                                                    | Read files                                                                                                 |
+| `read`                                                    | Read files; each text line tagged `12:k3\|…` (number and a two-character hash, after hashline)             |
 | `write`                                                   | Write files                                                                                                |
-| `edit`                                                    | Edit files                                                                                                 |
+| `edit`                                                    | Edit files by line tags from read: replace lines `start`..`end` or insert `after` a line (see below)       |
 | `todo_write(todos)`                                       | Keep a todo list (replaces the whole list)                                                                 |
 | `web_search(query, kind?, since?, limit?)`                | Search the web, news or images with several engines at once; the results as they are (`websearch/`)        |
 | `web_fetch(url)`                                          | Save a page as markdown in a file; returns its path and outline (short pages whole)                        |
@@ -110,6 +110,8 @@ A general-purpose agent with a minimal core. Its own package, running in-process
 | `tools_call(name, args)`                                  | Run a connector tool (validated by the gateway)                                                            |
 | `apps_focus(app)`                                         | Move the agent into an app                                                                                 |
 | `delegate(agent, task, model?, effort?, cwd?, worktree?)` | Hand a task to a subagent: neo, Claude Code or Codex, optionally in another directory or git worktree (§9) |
+
+**Line tags** (`harness/src/tools/hashline.ts`, after [hashline](https://github.com/kebbbnnn/hashline)). `read` prefixes each line with `N:hh|`: its number and two characters (base 36) of the md5 of the line without its outer whitespace, so indentation changes keep the tag. `edit({path, edits: [{start, end?, newText} | {after, newText}]})` names lines by those tags instead of repeating their text; `after: "0"` inserts at the top, an empty `newText` with `start` deletes. All tags in a call refer to the file before it, edits may not overlap, and they are applied bottom-up. The number says where and the hash checks the line is still what was read. Two characters are 1296 values, so hashes repeat in a file: a line that no longer matches is only followed when its hash appears exactly once within 30 lines of the number (the result says where it moved; a range's two ends must have moved by the same amount); otherwise the edit fails with the current lines there, tagged, so the model can retry without reading again. The result shows the changed regions with two lines of context and their new tags. The permission request and the details still carry the whole old and new text, so diffs, review and revert are unchanged.
 
 **Other responsibilities**
 

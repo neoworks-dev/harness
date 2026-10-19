@@ -49,6 +49,7 @@ pub fn main() -> ExitCode {
         home: std::env::var("HOME").ok(),
         no_color: std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty()),
         history: HistoryStore::in_data_dir(),
+        prefs: crate::theme::Prefs::in_data_dir(),
         args,
     });
     let started = match started {

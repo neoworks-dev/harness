@@ -1,4 +1,4 @@
-⟦bold|Logo added⟧
+⟦accent bold|Logo added⟧
 
 I copied the image to ⟦fg bg:surface|public/logo.png⟧ and used it in ⟦bold|Header⟧, ⟦italic|styled⟧ as before.
 ⟦crossed-out|Old favicon⟧ stays. See ⟦accent underlined|the docs⟧⟦muted| (https://example.com/logo)⟧.
@@ -14,6 +14,13 @@ I copied the image to ⟦fg bg:surface|public/logo.png⟧ and used it in ⟦bold
 ⟦muted|│ ⟧⟦muted|The image is 512×512; browsers scale it down.⟧
 
 ⟦fg bg:surface|  <img src="/logo.png" alt="Logo" />                                            ⟧
+
+⟦border|┌─────────────────┬────────┬─────────┐⟧
+⟦border|│ ⟧⟦bold|File⟧           ⟦border| │ ⟧⟦bold|Change⟧⟦border| │ ⟧  ⟦bold|Lines⟧⟦border| │⟧
+⟦border|├─────────────────┼────────┼─────────┤⟧
+⟦border|│ ⟧⟦fg bg:surface|src/Header.tsx⟧ ⟦border| │ ⟧edited⟦border| │ ⟧  +4 −1⟦border| │⟧
+⟦border|│ ⟧⟦fg bg:surface|public/logo.png⟧⟦border| │ ⟧ ⟦bold|new⟧  ⟦border| │ ⟧512×512⟦border| │⟧
+⟦border|└─────────────────┴────────┴─────────┘⟧
 
 ⟦border|────────────────────────────────────────────────────────────────────────────────⟧
 

@@ -19,6 +19,7 @@ fn app() -> App {
         home: Some("/home/me".into()),
         no_color: false,
         history: HistoryStore::default(),
+        prefs: crate::theme::Prefs::default(),
     });
     app.tick(NOW);
     app.awaiting = None;
@@ -273,6 +274,25 @@ fn up_and_down_walk_the_history_with_the_draft_kept() {
     app.handle_key(key(KeyCode::Down));
     app.handle_key(key(KeyCode::Down));
     assert_eq!(app.editor_text(), "draft");
+}
+
+#[test]
+fn a_recalled_command_does_not_stop_the_walk() {
+    let mut app = app();
+    for text in ["first", "/model"] {
+        type_str(&mut app, text);
+        app.handle_key(key(KeyCode::Enter));
+    }
+    app.handle_key(key(KeyCode::Up));
+    assert_eq!(app.editor_text(), "/model");
+    assert!(!app.menu_visible());
+    app.handle_key(key(KeyCode::Up));
+    assert_eq!(app.editor_text(), "first");
+    app.handle_key(key(KeyCode::Down));
+    assert_eq!(app.editor_text(), "/model");
+    // Typing opens it again.
+    app.handle_key(key(KeyCode::Backspace));
+    assert!(app.menu_visible());
 }
 
 #[test]
@@ -1879,6 +1899,7 @@ fn no_color_uses_no_colors() {
         home: None,
         no_color: true,
         history: HistoryStore::default(),
+        prefs: crate::theme::Prefs::default(),
     });
     show(
         &mut app,
@@ -1891,6 +1912,41 @@ fn no_color_uses_no_colors() {
         assert_eq!(cell.fg, ratatui::style::Color::Reset, "{cell:?}");
         assert_eq!(cell.bg, ratatui::style::Color::Reset);
     }
+}
+
+#[test]
+fn theme_paints_the_whole_screen_and_switches() {
+    use ratatui::style::Color;
+    let backgrounds = |app: &mut App| {
+        let mut terminal = Terminal::new(TestBackend::new(60, 14)).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let mut seen: Vec<Color> = buffer.content().iter().map(|c| c.bg).collect();
+        seen.dedup();
+        (seen, buffer[(59, 0)].fg)
+    };
+    let mut app = scenario();
+    // Dark by default: near-black where nothing else is painted, the theme's text color.
+    let (seen, fg) = backgrounds(&mut app);
+    assert!(seen.contains(&Color::Rgb(28, 29, 32)));
+    assert!(!seen.contains(&Color::Reset));
+    assert_ne!(fg, Color::Reset);
+
+    type_str(&mut app, "/theme light");
+    app.handle_key(key(KeyCode::Enter));
+    let (seen, _) = backgrounds(&mut app);
+    assert!(seen.contains(&Color::Rgb(244, 235, 217)));
+    assert!(!seen.contains(&Color::Reset));
+
+    // No name: the next one, which leaves the terminal's own colors.
+    type_str(&mut app, "/theme");
+    app.handle_key(key(KeyCode::Enter));
+    let (seen, _) = backgrounds(&mut app);
+    assert!(seen.contains(&Color::Reset));
+
+    type_str(&mut app, "/theme sepia");
+    app.handle_key(key(KeyCode::Enter));
+    assert!(screen_text(&mut app, 60, 14).contains("usage: /theme [dark|light|terminal]"));
 }
 
 #[test]

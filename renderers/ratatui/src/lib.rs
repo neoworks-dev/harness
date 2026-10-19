@@ -17,6 +17,7 @@
 
 mod palette;
 mod render;
+mod shell;
 mod summary;
 mod text;
 
@@ -199,6 +200,17 @@ fn blocks_text(blocks: &[pb::Block]) -> String {
                     .iter()
                     .map(|item| format!("- {}", blocks_text(&item.blocks))),
             ),
+            pb::Block::TableBlock(b) => {
+                let row = |cells: &[pb::TableCell]| {
+                    cells
+                        .iter()
+                        .map(|c| spans(&c.spans))
+                        .collect::<Vec<_>>()
+                        .join(" | ")
+                };
+                lines.push(row(&b.header));
+                lines.extend(b.rows.iter().map(|r| row(r)));
+            }
             pb::Block::RuleBlock(_) | pb::Block::Unknown(_) => {}
         }
     }

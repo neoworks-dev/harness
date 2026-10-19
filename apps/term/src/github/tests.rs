@@ -822,6 +822,7 @@ fn app(fake: &Arc<Fake>) -> App {
         home: None,
         no_color: false,
         history: HistoryStore::default(),
+        prefs: crate::theme::Prefs::default(),
     });
     *app.github_mut() = github(fake);
     app.tick(NOW);

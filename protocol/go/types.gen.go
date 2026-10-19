@@ -2441,7 +2441,7 @@ func (v LinkComponent) MarshalJSON() ([]byte, error) {
 }
 
 // Block: A block of parsed markdown.
-// Value is one of: ParagraphBlock, HeadingBlock, ListBlock, CodeBlock, QuoteBlock, RuleBlock, UnknownBlock.
+// Value is one of: ParagraphBlock, HeadingBlock, ListBlock, CodeBlock, QuoteBlock, RuleBlock, TableBlock, UnknownBlock.
 type Block struct {
 	Value BlockVariant
 }
@@ -2516,6 +2516,12 @@ func (u *Block) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "rule":
 		var v RuleBlock
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "table_block":
+		var v TableBlock
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -2625,6 +2631,37 @@ func (v RuleBlock) MarshalJSON() ([]byte, error) {
 		plain
 	}{"rule", plain(v)})
 }
+
+// TableBlock: A markdown table. Renderers that can't draw a grid show the cells as aligned monospace text.
+type TableBlock struct {
+	Header []TableCell   `json:"header"`
+	Rows   [][]TableCell `json:"rows"`
+	// Per column, as the separator row says; a column without one is left-aligned.
+	Align []ColumnAlign `json:"align,omitempty"`
+}
+
+func (TableBlock) isBlock() {}
+
+// MarshalJSON adds the "type" tag.
+func (v TableBlock) MarshalJSON() ([]byte, error) {
+	type plain TableBlock
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"table_block", plain(v)})
+}
+
+type TableCell struct {
+	Spans []Span `json:"spans"`
+}
+
+type ColumnAlign string
+
+const (
+	ColumnAlignLeft   ColumnAlign = "left"
+	ColumnAlignCenter ColumnAlign = "center"
+	ColumnAlignRight  ColumnAlign = "right"
+)
 
 // Span: A run of inline text with uniform style.
 type Span struct {

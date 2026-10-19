@@ -1,7 +1,7 @@
 // Parsed markdown as a flat list of rows. Nesting (a list in a list item, a quote around a
 // list) becomes numbers on each row, so the chat draws it without nested components: the host
 // runs the app on a small JavaScript stack, and every level of component nesting spends a lot of it.
-import type { Block, ListBlock, Span } from "@suite/protocol/types";
+import type { Block, ListBlock, Span, TableBlock } from "@suite/protocol/types";
 
 /** How far a row sits below the previous one. */
 export type RowGap = "none" | "tight" | "loose";
@@ -68,6 +68,28 @@ function flattenList(list: ListBlock, context: Context, out: MarkdownRow[]): voi
   });
 }
 
+/** A table as aligned monospace text, the way the chat showed tables before it had them. */
+export function tableText(table: TableBlock): string {
+  const rows = [table.header, ...table.rows].map((row) =>
+    row.map((cell) => cell.spans.map((span) => span.text).join("")),
+  );
+  const columns = Math.max(...rows.map((row) => row.length));
+  const widths = Array.from({ length: columns }, (_, c) =>
+    Math.max(...rows.map((row) => (row[c] ?? "").length)),
+  );
+  const line = (row: string[]): string =>
+    widths
+      .map((width, c) => {
+        const text = row[c] ?? "";
+        return table.align?.[c] === "right" ? text.padStart(width) : text.padEnd(width);
+      })
+      .join(" │ ")
+      .trimEnd();
+  const [header = [], ...body] = rows;
+  const rule = widths.map((width) => "─".repeat(width)).join("─┼─");
+  return [line(header), rule, ...body.map(line)].join("\n");
+}
+
 function flatten(blocks: readonly Block[], context: Context, out: MarkdownRow[]): void {
   blocks.forEach((block, index) => {
     const start = out.length;
@@ -89,6 +111,9 @@ function flatten(blocks: readonly Block[], context: Context, out: MarkdownRow[])
         break;
       case "rule":
         out.push({ ...base, kind: "rule" });
+        break;
+      case "table_block":
+        out.push({ ...base, kind: "code", code: tableText(block) });
         break;
       case "quote":
         flatten(block.blocks, { ...context, quote: context.quote + 1 }, out);

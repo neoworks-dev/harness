@@ -15,7 +15,18 @@
 //!   ends and tool diffs; every 10 s anyway; one run at a time). Entries are git's changes plus
 //!   files an agent changed this session (from `diff` content of tool calls), tagged
 //!   `(agent)` / `(claude)`. Outside a repository only the touched files are listed and
-//!   `branch()` is None. Focused: Up/Down/j/k move, g/G ends, Enter opens the diff overlay.
+//!   `branch()` is None. Drawn as a tree: folders first (a folder holding only one folder is
+//!   joined with it, `apps/term/`), a folded one with the line counts of what is in it.
+//!   Focused: Up/Down/j/k move, g/G ends, Enter or Space folds a folder and opens a file,
+//!   Right/l opens a folder or goes into it, Left/h folds it or goes up to its folder.
+//! - **File view**: Enter on a file opens the diff overlay with the whole file as context and
+//!   unified (its changes marked in place); a file git sees no change in shows as it is.
+//! - **Syntax highlighting** (`syntax.rs`): the diff and file view color code by syntect's
+//!   grammar for the file name (`+++ b/` headers for a pull request's diff), worked out on a
+//!   thread once the text is in (the code shows plain until then), old and new lines parsed
+//!   apart and each hunk starting over. The colors are picked for a dark or light background,
+//!   not the theme's few; changed lines keep their tint behind them and the sign its color.
+//!   Without true colors, and past 20,000 lines, code stays plain.
 //! - **Diff overlay**: `git diff HEAD -- path` (the whole file for untracked ones) loaded in the
 //!   background and drawn over the chat, side by side from 90 columns on. While it is open it
 //!   takes every key whatever panel is focused: Up/Down/j/k, PgUp/PgDn, g/G, Ctrl-U/Ctrl-D
@@ -31,6 +42,7 @@ mod diff;
 mod files;
 mod git;
 mod plan;
+mod syntax;
 mod text;
 mod usage;
 
@@ -310,7 +322,7 @@ impl Widgets {
                 mark: e.mark,
                 in_repo: self.files.in_repo(),
             };
-            self.diff = Some(DiffView::open(self.cwd.clone(), req));
+            self.diff = Some(DiffView::open_file(self.cwd.clone(), req));
         }
     }
 }

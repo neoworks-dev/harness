@@ -18,6 +18,7 @@ suite-github = { path = "../../crates/github" }
 suite-protocol = { path = "../../protocol/rust" }
 suite-renderer-ratatui = { path = "../../renderers/ratatui" }
 suite-sdk = { path = "../../sdk-rs" }
+syntect = { version = "5", default-features = false, features = ["default-syntaxes", "parsing", "regex-onig"] }
 unicode-width = "0.2"
 zeroize = "1"
 

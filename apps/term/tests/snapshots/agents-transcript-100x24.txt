@@ -1,13 +1,13 @@
 ◂ neo · deepseek-v4-flash  Find the weather
 › Find the weather  · task
 
-∴ thinking
-
 ● search tools: weather
-  ⎿ weather.forecast
-    weather.alerts
+  ⎿ weather.forecast  … +1 lines
 
 ● It is sunny in Berlin.
+
+
+
 
 
 

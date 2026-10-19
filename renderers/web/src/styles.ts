@@ -188,6 +188,10 @@ h1.suite-heading, h2.suite-heading { font-size: var(--suite-title-size); }
 .suite-table { border-collapse: collapse; }
 .suite-table th, .suite-table td { padding: var(--suite-space-s) var(--suite-space-m); border-bottom: 1px solid var(--suite-border); text-align: left; white-space: nowrap; }
 .suite-table th { color: var(--suite-muted); font-weight: var(--suite-title-weight); }
+.suite-md-table th, .suite-md-table td { white-space: normal; vertical-align: top; }
+.suite-md-table th { color: inherit; }
+.suite-table [data-align="center"] { text-align: center; }
+.suite-table [data-align="right"] { text-align: right; }
 
 .suite-kv { display: grid; grid-template-columns: max-content 1fr; gap: 0 var(--suite-space-l); margin: 0; }
 .suite-kv > dt { color: var(--suite-muted); }

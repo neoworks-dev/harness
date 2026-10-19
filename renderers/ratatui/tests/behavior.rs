@@ -140,27 +140,28 @@ fn tool_bullets_show_the_state() {
         let head = &render_item(&it, 40, &Options::default())[0];
         assert_eq!(head.spans[0].content, "● ");
         assert_eq!(head.spans[0].style.fg, Some(color), "{state}");
-        assert_eq!(head.spans[1].content, "bash: ls");
+        let label: String = head.spans[1..].iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(label, "bash: ls");
     }
 }
 
 #[test]
-fn compact_code_shows_the_first_lines_and_how_many_are_cut() {
+fn compact_code_shows_the_first_line_and_how_many_are_cut() {
     let out = tool("done", &code("a\nb\nc\nd\ne\n"));
-    assert_eq!(
-        lines(&out, 40),
-        ["● bash: ls", "  ⎿ a", "    b", "    c", "    … +2 lines"]
-    );
-    let short = tool("done", &code("a\nb"));
-    assert_eq!(lines(&short, 40), ["● bash: ls", "  ⎿ a", "    b"]);
+    assert_eq!(lines(&out, 40), ["● bash: ls", "  ⎿ a  … +4 lines"]);
+    let one = tool("done", &code("a"));
+    assert_eq!(lines(&one, 40), ["● bash: ls", "  ⎿ a"]);
     let long_line = tool("done", &code("0123456789abcdef"));
     assert_eq!(lines(&long_line, 12), ["● bash: ls", "  ⎿ 0123456…"]);
+    // The count keeps its room: the line is cut for it.
+    let long = tool("done", &code("0123456789abcdefghij\nx"));
+    assert_eq!(lines(&long, 24), ["● bash: ls", "  ⎿ 0123456…  … +1 lines"]);
     let empty = tool("done", &code("\n"));
     assert_eq!(lines(&empty, 40), ["● bash: ls"]);
 }
 
 #[test]
-fn compact_results_keep_the_last_leaf_visible() {
+fn compact_results_count_the_leaves_left_out() {
     let stack = format!(
         r#"{{"type":"stack","children":[{},{}]}}"#,
         code("1\n2\n3\n4\n5\n6"),
@@ -168,13 +169,7 @@ fn compact_results_keep_the_last_leaf_visible() {
     );
     assert_eq!(
         lines(&tool("failed", &stack), 40),
-        [
-            "● bash: ls",
-            "  ⎿ 1",
-            "    2",
-            "    … +4 lines",
-            "    Exit code 1"
-        ]
+        ["● bash: ls", "  ⎿ 1  … +6 lines"]
     );
 }
 
@@ -207,7 +202,7 @@ fn compact_summaries_by_component() {
     let card = r#"{"type":"card","title":"Cropped","children":[{"type":"link","url":"http://x"}]}"#;
     assert_eq!(
         lines(&tool("done", card), 40),
-        ["● bash: ls", "  ⎿ Cropped", "    http://x"]
+        ["● bash: ls", "  ⎿ Cropped  … +1 lines"]
     );
 
     let table = r#"{"type":"table","columns":["a","b"],"rows":[["1","2"],["3","4"]]}"#;
@@ -219,13 +214,8 @@ fn compact_summaries_by_component() {
     );
     assert_eq!(
         lines(&long, 14),
-        [
-            "● bash: ls",
-            "  ⎿ one two",
-            "    three four",
-            "    five six",
-            "    … +3 lines"
-        ]
+        // Too narrow for the count beside it.
+        ["● bash: ls", "  ⎿ one two", "    … +5 lines"]
     );
 }
 
@@ -1094,4 +1084,124 @@ fn hidden_keys_leave_the_label_alone() {
     let got = lines_of(&choice(), 40, &opts).join("\n");
     assert!(got.contains("[One]") && got.contains("[Two]"), "{got}");
     assert!(!got.contains("[1 One]"));
+}
+
+// ---- markdown tables and headings ----
+
+fn table_block(header: &[&str], rows: &[&[&str]]) -> String {
+    let cells = |row: &[&str]| {
+        row.iter()
+            .map(|t| json!({"spans": [{"text": t}]}))
+            .collect::<Vec<_>>()
+    };
+    let block = json!({
+        "type": "table_block",
+        "header": cells(header),
+        "rows": rows.iter().map(|r| cells(r)).collect::<Vec<_>>(),
+    });
+    json!({"type": "text", "blocks": [block]}).to_string()
+}
+
+#[test]
+fn table_cells_wrap_in_their_column_and_rows_get_rules_then() {
+    let it = item_of(
+        "notice",
+        "",
+        &table_block(
+            &["Engine", "Status"],
+            &[
+                &["bing", "ok"],
+                &["duckduckgo", "blocked by a captcha page"],
+            ],
+        ),
+    );
+    let out = lines(&it, 30);
+    assert_eq!(
+        out,
+        [
+            "┌────────────┬───────────────┐",
+            "│ Engine     │ Status        │",
+            "├────────────┼───────────────┤",
+            "│ bing       │ ok            │",
+            "├────────────┼───────────────┤",
+            "│ duckduckgo │ blocked by a  │",
+            "│            │ captcha page  │",
+            "└────────────┴───────────────┘",
+        ]
+    );
+}
+
+#[test]
+fn a_table_too_narrow_for_its_box_lists_each_row() {
+    let it = item_of(
+        "notice",
+        "",
+        &table_block(&["a", "b", "c"], &[&["1", "2", "3"], &["4", "5", "6"]]),
+    );
+    assert_eq!(
+        lines(&it, 9),
+        ["a: 1", "b: 2", "c: 3", "", "a: 4", "b: 5", "c: 6"]
+    );
+    for w in 1..60 {
+        assert_fits(&render_item(&it, w, &Options::default()), w);
+    }
+}
+
+#[test]
+fn headings_stand_out_by_level() {
+    let heading = |level: u8| {
+        let c = json!({"type": "text", "blocks": [
+            {"type": "heading", "level": level, "spans": [{"text": "Title"}]}
+        ]});
+        let rendered = render_item(
+            &item_of("agent", "", &c.to_string()),
+            40,
+            &Options::default(),
+        );
+        let title = rendered[0].spans.iter().find(|s| s.content == "Title");
+        title.expect("the heading's text").style
+    };
+    let h1 = heading(1);
+    assert_eq!(h1.fg, Some(pal().accent));
+    assert!(
+        h1.add_modifier
+            .contains(Modifier::BOLD | Modifier::UNDERLINED)
+    );
+    assert_eq!(heading(2).fg, Some(pal().accent));
+    assert!(!heading(2).add_modifier.contains(Modifier::UNDERLINED));
+    assert!(heading(3).add_modifier.contains(Modifier::BOLD));
+    assert_eq!(heading(3).fg, None);
+}
+
+// ---- shell highlighting ----
+
+#[test]
+fn bash_rows_and_shell_code_are_highlighted() {
+    let it = tool("done", &text("ok"));
+    let rendered = render_item(&it, 60, &Options::default());
+    let ls = rendered[0]
+        .spans
+        .iter()
+        .find(|s| s.content == "ls")
+        .unwrap();
+    assert_eq!(ls.style.fg, Some(pal().accent));
+    assert!(ls.style.add_modifier.contains(Modifier::BOLD));
+
+    let block = json!({"type": "code", "language": "bash", "code": "echo \"hi there\" | wc -c"});
+    let it = item_of("notice", "", &block.to_string());
+    let rendered = render_item(&it, 12, &Options::default());
+    let all: String = rendered
+        .iter()
+        .flat_map(|l| l.spans.iter().map(|s| s.content.to_string()))
+        .collect();
+    // Wrapped to the width, nothing lost, every cell on the code background.
+    assert_eq!(all.replace(' ', ""), "echo\"hithere\"|wc-c");
+    assert_fits(&rendered, 12);
+    let string = rendered
+        .iter()
+        .flat_map(|l| l.spans.iter())
+        .find(|s| s.content.contains("\"hi"))
+        .unwrap();
+    assert_eq!(string.style.fg, Some(pal().success));
+    assert_eq!(string.style.bg, Some(pal().surface));
 }
