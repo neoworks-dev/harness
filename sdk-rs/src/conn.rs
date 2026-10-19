@@ -342,6 +342,7 @@ impl Io {
             Envelope::SessionChangedMessage(message) => {
                 self.emit(Event::SessionChanged(message.payload));
             }
+            Envelope::SecretRequestMessage(message) => self.emit(Event::Secret(message.payload)),
             Envelope::ViewPatchMessage(message) => {
                 let key = (
                     message.payload.session.clone(),

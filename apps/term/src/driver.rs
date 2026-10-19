@@ -14,6 +14,7 @@ use suite_sdk::{Client, Event};
 
 use crate::app::{App, Config, Effect, Msg};
 use crate::history::HistoryStore;
+use crate::secret::SecretValue;
 
 /// What to show at start.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -303,6 +304,12 @@ fn work(client: &Client, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sen
                     })
                     .map_err(|e| e.to_string());
                 let _ = msgs.send(Msg::Created(result));
+            }
+            Effect::Secret { id, value } => {
+                // The value is moved onto the wire and not kept; an error never carries it.
+                if let Err(err) = client.answer_secret(&id, value.map(SecretValue::take)) {
+                    fail("answering the question failed", err);
+                }
             }
             Effect::Copy(_) | Effect::Quit => {}
         }

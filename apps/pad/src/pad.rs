@@ -447,7 +447,8 @@ impl Pad {
             Event::Session(_)
             | Event::SessionChanged(_)
             | Event::Subscribed { .. }
-            | Event::Connectors(_) => {}
+            | Event::Connectors(_)
+            | Event::Secret(_) => {}
         }
         cx.notify();
     }

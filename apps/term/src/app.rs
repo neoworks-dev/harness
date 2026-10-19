@@ -14,7 +14,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 use suite_protocol::{
-    AgentFocus, SessionEvent, SessionEventRecord, SessionInfo, SessionState, SettingName,
+    AgentFocus, SecretRequest, SessionEvent, SessionEventRecord, SessionInfo, SessionState,
+    SettingName,
 };
 use suite_renderer_ratatui::{ButtonRef, Palette};
 use suite_sdk::Event;
@@ -26,6 +27,7 @@ use crate::github::{Github, Outgoing};
 use crate::history::{Histories, HistoryStore};
 use crate::images::Images;
 use crate::menu::{self, Command, Entry, Switcher};
+use crate::secret::{self, Secret, SecretValue};
 use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction};
 use crate::status::{Approvals, HarnessSettings, Status, record_setting};
 use crate::style::{Styles, plain_palette};
@@ -97,6 +99,11 @@ pub enum Effect {
     },
     /// Ask for the session's info again (queue length, whether it still runs).
     Refresh,
+    /// Answer a `secret.request`: the typed value, or none when cancelled. `Debug` hides it.
+    Secret {
+        id: String,
+        value: Option<SecretValue>,
+    },
     /// Put text on the clipboard (OSC 52).
     Copy(String),
     Quit,
@@ -228,6 +235,8 @@ pub struct App {
     prompt: PromptState,
     /// The note typed for the focused button's answer (Tab on a card).
     note: Option<Note>,
+    /// A secret the daemon asked for: a masked field that has the keys and the editor's place.
+    secret: Option<Secret>,
     menu_sel: usize,
     /// The editor text the slash menu was closed for.
     menu_closed_for: Option<String>,
@@ -294,6 +303,7 @@ impl App {
             sessions_wanted: false,
             prompt: PromptState::default(),
             note: None,
+            secret: None,
             menu_sel: 0,
             menu_closed_for: None,
             expanded: false,
@@ -486,7 +496,14 @@ impl App {
                     }
                 }
             }
-            Event::Connection(up) => self.connected = up,
+            Event::Connection(up) => {
+                self.connected = up;
+                // The daemon drops a question with its connection: an answer would find none.
+                if !up && self.secret.take().is_some() {
+                    self.notify("connection lost: the question was dropped", true);
+                }
+            }
+            Event::Secret(request) => self.on_secret(request, &mut fx),
             Event::Theme(theme) => {
                 if !self.no_color {
                     self.palette = Palette::from_theme(&theme);
@@ -529,6 +546,49 @@ impl App {
         fx
     }
 
+    /// The daemon asks this app alone for a secret. It is shown in the editor's place when the
+    /// question is for the shown session, else answered as cancelled (nothing could show it). A
+    /// newer question replaces the open one, which is answered as cancelled.
+    fn on_secret(&mut self, request: SecretRequest, fx: &mut Vec<Effect>) {
+        if request.session != self.session {
+            fx.push(Effect::Secret {
+                id: request.id,
+                value: None,
+            });
+            return;
+        }
+        self.cancel_secret(fx);
+        self.secret = Some(Secret::new(request.id, request.title, request.placeholder));
+        self.chat.follow();
+    }
+
+    /// Closes the open secret question, if any, answering it as cancelled.
+    fn cancel_secret(&mut self, fx: &mut Vec<Effect>) {
+        if let Some(secret) = self.secret.take() {
+            fx.push(Effect::Secret {
+                id: secret.id.clone(),
+                value: None,
+            });
+        }
+    }
+
+    /// Keys while a secret is asked for: they are all the field's. Enter answers, Esc cancels.
+    fn secret_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
+        let Some(secret) = self.secret.as_mut() else {
+            return;
+        };
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let alt = key.modifiers.contains(KeyModifiers::ALT);
+        let value = match secret.key(key.code, ctrl, alt) {
+            secret::Outcome::Typing => return,
+            secret::Outcome::Submit(value) => Some(value),
+            secret::Outcome::Cancel => None,
+        };
+        if let Some(Secret { id, .. }) = self.secret.take() {
+            fx.push(Effect::Secret { id, value });
+        }
+    }
+
     fn on_focus(&mut self, focus: AgentFocus, fx: &mut Vec<Effect>) {
         self.agent_app = focus.app.clone();
         let here = focus.app.as_deref() == Some(self.app_id.as_str());
@@ -545,6 +605,7 @@ impl App {
             // move`): follow it. A new conversation starts in the same directory.
             let cwd = self.cwd.clone();
             let from = self.session.clone();
+            self.cancel_secret(fx);
             self.begin_session(&focus.session, &cwd);
             self.awaiting = None;
             fx.push(Effect::Switch {
@@ -627,6 +688,7 @@ impl App {
             Msg::Created(Ok(info)) => {
                 self.sessions.upsert(info.clone());
                 let from = self.session.clone();
+                self.cancel_secret(&mut fx);
                 self.begin_session(&info.id, &info.cwd);
                 self.awaiting = Some((info.id.clone(), self.now_ms + 3000));
                 fx.push(Effect::Switch {
@@ -656,6 +718,7 @@ impl App {
         self.editor.clear();
         self.prompt = PromptState::default();
         self.note = None;
+        self.secret = None;
         self.overlay = Overlay::None;
         self.focus = None;
         self.menu_sel = 0;
@@ -879,6 +942,10 @@ impl App {
             return fx;
         }
         self.dirty = true;
+        if self.secret.is_some() {
+            self.secret_key(key, &mut fx);
+            return fx;
+        }
         if self.widgets.overlay_open() {
             self.widgets.handle_key(Panel::Files, key);
             return fx;
@@ -945,6 +1012,10 @@ impl App {
 
     pub fn handle_paste(&mut self, text: &str) {
         self.dirty = true;
+        if let Some(secret) = self.secret.as_mut() {
+            secret.paste(text);
+            return;
+        }
         if self.github.is_open() {
             self.github.paste(text);
             return;
@@ -1165,6 +1236,7 @@ impl App {
             return;
         }
         let from = self.session.clone();
+        self.cancel_secret(fx);
         self.begin_session(&info.id, &info.cwd);
         self.awaiting = Some((info.id.clone(), self.now_ms + 3000));
         fx.push(Effect::Switch {
@@ -1599,7 +1671,13 @@ impl App {
         let rule_h = h.saturating_sub(status_h).min(1);
         let room = h - status_h - rule_h;
         // An engaged prompt takes the editor's place; a waiting one adds a hint row above it.
-        let panel = if self.prompt.engaged {
+        let panel = if let Some(secret) = &self.secret {
+            secret.lines(
+                usize::from(main.width),
+                self.styles.accent,
+                self.styles.muted,
+            )
+        } else if self.prompt.engaged {
             self.panel_lines(
                 main.width,
                 usize::from(room.saturating_sub(1).min(PANEL_ROWS)),
@@ -2030,6 +2108,7 @@ impl App {
     /// The terminal cursor sits in the editor unless something else has the keys.
     fn editor_has_cursor(&self) -> bool {
         self.focus.is_none()
+            && self.secret.is_none()
             && self.overlay != Overlay::Switcher
             && !self.github.is_open()
             && self.transcript.is_none()
@@ -2228,3 +2307,7 @@ mod tests;
 #[cfg(test)]
 #[path = "agents_app_tests.rs"]
 mod agents_app_tests;
+
+#[cfg(test)]
+#[path = "secret_app_tests.rs"]
+mod secret_app_tests;

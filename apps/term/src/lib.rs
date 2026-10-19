@@ -12,6 +12,7 @@ pub mod history;
 pub mod images;
 pub mod menu;
 pub mod runtime;
+pub mod secret;
 pub mod sessions;
 pub mod status;
 pub mod style;

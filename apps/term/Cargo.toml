@@ -19,6 +19,7 @@ suite-protocol = { path = "../../protocol/rust" }
 suite-renderer-ratatui = { path = "../../renderers/ratatui" }
 suite-sdk = { path = "../../sdk-rs" }
 unicode-width = "0.2"
+zeroize = "1"
 
 [dev-dependencies]
 suite-github = { path = "../../crates/github", features = ["fixtures"] }

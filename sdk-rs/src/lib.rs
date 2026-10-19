@@ -23,11 +23,11 @@ pub use suite_protocol as protocol;
 use suite_protocol::{
     AgentFocus, AgentMove, AgentMoveMessage, AppContext, AppContextMessage, AppPresence,
     AppPresenceMessage, Asset, AssetGetMessage, AssetPut, AssetPutMessage, AssetRef, ConnectorInfo,
-    ConnectorsList, Envelope, ErrorInfo, FileChanged, FileChangedMessage, SessionCancel,
-    SessionCreate, SessionCreateParams, SessionEventRecord, SessionInfo, SessionInput,
-    SessionInputMessage, SessionList, SessionRef, SessionSubscribe, SessionUnsubscribe,
-    SubscribeParams, SubscribedPayload, Theme, UiAction, UiActionMessage, ViewPatch, ViewRef,
-    ViewSnapshot, ViewSubscribe, ViewUnsubscribe,
+    ConnectorsList, Envelope, ErrorInfo, FileChanged, FileChangedMessage, SecretAnswer,
+    SecretAnswerMessage, SecretRequest, SessionCancel, SessionCreate, SessionCreateParams,
+    SessionEventRecord, SessionInfo, SessionInput, SessionInputMessage, SessionList, SessionRef,
+    SessionSubscribe, SessionUnsubscribe, SubscribeParams, SubscribedPayload, Theme, UiAction,
+    UiActionMessage, ViewPatch, ViewRef, ViewSnapshot, ViewSubscribe, ViewUnsubscribe,
 };
 pub use view::ViewState;
 
@@ -130,6 +130,9 @@ pub enum Event {
     FileChanged(FileChanged),
     /// `session.changed`: a session's state, title, preview or lines changed (for overviews).
     SessionChanged(SessionInfo),
+    /// `secret.request`: the daemon asks this client alone for a secret (an API key, a login
+    /// code). Answer it with [`Client::answer_secret`]; never log or store the value.
+    Secret(SecretRequest),
 }
 
 /// A connection to the daemon. Cheap to share behind an `Arc`; dropping it disconnects.
@@ -414,6 +417,20 @@ impl Client {
                 path: path.into(),
                 app: None,
                 session: None,
+            },
+        });
+        self.commands
+            .send(Command::Send(Box::new(envelope)))
+            .map_err(|_| Error::Disconnected)
+    }
+
+    /// Answers a `secret.request`: the typed value, or `None` when the user cancelled. No reply;
+    /// lost if the connection is down (the daemon drops the question then anyway).
+    pub fn answer_secret(&self, id: &str, value: Option<String>) -> Result<()> {
+        let envelope = Envelope::SecretAnswerMessage(SecretAnswerMessage {
+            payload: SecretAnswer {
+                id: id.into(),
+                value,
             },
         });
         self.commands

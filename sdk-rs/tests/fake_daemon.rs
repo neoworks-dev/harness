@@ -180,6 +180,35 @@ fn routes_replies_and_pushed_events() {
 }
 
 #[test]
+fn a_secret_request_is_an_event_and_its_answer_goes_back_with_or_without_a_value() {
+    let (_dir, listener, options) = setup("secret");
+    let daemon = thread::spawn(move || {
+        let mut peer = Peer::accept(&listener);
+        peer.greet();
+        peer.send(json!({"topic": "secret.request", "payload":
+            {"id": "s1", "session": "a", "title": "DeepSeek API key", "placeholder": "sk-"}}));
+        let answer = peer.expect("secret.answer");
+        assert_eq!(answer["payload"], json!({"id": "s1", "value": "k-123"}));
+        assert!(answer.get("id").is_none(), "no reply is expected: {answer}");
+        let answer = peer.expect("secret.answer");
+        assert_eq!(answer["payload"], json!({"id": "s2"}));
+    });
+    let client = Client::connect(options).expect("connect");
+    let events = client.events();
+    let request = wait_for(&events, "secret", |event| match event {
+        Event::Secret(request) => Some(request.clone()),
+        _ => None,
+    });
+    assert_eq!(request.title, "DeepSeek API key");
+    assert_eq!(request.placeholder.as_deref(), Some("sk-"));
+    client
+        .answer_secret(&request.id, Some("k-123".into()))
+        .expect("answer");
+    client.answer_secret("s2", None).expect("cancel");
+    daemon.join().expect("daemon script");
+}
+
+#[test]
 fn without_reconnect_a_dropped_connection_ends_the_client() {
     let (_dir, listener, options) = setup("dropped");
     let daemon = thread::spawn(move || {
