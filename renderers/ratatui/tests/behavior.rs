@@ -676,7 +676,11 @@ fn a_kv_value_with_a_tone_is_highlighted_in_the_full_and_the_compact_form() {
     assert_eq!(value(1, "default").fg, None, "no tone, no highlight");
 
     let compact = render_item(&tool("done", kv), 60, &Options::default());
-    let neo = compact[1].spans.iter().find(|s| s.content == "neo").unwrap();
+    let neo = compact[1]
+        .spans
+        .iter()
+        .find(|s| s.content == "neo")
+        .unwrap();
     assert_eq!(neo.style.fg, Some(accent));
     assert_eq!(compact[1].to_string(), "  ⎿ Harness: neo · Model: default");
 }
