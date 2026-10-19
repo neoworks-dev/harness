@@ -1,0 +1,425 @@
+# websearch
+
+Web, news and image search and page fetching for AI agents, with no API key, no Python and no
+browser.
+
+`search` asks several search engines at once and merges their results into one ranked list;
+`searchNews` and `searchImages` do the same for news and images. `fetchPage` turns a page into
+markdown that an agent can grep, instead of a summary someone else wrote. Everything runs in-process on Bun's `fetch` and `HTMLRewriter`, and the package has no
+dependencies.
+
+```ts
+import { fetchPage, search } from "@neoworks/websearch";
+
+const { results, engines } = await search("deepseek v4.1 flash 1017");
+const page = await fetchPage(results[0].url);
+```
+
+## Contents
+
+- [Requirements](#requirements)
+- [Searching](#searching)
+- [Safe search](#safe-search)
+- [News](#news)
+- [Images](#images)
+- [Engines](#engines)
+- [Fetching pages](#fetching-pages)
+- [How it works](#how-it-works)
+- [Adding an engine](#adding-an-engine)
+- [When an engine breaks](#when-an-engine-breaks)
+- [Limits](#limits)
+- [Development](#development)
+- [Credits](#credits)
+
+## Requirements
+
+Bun 1.2 or newer; tested with 1.3. The parsers use Bun's built-in
+[`HTMLRewriter`](https://bun.sh/docs/api/html-rewriter), so Node.js is not supported.
+
+The package isn't on npm yet. Inside this monorepo it's a workspace package:
+
+```json
+{ "dependencies": { "@neoworks/websearch": "workspace:*" } }
+```
+
+## Searching
+
+```ts
+const response = await search("deepseek v4.1 flash 1017", { limit: 5 });
+```
+
+`results` is one list for all engines, best first. Each result says which engines found it:
+
+```ts
+[
+  {
+    url: "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    title: "deepseek-ai/DeepSeek-V4.1-Flash-1017 · Hugging Face",
+    snippet: "2 days ago - DeepSeek-V4.1-Flash-1017 is a minor update to DeepSeek-V4.1-Flash, …",
+    engines: ["bing", "brave", "startpage"],
+    score: 3,
+  },
+  {
+    url: "https://api-docs.deepseek.com/news/news261017/",
+    title: "DeepSeek-V4.1-Flash-1017: Wish-Driven Programming Made Real",
+    snippet: "2 days ago - DeepSeek-V4.1-Flash-1017 uses reinforcement learning with self-feed…",
+    engines: ["brave", "startpage", "bing"],
+    score: 1.25,
+  },
+  // …
+];
+```
+
+`engines` reports how each engine did, so a block shows up instead of quietly thinning the
+results:
+
+```ts
+[
+  { engine: "bing", status: "ok", results: 10, ms: 249 },
+  { engine: "duckduckgo", status: "blocked", results: 0, ms: 205, detail: "HTTP 202" },
+  { engine: "brave", status: "ok", results: 10, ms: 767 },
+  // …
+];
+```
+
+| Status    | Meaning                                                                       |
+| --------- | ----------------------------------------------------------------------------- |
+| `ok`      | Results came back.                                                            |
+| `empty`   | A normal page with no results: nothing was found, or the page layout changed. |
+| `blocked` | A captcha, a challenge page, or a status such as 429 that means "not you".    |
+| `timeout` | No answer within `timeoutMs`.                                                 |
+| `error`   | A network error, an unexpected status, or an answer the parser couldn't read. |
+| `cooling` | Blocked recently, so not asked this time (see [How it works](#how-it-works)). |
+| `skipped` | Not asked: it has no safe search, and `safeSearch` is `"strict"`.             |
+
+### Options
+
+| Option       | Default            | What it does                                                             |
+| ------------ | ------------------ | ------------------------------------------------------------------------ |
+| `engines`    | `webEngines`       | The engines to ask.                                                      |
+| `limit`      | `10`               | At most this many results, and per engine.                               |
+| `language`   | `"en"`             | A language code, sent as `Accept-Language` and to engines that take one. |
+| `safeSearch` | `"moderate"`       | `"strict"`, `"moderate"` or `"off"`; see [Safe search](#safe-search).    |
+| `timeoutMs`  | `6000`             | How long each engine gets.                                               |
+| `signal`     |                    | Aborts the search; `search` then rejects.                                |
+| `fetch`      | `globalThis.fetch` | The fetch to use, for tests or a proxy.                                  |
+| `userAgent`  | a desktop Chrome   | Sent to the scraped engines.                                             |
+| `cooldown`   | a shared one       | Where blocks are remembered; `false` asks every engine regardless.       |
+
+Bun's `fetch` honours `HTTPS_PROXY` and `HTTP_PROXY`, so a proxy can also be set from the
+environment.
+
+## Safe search
+
+```ts
+await search("query", { safeSearch: "strict" });
+```
+
+`safeSearch` is passed to every engine in that engine's own terms (`adlt=strict` for Bing,
+`kp=1` for DuckDuckGo, a cookie for Brave, `qadf=heavy` for Startpage, …):
+
+| Level        | What the engines do                                                    |
+| ------------ | ---------------------------------------------------------------------- |
+| `"strict"`   | Filter adult content out. Engines that can't filter are left out.      |
+| `"moderate"` | Filter explicit images and video, but not text. Each engine's default. |
+| `"off"`      | Filter nothing.                                                        |
+
+Each engine says what it can do in its `safeSearch` field. Yandex's site search and Mwmbl have
+no setting (`"unsupported"`), so a strict search doesn't ask them and reports them as `skipped`.
+Wikipedia has nothing to filter (`"not-needed"`). DuckDuckGo's image search knows only on and
+off, so `"moderate"` is on there.
+
+For one adult-leaning query, `"off"` returned 8 to 17 adult sites per engine. `"strict"` returned
+none: Bing gave no results at all, Brave and Startpage two or three harmless ones.
+
+## News
+
+```ts
+const { results } = await searchNews("rust programming language", { since: "week" });
+```
+
+```ts
+[
+  {
+    url: "https://www.thefastmode.com/technology-solutions/51064-red-hat-ferrous-systems-bring-safety-qualified-rust-toolchain-to-in-vehicle-operating-systems",
+    title:
+      "Red Hat, Ferrous Systems Bring Safety-Qualified Rust Toolchain to In-Vehicle Operating Systems",
+    snippet:
+      "Red Hat, the world’s leading provider of open source solutions, and Ferrous Systems, …",
+    published: "2026-10-18T22:54:36.876Z",
+    source: "The Fast Mode",
+    image:
+      "https://www.bing.com/th?id=ONUT.5930jLq58YmHOZlGHRs7rA&pid=News&w=234&h=132&c=14&rs=2&qlt=90",
+    engines: ["bing-news"],
+    score: 1,
+  },
+  // …
+];
+```
+
+`published` is an ISO date. Bing writes ages ("5h", "4mon"), which are turned into dates; they
+are as exact as the age. `since` is `"hour"`, `"day"`, `"week"` or `"month"`. DuckDuckGo has
+no hour, so it is given a day.
+
+## Images
+
+```ts
+const { results } = await searchImages("rust logo", { size: "large" });
+```
+
+```ts
+[
+  {
+    url: "https://1000logos.net/rust-logo/", // the page the image is on
+    image: "https://1000logos.net/wp-content/uploads/2025/03/Rust-Logo.png",
+    title: "Rust Logo and symbol, meaning, history, PNG, brand",
+    snippet: "",
+    thumbnail: "https://ts3.mm.bing.net/th?id=OIP.EN_yW6klxOfFYppCn4vPqQHaEK&pid=15.1",
+    width: 3840,
+    height: 2160,
+    source: "1000logos.net",
+    engines: ["bing-images"],
+    score: 1,
+  },
+  // …
+];
+```
+
+Two results are the same when their image URLs match, so the same file on two pages is listed
+once. `size` is `"small"`, `"medium"`, `"large"` or `"wallpaper"`.
+
+## Engines
+
+Every engine below needs no key. `webEngines`, `newsEngines` and `imageEngines` are the lists
+the three searches use.
+
+| Engine              | Source                               | Weight | Safe search | Notes                                    |
+| ------------------- | ------------------------------------ | ------ | ----------- | ---------------------------------------- |
+| `bing`              | bing.com results page                | 1      | yes         | Links unwrapped from Bing's redirect.    |
+| `duckduckgo`        | DuckDuckGo's no-JavaScript lite page | 1      | yes         | Bing's index. Blocks quickly under load. |
+| `brave`             | search.brave.com results page        | 1      | yes         | Brave's own index.                       |
+| `startpage`         | startpage.com results page           | 1      | yes         | Google's results.                        |
+| `yandex`            | Yandex's site-search endpoint        | 0.7    | no          | Yandex's index.                          |
+| `wikipedia`         | The MediaWiki search API             | 0.5    | not needed  | At most 3 articles.                      |
+| `mwmbl`             | The [Mwmbl](https://mwmbl.org) API   | 0.5    | no          | A small open index run by volunteers.    |
+| `bing-news`         | Bing news' results fragment          | 1      | yes         | Ages turned into dates.                  |
+| `duckduckgo-news`   | DuckDuckGo's `news.js`               | 1      | yes         | Needs a token: two requests.             |
+| `bing-images`       | Bing images' results fragment        | 1      | yes         |                                          |
+| `duckduckgo-images` | DuckDuckGo's `i.js`                  | 1      | on/off      | Needs a token: two requests.             |
+
+DuckDuckGo's JSON endpoints want a token (`vqd`) issued for each query, which its search page
+carries. Those two engines read that page first, so each of their searches is two requests.
+
+Two more take an instance or a key, so they are added by hand:
+
+```ts
+import { search, searxng, tinyfish, webEngines } from "@neoworks/websearch";
+
+await search("query", {
+  engines: [
+    ...webEngines,
+    searxng("http://127.0.0.1:8888"), // needs `search.formats: [html, json]` in its settings
+    tinyfish(process.env.TINYFISH_API_KEY), // https://docs.tinyfish.ai/search-api, free tier
+  ],
+});
+```
+
+Any list works, so you can also use fewer engines: `{ engines: [bing, brave, wikipedia] }`.
+
+## Fetching pages
+
+```ts
+const page = await fetchPage("https://en.wikipedia.org/wiki/TypeScript");
+```
+
+```ts
+{
+  url: "https://en.wikipedia.org/wiki/TypeScript",
+  finalUrl: "https://en.wikipedia.org/wiki/TypeScript",
+  status: 200,
+  contentType: "text/html; charset=utf-8",
+  title: "TypeScript - Wikipedia",
+  content: "# TypeScript\n\n…\n\n## History\n\n…",
+  bytes: 427909,
+  truncated: false,
+}
+```
+
+HTML becomes markdown. Other text types (plain text, JSON, XML) come back unchanged.
+
+`fetchPage` tells apart two ways of failing, so the caller can say what happened and try another
+source:
+
+**No page at all.** It throws a `FetchPageError` whose `code` says why:
+
+| `code`               | When                                                            |
+| -------------------- | --------------------------------------------------------------- |
+| `unsupported-url`    | Not a URL, or not `http:` / `https:`.                           |
+| `private-address`    | The host is on a private network (see below).                   |
+| `unreachable`        | The name doesn't resolve, the connection is refused, TLS fails. |
+| `timeout`            | No complete answer within `timeoutMs`.                          |
+| `too-many-redirects` | More than `maxRedirects`.                                       |
+| `not-text`           | A PDF, an image, a download.                                    |
+
+**A page that isn't the content.** It returns the page with a `problem`:
+
+| `problem.kind`     | `problem.detail`, for example                           | What it is                                   |
+| ------------------ | ------------------------------------------------------- | -------------------------------------------- |
+| `blocked`          | `"a Cloudflare challenge (HTTP 403)"`                   | Bot protection answered instead of the site. |
+| `blocked`          | `"a JavaScript challenge"`, `"rate limited (HTTP 429)"` |                                              |
+| `needs-javascript` | `"13 words of text without JavaScript"`                 | The HTML is a shell that scripts fill in.    |
+| `http-error`       | `"HTTP 404"`                                            | The site answered with an error.             |
+
+Blocks are recognized by the marks of Cloudflare, DataDome, HUMAN (PerimeterX), Akamai, AWS
+WAF, Anubis, captchas and script-answered challenge forms, on pages with next to no text of their
+own (`blockedBy` is exported). A page whose text is only inside `<noscript>`, as Discourse
+forums serve it, is read from there.
+
+How often each happens: of 38 result pages from one search, 29 were readable. Five were
+`blocked` (four Reddit threads, one Cloudflare site) and four were `needs-javascript` (YouTube,
+OpenRouter).
+
+Most pages are long and mostly not what the agent is after. The idea is to save `content` to a
+file and let the agent search it, rather than putting the whole page into its context.
+
+The markdown keeps headings, paragraphs, links (resolved to absolute URLs), lists, code blocks,
+quotes, tables and images that have alt text. It drops scripts, styles, navigation, sidebars,
+footers, form controls and hidden elements. When `<main>`, or a page's only `<article>`, holds
+most of the text, only that part is used.
+
+This is simpler than Mozilla's Readability: some pages keep a menu or a list of links. Since the
+agent searches the file rather than reading all of it, that clutter costs little.
+
+| Option                         | Default   | What it does                                  |
+| ------------------------------ | --------- | --------------------------------------------- |
+| `timeoutMs`                    | `20000`   | For the whole fetch, redirects included.      |
+| `maxBytes`                     | `5000000` | The body is cut there and `truncated` is set. |
+| `maxRedirects`                 | `5`       |                                               |
+| `allowPrivateNetwork`          | `false`   | See below.                                    |
+| `signal`, `fetch`, `userAgent` |           | As for `search`.                              |
+
+### Private addresses
+
+An agent picks the URLs `fetchPage` loads. So by default it refuses any host that resolves to
+loopback, a private or link-local range, carrier-grade NAT, or another non-public address,
+including cloud metadata at `169.254.169.254`. Redirects are followed one hop at a time, and
+every hop is checked. Only `http:` and `https:` URLs are fetched.
+
+The host is resolved once for the check and again by `fetch`. A DNS server that gives a
+different answer the second time (DNS rebinding) is not caught. `isPublicAddress` and
+`assertPublicUrl` are exported for doing the same check elsewhere.
+
+## How it works
+
+**One request per engine, all at once.** Each engine gets `timeoutMs`. A slow or broken engine
+costs its own results and nothing else.
+
+**Merging.** Results from different engines that point to the same page become one. URLs count as
+the same page when they differ only in scheme, `www.`, a trailing slash, a fragment, or tracking
+parameters (`utm_*`, `fbclid`, …). The score follows SearXNG: each engine that found the page
+adds its weight divided by the page's position in its list. A page that three engines rank first
+scores 3; one that a single engine ranks fifth scores 0.2. The longest snippet is kept.
+
+**Blocked, not just empty.** An engine that refuses us usually still answers `200` with a page.
+That page is a captcha, though, and has no results. Each engine knows what its block page looks
+like (`blocked`), and that is checked whenever a page has no results, so "blocked" and "nothing
+found" are reported apart.
+
+**Cooldown.** A blocked engine is left out for 15 minutes, then 30, doubling up to 6 hours. One
+good answer clears it. Querying an engine while it's blocking you only makes the block last
+longer. The cooldown is shared by every `search` call in the process unless you pass your own
+`new Cooldown()`.
+
+## Adding an engine
+
+An engine is a table: the URL to ask, the CSS selectors of its results, and a pattern that
+recognizes its block page.
+
+```ts
+import { htmlEngine } from "@neoworks/websearch";
+
+export const example = htmlEngine({
+  name: "example",
+  weight: 1,
+  url: (query) => `https://search.example/?q=${encodeURIComponent(query)}`,
+  selectors: {
+    result: "div.result", // each match starts a result
+    link: "a.title", // its href is the URL
+    title: "a.title",
+    snippet: "p.summary",
+  },
+  blockedBy: /captcha|unusual traffic/i,
+  // Optional: unwrap the engine's redirect links, or drop links back into the engine.
+  unwrap: (url) => (url.hostname.endsWith("search.example") ? undefined : url.href),
+});
+```
+
+The selectors are the subset `HTMLRewriter` supports: type, class, id and attribute selectors,
+with descendant and child combinators. Engines with a JSON API implement `Engine` directly. Its
+`request` and `parse` are all there is (see `src/engines/apis.ts`).
+
+Then:
+
+1. Add it to `webEngines` in `src/search.ts` if it needs no key, and save a results page as
+   its fixture: `bun scripts/save-fixture.ts example`.
+2. Add it to the table in `test/engines.test.ts`, with the number of results the fixture has.
+3. Run `bun scripts/live-check.ts example` to see it answer for real.
+
+## When an engine breaks
+
+Search pages change, and engines start blocking clients they used to serve. The tests can't
+notice either, since they read saved pages. So a GitHub workflow,
+[`websearch-live.yml`](../.github/workflows/websearch-live.yml), asks every engine one real
+question each day. It fails when an engine is blocked, comes back empty, or returns fewer results
+than expected, and lists every engine in the job summary.
+
+GitHub's runners sit in data centres, which search engines block far more readily than home
+connections. To check from a residential IP, set one of these repository secrets:
+
+- `WEBSEARCH_PROXY`: an HTTP(S) proxy URL, `http://user:password@host:port`;
+- `WEBSEARCH_WIREGUARD`: a WireGuard configuration file.
+
+When the check fails:
+
+- **`blocked`**: the engine refuses us. If it keeps happening from a residential IP, consider
+  dropping the engine from `webEngines`, or lowering its weight.
+- **`empty`, or too few results**: the page layout changed. Save a fresh page with
+  `bun scripts/save-fixture.ts <engine>` and adjust the selectors until `bun test` passes again.
+  Then commit the fixture and the fix together.
+
+To run the same check locally: `bun scripts/live-check.ts` (all engines) or
+`bun scripts/live-check.ts bing brave`.
+
+## Limits
+
+- **Scraping.** Five of the engines are read from pages meant for people. Their terms of
+  service don't invite this. Use it at the volume of a person searching, not of a crawler.
+- **Rate limits.** Engines block quickly when asked often from one address. DuckDuckGo started
+  blocking after about ten queries in an afternoon. The cooldown keeps a blocked engine from
+  being asked again; it can't prevent the first block.
+- **No JavaScript.** Pages that only render in a browser come back as `needs-javascript`, and
+  JavaScript bot checks (Reddit's) as `blocked`; neither is worked around. Engines that need
+  JavaScript (Google) or a proof-of-work captcha (Mojeek) aren't included.
+- **Text only.** PDFs and other binary documents are refused.
+
+## Development
+
+```sh
+bun test                           # parsers against saved pages, merging, fetching, the guard
+bun scripts/live-check.ts          # every engine, live
+bun scripts/save-fixture.ts bing   # refresh a fixture
+```
+
+The package follows the monorepo's lint and format setup (`bunx oxlint --type-aware`,
+`bunx prettier --check`).
+
+## Credits
+
+- The engine selectors follow [ddgs](https://github.com/deedy5/ddgs) (MIT) where ddgs has the
+  engine.
+- The merge score is the one [SearXNG](https://github.com/searxng/searxng) uses. No SearXNG code
+  is included.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

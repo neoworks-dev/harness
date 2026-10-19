@@ -4,3 +4,4 @@ bin
 *.go
 go.work.sum
 fixtures/*/web.html
+websearch/test/fixtures
