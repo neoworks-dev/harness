@@ -1947,3 +1947,44 @@ fn a_prompt_answered_below_the_chat_leaves_one_line_in_the_chat_and_starts_on_th
         }]
     );
 }
+
+#[test]
+fn a_long_choice_scrolls_to_the_focused_button() {
+    let mut app = app();
+    long_chat(&mut app, 10);
+    let rows: Vec<_> = (0..120)
+        .map(|i| {
+            json!({"type":"button","label":format!("model-{i:03}"),"action":"suite.choose",
+                   "args":{"id":"c","option":format!("m{i}")},"current": i == 0})
+        })
+        .collect();
+    let item: ViewItem = serde_json::from_value(json!({
+        "ref":"q-c","kind":"tool","label":"Model","state":"pending",
+        "component":{"type":"stack","gap":"s","children":rows}}))
+    .unwrap();
+    patch(&mut app, item);
+    // Opens on the current one, at the top of the list.
+    let s = screen_text(&mut app, 80, 24);
+    assert!(s.contains("model-000") && !s.contains("model-119"), "{s}");
+    // Up wraps to the last one: the list follows to the bottom.
+    app.handle_key(key(KeyCode::Up));
+    let s = screen_text(&mut app, 80, 24);
+    assert!(s.contains("model-119") && !s.contains("model-000"), "{s}");
+    // Back down to the top; going down then scrolls only once the focus leaves the window.
+    for _ in 0..2 {
+        app.handle_key(key(KeyCode::Down));
+        screen_text(&mut app, 80, 24);
+    }
+    let s = screen_text(&mut app, 80, 24);
+    assert!(s.contains("model-000") && s.contains("model-001"), "{s}");
+    for _ in 0..30 {
+        app.handle_key(key(KeyCode::Down));
+        screen_text(&mut app, 80, 24);
+    }
+    let s = screen_text(&mut app, 80, 24);
+    assert!(
+        s.contains("enter model-031") && s.contains("[32 model-031]"),
+        "{s}"
+    );
+    assert!(!s.contains("model-000"), "{s}");
+}

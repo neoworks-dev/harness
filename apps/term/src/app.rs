@@ -3,6 +3,7 @@
 //! [`App::handle_key`], [`App::handle_event`] and [`App::handle_msg`] change the state and return
 //! [`Effect`]s for the runtime to carry out against the daemon; [`App::draw`] paints it.
 
+use std::cell::Cell;
 use std::path::PathBuf;
 
 use ratatui::Frame;
@@ -154,6 +155,8 @@ struct PromptState {
     engaged: bool,
     /// When the user last typed in the editor (ms): a prompt waits for a pause.
     typed_ms: i64,
+    /// The first button line shown when the buttons don't fit the panel; None: not drawn yet.
+    panel_top: Cell<Option<usize>>,
 }
 
 /// The keys line under a prompt in the input area.
@@ -799,6 +802,7 @@ impl App {
             if current.is_some() && self.prompt.selected.is_none() {
                 self.chat.follow();
             }
+            self.prompt.panel_top.set(None);
             self.prompt.seen = current;
         }
         self.update_engaged();
@@ -2036,10 +2040,27 @@ impl App {
             }
         }
         if body.len() > budget {
-            // Too small for the preview: keep the question and the buttons.
-            let rest = body.split_off(body.len() - (budget - 1));
-            body.truncate(1);
-            body.extend(rest);
+            // Too small for the preview: keep the question and a window of the buttons that
+            // follows the focused one, scrolling no further than it takes to show it.
+            let rows = budget - 1;
+            let mut rest = body.split_off(1);
+            // The focused button is on the first line that differs from a drawing without one.
+            let unfocused = chat::panel_lines(item, width, usize::MAX, 0, self.palette, marker);
+            let at = rest
+                .iter()
+                .zip(unfocused.iter().skip(1))
+                .position(|(a, b)| a != b)
+                .unwrap_or(rest.len() - 1);
+            let max_top = rest.len() - rows;
+            let mut top = self.prompt.panel_top.get().unwrap_or(max_top);
+            if at < top {
+                top = at;
+            } else if at >= top + rows {
+                top = at + 1 - rows;
+            }
+            top = top.min(max_top);
+            self.prompt.panel_top.set(Some(top));
+            body.extend(rest.drain(top..top + rows));
         }
         let (at, of) = self.queue();
         if of > 1
