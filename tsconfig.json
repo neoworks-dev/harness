@@ -27,7 +27,8 @@
     "services",
     "apps/browser",
     "apps/gui/test",
-    "tools"
+    "tools",
+    "websearch"
   ],
   "exclude": ["**/node_modules"]
 }

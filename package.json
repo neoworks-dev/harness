@@ -8,6 +8,7 @@
     "harness",
     "sdk-ts",
     "sdk-ts-tools",
+    "websearch",
     "renderers/web",
     "services/lsp",
     "apps/browser",
