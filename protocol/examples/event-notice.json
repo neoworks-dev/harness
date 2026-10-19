@@ -1,0 +1,9 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 16,
+    "ts": 1760565601400,
+    "event": { "type": "notice", "text": "Logged in to deepseek (API key)." }
+  }
+}

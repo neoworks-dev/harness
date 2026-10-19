@@ -96,6 +96,9 @@
           "$ref": "#/$defs/UserNote"
         },
         {
+          "$ref": "#/$defs/Notice"
+        },
+        {
           "$ref": "#/$defs/SubagentStarted"
         },
         {
@@ -626,6 +629,28 @@
       },
       "required": ["type", "note"],
       "additionalProperties": false
+    },
+    "Notice": {
+      "description": "A line for the user in the chat, from the daemon: the outcome of /login, /logout and /accounts, a login URL to open. Never a secret. Not a context event: the agent doesn't see it.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "notice"
+        },
+        "text": {
+          "type": "string"
+        },
+        "tone": {
+          "$ref": "#/$defs/NoticeTone"
+        }
+      },
+      "required": ["type", "text"],
+      "additionalProperties": false
+    },
+    "NoticeTone": {
+      "description": "muted unless set.",
+      "type": "string",
+      "enum": ["muted", "danger"]
     },
     "SubagentStarted": {
       "description": "The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event.",

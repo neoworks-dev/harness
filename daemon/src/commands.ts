@@ -4,6 +4,8 @@
 //   /resume [guest]                           pick a stored guest conversation to continue
 //   /approvals [ask|review|edits|auto]        how much the agents ask first; no value: next mode
 //   /harness [name]                           the harness the session runs on; no name: pick one
+//   /login [provider | key [provider]]        add an API key or an account (login.ts)
+//   /logout [provider], /accounts             remove a login; list what is logged in
 // The harness defaults to the one the session runs on. Nothing is chosen for the user.
 import type { ConfigOption } from "@suite/harness/agent";
 
@@ -12,6 +14,7 @@ import { BadRequestError } from "./focus.ts";
 import type { GuestManager, StoredConversation } from "./guests/guests.ts";
 import type { CommandContext } from "./hub.ts";
 import type { Logger } from "./log.ts";
+import type { Login } from "./login.ts";
 import type { SessionManager } from "./sessions.ts";
 import {
   APPROVALS,
@@ -31,6 +34,7 @@ export interface CommandParts {
   guests: GuestManager;
   settings: Settings;
   asker: Asker;
+  login: Login;
   log: Logger;
   /** The daemon's own agent's harness name, e.g. neo. */
   main: string;
@@ -51,7 +55,7 @@ export class Commands {
   constructor(private readonly parts: CommandParts) {}
 
   /** Runs a command; undefined when the text isn't one (it goes to the agent then). */
-  run(session: string, text: string, _context?: CommandContext): Promise<void> | undefined {
+  run(session: string, text: string, context?: CommandContext): Promise<void> | undefined {
     const [head, ...args] = text.trim().split(/\s+/);
     if (head?.startsWith("/") !== true) return undefined;
     const name = head.slice(1);
@@ -59,7 +63,20 @@ export class Commands {
     if (name === "resume") return this.resume(session, args);
     if (name === "approvals") return this.approvals(session, args);
     if (name === "harness") return this.harness(session, args);
+    if (name === "login")
+      return this.needsClient(context, (c) => this.parts.login.login(session, args, c));
+    if (name === "logout") return this.parts.login.logout(session, args);
+    if (name === "accounts") return this.parts.login.accounts(session);
     return undefined;
+  }
+
+  /** Commands that ask the user something privately need the client that typed them. */
+  private needsClient(
+    context: CommandContext | undefined,
+    run: (context: CommandContext) => Promise<void>,
+  ): Promise<void> {
+    if (!context) return Promise.reject(new BadRequestError("this needs a client to ask"));
+    return run(context);
   }
 
   private title(harness: string): string {

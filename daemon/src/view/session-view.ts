@@ -217,6 +217,8 @@ export class SessionView {
         }
         return [this.notice(`n${seq}`, parts.join("; "))];
       }
+      case "notice":
+        return [this.notice(`n${seq}`, event.text, event.tone ?? "muted")];
       case "turn_ended": {
         // A subagent whose end was never logged (a crash) must not hide the next turns' work.
         this.windows.clear();

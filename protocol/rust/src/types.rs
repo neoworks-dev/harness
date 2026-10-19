@@ -1218,6 +1218,7 @@ pub enum SessionEvent {
     Usage(Usage),
     EditsReverted(EditsReverted),
     UserNote(UserNote),
+    Notice(Notice),
     SubagentStarted(SubagentStarted),
     SubagentEnded(SubagentEnded),
     /// A variant this version doesn't know; re-serializes unchanged.
@@ -1304,6 +1305,9 @@ impl Serialize for SessionEvent {
                 "user_note",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            SessionEvent::Notice(v) => {
+                ("notice", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
             SessionEvent::SubagentStarted(v) => (
                 "subagent_started",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
@@ -1388,6 +1392,9 @@ impl<'de> Deserialize<'de> for SessionEvent {
                 .map_err(D::Error::custom),
             "user_note" => serde_json::from_value(value)
                 .map(SessionEvent::UserNote)
+                .map_err(D::Error::custom),
+            "notice" => serde_json::from_value(value)
+                .map(SessionEvent::Notice)
                 .map_err(D::Error::custom),
             "subagent_started" => serde_json::from_value(value)
                 .map(SessionEvent::SubagentStarted)
@@ -1523,6 +1530,12 @@ impl From<EditsReverted> for SessionEvent {
 impl From<UserNote> for SessionEvent {
     fn from(v: UserNote) -> Self {
         SessionEvent::UserNote(v)
+    }
+}
+
+impl From<Notice> for SessionEvent {
+    fn from(v: Notice) -> Self {
+        SessionEvent::Notice(v)
     }
 }
 
@@ -1968,6 +1981,25 @@ pub struct UserNote {
     /// What was answered: the question's title and the picked option.
     #[serde(rename = "about", default, skip_serializing_if = "Option::is_none")]
     pub about: Option<String>,
+}
+
+/// A line for the user in the chat, from the daemon: the outcome of /login, /logout and /accounts, a login URL to open. Never a secret. Not a context event: the agent doesn't see it.
+/// Tagged `type: "notice"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Notice {
+    #[serde(rename = "text")]
+    pub text: String,
+    #[serde(rename = "tone", default, skip_serializing_if = "Option::is_none")]
+    pub tone: Option<NoticeTone>,
+}
+
+/// muted unless set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NoticeTone {
+    #[serde(rename = "muted")]
+    Muted,
+    #[serde(rename = "danger")]
+    Danger,
 }
 
 /// The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event.

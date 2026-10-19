@@ -60,13 +60,15 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/
 | `SUITE_IMAGES`                        | `1`/`0`: the model takes images (default: pi's registry)    |
 | `SUITE_THINKING`                      | `off` (`minimal`…`xhigh`)                                   |
 | `<PROVIDER>_API_KEY`, `SUITE_API_KEY` | else `SUITE_AUTH`, then pi's `~/.pi/agent/auth.json`        |
-| `SUITE_AUTH`                          | `auth.json` in `SUITE_DATA_DIR`: API keys, OAuth logins     |
+| `SUITE_AUTH`                          | `auth.json` in `SUITE_DATA_DIR`: what `/login` writes       |
 | `SUITE_AGENT`                         | `neo`; `echo` is an offline scripted agent for tests        |
 | `SUITE_PORT`                          | 127.0.0.1 port for `/bus` + `/mcp` (default: any free port) |
 | `SUITE_GUESTS`                        | `claude,codex`; `none` turns guest agents off               |
 | `SUITE_GUEST_PERMISSIONS`             | `ask` (buttons in the chat) or `allow`                      |
 
 `model` and `thinkingLevel` can also be set in `~/.config/suite/config.json`; env wins.
+
+Keys and accounts: `/login` adds an API key or an account (ChatGPT, GitHub Copilot, Claude Pro/Max, which neo only may use), `/logout` removes one, `/accounts` lists them. Keys are typed into a hidden field, never into the chat.
 
 ## Guest agents
 

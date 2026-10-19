@@ -6,6 +6,7 @@
 // model and API key settings are read by the harness (see harness/src/config.ts).
 import { homedir } from "node:os";
 import type { Agent } from "@suite/harness/agent";
+import { authPaths } from "@suite/harness/config";
 import { createDaemon } from "./daemon.ts";
 import { createEchoAgent } from "./echo-agent.ts";
 import { loadGuestConfigs } from "./guests/config.ts";
@@ -35,6 +36,7 @@ async function main(): Promise<void> {
     defaultCwd: homedir(),
     theme: loadTheme(process.env, log),
     guests: loadGuestConfigs(),
+    accounts: authPaths(),
   });
   log.info(`listening on ${paths.socket} and ${daemon.info.url}, data in ${paths.dataDir}`);
   const commands: string[][] = [];

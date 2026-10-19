@@ -1,6 +1,8 @@
 // Wires the daemon's parts together. Used by main.ts and by tests (startTestDaemon).
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { findEnvKeys, getProviders } from "@mariozechner/pi-ai";
+import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import type { Agent, McpServer } from "@suite/harness/agent";
 import type { Theme } from "@suite/protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
@@ -15,6 +17,7 @@ import { createDelegate } from "./guests/delegate.ts";
 import { type GatewayRole, type GuestConfig, GuestManager } from "./guests/guests.ts";
 import { Asker } from "./asker.ts";
 import { Commands } from "./commands.ts";
+import { Login } from "./login.ts";
 import { handoffSummary } from "./handoff.ts";
 import { Permissions } from "./permissions.ts";
 import { Review } from "./review.ts";
@@ -48,6 +51,11 @@ export interface DaemonOptions {
    * `agent` when that is neo; tests give one with a fake model.
    */
   neo?: Agent;
+  /**
+   * Where /login keeps accounts (`authPath`, written) and where pi's are (`piAuthPath`, read
+   * only). Default: auth.json in the data dir and no pi file; main.ts passes the harness's paths.
+   */
+  accounts?: { authPath?: string; piAuthPath?: string };
 }
 
 export interface Daemon {
@@ -185,11 +193,27 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     asker,
     cancelAgent: delegate.cancel,
   });
+  const login = new Login({
+    asker,
+    log,
+    notice: (session, text, tone) => {
+      store.append(
+        session,
+        tone === undefined ? { type: "notice", text } : { type: "notice", text, tone },
+      );
+    },
+    authPath: options.accounts?.authPath ?? join(paths.dataDir, "auth.json"),
+    piAuthPath: options.accounts?.piAuthPath ?? join(paths.dataDir, "pi-auth.json"),
+    oauthProviders: getOAuthProviders,
+    apiProviders: getProviders,
+    envKeys: (provider) => findEnvKeys(provider) ?? [],
+  });
   const commands = new Commands({
     sessions,
     guests,
     settings,
     asker,
+    login,
     log,
     main: agent.name,
     harness: harnessOf,

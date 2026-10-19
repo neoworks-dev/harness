@@ -340,6 +340,15 @@ export const examples: Record<string, Envelope> = {
       },
     },
   },
+  "event-notice": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 16,
+      ts: 1760565601400,
+      event: { type: "notice", text: "Logged in to deepseek (API key)." },
+    },
+  },
   "event-subagent-started": {
     topic: "session.events",
     payload: {
