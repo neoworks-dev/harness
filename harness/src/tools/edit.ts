@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { AgentTool } from "../loop/index.ts";
 import { Type } from "typebox";
 import type { PermissionAsk, RequestPermission } from "../agent.ts";
 import { resolveWritablePath } from "./paths.ts";

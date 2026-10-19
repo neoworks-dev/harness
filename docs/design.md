@@ -41,7 +41,7 @@ suite/
                     view format and theme tokens. Generates TS, Go and Rust types.
   daemon/           TS on Bun. Session store, bus hub, MCP gateway, asset store,
                     service manager, ACP bridge, view resolver.
-  harness/          TS on Bun. pi-ai + pi-agent-core, core tools, static system
+  harness/          TS on Bun. pi-ai, our agent loop, core tools, static system
                     prompt, event injection, ACP-style interface.
   sdk-ts/           TS client: bus connection, presence, tool registration,
                     session attach.
@@ -88,12 +88,12 @@ The overlay is **not** hosted in the daemon. It's an app like the others, with a
 
 A general-purpose agent with a minimal core. Its own package, running in-process behind an ACP-style interface, so the daemon treats it the same as Claude Code or Codex. It can be tested standalone and used by other ACP clients.
 
-**Built on pi (as dependencies, not a fork)**
+**Built on pi**
 
-- `@mariozechner/pi-ai`: model calls across providers
-- `@mariozechner/pi-agent-core`: agent loop, tool calling, state
+- `@mariozechner/pi-ai`: model calls across providers (a dependency)
+- `harness/src/loop/`: agent loop, tool calling, state. Copied from `@mariozechner/pi-agent-core` 0.73.1 (MIT, see its LICENSE) so we can change it; no longer a dependency.
 - `bash`/`read`/`write`/`edit` implementations from pi's coding agent if they import cleanly; otherwise rewritten (they're small)
-- Check early: the session log must own the history, so pi-agent-core's state handling has to allow that.
+- Check early: the session log must own the history, so the loop's state handling has to allow that.
 
 **Fixed tool list** (full native definitions, never changes)
 
@@ -438,8 +438,8 @@ Each phase ends with something that works on its own.
 - **Long sessions.** A shared session grows fast. Decide how compaction works and who owns it (harness vs daemon), and how guests' histories relate to the main log.
 - **Concurrent sessions.** Can two sessions be active at once, and how does focus work then?
 - **Local security.** Auth on the bus socket and the MCP endpoint, and which apps may register tools. (Phase 1: the bus socket is mode 0600 in a 0700 directory, so only the user's own processes can connect. Phase 2 adds a 127.0.0.1 listener for `/bus` and `/mcp`, because Bun and browsers can't open WebSockets on Unix sockets and MCP clients need HTTP; it takes a random per-start bearer token published in `daemon.json` (0600) next to the socket. App MCP servers are expected to check a token too. Any local process of the user can still register any app name.)
-- **pi-agent-core state.** Confirm the session log can own the history without forking.
-- **pi on Bun.** Confirm pi-ai and pi-agent-core run cleanly under Bun (provider SDKs, streaming).
+- **Loop state.** Confirm the session log can own the history. The loop is ours now, so change it if not.
+- **pi-ai on Bun.** Confirm pi-ai and our loop run cleanly under Bun (provider SDKs, streaming).
 - **Tool names (resolved in Phase 1).** Anthropic and OpenAI only accept `[a-zA-Z0-9_-]` in tool names, so the core tools are `tools_search`, `tools_call`, `apps_focus` (and the system prompt says `apps_launch`). Connector tool names like `browser.download` are unaffected: they are arguments to `tools_call`, not tool definitions.
 - **`apps_launch`.** The system prompt and the closed-app error tell the model to call `apps_launch`, but it isn't in the fixed tool list. Either add it as a core tool or make it a connector tool reached through `tools_call` (and reword the prompt), before Phase 2.
 - **Tool list grows after Phase 1.** Phase 1 ships exactly four tools; Phase 2 adds `tools_search`/`tools_call`/`apps_focus`. Sessions created before that get one prompt-cache miss when the list changes. Harmless during development, but the "never changes" rule only holds from Phase 2 on.

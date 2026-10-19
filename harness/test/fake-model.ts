@@ -1,4 +1,4 @@
-import type { StreamFn } from "@mariozechner/pi-agent-core";
+import type { StreamFn } from "../src/loop/index.ts";
 import {
   createAssistantMessageEventStream,
   fauxAssistantMessage,

@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createWriteStream, existsSync, type WriteStream } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { AgentTool } from "../loop/index.ts";
 import { Type } from "typebox";
 import { MAX_BYTES, MAX_LINES, truncateTail } from "./truncate.ts";
 import type { RequestPermission } from "../agent.ts";

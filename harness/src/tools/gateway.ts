@@ -1,7 +1,7 @@
 // tools_search, tools_call, apps_launch, apps_focus, delegate: native definitions from
 // protocol/core-tools.json (so the tool list is fixed whatever is connected), executed by the
 // daemon's MCP gateway. The harness is an MCP client of the gateway (design §4).
-import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
+import type { AgentTool, AgentToolResult } from "../loop/index.ts";
 import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";

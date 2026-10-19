@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
+import type { ThinkingLevel } from "./loop/index.ts";
 import { getEnvApiKey } from "@mariozechner/pi-ai";
 import { isRecord } from "./util.ts";
 

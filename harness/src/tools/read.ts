@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
-import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { AgentTool } from "../loop/index.ts";
 import type { ImageContent } from "@mariozechner/pi-ai";
 import { Type } from "typebox";
 import type { RequestPermission } from "../agent.ts";

@@ -6,7 +6,7 @@ One agent session shared across every app in the suite. The design is in [docs/d
 | -------------------- | ----------------------------------------------------------------- | ----- |
 | `protocol/`          | JSON Schemas (source of truth) + generated TS, Go, Rust types     | 0     |
 | `daemon/`            | TS on Bun: session store, bus hub, turn queue                     | 1     |
-| `harness/`           | TS on Bun: neo, our agent (core tools, system prompt)             | 1     |
+| `harness/`           | TS on Bun: neo, our agent (loop, core tools, system prompt)       | 1     |
 | `cli/`               | Go: `suite status / sessions / attach / tools / focus / move`     | 1-3   |
 | `sdk-ts/`, `sdk-go/` | Bus clients (sessions, presence; TS tool server: `sdk-ts-tools/`) | 2     |
 | `sdk-rs/`            | Rust bus client for GPUI apps                                     | 3     |

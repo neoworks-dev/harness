@@ -1,4 +1,4 @@
-import { Agent, type StreamFn, type ThinkingLevel } from "@mariozechner/pi-agent-core";
+import { Agent, type StreamFn, type ThinkingLevel } from "./loop/index.ts";
 import {
   getModels,
   getProviders,
@@ -66,7 +66,7 @@ function gatewayOf(servers: McpServer[]): GatewayConnection | undefined {
   return server && connectGateway(server);
 }
 
-/** The harness built on pi-agent-core: one pi Agent per session, the session log owns history. */
+/** The harness built on our loop: one Agent per session, the session log owns history. */
 export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
   const { config, logger, streamFn } = options;
   const defaultModel = resolveModel(config.provider, config.modelId, logger, config.images);

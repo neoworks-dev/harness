@@ -1,4 +1,4 @@
-import type { AgentEvent } from "@mariozechner/pi-agent-core";
+import type { AgentEvent } from "./loop/index.ts";
 import type { ToolCallContent, ToolKind } from "@suite/protocol/types";
 import type { AgentUpdate } from "./agent.ts";
 import { HARNESS_NAME } from "./restore.ts";

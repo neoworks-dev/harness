@@ -1,4 +1,4 @@
-import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { AgentTool } from "../loop/index.ts";
 import type { PlanEntry, PlanEntryStatus } from "@suite/protocol/types";
 import { Type } from "typebox";
 import { isRecord } from "../util.ts";
