@@ -1,4 +1,4 @@
-● claude asks: Start a subagent? · answer below
+● claude: Start a subagent? · answer below
 
 
 
@@ -10,7 +10,7 @@
 
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-▎ ● claude asks: Start a subagent?
+▎ ● claude: Start a subagent?
 ▎   Harness    neo
 ▎   Model      deepseek/deepseek-v4-flash
 ▎   Effort     medium

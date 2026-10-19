@@ -123,7 +123,7 @@ describe("the agent's own tools by approvals mode", () => {
         .snapshot()
         .items.find((i) => i.ref === `p-${request.id}`);
     expect(item()).toMatchObject({
-      label: "neo asks: edit a.ts",
+      label: "edit a.ts",
       state: "pending",
       component: {
         type: "stack",
@@ -316,7 +316,7 @@ describe("review mode, the agent's own tools", () => {
       .snapshot()
       .items.find((i) => i.ref === `p-${request.id}`);
     expect(item).toMatchObject({
-      label: "neo asks: Edited a.ts — keep it?",
+      label: "Edited a.ts — keep it?",
       state: "pending",
       component: { type: "stack", children: [{ type: "diff" }, { type: "row" }] },
     });

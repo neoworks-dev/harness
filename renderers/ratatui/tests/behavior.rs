@@ -206,7 +206,7 @@ fn a_command_to_approve_is_highlighted_and_broken_at_its_operators() {
     ]});
     let it = item_of(
         "tool",
-        r#""label":"neo asks: Run this command?","state":"pending","#,
+        r#""label":"Run this command?","state":"pending","#,
         &c.to_string(),
     );
     let lines = render_item(&it, 40, &Options::default());
@@ -323,17 +323,17 @@ fn tools_with_buttons_are_always_drawn_in_full() {
         {"type":"button","label":"Deny","action":"suite.permit","args":{"id":"1","option":"b"}}]}"#;
     let it = item_of(
         "tool",
-        r#""label":"claude asks: run rm","state":"pending","#,
+        r#""label":"claude: run rm","state":"pending","#,
         row,
     );
     assert_eq!(
         lines(&it, 60),
-        ["● claude asks: run rm", "  [y Allow]  [2 Deny]"]
+        ["● claude: run rm", "  [y Allow]  [2 Deny]"]
     );
     // Too narrow for one line: stacked.
     assert_eq!(
         lines(&it, 14),
-        ["● claude asks:", "  run rm", "  [y Allow]", "  [2 Deny]"]
+        ["● claude: run", "  rm", "  [y Allow]", "  [2 Deny]"]
     );
 }
 
@@ -362,7 +362,7 @@ fn permission(diff_lines: usize) -> suite_protocol::ViewItem {
         })
         .collect();
     item(
-        &json!({"ref":"p-7","kind":"tool","label":"neo asks: Edit src/app.ts","state":"pending",
+        &json!({"ref":"p-7","kind":"tool","label":"Edit src/app.ts","state":"pending",
             "component":{"type":"stack","gap":"s","children":[
                 {"type":"diff","path":"src/app.ts","lines":lines},
                 {"type":"row","gap":"s","children":buttons}]}})
@@ -376,7 +376,7 @@ fn a_permission_shows_its_diff_colored_and_the_buttons_below_a_gap() {
     assert_eq!(
         lines(&it, 60),
         [
-            "● neo asks: Edit src/app.ts",
+            "● Edit src/app.ts",
             "  src/app.ts",
             "  @@ -1,3 +1,3 @@",
             "  -line 0",

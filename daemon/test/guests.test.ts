@@ -335,7 +335,7 @@ describe("permissions", () => {
       .snapshot()
       .items.find((i) => i.ref === `p-${id}`);
     expect(item).toMatchObject({
-      label: "fake asks: Write notes.txt",
+      label: "fake: Write notes.txt",
       state: "pending",
       component: {
         type: "row",

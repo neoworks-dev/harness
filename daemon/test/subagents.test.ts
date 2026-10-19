@@ -178,7 +178,7 @@ describe("the gate", () => {
       .snapshot()
       .items.find((i) => i.ref === `p-${request.id}`);
     // Answered: the facts stay, the task and buttons are gone.
-    expect(item).toMatchObject({ label: "main asks: Start a subagent?", state: "done" });
+    expect(item).toMatchObject({ label: "Start a subagent?", state: "done" });
     if (item?.component.type !== "stack") throw new Error("not a stack");
     const [kv, outcome] = item.component.children;
     expect(

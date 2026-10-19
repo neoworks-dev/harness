@@ -425,7 +425,7 @@ describe("permission requests", () => {
       },
     ]);
     const [item] = view.snapshot().items;
-    expect(item?.label).toBe("neo asks: Run this command?");
+    expect(item?.label).toBe("Run this command?");
     if (item?.component.type !== "stack") throw new Error("no preview");
     expect(item.component.children[0]).toEqual({
       type: "code",

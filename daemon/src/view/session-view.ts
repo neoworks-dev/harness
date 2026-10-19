@@ -374,7 +374,11 @@ export class SessionView {
     answer?: string | null,
     note?: string,
   ): ViewItem {
-    const label = `${request.agent} asks: ${request.title}`;
+    // What is asked; a guest's named like its calls, `claude: …`.
+    const label =
+      this.guestAsking(request) && this.only === undefined
+        ? `${request.agent}: ${request.title}`
+        : request.title;
     const details: Component[] = [];
     if (request.details?.length) {
       const items = request.details.map(({ key, value }) => ({
@@ -414,6 +418,19 @@ export class SessionView {
           ? answered
           : { type: "stack", gap: "s", children: [...details, answered] },
     };
+  }
+
+  /**
+   * Whether a guest asks, not the session's own agent: the call it is about is a guest's, or
+   * its toolCallId has a guest's `name:` prefix (the session's own guest has `name-main:`).
+   */
+  private guestAsking(request: PermissionRequest): boolean {
+    const id = request.toolCallId;
+    if (id === undefined) return false;
+    const call = this.calls.get(id);
+    if (call) return call.agent !== undefined;
+    const prefix = /^([^:]+):/.exec(id)?.[1];
+    return prefix !== undefined && !prefix.endsWith("-main");
   }
 
   /** A choice: one button per option (with its description, if any) until one is picked. */

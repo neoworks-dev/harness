@@ -411,7 +411,7 @@ fn the_delegation_gate_is_a_compact_card_with_highlighted_values() {
         })
         .collect();
     let gate: ViewItem = serde_json::from_value(json!({
-        "ref": "p-p1", "kind": "tool", "label": "claude asks: Start a subagent?", "state": "pending",
+        "ref": "p-p1", "kind": "tool", "label": "claude: Start a subagent?", "state": "pending",
         "component": {"type": "stack", "gap": "s", "children": [
             {"type": "kv", "items": [
                 {"key": "Harness", "value": "neo", "tone": "accent"},
@@ -431,7 +431,7 @@ fn the_delegation_gate_is_a_compact_card_with_highlighted_values() {
     let text = screen_text(&mut app, 100, 30);
     snapshot("delegate-gate-100x30", &text);
     for expected in [
-        "claude asks: Start a subagent?",
+        "claude: Start a subagent?",
         "Harness",
         "Model",
         "Effort",

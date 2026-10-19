@@ -72,7 +72,7 @@ fn prompt(r: &str, state: &str, labels: &[&str]) -> ViewItem {
         })
         .collect();
     serde_json::from_value(json!({
-        "ref": r, "kind": "tool", "label": "claude asks: run ls?", "state": state,
+        "ref": r, "kind": "tool", "label": "claude: run ls?", "state": state,
         "component": {"type":"row","children": children}
     }))
     .unwrap()
@@ -1281,7 +1281,7 @@ fn permission_with_diff(changed: usize) -> ViewItem {
         })
         .collect();
     serde_json::from_value(json!({
-        "ref": "p-7", "kind": "tool", "label": "neo asks: Edit src/app.ts", "state": "pending",
+        "ref": "p-7", "kind": "tool", "label": "Edit src/app.ts", "state": "pending",
         "component": {"type":"stack","gap":"s","children":[
             {"type":"diff","path":"src/app.ts","lines":lines},
             {"type":"row","gap":"s","children":buttons}]}
@@ -1327,7 +1327,7 @@ fn edit_review_card() -> ViewItem {
         })
         .collect::<Vec<_>>();
     serde_json::from_value(json!({
-        "ref": "p-9", "kind": "tool", "label": "neo asks: Edited src/a.ts — keep it?",
+        "ref": "p-9", "kind": "tool", "label": "Edited src/a.ts — keep it?",
         "state": "pending",
         "component": {"type":"stack","gap":"s","children":[
             {"type":"diff","path":"src/a.ts","lines":lines},
