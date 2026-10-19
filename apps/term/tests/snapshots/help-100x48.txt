@@ -33,6 +33,7 @@ commands
   /codex <task>                       give a task to Codex
   /harness [neo|claude|codex]         switch this session's agent: neo (based on pi), claude, codex
   /approvals [ask|review|edits|auto]  ask, review each edit, accept edits, or auto (no value: next)
+  /safesearch [strict|moderate|off]   how much adult content web search may return
   /login [provider]                   add an API key or an account (ChatGPT, Copilot, Claude Pro/Ma…
   /logout [provider]                  remove a stored API key or account
   /accounts                           list the API keys and accounts in use

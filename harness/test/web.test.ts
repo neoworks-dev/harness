@@ -102,6 +102,21 @@ test("web_search uses the user's safe search, which the agent can't set", async 
   ]);
 });
 
+test("web_search takes the user's choice in the daemon over the configured safe search", async () => {
+  const fetch = site({});
+  let chosen: "off" | undefined;
+  const { search } = await tools(fetch, { safeSearch: () => chosen });
+  await search.execute("t", { query: "q" });
+  chosen = "off";
+  await search.execute("t", { query: "q" });
+  expect(fetch.asked.map((url) => new URL(url).searchParams.get("safe"))).toEqual([
+    "moderate",
+    "moderate",
+    "off",
+    "off",
+  ]);
+});
+
 test("web_search adds the user's SearXNG and TinyFish to web searches", async () => {
   const fetch = site({});
   const { search } = await tools(fetch, {

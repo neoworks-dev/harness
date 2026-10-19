@@ -21,6 +21,14 @@ const OAUTH_NAMES: Record<string, string> = {
   "github-copilot": "GitHub Copilot",
 };
 
+/**
+ * Keys for services rather than models, which pi-ai doesn't know: what they are for (shown when
+ * picking) and the variable that outranks the stored key.
+ */
+const SERVICES: Record<string, { description: string; env: string }> = {
+  tinyfish: { description: "web search for neo", env: "TINYFISH_API_KEY" },
+};
+
 /** The `/login` argument that stands for an API key (the next word is the provider). */
 const KEY = "key";
 
@@ -109,7 +117,7 @@ export class Login {
       this.background(session, "Login", () => this.pickProvider(session, context));
       return Promise.resolve();
     }
-    if (!this.parts.apiProviders().includes(provider)) {
+    if (!this.keyProviders().includes(provider)) {
       // The argument is not echoed: it may be a key pasted by mistake.
       return Promise.reject(
         new BadRequestError("no such provider; /login key lists the ones that take an API key"),
@@ -131,9 +139,27 @@ export class Login {
     });
   }
 
+  /** What takes an API key: the model providers and the services. */
+  private keyProviders(): string[] {
+    return [...this.parts.apiProviders(), ...Object.keys(SERVICES)];
+  }
+
+  /** The variables that are set with a key for a provider or a service. */
+  private envKeys(id: string): string[] {
+    const service = SERVICES[id];
+    if (!service) return this.parts.envKeys(id);
+    const set: string[] = [];
+    if (process.env[service.env]) set.push(service.env);
+    return set;
+  }
+
   private async pickMethod(session: string, context: CommandContext): Promise<void> {
     const options = [
-      { id: KEY, name: "API key", description: "Any provider; you paste the key" },
+      {
+        id: KEY,
+        name: "API key",
+        description: "Any provider, or TinyFish for web search; you paste the key",
+      },
       ...this.parts.oauthProviders().map((p) => ({ id: p.id, name: oauthName(p) })),
     ];
     const picked = await this.parts.asker.ask(session, {
@@ -149,11 +175,14 @@ export class Login {
   }
 
   private async pickProvider(session: string, context: CommandContext): Promise<void> {
-    const providers = [...this.parts.apiProviders()].sort();
+    const providers = this.keyProviders().sort();
     const picked = await this.parts.asker.ask(session, {
       type: "choice",
       title: "API key for",
-      options: providers.map((id) => ({ id, name: id })),
+      options: providers.map((id) => {
+        const description = SERVICES[id]?.description;
+        return description === undefined ? { id, name: id } : { id, name: id, description };
+      }),
     });
     if (picked !== undefined) await this.apiKey(session, picked, context);
   }
@@ -171,7 +200,7 @@ export class Login {
 
   /** A variable that is set outranks the stored login; say so. */
   private envNote(provider: string): string {
-    const [first] = this.parts.envKeys(provider);
+    const [first] = this.envKeys(provider);
     if (first === undefined) return "";
     return ` ${first} is set and is used first.`;
   }
@@ -298,7 +327,7 @@ export class Login {
     const { notice, authPath, piAuthPath } = this.parts;
     const removed = await removeAccount(authPath, provider);
     const piHas = provider in (await this.read(piAuthPath));
-    const vars = this.parts.envKeys(provider);
+    const vars = this.envKeys(provider);
     const lines: string[] = [];
     if (removed) lines.push(`Logged out of ${provider}.`);
     else lines.push(`No login for ${provider} in the suite's auth file.`);
@@ -315,12 +344,12 @@ export class Login {
     const ours = await this.read(authPath);
     const theirs = await this.read(piAuthPath);
     const providers = new Set<string>([...Object.keys(ours), ...Object.keys(theirs)]);
-    const known = [...this.parts.apiProviders(), ...this.parts.oauthProviders().map((p) => p.id)];
-    for (const id of known) if (this.parts.envKeys(id).length > 0) providers.add(id);
+    const known = [...this.keyProviders(), ...this.parts.oauthProviders().map((p) => p.id)];
+    for (const id of known) if (this.envKeys(id).length > 0) providers.add(id);
     // The first source is the one in use: variable, then the suite's file, then pi's.
     const lines: string[] = [];
     for (const id of [...providers].sort()) {
-      const sources = this.parts.envKeys(id);
+      const sources = this.envKeys(id);
       if (id in ours) sources.push("the suite's file");
       if (id in theirs) sources.push("pi's file");
       const account = ours[id] ?? theirs[id];

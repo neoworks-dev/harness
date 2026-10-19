@@ -124,17 +124,20 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
   const defaultModel = resolveModel(config.provider, config.modelId, logger, config.images);
 
   /**
-   * The web tools' settings for a session. Fetched pages go to a temp directory of its own,
+   * The web tools' settings for a session: safe search is the user's choice in the daemon
+   * (/safesearch), else config.json's. Fetched pages go to a temp directory of its own,
    * which the system clears; TinyFish is searched too when the user has a key (its env var, or a
    * "tinyfish" API key in the suite's accounts file).
    */
-  function webToolsFor(sessionId: string): WebToolsOptions {
-    return {
+  function webToolsFor(params: NewSessionParams): WebToolsOptions {
+    const web: WebToolsOptions = {
       config: config.web,
-      dir: join(tmpdir(), "neo-web", sessionId),
+      dir: join(tmpdir(), "neo-web", params.sessionId),
       tinyfishKey: async () =>
         process.env.TINYFISH_API_KEY || (await resolveAccount(config.authPath, "tinyfish"))?.apiKey,
     };
+    if (params.safeSearch) web.safeSearch = params.safeSearch;
+    return web;
   }
 
   /** A provider's models: OpenRouter's live list once there is one, else pi-ai's. */
@@ -252,7 +255,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
           gatewayOf(params.mcpServers),
           params.resolveAsset,
           params.requestPermission,
-          webToolsFor(params.sessionId),
+          webToolsFor(params),
         ),
         messages,
         thinkingLevel: initial.thinkingLevel,

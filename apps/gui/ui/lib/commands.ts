@@ -37,6 +37,7 @@ export const COMMANDS: readonly Command[] = [
     "[ask|review|edits|auto]",
     "ask, review each edit, accept edits, or auto (no value: next)",
   ),
+  daemon("safesearch", "[strict|moderate|off]", "how much adult content web search may return"),
   daemon("login", "[provider]", "add an API key or an account (ChatGPT, Copilot, Claude Pro/Max)"),
   daemon("logout", "[provider]", "remove a stored API key or account"),
   daemon("accounts", "", "list the API keys and accounts in use"),

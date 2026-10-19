@@ -1821,7 +1821,7 @@ fn help_lists_keys_and_commands() {
     let mut app = scenario();
     type_str(&mut app, "/help");
     app.handle_key(key(KeyCode::Enter));
-    snapshot("help-100x47", &screen_text(&mut app, 100, 47));
+    snapshot("help-100x48", &screen_text(&mut app, 100, 48));
     app.handle_key(key(KeyCode::Esc));
     app.handle_key(key(KeyCode::Char('?')));
     assert_eq!(app.overlay, Overlay::Help, "? on an empty editor");

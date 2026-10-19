@@ -4,10 +4,11 @@
 //   /resume [guest]                           pick a stored guest conversation to continue
 //   /approvals [ask|review|edits|auto]        how much the agents ask first; no value: next mode
 //   /harness [name]                           the harness the session runs on; no name: pick one
+//   /safesearch [strict|moderate|off]         what neo's web search may return, for every session
 //   /login [provider | key [provider]]        add an API key or an account (login.ts)
 //   /logout [provider], /accounts             remove a login; list what is logged in
 // The harness defaults to the one the session runs on. Nothing is chosen for the user.
-import type { ConfigOption } from "@suite/harness/agent";
+import type { ConfigOption, SafeSearch } from "@suite/harness/agent";
 
 import type { Asker, Choice } from "./asker.ts";
 import { BadRequestError } from "./focus.ts";
@@ -23,6 +24,8 @@ import {
   isSettingName,
   nextApprovals,
   parseApprovals,
+  parseSafeSearch,
+  SAFE_SEARCH,
   type Settings,
 } from "./settings.ts";
 
@@ -64,6 +67,7 @@ export class Commands {
     if (isSettingName(name)) return this.setting(session, name, args);
     if (name === "resume") return this.resume(session, args);
     if (name === "approvals") return this.approvals(session, args);
+    if (name === "safesearch") return this.safeSearch(session, args);
     if (name === "harness") return this.harness(session, args);
     if (name === "login")
       return this.needsClient(context, (c) => this.parts.login.login(session, args, c));
@@ -197,6 +201,46 @@ export class Commands {
     const { settings } = this.parts;
     // Without a value: the next mode, ask → review → edits → auto → ask.
     settings.setApprovals(session, mode ?? nextApprovals(settings.approvals(session)));
+    return Promise.resolve();
+  }
+
+  private safeSearch(session: string, args: string[]): Promise<void> {
+    const [value] = args;
+    const level = value === undefined ? undefined : parseSafeSearch(value);
+    if (args.length > 1 || (value !== undefined && level === undefined)) {
+      return Promise.reject(new BadRequestError(`usage: /safesearch [${SAFE_SEARCH.join("|")}]`));
+    }
+    const set = (picked: SafeSearch): void => {
+      this.parts.settings.setSafeSearch(picked);
+      this.parts.notice(session, `Safe search: ${picked}, for web searches in every session.`);
+    };
+    if (level !== undefined) {
+      set(level);
+      return Promise.resolve();
+    }
+    const current = this.parts.settings.safeSearch();
+    const choice: Omit<Choice, "id"> = {
+      type: "choice",
+      title: `Safe search for web searches (now: ${current ?? "the default from config.json"})`,
+      options: [
+        {
+          id: "strict",
+          name: "strict",
+          description: "No adult content; engines without a filter are left out",
+        },
+        { id: "moderate", name: "moderate", description: "No explicit images or videos" },
+        { id: "off", name: "off", description: "No filter" },
+      ],
+    };
+    if (current !== undefined) choice.current = current;
+    // The answer comes later, from a button; the command is done once the choice is shown.
+    void this.parts.asker
+      .ask(session, choice)
+      .then((picked) => {
+        const chosen = picked === undefined ? undefined : parseSafeSearch(picked);
+        if (chosen !== undefined) set(chosen);
+      })
+      .catch((err: unknown) => this.parts.log.warn(`/safesearch: ${String(err)}`));
     return Promise.resolve();
   }
 

@@ -152,6 +152,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     agents: (name) => (guests.has(name) ? guests.agent(name) : undefined),
     settings: (sessionId, harness) => settings.get(sessionId, harness),
     requestPermission: (sessionId) => permissions.hook(sessionId, agent.name),
+    safeSearch: () => settings.safeSearch(),
     created: (sessionId) =>
       settings.inheritHarness(sessionId, (name) => name === agent.name || guests.has(name)),
   });

@@ -23,6 +23,9 @@ import type {
   Usage,
   UserNote,
 } from "@suite/protocol/types";
+import type { SafeSearch } from "@neoworks/websearch";
+
+export type { SafeSearch };
 
 /** What an agent may emit during a prompt (ACP session/update plus harness_message and usage). */
 export type AgentUpdate =
@@ -115,6 +118,11 @@ export interface NewSessionParams {
    * and after an edit when the user reviews each one. Absent: they just run.
    */
   requestPermission?: RequestPermission;
+  /**
+   * The user's safe-search choice (/safesearch), read at each web search; undefined: the
+   * harness's configured default.
+   */
+  safeSearch?: () => SafeSearch | undefined;
 }
 
 export interface LoadSessionParams extends NewSessionParams {

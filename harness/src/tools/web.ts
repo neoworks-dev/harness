@@ -25,6 +25,7 @@ import {
   type NewsHit,
   type NewsSearchOptions,
   type Result,
+  type SafeSearch,
   type SearchOptions,
 } from "@neoworks/websearch";
 import { Type } from "typebox";
@@ -35,6 +36,8 @@ import { askToProceed, withNote } from "./permission.ts";
 
 export interface WebToolsOptions {
   config: WebConfig;
+  /** The user's safe-search choice, read per search; undefined: the configured one. */
+  safeSearch?: () => SafeSearch | undefined;
   /** Where web_fetch saves pages; created on the first fetch. One per session. */
   dir: string;
   /** TinyFish's API key, looked up per search; with one, TinyFish is searched as well. */
@@ -136,7 +139,7 @@ function createWebSearchTool(
       // Safe search is the user's setting; the agent can't change it.
       const shared: Omit<SearchOptions, "engines"> = {
         limit: count,
-        safeSearch: options.config.safeSearch,
+        safeSearch: options.safeSearch?.() ?? options.config.safeSearch,
       };
       if (signal) shared.signal = signal;
       if (options.fetch) shared.fetch = options.fetch;

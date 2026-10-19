@@ -70,6 +70,11 @@ pub const COMMANDS: &[Command] = &[
         "ask, review each edit, accept edits, or auto (no value: next)",
     ),
     daemon(
+        "safesearch",
+        "[strict|moderate|off]",
+        "how much adult content web search may return",
+    ),
+    daemon(
         "login",
         "[provider]",
         "add an API key or an account (ChatGPT, Copilot, Claude Pro/Max)",

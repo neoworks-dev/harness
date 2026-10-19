@@ -74,7 +74,7 @@ While scrolled up, new output does not move the view; a dim `↓ new output (End
 
 **Sessions sidebar.** With focus (Ctrl-G or Tab; the selected row is reversed): Up/Down or j/k move over the sessions (the group headers are skipped), `[` / `]` or Ctrl-Up / Ctrl-Down jump to the first session of the previous / next group, PgUp/PgDn, g/G jump to the ends, Enter shows that session (the same switch as the Ctrl-S picker: the agent moves here too), Esc, q, h or Left give the keys back to the editor.
 
-**Commands.** `/` at the start of the input opens a menu (Up/Down, Tab completes, Enter runs). Sent to the daemon like any input: `/clear`, `/model`, `/effort`, `/mode`, `/resume`, `/claude <task>`, `/codex <task>`, `/harness [neo|claude|codex]` (switch this session's agent), `/approvals [ask|review|edits|auto]`. Local: `/sessions`, `/sidebar`, `/expand`, `/thoughts`, `/github`, `/help`, `/quit`.
+**Commands.** `/` at the start of the input opens a menu (Up/Down, Tab completes, Enter runs). Sent to the daemon like any input: `/clear`, `/model`, `/effort`, `/mode`, `/resume`, `/claude <task>`, `/codex <task>`, `/harness [neo|claude|codex]` (switch this session's agent), `/approvals [ask|review|edits|auto]`, `/safesearch [strict|moderate|off]`, `/login`, `/logout`, `/accounts`. Local: `/sessions`, `/sidebar`, `/expand`, `/thoughts`, `/github`, `/help`, `/quit`.
 
 **`/clear`** makes the daemon switch to a fresh session in the same directory; the app follows it (the next `agent.focus` names it) and starts over with an empty chat and panels.
 

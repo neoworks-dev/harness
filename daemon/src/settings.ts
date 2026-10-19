@@ -1,9 +1,10 @@
 // What the user chose for this session: each harness's settings (/model, /effort, /mode), the
 // harness the session runs on (/harness) and the suite's approvals mode (/approvals). They are
 // setting_changed events in the session's log; the last harness settings and the last harness
-// choice are kept as the defaults for new sessions (approvals is not: a new session asks).
+// choice are kept as the defaults for new sessions (approvals is not: a new session asks). Safe
+// search (/safesearch) is the user's, not a session's: one value for every session.
 // Nothing is set that the user didn't choose: each harness keeps its own defaults.
-import type { ConfigCategory } from "@suite/harness/agent";
+import type { ConfigCategory, SafeSearch } from "@suite/harness/agent";
 import type { SettingName } from "@suite/protocol/types";
 import type { SessionStore } from "./store.ts";
 
@@ -39,6 +40,13 @@ export function parseApprovals(value: string): Approvals | undefined {
 /** The mode after this one: ask, review, edits, auto, ask… */
 export function nextApprovals(mode: Approvals): Approvals {
   return APPROVALS[(APPROVALS.indexOf(mode) + 1) % APPROVALS.length] ?? "ask";
+}
+
+/** How much adult content neo's web_search may return; see @neoworks/websearch. */
+export const SAFE_SEARCH: readonly SafeSearch[] = ["strict", "moderate", "off"];
+
+export function parseSafeSearch(value: string): SafeSearch | undefined {
+  return SAFE_SEARCH.find((level) => level === value);
 }
 
 export class Settings {
@@ -135,6 +143,17 @@ export class Settings {
       }
     }
     return value;
+  }
+
+  /** The user's safe-search choice; undefined until they make one (the harness's config holds). */
+  safeSearch(): SafeSearch | undefined {
+    const value = this.store.getMeta(metaKey("suite", "safesearch"));
+    return value === undefined ? undefined : parseSafeSearch(value);
+  }
+
+  /** For every session, from their next search on. Not logged in a session: it isn't one's. */
+  setSafeSearch(value: SafeSearch): void {
+    this.store.setMeta(metaKey("suite", "safesearch"), value);
   }
 
   setApprovals(session: string, value: Approvals): void {

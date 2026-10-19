@@ -297,6 +297,37 @@ describe("/login with an API key", () => {
   });
 });
 
+describe("/login tinyfish", () => {
+  test("stores TinyFish's key for neo's web search", async () => {
+    const s = await setup();
+    const c = s.client();
+    c.type("/login tinyfish");
+    await until(() => c.received.some((e) => e.topic === "secret.request"));
+    expect(c.request().title).toBe("tinyfish API key");
+    c.answer(c.request().id, KEY);
+    await until(() => notices(s).length > 0);
+    expect(notices(s)).toEqual(["Logged in to tinyfish (API key)."]);
+    expect((await readAccounts(s.authPath)).tinyfish).toEqual({ type: "api_key", key: KEY });
+    expectNoLeak(s, [c], KEY);
+  });
+
+  test("is offered with the API keys, and its variable is told", async () => {
+    const s = await setup();
+    process.env.TINYFISH_API_KEY = "env-secret-0000000";
+    const c = s.client();
+    c.type("/login key");
+    await until(() => events(s).some((e) => e.type === "choice"));
+    expect(lastChoice(s).options).toContainEqual({
+      id: "tinyfish",
+      name: "tinyfish",
+      description: "web search for neo",
+    });
+    c.type("/accounts");
+    await until(() => notices(s).length > 0);
+    expect(notices(s)[0]).toContain("tinyfish: API key from TINYFISH_API_KEY");
+  });
+});
+
 describe("/login with an account", () => {
   test("shows the address, asks for the code, stores the credentials", async () => {
     const s = await setup();

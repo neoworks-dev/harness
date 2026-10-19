@@ -14,6 +14,7 @@ import type {
   NewSessionParams,
   PromptParams,
   RequestPermission,
+  SafeSearch,
 } from "@suite/harness/agent";
 import type { SessionEvent, SessionInfo, TurnEnded } from "@suite/protocol/types";
 import type { ConnectorSnapshot } from "./gateway/registry.ts";
@@ -104,6 +105,8 @@ export interface SessionManagerOptions {
   settings?: (sessionId: string, harness: string) => Partial<Record<ConfigCategory, string>>;
   /** The hook the agent's own bash, write and edit ask through (see permissions.ts). */
   requestPermission?: (sessionId: string) => RequestPermission;
+  /** The user's safe-search choice for the agent's web search (see Settings.safeSearch). */
+  safeSearch?: () => SafeSearch | undefined;
   /** Called for each new session (it may start on a harness the user chose before). */
   created?: (sessionId: string) => void;
 }
@@ -433,6 +436,7 @@ export class SessionManager {
     if (isDefault && this.options.requestPermission) {
       params.requestPermission = this.options.requestPermission(sessionId);
     }
+    if (isDefault && this.options.safeSearch) params.safeSearch = this.options.safeSearch;
     const settings = this.options.settings?.(sessionId, harness);
     if (settings && Object.keys(settings).length > 0) params.settings = settings;
     if (row.lastSeq === 0) return agent.newSession(params);
