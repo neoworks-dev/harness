@@ -1701,6 +1701,44 @@ fn tab_walks_sessions_plan_files_and_back() {
     );
 }
 
+fn command_event() -> Event {
+    record(
+        "s1",
+        6,
+        NOW,
+        SessionEvent::ToolCall(
+            serde_json::from_value(serde_json::json!({
+                "toolCallId": "t1", "title": "bash: cargo build", "kind": "execute",
+                "status": "in_progress", "rawInput": {"command": "cargo build --release"}
+            }))
+            .unwrap(),
+        ),
+    )
+}
+
+#[test]
+fn the_agents_commands_show_next_to_the_chat() {
+    let mut app = app();
+    assert!(!screen_text(&mut app, 120, 24).contains("Terminal"));
+    app.handle_event(command_event());
+    let text = screen_text(&mut app, 120, 24);
+    assert!(
+        text.contains("Terminal") && text.contains("$ cargo build --release"),
+        "{text}"
+    );
+    // Tab gets there, Esc gives the keys back.
+    app.handle_key(key(KeyCode::Tab));
+    assert_eq!(app.focus, Some(Focus::Panel(Panel::Terminal)));
+    app.handle_key(key(KeyCode::Esc));
+    assert_eq!(app.focus, None);
+    // Too narrow for both: the chat keeps its room.
+    assert!(!screen_text(&mut app, 80, 24).contains("Terminal"));
+    // /terminal hides it.
+    type_str(&mut app, "/terminal");
+    app.handle_key(key(KeyCode::Enter));
+    assert!(!screen_text(&mut app, 120, 24).contains("Terminal"));
+}
+
 #[test]
 fn the_plan_column_wins_when_both_do_not_fit() {
     let mut app = overview();

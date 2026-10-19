@@ -91,6 +91,10 @@ pub const COMMANDS: &[Command] = &[
     local("github", "GitHub issues and pull requests (ctrl-r)"),
     local("help", "keys and commands"),
     local(
+        "terminal",
+        "show or hide the agent's commands and their output next to the chat (tab focuses it)",
+    ),
+    local(
         "files",
         "the changed files: a tree, enter opens a file (tab also gets there)",
     ),

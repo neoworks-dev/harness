@@ -558,7 +558,7 @@ fn folded_line(run: &[&ViewItem], width: usize, p: &Palette) -> Line<'static> {
         }
     }
     // Most first; ties in the order they came.
-    verbs.sort_by(|a, b| b.1.cmp(&a.1));
+    verbs.sort_by_key(|v| std::cmp::Reverse(v.1));
     let counts: Vec<String> = verbs.iter().map(|(v, n)| format!("{n} {v}")).collect();
     let failed = run
         .iter()

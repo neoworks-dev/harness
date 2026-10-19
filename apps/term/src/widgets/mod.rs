@@ -43,6 +43,7 @@ mod files;
 mod git;
 mod plan;
 mod syntax;
+mod terminal;
 mod text;
 mod usage;
 
@@ -67,7 +68,11 @@ pub(crate) use diff::DiffView;
 use files::{FileKey, FilesState};
 use git::Runner;
 use plan::PlanState;
+use terminal::TerminalState;
 use usage::UsageState;
+
+/// Lines PgUp/PgDn move in the terminal panel.
+const TERMINAL_PAGE: usize = 10;
 
 /// The side column is only worth its width from here on.
 const SIDEBAR_MIN_WIDTH: u16 = 100;
@@ -77,6 +82,7 @@ const SIDEBAR_MIN_WIDTH: u16 = 100;
 pub enum Panel {
     Plan,
     Files,
+    Terminal,
 }
 
 /// What a key in a focused panel asks the shell to do.
@@ -95,6 +101,7 @@ pub struct Widgets {
     plan: PlanState,
     usage: UsageState,
     files: FilesState,
+    terminal: TerminalState,
     diff: Option<DiffView>,
     /// toolCallId -> the guest that made the call (None: the session's own agent).
     tool_agents: HashMap<String, Option<String>>,
@@ -119,6 +126,7 @@ impl Widgets {
             plan: PlanState::default(),
             usage: UsageState::default(),
             files: FilesState::default(),
+            terminal: TerminalState::default(),
             diff: None,
             tool_agents: HashMap::new(),
             runner,
@@ -144,8 +152,10 @@ impl Widgets {
             SessionEvent::ToolCall(call) => {
                 self.tool_agents
                     .insert(call.tool_call_id.clone(), call.agent.clone());
+                self.terminal.on_call(call);
             }
             SessionEvent::ToolCallUpdate(update) => {
+                self.terminal.on_update(update);
                 let mut changed = false;
                 for content in update.content.iter().flatten() {
                     let ToolCallContent::DiffContent(d) = content else {
@@ -271,6 +281,48 @@ impl Widgets {
         }
     }
 
+    /// Whether there is a command to show in the terminal panel.
+    pub fn has_commands(&self) -> bool {
+        self.terminal.has_any()
+    }
+
+    /// Draws the terminal panel into `area`: a border on its left, a title, the commands.
+    pub fn draw_terminal(&self, frame: &mut Frame, area: Rect, focused: bool) {
+        if area.width < 6 || area.height < 2 {
+            return;
+        }
+        let p = &self.palette;
+        let border = Style::new().fg(p.border);
+        for y in area.y..area.bottom() {
+            frame.buffer_mut()[(area.x, y)]
+                .set_symbol("│")
+                .set_style(border);
+        }
+        let inner = Rect {
+            x: area.x + 2,
+            y: area.y,
+            width: area.width - 3,
+            height: area.height,
+        };
+        let mut title = title_line("Terminal", focused, p);
+        if !self.terminal.following() {
+            title.spans.push(Span::styled(
+                "  scrolled · G follows",
+                Style::new().fg(p.muted),
+            ));
+        }
+        frame.render_widget(Paragraph::new(title), Rect { height: 1, ..inner });
+        let body = Rect {
+            y: inner.y + 1,
+            height: inner.height - 1,
+            ..inner
+        };
+        let lines = self
+            .terminal
+            .render(usize::from(body.width), usize::from(body.height), p);
+        frame.render_widget(Paragraph::new(lines), body);
+    }
+
     /// A diff the user opened from the files panel, drawn over `area` (the chat's area), if
     /// one is open.
     pub fn draw_overlay(&self, frame: &mut Frame, area: Rect) -> bool {
@@ -310,6 +362,11 @@ impl Widgets {
                 FileKey::Open => self.open_diff(),
                 FileKey::Handled => {}
             },
+            Panel::Terminal => {
+                if self.terminal.key(key, TERMINAL_PAGE) {
+                    return WidgetAction::Leave;
+                }
+            }
         }
         WidgetAction::Redraw
     }

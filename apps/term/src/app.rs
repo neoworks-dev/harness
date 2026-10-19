@@ -52,6 +52,10 @@ const EDITOR_ROWS: usize = 8;
 const SPINNER: [char; 4] = ['◐', '◓', '◑', '◒'];
 /// The chat needs at least this much beside the sessions sidebar, else the sidebar is hidden.
 const CHAT_MIN_WIDTH: u16 = 52;
+
+/// The terminal panel's width: two fifths of what the chat would have, within these.
+const TERMINAL_MIN_WIDTH: u16 = 40;
+const TERMINAL_MAX_WIDTH: u16 = 100;
 /// Most rows a prompt takes where the editor is (its question, preview, buttons and hint).
 const PANEL_ROWS: u16 = 16;
 /// How long the editor must have been idle before a prompt takes its place.
@@ -284,6 +288,10 @@ pub struct App {
     last_spin: i64,
     size: (u16, u16),
     sidebar_shown: bool,
+    /// `/terminal` hides the terminal panel; it shows while there are commands and room.
+    terminal_on: bool,
+    /// Where the terminal panel was drawn last (the wheel scrolls it there).
+    terminal_area: Option<Rect>,
     dirty: bool,
     clear: bool,
 }
@@ -348,6 +356,8 @@ impl App {
             last_spin: 0,
             size: (80, 24),
             sidebar_shown: false,
+            terminal_on: true,
+            terminal_area: None,
             dirty: true,
             clear: false,
         }
@@ -1081,7 +1091,8 @@ impl App {
         fx
     }
 
-    /// The mouse wheel scrolls the chat (or the open diff). Other mouse events are ignored.
+    /// The mouse wheel scrolls the chat (or the open diff, or the terminal panel under the
+    /// pointer). Other mouse events are ignored.
     pub fn handle_mouse(&mut self, mouse: MouseEvent) {
         let down = match mouse.kind {
             MouseEventKind::ScrollUp => false,
@@ -1093,6 +1104,15 @@ impl App {
             self.github.wheel(down);
         } else if let Some(t) = self.transcript.as_mut() {
             t.wheel(down);
+        } else if self
+            .terminal_area
+            .is_some_and(|a| (a.x..a.right()).contains(&mouse.column))
+        {
+            let code = if down { KeyCode::Down } else { KeyCode::Up };
+            for _ in 0..WHEEL_LINES {
+                self.widgets
+                    .handle_key(Panel::Terminal, KeyEvent::new(code, KeyModifiers::NONE));
+            }
         } else if self.widgets.overlay_open() {
             let code = if down { KeyCode::Down } else { KeyCode::Up };
             for _ in 0..WHEEL_LINES {
@@ -1235,10 +1255,11 @@ impl App {
         }
     }
 
-    /// Tab: editor, sessions, plan, files (the ones on screen), editor.
+    /// Tab: editor, sessions, terminal, plan, files (the ones on screen), editor.
     fn cycle_focus(&mut self) {
         let order = [
             (self.sessions_shown, Focus::Sessions),
+            (self.terminal_area.is_some(), Focus::Panel(Panel::Terminal)),
             (self.sidebar_shown, Focus::Panel(Panel::Plan)),
             (self.sidebar_shown, Focus::Panel(Panel::Files)),
         ];
@@ -1283,6 +1304,17 @@ impl App {
             self.notify("terminal too narrow for the files panel", false);
         } else {
             self.notify("no changed files", false);
+        }
+    }
+
+    /// `/terminal`: show or hide the agent's commands next to the chat.
+    fn toggle_terminal(&mut self) {
+        self.terminal_on = !self.terminal_on;
+        if self.terminal_on && !self.widgets.has_commands() {
+            self.notify(
+                "no commands yet; they show here once the agent runs one",
+                false,
+            );
         }
     }
 
@@ -1744,6 +1776,7 @@ impl App {
             "github" => self.github.open(),
             "theme" => self.switch_theme(text),
             "files" => self.focus_files(),
+            "terminal" => self.toggle_terminal(),
             "quit" => fx.push(Effect::Quit),
             _ => self.send(text.to_string(), fx),
         }
@@ -1797,13 +1830,29 @@ impl App {
                 ..area
             });
         let left_w = left.map_or(0, |r| r.width);
-        let main = Rect {
+        let mut main = Rect {
             x: area.x + left_w,
             width: area.width - left_w - right_w,
             ..area
         };
+        // The agent's commands to the right of the chat, when the chat keeps its room.
+        let terminal = (self.terminal_on
+            && self.widgets.has_commands()
+            && main.width >= CHAT_MIN_WIDTH + 1 + TERMINAL_MIN_WIDTH)
+            .then(|| {
+                let w = (main.width * 2 / 5)
+                    .clamp(TERMINAL_MIN_WIDTH, TERMINAL_MAX_WIDTH)
+                    .min(main.width - CHAT_MIN_WIDTH - 1);
+                main.width -= w + 1;
+                Rect {
+                    x: main.x + main.width + 1,
+                    y: area.y,
+                    width: w,
+                    height: area.height,
+                }
+            });
         let side = side.map(|w| Rect {
-            x: main.x + main.width + 1,
+            x: area.x + area.width - w,
             y: area.y,
             width: w,
             height: area.height,
@@ -1854,6 +1903,7 @@ impl App {
             status: at(chat_h + rule_h + editor_h, status_h),
             agents: at(h, agents_h),
             side,
+            terminal,
             left,
         }
     }
@@ -1892,6 +1942,7 @@ impl App {
         self.size = (area.width, area.height);
         let areas = self.areas(area);
         self.sidebar_shown = areas.side.is_some();
+        self.terminal_area = areas.terminal;
         self.sessions_shown = areas.left.is_some();
         if std::mem::take(&mut self.sessions_wanted) {
             if self.sessions_shown {
@@ -1902,7 +1953,12 @@ impl App {
             }
         }
         match self.focus {
-            Some(Focus::Panel(_)) if !self.sidebar_shown => self.focus = None,
+            Some(Focus::Panel(Panel::Terminal)) if !self.terminal_area.is_some() => {
+                self.focus = None
+            }
+            Some(Focus::Panel(Panel::Plan | Panel::Files)) if !self.sidebar_shown => {
+                self.focus = None;
+            }
             Some(Focus::Sessions) if !self.sessions_shown => self.focus = None,
             Some(Focus::Agents) if !self.agents.visible(self.now_ms) => self.focus = None,
             _ => {}
@@ -1936,6 +1992,10 @@ impl App {
         }
         if let Some(left) = areas.left {
             self.draw_sessions(frame, left);
+        }
+        if let Some(terminal) = areas.terminal {
+            let focused = self.focus == Some(Focus::Panel(Panel::Terminal));
+            self.widgets.draw_terminal(frame, terminal, focused);
         }
         if let Some(side) = areas.side {
             let panel = match self.focus {
@@ -2515,6 +2575,8 @@ struct Areas {
     /// The subagents list under the status lines.
     agents: Rect,
     side: Option<Rect>,
+    /// The terminal panel, between the chat and the side column.
+    terminal: Option<Rect>,
     /// The sessions sidebar.
     left: Option<Rect>,
 }

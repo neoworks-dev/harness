@@ -288,6 +288,16 @@ fn prune_children(
 }
 
 /// The item as styled lines, none wider than `width` cells (no lines at all for width 0).
+/// A shell command as styled spans (command names, strings, variables, operators, comments),
+/// newlines kept and the text unchanged; `base` is patched under every span.
+pub fn highlight_shell(
+    source: &str,
+    palette: &Palette,
+    base: ratatui::style::Style,
+) -> Vec<ratatui::text::Span<'static>> {
+    shell::highlight(source, palette, base)
+}
+
 pub fn render_item(item: &ViewItem, width: u16, opts: &Options) -> Vec<Line<'static>> {
     render_item_images(item, width, opts).lines
 }
