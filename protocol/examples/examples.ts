@@ -296,7 +296,7 @@ export const examples: Record<string, Envelope> = {
         agent: "claude",
         title: "Start a subagent?",
         details: [
-          { key: "Harness", value: "pi" },
+          { key: "Harness", value: "neo" },
           { key: "Model", value: "deepseek/deepseek-v4-flash" },
           { key: "Effort", value: "medium" },
           {
@@ -306,7 +306,7 @@ export const examples: Record<string, Envelope> = {
         ],
         content: [{ type: "text", text: "Fix the failing login test and run the suite." }],
         options: [
-          { id: "allow", name: "Start pi", kind: "allow_once" },
+          { id: "allow", name: "Start neo", kind: "allow_once" },
           { id: "reject", name: "Reject", kind: "reject_once" },
         ],
       },
@@ -563,7 +563,7 @@ export const examples: Record<string, Envelope> = {
       ts: 1760565601000,
       event: {
         type: "harness_message",
-        harness: "pi",
+        harness: "neo",
         message: { role: "user", content: "Create hello.txt", timestamp: 1760565600100 },
       },
     },

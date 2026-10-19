@@ -954,13 +954,13 @@ fn events_of_other_sessions_are_ignored() {
 #[test]
 fn settings_and_approvals_come_from_setting_changed() {
     let mut app = app();
-    app.handle_event(setting("pi", SettingName::Model, "sonnet"));
+    app.handle_event(setting("neo", SettingName::Model, "sonnet"));
     app.handle_event(setting("claude", SettingName::Effort, "high"));
     app.handle_event(setting("suite", SettingName::Approvals, "auto"));
     assert_eq!(app.approvals(), Approvals::Auto);
     let line = app.status_lines(100)[0].to_string();
     assert!(
-        line.ends_with("pi · model sonnet"),
+        line.ends_with("neo · model sonnet"),
         "only the harness's own: {line}"
     );
     assert!(!line.contains("suite") && !line.contains("auto"));
@@ -981,8 +981,8 @@ fn settings_and_approvals_come_from_setting_changed() {
 #[test]
 fn the_harness_comes_from_its_setting_and_defaults_to_pi() {
     let mut app = app();
-    assert_eq!(app.harness(), "pi");
-    assert!(app.status_lines(100)[0].to_string().ends_with("· pi"));
+    assert_eq!(app.harness(), "neo");
+    assert!(app.status_lines(100)[0].to_string().ends_with("· neo"));
     app.handle_event(setting("claude", SettingName::Model, "opus"));
     app.on_setting("suite", "harness", "claude");
     assert_eq!(app.harness(), "claude");
@@ -992,7 +992,7 @@ fn the_harness_comes_from_its_setting_and_defaults_to_pi() {
             .ends_with("· claude · model opus")
     );
     app.begin_session("s2", "/w");
-    assert_eq!(app.harness(), "pi", "a new session starts over");
+    assert_eq!(app.harness(), "neo", "a new session starts over");
 }
 
 #[test]
@@ -1251,7 +1251,7 @@ fn permission_with_diff(changed: usize) -> ViewItem {
         })
         .collect();
     serde_json::from_value(json!({
-        "ref": "p-7", "kind": "tool", "label": "pi asks: Edit src/app.ts", "state": "pending",
+        "ref": "p-7", "kind": "tool", "label": "neo asks: Edit src/app.ts", "state": "pending",
         "component": {"type":"stack","gap":"s","children":[
             {"type":"diff","path":"src/app.ts","lines":lines},
             {"type":"row","gap":"s","children":buttons}]}
@@ -1297,7 +1297,7 @@ fn edit_review_card() -> ViewItem {
         })
         .collect::<Vec<_>>();
     serde_json::from_value(json!({
-        "ref": "p-9", "kind": "tool", "label": "pi asks: Edited src/a.ts — keep it?",
+        "ref": "p-9", "kind": "tool", "label": "neo asks: Edited src/a.ts — keep it?",
         "state": "pending",
         "component": {"type":"stack","gap":"s","children":[
             {"type":"diff","path":"src/a.ts","lines":lines},
@@ -1775,7 +1775,7 @@ fn the_sidebar_appears_with_a_plan_and_tab_cycles_focus() {
 #[test]
 fn layout_at_100x30() {
     let mut app = scenario();
-    app.handle_event(setting("pi", SettingName::Model, "sonnet"));
+    app.handle_event(setting("neo", SettingName::Model, "sonnet"));
     let text = screen_text(&mut app, 100, 30);
     snapshot("layout-100x30", &text);
 }

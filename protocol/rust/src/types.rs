@@ -1663,7 +1663,7 @@ pub struct TextContent {
     pub text: String,
 }
 
-/// An image a tool returned (pi's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log.
+/// An image a tool returned (neo's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log.
 /// Tagged `type: "image"` inside [`ToolCallContent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImageContent {
@@ -1775,7 +1775,7 @@ pub struct FocusChanged {
 /// Tagged `type: "harness_message"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HarnessMessage {
-    /// Which harness wrote it, e.g. pi.
+    /// Which harness wrote it, e.g. neo.
     #[serde(rename = "harness")]
     pub harness: String,
     /// Opaque to everyone but that harness.
@@ -1903,7 +1903,7 @@ pub struct UserNote {
 pub struct SubagentStarted {
     #[serde(rename = "id")]
     pub id: String,
-    /// Harness name: pi, claude, codex…
+    /// Harness name: neo, claude, codex…
     #[serde(rename = "agent")]
     pub agent: String,
     #[serde(rename = "task")]
@@ -2010,11 +2010,11 @@ pub enum PermissionOptionKind {
     RejectAlways,
 }
 
-/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set.
+/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set.
 /// Tagged `type: "setting_changed"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SettingChanged {
-    /// pi, claude, codex…
+    /// neo, claude, codex…
     #[serde(rename = "harness")]
     pub harness: String,
     #[serde(rename = "option")]

@@ -1,6 +1,6 @@
 // Session manager: one turn at a time per session, inputs queued behind it. Talks to the agent only
 // through the ACP-style interface in @suite/harness/agent. A session runs on one harness at a time
-// (pi, or an ACP harness like Claude Code the user picked with /harness); each has its own agent
+// (neo, or an ACP harness like Claude Code the user picked with /harness); each has its own agent
 // session here, made on first use.
 import type {
   Agent,

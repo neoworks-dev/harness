@@ -552,7 +552,7 @@ export interface TextContent {
   text: string;
 }
 
-/** An image a tool returned (pi's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log. */
+/** An image a tool returned (neo's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log. */
 export interface ImageContent {
   type: "image";
   src: string;
@@ -616,7 +616,7 @@ export interface FocusChanged {
 /** A complete message in the harness's native format. Views ignore it; the harness rebuilds its context from these after a restart. */
 export interface HarnessMessage {
   type: "harness_message";
-  /** Which harness wrote it, e.g. pi. */
+  /** Which harness wrote it, e.g. neo. */
   harness: string;
   /** Opaque to everyone but that harness. */
   message: unknown;
@@ -701,7 +701,7 @@ export interface UserNote {
 export interface SubagentStarted {
   type: "subagent_started";
   id: string;
-  /** Harness name: pi, claude, codex… */
+  /** Harness name: neo, claude, codex… */
   agent: string;
   task: string;
   /** The model it runs with, when one was chosen for this task or by the user. */
@@ -763,10 +763,10 @@ export interface PermissionResolved {
 
 export type PermissionOptionKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
 
-/** The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. */
+/** The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. */
 export interface SettingChanged {
   type: "setting_changed";
-  /** pi, claude, codex… */
+  /** neo, claude, codex… */
   harness: string;
   option: SettingName;
   value: string;

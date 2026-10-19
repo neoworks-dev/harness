@@ -29,7 +29,7 @@ export interface SessionStatus {
   running: boolean;
   /** When the running turn started (ms), for the elapsed time. */
   turnStartedAt?: number;
-  /** The harness the session runs on: pi, claude, codex… */
+  /** The harness the session runs on: neo, claude, codex… */
   harness: string;
   approvals: Approvals;
   /** Per harness, so switching back shows that harness's choices again. */
@@ -39,7 +39,7 @@ export interface SessionStatus {
 }
 
 export function initialStatus(): SessionStatus {
-  return { running: false, harness: "pi", approvals: "ask", settings: {} };
+  return { running: false, harness: "neo", approvals: "ask", settings: {} };
 }
 
 /** The status after one more event. Returns the same object when the event changes nothing. */

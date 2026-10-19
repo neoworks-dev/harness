@@ -44,10 +44,10 @@ export interface DaemonOptions {
   /** Guest agents (see guests/config.ts); none when absent. */
   guests?: Record<string, GuestConfig>;
   /**
-   * The pi harness delegate hands tasks to ("pi" subagents are new sessions of it). Defaults to
-   * `agent` when that is pi; tests give one with a fake model.
+   * The neo harness delegate hands tasks to ("neo" subagents are new sessions of it). Defaults to
+   * `agent` when that is neo; tests give one with a fake model.
    */
-  pi?: Agent;
+  neo?: Agent;
 }
 
 export interface Daemon {
@@ -122,7 +122,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     guard: permissions.guard,
     handoff: (session, harness, all) => handoffSummary(store, session, harness, agent.name, all),
     storeImage: (data, mime) => assets.put({ bytes: Buffer.from(data, "base64"), mime }).handle,
-    pi: options.pi ?? (agent.name === "pi" ? agent : undefined),
+    neo: options.neo ?? (agent.name === "neo" ? agent : undefined),
     resolveAsset: (handle) => assets.resolve(handle),
     requestPermission: (session, name) => permissions.hook(session, name),
   });

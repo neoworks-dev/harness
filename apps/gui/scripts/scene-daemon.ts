@@ -89,19 +89,19 @@ daemon.sessions.input(child.id, "desktop", "wait:600000 write the dark palette")
 append({
   type: "subagent_started",
   id: "d1",
-  agent: "pi",
+  agent: "neo",
   task: "Search the web for scrollbar-gutter support",
   model: "deepseek/deepseek-v4-flash",
 });
 append({
   type: "tool_call",
-  toolCallId: "pi:t1",
+  toolCallId: "neo:t1",
   title: "search: scrollbar-gutter browser support",
   kind: "search",
   status: "in_progress",
-  agent: "pi",
+  agent: "neo",
 });
-append({ type: "usage", agent: "pi", inputTokens: 3000, outputTokens: 412 });
+append({ type: "usage", agent: "neo", inputTokens: 3000, outputTokens: 412 });
 append({
   type: "subagent_started",
   id: "d2",

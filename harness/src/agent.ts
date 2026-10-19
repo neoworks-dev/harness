@@ -1,5 +1,5 @@
 // The ACP-style contract between the daemon and an agent. The daemon only talks to agents through
-// this, so the pi harness can be swapped for another implementation (or a guest bridge) later.
+// this, so the neo harness can be swapped for another implementation (or a guest bridge) later.
 //
 // Flow per session: newSession/loadSession once, then prompt() per turn. The daemon appends every
 // AgentUpdate to the session log in the order onUpdate is called, then appends turn_ended with
@@ -47,7 +47,7 @@ export interface ConfigOption {
   category: ConfigCategory;
   /** The current value, if known. */
   current?: string;
-  /** The values to offer. A harness may accept others (pi: any provider/model). */
+  /** The values to offer. A harness may accept others (neo: any provider/model). */
   values: { value: string; name: string; description?: string }[];
 }
 
@@ -151,7 +151,7 @@ export interface AgentSession {
 }
 
 export interface Agent {
-  /** Short name, e.g. "pi"; also used as HarnessMessage.harness. */
+  /** Short name, e.g. "neo"; also used as HarnessMessage.harness. */
   readonly name: string;
   newSession(params: NewSessionParams): Promise<AgentSession>;
   loadSession(params: LoadSessionParams): Promise<AgentSession>;

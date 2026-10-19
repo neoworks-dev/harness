@@ -21,17 +21,17 @@ Without flags it shows the agent's current session if that works in this directo
 ▎  Done. The header now…    │                                        │
  ◐ Fix the login  +12 −3    │ ─────────────────────────────────────  │
    Looking at the valid…    │ > message the agent · / for commands   (grows to 8 lines)
-                            │ ~/site · main ↑1 · pi · model sonnet · in photo-editor
+                            │ ~/site · main ↑1 · neo · model sonnet · in photo-editor
                             │ ctx 35% · $0.18 · ◐ working 12s · 2 queued · disconnected — reconnecting
                             │ ⏵⏵ accept edits on (shift+tab to cycle)       press ctrl-c again to quit
 ```
 
-- Line 1: the directory, git branch, the session's harness (`pi`, `claude`, `codex`; `pi` until a `/harness` setting says otherwise) with the settings chosen for it (`/model`, `/effort`, `/mode`, only what is set) and, when the agent is in another app, `in <app>`.
+- Line 1: the directory, git branch, the session's harness (`neo`, `claude`, `codex`; `neo` until a `/harness` setting says otherwise) with the settings chosen for it (`/model`, `/effort`, `/mode`, only what is set) and, when the agent is in another app, `in <app>`.
 - Line 2: the usage line (context and cost of the session's own agent; guests' usage is left out), then the turn state (a spinner and the time while a turn runs, queued inputs) or the lost connection in the danger color.
 - Line 3: the approvals mode (see below), and short messages (errors from the daemon, "copied").
 - The side column (plan above files) shows only when there is something in it and the terminal is wide enough. A diff opened from the files panel replaces the chat.
 - The sessions sidebar (left, 31 columns) lists every session, grouped by where it works: a muted header per repository (its main checkout's sessions directly under it) and, under it, a `⎇ name` header per worktree (`<repo>/.worktrees/<name>`, or any linked worktree, found from its `.git` file and named by its branch). Sessions outside a repository group under their directory's name. Repositories and worktrees are ordered by their latest activity, sessions in a group too; a session another one delegated to (`parent`) is indented with `↳` under its parent when they share a group. Each session shows a spinner while it runs, the title (bold accent for the one you are in, with a bar in the margin), `+added −removed` lines of its edits in green and red, and under the title a muted line with the last message (`2 queued ·` in front when inputs wait). It is fed by `list_sessions` at start and `session.changed` events, so other terminals' and apps' sessions move and update live. It needs 52 columns for the chat beside it (and yields to the plan / files column when both do not fit), else it is hidden; `/sidebar` switches it off and on.
-- While a subagent runs (and for 5 s after it ends) a list under the status lines shows it, like Claude Code's: `● main · claude`, then a row per subagent, `○ pi · deepseek-v4-flash  search tools: weather  1m 12s · 3.4k tokens` (a running one `○`, then `✓` or `✗`; its latest tool call or `thinking…`; elapsed time; its tokens from the usage events). A subagent working in a worktree of its own shows `⎇ fix-login` after its name. It is only drawn when the pane is at least 12 rows tall.
+- While a subagent runs (and for 5 s after it ends) a list under the status lines shows it, like Claude Code's: `● main · claude`, then a row per subagent, `○ neo · deepseek-v4-flash  search tools: weather  1m 12s · 3.4k tokens` (a running one `○`, then `✓` or `✗`; its latest tool call or `thinking…`; elapsed time; its tokens from the usage events). A subagent working in a worktree of its own shows `⎇ fix-login` after its name. It is only drawn when the pane is at least 12 rows tall.
 - Items are drawn by `renderers/ratatui` (cached per item, width and options), with a blank line between them. `NO_COLOR` turns colors off.
 
 ## Keys
@@ -72,7 +72,7 @@ While scrolled up, new output does not move the view; a dim `↓ new output (End
 
 **Sessions sidebar.** With focus (Ctrl-G or Tab; the selected row is reversed): Up/Down or j/k move over the sessions (the group headers are skipped), `[` / `]` or Ctrl-Up / Ctrl-Down jump to the first session of the previous / next group, PgUp/PgDn, g/G jump to the ends, Enter shows that session (the same switch as the Ctrl-S picker: the agent moves here too), Esc, q, h or Left give the keys back to the editor.
 
-**Commands.** `/` at the start of the input opens a menu (Up/Down, Tab completes, Enter runs). Sent to the daemon like any input: `/clear`, `/model`, `/effort`, `/mode`, `/resume`, `/claude <task>`, `/codex <task>`, `/harness [pi|claude|codex]` (switch this session's agent), `/approvals [ask|review|edits|auto]`. Local: `/sessions`, `/sidebar`, `/expand`, `/thoughts`, `/github`, `/help`, `/quit`.
+**Commands.** `/` at the start of the input opens a menu (Up/Down, Tab completes, Enter runs). Sent to the daemon like any input: `/clear`, `/model`, `/effort`, `/mode`, `/resume`, `/claude <task>`, `/codex <task>`, `/harness [neo|claude|codex]` (switch this session's agent), `/approvals [ask|review|edits|auto]`. Local: `/sessions`, `/sidebar`, `/expand`, `/thoughts`, `/github`, `/help`, `/quit`.
 
 **`/clear`** makes the daemon switch to a fresh session in the same directory; the app follows it (the next `agent.focus` names it) and starts over with an empty chat and panels.
 

@@ -470,7 +470,7 @@ export class SessionView {
     return [{ op: "blocks", ref, path: [], from, blocks: blocks.slice(from) }];
   }
 
-  /** A delegation reads `pi · first line of the task`, whatever the harness called its tool. */
+  /** A delegation reads `neo · first line of the task`, whatever the harness called its tool. */
   private callLabel(call: Call): string {
     if (call.agent !== undefined || call.tool !== "delegate" || !isRecord(call.rawInput)) {
       return call.title;

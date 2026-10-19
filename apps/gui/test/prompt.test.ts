@@ -21,7 +21,7 @@ const text = (value: string): Component => ({
 const permission: ViewItem = {
   ref: "p-1",
   kind: "tool",
-  label: "pi asks: Write a.txt",
+  label: "neo asks: Write a.txt",
   state: "pending",
   component: {
     type: "stack",
@@ -89,7 +89,7 @@ const choice: ViewItem = {
 
 test("a permission card is its details and its buttons", () => {
   const prompt = promptOf(permission);
-  expect(prompt?.title).toBe("pi asks: Write a.txt");
+  expect(prompt?.title).toBe("neo asks: Write a.txt");
   expect(prompt?.body.map((c) => c.type)).toEqual(["kv"]);
   expect(prompt?.buttons.map((b) => b.label)).toEqual(["Allow", "Deny"]);
 });

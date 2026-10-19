@@ -62,7 +62,7 @@ fn a_row_says_what_the_subagent_does_how_long_and_its_tokens() {
     let mut a = Agents::default();
     a.on_record(&started(
         "d1",
-        "pi",
+        "neo",
         1_000,
         json!({"model": "deepseek/deepseek-v4-flash"}),
     ));
@@ -73,7 +73,7 @@ fn a_row_says_what_the_subagent_does_how_long_and_its_tokens() {
         got,
         [
             "● main · claude".to_string(),
-            flush("○ pi · deepseek-v4-flash  starting…", "2s", 80)
+            flush("○ neo · deepseek-v4-flash  starting…", "2s", 80)
         ]
     );
 
@@ -81,7 +81,7 @@ fn a_row_says_what_the_subagent_does_how_long_and_its_tokens() {
         "s1",
         2,
         2_000,
-        json!({"type": "agent_thought_chunk", "messageId": "pi-1", "text": "hm", "agent": "pi"}),
+        json!({"type": "agent_thought_chunk", "messageId": "neo-1", "text": "hm", "agent": "neo"}),
     ));
     assert_eq!(a.get("d1").unwrap().activity, "thinking…");
     a.on_record(&rec(
@@ -89,8 +89,8 @@ fn a_row_says_what_the_subagent_does_how_long_and_its_tokens() {
         3,
         3_000,
         json!({
-            "type": "tool_call", "toolCallId": "pi:t1", "title": "search tools: weather in Berlin",
-            "kind": "search", "status": "in_progress", "agent": "pi"
+            "type": "tool_call", "toolCallId": "neo:t1", "title": "search tools: weather in Berlin",
+            "kind": "search", "status": "in_progress", "agent": "neo"
         }),
     ));
     a.on_record(&rec(
@@ -98,7 +98,7 @@ fn a_row_says_what_the_subagent_does_how_long_and_its_tokens() {
         4,
         4_000,
         json!({
-            "type": "usage", "agent": "pi", "inputTokens": 3000, "outputTokens": 412
+            "type": "usage", "agent": "neo", "inputTokens": 3000, "outputTokens": 412
         }),
     ));
     let now = 1_000 + 72_000;
@@ -106,7 +106,7 @@ fn a_row_says_what_the_subagent_does_how_long_and_its_tokens() {
     assert_eq!(
         got[1],
         flush(
-            "○ pi · deepseek-v4-flash  search tools: weather in Berlin",
+            "○ neo · deepseek-v4-flash  search tools: weather in Berlin",
             "1m 12s · 3.4k tokens",
             80
         )
@@ -128,7 +128,7 @@ fn a_row_says_what_the_subagent_does_how_long_and_its_tokens() {
 #[test]
 fn a_finished_row_shows_its_outcome_for_five_seconds() {
     let mut a = Agents::default();
-    a.on_record(&started("d1", "pi", 0, json!({})));
+    a.on_record(&started("d1", "neo", 0, json!({})));
     a.on_record(&started("d2", "claude", 0, json!({"model": "sonnet"})));
     a.on_record(&started("d3", "codex", 0, json!({})));
     a.on_record(&ended("d1", 10_000, "end_turn"));
@@ -139,13 +139,13 @@ fn a_finished_row_shows_its_outcome_for_five_seconds() {
         at(13_000),
         [
             "● main · claude".to_string(),
-            flush("✓ pi  done", "10s", 60),
+            flush("✓ neo  done", "10s", 60),
             flush("✗ claude · sonnet  stopped", "11s", 60),
             flush("✓ codex  done", "12s", 60),
         ]
     );
     assert!(a.visible(14_999));
-    // pi's row is gone after five seconds, the others follow.
+    // neo's row is gone after five seconds, the others follow.
     assert_eq!(at(15_500).len(), 3);
     assert!(a.visible(16_000));
     assert!(!a.visible(17_100));
@@ -156,7 +156,7 @@ fn a_finished_row_shows_its_outcome_for_five_seconds() {
 #[test]
 fn a_turn_that_ended_leaves_nothing_running() {
     let mut a = Agents::default();
-    a.on_record(&started("d1", "pi", 0, json!({})));
+    a.on_record(&started("d1", "neo", 0, json!({})));
     a.on_record(&rec(
         "s1",
         5,
@@ -206,7 +206,7 @@ fn a_subagent_in_a_directory_of_its_own_is_followed_through_its_session() {
 #[test]
 fn keys_select_open_and_stop() {
     let mut a = Agents::default();
-    a.on_record(&started("d1", "pi", 0, json!({})));
+    a.on_record(&started("d1", "neo", 0, json!({})));
     a.on_record(&started(
         "d2",
         "claude",
@@ -258,7 +258,7 @@ fn keys_select_open_and_stop() {
 #[test]
 fn the_focused_list_has_its_keys_and_a_reversed_selection() {
     let mut a = Agents::default();
-    a.on_record(&started("d1", "pi", 0, json!({})));
+    a.on_record(&started("d1", "neo", 0, json!({})));
     a.on_record(&started("d2", "claude", 0, json!({})));
     a.focus(1_000);
     let lines = a.lines(60, 1_000, &MAIN, true, &styles());
@@ -282,7 +282,7 @@ fn the_focused_list_has_its_keys_and_a_reversed_selection() {
 fn many_subagents_fold_and_nothing_overflows() {
     let mut a = Agents::default();
     for i in 0..9 {
-        a.on_record(&started(&format!("d{i}"), "pi", 0, json!({"model": "a-very-long-model-name-indeed", "cwd": "/w/some/where", "child": format!("c{i}")})));
+        a.on_record(&started(&format!("d{i}"), "neo", 0, json!({"model": "a-very-long-model-name-indeed", "cwd": "/w/some/where", "child": format!("c{i}")})));
     }
     a.on_child_record(&rec("c8", 2, 1, json!({"type": "tool_call", "toolCallId": "t", "title": "日本語の長いタイトルがここにあります", "kind": "other", "status": "pending"})));
     let lines = a.lines(60, 100_000, &MAIN, true, &styles());

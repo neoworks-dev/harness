@@ -219,7 +219,7 @@ describe("session view", () => {
     const { view } = feed([
       { type: "app_connected", app: "pad", kind: "app", v: 1, tools: [] },
       { type: "focus_changed", app: "pad", context: { file: "a.txt" } },
-      { type: "harness_message", harness: "pi", message: {} },
+      { type: "harness_message", harness: "neo", message: {} },
       { type: "turn_ended", stopReason: "end_turn" },
       { type: "turn_ended", stopReason: "error", error: "rate limited" },
     ]);

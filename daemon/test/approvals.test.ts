@@ -15,7 +15,7 @@ afterEach(async () => {
 });
 
 async function setup(): Promise<{ daemon: TestDaemon; session: string; agent: FakeAgent }> {
-  const agent = new FakeAgent("pi");
+  const agent = new FakeAgent("neo");
   const daemon = await startTestDaemon({ agent });
   cleanups.push(() => daemon.stop());
   return { daemon, session: daemon.sessions.create({}).id, agent };
@@ -91,7 +91,7 @@ describe("the agent's own tools by approvals mode", () => {
     const [request] = requests(daemon, session);
     if (request?.type !== "permission_request") throw new Error("no request");
     expect(request).toMatchObject({
-      agent: "pi",
+      agent: "neo",
       title: "ls",
       kind: "execute",
       toolCallId: "tc1",
@@ -121,7 +121,7 @@ describe("the agent's own tools by approvals mode", () => {
         .snapshot()
         .items.find((i) => i.ref === `p-${request.id}`);
     expect(item()).toMatchObject({
-      label: "pi asks: edit a.ts",
+      label: "neo asks: edit a.ts",
       state: "pending",
       component: {
         type: "stack",
@@ -195,7 +195,7 @@ describe("reads and sensitive files", () => {
       const pending = ask({ ...read(join(daemon.dir, ".env")), toolCallId: "tc" });
       const request = await nextRequest(daemon, session, seen++);
       expect(request).toMatchObject({
-        agent: "pi",
+        agent: "neo",
         title: "Read .env?",
         kind: "read",
         toolCallId: "tc",
@@ -298,7 +298,7 @@ describe("review mode, the agent's own tools", () => {
     const pending = ask({ ...edit, phase: "after", content: [change] });
     const request = await nextRequest(daemon, session, 0);
     expect(request).toMatchObject({
-      agent: "pi",
+      agent: "neo",
       title: "Edited a.ts — keep it?",
       kind: "edit",
       toolCallId: "tc",
@@ -314,7 +314,7 @@ describe("review mode, the agent's own tools", () => {
       .snapshot()
       .items.find((i) => i.ref === `p-${request.id}`);
     expect(item).toMatchObject({
-      label: "pi asks: Edited a.ts — keep it?",
+      label: "neo asks: Edited a.ts — keep it?",
       state: "pending",
       component: { type: "stack", children: [{ type: "diff" }, { type: "row" }] },
     });
@@ -511,7 +511,7 @@ describe("edits mode, the agent's own tools", () => {
 });
 
 describe("notes with an answer", () => {
-  test("the pi hook gets the note back; the answered card shows it", async () => {
+  test("the neo hook gets the note back; the answered card shows it", async () => {
     const { daemon, session, agent } = await setup();
     const ask = await hookOf(daemon, session, agent);
     const pending = ask({ title: "make build", kind: "execute" });
@@ -835,7 +835,7 @@ describe("review after the turn", () => {
       command: ["bun", join(import.meta.dir, "fake-acp-agent.ts")],
       permissions: "ask" as const,
     };
-    const daemon = await startTestDaemon({ agent: new FakeAgent("pi"), guests: { fake: guest } });
+    const daemon = await startTestDaemon({ agent: new FakeAgent("neo"), guests: { fake: guest } });
     cleanups.push(() => daemon.stop());
     const session = daemon.sessions.create({}).id;
     daemon.settings.setApprovals(session, "edits");

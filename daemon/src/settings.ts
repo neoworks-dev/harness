@@ -45,7 +45,7 @@ export class Settings {
   /** `main`: the harness a session runs on until the user picks another (the daemon's agent). */
   constructor(
     private readonly store: SessionStore,
-    private readonly main = "pi",
+    private readonly main = "neo",
   ) {}
 
   /** This session's choices for a harness, over the user's last choices. */

@@ -12,7 +12,7 @@ export type AgentState = "running" | "done" | "failed" | "stopped";
 
 export interface AgentRow {
   id: string;
-  /** Harness name: pi, claude, codex… */
+  /** Harness name: neo, claude, codex… */
   harness: string;
   model?: string;
   task: string;

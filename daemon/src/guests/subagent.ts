@@ -1,6 +1,6 @@
-// pi as a subagent (delegate {agent: "pi"}): a second pi conversation next to the session's
-// agent, made with the same harness, so a session that runs on Claude Code can hand work to pi
-// and the other way round. Its updates are labelled "pi" like a guest's and never reach pi's
+// neo as a subagent (delegate {agent: "neo"}): a second neo conversation next to the session's
+// agent, made with the same harness, so a session that runs on Claude Code can hand work to neo
+// and the other way round. Its updates are labelled "neo" like a guest's and never reach neo's
 // own history (no harness_message), and its gateway client may not delegate.
 import type {
   Agent,
@@ -19,7 +19,7 @@ import type { HarnessSettings } from "../settings.ts";
 import { type FocusTarget, ToldState } from "../told.ts";
 import type { GuestRunResult, RunOptions } from "./run.ts";
 
-export const PI = "pi";
+export const NEO = "neo";
 
 export interface SubagentOptions {
   log: Logger;
@@ -29,7 +29,7 @@ export interface SubagentOptions {
   resolveAsset?: (handle: string) => string | undefined;
   /** The hook its bash, write and edit ask through (see permissions.ts). */
   requestPermission?: (session: string) => RequestPermission;
-  /** What the user chose for pi in this session (model, effort). */
+  /** What the user chose for neo in this session (model, effort). */
   settings: (session: string) => HarnessSettings;
   connectors: () => ConnectorSnapshot[];
   focus: (session: string) => FocusTarget | undefined;
@@ -42,21 +42,21 @@ interface Subagent {
   queue: Promise<unknown>;
 }
 
-/** Labels an update as pi's own subagent work; undefined for what must stay out of the log. */
+/** Labels an update as neo's own subagent work; undefined for what must stay out of the log. */
 function labelled(update: AgentUpdate): AgentUpdate | undefined {
   switch (update.type) {
     case "harness_message":
       return undefined;
     case "agent_message_chunk":
     case "agent_thought_chunk":
-      return { ...update, messageId: `${PI}-${update.messageId}`, agent: PI };
+      return { ...update, messageId: `${NEO}-${update.messageId}`, agent: NEO };
     case "tool_call":
-      return { ...update, toolCallId: `${PI}:${update.toolCallId}`, agent: PI };
+      return { ...update, toolCallId: `${NEO}:${update.toolCallId}`, agent: NEO };
     case "tool_call_update":
-      return { ...update, toolCallId: `${PI}:${update.toolCallId}` };
+      return { ...update, toolCallId: `${NEO}:${update.toolCallId}` };
     case "plan":
     case "usage":
-      return { ...update, agent: PI };
+      return { ...update, agent: NEO };
   }
 }
 
@@ -64,15 +64,15 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-export class PiSubagents {
+export class NeoSubagents {
   private readonly agents = new Map<string, Subagent>();
 
   constructor(
-    private readonly pi: Agent,
+    private readonly neo: Agent,
     private readonly options: SubagentOptions,
   ) {}
 
-  /** The session's pi subagent, made on first use. */
+  /** The session's neo subagent, made on first use. */
   private subagent(session: string): Subagent {
     const existing = this.agents.get(session);
     if (existing) return existing;
@@ -86,7 +86,7 @@ export class PiSubagents {
     return created;
   }
 
-  /** pi's models and thinking levels (in-process: nothing is started for the answer). */
+  /** neo's models and thinking levels (in-process: nothing is started for the answer). */
   async configOptions(session: string): Promise<ConfigOption[] | undefined> {
     try {
       return (await this.subagent(session).session).configOptions?.();
@@ -95,14 +95,14 @@ export class PiSubagents {
     }
   }
 
-  /** Runs one task on the session's pi subagent (made on first use; follow-ups continue it). */
+  /** Runs one task on the session's neo subagent (made on first use; follow-ups continue it). */
   async run(session: string, task: string, opts: RunOptions): Promise<GuestRunResult> {
     const current = this.subagent(session);
     let agentSession: AgentSession;
     try {
       agentSession = await current.session;
     } catch (err) {
-      return { stopReason: "error", error: `Starting pi failed: ${errorText(err)}`, text: "" };
+      return { stopReason: "error", error: `Starting neo failed: ${errorText(err)}`, text: "" };
     }
     const turn = current.queue.then(() => this.prompt(session, current, agentSession, task, opts));
     current.queue = turn.catch(() => {});
@@ -112,7 +112,7 @@ export class PiSubagents {
   private create(session: string): Promise<AgentSession> {
     const { options } = this;
     const params: NewSessionParams = {
-      sessionId: `${session}-pi`,
+      sessionId: `${session}-neo`,
       cwd: options.cwd(session),
       mcpServers: options.mcpServers(session),
     };
@@ -121,15 +121,15 @@ export class PiSubagents {
     if (Object.keys(settings).length > 0) params.settings = settings;
     const hook = options.requestPermission?.(session);
     if (hook) params.requestPermission = this.prefixed(hook);
-    return this.pi.newSession(params);
+    return this.neo.newSession(params);
   }
 
-  /** Its tool calls are logged as pi:<id>, so the question has to name them the same way. */
+  /** Its tool calls are logged as neo:<id>, so the question has to name them the same way. */
   private prefixed(hook: RequestPermission): RequestPermission {
     return (request, signal) => {
       const { toolCallId } = request;
       if (toolCallId === undefined) return hook(request, signal);
-      return hook({ ...request, toolCallId: `${PI}:${toolCallId}` }, signal);
+      return hook({ ...request, toolCallId: `${NEO}:${toolCallId}` }, signal);
     };
   }
 
@@ -187,7 +187,7 @@ export class PiSubagents {
           await session.setConfigOption?.(category, value);
         } catch (err) {
           this.options.log.warn(
-            `pi: putting ${category} back to ${value} failed: ${errorText(err)}`,
+            `neo: putting ${category} back to ${value} failed: ${errorText(err)}`,
           );
         }
       }

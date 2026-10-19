@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { createPiAgent } from "@suite/harness/pi";
+import { createNeoAgent } from "@suite/harness/neo";
 import type { Envelope, SessionEvent, ViewItem, ViewPatch } from "@suite/protocol/types";
 import type { GuestConfig } from "../src/guests/guests.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
@@ -498,11 +498,11 @@ describe("delegating into a directory", () => {
     }
   });
 
-  test("pi in a worktree is a session of the daemon's pi, working there", async () => {
+  test("neo in a worktree is a session of the daemon's neo, working there", async () => {
     const repo = gitRepo();
     const model = fakeModel([reply("Hi from the worktree.")]);
-    const pi = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
-    const daemon = await startTestDaemon({ agent: pi });
+    const neo = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+    const daemon = await startTestDaemon({ agent: neo });
     cleanups.push(() => daemon.stop());
     daemon.store.onAppend(({ session, event }) => {
       if (event.type !== "permission_request" || event.title !== "Start a subagent?") return;
@@ -516,17 +516,17 @@ describe("delegating into a directory", () => {
     const session = daemon.sessions.create({ cwd: repo }).id;
     const result = await daemon.gateway.call(
       "delegate",
-      { agent: "pi", task: "say hi", worktree: "pi-w" },
+      { agent: "neo", task: "say hi", worktree: "neo-w" },
       undefined,
       { session, text: true },
     );
     expect(resultOf(result)).toContain("Hi from the worktree.");
-    const dir = join(repo, ".worktrees", "pi-w");
+    const dir = join(repo, ".worktrees", "neo-w");
     expect(existsSync(dir)).toBe(true);
     const child = daemon.sessions.list().find((s) => s.parent === session);
     expect(child).toMatchObject({ cwd: dir });
     expect(model.requests).toHaveLength(1);
-    // The parent's log has the delegation, not pi's words.
+    // The parent's log has the delegation, not neo's words.
     expect(events(daemon, session).some((e) => e.type === "agent_message_chunk")).toBe(false);
   });
 

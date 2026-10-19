@@ -14,7 +14,7 @@ import { SessionManager } from "../src/sessions.ts";
 import { SessionStore, type StoredTool } from "../src/store.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { fauxToolCall } from "@mariozechner/pi-ai";
-import { createPiAgent } from "@suite/harness/pi";
+import { createNeoAgent } from "@suite/harness/neo";
 import { fakeModel, reply, TEST_CONFIG } from "../../harness/test/fake-model.ts";
 import { FakeAgent } from "./fake-agent.ts";
 import { type AppTool, type McpApp, startMcpApp } from "./mcp-app.ts";
@@ -305,11 +305,11 @@ describe("core tools", () => {
     const main = { session: "s1", text: true };
     expect(resultText(await gateway.call("delegate", args, undefined, main))).toBe("done");
     expect(delegated).toEqual([["s1", args]]);
-    // Text only: no structured search results for the ACP client, still there for pi's tools.
+    // Text only: no structured search results for the ACP client, still there for neo's tools.
     const search = await gateway.call("tools_search", { query: "crop" }, undefined, main);
     expect(search.structuredContent).toBeUndefined();
 
-    const sub = await gateway.call("delegate", args, undefined, { session: "s1", guest: "pi" });
+    const sub = await gateway.call("delegate", args, undefined, { session: "s1", guest: "neo" });
     expect(sub.isError).toBe(true);
     expect(resultText(sub)).toBe("Subagents can't delegate.");
     const guest = { session: "s1", guest: "claude", text: true };
@@ -542,7 +542,7 @@ describe("over real MCP", () => {
     expect(denied.status).toBe(401);
   });
 
-  test("the pi harness reaches an app's tool through the gateway's MCP endpoint", async () => {
+  test("the neo harness reaches an app's tool through the gateway's MCP endpoint", async () => {
     const model = fakeModel([
       reply(
         [
@@ -556,7 +556,7 @@ describe("over real MCP", () => {
       ),
       reply("Greeted."),
     ]);
-    const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+    const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
     const daemon = await startTestDaemon({ agent });
     cleanups.push(() => daemon.stop());
     const app = startMcpApp({ tools: [greet] });
@@ -592,13 +592,13 @@ describe("over real MCP", () => {
     expect(app.calls).toEqual([{ name: "greet", args: { name: "Ada" } }]);
   });
 
-  test("apps_focus from the pi harness moves the agent mid-turn; the next turn carries <focus>", async () => {
+  test("apps_focus from the neo harness moves the agent mid-turn; the next turn carries <focus>", async () => {
     const model = fakeModel([
       reply([fauxToolCall("apps_focus", { app: "pad" }, { id: "f1" })], "toolUse"),
       reply("Moved."),
       reply("Hi from the pad."),
     ]);
-    const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+    const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
     const daemon = await startTestDaemon({ agent });
     cleanups.push(() => daemon.stop());
     const moves: string[] = [];

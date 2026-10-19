@@ -88,7 +88,7 @@ export function createGatewayTools(gateway: GatewayConnection | undefined): Agen
       const result = await gateway.call(def.name, asRecord(params), signal);
       const content = toContent(result);
       if (result.isError) {
-        // pi turns a thrown error into an error tool result with this text.
+        // neo turns a thrown error into an error tool result with this text.
         throw new Error(content.map((c) => (c.type === "text" ? c.text : "[image]")).join("\n"));
       }
       return { content, details: result.structuredContent ?? {} };

@@ -1404,7 +1404,7 @@ func (v TextContent) MarshalJSON() ([]byte, error) {
 	}{"text", plain(v)})
 }
 
-// ImageContent: An image a tool returned (pi's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log.
+// ImageContent: An image a tool returned (neo's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log.
 type ImageContent struct {
 	Src      string  `json:"src"`
 	MimeType *string `json:"mimeType,omitempty"`
@@ -1540,7 +1540,7 @@ func (v FocusChanged) MarshalJSON() ([]byte, error) {
 
 // HarnessMessage: A complete message in the harness's native format. Views ignore it; the harness rebuilds its context from these after a restart.
 type HarnessMessage struct {
-	// Which harness wrote it, e.g. pi.
+	// Which harness wrote it, e.g. neo.
 	Harness string `json:"harness"`
 	// Opaque to everyone but that harness.
 	Message json.RawMessage `json:"message"`
@@ -1680,7 +1680,7 @@ func (v UserNote) MarshalJSON() ([]byte, error) {
 // SubagentStarted: The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event.
 type SubagentStarted struct {
 	ID string `json:"id"`
-	// Harness name: pi, claude, codex…
+	// Harness name: neo, claude, codex…
 	Agent string `json:"agent"`
 	Task  string `json:"task"`
 	// The model it runs with, when one was chosen for this task or by the user.
@@ -1790,9 +1790,9 @@ const (
 	PermissionOptionKindRejectAlways PermissionOptionKind = "reject_always"
 )
 
-// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set.
+// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set.
 type SettingChanged struct {
-	// pi, claude, codex…
+	// neo, claude, codex…
 	Harness string      `json:"harness"`
 	Option  SettingName `json:"option"`
 	Value   string      `json:"value"`

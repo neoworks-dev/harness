@@ -231,7 +231,7 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
         side.contains("hello from the terminal") && side.contains("[app_connected]")
     });
     assert!(screen.contains("Sessions · "), "{screen}");
-    assert!(screen.contains("· pi"), "the session's harness: {screen}");
+    assert!(screen.contains("· neo"), "the session's harness: {screen}");
 
     // Approvals: shift-tab goes through the daemon (ask, review, edits, auto, ask) and the mode
     // comes back as a setting event.

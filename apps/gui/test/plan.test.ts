@@ -28,6 +28,6 @@ test("every plan event replaces that agent's list; an empty one clears it", () =
   expect(progress(lists)).toEqual({ done: 2, total: 4 });
   lists = applyPlan(lists, plan("claude"));
   expect(lists.map((l) => l.agent)).toEqual([undefined]);
-  expect(applyPlan(lists, plan("pi"))).toBe(lists);
+  expect(applyPlan(lists, plan("neo"))).toBe(lists);
   expect(glyphOf("completed") + glyphOf("in_progress") + glyphOf("pending")).toBe("✓◐○");
 });

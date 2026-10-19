@@ -31,7 +31,7 @@ export interface CommandParts {
   settings: Settings;
   asker: Asker;
   log: Logger;
-  /** The daemon's own agent's harness name, e.g. pi. */
+  /** The daemon's own agent's harness name, e.g. neo. */
   main: string;
   /** The harness the session runs on now. */
   harness: (session: string) => string;

@@ -38,7 +38,7 @@ pub enum AgentState {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Agent {
     pub id: String,
-    /// Harness name: pi, claude, codex…
+    /// Harness name: neo, claude, codex…
     pub harness: String,
     pub model: Option<String>,
     pub task: String,
@@ -360,7 +360,7 @@ impl Agents {
     }
 }
 
-/// `○ pi · deepseek-flash  Searching tools: weather…  1m 12s · 3.4k tokens`
+/// `○ neo · deepseek-flash  Searching tools: weather…  1m 12s · 3.4k tokens`
 fn row(agent: &Agent, w: usize, now_ms: i64, styles: &Styles) -> Line<'static> {
     let (glyph, style) = match agent.state {
         AgentState::Running => ("○", styles.accent),

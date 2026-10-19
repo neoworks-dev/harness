@@ -26,7 +26,7 @@ Pass these handles to other tools to move results between apps. bash and read
 accept them as paths of the stored file (write and edit don't), e.g.
 cp asset://img-7f3 ~/site/logo.png.
 
-delegate hands a task to a subagent (pi, Claude Code or Codex) that works in the
+delegate hands a task to a subagent (neo, Claude Code or Codex) that works in the
 session's directory, or in a cwd or git worktree you name; use it for larger
 coding work. Its final reply is the tool result. <guest agent=…>…</guest> in a
 message is a task the user gave a guest directly, with its reply.

@@ -27,7 +27,7 @@ import {
 } from "./config.ts";
 import type { Logger } from "./logger.ts";
 import { resolveModel } from "./model.ts";
-import { createUpdateMapper } from "./pi-updates.ts";
+import { createUpdateMapper } from "./updates.ts";
 import { HARNESS_NAME, loggedMessages, restoreMessages } from "./restore.ts";
 import { SYSTEM_PROMPT } from "./system-prompt.ts";
 import { createCoreTools } from "./tools/core.ts";
@@ -35,7 +35,7 @@ import { connectGateway, type GatewayConnection } from "./tools/gateway.ts";
 import { loadImages } from "./tools/read.ts";
 import { createUsageTracker } from "./usage.ts";
 
-export interface PiAgentOptions {
+export interface NeoAgentOptions {
   config: HarnessConfig;
   logger?: Logger;
   /** Replaces the model call; for tests. */
@@ -67,7 +67,7 @@ function gatewayOf(servers: McpServer[]): GatewayConnection | undefined {
 }
 
 /** The harness built on pi-agent-core: one pi Agent per session, the session log owns history. */
-export function createPiAgent(options: PiAgentOptions): HarnessAgent {
+export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
   const { config, logger, streamFn } = options;
   const defaultModel = resolveModel(config.provider, config.modelId, logger, config.images);
 
@@ -188,7 +188,7 @@ export function createPiAgent(options: PiAgentOptions): HarnessAgent {
         return toResult(final, cancelRequested);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        logger?.error(`pi agent failed: ${message}`);
+        logger?.error(`neo agent failed: ${message}`);
         return { stopReason: "error", error: message };
       } finally {
         unsubscribe();
@@ -219,7 +219,7 @@ export function createPiAgent(options: PiAgentOptions): HarnessAgent {
         if (category === "model") agent.state.model = modelFromSetting(value);
         else if (category === "thought_level")
           agent.state.thinkingLevel = parseThinkingLevel(value);
-        else throw new Error("pi has no mode setting.");
+        else throw new Error("neo has no mode setting.");
         return Promise.resolve();
       } catch (error) {
         return Promise.reject(error instanceof Error ? error : new Error(String(error)));

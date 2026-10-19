@@ -41,8 +41,8 @@ export async function startTestDaemon(
     agent?: Agent;
     dir?: string;
     guests?: Record<string, GuestConfig>;
-    /** The pi that delegate {agent: "pi"} uses, when the agent isn't pi. */
-    pi?: Agent;
+    /** The neo that delegate {agent: "neo"} uses, when the agent isn't neo. */
+    neo?: Agent;
   } = {},
 ): Promise<TestDaemon> {
   const dir = options.dir ?? mkdtempSync(join(tmpdir(), `${PREFIX}${process.pid}-`));
@@ -54,7 +54,7 @@ export async function startTestDaemon(
     port: 0,
     defaultCwd: dir,
     guests: options.guests,
-    pi: options.pi,
+    neo: options.neo,
   });
   return { ...daemon, env, dir };
 }

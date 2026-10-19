@@ -27,7 +27,7 @@ export const COMMANDS: readonly Command[] = [
   daemon("resume", "[claude|codex]", "continue an earlier Claude Code / Codex conversation"),
   daemon("claude", "<task>", "give a task to Claude Code", true),
   daemon("codex", "<task>", "give a task to Codex", true),
-  daemon("harness", "[pi|claude|codex]", "switch this session's agent: pi, claude, codex"),
+  daemon("harness", "[neo|claude|codex]", "switch this session's agent: neo, claude, codex"),
   daemon(
     "approvals",
     "[ask|review|edits|auto]",

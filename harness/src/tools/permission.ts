@@ -15,7 +15,7 @@ export function withNote(text: string, note: string | undefined): string {
 
 /**
  * Asks before a tool acts, when the embedder gave a hook. A refusal (or a cancelled turn while
- * waiting) throws: pi turns a thrown error into the tool's error result, which the model reads
+ * waiting) throws: neo turns a thrown error into the tool's error result, which the model reads
  * (with the user's note, if any).
  */
 export async function askToProceed(

@@ -87,7 +87,7 @@ function diffOf(toolName: string, details: unknown): ToolCallContent[] {
 }
 
 /**
- * Translates pi events into AgentUpdates for one prompt. Stateful because deltas need the id of
+ * Translates neo events into AgentUpdates for one prompt. Stateful because deltas need the id of
  * the assistant message they belong to. With a usage tracker, each assistant message is followed
  * by a usage update.
  */

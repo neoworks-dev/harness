@@ -1,7 +1,7 @@
 // Daemon entry point: `bun run daemon` (or `bun run daemon/src/main.ts`).
 //
 // Env: SUITE_SOCKET, SUITE_DATA_DIR (see paths.ts), SUITE_PORT (TCP, default: any free port);
-// SUITE_AGENT=pi|echo (default pi); SUITE_SERVICES=none skips the background services (lsp);
+// SUITE_AGENT=neo|echo (default neo); SUITE_SERVICES=none skips the background services (lsp);
 // guests (Claude Code, Codex) are configured in guests/config.ts (SUITE_GUESTS=none: none);
 // model and API key settings are read by the harness (see harness/src/config.ts).
 import { homedir } from "node:os";
@@ -16,12 +16,12 @@ import { loadTheme } from "./theme.ts";
 
 async function createAgent(name: string, log: Logger): Promise<Agent> {
   if (name === "echo") return createEchoAgent();
-  if (name !== "pi") throw new Error(`unknown SUITE_AGENT ${name} (expected pi or echo)`);
-  const { createPiAgent } = await import("@suite/harness/pi");
+  if (name !== "neo") throw new Error(`unknown SUITE_AGENT ${name} (expected neo or echo)`);
+  const { createNeoAgent } = await import("@suite/harness/neo");
   const { loadHarnessConfig } = await import("@suite/harness/config");
   const config = loadHarnessConfig();
-  log.info(`agent: pi, model ${config.provider}/${config.modelId}`);
-  return createPiAgent({ config, logger: log });
+  log.info(`agent: neo, model ${config.provider}/${config.modelId}`);
+  return createNeoAgent({ config, logger: log });
 }
 
 async function main(): Promise<void> {
@@ -29,7 +29,7 @@ async function main(): Promise<void> {
   const paths = resolvePaths();
   const daemon = await createDaemon({
     paths,
-    agent: await createAgent(process.env.SUITE_AGENT ?? "pi", log),
+    agent: await createAgent(process.env.SUITE_AGENT ?? "neo", log),
     log,
     port: Number(process.env.SUITE_PORT ?? 0),
     defaultCwd: homedir(),

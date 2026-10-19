@@ -19,6 +19,6 @@ Sessions · 3                 │ › make the header sticky
                              │
                              │ ─────────────────────────────────────────────────────────────────────────────────────────
                              │ > message the agent · / for commands
-                             │ ~/site · pi
+                             │ ~/site · neo
                              │
                              │ ? ask before acting (shift+tab to cycle)

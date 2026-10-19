@@ -10,7 +10,7 @@ import type {
   ConfigOption,
   PromptResult,
 } from "../src/agent.ts";
-import { createPiAgent } from "../src/pi-agent.ts";
+import { createNeoAgent } from "../src/neo-agent.ts";
 import { SYSTEM_PROMPT } from "../src/system-prompt.ts";
 import {
   fakeModel,
@@ -24,7 +24,7 @@ import { ofType, tempDir } from "./helpers.ts";
 
 async function newSession(model: FakeModel): Promise<{ session: AgentSession; cwd: string }> {
   const cwd = await tempDir();
-  const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
   return { session: await agent.newSession({ sessionId: "s1", cwd, mcpServers: [] }), cwd };
 }
 
@@ -98,7 +98,7 @@ test("the working directory is told once per session, also across a reload", asy
   expect(JSON.stringify(model.requests[1]?.at(-1))).not.toContain("<session cwd=");
 
   const history: SessionEvent[] = first.updates;
-  const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
   const loaded = await agent.loadSession({ sessionId: "s1", cwd, mcpServers: [], history });
   const third = await run(loaded, "c");
   expect(texts(third.updates)).not.toContain("<session cwd=");
@@ -237,7 +237,7 @@ test("a failing tool is reported as failed and the turn continues", async () => 
   expect(JSON.stringify(last?.content)).toContain("exited with code 2");
 });
 
-test("every pi message is logged as a harness_message", async () => {
+test("every neo message is logged as a harness_message", async () => {
   const model = fakeModel([
     reply([fauxToolCall("bash", { command: "echo hi" }, { id: "b1" })], "toolUse"),
     reply("done"),
@@ -252,7 +252,7 @@ test("every pi message is logged as a harness_message", async () => {
     "assistant",
   ]);
   for (const update of updates) {
-    if (update.type === "harness_message") expect(update.harness).toBe("pi");
+    if (update.type === "harness_message") expect(update.harness).toBe("neo");
   }
 });
 
@@ -329,7 +329,7 @@ test("usage keeps adding up after the session is loaded from the log", async () 
   ]);
   const { session, cwd } = await newSession(model);
   const first = await run(session, "a");
-  const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
   const loaded = await agent.loadSession({
     sessionId: "s1",
     cwd,
@@ -375,7 +375,7 @@ test("a throwing model resolves with an error instead of rejecting", async () =>
 
 test("a missing API key resolves with an error naming the env var, without calling the model", async () => {
   const model = fakeModel([reply("never")]);
-  const agent = createPiAgent({
+  const agent = createNeoAgent({
     config: { ...TEST_CONFIG, apiKey: undefined },
     streamFn: model.streamFn,
   });
@@ -430,10 +430,10 @@ test("cancel during a bash command stops it and ends the turn cancelled", async 
 
 async function sessionWith(
   model: FakeModel,
-  settings?: Parameters<ReturnType<typeof createPiAgent>["newSession"]>[0]["settings"],
+  settings?: Parameters<ReturnType<typeof createNeoAgent>["newSession"]>[0]["settings"],
   config = TEST_CONFIG,
 ): Promise<AgentSession> {
-  const agent = createPiAgent({ config, streamFn: model.streamFn });
+  const agent = createNeoAgent({ config, streamFn: model.streamFn });
   return agent.newSession({ sessionId: "s1", cwd: await tempDir(), mcpServers: [], settings });
 }
 
@@ -466,7 +466,7 @@ test("a bare model id means the configured provider", async () => {
 test("invalid stored settings fall back to the defaults", async () => {
   const warnings: string[] = [];
   const logger = { warn: (message: string) => warnings.push(message) } as never;
-  const agent = createPiAgent({ config: TEST_CONFIG, logger });
+  const agent = createNeoAgent({ config: TEST_CONFIG, logger });
   for (const settings of [
     { model: "nope/model", thought_level: "ludicrous" },
     { model: "deepseek/" },
@@ -560,7 +560,7 @@ test("setConfigOption rejects values it can't use", async () => {
   expect(await rejection(setOption(session, "model", "nope/x"))).toContain(
     'Unknown model provider "nope"',
   );
-  expect(await rejection(setOption(session, "mode", "plan"))).toContain("pi has no mode setting");
+  expect(await rejection(setOption(session, "mode", "plan"))).toContain("neo has no mode setting");
   expect(optionOf(session, "model")?.current).toBe("deepseek/deepseek-v4-flash");
   expect(optionOf(session, "thought_level")?.current).toBe("off");
 });

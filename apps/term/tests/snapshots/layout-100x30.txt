@@ -25,6 +25,6 @@
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 > message the agent · / for commands
-~/site · pi · model sonnet
+~/site · neo · model sonnet
 
 ? ask before acting (shift+tab to cycle)

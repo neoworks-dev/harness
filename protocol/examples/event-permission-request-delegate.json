@@ -10,7 +10,7 @@
       "agent": "claude",
       "title": "Start a subagent?",
       "details": [
-        { "key": "Harness", "value": "pi" },
+        { "key": "Harness", "value": "neo" },
         { "key": "Model", "value": "deepseek/deepseek-v4-flash" },
         { "key": "Effort", "value": "medium" },
         {
@@ -20,7 +20,7 @@
       ],
       "content": [{ "type": "text", "text": "Fix the failing login test and run the suite." }],
       "options": [
-        { "id": "allow", "name": "Start pi", "kind": "allow_once" },
+        { "id": "allow", "name": "Start neo", "kind": "allow_once" },
         { "id": "reject", "name": "Reject", "kind": "reject_once" }
       ]
     }

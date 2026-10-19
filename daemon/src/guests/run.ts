@@ -1,4 +1,4 @@
-// What running a task on a subagent takes and gives back (ACP guests and pi alike).
+// What running a task on a subagent takes and gives back (ACP guests and neo alike).
 import type { AgentUpdate, ContextEvent, PromptResult } from "@suite/harness/agent";
 import type { HarnessSettings } from "../settings.ts";
 

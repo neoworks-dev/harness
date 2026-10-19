@@ -25,6 +25,6 @@
                                                                    │
 ────────────────────────────────────────────────────────────────── │
 > message the agent · / for commands                               │
-~/site · pi                                                        │
+~/site · neo                                                       │
                                                                    │
 ? ask before acting (shift+tab to cycle)                           │

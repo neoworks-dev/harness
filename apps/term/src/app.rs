@@ -52,7 +52,7 @@ const PANEL_ROWS: u16 = 16;
 /// How long the editor must have been idle before a prompt takes its place.
 const TYPING_PAUSE_MS: i64 = 800;
 /// The harness a session runs on until a `/harness` setting says otherwise.
-const DEFAULT_HARNESS: &str = "pi";
+const DEFAULT_HARNESS: &str = "neo";
 
 /// What the runtime does on the app's behalf. Requests to the daemon block, so the runtime runs
 /// them off the UI thread.

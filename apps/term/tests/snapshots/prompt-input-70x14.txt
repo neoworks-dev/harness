@@ -9,6 +9,6 @@
 ▎ ● claude asks: run ls?
 ▎   [1 Yes]  [2 No]
 ▎ enter yes · ←/→ choose · tab add a note · esc dismiss
-~/site · pi
+~/site · neo
 
 ? ask before acting (shift+tab to cycle)

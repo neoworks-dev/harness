@@ -25,7 +25,7 @@ you in the suite's chat, shared by all its apps, and your progress shows there.
 
 ${GATEWAY}
 
-The delegate tool hands a task to a subagent (pi, Claude Code or Codex). A message
+The delegate tool hands a task to a subagent (neo, Claude Code or Codex). A message
 may start with <guest agent=…>…</guest>, a task the user gave a guest directly
 with its reply, <reverted paths=…/>, edits the user took back, or
 <conversation-so-far>…</conversation-so-far>, what was said in turns another

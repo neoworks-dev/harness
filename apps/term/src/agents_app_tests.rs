@@ -89,12 +89,12 @@ fn started(id: &str, agent: &str, ago_ms: i64, extra: serde_json::Value) -> Even
     event("s1", 1, NOW - ago_ms, e)
 }
 
-/// pi has been searching tools for 72 s; claude works in a worktree of its own.
+/// neo has been searching tools for 72 s; claude works in a worktree of its own.
 fn busy() -> App {
     let mut app = app();
     let fx = app.handle_event(started(
         "d1",
-        "pi",
+        "neo",
         72_000,
         json!({"model": "deepseek/deepseek-v4-flash", "effort": "medium"}),
     ));
@@ -103,14 +103,14 @@ fn busy() -> App {
         "s1",
         2,
         NOW - 60_000,
-        json!({"type": "tool_call", "toolCallId": "pi:1", "title": "search tools: weather",
-               "kind": "search", "status": "in_progress", "agent": "pi"}),
+        json!({"type": "tool_call", "toolCallId": "neo:1", "title": "search tools: weather",
+               "kind": "search", "status": "in_progress", "agent": "neo"}),
     ));
     app.handle_event(event(
         "s1",
         3,
         NOW - 50_000,
-        json!({"type": "usage", "agent": "pi", "inputTokens": 3100, "outputTokens": 300}),
+        json!({"type": "usage", "agent": "neo", "inputTokens": 3100, "outputTokens": 300}),
     ));
     app.handle_event(started(
         "d2",
@@ -148,7 +148,7 @@ fn the_list_sits_under_the_status_lines_while_subagents_run() {
     let at = lines.iter().position(|l| l.starts_with("● main")).unwrap();
     // The three status lines come right before it.
     assert!(lines[at - 3].contains("~/site"), "{text}");
-    assert!(lines[at + 1].starts_with("○ pi · deepseek-v4-flash  search tools: weather"));
+    assert!(lines[at + 1].starts_with("○ neo · deepseek-v4-flash  search tools: weather"));
     assert!(lines[at + 1].ends_with("1m 12s · 3.4k tokens"));
     assert!(lines[at + 2].starts_with("○ claude · sonnet ⎇ fix-login  starting…"));
 }
@@ -196,7 +196,7 @@ fn the_list_goes_five_seconds_after_the_last_subagent_ends() {
         json!({"type": "subagent_ended", "id": "d2", "stopReason": "error", "error": "boom"}),
     ));
     let text = screen_text(&mut app, 100, 24);
-    assert!(text.contains("✓ pi · deepseek-v4-flash  done"), "{text}");
+    assert!(text.contains("✓ neo · deepseek-v4-flash  done"), "{text}");
     assert!(
         text.contains("✗ claude · sonnet ⎇ fix-login  boom"),
         "{text}"
@@ -250,14 +250,14 @@ fn app_without_agents() -> App {
 fn enter_opens_the_transcript_of_the_selected_subagent_and_esc_closes_it() {
     let mut app = busy();
     app.handle_key(ctrl('x'));
-    // The latest running one is claude (own session); up to pi.
+    // The latest running one is claude (own session); up to neo.
     app.handle_key(key(KeyCode::Up));
     let fx = app.handle_key(key(KeyCode::Enter));
     assert_eq!(
         fx,
         [Effect::AgentView {
             session: "s1".into(),
-            agent: "pi".into(),
+            agent: "neo".into(),
             on: true
         }]
     );
@@ -265,20 +265,20 @@ fn enter_opens_the_transcript_of_the_selected_subagent_and_esc_closes_it() {
     let loading = screen_text(&mut app, 100, 24);
     assert!(loading.contains("loading…"), "{loading}");
 
-    // The daemon's view of pi's work arrives; the main chat is untouched.
+    // The daemon's view of neo's work arrives; the main chat is untouched.
     let snapshot_items: Vec<ViewItem> = serde_json::from_value(json!([
         {"ref": "s-d1", "kind": "user", "label": "task", "component": {"type": "text", "blocks": [
             {"type": "paragraph", "spans": [{"text": "Find the weather"}]}]}},
-        {"ref": "t-pi-1", "kind": "thought", "component": {"type": "text", "tone": "muted", "blocks": [
+        {"ref": "t-neo-1", "kind": "thought", "component": {"type": "text", "tone": "muted", "blocks": [
             {"type": "paragraph", "spans": [{"text": "I should search for a weather tool"}]}]}},
-        {"ref": "c-pi:1", "kind": "tool", "label": "search tools: weather", "state": "done",
+        {"ref": "c-neo:1", "kind": "tool", "label": "search tools: weather", "state": "done",
          "component": {"type": "code", "code": "weather.forecast\nweather.alerts"}},
-        {"ref": "m-pi-2", "kind": "agent", "component": {"type": "text", "blocks": [
+        {"ref": "m-neo-2", "kind": "agent", "component": {"type": "text", "blocks": [
             {"type": "paragraph", "spans": [{"text": "It is "}, {"text": "sunny", "bold": true}, {"text": " in Berlin."}]}]}}
     ]))
     .unwrap();
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
-        agent: Some("pi".into()),
+        agent: Some("neo".into()),
         session: "s1".into(),
         seq: 4,
         items: snapshot_items,
@@ -289,7 +289,7 @@ fn enter_opens_the_transcript_of_the_selected_subagent_and_esc_closes_it() {
     );
     let text = screen_text(&mut app, 100, 24);
     snapshot("agents-transcript-100x24", &text);
-    assert!(text.contains("◂ pi · deepseek-v4-flash  Find the weather"));
+    assert!(text.contains("◂ neo · deepseek-v4-flash  Find the weather"));
     assert!(text.contains("It is sunny in Berlin."));
     assert!(text.contains("esc back"));
 
@@ -303,7 +303,7 @@ fn enter_opens_the_transcript_of_the_selected_subagent_and_esc_closes_it() {
         fx,
         [Effect::AgentView {
             session: "s1".into(),
-            agent: "pi".into(),
+            agent: "neo".into(),
             on: false
         }]
     );
@@ -325,7 +325,7 @@ fn a_transcript_scrolls_through_its_lines() {
         })
         .collect();
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
-        agent: Some("pi".into()),
+        agent: Some("neo".into()),
         session: "s1".into(),
         seq: 4,
         items,
@@ -401,7 +401,7 @@ fn the_delegation_gate_is_a_compact_card_with_highlighted_values() {
     let task: Vec<String> = (1..=30)
         .map(|i| format!("step {i}: do the thing"))
         .collect();
-    let buttons: Vec<_> = ["Start pi", "Allow pi for this session", "Reject"]
+    let buttons: Vec<_> = ["Start neo", "Allow neo for this session", "Reject"]
         .iter()
         .enumerate()
         .map(|(i, l)| {
@@ -413,7 +413,7 @@ fn the_delegation_gate_is_a_compact_card_with_highlighted_values() {
         "ref": "p-p1", "kind": "tool", "label": "claude asks: Start a subagent?", "state": "pending",
         "component": {"type": "stack", "gap": "s", "children": [
             {"type": "kv", "items": [
-                {"key": "Harness", "value": "pi", "tone": "accent"},
+                {"key": "Harness", "value": "neo", "tone": "accent"},
                 {"key": "Model", "value": "deepseek/deepseek-v4-flash", "tone": "accent"},
                 {"key": "Effort", "value": "medium", "tone": "accent"},
                 {"key": "Directory", "value": "~/site/.worktrees/fix-login (new worktree, branch fix-login)", "tone": "accent"}]},

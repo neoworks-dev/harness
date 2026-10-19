@@ -3,7 +3,7 @@ import type { SessionEvent } from "@suite/protocol/types";
 import type { Logger } from "./logger.ts";
 import { isRecord } from "./util.ts";
 
-export const HARNESS_NAME = "pi";
+export const HARNESS_NAME = "neo";
 export const INTERRUPTED_RESULT = "interrupted: the daemon restarted";
 
 function isMessage(value: unknown): value is Message {
@@ -64,12 +64,12 @@ export function loggedMessages(history: SessionEvent[], logger?: Logger): Messag
   for (const event of history) {
     if (event.type !== "harness_message" || event.harness !== HARNESS_NAME) continue;
     if (isMessage(event.message)) messages.push(event.message);
-    else logger?.warn("Ignoring a harness_message that is not a pi message.");
+    else logger?.warn("Ignoring a harness_message that is not a neo message.");
   }
   return messages;
 }
 
-/** Rebuilds the pi context from the session log. Everything but our own messages is ignored. */
+/** Rebuilds the neo context from the session log. Everything but our own messages is ignored. */
 export function restoreMessages(history: SessionEvent[], logger?: Logger): Message[] {
   return repairMessages(loggedMessages(history, logger));
 }

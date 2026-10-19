@@ -287,7 +287,7 @@ fn permission(diff_lines: usize) -> suite_protocol::ViewItem {
         })
         .collect();
     item(
-        &json!({"ref":"p-7","kind":"tool","label":"pi asks: Edit src/app.ts","state":"pending",
+        &json!({"ref":"p-7","kind":"tool","label":"neo asks: Edit src/app.ts","state":"pending",
             "component":{"type":"stack","gap":"s","children":[
                 {"type":"diff","path":"src/app.ts","lines":lines},
                 {"type":"row","gap":"s","children":buttons}]}})
@@ -301,7 +301,7 @@ fn a_permission_shows_its_diff_colored_and_the_buttons_below_a_gap() {
     assert_eq!(
         lines(&it, 60),
         [
-            "● pi asks: Edit src/app.ts",
+            "● neo asks: Edit src/app.ts",
             "  src/app.ts",
             "  @@ -1,3 +1,3 @@",
             "  -line 0",
@@ -660,7 +660,7 @@ fn kv_aligns_values_and_wraps_them() {
 
 #[test]
 fn a_kv_value_with_a_tone_is_highlighted_in_the_full_and_the_compact_form() {
-    let kv = r#"{"type":"kv","items":[{"key":"Harness","value":"pi","tone":"accent"},{"key":"Model","value":"default"}]}"#;
+    let kv = r#"{"type":"kv","items":[{"key":"Harness","value":"neo","tone":"accent"},{"key":"Model","value":"default"}]}"#;
     let accent = pal().accent;
     let full = render_item(&item_of("agent", "", kv), 40, &Options::default());
     let value = |line: usize, text: &str| {
@@ -671,14 +671,14 @@ fn a_kv_value_with_a_tone_is_highlighted_in_the_full_and_the_compact_form() {
             .map(|s| s.style)
             .expect(text)
     };
-    assert_eq!(value(0, "pi").fg, Some(accent));
-    assert!(value(0, "pi").add_modifier.contains(Modifier::BOLD));
+    assert_eq!(value(0, "neo").fg, Some(accent));
+    assert!(value(0, "neo").add_modifier.contains(Modifier::BOLD));
     assert_eq!(value(1, "default").fg, None, "no tone, no highlight");
 
     let compact = render_item(&tool("done", kv), 60, &Options::default());
-    let pi = compact[1].spans.iter().find(|s| s.content == "pi").unwrap();
-    assert_eq!(pi.style.fg, Some(accent));
-    assert_eq!(compact[1].to_string(), "  ⎿ Harness: pi · Model: default");
+    let neo = compact[1].spans.iter().find(|s| s.content == "neo").unwrap();
+    assert_eq!(neo.style.fg, Some(accent));
+    assert_eq!(compact[1].to_string(), "  ⎿ Harness: neo · Model: default");
 }
 
 #[test]

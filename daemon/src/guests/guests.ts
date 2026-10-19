@@ -2,7 +2,7 @@
 // streams what they do into the suite session. Two roles: guests, one per suite session and
 // name, that the session's agent reaches with delegate and the user with "/claude task"; and the
 // session's own agent when the user runs it on that harness (/harness claude), which has no
-// label in the log and gets the session's context events. pi subagents (subagent.ts) are
+// label in the log and gets the session's context events. neo subagents (subagent.ts) are
 // delegated to the same way.
 import { extname } from "node:path";
 import type {
@@ -43,7 +43,7 @@ import { type FocusTarget, ToldState } from "../told.ts";
 import { AcpConnection, AcpError } from "./acp.ts";
 import { GUEST_PROMPT, MAIN_PROMPT } from "./prompt.ts";
 import type { GuestRunResult, RunOptions } from "./run.ts";
-import { PI, PiSubagents, type SubagentOptions } from "./subagent.ts";
+import { NEO, NeoSubagents, type SubagentOptions } from "./subagent.ts";
 
 export interface GuestConfig {
   /** Shown to the main agent, e.g. "Claude Code". */
@@ -91,12 +91,12 @@ export interface GuestManagerOptions {
    * its own conversation: `all` asks for every turn so far.
    */
   handoff?: (session: string, harness: string, all: boolean) => string | undefined;
-  /** pi, for delegate {agent: "pi"} (its subagent sessions are made with it). */
-  pi?: Agent;
+  /** neo, for delegate {agent: "neo"} (its subagent sessions are made with it). */
+  neo?: Agent;
   resolveAsset?: (handle: string) => string | undefined;
   /** Stores an image an adapter sent (base64) and returns its asset handle. */
   storeImage?: StoreImage;
-  /** The hook a pi subagent's own bash, write and edit ask through. */
+  /** The hook a neo subagent's own bash, write and edit ask through. */
   requestPermission?: (session: string, agent: string) => RequestPermission;
 }
 
@@ -400,24 +400,24 @@ export class GuestManager {
   private readonly guests = new Map<string, Promise<Guest>>();
   /** Every running adapter (guests and sessions' own agents), to stop them with the daemon. */
   private readonly live = new Set<Guest>();
-  private readonly subagents?: PiSubagents;
+  private readonly subagents?: NeoSubagents;
 
   constructor(private readonly options: GuestManagerOptions) {
-    const { pi, requestPermission } = options;
-    if (!pi) return;
+    const { neo, requestPermission } = options;
+    if (!neo) return;
     const subagents: SubagentOptions = {
       log: options.log,
       cwd: options.cwd,
       // A guest of the gateway (no delegate), but one that sees structured results.
-      mcpServers: (session) => options.mcpServers(session, { name: PI, guest: true }),
-      settings: (session) => options.settings(session, PI),
+      mcpServers: (session) => options.mcpServers(session, { name: NEO, guest: true }),
+      settings: (session) => options.settings(session, NEO),
       connectors: options.connectors,
       focus: options.focus,
     };
     if (options.resolveAsset) subagents.resolveAsset = options.resolveAsset;
     if (requestPermission)
-      subagents.requestPermission = (session) => requestPermission(session, PI);
-    this.subagents = new PiSubagents(pi, subagents);
+      subagents.requestPermission = (session) => requestPermission(session, NEO);
+    this.subagents = new NeoSubagents(neo, subagents);
   }
 
   names(): string[] {
@@ -428,9 +428,9 @@ export class GuestManager {
     return Object.hasOwn(this.options.configs, name);
   }
 
-  /** Everything delegate can hand a task to: pi (when there is one) and the configured guests. */
+  /** Everything delegate can hand a task to: neo (when there is one) and the configured guests. */
   harnesses(): string[] {
-    return this.subagents ? [PI, ...this.names()] : this.names();
+    return this.subagents ? [NEO, ...this.names()] : this.names();
   }
 
   title(name: string): string {
@@ -447,7 +447,7 @@ export class GuestManager {
     task: string,
     opts: RunOptions,
   ): Promise<GuestRunResult> {
-    if (name === PI && this.subagents) return this.subagents.run(session, task, opts);
+    if (name === NEO && this.subagents) return this.subagents.run(session, task, opts);
     if (!this.has(name)) {
       return { stopReason: "error", error: `No guest named ${name}.`, text: "" };
     }
@@ -528,7 +528,7 @@ export class GuestManager {
 
   /**
    * The harness as the session's own agent (the user picked it with /harness): sessions create
-   * and load it like pi. Its conversation is the adapter's own, named in the log
+   * and load it like neo. Its conversation is the adapter's own, named in the log
    * (harness_message {acpSession}) so a restarted daemon resumes it.
    */
   agent(name: string): Agent {
@@ -585,10 +585,10 @@ export class GuestManager {
 
   /**
    * The options (models, effort levels) a harness offers, when they can be had without starting
-   * anything: pi's own, or those of an adapter that already runs. undefined: not known yet.
+   * anything: neo's own, or those of an adapter that already runs. undefined: not known yet.
    */
   async knownOptions(session: string, name: string): Promise<ConfigOption[] | undefined> {
-    if (name === PI && this.subagents) return this.subagents.configOptions(session);
+    if (name === NEO && this.subagents) return this.subagents.configOptions(session);
     for (const guest of this.live) {
       if (guest.name === name) return [...guest.config.values()];
     }
