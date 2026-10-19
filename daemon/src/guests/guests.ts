@@ -41,6 +41,7 @@ import { type Guard, RUN_TITLE, type Touches } from "../permissions.ts";
 import type { Approvals, HarnessSettings } from "../settings.ts";
 import { type FocusTarget, ToldState } from "../told.ts";
 import { AcpConnection, AcpError } from "./acp.ts";
+import { CLAUDE_AGENT_TOOLS } from "./config.ts";
 import type { GuestAccounts, Route, RouteKind } from "./accounts.ts";
 import { GUEST_PROMPT, MAIN_PROMPT } from "./prompt.ts";
 import type { GuestRunResult, RunOptions } from "./run.ts";
@@ -862,8 +863,12 @@ export class GuestManager {
       const params: Record<string, unknown> = {
         cwd,
         mcpServers,
-        // Both adapters append this to their own system prompt.
-        _meta: { jetbrains: { air: { customInstructions: main ? MAIN_PROMPT : GUEST_PROMPT } } },
+        _meta: {
+          // Both adapters append this to their own system prompt.
+          jetbrains: { air: { customInstructions: main ? MAIN_PROMPT : GUEST_PROMPT } },
+          // Claude Code's own subagents are off: delegate hands work on (Codex: CODEX_CONFIG).
+          claudeCode: { options: { disallowedTools: CLAUDE_AGENT_TOOLS } },
+        },
       };
       if (resume !== undefined) params.sessionId = resume;
       const created = await conn.request(

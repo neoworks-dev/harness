@@ -213,7 +213,10 @@ describe("Codex on the suite's API keys", () => {
       model: "openrouter/openai/gpt-5-mini",
     });
     const report = await routeReport(s);
-    expect(JSON.parse(report.env.CODEX_CONFIG ?? "null")).toEqual({ model: "openai/gpt-5-mini" });
+    expect(JSON.parse(report.env.CODEX_CONFIG ?? "null")).toEqual({
+      model: "openai/gpt-5-mini",
+      features: { multi_agent: false, multi_agent_v2: false },
+    });
     expect(report.initialize.clientCapabilities.auth).toEqual({ _meta: { gateway: true } });
     expect(report.authenticated).toEqual({
       methodId: "gateway",
@@ -282,7 +285,10 @@ describe("Codex on the suite's API keys", () => {
     const next = s.daemon.sessions.create({}).id;
     const other = { ...s, session: next };
     const report = await routeReport(other);
-    expect(JSON.parse(report.env.CODEX_CONFIG ?? "null")).toEqual({ model: "openai/gpt-5-mini" });
+    expect(JSON.parse(report.env.CODEX_CONFIG ?? "null")).toEqual({
+      model: "openai/gpt-5-mini",
+      features: { multi_agent: false, multi_agent_v2: false },
+    });
     expect(report.authenticated?.methodId).toBe("gateway");
   });
 
@@ -311,7 +317,10 @@ describe("Codex as the session's own harness", () => {
     s.daemon.sessions.input(s.session, "cli", "route");
     await s.daemon.sessions.idle(s.session);
     const report = JSON.parse(messages(s).findLast((t) => t.startsWith("{")) ?? "null");
-    expect(JSON.parse(report.env.CODEX_CONFIG)).toEqual({ model: "openai/gpt-5-mini" });
+    expect(JSON.parse(report.env.CODEX_CONFIG)).toEqual({
+      model: "openai/gpt-5-mini",
+      features: { multi_agent: false, multi_agent_v2: false },
+    });
     expect(report.authenticated.methodId).toBe("gateway");
     expect(JSON.stringify(events(s))).not.toContain(KEY);
   });
@@ -324,6 +333,20 @@ describe("codexRoute", () => {
     expect(JSON.parse(route.env.CODEX_CONFIG ?? "null")).toEqual({
       approval_policy: "never",
       model: "openai/gpt-oss-120b",
+      // Codex's own subagents stay off: delegate hands work on.
+      features: { multi_agent: false, multi_agent_v2: false },
+    });
+  });
+
+  test("Codex's subagents are off unless the user turned them on", () => {
+    process.env.CODEX_CONFIG = JSON.stringify({
+      features: { multi_agent: true, web_search: true },
+    });
+    const route = codexRoute("groq", "openai/gpt-oss-120b", OTHER_KEY);
+    expect(JSON.parse(route.env.CODEX_CONFIG ?? "null").features).toEqual({
+      multi_agent: true,
+      multi_agent_v2: false,
+      web_search: true,
     });
     expect(route.gateway?.baseUrl).toBe("https://api.groq.com/openai/v1");
     expect(route.secrets).toEqual([OTHER_KEY]);

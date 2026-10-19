@@ -3,6 +3,8 @@
 // `guests: {claude: {title, command, permissions}, …}` (other names add guests); env overrides it:
 // SUITE_GUESTS=none (or a list like claude), SUITE_GUEST_PERMISSIONS=ask|allow. Model, effort and
 // mode are the user's choice per session (/model, /effort, /mode), not configured here.
+// Their own subagents are off (Claude Code's Agent tool, Codex's multi_agent): delegate, which
+// asks first and shows the work, is how agents hand work on here.
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +14,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function defaults(): Record<string, GuestConfig> {
+/** Claude Code's tools that start subagents of its own (Task is the older name of Agent). */
+export const CLAUDE_AGENT_TOOLS = ["Agent", "Task"];
+
+/**
+ * CODEX_CONFIG for the Codex adapter (config overrides it hands to Codex): the user's own, with
+ * Codex's subagents off unless they turned them on there, and `extra` on top.
+ */
+export function codexConfig(
+  extra: Record<string, unknown> = {},
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  let config: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(env.CODEX_CONFIG ?? "{}");
+    if (isRecord(parsed)) config = { ...parsed };
+  } catch {
+    // Not JSON: the adapter would refuse it, and so we replace it.
+  }
+  const features = isRecord(config.features) ? config.features : {};
+  return JSON.stringify({
+    ...config,
+    features: { multi_agent: false, multi_agent_v2: false, ...features },
+    ...extra,
+  });
+}
+
+function defaults(env: NodeJS.ProcessEnv): Record<string, GuestConfig> {
   // Prefer the user's own Claude Code over the one the adapter bundles.
   const claudeCli = Bun.which("claude");
   const claude: GuestConfig = {
@@ -27,6 +55,7 @@ function defaults(): Record<string, GuestConfig> {
     codex: {
       title: "Codex",
       command: ["bunx", "@agentclientprotocol/codex-acp@2.2.2"],
+      env: { CODEX_CONFIG: codexConfig({}, env) },
       route: "codex",
       permissions: "ask",
     },
@@ -54,7 +83,7 @@ function permissions(value: unknown, source: string): "ask" | "allow" {
 export function loadGuestConfigs(
   env: NodeJS.ProcessEnv = process.env,
 ): Record<string, GuestConfig> {
-  const configs = defaults();
+  const configs = defaults(env);
   for (const [name, value] of Object.entries(readGuestsKey(env))) {
     if (!isRecord(value)) continue;
     const config: GuestConfig = configs[name] ?? { title: name, command: [], permissions: "ask" };

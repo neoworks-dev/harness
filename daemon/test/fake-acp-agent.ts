@@ -10,7 +10,8 @@
 //   runcmd <c>    asks to run the command (kind execute, rawInput.command) and reports the answer
 //   editfile <p> <text>  asks to edit the file, and when allowed writes it and reports the
 //                 completed tool call with its diff (like an adapter that asks before it writes)
-//   config        reports what session/new (or resume) and set_config_option gave it
+//   config        reports what session/new (or resume) and set_config_option gave it (the
+//                 instructions, the disallowed tools, the settings)
 //   started       reports how the conversation began: "new" or "resume" (resuming a session id
 //                 that starts with "gone" fails, like an adapter that lost the conversation)
 //   suitetool <t> asks for permission to use the suite's own MCP tool <t> (titled
@@ -39,6 +40,7 @@ let nextId = 1000;
 const waiting = new Map<number, (result: unknown) => void>();
 let gateway: HttpServer | undefined;
 let instructions: unknown;
+let disallowed: unknown;
 const config: Record<string, unknown> = {};
 let sessionId = "";
 let started = "new";
@@ -273,7 +275,7 @@ async function prompt(params: {
     });
   } else if (task === "config") {
     update(sessionId, { sessionUpdate: "plan", entries: [] });
-    say(sessionId, JSON.stringify({ instructions, config, session: sessionId }));
+    say(sessionId, JSON.stringify({ instructions, disallowed, config, session: sessionId }));
     return { stopReason: "end_turn" };
   } else if (task === "started") {
     say(sessionId, `started: ${started}`);
@@ -328,8 +330,12 @@ async function handle(message: Record<string, unknown>): Promise<void> {
       const servers = params.mcpServers as HttpServer[];
       gateway = servers[0];
       cwd = params.cwd as string;
-      const meta = params._meta as { jetbrains?: { air?: { customInstructions?: string } } };
+      const meta = params._meta as {
+        jetbrains?: { air?: { customInstructions?: string } };
+        claudeCode?: { options?: { disallowedTools?: string[] } };
+      };
       instructions = meta.jetbrains?.air?.customInstructions?.slice(0, 40);
+      disallowed = meta.claudeCode?.options?.disallowedTools;
       sessionId = "acp-1";
       result = { sessionId, configOptions: configOptions() };
     } else if (method === "session/resume") {

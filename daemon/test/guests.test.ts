@@ -162,6 +162,8 @@ describe("delegate", () => {
     );
     expect(JSON.parse((config.content[0] as { text: string }).text)).toEqual({
       instructions: "You're working as a guest in a suite of ",
+      // Claude Code's own subagents are off: delegate hands work on.
+      disallowed: ["Agent", "Task"],
       config: {},
       session: "acp-1",
     });

@@ -10,6 +10,7 @@
 import { findEnvKeys, getModels, type KnownProvider } from "@mariozechner/pi-ai";
 import { type Accounts, readAccounts } from "@suite/harness/auth";
 import { BadRequestError } from "../focus.ts";
+import { codexConfig } from "./config.ts";
 
 /** Which guest the route is for. */
 export type RouteKind = "codex" | "claude";
@@ -114,20 +115,6 @@ function modelsOf(provider: string): { id: string; reasoning: boolean }[] {
   return getModels(provider as KnownProvider).map((m) => ({ id: m.id, reasoning: m.reasoning }));
 }
 
-function codexConfig(model: string): string {
-  // Whatever the user has in CODEX_CONFIG stays; only the model is ours.
-  let config: Record<string, unknown> = {};
-  try {
-    const parsed: unknown = JSON.parse(process.env.CODEX_CONFIG ?? "{}");
-    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-      config = { ...parsed };
-    }
-  } catch {
-    // Not JSON: the adapter would refuse it, and so we replace it.
-  }
-  return JSON.stringify({ ...config, model });
-}
-
 export function codexRoute(provider: string, model: string, key: string): Route {
   const known = CODEX_PROVIDERS[provider];
   if (!known?.baseUrl) throw new BadRequestError(`Codex can't use ${provider}`);
@@ -136,7 +123,8 @@ export function codexRoute(provider: string, model: string, key: string): Route 
     provider,
     model,
     // The adapter takes any model id through its config, not through the options it lists.
-    env: { CODEX_CONFIG: codexConfig(model) },
+    // Whatever the user has in CODEX_CONFIG stays; the model is ours.
+    env: { CODEX_CONFIG: codexConfig({ model }) },
     gateway: {
       baseUrl: known.baseUrl,
       headers: { Authorization: `Bearer ${key}` },
