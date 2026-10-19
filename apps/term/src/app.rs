@@ -23,6 +23,7 @@ use suite_sdk::Event;
 
 use crate::agents::{Agents, AgentsAction, MainRow, Transcript};
 use crate::chat::{self, Chat, ChatOpts};
+use crate::choice;
 use crate::editor::Editor;
 use crate::github::{Github, Outgoing};
 use crate::history::{Histories, HistoryStore};
@@ -149,6 +150,8 @@ struct PromptState {
     /// Prompts that were dismissed (Esc) or answered: not the active one any more.
     dismissed: Vec<String>,
     button: usize,
+    /// What was typed to find an option of a long choice.
+    filter: String,
     /// The prompt last seen as active, to notice a new one.
     seen: Option<String>,
     /// The prompt has taken the editor's place: keys go to it alone.
@@ -160,7 +163,7 @@ struct PromptState {
 }
 
 /// The keys line under a prompt in the input area.
-fn keys_hint(focused: Option<&ButtonRef>, buttons: usize) -> String {
+fn keys_hint(focused: Option<&ButtonRef>, buttons: usize, filter: Option<&str>) -> String {
     let mut parts = Vec::new();
     if let Some(button) = focused {
         parts.push(format!("enter {}", button.label.to_lowercase()));
@@ -171,7 +174,13 @@ fn keys_hint(focused: Option<&ButtonRef>, buttons: usize) -> String {
     if buttons > 1 {
         parts.insert(1.min(parts.len()), "←/→ choose".to_string());
     }
-    parts.push("esc dismiss".to_string());
+    parts.push(
+        match filter {
+            Some(f) if !f.is_empty() => "esc clear",
+            _ => "esc dismiss",
+        }
+        .to_string(),
+    );
     parts.join(" · ")
 }
 
@@ -782,6 +791,37 @@ impl App {
         self.active_ref().map_or(&[], |r| self.chat.buttons_of(r))
     }
 
+    /// The active prompt is a choice long enough to be filtered by typing.
+    fn filtering(&self) -> bool {
+        choice::is_long(self.active_buttons())
+    }
+
+    /// The options of the active prompt that match the filter (all of them for a card that
+    /// isn't filtered).
+    fn shown_buttons(&self) -> Vec<usize> {
+        let buttons = self.active_buttons();
+        if choice::is_long(buttons) {
+            choice::matching(buttons, &self.prompt.filter)
+        } else {
+            (0..buttons.len()).collect()
+        }
+    }
+
+    /// The filter changed: the focus goes to the first match (the current option when it is
+    /// empty) and the window of the list starts over.
+    fn refilter(&mut self) {
+        if let Some(at) = choice::refocus(self.active_buttons(), &self.prompt.filter) {
+            self.prompt.button = at;
+        }
+        self.prompt.panel_top.set(None);
+    }
+
+    /// A typed character, Backspace or Ctrl-U on a filtered choice.
+    fn edit_filter(&mut self, edit: impl FnOnce(&mut String)) {
+        edit(&mut self.prompt.filter);
+        self.refilter();
+    }
+
     /// A new active prompt starts on its current or first button and is scrolled into view.
     fn sync_prompt(&mut self) {
         let current = self.active_ref().map(str::to_string);
@@ -803,12 +843,18 @@ impl App {
                 self.chat.follow();
             }
             self.prompt.panel_top.set(None);
+            self.prompt.filter.clear();
             self.prompt.seen = current;
         }
         self.update_engaged();
     }
 
     fn move_button(&mut self, delta: isize) {
+        if self.filtering() {
+            let shown = self.shown_buttons();
+            self.prompt.button = choice::step(&shown, self.prompt.button, delta);
+            return;
+        }
         let n = self.active_buttons().len();
         if n > 0 {
             self.prompt.button =
@@ -855,6 +901,9 @@ impl App {
             return;
         };
         let button = self.prompt.button;
+        if self.filtering() && !self.shown_buttons().contains(&button) {
+            return;
+        }
         if self.chat.buttons_of(&r).get(button).is_some_and(takes_note) {
             self.note = Some(Note {
                 r#ref: r,
@@ -1282,7 +1331,9 @@ impl App {
     }
 
     fn esc(&mut self, fx: &mut Vec<Effect>) {
-        if self.menu_visible() {
+        if self.prompt.engaged && self.filtering() && !self.prompt.filter.is_empty() {
+            self.edit_filter(String::clear);
+        } else if self.menu_visible() {
             self.menu_closed_for = Some(self.editor.text().to_string());
         } else if let Some(r) = self.active_ref().map(str::to_string) {
             self.prompt.dismissed.push(r);
@@ -1305,6 +1356,7 @@ impl App {
         match key.code {
             KeyCode::Char(c) if ctrl => match c {
                 'c' => self.ctrl_c(fx),
+                'u' if self.filtering() => self.edit_filter(String::clear),
                 'p' => {
                     self.select_prompt(-1);
                 }
@@ -1316,6 +1368,17 @@ impl App {
                 }
                 _ => {}
             },
+            // On a long choice every character is for the filter, digits too.
+            KeyCode::Char(c) if self.filtering() => {
+                if !key.modifiers.contains(KeyModifiers::ALT) {
+                    self.edit_filter(|f| f.push(c));
+                }
+            }
+            KeyCode::Backspace if self.filtering() => {
+                self.edit_filter(|f| {
+                    f.pop();
+                });
+            }
             KeyCode::Char(c) => {
                 if let Some(n) = c.to_digit(10).filter(|n| (1..=9).contains(n))
                     && (n as usize) <= self.active_buttons().len()
@@ -1323,7 +1386,12 @@ impl App {
                     self.press(n as usize - 1, fx);
                 }
             }
-            KeyCode::Enter => self.press(self.prompt.button, fx),
+            KeyCode::Enter => {
+                // With nothing matching there is nothing to pick.
+                if !self.filtering() || self.shown_buttons().contains(&self.prompt.button) {
+                    self.press(self.prompt.button, fx);
+                }
+            }
             KeyCode::Tab => self.tab_on_prompt(),
             KeyCode::BackTab => self.cycle_approvals(fx),
             KeyCode::Esc => self.esc(fx),
@@ -2021,37 +2089,87 @@ impl App {
             return Vec::new();
         };
         let buttons = self.chat.buttons_of(r);
-        let focused = self.prompt.button.min(buttons.len().saturating_sub(1));
+        let filtering = choice::is_long(buttons);
+        // A long choice shows only the options that match, numbered from its own first line.
+        let shown = filtering.then(|| choice::matching(buttons, &self.prompt.filter));
+        let filtered = shown
+            .as_ref()
+            .map(|s| suite_renderer_ratatui::keep_buttons(item, s));
+        let (item, focused) = match (&filtered, &shown) {
+            (Some(filtered), Some(shown)) => (
+                filtered,
+                shown
+                    .iter()
+                    .position(|&i| i == self.prompt.button)
+                    .unwrap_or(usize::MAX),
+            ),
+            _ => (
+                item,
+                self.prompt.button.min(buttons.len().saturating_sub(1)),
+            ),
+        };
         let w = usize::from(width);
         let marker = self.styles.accent;
         let tail = match &self.note {
             Some(note) => chat::note_line(&note.text, w.saturating_sub(2), marker),
             None => Line::from(Span::styled(
-                keys_hint(buttons.get(focused), buttons.len()),
+                keys_hint(
+                    buttons
+                        .get(self.prompt.button.min(buttons.len().saturating_sub(1)))
+                        .filter(|_| !shown.as_ref().is_some_and(Vec::is_empty)),
+                    shown.as_ref().map_or(buttons.len(), Vec::len),
+                    filtering.then_some(self.prompt.filter.as_str()),
+                ),
                 self.styles.muted,
             )),
         };
+        let nothing = shown.as_ref().is_some_and(Vec::is_empty);
+        // The question, then the filter field, then the options.
+        let head = 1 + usize::from(filtering);
         let budget = max_rows.saturating_sub(1).max(1);
+        let compose = |preview: usize| {
+            let mut body = chat::panel_lines(
+                item,
+                width,
+                focused,
+                preview,
+                filtering,
+                self.palette,
+                marker,
+            );
+            if filtering {
+                let field = chat::filter_line(&self.prompt.filter, w.saturating_sub(2), marker);
+                body.insert(1.min(body.len()), chat::barred(field, marker));
+                if nothing {
+                    body.push(chat::barred(
+                        Line::from(Span::styled("no match", self.styles.muted)),
+                        marker,
+                    ));
+                }
+            }
+            body
+        };
         let mut body = Vec::new();
         for preview in [10, 6, 3, 1, 0] {
-            body = chat::panel_lines(item, width, focused, preview, self.palette, marker);
+            body = compose(preview);
             if body.len() <= budget {
                 break;
             }
         }
         if body.len() > budget {
-            // Too small for the preview: keep the question and a window of the buttons that
-            // follows the focused one, scrolling no further than it takes to show it.
-            let rows = budget - 1;
-            let mut rest = body.split_off(1);
+            // Too small for the preview: keep the question (and the filter) and a window of the
+            // buttons that follows the focused one, scrolling no further than it takes to show it.
+            let rows = budget.saturating_sub(head);
+            let mut rest = body.split_off(head.min(body.len()));
             // The focused button is on the first line that differs from a drawing without one.
-            let unfocused = chat::panel_lines(item, width, usize::MAX, 0, self.palette, marker);
+            let unfocused =
+                chat::panel_lines(item, width, usize::MAX, 0, filtering, self.palette, marker);
             let at = rest
                 .iter()
                 .zip(unfocused.iter().skip(1))
                 .position(|(a, b)| a != b)
-                .unwrap_or(rest.len() - 1);
-            let max_top = rest.len() - rows;
+                .unwrap_or(rest.len().saturating_sub(1));
+            let max_top = rest.len().saturating_sub(rows);
             let mut top = self.prompt.panel_top.get().unwrap_or(max_top);
             if at < top {
                 top = at;

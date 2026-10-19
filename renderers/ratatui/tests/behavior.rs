@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use suite_renderer_ratatui::{
     ImageOptions, ImageSlot, ImageStatus, Options, Palette, buttons, image_cells, image_sources,
-    plain_text, render_item, render_item_images,
+    keep_buttons, plain_text, render_item, render_item_images,
 };
 
 fn pal() -> Palette {
@@ -1034,4 +1034,64 @@ fn a_collapsed_tool_result_keeps_the_text_and_the_picture() {
     for width in [1u16, 2, 5, 12] {
         assert_fits(&render_item(&it, width, &opts), width);
     }
+}
+
+fn choice() -> suite_protocol::ViewItem {
+    let button = |label: &str, id: &str| {
+        format!(
+            r#"{{"type":"button","label":"{label}","action":"suite.choose","args":{{"id":"c","option":"{id}"}}}}"#
+        )
+    };
+    let row = |label: &str, id: &str, about: &str| {
+        format!(
+            r#"{{"type":"row","children":[{},{}]}}"#,
+            button(label, id),
+            text(about)
+        )
+    };
+    let body = format!(
+        r#"{{"type":"stack","children":[{},{},{}]}}"#,
+        button("One", "a/1"),
+        row("Two", "a/2", "the second"),
+        row("Three", "b/3", "the third"),
+    );
+    tool("pending", &body)
+}
+
+#[test]
+fn a_buttons_description_is_the_text_after_it_in_its_row() {
+    let got: Vec<_> = buttons(&choice())
+        .into_iter()
+        .map(|b| b.description)
+        .collect();
+    assert_eq!(
+        got,
+        [None, Some("the second".into()), Some("the third".into())]
+    );
+}
+
+#[test]
+fn kept_buttons_drag_their_description_along_and_empty_rows_go() {
+    let kept = keep_buttons(&choice(), &[2]);
+    let got = buttons(&kept);
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].label, "Three");
+    assert_eq!(got[0].description.as_deref(), Some("the third"));
+    let shown = lines(&kept, 40).join("\n");
+    assert!(
+        !shown.contains("One") && !shown.contains("second"),
+        "{shown}"
+    );
+    assert!(buttons(&keep_buttons(&choice(), &[])).is_empty());
+}
+
+#[test]
+fn hidden_keys_leave_the_label_alone() {
+    let opts = Options {
+        hide_keys: true,
+        ..Options::default()
+    };
+    let got = lines_of(&choice(), 40, &opts).join("\n");
+    assert!(got.contains("[One]") && got.contains("[Two]"), "{got}");
+    assert!(!got.contains("[1 One]"));
 }

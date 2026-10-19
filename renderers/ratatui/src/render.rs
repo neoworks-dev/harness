@@ -786,14 +786,18 @@ impl<'a> Cx<'a> {
         self.next_button += 1;
         let key = button_key(b, idx);
         let focused = self.o.focused_button == Some(idx);
-        let mut spans = vec![
-            Span::raw("["),
-            Span::styled(
-                one_line(&key),
-                Style::new().fg(self.p.accent).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(format!(" {}]", one_line(&b.label))),
-        ];
+        let mut spans = if self.o.hide_keys {
+            vec![Span::raw(format!("[{}]", one_line(&b.label)))]
+        } else {
+            vec![
+                Span::raw("["),
+                Span::styled(
+                    one_line(&key),
+                    Style::new().fg(self.p.accent).add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(format!(" {}]", one_line(&b.label))),
+            ]
+        };
         if b.current == Some(true) {
             spans.push(Span::styled(" ✓", Style::new().fg(self.p.success)));
         }

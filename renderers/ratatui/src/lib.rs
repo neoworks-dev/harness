@@ -43,6 +43,9 @@ pub struct Options {
     pub preview_lines: Option<usize>,
     /// Highlights the n-th button of this item (index into [`buttons`]).
     pub focused_button: Option<usize>,
+    /// Draws a button as `[Label]` without the key that triggers it (a card that takes its
+    /// keys for something else, such as a filter).
+    pub hide_keys: bool,
     pub theme: Palette,
     /// Reserve rows for images the app can draw itself (see [`ImageOptions`]). None: an image is
     /// a one-line `[image …]` placeholder.
@@ -126,6 +129,8 @@ pub struct ButtonRef {
     pub key: String,
     /// The value in effect now (a picker's current model): focus starts here.
     pub current: bool,
+    /// What a choice says about this option: the text after the button in its row.
+    pub description: Option<String>,
 }
 
 impl ButtonRef {
@@ -151,12 +156,120 @@ fn collect(c: &pb::Component, out: &mut Vec<ButtonRef>) {
             args: b.args.clone(),
             key: render::button_key(b, out.len()),
             current: b.current == Some(true),
+            description: None,
         }),
         pb::Component::CardComponent(v) => v.children.iter().for_each(|c| collect(c, out)),
-        pb::Component::RowComponent(v) => v.children.iter().for_each(|c| collect(c, out)),
+        pb::Component::RowComponent(v) => {
+            let mut last: Option<usize> = None;
+            for child in &v.children {
+                match child {
+                    // The first text after a button in a row says what the button does.
+                    pb::Component::TextComponent(t) => {
+                        if let Some(i) = last.take()
+                            && let Some(button) = out.get_mut(i)
+                        {
+                            button.description = Some(blocks_text(&t.blocks));
+                        }
+                    }
+                    other => {
+                        let before = out.len();
+                        collect(other, out);
+                        last = (out.len() > before).then(|| out.len() - 1);
+                    }
+                }
+            }
+        }
         pb::Component::StackComponent(v) => v.children.iter().for_each(|c| collect(c, out)),
         _ => {}
     }
+}
+
+/// The text of a run of blocks, one per line.
+fn blocks_text(blocks: &[pb::Block]) -> String {
+    let spans = |list: &[pb::Span]| list.iter().map(|s| s.text.as_str()).collect::<String>();
+    let mut lines = Vec::new();
+    for block in blocks {
+        match block {
+            pb::Block::ParagraphBlock(b) => lines.push(spans(&b.spans)),
+            pb::Block::HeadingBlock(b) => lines.push(spans(&b.spans)),
+            pb::Block::CodeBlock(b) => lines.push(b.code.clone()),
+            pb::Block::QuoteBlock(b) => lines.push(blocks_text(&b.blocks)),
+            pb::Block::ListBlock(b) => lines.extend(
+                b.items
+                    .iter()
+                    .map(|item| format!("- {}", blocks_text(&item.blocks))),
+            ),
+            pb::Block::RuleBlock(_) | pb::Block::Unknown(_) => {}
+        }
+    }
+    lines.join("\n")
+}
+
+/// The item with only the buttons at the `keep` positions of [`buttons`] (and the text that
+/// follows each in its row). Everything else stays; a row left without a button goes.
+pub fn keep_buttons(item: &ViewItem, keep: &[usize]) -> ViewItem {
+    let mut item = item.clone();
+    let mut next = 0;
+    item.component = prune(item.component, keep, &mut next).unwrap_or_else(|| {
+        pb::Component::StackComponent(pb::StackComponent {
+            gap: None,
+            children: Vec::new(),
+        })
+    });
+    item
+}
+
+fn prune(c: pb::Component, keep: &[usize], next: &mut usize) -> Option<pb::Component> {
+    match c {
+        pb::Component::ButtonComponent(_) => {
+            let at = *next;
+            *next += 1;
+            keep.contains(&at).then_some(c)
+        }
+        pb::Component::CardComponent(mut v) => {
+            v.children = prune_children(v.children, false, keep, next);
+            Some(pb::Component::CardComponent(v))
+        }
+        pb::Component::StackComponent(mut v) => {
+            v.children = prune_children(v.children, false, keep, next);
+            Some(pb::Component::StackComponent(v))
+        }
+        pb::Component::RowComponent(mut v) => {
+            let had = v.children.iter().any(render::has_buttons);
+            v.children = prune_children(v.children, true, keep, next);
+            let has = v.children.iter().any(render::has_buttons);
+            (has || !had).then_some(pb::Component::RowComponent(v))
+        }
+        other => Some(other),
+    }
+}
+
+fn prune_children(
+    children: Vec<pb::Component>,
+    row: bool,
+    keep: &[usize],
+    next: &mut usize,
+) -> Vec<pb::Component> {
+    let mut out = Vec::new();
+    // Whether the last button seen in a row was kept: its text follows it.
+    let mut last = None;
+    for child in children {
+        let is_text = matches!(child, pb::Component::TextComponent(_));
+        if row && is_text && last.is_some() {
+            if last == Some(true) {
+                out.push(child);
+            }
+            last = None;
+            continue;
+        }
+        let buttons = render::has_buttons(&child);
+        let kept = prune(child, keep, next);
+        if buttons {
+            last = Some(kept.as_ref().is_some_and(render::has_buttons));
+        }
+        out.extend(kept);
+    }
+    out
 }
 
 /// The item as styled lines, none wider than `width` cells (no lines at all for width 0).

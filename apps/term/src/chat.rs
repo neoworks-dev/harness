@@ -468,6 +468,7 @@ fn render(item: &ViewItem, width: u16, key: &CacheKey) -> (Vec<Line<'static>>, V
         expanded: key.expanded,
         show_thoughts: key.thoughts,
         focused_button: key.focused,
+        hide_keys: false,
         preview_lines: Some(PREVIEW_LINES),
         theme: key.palette,
         images: key.images.as_ref().map(|i| ImageOptions {
@@ -507,12 +508,14 @@ pub fn barred(line: Line<'static>, marker: Style) -> Line<'static> {
 }
 
 /// The prompt as the input area shows it: the item with the n-th button focused and at most
-/// `preview` lines of any diff or code, each line with the bar in the margin.
+/// `preview` lines of any diff or code, each line with the bar in the margin. `hide_keys` draws
+/// the buttons without their keys.
 pub fn panel_lines(
     item: &ViewItem,
     width: u16,
     focused: usize,
     preview: usize,
+    hide_keys: bool,
     palette: Palette,
     marker: Style,
 ) -> Vec<Line<'static>> {
@@ -520,6 +523,7 @@ pub fn panel_lines(
         expanded: false,
         show_thoughts: false,
         focused_button: Some(focused),
+        hide_keys,
         preview_lines: Some(preview),
         theme: palette,
         images: None,
@@ -533,15 +537,29 @@ pub fn panel_lines(
 /// The one-line input for the answer's note: `note › text` with a cursor, or a hint while empty.
 /// A long note shows its end.
 pub fn note_line(text: &str, width: usize, accent: Style) -> Line<'static> {
-    let lead = "note › ";
-    let mut spans = vec![Span::styled(lead, accent)];
+    input_line(
+        "note › ",
+        "for the agent · enter sends · esc cancels",
+        text,
+        width,
+        accent,
+    )
+}
+
+/// The one-line filter of a long choice: `filter › text` with a cursor, or a hint while empty.
+pub fn filter_line(text: &str, width: usize, accent: Style) -> Line<'static> {
+    input_line("filter › ", "type to find an option", text, width, accent)
+}
+
+fn input_line(lead: &str, hint: &str, text: &str, width: usize, accent: Style) -> Line<'static> {
+    let mut spans = vec![Span::styled(lead.to_string(), accent)];
     if text.is_empty() {
         spans.push(Span::styled(
             " ",
             Style::new().add_modifier(Modifier::REVERSED),
         ));
         spans.push(Span::styled(
-            "for the agent · enter sends · esc cancels",
+            hint.to_string(),
             Style::new().add_modifier(Modifier::DIM),
         ));
     } else {

@@ -5,6 +5,7 @@
 pub mod agents;
 pub mod app;
 pub mod chat;
+pub mod choice;
 pub mod driver;
 pub mod editor;
 pub mod github;

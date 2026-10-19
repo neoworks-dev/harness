@@ -1,0 +1,14 @@
+                                                                     │
+● message number 1                                                   │
+                                                                     │
+● message number 2                                                   │
+                                                                     │
+● Model · answer below                                               │
+──────────────────────────────────────────────────────────────────────
+▎ ● Model
+▎ filter › zzz
+▎ no match
+▎ esc clear
+~/site · neo
+
+? ask before acting (shift+tab to cycle)
