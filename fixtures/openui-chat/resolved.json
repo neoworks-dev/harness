@@ -1,18 +1,11 @@
 [
   {
-    "ref": "m1",
+    "ref": "m-m1",
     "kind": "agent",
     "component": {
       "type": "text",
       "blocks": [
-        {
-          "type": "paragraph",
-          "spans": [
-            {
-              "text": "The deploy is halfway:"
-            }
-          ]
-        },
+        { "type": "paragraph", "spans": [{ "text": "The deploy is halfway:" }] },
         {
           "type": "openui",
           "ui": {
@@ -27,11 +20,7 @@
                       "steps": [
                         {
                           "component": "Step",
-                          "props": {
-                            "title": "Build",
-                            "detail": "2m 10s",
-                            "status": "done"
-                          }
+                          "props": { "title": "Build", "detail": "2m 10s", "status": "done" }
                         },
                         {
                           "component": "Step",
@@ -43,10 +32,7 @@
                         },
                         {
                           "component": "Step",
-                          "props": {
-                            "title": "Rollout",
-                            "status": "pending"
-                          }
+                          "props": { "title": "Rollout", "status": "pending" }
                         }
                       ]
                     }
@@ -58,17 +44,11 @@
                       "series": [
                         {
                           "component": "Series",
-                          "props": {
-                            "name": "p50",
-                            "values": [120, 118, 125, 119, 117]
-                          }
+                          "props": { "name": "p50", "values": [120, 118, 125, 119, 117] }
                         },
                         {
                           "component": "Series",
-                          "props": {
-                            "name": "p99",
-                            "values": [340, 360, 410, 380, 350]
-                          }
+                          "props": { "name": "p99", "values": [340, 360, 410, 380, 350] }
                         }
                       ]
                     }
@@ -82,12 +62,7 @@
                           "props": {
                             "title": "Canary hosts",
                             "children": [
-                              {
-                                "component": "List",
-                                "props": {
-                                  "items": ["web-1", "web-4"]
-                                }
-                              }
+                              { "component": "List", "props": { "items": ["web-1", "web-4"] } }
                             ]
                           }
                         },
@@ -95,7 +70,6 @@
                           "component": "AccordionItem",
                           "props": {
                             "title": "Warnings",
-                            "open": true,
                             "children": [
                               {
                                 "component": "Callout",
@@ -107,22 +81,16 @@
                                     {
                                       "type": "paragraph",
                                       "spans": [
-                                        {
-                                          "text": "p99 rose "
-                                        },
-                                        {
-                                          "text": "18%",
-                                          "bold": true
-                                        },
-                                        {
-                                          "text": " during the canary."
-                                        }
+                                        { "text": "p99 rose " },
+                                        { "text": "18%", "bold": true },
+                                        { "text": " during the canary." }
                                       ]
                                     }
                                   ]
                                 }
                               }
-                            ]
+                            ],
+                            "open": true
                           }
                         }
                       ]
@@ -133,14 +101,7 @@
             }
           }
         },
-        {
-          "type": "paragraph",
-          "spans": [
-            {
-              "text": "I'll continue once the canary is clean."
-            }
-          ]
-        }
+        { "type": "paragraph", "spans": [{ "text": "I'll continue once the canary is clean." }] }
       ]
     }
   }

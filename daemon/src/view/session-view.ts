@@ -1,6 +1,7 @@
 // A session's chat as drawn: session events → view items, and each new event → the ops that
 // update every pane. Streaming text is merged here (re-parsed, only changed tail blocks sent);
 // tool results are filled into their app's template, or a generic card when there is none.
+import type { CallTool, Program } from "@suite/openui/program";
 import type {
   Block,
   Component,
@@ -19,6 +20,7 @@ import type { Logger } from "../log.ts";
 import { MAIN, MESSAGES_APP } from "../messages.ts";
 import { diffLines } from "./diff.ts";
 import { parseMarkdown } from "./markdown.ts";
+import { isOpenUiTemplate, OpenUiDocs, templateProgram } from "./openui.ts";
 import { resolveTemplate, TemplateError } from "./template.ts";
 
 /** Finds the template registered for a tool (app.tool), if any. */
@@ -26,8 +28,11 @@ export type TemplateLookup = (tool: string) => unknown;
 
 interface Stream {
   ref: string;
+  kind: "agent" | "thought";
   raw: string;
   blocks: Block[];
+  /** The message is complete: an openui fence still open is a finished program. */
+  ended: boolean;
 }
 
 interface Call {
@@ -122,7 +127,10 @@ export class SessionView {
   private readonly windows = new Map<string, string>();
   /** Those of them that outlive a turn (started in the background). */
   private readonly background = new Set<string>();
+  private readonly docs: OpenUiDocs;
   private seq = 0;
+  /** Told of the ops a change outside the event log makes (an OpenUI doc answering). */
+  onOps: ((ops: ViewOp[]) => void) | undefined;
 
   /**
    * `only` makes a per-agent view: just that agent's work (what its labelled events say), with
@@ -135,7 +143,15 @@ export class SessionView {
     private readonly templates: TemplateLookup,
     private readonly log: Logger,
     private readonly only?: string,
-  ) {}
+    tools?: CallTool,
+  ) {
+    this.docs = new OpenUiDocs((ref) => this.changed(ref), tools);
+  }
+
+  /** The seq of the last event applied. */
+  get lastSeq(): number {
+    return this.seq;
+  }
 
   snapshot(): ViewSnapshot {
     const snapshot: ViewSnapshot = {
@@ -241,10 +257,11 @@ export class SessionView {
         for (const id of [...this.windows.keys()]) {
           if (!this.background.has(id)) this.windows.delete(id);
         }
-        if (event.stopReason === "end_turn") return [];
+        const finished = this.finishStreams();
+        if (event.stopReason === "end_turn") return finished;
         const what = event.error ?? `stopped: ${event.stopReason.replace("_", " ")}`;
         const tone = event.stopReason === "cancelled" ? "muted" : "danger";
-        return [this.notice(`e${seq}`, what, tone)];
+        return [...finished, this.notice(`e${seq}`, what, tone)];
       }
       case "app_connected":
         return [this.notice(`n${seq}`, connectedNotice(event))];
@@ -321,10 +338,12 @@ export class SessionView {
       case "subagent_ended": {
         const owner = this.windows.get(event.id);
         this.windows.delete(event.id);
-        if (owner !== agent || event.stopReason === "end_turn") return [];
+        if (owner !== agent) return [];
+        const finished = this.finishStreams();
+        if (event.stopReason === "end_turn") return finished;
         const what = event.error ?? `stopped: ${event.stopReason.replace("_", " ")}`;
         const tone = event.stopReason === "cancelled" ? "muted" : "danger";
-        return [this.notice(`e${seq}`, what, tone)];
+        return [...finished, this.notice(`e${seq}`, what, tone)];
       }
       case "agent_message_chunk":
         if (event.agent !== agent) return [];
@@ -342,6 +361,8 @@ export class SessionView {
       case "plan":
         if (event.agent !== agent) return [];
         return this.planOps(event);
+      case "turn_ended":
+        return this.finishStreams();
       case "permission_request":
         if (event.agent !== agent) return [];
         this.permissions.set(event.id, event);
@@ -517,6 +538,14 @@ export class SessionView {
     };
   }
 
+  /** The blocks of a streamed message; its openui fences are programs, running ones. */
+  private blocksOf(stream: Stream): Block[] {
+    if (stream.kind === "thought") return parseMarkdown(stream.raw);
+    return parseMarkdown(stream.raw, (index, program, closed) =>
+      this.docs.doc(stream.ref, String(index), program, !closed && !stream.ended),
+    );
+  }
+
   /** Streaming text: re-parse the whole message, send only the blocks that changed. */
   private stream(
     ref: string,
@@ -525,9 +554,9 @@ export class SessionView {
     agent: string | undefined,
   ): ViewOp[] {
     const existing = this.streams.get(ref);
-    const stream = existing ?? { ref, raw: "", blocks: [] };
+    const stream: Stream = existing ?? { ref, kind, raw: "", blocks: [], ended: false };
     stream.raw += chunk;
-    const blocks = parseMarkdown(stream.raw);
+    const blocks = this.blocksOf(stream);
     const from = firstChange(stream.blocks, blocks);
     stream.blocks = blocks;
     this.streams.set(ref, stream);
@@ -538,6 +567,24 @@ export class SessionView {
       return [{ op: "set", item }];
     }
     return [{ op: "blocks", ref, path: [], from, blocks: blocks.slice(from) }];
+  }
+
+  /** The turn is over: an openui fence a message left open is a finished program. */
+  private finishStreams(): ViewOp[] {
+    const ops: ViewOp[] = [];
+    for (const stream of this.streams.values()) {
+      if (stream.ended) continue;
+      stream.ended = true;
+      if (stream.kind !== "agent" || !stream.raw.includes("```")) continue;
+      const before = stream.blocks;
+      const blocks = this.blocksOf(stream);
+      const from = firstChange(before, blocks);
+      stream.blocks = blocks;
+      if (from < before.length || from < blocks.length) {
+        ops.push({ op: "blocks", ref: stream.ref, path: [], from, blocks: blocks.slice(from) });
+      }
+    }
+    return ops;
   }
 
   /** A delegation reads `neo · first line of the task`, whatever the harness called its tool. */
@@ -567,6 +614,14 @@ export class SessionView {
     const template = result && this.templates(result.tool);
     if (result && template !== undefined && call.status === "completed") {
       try {
+        if (isOpenUiTemplate(template)) {
+          const source = templateProgram(template, result.rawOutput);
+          const ui = this.docs.doc(call.ref, "0", source, false);
+          if (ui.root) return { type: "openui", ui };
+          const why = ui.errors?.[0]?.message ?? "no root";
+          this.log.warn(`openui template for ${result.tool} drew nothing: ${why}`);
+          return this.fallback(call);
+        }
         return resolveTemplate(template, result.rawOutput);
       } catch (err) {
         const why = err instanceof TemplateError ? err.message : String(err);
@@ -628,6 +683,32 @@ export class SessionView {
     }
     if (children.length === 1 && children[0]) return children[0];
     return { type: "stack", gap: "s", children };
+  }
+
+  /** Doc `doc` of item `ref`, running: where typed values and $variables live. */
+  program(ref: string, doc: string): Program | undefined {
+    return this.docs.program(ref, doc);
+  }
+
+  /** An OpenUI doc of item `ref` changed (a value was typed, a query answered): send the item again. */
+  changed(ref: string): void {
+    const at = this.index.get(ref);
+    const current = at === undefined ? undefined : this.items[at];
+    if (!current) return;
+    let item: ViewItem | undefined;
+    const stream = this.streams.get(ref);
+    if (stream) {
+      if (current.component.type !== "text") return;
+      stream.blocks = this.blocksOf(stream);
+      item = { ...current, component: { ...current.component, blocks: stream.blocks } };
+    } else {
+      const call = [...this.calls.values()].find((c) => c.ref === ref);
+      if (call) item = this.toolItem(call);
+    }
+    if (!item || JSON.stringify(item) === JSON.stringify(current)) return;
+    const op: ViewOp = { op: "set", item };
+    this.applyOp(op);
+    this.onOps?.([op]);
   }
 
   private applyOp(op: ViewOp): void {

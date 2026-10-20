@@ -1,18 +1,11 @@
 [
   {
-    "ref": "m1",
+    "ref": "m-m1",
     "kind": "agent",
     "component": {
       "type": "text",
       "blocks": [
-        {
-          "type": "paragraph",
-          "spans": [
-            {
-              "text": "Checking:"
-            }
-          ]
-        },
+        { "type": "paragraph", "spans": [{ "text": "Checking:" }] },
         {
           "type": "openui",
           "ui": {
@@ -20,22 +13,12 @@
             "root": {
               "component": "Card",
               "props": {
-                "title": "Disk usage",
                 "children": [
                   {
                     "component": "Header",
-                    "props": {
-                      "title": "Disk usage",
-                      "subtitle": "/dev/nvme0n1"
-                    }
+                    "props": { "title": "Disk usage", "subtitle": "/dev/nvme0n1" }
                   },
-                  {
-                    "component": "Progress",
-                    "props": {
-                      "value": 0.72,
-                      "label": "72% used"
-                    }
-                  },
+                  { "component": "Progress", "props": { "value": 0.72, "label": "72% used" } },
                   {
                     "component": "Table",
                     "partial": true,
@@ -44,7 +27,8 @@
                       "rows": [["/home", "310 GB"], ["/var"]]
                     }
                   }
-                ]
+                ],
+                "title": "Disk usage"
               }
             },
             "streaming": true

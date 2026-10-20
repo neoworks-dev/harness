@@ -7,6 +7,7 @@ import type {
   Span,
   TableBlock,
   TableCell,
+  UiDoc,
 } from "@suite/protocol/types";
 
 type Style = Omit<Span, "text">;
@@ -87,7 +88,33 @@ function table(token: Tokens.Table): TableBlock {
   return block;
 }
 
-function blocks(tokens: Token[]): Block[] {
+/**
+ * What turns the program of an ```openui fence into a doc: its position among the message's
+ * openui fences, the program, and whether the fence has been closed (the program is complete).
+ */
+export type OpenUiHost = (index: number, program: string, closed: boolean) => UiDoc;
+
+/** An openui fence's language, with or without the info string after it. */
+const OPENUI_LANG = /^openui(-lang)?(\s|$)/;
+
+/** A closing fence at the end of a code token's source: the token was not cut off. */
+function fenceClosed(raw: string): boolean {
+  const lines = raw.trimEnd().split("\n");
+  return lines.length > 1 && /^ {0,3}(`{3,}|~{3,})\s*$/.test(lines.at(-1) ?? "");
+}
+
+/** The program of a fence cut off in the middle of its closing fence loses that stub. */
+function programOf(token: Tokens.Code, closed: boolean): string {
+  if (closed) return token.text;
+  return token.text.replace(/(^|\n)[`~]{1,2}$/, "");
+}
+
+interface Fences {
+  host: OpenUiHost;
+  count: number;
+}
+
+function blocks(tokens: Token[], fences?: Fences): Block[] {
   const out: Block[] = [];
   for (const token of tokens) {
     switch (token.type) {
@@ -120,6 +147,12 @@ function blocks(tokens: Token[]): Block[] {
         break;
       }
       case "code": {
+        if (fences && token.lang !== undefined && OPENUI_LANG.test(token.lang)) {
+          const closed = fenceClosed(token.raw);
+          const ui = fences.host(fences.count++, programOf(token as Tokens.Code, closed), closed);
+          out.push({ type: "openui", ui });
+          break;
+        }
         const code: Block = { type: "code_block", code: token.text };
         if (token.lang) code.language = token.lang;
         out.push(code);
@@ -142,6 +175,11 @@ function blocks(tokens: Token[]): Block[] {
   return out;
 }
 
-export function parseMarkdown(source: string): Block[] {
-  return blocks(Lexer.lex(source, { gfm: true }));
+/**
+ * With `openui`, the message's top-level openui fences become openui blocks (the daemon's
+ * messages); without it they stay code, as everywhere else (templates, messages between agents).
+ */
+export function parseMarkdown(source: string, openui?: OpenUiHost): Block[] {
+  const tokens = Lexer.lex(source, { gfm: true });
+  return blocks(tokens, openui && { host: openui, count: 0 });
 }

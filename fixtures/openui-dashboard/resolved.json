@@ -2,8 +2,6 @@
   {
     "ref": "openui-dashboard",
     "kind": "tool",
-    "label": "analytics.revenue",
-    "state": "done",
     "component": {
       "type": "openui",
       "ui": {
@@ -11,19 +9,14 @@
         "root": {
           "component": "Card",
           "props": {
-            "title": "Revenue",
             "children": [
               {
                 "component": "Header",
-                "props": {
-                  "title": "Monthly revenue",
-                  "subtitle": "Last 6 months"
-                }
+                "props": { "title": "Monthly revenue", "subtitle": "Last 6 months" }
               },
               {
                 "component": "Stack",
                 "props": {
-                  "direction": "row",
                   "children": [
                     {
                       "component": "Metric",
@@ -52,7 +45,8 @@
                         "tone": "danger"
                       }
                     }
-                  ]
+                  ],
+                  "direction": "row"
                 }
               },
               {
@@ -71,27 +65,18 @@
                               "series": [
                                 {
                                   "component": "Series",
-                                  "props": {
-                                    "name": "Revenue",
-                                    "values": [12, 15, 14, 18, 21, 25]
-                                  }
+                                  "props": { "name": "Revenue", "values": [12, 15, 14, 18, 21, 25] }
                                 },
                                 {
                                   "component": "Series",
-                                  "props": {
-                                    "name": "Costs",
-                                    "values": [9, 9, 10, 11, 11, 12]
-                                  }
+                                  "props": { "name": "Costs", "values": [9, 9, 10, 11, 11, 12] }
                                 }
                               ]
                             }
                           },
                           {
                             "component": "Sparkline",
-                            "props": {
-                              "values": [12, 15, 14, 18, 21, 25],
-                              "label": "Revenue"
-                            }
+                            "props": { "values": [12, 15, 14, 18, 21, 25], "label": "Revenue" }
                           }
                         ]
                       }
@@ -105,27 +90,9 @@
                             "component": "PieChart",
                             "props": {
                               "slices": [
-                                {
-                                  "component": "Slice",
-                                  "props": {
-                                    "label": "Pro",
-                                    "value": 62
-                                  }
-                                },
-                                {
-                                  "component": "Slice",
-                                  "props": {
-                                    "label": "Team",
-                                    "value": 28
-                                  }
-                                },
-                                {
-                                  "component": "Slice",
-                                  "props": {
-                                    "label": "Free",
-                                    "value": 10
-                                  }
-                                }
+                                { "component": "Slice", "props": { "label": "Pro", "value": 62 } },
+                                { "component": "Slice", "props": { "label": "Team", "value": 28 } },
+                                { "component": "Slice", "props": { "label": "Free", "value": 10 } }
                               ],
                               "donut": true
                             }
@@ -147,31 +114,20 @@
                                   "Acme",
                                   {
                                     "component": "Tag",
-                                    "props": {
-                                      "label": "Pro",
-                                      "tone": "accent"
-                                    }
+                                    "props": { "label": "Pro", "tone": "accent" }
                                   },
                                   1200
                                 ],
                                 [
                                   "Globex",
-                                  {
-                                    "component": "Tag",
-                                    "props": {
-                                      "label": "Team"
-                                    }
-                                  },
+                                  { "component": "Tag", "props": { "label": "Team" } },
                                   480
                                 ],
                                 [
                                   "Initech",
                                   {
                                     "component": "Tag",
-                                    "props": {
-                                      "label": "Free",
-                                      "tone": "muted"
-                                    }
+                                    "props": { "label": "Free", "tone": "muted" }
                                   },
                                   0
                                 ]
@@ -184,10 +140,13 @@
                   ]
                 }
               }
-            ]
+            ],
+            "title": "Revenue"
           }
         }
       }
-    }
+    },
+    "label": "analytics.revenue",
+    "state": "done"
   }
 ]

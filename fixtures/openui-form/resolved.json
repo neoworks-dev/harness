@@ -1,6 +1,6 @@
 [
   {
-    "ref": "m1",
+    "ref": "m-m1",
     "kind": "agent",
     "component": {
       "type": "text",
@@ -24,32 +24,18 @@
                         "props": {
                           "name": "service",
                           "options": [
+                            { "component": "Option", "props": { "value": "api", "label": "API" } },
                             {
                               "component": "Option",
-                              "props": {
-                                "value": "api",
-                                "label": "API"
-                              }
+                              "props": { "value": "web", "label": "Web app" }
                             },
                             {
                               "component": "Option",
-                              "props": {
-                                "value": "web",
-                                "label": "Web app"
-                              }
-                            },
-                            {
-                              "component": "Option",
-                              "props": {
-                                "value": "worker",
-                                "label": "Worker"
-                              }
+                              "props": { "value": "worker", "label": "Worker" }
                             }
                           ],
                           "placeholder": "Pick a service",
-                          "rules": {
-                            "required": true
-                          },
+                          "rules": { "required": true },
                           "required": true,
                           "value": "api"
                         }
@@ -67,13 +53,10 @@
                           "name": "email",
                           "placeholder": "you@company.com",
                           "type": "email",
-                          "rules": {
-                            "required": true,
-                            "email": true
-                          },
+                          "rules": { "required": true, "email": true },
                           "required": true,
                           "value": "ops@",
-                          "error": "Enter a valid email address"
+                          "error": "Please enter a valid email"
                         }
                       },
                       "hint": "We send the report here"
@@ -91,17 +74,11 @@
                           "options": [
                             {
                               "component": "Option",
-                              "props": {
-                                "value": "staging",
-                                "label": "Staging"
-                              }
+                              "props": { "value": "staging", "label": "Staging" }
                             },
                             {
                               "component": "Option",
-                              "props": {
-                                "value": "prod",
-                                "label": "Production"
-                              }
+                              "props": { "value": "prod", "label": "Production" }
                             }
                           ],
                           "value": "staging"
@@ -130,10 +107,7 @@
                       "input": {
                         "component": "DatePicker",
                         "key": "when",
-                        "props": {
-                          "name": "when",
-                          "value": "2026-10-21"
-                        }
+                        "props": { "name": "when", "value": "2026-10-21" }
                       }
                     }
                   },
@@ -144,24 +118,14 @@
                       "input": {
                         "component": "Slider",
                         "key": "canary",
-                        "props": {
-                          "name": "canary",
-                          "min": 0,
-                          "max": 50,
-                          "step": 5,
-                          "value": 10
-                        }
+                        "props": { "name": "canary", "min": 0, "max": 50, "step": 5, "value": 10 }
                       }
                     }
                   },
                   {
                     "component": "Switch",
                     "key": "notify",
-                    "props": {
-                      "name": "notify",
-                      "label": "Post to #deploys",
-                      "value": true
-                    }
+                    "props": { "name": "notify", "label": "Post to #deploys", "value": true }
                   },
                   {
                     "component": "CheckBox",
@@ -169,11 +133,10 @@
                     "props": {
                       "name": "agree",
                       "label": "I checked the migration",
-                      "rules": {
-                        "required": true
-                      },
+                      "rules": { "required": true },
                       "required": true,
-                      "value": false
+                      "value": false,
+                      "error": "This field is required"
                     }
                   }
                 ],
@@ -184,18 +147,12 @@
                       {
                         "component": "Button",
                         "key": "deploy",
-                        "props": {
-                          "label": "Deploy",
-                          "variant": "primary"
-                        }
+                        "props": { "label": "Deploy", "variant": "primary" }
                       },
                       {
                         "component": "Button",
                         "key": "docs",
-                        "props": {
-                          "label": "Runbook",
-                          "url": "https://example.com/runbook"
-                        }
+                        "props": { "label": "Runbook", "url": "https://example.com/runbook" }
                       }
                     ]
                   }

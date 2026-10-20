@@ -6,7 +6,7 @@ import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import type { Agent, McpServer } from "@suite/harness/agent";
 import type { Theme } from "@suite/protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
-import { ActionRunner } from "./actions.ts";
+import { ActionRunner, openUiTools } from "./actions.ts";
 import { AssetStore } from "./assets.ts";
 import { FocusManager } from "./focus.ts";
 import { ViewManager } from "./view/views.ts";
@@ -208,7 +208,12 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     },
   });
   focus = new FocusManager(store, sessions, connectors, log);
-  const views = new ViewManager(store, (tool) => connectors.template(tool), log);
+  const views = new ViewManager(
+    store,
+    (tool) => connectors.template(tool),
+    log,
+    (session) => openUiTools({ store, gateway }, session),
+  );
   const actions = new ActionRunner({
     store,
     sessions,

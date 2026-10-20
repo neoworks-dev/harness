@@ -1,5 +1,6 @@
 // One live SessionView per session (and per agent, for a per-agent view) that someone has looked
 // at, kept current from the event log.
+import type { CallTool, Program } from "@suite/openui/program";
 import type { ViewPatch } from "@suite/protocol/types";
 import type { Logger } from "../log.ts";
 import type { SessionStore } from "../store.ts";
@@ -13,6 +14,8 @@ export class ViewManager {
     private readonly store: SessionStore,
     private readonly templates: TemplateLookup,
     private readonly log: Logger,
+    /** Runs the tools an OpenUI program's Query and Mutation name, for a session. */
+    private readonly tools?: (session: string) => CallTool,
   ) {
     store.onAppend((record) => {
       for (const [key, view] of this.views) {
@@ -30,13 +33,39 @@ export class ViewManager {
   /** The session's view, built from its log the first time; with `agent`, that agent's own. */
   get(session: string, agent?: string): SessionView {
     const key = viewKey(session, agent);
-    let view = this.views.get(key);
-    if (!view) {
-      view = new SessionView(session, this.templates, this.log, agent);
-      for (const record of this.store.read(session)) view.apply(record);
-      this.views.set(key, view);
-    }
+    const existing = this.views.get(key);
+    if (existing) return existing;
+    const view = new SessionView(session, this.templates, this.log, agent, this.tools?.(session));
+    for (const record of this.store.read(session)) view.apply(record);
+    // Changes outside the event log (an OpenUI doc answering) go out as patches of their own.
+    view.onOps = (ops) => {
+      const patch: ViewPatch = { session, seq: view.lastSeq, ops };
+      if (agent !== undefined) patch.agent = agent;
+      for (const listener of this.listeners) listener(patch);
+    };
+    this.views.set(key, view);
     return view;
+  }
+
+  /**
+   * The running OpenUI doc `doc` of item `ref` in the session, and the view that has it (an
+   * item of the session's own agent is in the session's view, a guest's in its own).
+   */
+  openUi(
+    session: string,
+    ref: string,
+    doc: string,
+  ): { program: Program; view: SessionView } | undefined {
+    const main = this.get(session);
+    const candidates = [main];
+    for (const [key, view] of this.views) {
+      if (view !== main && parseKey(key).session === session) candidates.push(view);
+    }
+    for (const view of candidates) {
+      const program = view.program(ref, doc);
+      if (program) return { program, view };
+    }
+    return undefined;
   }
 
   onPatch(listener: (patch: ViewPatch) => void): () => void {
