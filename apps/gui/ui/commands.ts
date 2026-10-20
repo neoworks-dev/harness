@@ -61,6 +61,8 @@ declare module "@neoworks/svelte-gpui" {
     open_in_editor: { args: { editor: string; path: string }; result: null };
     /** Shows a folder in the system's file manager. */
     open_folder: { args: { path: string }; result: null };
+    /** Opens an http, https or mailto address in the system's browser or mail app; refuses others. */
+    open_url: { args: { url: string }; result: null };
     /** The branch, its upstream and what changed in the directory's repository; null outside one. */
     git_workspace: { args: { cwd: string }; result: Overview | null };
     /** The local branches, the latest commit first, and the one checked out. */

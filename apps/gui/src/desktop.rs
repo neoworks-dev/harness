@@ -69,6 +69,9 @@ pub fn register(commands: Commands) -> Commands {
         .command("open_folder", |args| {
             open_folder(args["path"].as_str().unwrap_or("")).map(|()| Value::Null)
         })
+        .command("open_url", |args| {
+            open_url(args["url"].as_str().unwrap_or("")).map(|()| Value::Null)
+        })
 }
 
 /// This machine's name, empty when it cannot be found.
@@ -171,6 +174,29 @@ fn open_folder(path: &str) -> Result<(), CommandError> {
     launch(OsStr::new(program), path).map_err(Into::into)
 }
 
+/// Opens a web or mail address in the default browser or mail app. Anything else is refused: the
+/// address comes from a model's document.
+fn open_url(url: &str) -> Result<(), CommandError> {
+    let program = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(windows) {
+        "explorer"
+    } else {
+        "xdg-open"
+    };
+    open_url_with(OsStr::new(program), url)
+}
+
+fn open_url_with(program: &OsStr, url: &str) -> Result<(), CommandError> {
+    let allowed = ["http://", "https://", "mailto:"];
+    let lower = url.to_ascii_lowercase();
+    if !allowed.iter().any(|scheme| lower.starts_with(scheme)) || url.chars().any(char::is_control)
+    {
+        return Err(format!("will not open {url}").into());
+    }
+    launch(program, url).map_err(Into::into)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,5 +271,39 @@ mod tests {
     #[test]
     fn this_machine_has_a_name() {
         assert!(!hostname().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_web_and_mail_addresses_are_opened() {
+        let bin = temp("open-url-bin");
+        let log = bin.join("log");
+        let body = format!("#!/bin/sh\necho \"$1\" > {}\n", log.display());
+        script(&bin, "opener", &body);
+        let opener = bin.join("opener");
+
+        for refused in [
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "ssh://host",
+            "/etc/passwd",
+            "https://a.example/\nb",
+            "",
+        ] {
+            assert!(open_url_with(opener.as_os_str(), refused).is_err(), "{refused}");
+        }
+        assert!(!log.exists());
+
+        open_url_with(opener.as_os_str(), "https://example.com/a?b=1").unwrap();
+        let mut seen = String::new();
+        for _ in 0..100 {
+            seen = std::fs::read_to_string(&log).unwrap_or_default();
+            if !seen.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(seen.trim(), "https://example.com/a?b=1");
+        let _ = std::fs::remove_dir_all(&bin);
     }
 }
