@@ -274,6 +274,15 @@ export class Client {
   }
 
   /**
+   * Has the daemon download the image at an `http(s)://` URL into its asset store, once per URL,
+   * and returns the asset. Rejects with `SuiteError` `bad_request` for a URL that isn't a public
+   * image (a private address, another scheme, too large, not png / jpeg / gif / webp).
+   */
+  fetchAsset(url: string): Promise<Asset> {
+    return this.connection.request("asset.fetch", { url });
+  }
+
+  /**
    * Calls `callback` when another client or the agent changed a file: reload it, or show a
    * diff. Your own `fileChanged` is not sent back to you. Returns the function that stops it.
    */

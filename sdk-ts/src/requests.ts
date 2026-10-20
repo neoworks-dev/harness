@@ -23,6 +23,7 @@ export const REPLY_TOPICS = {
   "ui.action": "bus.ack",
   "asset.put": "asset.info",
   "asset.get": "asset.info",
+  "asset.fetch": "asset.info",
 } as const satisfies Partial<Record<Topic, Topic>>;
 
 export type RequestTopic = keyof typeof REPLY_TOPICS;
