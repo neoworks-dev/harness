@@ -353,6 +353,45 @@ const Switch = define(
   "An on/off switch with a label",
   z.object({ name: z.string(), label: z.string(), value: reactive(z.boolean().optional()) }),
 );
+const CheckBoxItem = define(
+  "CheckBoxItem",
+  "One checkbox of CheckBoxGroup; name is what the group's list holds when it is checked, checked starts it on",
+  z.object({
+    name: z.string(),
+    label: z.string(),
+    description: z.string().optional(),
+    checked: z.boolean().optional(),
+  }),
+);
+const CheckBoxGroup = define(
+  "CheckBoxGroup",
+  "Several checkboxes under one name, to pick any number of them; the value is the list of the checked names",
+  z.object({
+    name: z.string(),
+    items: z.array(CheckBoxItem.ref),
+    rules,
+    value: reactive(z.array(z.string()).optional()),
+  }),
+);
+const SwitchItem = define(
+  "SwitchItem",
+  "One switch of SwitchGroup; checked starts it on",
+  z.object({
+    name: z.string(),
+    label: z.string(),
+    description: z.string().optional(),
+    checked: z.boolean().optional(),
+  }),
+);
+const SwitchGroup = define(
+  "SwitchGroup",
+  "Several on/off switches under one name, for settings; the value is an object with each name on or off",
+  z.object({
+    name: z.string(),
+    items: z.array(SwitchItem.ref),
+    value: reactive(z.record(z.string(), z.boolean()).optional()),
+  }),
+);
 const Slider = define(
   "Slider",
   "A number between min and max",
@@ -383,6 +422,8 @@ const FormControl = define(
       OptionCards.ref,
       CheckBox.ref,
       Switch.ref,
+      CheckBoxGroup.ref,
+      SwitchGroup.ref,
       Slider.ref,
       DatePicker.ref,
     ]),
@@ -477,6 +518,10 @@ export const library = createLibrary({
     OptionCard,
     CheckBox,
     Switch,
+    CheckBoxGroup,
+    CheckBoxItem,
+    SwitchGroup,
+    SwitchItem,
     Slider,
     DatePicker,
     Button,
@@ -547,6 +592,10 @@ export const library = createLibrary({
         "OptionCard",
         "CheckBox",
         "Switch",
+        "CheckBoxGroup",
+        "CheckBoxItem",
+        "SwitchGroup",
+        "SwitchItem",
         "Slider",
         "DatePicker",
         "Button",
@@ -567,6 +616,8 @@ export const INPUTS: ReadonlySet<string> = new Set([
   "OptionCards",
   "CheckBox",
   "Switch",
+  "CheckBoxGroup",
+  "SwitchGroup",
   "Slider",
   "DatePicker",
 ]);

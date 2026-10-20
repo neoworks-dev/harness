@@ -51,6 +51,9 @@ Lay a dashboard out the way a page is, not as one long column:
   value (people, files, services, tickets). Prefer it to a Table with one real column.
 - Use `OptionCards` instead of RadioGroup when the user picks one of two to five options that
   each need a sentence of explanation (plans, strategies, environments).
+- Use `CheckBoxGroup` to pick any number from a list (its value is the list of checked
+  names) and `SwitchGroup` for a few settings that are on or off (its value is an object).
+  Several single CheckBoxes or Switches are fine for one or two; use a group beyond that.
 
 ## Forms and buttons
 
@@ -141,7 +144,7 @@ Slice(label: string, value: number) — One slice of PieChart
 
 ### Forms
 Form(name: string, children: Component[], buttons?: Buttons) — Inputs submitted together; a button inside checks their rules first and a message carries their values
-FormControl(label: string, input: Input | TextArea | Select | RadioGroup | OptionCards | CheckBox | Switch | Slider | DatePicker, hint?: string) — A field of a form: a label over an input, with an optional hint
+FormControl(label: string, input: Input | TextArea | Select | RadioGroup | OptionCards | CheckBox | Switch | CheckBoxGroup | SwitchGroup | Slider | DatePicker, hint?: string) — A field of a form: a label over an input, with an optional hint
 Input(name: string, placeholder?: string, type?: "text" | "email" | "url" | "number" | "password", rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — A single-line text field
 TextArea(name: string, placeholder?: string, rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — A multi-line text field
 Select(name: string, options: Option[], placeholder?: string, rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — A dropdown of options
@@ -151,6 +154,10 @@ OptionCards(name: string, options: OptionCard[], rules?: {required?: boolean, em
 OptionCard(value: string, title: string, description?: string) — A choice of OptionCards: a title and what it means
 CheckBox(name: string, label: string, rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<boolean>) — A checkbox with a label
 Switch(name: string, label: string, value?: $binding<boolean>) — An on/off switch with a label
+CheckBoxGroup(name: string, items: CheckBoxItem[], rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string[]>) — Several checkboxes under one name, to pick any number of them; the value is the list of the checked names
+CheckBoxItem(name: string, label: string, description?: string, checked?: boolean) — One checkbox of CheckBoxGroup; name is what the group's list holds when it is checked, checked starts it on
+SwitchGroup(name: string, items: SwitchItem[], value?: $binding<Record<string, boolean>>) — Several on/off switches under one name, for settings; the value is an object with each name on or off
+SwitchItem(name: string, label: string, description?: string, checked?: boolean) — One switch of SwitchGroup; checked starts it on
 Slider(name: string, min: number, max: number, step?: number, value?: $binding<number>) — A number between min and max
 DatePicker(name: string, rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — A date, YYYY-MM-DD
 Button(label: string, action?: ActionExpression, variant?: "primary" | "secondary" | "danger") — A button. Without an action it sends its label to the assistant

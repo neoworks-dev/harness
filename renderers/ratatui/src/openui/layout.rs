@@ -135,6 +135,8 @@ impl<'a> Cx<'a> {
             "Select" => self.ui_select(n, w),
             "RadioGroup" => self.ui_radio(n, w),
             "OptionCards" => self.ui_option_cards(n, w),
+            "CheckBoxGroup" => self.ui_toggle_group(n, w, false),
+            "SwitchGroup" => self.ui_toggle_group(n, w, true),
             "CheckBox" | "Switch" => self.ui_toggle(n, w),
             "Slider" => self.ui_slider(n, w),
             "Button" => self.ui_button_line(n, w),

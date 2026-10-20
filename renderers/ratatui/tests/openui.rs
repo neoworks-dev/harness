@@ -1164,6 +1164,158 @@ fn option_cards_in_a_form_control_have_their_label_error_and_fit_everywhere() {
     assert_fits(&it, &Options::default());
 }
 
+// ---- checkbox and switch groups ----
+
+fn item_of_group(component: &str, name: &str, label: &str, description: Option<&str>) -> Value {
+    let mut props = json!({"name": name, "label": label});
+    if let Some(d) = description {
+        props["description"] = json!(d);
+    }
+    node(component, props)
+}
+
+fn toppings(value: Value) -> Value {
+    keyed(
+        "CheckBoxGroup",
+        "toppings",
+        json!({"name": "toppings", "value": value, "items": [
+            item_of_group("CheckBoxItem", "cheese", "Cheese", Some("Extra mozzarella")),
+            item_of_group("CheckBoxItem", "olives", "Olives", None),
+            item_of_group("CheckBoxItem", "basil", "Basil", Some("Fresh, added after baking")),
+        ]}),
+    )
+}
+
+fn alerts(value: Value) -> Value {
+    keyed(
+        "SwitchGroup",
+        "alerts",
+        json!({"name": "alerts", "value": value, "items": [
+            item_of_group("SwitchItem", "mail", "Email", Some("A message on every failure")),
+            item_of_group("SwitchItem", "sms", "Text message", None),
+        ]}),
+    )
+}
+
+#[test]
+fn a_checkbox_group_lists_its_boxes_with_the_checked_ones_on() {
+    let it = doc(toppings(json!(["cheese", "basil"])));
+    assert_eq!(
+        lines(&it, 80),
+        [
+            "[x] Cheese",
+            "    Extra mozzarella",
+            "[ ] Olives",
+            "[x] Basil",
+            "    Fresh, added after baking",
+        ]
+    );
+    // A description wraps under its label.
+    let out = lines(&it, 20);
+    assert_eq!(out[4..], ["    Fresh, added", "    after baking"]);
+}
+
+#[test]
+fn a_switch_group_reads_its_object() {
+    let it = doc(alerts(json!({"mail": true, "sms": false})));
+    assert_eq!(
+        lines(&it, 80),
+        [
+            "● on  Email",
+            "      A message on every failure",
+            "○ off Text message",
+        ]
+    );
+    // A switch the object does not mention is off.
+    assert_eq!(lines(&doc(alerts(json!({}))), 80)[0], "○ off Email");
+}
+
+#[test]
+fn the_group_cursor_item_is_highlighted_while_the_group_has_focus() {
+    let it = doc(toppings(json!(["cheese"])));
+    let reversed = |opts: &Options| -> Vec<String> {
+        render_item(&it, 80, opts)
+            .iter()
+            .flat_map(|l| &l.spans)
+            .filter(|s| s.style.add_modifier.contains(Modifier::REVERSED))
+            .map(|s| s.content.to_string())
+            .collect()
+    };
+    assert!(reversed(&Options::default()).is_empty());
+    assert_eq!(reversed(&focused("toppings")), ["[x]"]);
+    let on_basil = state(|s| {
+        s.focus = Some("toppings".into());
+        s.cursors.insert("toppings".into(), 2);
+    });
+    assert_eq!(reversed(&on_basil), ["[ ]"]);
+    let rendered = render_item(&it, 80, &on_basil);
+    let label = rendered[3]
+        .spans
+        .iter()
+        .find(|s| s.content.contains("Basil"))
+        .unwrap();
+    assert_eq!(label.style.fg, Some(pal().accent));
+    // The focus line is the cursor item's, and a cursor past the end stays on the last item.
+    assert_eq!(render_item_images(&it, 80, &on_basil).focus_line, Some(3));
+    let past = state(|s| {
+        s.focus = Some("toppings".into());
+        s.cursors.insert("toppings".into(), 9);
+    });
+    assert_eq!(render_item_images(&it, 80, &past).focus_line, Some(3));
+}
+
+#[test]
+fn a_group_is_one_target_with_its_items_and_a_local_value_wins() {
+    let it = doc(column(vec![
+        toppings(json!(["cheese"])),
+        alerts(json!({"mail": true})),
+    ]));
+    let targets = openui_targets(&it, &Options::default());
+    assert_eq!(targets.len(), 2);
+    let UiKind::CheckBoxGroup { items } = &targets[0].kind else {
+        panic!("{:?}", targets[0].kind);
+    };
+    let got: Vec<(&str, &str)> = items
+        .iter()
+        .map(|i| (i.value.as_str(), i.label.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("cheese", "Cheese"),
+            ("olives", "Olives"),
+            ("basil", "Basil")
+        ]
+    );
+    assert_eq!(targets[0].value, json!(["cheese"]));
+    assert!(matches!(&targets[1].kind, UiKind::SwitchGroup { items } if items.len() == 2));
+    assert_eq!(targets[1].value, json!({"mail": true}));
+    let local = state(|s| {
+        s.values.insert("toppings".into(), json!(["olives"]));
+        s.values
+            .insert("alerts".into(), json!({"mail": false, "sms": true}));
+    });
+    let out = lines_of(&it, 80, &local);
+    assert!(out.contains(&"[x] Olives".to_string()), "{out:?}");
+    assert!(out.contains(&"[ ] Cheese".to_string()), "{out:?}");
+    assert!(out.contains(&"● on  Text message".to_string()), "{out:?}");
+}
+
+#[test]
+fn a_group_in_a_form_control_has_a_label_a_marker_and_an_error() {
+    let mut group = toppings(json!([]));
+    group["props"]["required"] = json!(true);
+    group["props"]["error"] = json!("This field is required");
+    let it = doc(field("Toppings", group));
+    let out = lines(&it, 80);
+    assert_eq!(out[0], "Toppings *");
+    assert_eq!(out.last().unwrap(), "This field is required");
+    for focus in ["toppings", "alerts"] {
+        assert_fits(&it, &focused(focus));
+    }
+    assert_fits(&doc(alerts(json!({"mail": true}))), &focused("alerts"));
+}
+
 // ---- entity lists ----
 
 fn entity(title: &str, subtitle: Option<&str>, trailing: Option<Value>) -> Value {

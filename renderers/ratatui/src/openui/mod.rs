@@ -48,6 +48,9 @@ pub struct UiState {
     pub values: HashMap<String, Value>,
     /// The `Select` whose list is open (its key), and the highlighted option.
     pub select: Option<(String, usize)>,
+    /// The item a focused `CheckBoxGroup` or `SwitchGroup` has its cursor on, by key. Absent: the
+    /// first.
+    pub cursors: HashMap<String, usize>,
 }
 
 /// A text field's edit buffer.
@@ -76,6 +79,15 @@ pub enum UiKind {
     },
     CheckBox,
     Switch,
+    /// Checkboxes under one name; the value is the list of the checked items' values. Up/Down
+    /// move between the items, Space toggles one.
+    CheckBoxGroup {
+        items: Vec<UiOption>,
+    },
+    /// Switches under one name; the value is an object of item value to on/off.
+    SwitchGroup {
+        items: Vec<UiOption>,
+    },
     Slider {
         min: f64,
         max: f64,

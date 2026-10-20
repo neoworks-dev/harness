@@ -564,6 +564,79 @@ impl<'a> Cx<'a> {
         out
     }
 
+    /// `[x] Alpha` per item of a `CheckBoxGroup`, `● on  Alpha` of a `SwitchGroup`, the
+    /// description muted under it. One target for the group: the cursor item is highlighted.
+    pub(super) fn ui_toggle_group(&mut self, n: N<'_>, w: usize, switch: bool) -> Lines {
+        let items: Vec<(UiOption, Option<String>)> = n
+            .nodes("items")
+            .into_iter()
+            .map(|item| {
+                let name = item
+                    .str("name")
+                    .map(crate::text::one_line)
+                    .unwrap_or_default();
+                let label = item.line("label").unwrap_or_else(|| name.clone());
+                (UiOption { value: name, label }, item.line("description"))
+            })
+            .collect();
+        let options: Vec<UiOption> = items.iter().map(|i| i.0.clone()).collect();
+        let kind = if switch {
+            UiKind::SwitchGroup { items: options }
+        } else {
+            UiKind::CheckBoxGroup { items: options }
+        };
+        let value = self.field_value(n);
+        let focused = self.field_target(n, kind, value.clone());
+        let cursor = n
+            .key()
+            .and_then(|k| self.ui_state().and_then(|s| s.cursors.get(k)))
+            .copied()
+            .unwrap_or(0)
+            .min(items.len().saturating_sub(1));
+        let mut out: Lines = Vec::new();
+        for (i, (item, description)) in items.iter().enumerate() {
+            let on = group_has(&value, &item.value);
+            let here = focused && i == cursor;
+            let (marker, color) = match (switch, on) {
+                (false, true) => ("[x]", self.p.success),
+                (false, false) => ("[ ]", self.p.muted),
+                (true, true) => ("● on ", self.p.success),
+                (true, false) => ("○ off", self.p.muted),
+            };
+            let marker_style = if here {
+                Style::new()
+                    .fg(color)
+                    .add_modifier(Modifier::REVERSED | Modifier::BOLD)
+            } else {
+                Style::new().fg(color)
+            };
+            let label_style = if here {
+                Style::new().fg(self.p.accent).add_modifier(Modifier::BOLD)
+            } else {
+                Style::new()
+            };
+            let spans = vec![
+                Span::styled(marker, marker_style),
+                Span::styled(format!(" {}", item.label), label_style),
+            ];
+            let mut line = Line::from(crate::text::truncate_spans(spans, w));
+            if here {
+                self.mark_focus(&mut line);
+            }
+            out.push(line);
+            if let Some(d) = description {
+                let pad = width(marker) + 1;
+                let body = wrap(
+                    &[Span::styled(d.clone(), self.p.muted_style())],
+                    w.saturating_sub(pad).max(1),
+                );
+                out.extend(indented(body, pad.min(w.saturating_sub(1))));
+            }
+        }
+        out.extend(self.field_error(n, w));
+        out
+    }
+
     /// `━━●────── 10  (0–50)`
     pub(super) fn ui_slider(&mut self, n: N<'_>, w: usize) -> Lines {
         let min = n.num("min").unwrap_or(0.0);
@@ -821,6 +894,15 @@ pub fn is_date(s: &str) -> bool {
         _ => return false,
     };
     (1..=days).contains(&d)
+}
+
+/// Whether a group's value (a list of values or an object of value to flag) has `item` on.
+fn group_has(value: &Value, item: &str) -> bool {
+    match value {
+        Value::Array(list) => list.iter().any(|v| v.as_str() == Some(item)),
+        Value::Object(map) => map.get(item).and_then(Value::as_bool).unwrap_or(false),
+        _ => false,
+    }
 }
 
 /// `body` between rounded edges, each line filled to `inner` cells.

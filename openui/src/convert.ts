@@ -26,6 +26,8 @@ export interface Field {
   /** A fixed `value` the program gave instead of a binding: the start value. */
   literal?: unknown;
   options?: string[];
+  /** The groups' items that start checked. */
+  checked?: string[];
   min?: number;
   max?: number;
 }
@@ -97,6 +99,18 @@ function countInteractive(
   } else if (isRecord(value) && !isPlan(value) && !isReactiveAssign(value)) {
     for (const prop of Object.values(value)) countInteractive(prop, statement, counts);
   }
+}
+
+/** The items of a CheckBoxGroup or SwitchGroup: their names and which start on. */
+function groupItems(items: unknown): { names: string[]; checked: string[] } {
+  const out = { names: [] as string[], checked: [] as string[] };
+  if (!Array.isArray(items)) return out;
+  for (const item of items) {
+    if (!isElement(item) || typeof item.props.name !== "string") continue;
+    out.names.push(item.props.name);
+    if (item.props.checked === true) out.checked.push(item.props.name);
+  }
+  return out;
 }
 
 function optionValues(options: unknown): string[] {
@@ -198,6 +212,11 @@ export class Converter {
     else if (binding !== null && binding !== undefined) field.literal = binding;
     if (el.typeName === "Select" || el.typeName === "RadioGroup" || el.typeName === "OptionCards") {
       field.options = optionValues(el.props.options);
+    }
+    if (el.typeName === "CheckBoxGroup" || el.typeName === "SwitchGroup") {
+      const { names, checked } = groupItems(el.props.items);
+      field.options = names;
+      field.checked = checked;
     }
     if (el.typeName === "Slider") {
       if (typeof el.props.min === "number") field.min = el.props.min;

@@ -277,6 +277,19 @@ export class Program {
       case "CheckBox":
       case "Switch":
         return raw === true;
+      case "CheckBoxGroup": {
+        const picked = Array.isArray(raw) ? raw : raw == null ? (field.checked ?? []) : [];
+        return (field.options ?? []).filter((name) => picked.includes(name));
+      }
+      case "SwitchGroup": {
+        const set = isRecord(raw) ? raw : {};
+        return Object.fromEntries(
+          (field.options ?? []).map((name) => [
+            name,
+            typeof set[name] === "boolean" ? set[name] : (field.checked ?? []).includes(name),
+          ]),
+        );
+      }
       case "Slider": {
         const n = typeof raw === "string" && raw.trim() !== "" ? Number(raw) : raw;
         return typeof n === "number" && Number.isFinite(n) ? n : undefined;
@@ -296,6 +309,18 @@ export class Program {
       case "Slider":
         if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
         return Math.min(field.max ?? value, Math.max(field.min ?? value, value));
+      case "CheckBoxGroup": {
+        const names = field.options ?? [];
+        const ok = Array.isArray(value) && value.every((v) => names.includes(v as string));
+        return ok ? names.filter((name) => (value as unknown[]).includes(name)) : undefined;
+      }
+      case "SwitchGroup": {
+        const names = field.options ?? [];
+        const ok =
+          isRecord(value) &&
+          Object.entries(value).every(([k, v]) => names.includes(k) && typeof v === "boolean");
+        return ok ? { ...(this.valueOf(field) as object), ...value } : undefined;
+      }
       case "Select":
       case "RadioGroup":
       case "OptionCards":

@@ -374,6 +374,121 @@ fn left_and_right_choose_option_cards() {
     assert_eq!(press(&mut app, key(KeyCode::Enter)), [pressed("0", "go")]);
 }
 
+/// A form with a checkbox group, a switch group and a field after them.
+fn groups_item() -> ViewItem {
+    let group = |component: &str, key: &str, items: Value| {
+        keyed(component, key, json!({"name": key, "items": items}))
+    };
+    let toppings = group(
+        "CheckBoxGroup",
+        "toppings",
+        json!([
+            node("CheckBoxItem", json!({"name": "cheese", "label": "Cheese"})),
+            node("CheckBoxItem", json!({"name": "olives", "label": "Olives"})),
+            node("CheckBoxItem", json!({"name": "basil", "label": "Basil"})),
+        ]),
+    );
+    let alerts = group(
+        "SwitchGroup",
+        "alerts",
+        json!([
+            node("SwitchItem", json!({"name": "mail", "label": "Email"})),
+            node(
+                "SwitchItem",
+                json!({"name": "sms", "label": "Text message"})
+            ),
+        ]),
+    );
+    let form = node(
+        "Form",
+        json!({"name": "order", "children": [
+            control("Toppings", toppings),
+            control("Alerts", alerts),
+            control("Note", keyed("Input", "note", json!({"name": "note"}))),
+        ], "buttons": node("Buttons", json!({"buttons": [keyed("Button", "go", json!({"label": "Order"}))]}))}),
+    );
+    serde_json::from_value(json!({
+        "ref": "f1", "kind": "agent",
+        "component": {"type": "openui", "ui": {"id": "0", "root": form}}
+    }))
+    .unwrap()
+}
+
+#[test]
+fn up_down_and_space_work_the_items_of_a_group() {
+    let mut app = app();
+    show(&mut app, vec![user("u1", "order"), groups_item()]);
+    assert_eq!(focused(&app).as_deref(), Some("toppings"));
+    let screen = text(&mut app);
+    assert!(
+        screen.contains("[ ] Cheese") && screen.contains("[ ] Basil"),
+        "{screen}"
+    );
+    assert!(
+        screen.contains("Toppings · ↑/↓ move · space toggles"),
+        "{screen}"
+    );
+    // The cursor starts on the first item; Space checks it.
+    assert_eq!(
+        press(&mut app, ch(' ')),
+        [input("0", "toppings", json!(["cheese"]))]
+    );
+    // Down moves inside the group, Space adds the next item; the list keeps the items' order.
+    press(&mut app, key(KeyCode::Down));
+    press(&mut app, key(KeyCode::Down));
+    assert_eq!(
+        press(&mut app, ch(' ')),
+        [input("0", "toppings", json!(["cheese", "basil"]))]
+    );
+    assert_eq!(focused(&app).as_deref(), Some("toppings"));
+    let screen = text(&mut app);
+    assert!(
+        screen.contains("[x] Cheese") && screen.contains("[x] Basil"),
+        "{screen}"
+    );
+    // Space again unchecks it.
+    assert_eq!(
+        press(&mut app, ch(' ')),
+        [input("0", "toppings", json!(["cheese"]))]
+    );
+    // Past the last item Down goes on to the next field, Up from there back onto the last item.
+    press(&mut app, key(KeyCode::Down));
+    assert_eq!(focused(&app).as_deref(), Some("alerts"));
+    press(&mut app, key(KeyCode::Up));
+    assert_eq!(focused(&app).as_deref(), Some("toppings"));
+    assert_eq!(
+        press(&mut app, ch(' ')),
+        [input("0", "toppings", json!(["cheese", "basil"]))]
+    );
+    // Tab goes to the next field whatever the cursor; enter sends the form.
+    tabs(&mut app, 3);
+    assert_eq!(focused(&app).as_deref(), Some("go"));
+}
+
+#[test]
+fn a_switch_group_sends_the_whole_object() {
+    let mut app = app();
+    show(&mut app, vec![user("u1", "order"), groups_item()]);
+    tabs(&mut app, 1);
+    assert_eq!(focused(&app).as_deref(), Some("alerts"));
+    assert_eq!(
+        press(&mut app, ch(' ')),
+        [input("0", "alerts", json!({"mail": true, "sms": false}))]
+    );
+    press(&mut app, key(KeyCode::Down));
+    assert_eq!(
+        press(&mut app, ch(' ')),
+        [input("0", "alerts", json!({"mail": true, "sms": true}))]
+    );
+    let screen = text(&mut app);
+    assert!(
+        screen.contains("● on  Email") && screen.contains("● on  Text message"),
+        "{screen}"
+    );
+    // Enter in a group presses the form's first button.
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), [pressed("0", "go")]);
+}
+
 #[test]
 fn enter_opens_a_select_and_chooses_from_its_list() {
     let mut app = with_form();

@@ -227,6 +227,50 @@ describe("inputs", () => {
     expect((await p.press("go")).assistant[0]?.values).toEqual({ plan: "pro" });
   });
 
+  test("a checkbox group holds the list of checked names, a switch group an object", async () => {
+    const p = program(
+      [
+        '$tags = ["b"]',
+        'root = Form("f", [tags, flags], Buttons([go]))',
+        'tags = CheckBoxGroup("tags", [CheckBoxItem("a", "Alpha", "First"), CheckBoxItem("b", "Beta"), CheckBoxItem("c", "Gamma")], { required: true }, $tags)',
+        'flags = SwitchGroup("flags", [SwitchItem("mail", "Mail", null, true), SwitchItem("sms", "SMS")])',
+        'go = Button("Go")',
+      ].join("\n"),
+    );
+    expect(byKey(p, "tags")?.props.value).toEqual(["b"]);
+    expect(byKey(p, "tags")?.props.required).toBe(true);
+    expect(byKey(p, "flags")?.props.value).toEqual({ mail: true, sms: false });
+    // The list keeps the items' order, whatever order it was sent in.
+    expect(p.input("tags", ["c", "a"])).toBe(true);
+    expect(byKey(p, "tags")?.props.value).toEqual(["a", "c"]);
+    expect(p.input("flags", { sms: true })).toBe(true);
+    expect(byKey(p, "flags")?.props.value).toEqual({ mail: true, sms: true });
+    // Names the group doesn't have, and values of the wrong kind, are refused.
+    expect(p.input("tags", ["zzz"])).toBe(false);
+    expect(p.input("tags", "a")).toBe(false);
+    expect(p.input("flags", { mail: "on" })).toBe(false);
+    expect(p.input("flags", { other: true })).toBe(false);
+    expect((await p.press("go")).assistant[0]?.values).toEqual({
+      tags: ["a", "c"],
+      flags: { mail: true, sms: true },
+    });
+  });
+
+  test("a required checkbox group needs one box checked", async () => {
+    const p = program(
+      [
+        'root = Form("f", [tags], Buttons([go]))',
+        'tags = CheckBoxGroup("tags", [CheckBoxItem("a", "Alpha")], { required: true })',
+        'go = Button("Go")',
+      ].join("\n"),
+    );
+    expect((await p.press("go")).refused).toBe("invalid");
+    expect(byKey(p, "tags")?.props.error).toBe("This field is required");
+    p.input("tags", ["a"]);
+    expect(byKey(p, "tags")?.props.error).toBeUndefined();
+    expect((await p.press("go")).refused).toBeUndefined();
+  });
+
   test("required fields are marked", () => {
     const p = program(source);
     expect(byKey(p, "pick")?.props.required).toBe(true);
