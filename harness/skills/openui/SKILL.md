@@ -56,6 +56,8 @@ Lay a dashboard out the way a page is, not as one long column:
   Several single CheckBoxes or Switches are fine for one or two; use a group beyond that.
 - Use `MetricIndicator` for a number with its change inline in a card, list or table cell
   (`MetricIndicator("$1.2M", "8%", "up")`); use `Metric` for the headline numbers of a page.
+- Use `Carousel` for more cards than fit side by side (five or more options or items, each
+  small); the user scrolls through them. For two to four cards a `Grid` is better.
 
 ## Forms and buttons
 
@@ -109,6 +111,7 @@ Props marked `$binding<type>` accept a `$variable` reference for two-way binding
 ### Layout
 Stack(children: Component[], direction?: "column" | "row", gap?: "none" | "s" | "m" | "l", wrap?: boolean, align?: "start" | "center" | "end" | "stretch", justify?: "start" | "center" | "end" | "between") — Lays children out top to bottom, or side by side with direction "row"
 Grid(children: Component[], columns?: number) — Lays children out in columns, left to right then down; columns is a maximum, a narrow screen uses fewer (default: as many as fit)
+Carousel(children: Component[], visible?: number) — Children side by side, as many as fit, with the rest reached by scrolling; visible is a maximum. Use it for more cards or items than a screen holds
 Card(children: Component[], title?: string, tone?: "accent" | "muted" | "success" | "danger", variant?: "card" | "sunk" | "clear") — A framed group with an optional title; tone colors the frame, variant sunk fills it, clear has no frame
 Header(title: string, subtitle?: string) — A heading with an optional subtitle
 Separator() — A horizontal rule

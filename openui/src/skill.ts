@@ -65,6 +65,8 @@ Lay a dashboard out the way a page is, not as one long column:
   Several single CheckBoxes or Switches are fine for one or two; use a group beyond that.
 - Use \`MetricIndicator\` for a number with its change inline in a card, list or table cell
   (\`MetricIndicator("$1.2M", "8%", "up")\`); use \`Metric\` for the headline numbers of a page.
+- Use \`Carousel\` for more cards than fit side by side (five or more options or items, each
+  small); the user scrolls through them. For two to four cards a \`Grid\` is better.
 
 ## Forms and buttons
 

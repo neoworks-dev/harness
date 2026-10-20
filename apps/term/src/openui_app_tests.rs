@@ -718,6 +718,52 @@ fn follow_ups_wait_for_ctrl_p_and_send_their_text_with_enter() {
 }
 
 #[test]
+fn a_carousel_scrolls_with_the_arrows() {
+    let slide = |i: usize| {
+        node(
+            "Card",
+            json!({"title": format!("Slide {i}"), "children": [
+                node("Text", json!({"text": "x", "blocks": [{"type":"paragraph","spans":[{"text": format!("body {i}")}]}]})),
+            ]}),
+        )
+    };
+    let item: ViewItem = serde_json::from_value(json!({
+        "ref": "c1", "kind": "tool", "label": "tickets", "state": "done",
+        "component": {"type": "openui", "ui": {"id": "0", "root": node("Carousel", json!({
+            "children": [slide(1), slide(2), slide(3)], "visible": 1,
+        }))}}
+    }))
+    .unwrap();
+    let mut app = app();
+    show(&mut app, vec![user("u1", "show me"), item]);
+    assert!(!app.prompt.engaged);
+    press(&mut app, ctrl('p'));
+    assert!(app.prompt.engaged);
+    let screen = text(&mut app);
+    assert!(
+        screen.contains("body 1") && screen.contains("‹ 1/3 ›"),
+        "{screen}"
+    );
+    assert!(screen.contains("←/→ scroll"), "{screen}");
+    assert!(press(&mut app, key(KeyCode::Right)).is_empty());
+    let screen = text(&mut app);
+    assert!(
+        screen.contains("body 2") && !screen.contains("body 1"),
+        "{screen}"
+    );
+    assert!(screen.contains("‹ 2/3 ›"), "{screen}");
+    press(&mut app, key(KeyCode::End));
+    assert!(text(&mut app).contains("‹ 3/3 ›"));
+    // The ends hold; Enter goes on round to the first.
+    press(&mut app, key(KeyCode::Right));
+    assert!(text(&mut app).contains("‹ 3/3 ›"));
+    press(&mut app, key(KeyCode::Enter));
+    assert!(text(&mut app).contains("‹ 1/3 ›"));
+    press(&mut app, key(KeyCode::Left));
+    assert!(text(&mut app).contains("‹ 1/3 ›"));
+}
+
+#[test]
 fn the_chat_scrolls_to_the_focused_field() {
     let mut app = app();
     let mut items: Vec<ViewItem> = (0..30)

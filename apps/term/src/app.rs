@@ -1217,6 +1217,7 @@ impl App {
                         UiKind::Button { .. } => "enter presses",
                         UiKind::Tabs { .. } => "←/→ switch tab",
                         UiKind::Accordion => "enter opens / closes",
+                        UiKind::Carousel { .. } => "←/→ scroll",
                     }
                     .to_string(),
                 );

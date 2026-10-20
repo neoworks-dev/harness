@@ -80,6 +80,12 @@ const Grid = define(
   }),
 );
 
+const Carousel = define(
+  "Carousel",
+  "Children side by side, as many as fit, with the rest reached by scrolling; visible is a maximum. Use it for more cards or items than a screen holds",
+  z.object({ children: z.array(node), visible: z.number().optional() }),
+);
+
 const Card = define(
   "Card",
   "A framed group with an optional title; tone colors the frame, variant sunk fills it, clear has no frame",
@@ -489,6 +495,7 @@ export const library = createLibrary({
   components: [
     Stack,
     Grid,
+    Carousel,
     Card,
     Header,
     Separator,
@@ -549,6 +556,7 @@ export const library = createLibrary({
       components: [
         "Stack",
         "Grid",
+        "Carousel",
         "Card",
         "Header",
         "Separator",

@@ -1055,6 +1055,136 @@ fn follow_ups_can_be_focused_but_do_not_ask_for_the_keyboard() {
     assert!(openui_docs(&both)[0].interactive);
 }
 
+// ---- carousels ----
+
+fn slides(n: usize, extra: Value) -> Value {
+    let kids: Vec<Value> = (1..=n)
+        .map(|i| card(&format!("Slide {i}"), vec![text(&format!("body {i}"))]))
+        .collect();
+    let mut props = json!({"children": kids});
+    if let (Some(p), Some(e)) = (props.as_object_mut(), extra.as_object()) {
+        p.extend(e.clone());
+    }
+    node("Carousel", props)
+}
+
+#[test]
+fn a_carousel_shows_as_many_slides_as_fit_with_where_you_are_under_them() {
+    let it = doc(slides(5, json!({})));
+    let out = lines(&it, 80);
+    assert!(out[0].matches('╭').count() == 2, "{out:?}");
+    assert!(
+        out[0].contains("Slide 1") && out[0].contains("Slide 2"),
+        "{out:?}"
+    );
+    assert!(!out.join("\n").contains("Slide 3"), "{out:?}");
+    assert_eq!(out.last().unwrap().trim(), "‹ 1–2/5 ›");
+    // Centered under the slides.
+    assert_eq!(out.last().unwrap().find('‹'), Some((80 - 9) / 2));
+    // One slide on a narrow view, and the indicator says so.
+    let narrow = lines(&it, 40);
+    assert!(
+        narrow[0].contains("Slide 1") && !narrow[0].contains("Slide 2"),
+        "{narrow:?}"
+    );
+    assert_eq!(narrow.last().unwrap().trim(), "‹ 1/5 ›");
+    // `visible` is a maximum.
+    let one = lines(&doc(slides(5, json!({"visible": 1}))), 80);
+    assert!(!one.join("\n").contains("Slide 2"), "{one:?}");
+}
+
+#[test]
+fn scrolling_moves_the_first_slide_and_lights_the_arrows() {
+    let it = doc(slides(5, json!({})));
+    let at = |first: usize| {
+        state(|s| {
+            s.slides.insert("/".into(), first);
+        })
+    };
+    let out = lines_of(&it, 80, &at(2));
+    assert!(
+        out[0].contains("Slide 3") && out[0].contains("Slide 4"),
+        "{out:?}"
+    );
+    assert_eq!(out.last().unwrap().trim(), "‹ 3–4/5 ›");
+    // The last slide can lead; a number past the end stays on it.
+    for first in [4, 9] {
+        let out = lines_of(&it, 80, &at(first));
+        assert!(out[0].contains("Slide 5"), "{out:?}");
+        assert_eq!(out.last().unwrap().trim(), "‹ 5/5 ›");
+    }
+    let lit = |first: usize| -> (bool, bool) {
+        let rendered = render_item(&it, 80, &at(first));
+        let bar = rendered.last().unwrap();
+        let fg = |glyph: &str| {
+            bar.spans
+                .iter()
+                .find(|s| s.content == glyph)
+                .unwrap()
+                .style
+                .fg
+        };
+        (fg("‹") == Some(pal().accent), fg("›") == Some(pal().accent))
+    };
+    assert_eq!(lit(0), (false, true));
+    assert_eq!(lit(2), (true, true));
+    assert_eq!(lit(4), (true, false));
+}
+
+#[test]
+fn a_carousel_is_a_target_and_its_slides_keep_their_own() {
+    let buttoned = node(
+        "Carousel",
+        json!({"children": [
+            card("A", vec![keyed("Button", "a", json!({"label": "Open A"}))]),
+            card("B", vec![keyed("Button", "b", json!({"label": "Open B"}))]),
+            card("C", vec![keyed("Button", "c", json!({"label": "Open C"}))]),
+        ]}),
+    );
+    let it = doc(buttoned);
+    let targets = openui_targets(&it, &Options::default());
+    let ids: Vec<&str> = targets.iter().map(|t| t.id.as_str()).collect();
+    // The strip first, then the buttons of the slides in view; the third is not drawn.
+    assert_eq!(ids, ["/", "a", "b"]);
+    assert!(matches!(targets[0].kind, UiKind::Carousel { count: 3 }));
+    assert_eq!(targets[0].value, json!(0));
+    let scrolled = state(|s| {
+        s.slides.insert("/".into(), 1);
+    });
+    let ids: Vec<String> = openui_targets(&it, &scrolled)
+        .into_iter()
+        .map(|t| t.id)
+        .collect();
+    assert_eq!(ids, ["/", "b", "c"]);
+    // The strip is reversed while it has focus, and a lone slide has no strip.
+    let rendered = render_item(&it, 80, &focused("/"));
+    assert!(
+        rendered
+            .last()
+            .unwrap()
+            .spans
+            .iter()
+            .any(|s| s.style.add_modifier.contains(Modifier::REVERSED))
+    );
+    assert!(openui_targets(&doc(slides(1, json!({}))), &Options::default()).is_empty());
+    assert!(openui_docs(&it)[0].focusable);
+    assert_eq!(
+        render_item_images(&it, 80, &focused("/")).focus_line,
+        Some(rendered.len() - 1)
+    );
+}
+
+#[test]
+fn carousels_fit_at_every_width() {
+    let it = doc(slides(4, json!({})));
+    assert_fits(&it, &Options::default());
+    assert_fits(&it, &focused("/"));
+    assert_fits(
+        &doc(card("In a card", vec![slides(3, json!({}))])),
+        &Options::default(),
+    );
+}
+
 // ---- metric indicators ----
 
 fn indicator(props: Value) -> Value {

@@ -647,6 +647,38 @@ impl Forms {
                 }
                 out
             }
+            UiKind::Carousel { count } => {
+                out.taken = true;
+                let last = count.saturating_sub(1);
+                let cur = self
+                    .st(r, &t.doc)
+                    .and_then(|s| s.slides.get(&t.id).copied())
+                    .unwrap_or(0)
+                    .min(last);
+                let to = match key.code {
+                    KeyCode::Left => Some(cur.saturating_sub(1)),
+                    KeyCode::Right => Some((cur + 1).min(last)),
+                    KeyCode::Home => Some(0),
+                    KeyCode::End => Some(last),
+                    KeyCode::Enter | KeyCode::Char(' ') => Some((cur + 1) % (*count).max(1)),
+                    KeyCode::Up => {
+                        self.move_focus(r, targets, next(-1), now);
+                        None
+                    }
+                    KeyCode::Down => {
+                        self.move_focus(r, targets, next(1), now);
+                        None
+                    }
+                    _ => {
+                        out.taken = false;
+                        None
+                    }
+                };
+                if let Some(to) = to {
+                    self.state(r, &t.doc).slides.insert(t.id.clone(), to);
+                }
+                out
+            }
             UiKind::Accordion => {
                 out.taken = true;
                 let open = self

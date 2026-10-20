@@ -5,6 +5,7 @@ import { library } from "../src/library.ts";
 // props are only ever added at the end.
 const ORDER: Record<string, string[]> = {
   Stack: ["children", "direction", "gap", "wrap", "align", "justify"],
+  Carousel: ["children", "visible"],
   Card: ["children", "title", "tone", "variant"],
   Header: ["title", "subtitle"],
   Separator: [],

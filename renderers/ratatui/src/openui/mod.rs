@@ -48,6 +48,8 @@ pub struct UiState {
     pub values: HashMap<String, Value>,
     /// The `Select` whose list is open (its key), and the highlighted option.
     pub select: Option<(String, usize)>,
+    /// The first slide shown of each `Carousel`, by the target's id. Absent: the first.
+    pub slides: HashMap<String, usize>,
     /// The item a focused `CheckBoxGroup` or `SwitchGroup` has its cursor on, by key. Absent: the
     /// first.
     pub cursors: HashMap<String, usize>,
@@ -104,6 +106,10 @@ pub enum UiKind {
     },
     /// One accordion item.
     Accordion,
+    /// A carousel of `count` slides: Left/Right scroll.
+    Carousel {
+        count: usize,
+    },
 }
 
 impl UiKind {
@@ -425,7 +431,7 @@ fn scan(v: &Value, interactive: &mut bool, focusable: &mut bool) {
                     *interactive |= name != "FollowUpItem";
                     *focusable = true;
                 }
-                if matches!(name, "Tabs" | "Accordion") {
+                if matches!(name, "Tabs" | "Accordion" | "Carousel") {
                     *focusable = true;
                 }
             }
