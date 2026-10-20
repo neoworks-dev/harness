@@ -4,13 +4,13 @@
 
 The terminal renderer (`renderers/ratatui`, used by `apps/term`) is the first to draw it. web, GPUI and the Go TUI show a placeholder until they follow.
 
-```
+````
 model (```openui fence) ─┐
 app template (OpenUI Lang)┴─► daemon: lang-core parse → evaluate ($state store, queries) → UiDoc
                                          ▲                                                 │
                  ui.action openui.input / openui.press                       view.snapshot / view.patch
                                          └──────────────── renderer ◄──────────────────────┘
-```
+````
 
 ## Where programs come from
 
@@ -35,11 +35,11 @@ app template (OpenUI Lang)┴─► daemon: lang-core parse → evaluate ($state
 
 Props are what the library declares (tables below), already evaluated: expressions, `@Each`, ternaries and references are resolved, and markdown is parsed. The daemon adds to the props:
 
-| Node | Added props |
-| --- | --- |
-| `Text`, `Callout` | `blocks`: the text as parsed markdown (`Block[]` of the view format, never another `openui` block). Draw these, not `text`. |
+| Node                                                                                               | Added props                                                                                                                                                                                                                                   |
+| -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Text`, `Callout`                                                                                  | `blocks`: the text as parsed markdown (`Block[]` of the view format, never another `openui` block). Draw these, not `text`.                                                                                                                   |
 | inputs (`Input`, `TextArea`, `Select`, `RadioGroup`, `CheckBox`, `Switch`, `Slider`, `DatePicker`) | `value`: the current value (string, bool or number, see below; absent = empty). `error`: the validation message to show, set after a submit attempt fails or a field is left invalid. `required`: true when the rules say so (draw a marker). |
-| `Button` | `url` when its only action is `@OpenUrl` (the client opens or shows it), `copy` when its only action is `@Copy` (the client copies). Otherwise pressing sends `openui.press`. `disabled` when it can't be pressed now. |
+| `Button`                                                                                           | `url` when its only action is `@OpenUrl` (the client opens or shows it), `copy` when its only action is `@Copy` (the client copies). Otherwise pressing sends `openui.press`. `disabled` when it can't be pressed now.                        |
 
 The `key` of an interactive node is its statement id, or the statement id plus a path when the node is inline or produced by `@Each` (`row.2.done`). It stays the same while the program re-evaluates.
 
@@ -58,65 +58,65 @@ Arguments are positional in the order listed. Optional ones are marked `?`, and 
 
 ### Layout
 
-| Component | Props |
-| --- | --- |
-| `Stack` | `children: Node[]`, `direction?: "column" \| "row"` (column), `gap?: "none" \| "s" \| "m" \| "l"` (m), `wrap?: bool`, `align?: "start" \| "center" \| "end" \| "stretch"`, `justify?: "start" \| "center" \| "end" \| "between"` |
-| `Card` | `children: Node[]`, `title?: string`, `tone?: Tone`, `variant?: "card" \| "sunk" \| "clear"` |
-| `Header` | `title: string`, `subtitle?: string` |
-| `Separator` | (none) |
-| `Tabs` | `tabs: Tab[]` |
-| `Tab` | `label: string`, `children: Node[]` |
-| `Accordion` | `items: AccordionItem[]` |
-| `AccordionItem` | `title: string`, `children: Node[]`, `open?: bool` |
-| `Steps` | `steps: Step[]` |
-| `Step` | `title: string`, `detail?: string`, `status?: "done" \| "current" \| "pending" \| "failed"` |
+| Component       | Props                                                                                                                                                                                                                            |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Stack`         | `children: Node[]`, `direction?: "column" \| "row"` (column), `gap?: "none" \| "s" \| "m" \| "l"` (m), `wrap?: bool`, `align?: "start" \| "center" \| "end" \| "stretch"`, `justify?: "start" \| "center" \| "end" \| "between"` |
+| `Card`          | `children: Node[]`, `title?: string`, `tone?: Tone`, `variant?: "card" \| "sunk" \| "clear"`                                                                                                                                     |
+| `Header`        | `title: string`, `subtitle?: string`                                                                                                                                                                                             |
+| `Separator`     | (none)                                                                                                                                                                                                                           |
+| `Tabs`          | `tabs: Tab[]`                                                                                                                                                                                                                    |
+| `Tab`           | `label: string`, `children: Node[]`                                                                                                                                                                                              |
+| `Accordion`     | `items: AccordionItem[]`                                                                                                                                                                                                         |
+| `AccordionItem` | `title: string`, `children: Node[]`, `open?: bool`                                                                                                                                                                               |
+| `Steps`         | `steps: Step[]`                                                                                                                                                                                                                  |
+| `Step`          | `title: string`, `detail?: string`, `status?: "done" \| "current" \| "pending" \| "failed"`                                                                                                                                      |
 
 ### Content
 
-| Component | Props |
-| --- | --- |
-| `Text` | `text: string` (markdown), `tone?: Tone`, `role?: "title" \| "body" \| "code"` |
-| `Code` | `code: string`, `language?: string` |
-| `Table` | `columns: string[]`, `rows: (string \| number \| bool \| Node)[][]` (cells may be `Tag`, `Link` or `Text`) |
-| `List` | `items: (string \| Node)[]`, `ordered?: bool` |
-| `KeyValue` | `pairs: KV[]` |
-| `KV` | `key: string`, `value: string \| number`, `tone?: Tone` |
-| `Tag` | `label: string`, `tone?: Tone` |
-| `Callout` | `text: string` (markdown), `tone?: Tone`, `title?: string` |
-| `Metric` | `label: string`, `value: string \| number`, `delta?: string`, `tone?: Tone` |
-| `Progress` | `value: number` (0..1), `label?: string` |
-| `Image` | `src: string`, `alt?: string` |
-| `Link` | `text: string`, `url: string` |
+| Component  | Props                                                                                                      |
+| ---------- | ---------------------------------------------------------------------------------------------------------- |
+| `Text`     | `text: string` (markdown), `tone?: Tone`, `role?: "title" \| "body" \| "code"`                             |
+| `Code`     | `code: string`, `language?: string`                                                                        |
+| `Table`    | `columns: string[]`, `rows: (string \| number \| bool \| Node)[][]` (cells may be `Tag`, `Link` or `Text`) |
+| `List`     | `items: (string \| Node)[]`, `ordered?: bool`                                                              |
+| `KeyValue` | `pairs: KV[]`                                                                                              |
+| `KV`       | `key: string`, `value: string \| number`, `tone?: Tone`                                                    |
+| `Tag`      | `label: string`, `tone?: Tone`                                                                             |
+| `Callout`  | `text: string` (markdown), `tone?: Tone`, `title?: string`                                                 |
+| `Metric`   | `label: string`, `value: string \| number`, `delta?: string`, `tone?: Tone`                                |
+| `Progress` | `value: number` (0..1), `label?: string`                                                                   |
+| `Image`    | `src: string`, `alt?: string`                                                                              |
+| `Link`     | `text: string`, `url: string`                                                                              |
 
 ### Charts
 
-| Component | Props |
-| --- | --- |
-| `BarChart` | `labels: string[]`, `series: Series[]`, `horizontal?: bool`, `stacked?: bool` |
-| `LineChart` | `labels: string[]`, `series: Series[]` |
-| `AreaChart` | `labels: string[]`, `series: Series[]` |
-| `PieChart` | `slices: Slice[]`, `donut?: bool` |
-| `Sparkline` | `values: number[]`, `label?: string` |
-| `Series` | `name: string`, `values: number[]` |
-| `Slice` | `label: string`, `value: number` |
+| Component   | Props                                                                         |
+| ----------- | ----------------------------------------------------------------------------- |
+| `BarChart`  | `labels: string[]`, `series: Series[]`, `horizontal?: bool`, `stacked?: bool` |
+| `LineChart` | `labels: string[]`, `series: Series[]`                                        |
+| `AreaChart` | `labels: string[]`, `series: Series[]`                                        |
+| `PieChart`  | `slices: Slice[]`, `donut?: bool`                                             |
+| `Sparkline` | `values: number[]`, `label?: string`                                          |
+| `Series`    | `name: string`, `values: number[]`                                            |
+| `Slice`     | `label: string`, `value: number`                                              |
 
 ### Forms
 
-| Component | Props |
-| --- | --- |
-| `Form` | `name: string`, `children: Node[]`, `buttons?: Buttons` |
-| `FormControl` | `label: string`, `input: Node`, `hint?: string` |
-| `Input` | `name: string`, `placeholder?: string`, `type?: "text" \| "email" \| "url" \| "number" \| "password"`, `rules?: Rules`, `value?: $var` |
-| `TextArea` | `name: string`, `placeholder?: string`, `rules?: Rules`, `value?: $var` |
-| `Select` | `name: string`, `options: Option[]`, `placeholder?: string`, `rules?: Rules`, `value?: $var` |
-| `Option` | `value: string`, `label?: string` |
-| `RadioGroup` | `name: string`, `options: Option[]`, `rules?: Rules`, `value?: $var` |
-| `CheckBox` | `name: string`, `label: string`, `rules?: Rules`, `value?: $var` |
-| `Switch` | `name: string`, `label: string`, `value?: $var` |
-| `Slider` | `name: string`, `min: number`, `max: number`, `step?: number`, `value?: $var` |
-| `DatePicker` | `name: string`, `rules?: Rules`, `value?: $var` (`YYYY-MM-DD`) |
-| `Button` | `label: string`, `action?: Action`, `variant?: "primary" \| "secondary" \| "danger"` |
-| `Buttons` | `buttons: Button[]` |
+| Component     | Props                                                                                                                                  |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `Form`        | `name: string`, `children: Node[]`, `buttons?: Buttons`                                                                                |
+| `FormControl` | `label: string`, `input: Node`, `hint?: string`                                                                                        |
+| `Input`       | `name: string`, `placeholder?: string`, `type?: "text" \| "email" \| "url" \| "number" \| "password"`, `rules?: Rules`, `value?: $var` |
+| `TextArea`    | `name: string`, `placeholder?: string`, `rules?: Rules`, `value?: $var`                                                                |
+| `Select`      | `name: string`, `options: Option[]`, `placeholder?: string`, `rules?: Rules`, `value?: $var`                                           |
+| `Option`      | `value: string`, `label?: string`                                                                                                      |
+| `RadioGroup`  | `name: string`, `options: Option[]`, `rules?: Rules`, `value?: $var`                                                                   |
+| `CheckBox`    | `name: string`, `label: string`, `rules?: Rules`, `value?: $var`                                                                       |
+| `Switch`      | `name: string`, `label: string`, `value?: $var`                                                                                        |
+| `Slider`      | `name: string`, `min: number`, `max: number`, `step?: number`, `value?: $var`                                                          |
+| `DatePicker`  | `name: string`, `rules?: Rules`, `value?: $var` (`YYYY-MM-DD`)                                                                         |
+| `Button`      | `label: string`, `action?: Action`, `variant?: "primary" \| "secondary" \| "danger"`                                                   |
+| `Buttons`     | `buttons: Button[]`                                                                                                                    |
 
 `Rules` is the spec's validation object (`required`, `email`, `url`, `numeric`, `minLength`, `maxLength`, `min`, `max`, `pattern`). Actions are the spec's built-ins (`@ToAssistant`, `@OpenUrl`, `@Set`, `@Reset`, `@Run`) plus the library's `@Copy(text)`.
 
@@ -130,3 +130,16 @@ The ratatui renderer's rules (the README there is the full reference):
 - **Forms.** Every input is a focusable field: `Label *` over `[ value or placeholder▏ ]`, the error under it in the danger tone. `Select` shows the chosen option with `▾` and opens a list on Enter; `RadioGroup` `(•)`/`( )`; `CheckBox` `[x]`/`[ ]`; `Switch` `● on`/`○ off`; `Slider` a bar with the number; `DatePicker` a text field checked as `YYYY-MM-DD`.
 - **Focus.** An item whose doc has interactive nodes takes focus like an item with buttons does today. Inside it, Tab / Shift-Tab (and Up/Down outside a text field) move between fields, buttons, tabs and accordion items in drawing order; typing edits the focused text field (Enter in a `TextArea` is a newline, elsewhere Enter presses the form's first button), Space toggles a checkbox or switch, Left/Right pick an option or move a slider. Esc gives focus back to the editor. While `streaming` the doc draws but takes no focus.
 - **Errors.** `errors` are not drawn in the chat; a doc with no root but errors shows one muted line `[ui: <first error message>]`.
+
+## How the daemon does it
+
+The code is `openui/` (the `suite@1` library, `Program`: lang-core parse, evaluate and state; `bun run --cwd openui skill` writes the skill) and `daemon/src/view/` (`openui.ts`, `markdown.ts`, `session-view.ts`).
+
+- **Fences.** A top-level code block whose language is `openui` (or `openui-lang`) becomes an `openui` block; in lists and quotes, in thoughts and in messages between agents it stays code. A fence still open is `streaming` until it closes; a message that ends (`turn_ended`) with a fence left open finishes it, with the usual errors. A half-written closing fence (`` ` `` or ` `` `) is not part of the program.
+- **While streaming** only the statement being written is `partial`, and `errors` stay out: what looks broken may be unfinished. Queries do not start, and `openui.input` and `openui.press` do nothing.
+- **Keys.** An interactive node's `key` is the id of the statement it is in, when that statement has only that one (`service = FormControl("Service", Select("service", …))`: `service`). Otherwise the statement id and the path to the node: `c.buttons.1`, `root.children.2` (a node made by `@Each`).
+- **Fields.** An input bound to a `$variable` writes it; any other keeps its value in the doc, per form and name. Select and RadioGroup only take one of their options, a Slider is held to `min`..`max`, a CheckBox and a Switch take a bool, and the rest a string; anything else is ignored. A required CheckBox or Switch has to be on. A DatePicker has to be `YYYY-MM-DD`. A field that failed is checked again whenever it changes. Messages are lang-core's ("Please enter a valid email").
+- **Buttons.** A button with no action sends its label to the agent. `url` is only set for `http:`, `https:` and `mailto:` addresses. `@OpenUrl` and `@Copy` inside a plan of several steps do nothing. `disabled` is set while a mutation the button runs is in flight.
+- **What the agent hears** is one input per `@ToAssistant`: `[ui action] The user pressed "Deploy" in an OpenUI doc: Deploy with these settings`, then `form deploy: {…}` (the form's values; outside a form `state: {…}` with the `$variables`), then `context: {…}`.
+- **Tools.** A `Query` runs when its doc is finished and draws, and after a `@Run` of it, through the gateway (`app.tool`), and is not recorded. A `Mutation` runs on press and is recorded in the session like a button that runs a tool (so its result shows in the chat with the app's template). A failing tool is an entry in `errors`; the doc keeps the query's defaults.
+- **State** is kept per view, item and doc, in memory, and a doc is told apart by its item `ref` (`m-<messageId>` for a message) and `id`.

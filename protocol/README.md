@@ -47,3 +47,5 @@ Apps register view templates for their tool results in `app.presence.templates` 
 - Any node may carry `"if": "path"` (dropped when the value is falsy or an empty array) and `"each": "path"` with optional `"as": "name"` (default `item`) and `"limit": n`: the node repeats once per element (at most n times), spliced into its parent's children. Inside, `{{index}}` is the element's 1-based position as text, e.g. `"label": "Download {{index}}", "key": "{{index}}"`.
 
 The resolved tree must validate against `Component`; otherwise the result falls back to a generic card (text output, diffs, or the data as key–value lines). Examples: `fixtures/*/fixture.json`.
+
+A template may be a program in OpenUI Lang instead: `"templates": {"<tool>": {"openui": "<program>"}}`. The daemon appends the result's `structuredContent` as a last statement `data = <value>`, evaluates the program with the `suite@1` library and sends an `openui` component (`{type: "openui", ui: UiDoc}`); a program with no `root` falls back to the generic card too. The format, the library and the actions are in [docs/openui.md](../docs/openui.md).
