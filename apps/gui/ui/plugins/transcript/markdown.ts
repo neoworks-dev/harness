@@ -127,11 +127,34 @@ function flatten(blocks: readonly Block[], context: Context, out: MarkdownRow[])
   });
 }
 
-/** The rows of a markdown text, top to bottom. */
+/** The rows of each top-level block, the first block's and a later one's (they differ in gap). */
+const rowsOfBlock = new WeakMap<Block, { first?: MarkdownRow[]; later?: MarkdownRow[] }>();
+
+/** The rows of one top-level block: the same objects for as long as the block is the same. */
+function blockRows(block: Block, first: boolean): MarkdownRow[] {
+  let cached = rowsOfBlock.get(block);
+  if (!cached) {
+    cached = {};
+    rowsOfBlock.set(block, cached);
+  }
+  const known = first ? cached.first : cached.later;
+  if (known) return known;
+  const rows: MarkdownRow[] = [];
+  flatten([block], { indent: 0, quote: 0, tight: false }, rows);
+  const [head] = rows;
+  if (head && !first) head.gap = "loose";
+  if (first) cached.first = rows;
+  else cached.later = rows;
+  return rows;
+}
+
+/**
+ * The rows of a markdown text, top to bottom. A streaming message changes only its last blocks
+ * and keeps the others, so their rows are kept too: the chat then redraws only what changed,
+ * not the whole message for every chunk.
+ */
 export function markdownRows(blocks: readonly Block[]): MarkdownRow[] {
-  const out: MarkdownRow[] = [];
-  flatten(blocks, { indent: 0, quote: 0, tight: false }, out);
-  return out;
+  return blocks.flatMap((block, index) => blockRows(block, index === 0));
 }
 
 /** What stands in front of a row's text, left to right: a gap of `chars` characters, or a marker. */

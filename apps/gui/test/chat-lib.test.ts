@@ -104,3 +104,21 @@ test("a list item that starts with a list keeps both markers on one row", () => 
   expect(rows).toHaveLength(1);
   expect(rows[0]?.markers.map((marker) => marker.at)).toEqual([0, 2]);
 });
+
+test("markdown rows of blocks that did not change are the same objects, as a message streams", () => {
+  const para = (text: string): Block => ({ type: "paragraph", spans: [{ text }] });
+  const first = para("one");
+  const list: Block = {
+    type: "list",
+    ordered: false,
+    items: [{ blocks: [para("a")] }, { blocks: [para("b")] }],
+  };
+  const before = markdownRows([first, list, para("thr")]);
+  const after = markdownRows([first, list, para("three")]);
+  expect(after.slice(0, 3)).toEqual(before.slice(0, 3));
+  for (let i = 0; i < 3; i++) expect(after[i]).toBe(before[i]);
+  expect(after[3]).not.toBe(before[3]);
+  // A block's first row has a gap only when the block isn't the first.
+  expect(markdownRows([list])[0]?.gap).toBe("none");
+  expect(markdownRows([first, list])[1]?.gap).toBe("loose");
+});
