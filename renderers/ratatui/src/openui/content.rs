@@ -86,14 +86,15 @@ impl<'a> Cx<'a> {
         self.code(code, language, false, w)
     }
 
-    /// `[label]`, in the tone's color.
+    /// ` label ` on a tint of the tone's color, in that color.
     fn tag_spans(&self, n: N<'_>) -> Vec<Span<'static>> {
         let label = n.line("label").unwrap_or_default();
-        let style = match n.tone() {
-            Some(t) => Style::new().fg(self.p.tone(t)),
-            None => Style::new(),
-        };
-        vec![Span::styled(format!("[{label}]"), style)]
+        let color = n.tone().map(|t| self.p.tone(t));
+        let mut style = Style::new().bg(self.p.tint(color));
+        if let Some(c) = color {
+            style = style.fg(c);
+        }
+        vec![Span::styled(format!(" {label} "), style)]
     }
 
     pub(super) fn ui_tag(&mut self, n: N<'_>, w: usize) -> Lines {
