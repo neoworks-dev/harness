@@ -102,6 +102,11 @@ impl Cx<'_> {
             }
             Leaf::Comp(pb::Component::CodeComponent(v)) => return code_lines(&v.code, w, avail),
             Leaf::Comp(pb::Component::TextComponent(v)) => self.text(v, w),
+            Leaf::Comp(pb::Component::OpenUiComponent(v)) => {
+                let (lines, total) = self.openui_summary(&v.ui, w);
+                let shown = lines.len().min(avail);
+                return (lines.into_iter().take(shown).collect(), total);
+            }
             Leaf::Comp(pb::Component::DiffComponent(v)) => vec![self.diff_line(v, w)],
             Leaf::Comp(pb::Component::KvComponent(v)) => vec![self.kv_line(v, w)],
             Leaf::Comp(pb::Component::ImageComponent(v)) => {

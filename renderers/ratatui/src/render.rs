@@ -28,6 +28,8 @@ pub(crate) struct Cx<'a> {
     rooms: Vec<(u16, u16, String)>,
     /// Where those rooms ended up, once the item is laid out.
     slots: Vec<ImageSlot>,
+    /// What the OpenUI docs drawn so far noted (targets, the focused line).
+    pub(crate) ui: crate::openui::Run,
 }
 
 impl<'a> Cx<'a> {
@@ -39,6 +41,7 @@ impl<'a> Cx<'a> {
             budget: None,
             rooms: Vec::new(),
             slots: Vec::new(),
+            ui: Default::default(),
         }
     }
 
@@ -58,6 +61,7 @@ impl<'a> Cx<'a> {
             pb::ItemKind::Notice => self.notice(it, w),
         };
         self.place_rooms(&mut lines);
+        self.place_focus(&mut lines);
         clip(&mut lines, w);
         lines
     }
@@ -206,7 +210,10 @@ impl<'a> Cx<'a> {
             }
             None => vec![Line::from(bullet)],
         };
-        let prompt = has_buttons(&it.component);
+        // A doc with fields or buttons is a form to fill in; one that holds focus is in use.
+        let prompt = has_buttons(&it.component)
+            || crate::openui::interactive(&it.component)
+            || self.o.openui.values().any(|s| s.focus.is_some());
         if self.o.expanded || prompt {
             self.budget = self.o.preview_lines.filter(|_| prompt && !self.o.expanded);
             let body = self.comp(&it.component, w.saturating_sub(2).max(1));
@@ -267,6 +274,7 @@ impl<'a> Cx<'a> {
             pb::Component::KvComponent(v) => self.kv(v, w),
             pb::Component::ProgressComponent(v) => self.progress(v, w),
             pb::Component::ButtonComponent(v) => vec![self.button(v, w)],
+            pb::Component::OpenUiComponent(v) => self.openui_doc(&v.ui, w),
             pb::Component::LinkComponent(v) => {
                 wrap(&link(&v.url, v.text.as_deref(), Style::new(), &self.p), w)
             }
@@ -277,7 +285,7 @@ impl<'a> Cx<'a> {
         }
     }
 
-    fn placeholder(&self, text: &str, w: usize) -> Line<'static> {
+    pub(crate) fn placeholder(&self, text: &str, w: usize) -> Line<'static> {
         sline(truncate(text, w), self.p.muted_style())
     }
 
@@ -359,10 +367,20 @@ impl<'a> Cx<'a> {
 
     /// A gutter along the children, with the title on top. The tone colors both.
     fn card(&mut self, v: &pb::CardComponent, w: usize) -> Lines {
-        let tone = v.tone.map(|t| self.p.tone(t));
-        let title = v.title.as_deref().map(one_line).filter(|t| !t.is_empty());
-        let inner = if w < 6 { w } else { w - 2 };
-        let body = stack(self.children(&v.children, inner), None);
+        let body = stack(self.children(&v.children, card_inner(w)), None);
+        self.card_frame(v.title.as_deref(), v.tone, body, w)
+    }
+
+    /// The body inside the card's gutter (`card_inner` wide), the title on top.
+    pub(crate) fn card_frame(
+        &self,
+        title: Option<&str>,
+        tone: Option<pb::Tone>,
+        body: Lines,
+        w: usize,
+    ) -> Lines {
+        let tone = tone.map(|t| self.p.tone(t));
+        let title = title.map(one_line).filter(|t| !t.is_empty());
         if w < 6 {
             let mut out = Vec::new();
             if let Some(t) = title {
@@ -398,7 +416,7 @@ impl<'a> Cx<'a> {
         out
     }
 
-    pub(crate) fn text(&self, v: &pb::TextComponent, w: usize) -> Lines {
+    pub(crate) fn text(&mut self, v: &pb::TextComponent, w: usize) -> Lines {
         let mut lines = self.blocks(&v.blocks, w, true);
         match v.role {
             Some(pb::TextRole::Title) => restyle(&mut lines, |s| s.add_modifier(Modifier::BOLD)),
@@ -415,7 +433,7 @@ impl<'a> Cx<'a> {
     }
 
     /// Loose blocks are separated by a blank line; tight ones (inside list items) stack.
-    pub(crate) fn blocks(&self, bs: &[pb::Block], w: usize, loose: bool) -> Lines {
+    pub(crate) fn blocks(&mut self, bs: &[pb::Block], w: usize, loose: bool) -> Lines {
         let mut out: Lines = Vec::new();
         for b in bs {
             let lines = self.block(b, w);
@@ -430,7 +448,7 @@ impl<'a> Cx<'a> {
         out
     }
 
-    fn block(&self, b: &pb::Block, w: usize) -> Lines {
+    fn block(&mut self, b: &pb::Block, w: usize) -> Lines {
         match b {
             pb::Block::ParagraphBlock(v) => wrap(&self.spans(&v.spans), self.prose(w)),
             pb::Block::HeadingBlock(v) => {
@@ -465,6 +483,7 @@ impl<'a> Cx<'a> {
                 Style::new().fg(self.p.border),
             )],
             pb::Block::TableBlock(v) => self.table_block(v, w),
+            pb::Block::OpenUiBlock(v) => self.openui_doc(&v.ui, w),
             pb::Block::Unknown(_) => vec![self.placeholder("[unsupported block]", w)],
         }
     }
@@ -658,7 +677,7 @@ impl<'a> Cx<'a> {
 
     /// Bullets, numbers and task boxes; item text hangs under the marker's text, nested lists
     /// sit under the item's text.
-    fn list(&self, v: &pb::ListBlock, w: usize) -> Lines {
+    fn list(&mut self, v: &pb::ListBlock, w: usize) -> Lines {
         let start = v.start.unwrap_or(1);
         let last = start.saturating_add(v.items.len() as i64 - 1);
         let num_w = if v.ordered {
@@ -693,7 +712,7 @@ impl<'a> Cx<'a> {
     /// Monospace on the surface color, indented 2, hard-wrapped, the band filling the width.
     /// Shell is highlighted; with `reflow` (a command to approve, not code the model wrote in
     /// its reply) long lines also break after `&&`, `|` and `;`.
-    fn code(&self, code: &str, language: Option<&str>, reflow: bool, w: usize) -> Lines {
+    pub(crate) fn code(&self, code: &str, language: Option<&str>, reflow: bool, w: usize) -> Lines {
         let st = self.p.code_style();
         if crate::shell::is_shell(language) {
             let inner = w.saturating_sub(2).max(1);
@@ -860,7 +879,7 @@ impl<'a> Cx<'a> {
         }
     }
 
-    fn kv(&self, v: &pb::KvComponent, w: usize) -> Lines {
+    pub(crate) fn kv(&self, v: &pb::KvComponent, w: usize) -> Lines {
         let keys: Vec<String> = v.items.iter().map(|i| one_line(&i.key)).collect();
         let key_w = keys
             .iter()
@@ -948,7 +967,7 @@ impl<'a> Cx<'a> {
     }
 
     /// `▓▓▓░░ 60% label` with a bar of up to 20 cells.
-    fn progress(&self, v: &pb::ProgressComponent, w: usize) -> Lines {
+    pub(crate) fn progress(&self, v: &pb::ProgressComponent, w: usize) -> Lines {
         let value = if v.value.is_nan() {
             0.0
         } else {
@@ -1005,6 +1024,11 @@ impl<'a> Cx<'a> {
     }
 }
 
+/// What a card's children get of its width: the gutter takes two cells.
+pub(crate) fn card_inner(w: usize) -> usize {
+    if w < 6 { w } else { w - 2 }
+}
+
 /// The last part of a path (the whole of anything else).
 fn file_name(src: &str) -> String {
     match src.rsplit_once('/') {
@@ -1015,7 +1039,7 @@ fn file_name(src: &str) -> String {
 
 /// The sources of the images that are drawn in full: not inside a table or the like.
 /// Narrows the widest columns until they fit `avail` cells together (each keeps one).
-fn fit_columns(widths: &mut [usize], avail: usize) {
+pub(crate) fn fit_columns(widths: &mut [usize], avail: usize) {
     let mut total: usize = widths.iter().sum();
     while total > avail {
         let max = widths.iter().copied().max().unwrap_or(1);

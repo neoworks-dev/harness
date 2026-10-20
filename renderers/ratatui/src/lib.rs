@@ -15,6 +15,7 @@
 //! assert_eq!(lines.len(), 1);
 //! ```
 
+mod openui;
 mod palette;
 mod render;
 mod shell;
@@ -28,13 +29,16 @@ use ratatui::text::Line;
 use suite_protocol as pb;
 use suite_protocol::ViewItem;
 
+pub use openui::{
+    UiDocInfo, UiEdit, UiKind, UiOption, UiState, UiTarget, openui_docs, openui_targets,
+};
 pub use palette::Palette;
 
 /// What to draw and how.
 #[derive(Debug, Clone, Default)]
 pub struct Options {
     /// Tool items: the full result under the header instead of a summary of up to three lines.
-    /// Items with buttons are always drawn in full.
+    /// Items with buttons, and OpenUI docs with fields or buttons, are always drawn in full.
     pub expanded: bool,
     /// Thought items: the text (dim italic) instead of one `∴ thinking` line.
     pub show_thoughts: bool,
@@ -54,6 +58,8 @@ pub struct Options {
     /// Reserve rows for images the app can draw itself (see [`ImageOptions`]). None: an image is
     /// a one-line `[image …]` placeholder.
     pub images: Option<ImageOptions>,
+    /// The visual state of the item's OpenUI docs (focus, tabs, edits…), per doc id.
+    pub openui: HashMap<String, UiState>,
 }
 
 /// What the app knows about an image source (`src` of an image component).
@@ -96,6 +102,8 @@ pub struct ImageSlot {
 pub struct Rendered {
     pub lines: Vec<Line<'static>>,
     pub images: Vec<ImageSlot>,
+    /// The first line of the focused OpenUI target, if the state has one in view.
+    pub focus_line: Option<usize>,
 }
 
 /// The cells a `width`x`height` pixel image takes in a terminal whose cells are `cell` pixels:
@@ -214,7 +222,7 @@ fn blocks_text(blocks: &[pb::Block]) -> String {
                 lines.push(row(&b.header));
                 lines.extend(b.rows.iter().map(|r| row(r)));
             }
-            pb::Block::RuleBlock(_) | pb::Block::Unknown(_) => {}
+            pb::Block::RuleBlock(_) | pb::Block::OpenUiBlock(_) | pb::Block::Unknown(_) => {}
         }
     }
     lines.join("\n")
@@ -312,6 +320,7 @@ pub fn render_item_images(item: &ViewItem, width: u16, opts: &Options) -> Render
     Rendered {
         lines,
         images: cx.take_slots(),
+        focus_line: cx.ui.focus_line,
     }
 }
 
