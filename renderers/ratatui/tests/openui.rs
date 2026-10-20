@@ -1055,6 +1055,115 @@ fn follow_ups_can_be_focused_but_do_not_ask_for_the_keyboard() {
     assert!(openui_docs(&both)[0].interactive);
 }
 
+// ---- option cards ----
+
+fn plans(value: Option<&str>) -> Value {
+    let mut props = json!({"name": "plan", "options": [
+        node("OptionCard", json!({"value": "free", "title": "Free", "description": "Up to three users, community support"})),
+        node("OptionCard", json!({"value": "pro", "title": "Pro", "description": "Unlimited users"})),
+        node("OptionCard", json!({"value": "team", "title": "Team"})),
+    ]});
+    if let Some(v) = value {
+        props["value"] = json!(v);
+    }
+    keyed("OptionCards", "plan", props)
+}
+
+#[test]
+fn option_cards_sit_side_by_side_as_framed_cards() {
+    let it = doc(plans(Some("pro")));
+    assert_eq!(
+        lines(&it, 80),
+        [
+            "╭────────────────────────╮ ╭────────────────────────╮ ╭────────────────────────╮",
+            "│ ( ) Free               │ │ (•) Pro                │ │ ( ) Team               │",
+            "│     Up to three users, │ │     Unlimited users    │ │                        │",
+            "│     community support  │ │                        │ │                        │",
+            "╰────────────────────────╯ ╰────────────────────────╯ ╰────────────────────────╯",
+        ]
+    );
+    // Fewer fit on a narrower view, the rest wrap to a second row of cards.
+    let out = lines(&it, 50);
+    assert_eq!(out.len(), 9, "{out:?}");
+    assert!(
+        out[1].contains("( ) Free") && out[1].contains("(•) Pro"),
+        "{out:?}"
+    );
+    assert!(out[7].contains("( ) Team"), "{out:?}");
+    // One column on a small screen, cards no wider than they need to be.
+    let out = lines(&it, 30);
+    assert!(out.iter().all(|l| l.chars().count() <= 30), "{out:?}");
+    assert_eq!(out[0].chars().count(), 30);
+}
+
+#[test]
+fn the_chosen_card_has_an_accent_frame_and_a_focused_one_a_reversed_title() {
+    let it = doc(plans(Some("pro")));
+    let rendered = render_item(&it, 80, &Options::default());
+    let edge = |col: usize| {
+        let mut x = 0;
+        for s in &rendered[0].spans {
+            let w = s.content.chars().count();
+            if col < x + w {
+                return s.style.fg;
+            }
+            x += w;
+        }
+        None
+    };
+    // The first card keeps the border color, the chosen one the accent.
+    assert_eq!(edge(0), Some(pal().border));
+    assert_eq!(edge(27), Some(pal().accent));
+    let rendered = render_item(&it, 80, &focused("plan"));
+    let title = rendered[1]
+        .spans
+        .iter()
+        .find(|s| s.content.contains("Pro"))
+        .unwrap();
+    assert!(title.style.add_modifier.contains(Modifier::REVERSED));
+    assert!(
+        !rendered[1].spans.iter().any(
+            |s| s.content.contains("Free") && s.style.add_modifier.contains(Modifier::REVERSED)
+        )
+    );
+}
+
+#[test]
+fn option_cards_are_a_radio_target_with_the_titles_as_labels() {
+    let it = doc(plans(None));
+    let targets = openui_targets(&it, &Options::default());
+    assert_eq!(targets.len(), 1);
+    let UiKind::Radio { options } = &targets[0].kind else {
+        panic!("{:?}", targets[0].kind);
+    };
+    let got: Vec<(&str, &str)> = options
+        .iter()
+        .map(|o| (o.value.as_str(), o.label.as_str()))
+        .collect();
+    assert_eq!(got, [("free", "Free"), ("pro", "Pro"), ("team", "Team")]);
+    // A value chosen here and not echoed yet wins; the daemon's value shows otherwise.
+    let local = state(|s| {
+        s.values.insert("plan".into(), json!("team"));
+    });
+    assert!(lines_of(&it, 80, &local)[1].contains("(•) Team"));
+    // Nothing chosen and focused: the first card lights up, and the focus line is its title.
+    let rendered = render_item_images(&it, 80, &focused("plan"));
+    assert_eq!(rendered.focus_line, Some(1));
+}
+
+#[test]
+fn option_cards_in_a_form_control_have_their_label_error_and_fit_everywhere() {
+    let mut cards = plans(Some("free"));
+    cards["props"]["error"] = json!("Pick a plan");
+    cards["props"]["required"] = json!(true);
+    let it = doc(field("Plan", cards));
+    let out = lines(&it, 80);
+    assert_eq!(out[0], "Plan *");
+    assert_eq!(out.last().unwrap(), "Pick a plan");
+    assert_fits(&it, &focused("plan"));
+    assert_fits(&it, &Options::default());
+}
+
 // ---- entity lists ----
 
 fn entity(title: &str, subtitle: Option<&str>, trailing: Option<Value>) -> Value {

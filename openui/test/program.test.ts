@@ -209,6 +209,24 @@ describe("inputs", () => {
     expect(byKey(p, "pick")?.props.value).toBeUndefined();
   });
 
+  test("option cards hold one of their options, like a radio group", async () => {
+    const p = program(
+      [
+        'root = Form("f", [plan], Buttons([go]))',
+        'plan = FormControl("Plan", OptionCards("plan", [OptionCard("free", "Free", "Up to 3 users"), OptionCard("pro", "Pro")], { required: true }))',
+        'go = Button("Go")',
+      ].join("\n"),
+    );
+    const cards = nodes(p.doc().root).find((n) => n.key === "plan");
+    expect(cards?.component).toBe("OptionCards");
+    expect(cards?.props.required).toBe(true);
+    expect(p.input("plan", "gold")).toBe(false);
+    expect((await p.press("go")).refused).toBe("invalid");
+    expect(p.input("plan", "pro")).toBe(true);
+    expect(byKey(p, "plan")?.props.value).toBe("pro");
+    expect((await p.press("go")).assistant[0]?.values).toEqual({ plan: "pro" });
+  });
+
   test("required fields are marked", () => {
     const p = program(source);
     expect(byKey(p, "pick")?.props.required).toBe(true);

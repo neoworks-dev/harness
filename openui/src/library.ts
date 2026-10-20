@@ -323,6 +323,21 @@ const RadioGroup = define(
     value: reactive(z.string().optional()),
   }),
 );
+const OptionCard = define(
+  "OptionCard",
+  "A choice of OptionCards: a title and what it means",
+  z.object({ value: z.string(), title: z.string(), description: z.string().optional() }),
+);
+const OptionCards = define(
+  "OptionCards",
+  "One choice out of a few options, each a card with a title and a description; use it over RadioGroup when the options need explaining",
+  z.object({
+    name: z.string(),
+    options: z.array(OptionCard.ref),
+    rules,
+    value: reactive(z.string().optional()),
+  }),
+);
 const CheckBox = define(
   "CheckBox",
   "A checkbox with a label",
@@ -365,6 +380,7 @@ const FormControl = define(
       TextArea.ref,
       Select.ref,
       RadioGroup.ref,
+      OptionCards.ref,
       CheckBox.ref,
       Switch.ref,
       Slider.ref,
@@ -457,6 +473,8 @@ export const library = createLibrary({
     Select,
     Option,
     RadioGroup,
+    OptionCards,
+    OptionCard,
     CheckBox,
     Switch,
     Slider,
@@ -525,6 +543,8 @@ export const library = createLibrary({
         "Select",
         "Option",
         "RadioGroup",
+        "OptionCards",
+        "OptionCard",
         "CheckBox",
         "Switch",
         "Slider",
@@ -544,6 +564,7 @@ export const INPUTS: ReadonlySet<string> = new Set([
   "TextArea",
   "Select",
   "RadioGroup",
+  "OptionCards",
   "CheckBox",
   "Switch",
   "Slider",

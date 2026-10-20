@@ -335,6 +335,46 @@ fn left_and_right_pick_radio_options_and_move_sliders() {
 }
 
 #[test]
+fn left_and_right_choose_option_cards() {
+    let form = node(
+        "Form",
+        json!({"name": "plan", "children": [
+            control("Plan", keyed("OptionCards", "plan", json!({"name": "plan", "options": [
+                node("OptionCard", json!({"value": "free", "title": "Free", "description": "Three users"})),
+                node("OptionCard", json!({"value": "pro", "title": "Pro"})),
+            ]}))),
+        ], "buttons": node("Buttons", json!({"buttons": [keyed("Button", "go", json!({"label": "Go"}))]}))}),
+    );
+    let item: ViewItem = serde_json::from_value(json!({
+        "ref": "f1", "kind": "agent",
+        "component": {"type": "openui", "ui": {"id": "0", "root": form}}
+    }))
+    .unwrap();
+    let mut app = app();
+    show(&mut app, vec![user("u1", "pick"), item]);
+    assert_eq!(focused(&app).as_deref(), Some("plan"));
+    let screen = text(&mut app);
+    assert!(
+        screen.contains("( ) Free") && screen.contains("( ) Pro"),
+        "{screen}"
+    );
+    assert!(screen.contains("Plan · ←/→ choose"), "{screen}");
+    // Nothing is chosen yet: Right picks the first card, then the next.
+    assert_eq!(
+        press(&mut app, key(KeyCode::Right)),
+        [input("0", "plan", json!("free"))]
+    );
+    assert_eq!(
+        press(&mut app, key(KeyCode::Right)),
+        [input("0", "plan", json!("pro"))]
+    );
+    assert!(text(&mut app).contains("(•) Pro"));
+    assert!(press(&mut app, key(KeyCode::Right)).is_empty());
+    // Enter sends the form.
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), [pressed("0", "go")]);
+}
+
+#[test]
 fn enter_opens_a_select_and_chooses_from_its_list() {
     let mut app = with_form();
     assert!(press(&mut app, key(KeyCode::Enter)).is_empty());

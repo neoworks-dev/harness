@@ -196,7 +196,7 @@ export class Converter {
     if (form !== undefined) field.form = form;
     if (isReactiveAssign(binding)) field.bound = binding.target;
     else if (binding !== null && binding !== undefined) field.literal = binding;
-    if (el.typeName === "Select" || el.typeName === "RadioGroup") {
+    if (el.typeName === "Select" || el.typeName === "RadioGroup" || el.typeName === "OptionCards") {
       field.options = optionValues(el.props.options);
     }
     if (el.typeName === "Slider") {

@@ -298,6 +298,7 @@ export class Program {
         return Math.min(field.max ?? value, Math.max(field.min ?? value, value));
       case "Select":
       case "RadioGroup":
+      case "OptionCards":
         if (typeof value !== "string") return undefined;
         return value === "" || field.options?.includes(value) === true ? value : undefined;
       default:

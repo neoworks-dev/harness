@@ -66,7 +66,7 @@ fn pad_to(line: &mut Line<'static>, w: usize) {
 
 /// One row of items, each already drawn at its width, side by side. `valign` places items
 /// that are shorter than the tallest.
-fn columns(parts: Vec<(Lines, usize)>, gaps: &[usize], valign: &str) -> Lines {
+pub(super) fn columns(parts: Vec<(Lines, usize)>, gaps: &[usize], valign: &str) -> Lines {
     let height = parts.iter().map(|(l, _)| l.len()).max().unwrap_or(0);
     let mut cols: Vec<(Lines, usize)> = Vec::new();
     for (mut lines, w) in parts {
@@ -134,6 +134,7 @@ impl<'a> Cx<'a> {
             "Input" | "TextArea" | "DatePicker" => self.ui_text_field(n, w),
             "Select" => self.ui_select(n, w),
             "RadioGroup" => self.ui_radio(n, w),
+            "OptionCards" => self.ui_option_cards(n, w),
             "CheckBox" | "Switch" => self.ui_toggle(n, w),
             "Slider" => self.ui_slider(n, w),
             "Button" => self.ui_button_line(n, w),

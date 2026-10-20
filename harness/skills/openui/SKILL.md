@@ -49,6 +49,8 @@ Lay a dashboard out the way a page is, not as one long column:
   ones. Choosing one sends its text to you as the user's next message.
 - Use `EntityList` with `ListItem`s for things that have a name, a detail and a status or
   value (people, files, services, tickets). Prefer it to a Table with one real column.
+- Use `OptionCards` instead of RadioGroup when the user picks one of two to five options that
+  each need a sentence of explanation (plans, strategies, environments).
 
 ## Forms and buttons
 
@@ -139,12 +141,14 @@ Slice(label: string, value: number) — One slice of PieChart
 
 ### Forms
 Form(name: string, children: Component[], buttons?: Buttons) — Inputs submitted together; a button inside checks their rules first and a message carries their values
-FormControl(label: string, input: Input | TextArea | Select | RadioGroup | CheckBox | Switch | Slider | DatePicker, hint?: string) — A field of a form: a label over an input, with an optional hint
+FormControl(label: string, input: Input | TextArea | Select | RadioGroup | OptionCards | CheckBox | Switch | Slider | DatePicker, hint?: string) — A field of a form: a label over an input, with an optional hint
 Input(name: string, placeholder?: string, type?: "text" | "email" | "url" | "number" | "password", rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — A single-line text field
 TextArea(name: string, placeholder?: string, rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — A multi-line text field
 Select(name: string, options: Option[], placeholder?: string, rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — A dropdown of options
 Option(value: string, label?: string) — A choice of Select or RadioGroup; label defaults to the value
 RadioGroup(name: string, options: Option[], rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — One choice out of a few options
+OptionCards(name: string, options: OptionCard[], rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — One choice out of a few options, each a card with a title and a description; use it over RadioGroup when the options need explaining
+OptionCard(value: string, title: string, description?: string) — A choice of OptionCards: a title and what it means
 CheckBox(name: string, label: string, rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<boolean>) — A checkbox with a label
 Switch(name: string, label: string, value?: $binding<boolean>) — An on/off switch with a label
 Slider(name: string, min: number, max: number, step?: number, value?: $binding<number>) — A number between min and max

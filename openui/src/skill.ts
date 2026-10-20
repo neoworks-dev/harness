@@ -58,6 +58,8 @@ Lay a dashboard out the way a page is, not as one long column:
   ones. Choosing one sends its text to you as the user's next message.
 - Use \`EntityList\` with \`ListItem\`s for things that have a name, a detail and a status or
   value (people, files, services, tickets). Prefer it to a Table with one real column.
+- Use \`OptionCards\` instead of RadioGroup when the user picks one of two to five options that
+  each need a sentence of explanation (plans, strategies, environments).
 
 ## Forms and buttons
 

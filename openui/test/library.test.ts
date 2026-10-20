@@ -42,6 +42,8 @@ const ORDER: Record<string, string[]> = {
   Select: ["name", "options", "placeholder", "rules", "value"],
   Option: ["value", "label"],
   RadioGroup: ["name", "options", "rules", "value"],
+  OptionCards: ["name", "options", "rules", "value"],
+  OptionCard: ["value", "title", "description"],
   CheckBox: ["name", "label", "rules", "value"],
   Switch: ["name", "label", "value"],
   Slider: ["name", "min", "max", "step", "value"],

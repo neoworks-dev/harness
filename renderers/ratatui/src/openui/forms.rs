@@ -5,12 +5,16 @@ use ratatui::text::{Line, Span};
 use serde_json::Value;
 use unicode_width::UnicodeWidthChar;
 
+use super::layout::columns;
 use super::{N, UiKind, UiOption, join, number, scalar};
-use crate::render::{Cx, Lines, stack};
+use crate::render::{Cx, Lines, indented, stack};
 use crate::text::{clean, sline, truncate, width, wrap};
 
 /// The widest a text field is drawn.
 const FIELD_W: usize = 44;
+/// The narrowest and the widest an option card is drawn.
+const CARD_MIN: usize = 22;
+const CARD_MAX: usize = 34;
 /// Rows a text area has at least, and at most.
 const AREA_MIN: usize = 3;
 const AREA_MAX: usize = 8;
@@ -412,6 +416,108 @@ impl<'a> Cx<'a> {
         out
     }
 
+    /// `OptionCards`: the options as small framed cards side by side, as many as fit, the chosen
+    /// one in the accent color. Each card is `(•) Title` over its muted description.
+    pub(super) fn ui_option_cards(&mut self, n: N<'_>, w: usize) -> Lines {
+        let cards: Vec<(UiOption, Option<String>)> = n
+            .nodes("options")
+            .into_iter()
+            .map(|o| {
+                let value = o
+                    .str("value")
+                    .map(crate::text::one_line)
+                    .unwrap_or_default();
+                let title = o.line("title").unwrap_or_else(|| value.clone());
+                (
+                    UiOption {
+                        value,
+                        label: title,
+                    },
+                    o.line("description"),
+                )
+            })
+            .collect();
+        let options: Vec<UiOption> = cards.iter().map(|c| c.0.clone()).collect();
+        let value = self.field_value(n);
+        let focused = self.field_target(n, UiKind::Radio { options }, value.clone());
+        let current = scalar(&value);
+        let chosen = cards.iter().position(|c| c.0.value == current);
+        // Nothing chosen: the first card shows where the focus is.
+        let lit = chosen.unwrap_or(0);
+        let per_row = ((w + 1) / (CARD_MIN + 1)).clamp(1, cards.len().max(1));
+        let card_w = ((w + 1) / per_row - 1).clamp(1, CARD_MAX);
+        let boxed = card_w >= 8;
+        let inner = if boxed { card_w - 4 } else { card_w };
+        let mut out: Lines = Vec::new();
+        let mut marked = false;
+        for (r, row) in cards.chunks(per_row).enumerate() {
+            let mut parts = Vec::new();
+            let mut height = 0;
+            for (c, (option, description)) in row.iter().enumerate() {
+                let at = r * per_row + c;
+                let on = Some(at) == chosen;
+                let accent = Style::new().fg(self.p.accent);
+                let (marker, title_style) = match (on, focused) {
+                    (true, true) => (
+                        Span::styled("(•)", accent.add_modifier(Modifier::BOLD)),
+                        accent.add_modifier(Modifier::REVERSED | Modifier::BOLD),
+                    ),
+                    (true, false) => (
+                        Span::styled("(•)", accent),
+                        Style::new().add_modifier(Modifier::BOLD),
+                    ),
+                    (false, _) => (Span::styled("( )", self.p.muted_style()), Style::new()),
+                };
+                let title = truncate(&option.label, inner.saturating_sub(4).max(1));
+                let mut head =
+                    Line::from(vec![marker, Span::styled(format!(" {title}"), title_style)]);
+                if focused && at == lit && !marked {
+                    marked = true;
+                    self.mark_focus(&mut head);
+                }
+                let mut body = vec![head];
+                if let Some(d) = description {
+                    body.extend(indented(
+                        wrap(
+                            &[Span::styled(d.clone(), self.p.muted_style())],
+                            inner.saturating_sub(4).max(1),
+                        ),
+                        4,
+                    ));
+                }
+                height = height.max(body.len());
+                parts.push((body, at == lit && focused, on));
+            }
+            let mut cols = Vec::new();
+            for (mut body, lit_here, on) in parts {
+                body.resize(height, Line::default());
+                let lines = if boxed {
+                    let edge = if on || lit_here {
+                        let st = Style::new().fg(self.p.accent);
+                        if focused {
+                            st.add_modifier(Modifier::BOLD)
+                        } else {
+                            st
+                        }
+                    } else {
+                        Style::new().fg(self.p.border)
+                    };
+                    frame(body, inner, edge)
+                } else {
+                    body
+                };
+                cols.push((lines, card_w));
+            }
+            out.extend(columns(
+                cols,
+                &vec![1; row.len().saturating_sub(1)],
+                "start",
+            ));
+        }
+        out.extend(self.field_error(n, w));
+        out
+    }
+
     /// `[x] label` for a checkbox, `● on  label` for a switch.
     pub(super) fn ui_toggle(&mut self, n: N<'_>, w: usize) -> Lines {
         let switch = n.name() == "Switch";
@@ -715,4 +821,19 @@ pub fn is_date(s: &str) -> bool {
         _ => return false,
     };
     (1..=days).contains(&d)
+}
+
+/// `body` between rounded edges, each line filled to `inner` cells.
+fn frame(body: Lines, inner: usize, edge: Style) -> Lines {
+    let mut out = vec![sline(format!("╭{}╮", "─".repeat(inner + 2)), edge)];
+    for line in body {
+        let used = line.width();
+        let mut spans = vec![Span::styled("│ ", edge)];
+        spans.extend(line.spans);
+        spans.push(Span::raw(" ".repeat(inner.saturating_sub(used))));
+        spans.push(Span::styled(" │", edge));
+        out.push(Line::from(spans));
+    }
+    out.push(sline(format!("╰{}╯", "─".repeat(inner + 2)), edge));
+    out
 }
