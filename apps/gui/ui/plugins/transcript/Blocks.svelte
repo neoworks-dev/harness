@@ -8,15 +8,18 @@
   import { indentCells, markdownRows, type RowGap } from "./markdown.ts";
   import { useCtx } from "../../kernel/slots/context.ts";
   import CodeBlock from "./CodeBlock.svelte";
+  import OpenUi from "./openui/OpenUi.svelte";
   import Runs from "./Runs.svelte";
 
   interface Props {
     blocks: readonly Block[];
     /** Font size of a paragraph; headings are sized from it. */
     size: number;
+    /** The chat item the blocks are in: what a UI block (```openui) sends its input to. */
+    ref?: string;
   }
 
-  let { blocks, size }: Props = $props();
+  let { blocks, size, ref }: Props = $props();
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
 
@@ -51,6 +54,8 @@
         <Text style={{ flex: 1, minWidth: 0, lineHeight: proseLineHeight(size) }}><Runs spans={row.spans} /></Text>
       {:else if row.kind === "heading"}
         <Text style={{ flex: 1, minWidth: 0, fontSize: headingSize(row.level), fontWeight: "semibold", lineHeight: proseLineHeight(headingSize(row.level)) }}><Runs spans={row.spans} /></Text>
+      {:else if row.kind === "openui"}
+        <View style={{ flex: 1, minWidth: 0 }}><OpenUi ui={row.ui} ref={ref ?? ""} /></View>
       {:else if row.kind === "code"}
         <View style={{ flex: 1, minWidth: 0 }}><CodeBlock code={row.code} language={row.language} fenced /></View>
       {:else}

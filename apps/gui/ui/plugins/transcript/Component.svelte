@@ -14,6 +14,7 @@
   import CodeBlock from "./CodeBlock.svelte";
   import DiffView from "./DiffView.svelte";
   import ImageView from "./ImageView.svelte";
+  import OpenUi from "./openui/OpenUi.svelte";
 
   interface Props {
     component: Component;
@@ -79,7 +80,7 @@
       fontFamily: component.role === "code" ? "mono" : undefined,
     }}
   >
-    <Blocks blocks={component.blocks} {size} />
+    <Blocks blocks={component.blocks} {size} {ref} />
   </View>
 {:else if component.type === "image"}
   {@const box = component.width && component.height ? fitImage({ width: component.width, height: component.height }, picture) : picture}
@@ -136,6 +137,8 @@
     <Text>{component.label}</Text>
     {#if component.current}<Text style={{ color: p.success }}>✓</Text>{/if}
   </Button>
+{:else if component.type === "openui"}
+  <OpenUi ui={component.ui} {ref} />
 {:else if component.type === "link"}
   <Text>
     <Text style={{ color: p.accent, underline: true }}>{component.text || component.url}</Text>{#if component.text && component.text !== component.url}<Text style={{ color: p.muted }}>{` (${component.url})`}</Text>{/if}
