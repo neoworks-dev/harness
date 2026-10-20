@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./components": "./src/components.ts",
     "./library": "./src/library.ts",
     "./program": "./src/program.ts",
     "./skill": "./src/skill.ts"

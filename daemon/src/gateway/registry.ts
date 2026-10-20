@@ -2,8 +2,15 @@
 // and what we remember about every connector ever seen (tool schemas, version, launch command), so
 // tools_search and "isn't open" errors work while an app is closed and after a daemon restart.
 import { createHash } from "node:crypto";
+import {
+  type AppComponents,
+  appLibrary,
+  type AppLibrary,
+  checkComponents,
+} from "@suite/openui/components";
 import type { AppPresence, ConnectorInfo, ConnectorKind, McpEndpoint } from "@suite/protocol/types";
 import type { Logger } from "../log.ts";
+import { BadRequestError } from "../sessions.ts";
 import type { SessionStore, StoredConnector, StoredTool } from "../store.ts";
 import type { ConnectUpstream, Upstream } from "./upstream.ts";
 
@@ -56,6 +63,8 @@ export class ConnectorRegistry {
   private readonly stored = new Map<string, StoredConnector>();
   private readonly live = new Map<string, Live>();
   private readonly listeners = new Set<() => void>();
+  /** The library of every known app's components; built when asked, dropped when one changes. */
+  private apps: AppLibrary | undefined;
 
   constructor(
     private readonly store: SessionStore,
@@ -75,6 +84,12 @@ export class ConnectorRegistry {
     if (!presence.open) {
       if (existing?.owner === owner) await this.drop(app, existing);
       return;
+    }
+    if (presence.components !== undefined) {
+      const problems = checkComponents(app, presence.components, this.componentsOf());
+      if (problems.length > 0) {
+        throw new BadRequestError(`${app}: can't register its components: ${problems.join("; ")}`);
+      }
     }
     this.remember(presence);
     if (existing?.owner === owner && sameEndpoint(existing.presence.mcp, presence.mcp)) {
@@ -125,6 +140,27 @@ export class ConnectorRegistry {
     const dot = tool.indexOf(".");
     if (dot <= 0) return undefined;
     return this.stored.get(tool.slice(0, dot))?.templates?.[tool.slice(dot + 1)];
+  }
+
+  /**
+   * The OpenUI components of the apps we know, by app: those of closed apps too, so docs that use
+   * them still draw. With `open`, only the connected ones, the ones to tell an agent about.
+   */
+  componentsOf(open = false): AppComponents {
+    const out: AppComponents = {};
+    for (const [app, connector] of this.stored) {
+      if (open && !this.live.has(app)) continue;
+      if (connector.components && Object.keys(connector.components).length > 0) {
+        out[app] = connector.components;
+      }
+    }
+    return out;
+  }
+
+  /** The suite library with every known app's components (see `componentsOf`). */
+  library(): AppLibrary {
+    this.apps ??= appLibrary(this.componentsOf());
+    return this.apps;
   }
 
   isOpen(app: string): boolean {
@@ -231,6 +267,16 @@ export class ConnectorRegistry {
     if (presence.title !== undefined) record.title = presence.title;
     if (presence.launch !== undefined) record.launch = presence.launch;
     if (presence.templates !== undefined) record.templates = presence.templates;
+    if (presence.components !== undefined) {
+      const same = JSON.stringify(record.components ?? {}) === JSON.stringify(presence.components);
+      if (!same) {
+        // A session that knows an earlier version is told which components there are now.
+        if (record.v > 0) record.v += 1;
+        this.apps = undefined;
+      }
+      if (Object.keys(presence.components).length === 0) delete record.components;
+      else record.components = presence.components;
+    }
     this.stored.set(presence.app, record);
     this.store.saveConnector(record);
   }

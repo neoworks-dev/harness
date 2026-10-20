@@ -1,6 +1,7 @@
 // A session's chat as drawn: session events → view items, and each new event → the ops that
 // update every pane. Streaming text is merged here (re-parsed, only changed tail blocks sent);
 // tool results are filled into their app's template, or a generic card when there is none.
+import type { AppLibrary } from "@suite/openui/components";
 import type { CallTool, Program } from "@suite/openui/program";
 import type {
   Block,
@@ -148,8 +149,9 @@ export class SessionView {
     private readonly log: Logger,
     private readonly only?: string,
     tools?: CallTool,
+    apps?: () => AppLibrary,
   ) {
-    this.docs = new OpenUiDocs((ref) => this.changed(ref), tools);
+    this.docs = new OpenUiDocs((ref) => this.changed(ref), tools, apps);
   }
 
   /** The seq of the last event applied. */

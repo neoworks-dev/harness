@@ -1,5 +1,6 @@
 // One live SessionView per session (and per agent, for a per-agent view) that someone has looked
 // at, kept current from the event log.
+import type { AppLibrary } from "@suite/openui/components";
 import type { CallTool, Program } from "@suite/openui/program";
 import type { ViewPatch } from "@suite/protocol/types";
 import type { Logger } from "../log.ts";
@@ -16,6 +17,8 @@ export class ViewManager {
     private readonly log: Logger,
     /** Runs the tools an OpenUI program's Query and Mutation name, for a session. */
     private readonly tools?: (session: string) => CallTool,
+    /** The library with the components of the apps, for the programs of every view. */
+    private readonly apps?: () => AppLibrary,
   ) {
     store.onAppend((record) => {
       for (const [key, view] of this.views) {
@@ -35,7 +38,14 @@ export class ViewManager {
     const key = viewKey(session, agent);
     const existing = this.views.get(key);
     if (existing) return existing;
-    const view = new SessionView(session, this.templates, this.log, agent, this.tools?.(session));
+    const view = new SessionView(
+      session,
+      this.templates,
+      this.log,
+      agent,
+      this.tools?.(session),
+      this.apps,
+    );
     view.replay(this.store.read(session));
     // Changes outside the event log (an OpenUI doc answering) go out as patches of their own.
     view.onOps = (ops) => {

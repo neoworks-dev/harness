@@ -497,8 +497,20 @@ export interface AppPresence {
   pid?: number;
   /** View templates for this app's tool results, keyed by tool name (without the app prefix). Format: protocol/README.md#templates. Kept by the daemon so results still render after the app closes. */
   templates?: Record<string, unknown>;
+  /** OpenUI components this app offers the agent, built from the library, keyed by name. Format: protocol/README.md#components. Kept by the daemon so docs that use them still draw after the app closes. */
+  components?: Record<string, AppComponent>;
   /** One line for the agent about what the app is for, shown when it first connects in a session. Default: the first sentence of the MCP server's instructions. */
   description?: string;
+}
+
+/** An OpenUI component an app offers: what the agent may write as Name(…), and the program that draws it. The name is a PascalCase identifier that no library component, no other app's component and none of Query, Mutation or Action has; a clash rejects the registration. */
+export interface AppComponent {
+  /** What it is and when to use it; the agent reads it. */
+  description: string;
+  /** Its arguments, positional in this order, by name. Each is string, number, boolean or any, optionally an array (string[]) and optionally optional (string?); the optional ones come last. */
+  params: Record<string, string>;
+  /** The program, OpenUI Lang over the library (not over other app components). The arguments are the object `args`; each use has its own $state, queries and keys. */
+  openui: string;
 }
 
 /** The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it. */

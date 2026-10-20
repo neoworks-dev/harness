@@ -84,5 +84,5 @@ test("every component takes its arguments in the order docs/openui.md lists", ()
 });
 
 test("the library has the Copy action", () => {
-  expect(Object.keys(library.actions)).toEqual(["Copy"]);
+  expect(Object.keys(library.actions ?? {})).toEqual(["Copy"]);
 });

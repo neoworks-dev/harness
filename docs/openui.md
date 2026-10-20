@@ -12,10 +12,26 @@ app template (OpenUI Lang)┴─► daemon: lang-core parse → evaluate ($state
                                          └──────────────── renderer ◄──────────────────────┘
 ````
 
+## Three layers
+
+What the agent writes is made of three kinds of components, and only the first is a renderer's business:
+
+1. **The library (`suite@1`)** is what renderers draw: the specific components (`Card`, `Table`, the charts, the inputs…) and the generic ones (`Box`, `Shape`) that the specific ones cannot cover. Every renderer draws all of them, natively (the tables below). There are no library versions and no runtime checks for what a renderer supports: a component is in the library when every renderer draws it, and the fixtures (`fixtures/openui-*`) use every component, so a renderer that misses one fails its snapshots.
+2. **App components** are what an app adds to the library for the agent: a name, a description, typed parameters and a program over the library (`app.presence.components`, [protocol/README.md](../protocol/README.md#components)). `BrightnessCard("asset://a", "Sunset")` in the agent's program is a call lang-core checks against the params like any other.
+3. **The daemon** sits between them. It parses programs with the library plus the components of the apps it knows, and replaces each use of an app component with what its program draws, evaluated with the call's arguments as `args`, before the tree goes to a renderer. A use is a program of its own, with its own `$state`, queries and keys, so two `BrightnessCard`s do not share `$level`. Renderers see library components only.
+
+```
+agent / app program ─► daemon: parse with library + app components
+                               │  each BrightnessCard(…) ──► its program, run with args ──► library components
+                               ▼
+                         UiDoc of library components ──► renderers
+```
+
 ## Where programs come from
 
 - **The model** writes a fenced block with the language `openui` in a normal message. The daemon's markdown parser turns that fence into an `OpenUiBlock` (`{type: "openui", ui: UiDoc}`) among the message's other blocks, so it streams like text: every chunk re-parses the program and the block is replaced by the `blocks` op from the first changed block on. `ui.streaming` is true until the message is complete. The model learns the language and the library from the **`openui` skill** (`harness/skills/openui/SKILL.md`, generated from the library by `bun run --cwd openui skill`; a test fails when it's stale).
 - **Apps** may register a template that is OpenUI Lang instead of component JSON: `templates: {"<tool>": {"openui": "<program>"}}` in `app.presence`. The tool's `structuredContent` is appended to the program as a last statement `data = <value>` (a later statement wins, so a template can't shadow it), and the result is an `OpenUiComponent` (`{type: "openui", ui: UiDoc}`). A template that fails to produce a root falls back to the generic card, as JSON templates do.
+- **App components** are programs too: `components: {"<Name>": {description, params, openui}}` in `app.presence`. The agent writes `Name(args…)` in its own program (or an app in a template), and the daemon runs the component's program in its place (see **App components** below).
 
 ## The wire format
 
@@ -188,4 +204,6 @@ The code is `openui/` (the `suite@1` library, `Program`: lang-core parse, evalua
 - **Buttons.** A button with no action sends its label to the agent; a `FollowUpItem` is such a button whose label is its text. `url` is only set for `http:`, `https:` and `mailto:` addresses. `@OpenUrl` and `@Copy` inside a plan of several steps do nothing. `disabled` is set while a mutation the button runs is in flight.
 - **What the agent hears** is one input per `@ToAssistant`: `[ui action] The user pressed "Deploy" in an OpenUI doc: Deploy with these settings`, then `form deploy: {…}` (the form's values; outside a form `state: {…}` with the `$variables`), then `context: {…}`.
 - **Tools.** A `Query` runs when its doc is finished and draws, and after a `@Run` of it, through the gateway (`app.tool`), and is not recorded. A `Mutation` runs on press and is recorded in the session like a button that runs a tool (so its result shows in the chat with the app's template). A failing tool is an entry in `errors`; the doc keeps the query's defaults.
+- **App components.** The library the daemon parses with is the suite's plus the components of every connector it knows (also closed ones, which are kept like templates, so an old reply still draws), built when a component changes and shared by all sessions; a program asks for it whenever it is set, so an app that connects while a reply streams is used by the next chunk. Registration (`app.presence`) rejects a name that is not a PascalCase identifier or that the library, the language or another app has, params that are not typed or put an optional before a required one, and a program that does not parse, has no `root` or uses what it does not define; the app does not connect. A name is plain because lang-core reads `photo-editor.X` as a subtraction and a member access. A use is expanded where it sits: the node a call evaluates to is replaced by the root of a program of its own, `<component's program>` then `args = <the call's arguments as JSON>`, made once per place in the doc (`root.children.0`, `a`) and kept for as long as the place holds a use of that component, with its own `$state`, queries and keys. Its keys are the use's place and the key inside it (`a/slider`), which is what `openui.input` and `openui.press` carry; they are routed to that program. A query or mutation in it goes through the gateway like any other; a query answering patches the item. The component's program is made of the library alone (an app component cannot call another), which keeps expansion finite. A use whose component is gone, or whose program draws nothing, is a `Callout` saying so, with the error on the doc.
+- **Plain statements in a query.** A `Query` or `Mutation` argument that names a plain statement (`args.asset`, `limit`) reads its value, as it does in a prop; lang-core leaves those as references and only resolves queries.
 - **State** is kept per view, item and doc, in memory, and a doc is told apart by its item `ref` (`m-<messageId>` for a message) and `id`.

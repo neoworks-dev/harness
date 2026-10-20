@@ -168,6 +168,7 @@ pub fn presence(
     AppPresence {
         description: Some(DESCRIPTION.into()),
         templates: open.then(tools::templates),
+        components: None,
         app: APP.into(),
         kind: ConnectorKind::App,
         title: Some(TITLE.into()),

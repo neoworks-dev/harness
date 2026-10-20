@@ -130,6 +130,7 @@ pub fn presence(app_id: &str, cwd: &str) -> AppPresence {
         home: None,
         pid: Some(i64::from(std::process::id())),
         templates: None,
+        components: None,
         description: None,
     }
 }

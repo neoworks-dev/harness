@@ -487,3 +487,34 @@ describe("tools", () => {
     expect(p.doc().errors?.[0]?.code).toBe("tool-error");
   });
 });
+
+describe("plain statements in tool arguments", () => {
+  test("a Query or Mutation argument that names a statement reads its value, a query's own name still its result", async () => {
+    const calls: unknown[] = [];
+    const callTool: CallTool = (name, args, kind) => {
+      calls.push([name, args, kind]);
+      return Promise.resolve({ rows: [{ n: "a" }] });
+    };
+    const p = program(
+      [
+        "root = Stack([list, go])",
+        "limit = 2",
+        'filter = { owner: "ada", tags: ["x", "y"] }',
+        'data = Query("app.rows", { limit: limit, filter: filter, owner: filter.owner }, { rows: [] })',
+        'list = Stack(@Each(data.rows, "r", Tag(r.n)))',
+        'save = Mutation("app.save", { limit: limit, first: data.rows[0].n })',
+        'go = Button("Save", @Run(save))',
+      ].join("\n"),
+      { callTool },
+    );
+    p.onChange = () => p.doc();
+    p.doc();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls).toEqual([
+      ["app.rows", { limit: 2, filter: { owner: "ada", tags: ["x", "y"] }, owner: "ada" }, "query"],
+    ]);
+    calls.length = 0;
+    await p.press("go");
+    expect(calls).toEqual([["app.save", { limit: 2, first: "a" }, "mutation"]]);
+  });
+});

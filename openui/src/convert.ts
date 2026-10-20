@@ -46,6 +46,16 @@ export interface ConvertHost {
   error(field: Field): string | undefined;
   mutationLoading(statementId: string): boolean;
   markdown(source: string): Block[];
+  /** Whether the name is an app's component, which is drawn by running its program. */
+  isAppComponent(name: string): boolean;
+  /** The drawn use of an app's component: `id` is where it sits, `args` its evaluated arguments. */
+  expand(
+    name: string,
+    id: string,
+    args: Record<string, unknown>,
+    partial: boolean,
+    statement: string | undefined,
+  ): UiNode;
 }
 
 /** Where a node sits: the statement it belongs to and the path from that statement's component. */
@@ -151,6 +161,12 @@ export class Converter {
   private node(el: ElementNode, at: Place): UiNode {
     const place: Place =
       el.statementId === undefined ? at : { ...at, statement: el.statementId, path: [] };
+    if (this.host.isAppComponent(el.typeName)) {
+      // Where it sits names the use; the same wherever the program is re-evaluated from.
+      const id = [place.statement ?? "root", ...place.path].join(".");
+      const partial = el.partial && this.host.isPending(place.statement);
+      return this.host.expand(el.typeName, id, el.props, partial, place.statement);
+    }
     const form =
       el.typeName === "Form" && typeof el.props.name === "string" ? el.props.name : at.form;
     const props: Record<string, unknown> = {};

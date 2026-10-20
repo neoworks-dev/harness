@@ -255,6 +255,7 @@ fn reconnect_restores_presence_and_resumes_without_gaps_or_repeats() {
     options.presence = Some(AppPresence {
         description: None,
         templates: None,
+        components: None,
         app: "code-editor".into(),
         kind: ConnectorKind::App,
         title: Some("Pad".into()),
