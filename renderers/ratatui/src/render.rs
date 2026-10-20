@@ -153,7 +153,14 @@ impl<'a> Cx<'a> {
         }
         let body = self.comp(&it.component, w.saturating_sub(2).max(1));
         if !body.is_empty() {
-            let bullet = vec![Span::styled("● ", Style::new().fg(self.p.fg))];
+            // A form or chart is not a sentence to bullet: it only takes the indent.
+            let opens_with_ui = matches!(&it.component, pb::Component::TextComponent(t)
+                if matches!(t.blocks.first(), Some(pb::Block::OpenUiBlock(_))));
+            let bullet = if opens_with_ui {
+                vec![Span::raw("  ")]
+            } else {
+                vec![Span::styled("● ", Style::new().fg(self.p.fg))]
+            };
             out.extend(prefixed(body, bullet, vec![Span::raw("  ")]));
         }
         out
