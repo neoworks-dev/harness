@@ -25,11 +25,13 @@ describe("fixtures", () => {
     });
   }
 
-  test("the OpenUI fixtures are there: a template, a chat, a form with inputs and a press, a stream", () => {
+  test("the OpenUI fixtures are there: a template, a chat, a model's dashboard, a form with inputs and a press, a grid, a stream", () => {
     expect(names.filter((n) => n.startsWith("openui-"))).toEqual([
       "openui-chat",
       "openui-dashboard",
+      "openui-disk",
       "openui-form",
+      "openui-grid",
       "openui-streaming",
     ]);
   });
