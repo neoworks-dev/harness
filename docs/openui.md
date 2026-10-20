@@ -27,9 +27,17 @@ agent / app program ─► daemon: parse with library + app components
                          UiDoc of library components ──► renderers
 ```
 
+## How the agent learns it
+
+Every harness has the same channel, the gateway, so none has its own copy of the language:
+
+- **The prompt.** neo's system prompt, `GUEST_PROMPT` and `MAIN_PROMPT` (`daemon/src/guests/prompt.ts`, for Claude Code and Codex) each say: _You can show UI by writing a ```openui block. Call ui_library before your first one._ A test keeps the three the same.
+- **`ui_library()`**, a core tool of the gateway, returns the guidance (when UI beats prose, how to lay a page out, which component for what), lang-core's reference for the language and the `suite@1` library, and the components of the **connected** apps: under each app, `Name(arg: type, other?: type) — what it is for`. The text is generated when asked (`openui/src/skill.ts`), from the library and the registrations, so nothing on disk can go stale: a gateway test checks that every signature of the library is in it. The chat shows `N lines`, not the text.
+- **The announcement.** `<app connected="photo-editor" kind="app" v="1" tools="…" components="BrightnessCard, PhotoCard" about="…"/>` names the components of an app when it first connects in a session; `<app updated … components="…"/>` lists them again when they changed (a change of components is a new version of the app), empty for none left. The agent calls `ui_library` again to read them. Apps connect while a session runs, so this is how an agent finds out, not the prompt.
+
 ## Where programs come from
 
-- **The model** writes a fenced block with the language `openui` in a normal message. The daemon's markdown parser turns that fence into an `OpenUiBlock` (`{type: "openui", ui: UiDoc}`) among the message's other blocks, so it streams like text: every chunk re-parses the program and the block is replaced by the `blocks` op from the first changed block on. `ui.streaming` is true until the message is complete. The model learns the language and the library from the **`openui` skill** (`harness/skills/openui/SKILL.md`, generated from the library by `bun run --cwd openui skill`; a test fails when it's stale).
+- **The model** writes a fenced block with the language `openui` in a normal message. The daemon's markdown parser turns that fence into an `OpenUiBlock` (`{type: "openui", ui: UiDoc}`) among the message's other blocks, so it streams like text: every chunk re-parses the program and the block is replaced by the `blocks` op from the first changed block on. `ui.streaming` is true until the message is complete. Every harness learns the language and the library from the gateway's **`ui_library`** tool (see **How the agent learns it** below), which its prompt tells it to call before its first block.
 - **Apps** may register a template that is OpenUI Lang instead of component JSON: `templates: {"<tool>": {"openui": "<program>"}}` in `app.presence`. The tool's `structuredContent` is appended to the program as a last statement `data = <value>` (a later statement wins, so a template can't shadow it), and the result is an `OpenUiComponent` (`{type: "openui", ui: UiDoc}`). A template that fails to produce a root falls back to the generic card, as JSON templates do.
 - **App components** are programs too: `components: {"<Name>": {description, params, openui}}` in `app.presence`. The agent writes `Name(args…)` in its own program (or an app in a template), and the daemon runs the component's program in its place (see **App components** below).
 
@@ -195,7 +203,7 @@ The desktop window (`apps/gui`, `ui/plugins/transcript/openui/`) draws the same 
 
 ## How the daemon does it
 
-The code is `openui/` (the `suite@1` library, `Program`: lang-core parse, evaluate and state; `bun run --cwd openui skill` writes the skill) and `daemon/src/view/` (`openui.ts`, `markdown.ts`, `session-view.ts`).
+The code is `openui/` (the `suite@1` library, `components.ts` for the apps' components, `Program`: lang-core parse, evaluate and state, `skill.ts` for the text `ui_library` returns) and `daemon/src/view/` (`openui.ts`, `markdown.ts`, `session-view.ts`).
 
 - **Fences.** A top-level code block whose language is `openui` (or `openui-lang`) becomes an `openui` block; in lists and quotes, in thoughts and in messages between agents it stays code. A fence still open is `streaming` until it closes; a message that ends (`turn_ended`) with a fence left open finishes it, with the usual errors. A half-written closing fence (`` ` `` or ` `` `) is not part of the program.
 - **While streaming** only the statement being written is `partial`, and `errors` stay out: what looks broken may be unfinished. Queries do not start, and `openui.input` and `openui.press` do nothing.

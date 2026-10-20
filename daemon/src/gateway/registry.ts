@@ -21,6 +21,8 @@ export interface ConnectorSnapshot {
   v: number;
   /** Tool names without the app prefix. */
   tools: string[];
+  /** The OpenUI components it offers, by name. */
+  components?: string[];
   /** One line for the agent: the presence's description, else the instructions' first sentence. */
   description?: string;
 }
@@ -215,6 +217,8 @@ export class ConnectorRegistry {
       if (!open) continue;
       const { app, kind, v, tools, instructions } = connector;
       const snapshot: ConnectorSnapshot = { app, kind, v, tools: tools.map((t) => t.name) };
+      const components = Object.keys(connector.components ?? {});
+      if (components.length > 0) snapshot.components = components;
       const described = this.live.get(app)?.presence.description;
       if (described !== undefined && described !== "") snapshot.description = described;
       else if (instructions !== undefined && instructions.trim() !== "") {

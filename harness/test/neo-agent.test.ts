@@ -341,6 +341,7 @@ test("the system prompt and tools are sent unchanged on every request", async ()
       "models",
       "send_message",
       "wait",
+      "ui_library",
     ],
   });
   expect(seen[1]).toEqual(seen[0]);

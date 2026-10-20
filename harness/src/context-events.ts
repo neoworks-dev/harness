@@ -25,6 +25,7 @@ function connectedAttrs(
     const pairs: [string, string][] = [["updated", event.app], v];
     if (event.added?.length) pairs.push(["added", event.added.join(", ")]);
     if (event.removed?.length) pairs.push(["removed", event.removed.join(", ")]);
+    if (event.components !== undefined) pairs.push(["components", event.components.join(", ")]);
     return pairs;
   }
   const pairs: [string, string][] = [
@@ -33,6 +34,7 @@ function connectedAttrs(
     v,
     ["tools", event.tools.join(", ")],
   ];
+  if (event.components?.length) pairs.push(["components", event.components.join(", ")]);
   if (event.description !== undefined) pairs.push(["about", event.description]);
   return pairs;
 }

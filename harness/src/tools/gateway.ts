@@ -1,4 +1,5 @@
-// tools_search, tools_call, apps_launch, apps_focus, delegate, models, send_message, wait: native
+// tools_search, tools_call, apps_launch, apps_focus, delegate, models, send_message, wait,
+// ui_library: native
 // definitions from protocol/core-tools.json (so the tool list is fixed whatever is connected),
 // executed by the daemon's MCP gateway. The harness is an MCP client of the gateway (design §4).
 import type { AgentTool, AgentToolResult } from "../loop/index.ts";
@@ -26,6 +27,7 @@ const LABELS: Record<CoreToolName, string> = {
   models: "Models",
   send_message: "Send message",
   wait: "Wait",
+  ui_library: "UI library",
 };
 
 // A guest can work for a long time, and a wait lasts up to an hour; cancelling the turn aborts

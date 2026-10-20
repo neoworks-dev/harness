@@ -1,5 +1,5 @@
 // The core connector tools: tools_search, tools_call, apps_launch, apps_focus, delegate, models,
-// send_message, wait. Every outcome is a normal tool result (isError for failures), so the model
+// send_message, wait, ui_library. Every outcome is a normal tool result (isError for failures), so the model
 // can read it and correct itself.
 import { spawn } from "node:child_process";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -13,6 +13,7 @@ import type {
   ToolsSearchArgs,
   WaitArgs,
 } from "@suite/protocol/core-tools";
+import { uiLibraryText } from "@suite/openui/skill";
 import type { ToolResult } from "@suite/protocol/types";
 import Ajv2020, { type ValidateFunction } from "ajv/dist/2020.js";
 import type { Logger } from "../log.ts";
@@ -230,6 +231,8 @@ export class Gateway {
           return text("No other agents are available here.", true);
         }
         return this.options.messages.send(session, guest, args as unknown as SendMessageArgs);
+      case "ui_library":
+        return text(uiLibraryText(this.registry.componentsOf(true)));
       case "wait": {
         const names: unknown = args.for;
         if (

@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { library } from "@suite/openui/library";
+import { uiLibraryText } from "@suite/openui/skill";
 import type { AppPresence, SessionEvent } from "@suite/protocol/types";
 import { Gateway, type GatewayOptions } from "../src/gateway/gateway.ts";
 import { ConnectorRegistry } from "../src/gateway/registry.ts";
@@ -537,6 +539,7 @@ describe("over real MCP", () => {
       "models",
       "send_message",
       "wait",
+      "ui_library",
     ]);
     const found = await client.callTool({ name: "tools_search", arguments: { query: "hello" } });
     expect(JSON.stringify(found.content)).toContain("greeter.greet");
@@ -650,5 +653,99 @@ describe("over real MCP", () => {
     );
     expect(registry.list()[0]?.error).toContain("can't reach its MCP server");
     await registry.close();
+  });
+});
+
+describe("ui_library", () => {
+  const card = (description: string): NonNullable<AppPresence["components"]>[string] => ({
+    description,
+    params: { asset: "string", name: "string?" },
+    openui: "root = Card([Text(args.name)], args.name)",
+  });
+
+  test("returns the skill and the components of the connected apps with signatures and descriptions", async () => {
+    const { registry, gateway, upstreams } = setup();
+    upstreams.set("mem://photo", fakeUpstream(photoTools));
+    upstreams.set("mem://notes", fakeUpstream([tool("list", "List notes")]));
+    const photo = {};
+    await registry.presence(photo, {
+      ...photoPresence(),
+      components: { BrightnessCard: card("An image with a brightness slider.") },
+    });
+    const notes = {};
+    await registry.presence(notes, {
+      app: "notes",
+      kind: "app",
+      open: true,
+      mcp: { url: "mem://notes" },
+      components: { NoteCard: card("A note.") },
+    });
+    // Closed: the agent hears nothing of it.
+    await registry.presence(notes, { app: "notes", kind: "app", open: false });
+
+    const result = await gateway.call("ui_library", {});
+    expect(result.isError).toBeUndefined();
+    const text = resultText(result);
+    expect(text).toBe(uiLibraryText(registry.componentsOf(true)));
+    // The language and every component of the library as it is now: nothing to regenerate.
+    for (const { signature } of Object.values(library.toSpec().components)) {
+      expect(text).toContain(signature);
+    }
+    expect(text).toContain(
+      "## photo-editor\nBrightnessCard(asset: string, name?: string) — An image with a brightness slider.",
+    );
+    expect(text).not.toContain("NoteCard");
+    // Nothing connected adds nothing.
+    await registry.presence(photo, { app: "photo-editor", kind: "app", open: false });
+    expect(resultText(await gateway.call("ui_library", {}))).toContain(
+      "No connected app adds components right now.",
+    );
+  });
+
+  test("an app's components are in its announcement, and a change of them is an update", async () => {
+    const { registry, upstreams } = setup();
+    upstreams.set("mem://photo", fakeUpstream(photoTools));
+    const owner = {};
+    await registry.presence(owner, {
+      ...photoPresence(),
+      components: { BrightnessCard: card("One.") },
+    });
+    expect(registry.snapshot()[0]).toMatchObject({ v: 1, components: ["BrightnessCard"] });
+    // Same components again (a title change, say): the same version.
+    await registry.presence(owner, {
+      ...photoPresence(),
+      components: { BrightnessCard: card("One.") },
+    });
+    expect(registry.snapshot()[0]?.v).toBe(1);
+    await registry.presence(owner, {
+      ...photoPresence(),
+      components: { BrightnessCard: card("One."), PhotoCard: card("Two.") },
+    });
+    expect(registry.snapshot()[0]).toMatchObject({
+      v: 2,
+      components: ["BrightnessCard", "PhotoCard"],
+    });
+    // A presence that does not mention components keeps them; an empty one takes them away.
+    await registry.presence(owner, photoPresence());
+    expect(registry.snapshot()[0]?.components).toHaveLength(2);
+    await registry.presence(owner, { ...photoPresence(), components: {} });
+    expect(registry.snapshot()[0]?.components).toBeUndefined();
+    expect(registry.snapshot()[0]?.v).toBe(3);
+  });
+
+  test("the components are kept across a restart of the daemon", async () => {
+    const store = new SessionStore(":memory:");
+    const first = setup(store);
+    first.upstreams.set("mem://photo", fakeUpstream(photoTools));
+    await first.registry.presence(
+      {},
+      {
+        ...photoPresence(),
+        components: { BrightnessCard: card("One.") },
+      },
+    );
+    const second = setup(store);
+    expect([...second.registry.library().components.keys()]).toEqual(["BrightnessCard"]);
+    expect(Object.keys(second.registry.componentsOf(true))).toEqual([]);
   });
 });

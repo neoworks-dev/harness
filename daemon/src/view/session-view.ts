@@ -89,11 +89,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function connectedNotice(event: Extract<SessionEvent, { type: "app_connected" }>): string {
   if (event.reconnect === true) return `${event.app} is back (v${event.v})`;
   if (event.previous === undefined) {
-    return `${event.app} connected (v${event.v}): ${event.tools.join(", ")}`;
+    const parts = [event.tools.join(", ")];
+    if (event.components?.length) parts.push(`UI: ${event.components.join(", ")}`);
+    return `${event.app} connected (v${event.v}): ${parts.join("; ")}`;
   }
   const changes: string[] = [];
   if (event.added?.length) changes.push(`+ ${event.added.join(", ")}`);
   if (event.removed?.length) changes.push(`− ${event.removed.join(", ")}`);
+  if (event.components?.length) changes.push(`UI: ${event.components.join(", ")}`);
+  else if (event.components) changes.push("UI: none");
   const what = changes.length > 0 ? changes.join("; ") : "schemas changed";
   return `${event.app} updated (v${event.v}): ${what}`;
 }

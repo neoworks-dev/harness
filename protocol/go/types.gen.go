@@ -1690,6 +1690,8 @@ type AppConnected struct {
 	Tools []string `json:"tools"`
 	// One line about the connector; only in the first app_connected a session gets for it.
 	Description *string `json:"description,omitempty"`
+	// Names of the OpenUI components the connector offers (ui_library has their signatures). The full current list: with the first app_connected a session gets for it when there are any, and with an update when it changed (empty: it has none now). Rendered as components=….
+	Components []string `json:"components,omitempty"`
 	// The session already saw this exact version: earlier schemas still apply. Rendered as <app reconnected=…/>.
 	Reconnect *bool `json:"reconnect,omitempty"`
 	// Tools new since the previous version (omitted when none).

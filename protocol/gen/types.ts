@@ -705,6 +705,8 @@ export interface AppConnected {
   tools: string[];
   /** One line about the connector; only in the first app_connected a session gets for it. */
   description?: string;
+  /** Names of the OpenUI components the connector offers (ui_library has their signatures). The full current list: with the first app_connected a session gets for it when there are any, and with an update when it changed (empty: it has none now). Rendered as components=…. */
+  components?: string[];
   /** The session already saw this exact version: earlier schemas still apply. Rendered as <app reconnected=…/>. */
   reconnect?: boolean;
   /** Tools new since the previous version (omitted when none). */

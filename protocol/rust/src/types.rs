@@ -2011,6 +2011,13 @@ pub struct AppConnected {
         skip_serializing_if = "Option::is_none"
     )]
     pub description: Option<String>,
+    /// Names of the OpenUI components the connector offers (ui_library has their signatures). The full current list: with the first app_connected a session gets for it when there are any, and with an update when it changed (empty: it has none now). Rendered as components=….
+    #[serde(
+        rename = "components",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub components: Option<Vec<String>>,
     /// The session already saw this exact version: earlier schemas still apply. Rendered as <app reconnected=…/>.
     #[serde(rename = "reconnect", default, skip_serializing_if = "Option::is_none")]
     pub reconnect: Option<bool>,
