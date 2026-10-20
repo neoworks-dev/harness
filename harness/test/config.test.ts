@@ -38,6 +38,10 @@ test("defaults without a config file", async () => {
     authPath: join(home, ".local", "share", "suite", "auth.json"),
     piAuthPath: join(home, ".pi", "agent", "auth.json"),
     web: { safeSearch: "moderate" },
+    skills: {
+      bundled: join(import.meta.dir, "..", "skills"),
+      user: join(home, ".config", "suite", "skills"),
+    },
   });
 });
 

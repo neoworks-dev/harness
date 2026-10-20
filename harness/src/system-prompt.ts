@@ -1,3 +1,5 @@
+import type { Skill } from "./skills.ts";
+
 // Static and identical for every session (cache-friendly). Never put session state in here:
 // connector and focus state travel in the user message (see context-events.ts).
 export const SYSTEM_PROMPT = `You're an AI agent working across a suite of apps and services on the user's system.
@@ -52,3 +54,18 @@ arrives, it starts a turn. Write messages that stand alone, and don't poll: wait
 
 <conversation-so-far> in a message is what was said in turns that another agent
 ran while you weren't running this conversation: tool calls are left out.`;
+
+/**
+ * The prompt a session runs on: the static text, then the skills it found. That list changes only
+ * when the skills do (new files), never with what happens in a session.
+ */
+export function systemPrompt(skills: Skill[]): string {
+  if (skills.length === 0) return SYSTEM_PROMPT;
+  const lines = skills.map((skill) => `- ${skill.name}: ${skill.description}`);
+  return `${SYSTEM_PROMPT}
+
+Skills are instructions for particular kinds of work and are not in this prompt. Before you
+start work one of them covers, load it with the skill tool: skill {name}.
+
+${lines.join("\n")}`;
+}

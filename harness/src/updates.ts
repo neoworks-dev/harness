@@ -65,6 +65,8 @@ function describeToolCall(name: string, args: unknown): { title: string; kind: T
       return { title: "wait for messages", kind: "other" };
     case "todo_write":
       return { title: "update todos", kind: "think" };
+    case "skill":
+      return { title: `skill ${stringArg(args, "name")}`, kind: "other" };
     case "delegate": {
       const task = stringArg(args, "task").split("\n")[0] ?? "";
       return {
@@ -115,6 +117,8 @@ function shownText(toolName: string, output: string, details: unknown): string {
     const lines = [parts.join(" · "), ...output.split("\n").slice(1)];
     return lines.join("\n").trimEnd();
   }
+  // A skill's text is for the model; the chat says it was loaded.
+  if (toolName === "skill" && typeof details.lines === "number") return `${details.lines} lines`;
   if (toolName === "web_search" && Array.isArray(details.results) && details.results.length > 0) {
     const n = details.results.length;
     const noun = details.kind === "images" ? "image" : "result";

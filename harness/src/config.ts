@@ -5,6 +5,7 @@ import type { ThinkingLevel } from "./loop/index.ts";
 import { getEnvApiKey, getProviders } from "@mariozechner/pi-ai";
 import type { SafeSearch } from "@neoworks/websearch";
 import { accountProviders, resolveAccount, type AuthDeps, type ResolvedAccount } from "./auth.ts";
+import type { SkillDirs } from "./skills.ts";
 import { isRecord } from "./util.ts";
 
 const DEFAULT_MODEL = "deepseek/deepseek-flash";
@@ -34,6 +35,8 @@ export interface HarnessConfig {
   piAuthPath: string;
   /** For web_search and web_fetch. */
   web: WebConfig;
+  /** Where skills are found besides the session's own; none without. */
+  skills?: SkillDirs;
 }
 
 /** The web tools' settings: the user's to choose, never the agent's. */
@@ -169,6 +172,10 @@ export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): Harness
     apiKey: env.SUITE_API_KEY || undefined,
     ...authPaths(env),
     web: parseWeb(file, path, env),
+    skills: {
+      bundled: join(import.meta.dir, "..", "skills"),
+      user: join(configHome, "suite", "skills"),
+    },
   };
   if (env.SUITE_IMAGES) config.images = parseImages(env.SUITE_IMAGES, "SUITE_IMAGES");
   else if (file && typeof file.images === "boolean") config.images = file.images;

@@ -74,6 +74,8 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/
 
 neo searches the web itself: `web_search` asks several engines at once (web, news or images; no key needed) and lists what they found, and `web_fetch` saves a page as markdown in a file that the agent greps and reads in parts. You're asked before each fetch unless approvals is `auto`. Safe search is your setting, not the agent's: `/safesearch strict|moderate|off` sets it for every session (no value: a card to pick from). TinyFish's free search API is asked too once you add its key with `/login tinyfish`. The search engines are in [websearch](websearch/README.md).
 
+Skills are instructions neo loads when the work calls for them: a folder with a `SKILL.md` (frontmatter `name` and `description`, then the text) in `~/.config/suite/skills/` or in a project's `.suite/skills/`. neo sees each skill's description and loads the text with its `skill` tool. The suite ships `openui`, which teaches it to answer with dashboards, charts and forms.
+
 Keys and accounts: `/login` adds an API key or an account (ChatGPT, GitHub Copilot, Claude Pro/Max, which neo only may use), `/logout` removes one, `/accounts` lists them. Keys are typed into a hidden field, never into the chat.
 
 ## Guest agents

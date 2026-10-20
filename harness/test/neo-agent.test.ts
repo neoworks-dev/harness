@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxToolCall } from "@mariozechner/pi-ai";
 import {
@@ -330,6 +330,7 @@ test("the system prompt and tools are sent unchanged on every request", async ()
       "write",
       "edit",
       "todo_write",
+      "skill",
       "web_search",
       "web_fetch",
       "tools_search",
@@ -343,6 +344,48 @@ test("the system prompt and tools are sent unchanged on every request", async ()
     ],
   });
   expect(seen[1]).toEqual(seen[0]);
+});
+
+test("a session lists its skills in the system prompt, and the skill tool loads one", async () => {
+  const root = await tempDir();
+  const bundled = join(root, "bundled");
+  await mkdir(join(bundled, "demo"), { recursive: true });
+  await writeFile(
+    join(bundled, "demo", "SKILL.md"),
+    "---\nname: demo\ndescription: Use when demoing\n---\n\nStep one.\nStep two.\n",
+  );
+  const cwd = join(root, "project");
+  await mkdir(join(cwd, ".suite", "skills", "local"), { recursive: true });
+  await writeFile(
+    join(cwd, ".suite", "skills", "local", "SKILL.md"),
+    "---\nname: local\ndescription: Project rules\n---\nUse tabs.",
+  );
+  const prompts: (string | undefined)[] = [];
+  const model = fakeModel([
+    (context) => {
+      prompts.push(context.systemPrompt);
+      return reply(
+        [{ type: "toolCall", id: "c1", name: "skill", arguments: { name: "demo" } }],
+        "toolUse",
+      );
+    },
+    (context) => {
+      const last = context.messages.at(-1);
+      prompts.push(JSON.stringify(last));
+      return reply("loaded");
+    },
+  ]);
+  const config = { ...TEST_CONFIG, skills: { bundled, user: join(root, "none") } };
+  const agent = createNeoAgent({ config, streamFn: model.streamFn });
+  const session = await agent.newSession({ sessionId: "s1", cwd, mcpServers: [] });
+  const { updates } = await run(session, "demo it");
+  expect(prompts[0]?.startsWith(SYSTEM_PROMPT)).toBe(true);
+  expect(prompts[0]).toContain("- demo: Use when demoing\n- local: Project rules");
+  expect(prompts[1]).toContain("Step one.\\nStep two.");
+  const call = updates.find((u) => u.type === "tool_call");
+  expect(call).toMatchObject({ tool: "skill", title: "skill demo", kind: "other" });
+  const done = ofType(updates, "tool_call_update").find((u) => u.status === "completed");
+  expect(done?.content).toEqual([{ type: "text", text: "2 lines" }]);
 });
 
 test("usage follows each assistant message with running totals", async () => {

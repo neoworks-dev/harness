@@ -221,12 +221,13 @@ test("the core tools include the web tools when given their settings", async () 
   expect(names()).not.toContain("web_search");
   const web = { config: { safeSearch: "moderate" as const }, dir: join(cwd, "web") };
   // The gateway tools follow, connected or not.
-  expect(names(web).slice(0, 7)).toEqual([
+  expect(names(web).slice(0, 8)).toEqual([
     "bash",
     "read",
     "write",
     "edit",
     "todo_write",
+    "skill",
     "web_search",
     "web_fetch",
   ]);

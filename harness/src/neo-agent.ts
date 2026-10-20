@@ -44,7 +44,8 @@ import {
 } from "./openrouter.ts";
 import { createUpdateMapper } from "./updates.ts";
 import { HARNESS_NAME, loggedMessages, restoreMessages } from "./restore.ts";
-import { SYSTEM_PROMPT } from "./system-prompt.ts";
+import { loadSkills } from "./skills.ts";
+import { systemPrompt } from "./system-prompt.ts";
 import { createCoreTools } from "./tools/core.ts";
 import type { WebToolsOptions } from "./tools/web.ts";
 import { connectGateway, type GatewayConnection } from "./tools/gateway.ts";
@@ -242,13 +243,14 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
   ): AgentSession {
     const messages = restoreMessages(history, logger);
     const initial = initialSettings(params);
+    const skills = loadSkills(params.cwd, config.skills);
     // Told once per session, in its first prompt (older logs: the first prompt after loading).
     let cwdTold = JSON.stringify(messages).includes("<session cwd=");
     // How the account a request just resolved changes the model (Copilot's base URL).
     const adjustModels = new Map<string, ((model: Model<Api>) => Model<Api>) | undefined>();
     const agent = new Agent({
       initialState: {
-        systemPrompt: SYSTEM_PROMPT,
+        systemPrompt: systemPrompt(skills),
         model: initial.model,
         tools: createCoreTools(
           params.cwd,
@@ -256,6 +258,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
           params.resolveAsset,
           params.requestPermission,
           webToolsFor(params),
+          skills,
         ),
         messages,
         thinkingLevel: initial.thinkingLevel,
