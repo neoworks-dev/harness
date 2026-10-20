@@ -65,6 +65,11 @@ Lay a dashboard out the way a page is, not as one long column:
   it: `Buttons([Button("Website", @OpenUrl("https://…"), "secondary"), Button("Tell me
   more", @ToAssistant("Tell me more about …"), "secondary")])`. A card of things to choose
   between without buttons leaves the user nothing to press.
+- Use `Box` and `Shape` only for what no component above is: a colour swatch, a timeline,
+  a bar of parts, a gauge. A Box is a column or row with a gap, padding, a tone fill and a tone
+  border; its `width` is "fill", "fit" or a share of the parent (`0.3`), never pixels or
+  cells. A Shape draws a rect, line, path or arc in a box of 0 to 1 that its parent sizes;
+  Shapes next to each other share one box. Colours are tones (accent, muted, success, danger).
 
 ## Forms and buttons
 
@@ -128,6 +133,7 @@ Accordion(items: AccordionItem[]) — Collapsible sections
 AccordionItem(title: string, children: Component[], open?: boolean) — One collapsible section of Accordion; open starts it expanded
 Steps(steps: Step[]) — A sequence of steps with their progress
 Step(title: string, detail?: string, status?: "done" | "current" | "pending" | "failed") — One step of Steps
+Box(children: Component[], dir?: "column" | "row", gap?: "none" | "s" | "m" | "l", pad?: "none" | "s" | "m" | "l", align?: "start" | "center" | "end" | "stretch", justify?: "start" | "center" | "end" | "between", wrap?: boolean, width?: "fill" | "fit" | number, fill?: "accent" | "muted" | "success" | "danger", border?: "accent" | "muted" | "success" | "danger", rounded?: boolean) — A generic container: children in a column or a row (dir), with a gap, padding, a tone fill and a tone border. Sizes are shares: width is fill, fit or a share of the parent's width (0.3), never pixels or cells. Build what no specific component is: a swatch, a timeline, a bar of parts. Prefer Card, Stack and the specific components when one fits
 
 ### Content
 Text(text: string, tone?: "accent" | "muted" | "success" | "danger", role?: "title" | "body" | "code") — Markdown text; role title is a heading, code is monospace
@@ -146,6 +152,7 @@ Progress(value: number, label?: string) — A progress bar; value is 0 to 1
 Image(src: string, alt?: string) — An image: an asset handle, or the URL of the image file itself (png, jpeg, gif, webp), not of a page showing it
 ImageGallery(images: Image[]) — Several images of one subject: the first large, the others small beside it
 Link(text: string, url: string) — A link
+Shape(kind: "rect" | "line" | "path" | "arc", points: number[], tone?: "accent" | "muted" | "success" | "danger", fill?: boolean, aspect?: number) — A shape drawn in a box of 0 to 1 on both sides, the left top corner 0,0, which the parent sizes to its width (aspect is width over height, default 2; wrap it in a Box to give it a share of the width). points are flat numbers, always 0 to 1: rect x,y,w,h; line x1,y1,x2,y2 and further points to connect; path the corners of a closed shape; arc cx,cy,r,from,to with r a share of the shorter side and from and to turns clockwise from the top (0.25 is 3 o'clock). tone colors it, fill fills it. Shapes next to each other share one box and draw over each other in order
 
 ### Charts
 BarChart(labels: string[], series: Series[], horizontal?: boolean, stacked?: boolean) — Bars per label; one Series per bar color

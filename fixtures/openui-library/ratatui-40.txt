@@ -1,0 +1,39 @@
+  ╭─ One ──────────────────────────────╮
+  │ First slide                        │
+  ╰────────────────────────────────────╯
+                 ‹ 1/3 ›
+  ──────────────────────────────────────
+    fn main() {
+        println!("hi");
+    }
+  Branch  main
+  Status  clean
+  Ada Lovelace  analyst   admin
+  Grace Hopper  admiral       42
+  $1.2M ▲ 8% vs last month
+  [image front]
+  [image back]
+  Docs (https://example.com/docs)
+  7              ⢀⣀⣤⣶⣾⣿⣷⣶⣶⣤⣤⣄⣀⣀
+            ⣀⣤⣴⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣶⣶⣤⣤⣄⣀
+      ⢀⣠⣤⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+    ⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+    ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+  0 ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+    Mon              Tue             Wed
+  ━ Visits
+  ╭────────────────────────────────╮
+  │ ( ) Free                       │
+  │     For trying it out          │
+  ╰────────────────────────────────╯
+  ╭────────────────────────────────╮
+  │ ( ) Pro                        │
+  │     For teams                  │
+  ╰────────────────────────────────╯
+  [x] Alerts
+      Tell me when it breaks
+  [ ] Digest
+  ● on  Dark mode
+  ○ off Beta
+  ( Why is it slow? )
+  ( Show the queries )

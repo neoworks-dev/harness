@@ -164,7 +164,7 @@ export function percent(share: number): string {
   return `${Math.round(value)}%`;
 }
 
-function onCircle(cx: number, cy: number, radius: number, degrees: number): Point {
+export function onCircle(cx: number, cy: number, radius: number, degrees: number): Point {
   const radians = ((degrees - 90) * Math.PI) / 180;
   return { x: cx + radius * Math.cos(radians), y: cy + radius * Math.sin(radians) };
 }

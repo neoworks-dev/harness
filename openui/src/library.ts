@@ -142,6 +142,26 @@ const Steps = define(
   z.object({ steps: z.array(Step.ref) }),
 );
 
+const Space = z.enum(["none", "s", "m", "l"]);
+
+const Box = define(
+  "Box",
+  "A generic container: children in a column or a row (dir), with a gap, padding, a tone fill and a tone border. Sizes are shares: width is fill, fit or a share of the parent's width (0.3), never pixels or cells. Build what no specific component is: a swatch, a timeline, a bar of parts. Prefer Card, Stack and the specific components when one fits",
+  z.object({
+    children: z.array(node),
+    dir: z.enum(["column", "row"]).optional(),
+    gap: Space.optional(),
+    pad: Space.optional(),
+    align: z.enum(["start", "center", "end", "stretch"]).optional(),
+    justify: z.enum(["start", "center", "end", "between"]).optional(),
+    wrap: z.boolean().optional(),
+    width: z.union([z.enum(["fill", "fit"]), z.number()]).optional(),
+    fill: tone.optional(),
+    border: tone.optional(),
+    rounded: z.boolean().optional(),
+  }),
+);
+
 // ─── Content ────────────────────────────────────────────────────────────────
 
 const Text = define(
@@ -252,6 +272,18 @@ const ImageGallery = define(
 );
 
 const Link = define("Link", "A link", z.object({ text: z.string(), url: z.string() }));
+
+const Shape = define(
+  "Shape",
+  "A shape drawn in a box of 0 to 1 on both sides, the left top corner 0,0, which the parent sizes to its width (aspect is width over height, default 2; wrap it in a Box to give it a share of the width). points are flat numbers, always 0 to 1: rect x,y,w,h; line x1,y1,x2,y2 and further points to connect; path the corners of a closed shape; arc cx,cy,r,from,to with r a share of the shorter side and from and to turns clockwise from the top (0.25 is 3 o'clock). tone colors it, fill fills it. Shapes next to each other share one box and draw over each other in order",
+  z.object({
+    kind: z.enum(["rect", "line", "path", "arc"]),
+    points: z.array(z.number()),
+    tone: tone.optional(),
+    fill: z.boolean().optional(),
+    aspect: z.number().optional(),
+  }),
+);
 
 // ─── Charts ─────────────────────────────────────────────────────────────────
 
@@ -511,6 +543,7 @@ export const library = createLibrary({
     AccordionItem,
     Steps,
     Step,
+    Box,
     Text,
     Code,
     Table,
@@ -527,6 +560,7 @@ export const library = createLibrary({
     Image,
     ImageGallery,
     Link,
+    Shape,
     BarChart,
     LineChart,
     AreaChart,
@@ -573,6 +607,7 @@ export const library = createLibrary({
         "AccordionItem",
         "Steps",
         "Step",
+        "Box",
       ],
     },
     {
@@ -594,6 +629,7 @@ export const library = createLibrary({
         "Image",
         "ImageGallery",
         "Link",
+        "Shape",
       ],
     },
     {

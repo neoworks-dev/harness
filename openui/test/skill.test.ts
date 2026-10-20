@@ -11,7 +11,7 @@ test("harness/skills/openui/SKILL.md is what the library produces (bun run --cwd
 test("the skill says when to load it and lists every component with its arguments in order", () => {
   const text = skillMarkdown();
   expect(text.startsWith("---\nname: openui\ndescription: ")).toBe(true);
-  expect(text).toContain("Load it before writing an openui block");
+  expect(text).toContain("Load it whenever the user asks to show");
   expect(text).toContain(
     'Button(label: string, action?: ActionExpression, variant?: "primary" | "secondary" | "danger")',
   );

@@ -74,6 +74,11 @@ Lay a dashboard out the way a page is, not as one long column:
   it: \`Buttons([Button("Website", @OpenUrl("https://…"), "secondary"), Button("Tell me
   more", @ToAssistant("Tell me more about …"), "secondary")])\`. A card of things to choose
   between without buttons leaves the user nothing to press.
+- Use \`Box\` and \`Shape\` only for what no component above is: a colour swatch, a timeline,
+  a bar of parts, a gauge. A Box is a column or row with a gap, padding, a tone fill and a tone
+  border; its \`width\` is "fill", "fit" or a share of the parent (\`0.3\`), never pixels or
+  cells. A Shape draws a rect, line, path or arc in a box of 0 to 1 that its parent sizes;
+  Shapes next to each other share one box. Colours are tones (accent, muted, success, danger).
 
 ## Forms and buttons
 

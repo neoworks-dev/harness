@@ -1,0 +1,10 @@
+{
+  "description": "The components the other OpenUI fixtures leave out: a carousel, a rule, code, key values, an entity list, a metric indicator, an image gallery, a link, an area chart, option cards, checkbox and switch groups and follow-ups. With them every component of the library is in a fixture, so a renderer that misses one fails its snapshot.",
+  "events": [
+    {
+      "type": "agent_message_chunk",
+      "messageId": "m1",
+      "text": "```openui\nroot = Stack([carousel, Separator(), snippet, facts, people, indicator, pictures, docs, trend, settings, follow])\ncarousel = Carousel([one, two, three], 2)\none = Card([Text(\"First slide\")], \"One\")\ntwo = Card([Text(\"Second slide\")], \"Two\", \"accent\")\nthree = Card([Text(\"Third slide\")], \"Three\", \"success\")\nsnippet = Code(\"fn main() {\\n    println!(\\\"hi\\\");\\n}\", \"rust\")\nfacts = KeyValue([KV(\"Branch\", \"main\"), KV(\"Status\", \"clean\", \"success\")])\npeople = EntityList([ListItem(\"Ada Lovelace\", \"analyst\", Tag(\"admin\", \"accent\")), ListItem(\"Grace Hopper\", \"admiral\", 42)])\nindicator = MetricIndicator(\"$1.2M\", \"8%\", \"up\", null, \"vs last month\")\npictures = ImageGallery([Image(\"asset://img-front\", \"front\"), Image(\"asset://img-back\", \"back\")])\ndocs = Link(\"Docs\", \"https://example.com/docs\")\ntrend = AreaChart([\"Mon\", \"Tue\", \"Wed\"], [Series(\"Visits\", [3, 7, 5])])\nsettings = Form(\"settings\", [plan, features, prefs])\nplan = OptionCards(\"plan\", [OptionCard(\"free\", \"Free\", \"For trying it out\"), OptionCard(\"pro\", \"Pro\", \"For teams\")])\nfeatures = CheckBoxGroup(\"features\", [CheckBoxItem(\"alerts\", \"Alerts\", \"Tell me when it breaks\", true), CheckBoxItem(\"digest\", \"Digest\")])\nprefs = SwitchGroup(\"prefs\", [SwitchItem(\"dark\", \"Dark mode\", null, true), SwitchItem(\"beta\", \"Beta\")])\nfollow = FollowUpBlock([FollowUpItem(\"Why is it slow?\"), FollowUpItem(\"Show the queries\")])\n```"
+    }
+  ]
+}
