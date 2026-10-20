@@ -29,7 +29,7 @@
     {#if it.label}
       <Text style={{ color: p.muted, fontSize: 12, fontWeight: "medium" }}>{it.label}</Text>
     {/if}
-    <Blocks blocks={[it.block]} size={p.text.body} continued={!it.first} />
+    <Blocks blocks={[it.block]} size={p.text.body} continued={!it.first} ref={it.ref} />
   </View>
 </ItemFrame>
 {/if}

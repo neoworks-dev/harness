@@ -108,6 +108,10 @@ export class DaemonService extends Service {
   cycleApprovals(): Promise<void> {
     return suite.cycleApprovals();
   }
+  /** Has the daemon download a public web image into its asset store (once per URL); the asset's handle. */
+  fetchAsset(url: string): Promise<string> {
+    return suite.fetchAsset(url);
+  }
   /** The URL an `asset://` handle loads from, for an `Image`. It holds the daemon's token. */
   assetSrc(src: string): string | undefined {
     return suite.assetSrc(src);

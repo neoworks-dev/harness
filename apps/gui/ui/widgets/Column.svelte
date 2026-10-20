@@ -6,9 +6,10 @@
   // list row (placed absolutely) a percentage width is resolved late, so text was measured wider
   // than it is drawn and the row came out shorter than its text. The children draw at once, at the
   // widest, so a row isn't built twice as it scrolls in; on a wide window the width never changes.
-  import type { Snippet } from "svelte";
+  import { setContext, type Snippet } from "svelte";
   import { View } from "@neoworks/svelte-gpui/ui";
   import type { Layout, Style } from "@neoworks/svelte-gpui/ui";
+  import { COLUMN } from "./column.ts";
 
   let { children, style = {} }: { children: Snippet; style?: Style } = $props();
 
@@ -21,6 +22,12 @@
   const width = $derived(
     given === undefined ? MAX_WIDTH : Math.max(0, Math.min(MAX_WIDTH, given - SIDE * 2)),
   );
+
+  setContext(COLUMN, {
+    get width() {
+      return width;
+    },
+  });
 </script>
 
 <View style={{ align: "center", ...style }} onlayout={(box: Layout) => (given = box.width)}>

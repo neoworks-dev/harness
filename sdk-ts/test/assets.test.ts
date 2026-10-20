@@ -36,3 +36,12 @@ test("getAsset rejects with SuiteError not_found for an unknown handle", async (
   expect(missing).toBeInstanceOf(SuiteError);
   expect(missing).toMatchObject({ code: "not_found" });
 });
+
+test("fetchAsset rejects with bad_request for a URL that is not a public http(s) image", async () => {
+  const { client } = await startRig(later);
+  for (const url of ["http://127.0.0.1:1/a.png", "ftp://example.com/a.png"]) {
+    const refused = await client.fetchAsset(url).catch((thrown: unknown) => thrown);
+    expect(refused).toBeInstanceOf(SuiteError);
+    expect(refused).toMatchObject({ code: "bad_request" });
+  }
+});

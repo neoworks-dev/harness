@@ -345,6 +345,11 @@ class Suite {
 
   // --- Pictures (the chat) ---
 
+  /** Has the daemon download a web image into its asset store; the asset's handle. */
+  async fetchAsset(url: string): Promise<string> {
+    return (await this.need().fetchAsset(url)).handle;
+  }
+
   /** The daemon's address as of the last (re)connect; assets are fetched from it. */
   private daemonAddress?: DaemonAddress;
 

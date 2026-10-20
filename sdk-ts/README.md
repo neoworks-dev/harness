@@ -167,26 +167,27 @@ Rejects with `DisconnectedError` if the daemon cannot be reached, `SuiteError` i
 
 Requests resolve when the daemon has acted.
 
-| Member                                       | Does                                                                                   |
-| -------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `createSession(params?)`                     | Starts a session (`cwd?`, `title?`).                                                   |
-| `listSessions()`                             | The daemon's sessions.                                                                 |
-| `input(session, text, { app?, images? })`    | Sends user input; resolves once queued.                                                |
-| `cancel(session)`                            | Cancels the running turn.                                                              |
-| `subscribe(session, options)`                | Events: replay from `fromSeq?`, then live. See below.                                  |
-| `subscribeView(session, options)`            | The resolved view: snapshot, then patches. See below.                                  |
-| `action(session, ref, action, args?)`        | A button was pressed in view item `ref`.                                               |
-| `moveAgent({ app?, session? })`              | Moves the agent to an app (home without `app`) and/or makes a session current.         |
-| `setPresence(presence)`                      | Replaces the registration, now and on reconnects.                                      |
-| `setContext(context)`                        | Updates what the app shows, without re-sending the presence.                           |
-| `listConnectors()`                           | The connected apps and their tools.                                                    |
-| `putAsset({ path? \| data?, name?, mime? })` | Stores a file or base64 bytes; resolves with an `Asset` whose `handle` others can use. |
-| `getAsset(handle)`                           | Looks an asset up (`not_found` if unknown).                                            |
-| `fileChanged(path)`                          | Tells other clients you changed a file. Throws `DisconnectedError` if offline.         |
-| `onFileChanged(callback)`                    | Another client or the agent changed a file (never your own).                           |
-| `onSecretRequest(callback)`                  | The daemon asks this client alone for a secret (an API key): show a masked field.      |
-| `answerSecret(id, value?)`                   | Answers it; no value means cancelled. Never store or log the value.                    |
-| `close()`                                    | Marks the app closed, disconnects for good.                                            |
+| Member                                       | Does                                                                                       |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `createSession(params?)`                     | Starts a session (`cwd?`, `title?`).                                                       |
+| `listSessions()`                             | The daemon's sessions.                                                                     |
+| `input(session, text, { app?, images? })`    | Sends user input; resolves once queued.                                                    |
+| `cancel(session)`                            | Cancels the running turn.                                                                  |
+| `subscribe(session, options)`                | Events: replay from `fromSeq?`, then live. See below.                                      |
+| `subscribeView(session, options)`            | The resolved view: snapshot, then patches. See below.                                      |
+| `action(session, ref, action, args?)`        | A button was pressed in view item `ref`.                                                   |
+| `moveAgent({ app?, session? })`              | Moves the agent to an app (home without `app`) and/or makes a session current.             |
+| `setPresence(presence)`                      | Replaces the registration, now and on reconnects.                                          |
+| `setContext(context)`                        | Updates what the app shows, without re-sending the presence.                               |
+| `listConnectors()`                           | The connected apps and their tools.                                                        |
+| `putAsset({ path? \| data?, name?, mime? })` | Stores a file or base64 bytes; resolves with an `Asset` whose `handle` others can use.     |
+| `getAsset(handle)`                           | Looks an asset up (`not_found` if unknown).                                                |
+| `fetchAsset(url)`                            | Has the daemon download a public web image into the store (`bad_request` if it isn't one). |
+| `fileChanged(path)`                          | Tells other clients you changed a file. Throws `DisconnectedError` if offline.             |
+| `onFileChanged(callback)`                    | Another client or the agent changed a file (never your own).                               |
+| `onSecretRequest(callback)`                  | The daemon asks this client alone for a secret (an API key): show a masked field.          |
+| `answerSecret(id, value?)`                   | Answers it; no value means cancelled. Never store or log the value.                        |
+| `close()`                                    | Marks the app closed, disconnects for good.                                                |
 
 Everything that listens returns a function that stops it.
 

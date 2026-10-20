@@ -7,6 +7,7 @@
   import Component from "./Component.svelte";
   import { hasButtons } from "./components.ts";
   import { tailLines } from "./format.ts";
+  import OpenUi from "./openui/OpenUi.svelte";
   import { codeColor, DETAIL_INDENT, PREVIEW_LINES } from "./layout.ts";
   import { transcript } from "./state.svelte.ts";
   import type { WorkEntry } from "./work.ts";
@@ -78,6 +79,8 @@
       ref={entry.item.ref}
       limit={hasButtons(entry.item.component) && !transcript.expanded ? PREVIEW_LINES : undefined}
     />
+  {:else if entry.item.component.type === "openui"}
+    <OpenUi ui={entry.item.component.ui} ref={entry.item.ref} inset={DETAIL_INDENT} />
   {:else}
     {#if entry.input}
       <Text style={{ fontSize: 11, color: p.muted }}>Tool input</Text>

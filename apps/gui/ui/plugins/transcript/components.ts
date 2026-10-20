@@ -2,6 +2,7 @@
 // TypeScript so they can be tested without a window.
 import type { Block, Component, Space, Tone } from "@suite/protocol/types";
 import type { Palette } from "../../lib/palette.ts";
+import { isInteractive } from "./openui/focus.ts";
 
 /** Whether the component is, or contains, a button: such an item is a question to answer. */
 export function hasButtons(component: Component): boolean {
@@ -15,6 +16,11 @@ export function hasButtons(component: Component): boolean {
     default:
       return false;
   }
+}
+
+/** Whether the component is an OpenUI doc with a field or a button to use. */
+export function isForm(component: Component): boolean {
+  return component.type === "openui" && isInteractive(component.ui.root);
 }
 
 /** The last part of a path (the whole of anything else). */
