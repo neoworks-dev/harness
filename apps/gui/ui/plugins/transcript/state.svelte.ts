@@ -13,6 +13,8 @@ class Transcript {
    * the item shows a one-line stub for it.
    */
   stubbed = $state<string>();
+  /** The reply under the pointer: its rows are apart, its copy button shows for any of them. */
+  hovered = $state<string>();
 
   /** The items to draw: thoughts only while they are shown. */
   visible(items: readonly ViewItem[]): ViewItem[] {

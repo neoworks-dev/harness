@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 import type { Component, SessionEvent, ViewItem } from "@suite/protocol/types";
-import { buildRows, type Row, type RowsInput } from "../ui/plugins/transcript/rows.ts";
+import {
+  buildRows,
+  splitMessages,
+  type Row,
+  type RowsInput,
+} from "../ui/plugins/transcript/rows.ts";
 import { applyRecord, emptyTimeline, type Timeline } from "../ui/plugins/transcript/timeline.ts";
 
 const CWD = "/w";
@@ -266,4 +271,51 @@ test("the timeline learns turns, stamps and facts from events", () => {
   });
   expect(timeline.current).toBeUndefined();
   expect(timeline.stamps.has("plan")).toBe(true);
+});
+
+test("a reply of text becomes a row per block and then its own row, the rest stays", () => {
+  const long: ViewItem = {
+    ref: "m-long",
+    kind: "agent",
+    label: "claude",
+    component: {
+      type: "text",
+      blocks: [
+        { type: "paragraph", spans: [{ text: "one" }] },
+        { type: "rule" },
+        { type: "paragraph", spans: [{ text: "two" }] },
+      ],
+    },
+  };
+  const card: ViewItem = { ref: "m-card", kind: "agent", component: { type: "code", code: "x" } };
+  // A running turn, so nothing folds away.
+  const split = splitMessages(rows([user(1), long, card], { running: true }));
+  expect(split.map((row) => [row.kind, row.key])).toEqual([
+    ["item", "u1"],
+    ["prose", "m-long/0"],
+    ["prose", "m-long/1"],
+    ["prose", "m-long/2"],
+    ["message", "m-long"],
+    ["message", "m-card"],
+    ["working", "working"],
+  ]);
+  expect(split[1]).toMatchObject({ first: true, label: "claude", ref: "m-long" });
+  expect(split[2]).toMatchObject({ first: false });
+  expect(split[2]).not.toHaveProperty("label");
+  expect(split[4]).toMatchObject({ split: true });
+  expect(split[5]).not.toHaveProperty("split");
+});
+
+test("a block that stays the same keeps its row object as the reply grows", () => {
+  const first = { type: "paragraph" as const, spans: [{ text: "settled" }] };
+  const reply = (last: string): ViewItem => ({
+    ref: "m-a",
+    kind: "agent",
+    component: { type: "text", blocks: [first, { type: "paragraph", spans: [{ text: last }] }] },
+  });
+  const before = splitMessages(rows([reply("wri")]));
+  const after = splitMessages(rows([reply("writing")]));
+  expect(after[0]).toBe(before[0]);
+  expect(after[1]).not.toBe(before[1]);
+  expect(after[1]).toMatchObject({ key: "m-a/1" });
 });

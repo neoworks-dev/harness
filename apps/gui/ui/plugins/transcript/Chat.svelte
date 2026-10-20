@@ -7,21 +7,21 @@
   import { useCtx } from "../../kernel/slots/context.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
   import { opened } from "./opened.svelte.ts";
-  import { buildRows, type Row } from "./rows.ts";
+  import { buildRows, splitMessages, type Row } from "./rows.ts";
   import { transcript } from "./state.svelte.ts";
   import { timeline } from "./timeline.svelte.ts";
 
   const { daemon } = useCtx();
 
   const rows = $derived(
-    buildRows({
+    splitMessages(buildRows({
       items: daemon.items,
       timeline: timeline.value,
       cwd: daemon.cwd,
       running: daemon.status.running,
       startedAt: daemon.status.turnStartedAt,
       isOpen: (key) => transcript.expanded || opened.has(`${daemon.sessionId}/${key}`),
-    }),
+    })),
   );
 
   let list: { scrollToIndex(index: number, options: { align: "end" }): void } | undefined = $state();

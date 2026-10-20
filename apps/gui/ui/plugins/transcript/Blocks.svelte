@@ -14,13 +14,15 @@
     blocks: readonly Block[];
     /** Font size of a paragraph; headings are sized from it. */
     size: number;
+    /** The blocks follow others of the same text, drawn apart (a long reply's rows). */
+    continued?: boolean;
   }
 
-  let { blocks, size }: Props = $props();
+  let { blocks, size, continued = false }: Props = $props();
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
 
-  const rows = $derived(markdownRows(blocks));
+  const rows = $derived(markdownRows(blocks, continued));
   /** Width of one character, to turn indents in characters into pixels. */
   const charWidth = $derived(size * 0.6);
 

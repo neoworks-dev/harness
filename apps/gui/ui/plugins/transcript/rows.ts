@@ -4,7 +4,7 @@
 // "Worked for 3m 43s" row, closed unless opened; a turn that failed or was stopped never folds,
 // and the last reply comes with the files the turn changed. Plain functions, tested without a
 // window.
-import type { ViewItem } from "@suite/protocol/types";
+import type { Block, ViewItem } from "@suite/protocol/types";
 import { duration } from "./format.ts";
 import type { Timeline } from "./timeline.ts";
 import { changedFiles, classify, isPlanCall, type FileChange, type WorkEntry } from "./work.ts";
@@ -12,7 +12,10 @@ import { changedFiles, classify, isPlanCall, type FileChange, type WorkEntry } f
 export type Row =
   /** An item drawn by `chat.item`: the user's message, a notice. */
   | { kind: "item"; key: string; item: ViewItem }
-  /** The agent's reply; the last of a finished turn is `final`, with the files the turn changed. */
+  /**
+   * The agent's reply; the last of a finished turn is `final`, with the files the turn changed.
+   * `split`: its text is drawn by the `prose` rows before it, and this row is what goes under it.
+   */
   | {
       kind: "message";
       key: string;
@@ -20,7 +23,10 @@ export type Row =
       final: boolean;
       changes: FileChange[];
       at?: number;
+      split?: boolean;
     }
+  /** One top-level block of a reply's text (splitMessages), so the list builds only those in view. */
+  | { kind: "prose"; key: string; ref: string; block: Block; first: boolean; label?: string }
   /** Consecutive tool calls (and thoughts) of one turn. */
   | { kind: "work"; key: string; entries: WorkEntry[]; live: boolean }
   /** The header of a finished turn's work. */
@@ -222,4 +228,41 @@ export function buildRows(input: RowsInput): Row[] {
   });
   if (input.running) rows.push({ kind: "working", key: "working", startedAt: input.startedAt });
   return rows;
+}
+
+type ProseRow = Extract<Row, { kind: "prose" }>;
+
+/** The prose row of each block, kept while the block is the same object (the daemon keeps them). */
+const proseRows = new WeakMap<Block, ProseRow>();
+
+function proseRow(item: ViewItem, block: Block, index: number): ProseRow {
+  const key = `${item.ref}/${index}`;
+  const first = index === 0;
+  const label = first ? item.label : undefined;
+  const known = proseRows.get(block);
+  if (known && known.key === key && known.label === label) return known;
+  const row: ProseRow = { kind: "prose", key, ref: item.ref, block, first };
+  if (label !== undefined) row.label = label;
+  proseRows.set(block, row);
+  return row;
+}
+
+/**
+ * Each reply of plain text (no role or tone) as one row per top-level block, then its own row for what goes under it. The
+ * list builds only the rows near the window, and a long reply as a single row was laid out whole
+ * on every frame while it streamed. Unchanged blocks keep their row objects.
+ */
+export function splitMessages(rows: readonly Row[]): Row[] {
+  const out: Row[] = [];
+  for (const row of rows) {
+    const component = row.kind === "message" ? row.item.component : undefined;
+    const plain = component?.type === "text" && component.role === undefined && !component.tone;
+    if (row.kind !== "message" || component?.type !== "text" || !plain) {
+      out.push(row);
+      continue;
+    }
+    component.blocks.forEach((block, index) => out.push(proseRow(row.item, block, index)));
+    out.push({ ...row, split: true });
+  }
+  return out;
 }

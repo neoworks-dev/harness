@@ -151,10 +151,11 @@ function blockRows(block: Block, first: boolean): MarkdownRow[] {
 /**
  * The rows of a markdown text, top to bottom. A streaming message changes only its last blocks
  * and keeps the others, so their rows are kept too: the chat then redraws only what changed,
- * not the whole message for every chunk.
+ * not the whole message for every chunk. `continued` blocks follow others of the same text, drawn
+ * apart: the first of them keeps its gap.
  */
-export function markdownRows(blocks: readonly Block[]): MarkdownRow[] {
-  return blocks.flatMap((block, index) => blockRows(block, index === 0));
+export function markdownRows(blocks: readonly Block[], continued = false): MarkdownRow[] {
+  return blocks.flatMap((block, index) => blockRows(block, index === 0 && !continued));
 }
 
 /** What stands in front of a row's text, left to right: a gap of `chars` characters, or a marker. */

@@ -1,7 +1,8 @@
 // The conversation: the session's items in the shell's middle, as long as nothing else claims it.
 // The items become rows (rows.ts): a finished turn's work folded, tool calls grouped. Each row
 // kind is drawn by an entry in `chat.row`, and the rows that are a single item by `chat.item`
-// (one entry per item kind), so a plugin can draw a kind of its own. The transcript keeps the
+// (one entry per item kind), so a plugin can draw a kind of its own. A reply of plain text is
+// the exception: each of its blocks is a `prose` row, so the list builds only those in view. The transcript keeps the
 // toggles for results (Ctrl-O) and thoughts (Ctrl-T) and offers a service to the panes that draw
 // items or answer them.
 import type { Context } from "@neoworks/extension-system";
@@ -14,6 +15,7 @@ import FoldRow from "./FoldRow.svelte";
 import ItemRow from "./ItemRow.svelte";
 import MessageRow from "./MessageRow.svelte";
 import NoticeItem from "./NoticeItem.svelte";
+import ProseRow from "./ProseRow.svelte";
 import { TranscriptService } from "./service.ts";
 import "./slots.ts";
 import { transcript } from "./state.svelte.ts";
@@ -50,6 +52,7 @@ export const transcriptPane = {
     slots.inject("chat.row", (slot) => {
       slot.add({ component: ItemRow, key: "item" });
       slot.add({ component: MessageRow, key: "message" });
+      slot.add({ component: ProseRow, key: "prose" });
       slot.add({ component: Work, key: "work" });
       slot.add({ component: FoldRow, key: "fold" });
       slot.add({ component: StoppedRow, key: "stopped" });
