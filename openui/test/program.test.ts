@@ -78,6 +78,24 @@ describe("evaluating", () => {
     expect(text?.props.text).toBe("large");
   });
 
+  test("list items take a value or a Tag as their trailing part", () => {
+    const p = program(
+      [
+        "root = EntityList([a, b])",
+        'a = ListItem("Ada", "analyst", Tag("admin", "accent"))',
+        'b = ListItem("Grace", null, 12)',
+      ].join("\n"),
+    );
+    const [a, b] = nodes(p.doc().root).filter((n) => n.component === "ListItem");
+    expect(a?.props).toEqual({
+      title: "Ada",
+      subtitle: "analyst",
+      trailing: { component: "Tag", props: { label: "admin", tone: "accent" } },
+    });
+    expect(b?.props).toEqual({ title: "Grace", trailing: 12 });
+    expect(p.doc().errors).toBeUndefined();
+  });
+
   test("Text and Callout carry the parsed markdown beside their text", () => {
     const p = program('root = Callout("**hi**", "danger")');
     expect(p.doc().root?.props).toEqual({

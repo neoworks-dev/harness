@@ -47,6 +47,8 @@ Lay a dashboard out the way a page is, not as one long column:
 
 - End a reply with `FollowUpBlock` when there are obvious next questions: two to four short
   ones. Choosing one sends its text to you as the user's next message.
+- Use `EntityList` with `ListItem`s for things that have a name, a detail and a status or
+  value (people, files, services, tickets). Prefer it to a Table with one real column.
 
 ## Forms and buttons
 
@@ -118,6 +120,8 @@ List(items: string | number | boolean | Component[], ordered?: boolean) — A bu
 KeyValue(pairs: KV[]) — Aligned key and value lines
 KV(key: string, value: string | number, tone?: "accent" | "muted" | "success" | "danger") — One pair of KeyValue
 Tag(label: string, tone?: "accent" | "muted" | "success" | "danger") — A small label chip
+EntityList(items: ListItem[]) — Rows of things with a title, a muted subtitle and a trailing value or Tag: people, files, services, tickets
+ListItem(title: string, subtitle?: string, trailing?: string | number | Tag) — One row of EntityList; trailing is a value or a Tag
 Callout(text: string, tone?: "accent" | "muted" | "success" | "danger", title?: string) — A highlighted note; text is markdown
 Metric(label: string, value: string | number, delta?: string, tone?: "accent" | "muted" | "success" | "danger") — A headline number with an optional change
 Progress(value: number, label?: string) — A progress bar; value is 0 to 1

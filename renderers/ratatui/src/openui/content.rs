@@ -10,6 +10,13 @@ use super::{N, join, scalar};
 use crate::render::{Cx, Lines, fit_columns, link, prefixed, tint};
 use crate::text::{clean, line_width, push_text, sline, truncate, truncate_spans, width, wrap};
 
+/// A row of an `EntityList`.
+struct Entity {
+    title: String,
+    subtitle: Option<String>,
+    trailing: Vec<Span<'static>>,
+}
+
 impl<'a> Cx<'a> {
     fn ui_blocks(&self, n: N<'_>) -> Option<Vec<pb::Block>> {
         serde_json::from_value(n.prop("blocks")?.clone()).ok()
@@ -254,6 +261,95 @@ impl<'a> Cx<'a> {
                 vec![Span::styled(marker, self.p.muted_style())],
                 vec![Span::raw(" ".repeat(pad))],
             ));
+        }
+        out
+    }
+
+    /// A value or a node as the spans of a trailing cell.
+    fn trailing_spans(&mut self, v: &Value, path: &str) -> Vec<Span<'static>> {
+        match N::new(v) {
+            Some(node) => self.inline_spans(node, path),
+            None => match scalar(v) {
+                t if t.is_empty() => Vec::new(),
+                t => vec![Span::raw(t)],
+            },
+        }
+    }
+
+    /// Rows of a bold title, a muted subtitle and a trailing value or tag, in columns:
+    /// `Ada Lovelace  analyst        [admin]`. When the columns do not fit, the subtitle goes
+    /// under its title.
+    pub(super) fn ui_entity_list(&mut self, n: N<'_>, path: &str, w: usize) -> Lines {
+        let mut rows: Vec<Entity> = Vec::new();
+        for (i, item) in n.nodes("items").into_iter().enumerate() {
+            let trailing = match item.prop("trailing") {
+                Some(v) => self.trailing_spans(v, &join(path, &format!("items.{i}.trailing"))),
+                None => Vec::new(),
+            };
+            rows.push(Entity {
+                title: item.line("title").unwrap_or_default(),
+                subtitle: item.line("subtitle"),
+                trailing,
+            });
+        }
+        let title_w = rows.iter().map(|r| width(&r.title)).max().unwrap_or(0);
+        let sub_w = rows
+            .iter()
+            .filter_map(|r| r.subtitle.as_deref())
+            .map(width)
+            .max()
+            .unwrap_or(0);
+        let tail_w = rows
+            .iter()
+            .map(|r| line_width(&r.trailing))
+            .max()
+            .unwrap_or(0);
+        // The trailing column with the gap before it.
+        let tail = if tail_w > 0 { tail_w + 2 } else { 0 };
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        let muted = self.p.muted_style();
+        let gap = if sub_w > 0 { 2 } else { 0 };
+        let sub_room = w.saturating_sub(title_w + gap + tail);
+        let columns = title_w + tail <= w && (sub_w == 0 || sub_room >= sub_w.min(12));
+        let mut out: Lines = Vec::new();
+        for row in rows {
+            let right = |trailing: Vec<Span<'static>>| {
+                let mut spans = vec![Span::raw(" ".repeat(tail_w - line_width(&trailing)))];
+                spans.extend(trailing);
+                spans
+            };
+            if columns {
+                let sub = row.subtitle.as_deref().map(|s| truncate(s, sub_room));
+                let sub_col = sub_w.min(sub_room);
+                let mut spans = vec![Span::styled(row.title.clone(), bold)];
+                spans.push(Span::raw(" ".repeat(title_w - width(&row.title))));
+                if sub_w > 0 {
+                    let used = sub.as_deref().map_or(0, width);
+                    spans.push(Span::raw("  "));
+                    spans.push(Span::styled(sub.unwrap_or_default(), muted));
+                    spans.push(Span::raw(" ".repeat(sub_col - used)));
+                }
+                if tail_w > 0 {
+                    spans.push(Span::raw("  "));
+                    spans.extend(right(row.trailing));
+                }
+                out.push(Line::from(spans));
+                continue;
+            }
+            // Stacked: the title and the trailing value on one line, the subtitle under.
+            let head_w = w.min(title_w + tail);
+            let title = truncate(&row.title, head_w.saturating_sub(tail).max(1));
+            let pad = head_w.saturating_sub(width(&title) + tail);
+            let mut spans = vec![Span::styled(title, bold), Span::raw(" ".repeat(pad))];
+            if tail_w > 0 && head_w >= tail {
+                spans.push(Span::raw("  "));
+                spans.extend(right(row.trailing));
+            }
+            out.push(Line::from(spans));
+            if let Some(sub) = row.subtitle {
+                let body = wrap(&[Span::styled(sub, muted)], w.saturating_sub(2).max(1));
+                out.extend(prefixed(body, vec![Span::raw("  ")], vec![Span::raw("  ")]));
+            }
         }
         out
     }

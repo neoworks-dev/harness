@@ -1055,6 +1055,104 @@ fn follow_ups_can_be_focused_but_do_not_ask_for_the_keyboard() {
     assert!(openui_docs(&both)[0].interactive);
 }
 
+// ---- entity lists ----
+
+fn entity(title: &str, subtitle: Option<&str>, trailing: Option<Value>) -> Value {
+    let mut props = json!({"title": title});
+    if let Some(s) = subtitle {
+        props["subtitle"] = json!(s);
+    }
+    if let Some(t) = trailing {
+        props["trailing"] = t;
+    }
+    node("ListItem", props)
+}
+
+fn people() -> Value {
+    node(
+        "EntityList",
+        json!({"items": [
+            entity("Ada Lovelace", Some("analyst"), Some(tag("admin"))),
+            entity("Grace Hopper", Some("rear admiral, compiler pioneer"), Some(tag("owner"))),
+            entity("Linus", None, None),
+        ]}),
+    )
+}
+
+#[test]
+fn an_entity_list_is_columns_of_title_subtitle_and_trailing() {
+    let it = doc(people());
+    assert_eq!(
+        lines(&it, 80),
+        [
+            "Ada Lovelace  analyst                         [admin]",
+            "Grace Hopper  rear admiral, compiler pioneer  [owner]",
+            "Linus",
+        ]
+    );
+    let rendered = render_item(&it, 80, &Options::default());
+    let span = |line: usize, text: &str| {
+        rendered[line]
+            .spans
+            .iter()
+            .find(|s| s.content.contains(text))
+            .unwrap()
+            .style
+    };
+    assert!(span(0, "Ada").add_modifier.contains(Modifier::BOLD));
+    assert_eq!(span(0, "analyst").fg, Some(pal().muted));
+}
+
+#[test]
+fn a_long_subtitle_is_cut_before_the_list_stacks() {
+    let it = doc(people());
+    let out = lines(&it, 40);
+    assert_eq!(out.len(), 3, "{out:?}");
+    assert_eq!(out[1], "Grace Hopper  rear admiral, co…  [owner]");
+}
+
+#[test]
+fn a_narrow_entity_list_puts_the_subtitle_under_the_title() {
+    let it = doc(people());
+    assert_eq!(
+        lines(&it, 24),
+        [
+            "Ada Lovelace  [admin]",
+            "  analyst",
+            "Grace Hopper  [owner]",
+            "  rear admiral, compiler",
+            "  pioneer",
+            "Linus",
+        ]
+    );
+}
+
+#[test]
+fn entity_values_are_aligned_right_and_may_be_numbers() {
+    let it = doc(node(
+        "EntityList",
+        json!({"items": [
+            entity("api", Some("12 pods"), Some(json!(1204))),
+            entity("web", None, Some(json!("37"))),
+            entity("db", Some("primary"), Some(json!(5))),
+        ]}),
+    ));
+    assert_eq!(
+        lines(&it, 80),
+        [
+            "api  12 pods  1204",
+            "web             37",
+            "db   primary     5"
+        ]
+    );
+}
+
+#[test]
+fn entity_lists_fit_at_every_width() {
+    assert_fits(&doc(people()), &Options::default());
+    assert_fits(&doc(card("People", vec![people()])), &Options::default());
+}
+
 // ---- focus targets ----
 
 #[test]

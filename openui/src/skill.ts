@@ -56,6 +56,8 @@ Lay a dashboard out the way a page is, not as one long column:
 
 - End a reply with \`FollowUpBlock\` when there are obvious next questions: two to four short
   ones. Choosing one sends its text to you as the user's next message.
+- Use \`EntityList\` with \`ListItem\`s for things that have a name, a detail and a status or
+  value (people, files, services, tickets). Prefer it to a Table with one real column.
 
 ## Forms and buttons
 

@@ -119,6 +119,7 @@ impl<'a> Cx<'a> {
             "List" => self.ui_list(n, path, w),
             "KeyValue" => self.ui_key_value(n, w),
             "Tag" => self.ui_tag(n, w),
+            "EntityList" => self.ui_entity_list(n, path, w),
             "Metric" => self.ui_metric(n, w),
             "Progress" => self.ui_progress(n, w),
             "Image" => self.ui_image(n, w),

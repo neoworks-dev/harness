@@ -183,6 +183,21 @@ const Tag = define(
   z.object({ label: z.string(), tone: tone.optional() }),
 );
 
+const ListItem = define(
+  "ListItem",
+  "One row of EntityList; trailing is a value or a Tag",
+  z.object({
+    title: z.string(),
+    subtitle: z.string().optional(),
+    trailing: z.union([z.string(), z.number(), Tag.ref]).optional(),
+  }),
+);
+const EntityList = define(
+  "EntityList",
+  "Rows of things with a title, a muted subtitle and a trailing value or Tag: people, files, services, tickets",
+  z.object({ items: z.array(ListItem.ref) }),
+);
+
 const Callout = define(
   "Callout",
   "A highlighted note; text is markdown",
@@ -421,6 +436,8 @@ export const library = createLibrary({
     KeyValue,
     KV,
     Tag,
+    EntityList,
+    ListItem,
     Callout,
     Metric,
     Progress,
@@ -477,6 +494,8 @@ export const library = createLibrary({
         "KeyValue",
         "KV",
         "Tag",
+        "EntityList",
+        "ListItem",
         "Callout",
         "Metric",
         "Progress",

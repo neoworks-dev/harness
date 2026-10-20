@@ -21,6 +21,8 @@ const ORDER: Record<string, string[]> = {
   KeyValue: ["pairs"],
   KV: ["key", "value", "tone"],
   Tag: ["label", "tone"],
+  EntityList: ["items"],
+  ListItem: ["title", "subtitle", "trailing"],
   Callout: ["text", "tone", "title"],
   Metric: ["label", "value", "delta", "tone"],
   Progress: ["value", "label"],
