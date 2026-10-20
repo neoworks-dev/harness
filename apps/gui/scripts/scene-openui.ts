@@ -3,7 +3,7 @@
 // apps/gui/scripts/shot.sh). Each doc named in SCENE_DOCS (comma separated, in the order given;
 // all of them when unset) is one agent message with prose around a ```openui fence. Run by shot.sh
 // on the temporary socket; SCENE_CWD is the window's directory.
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createDaemon } from "../../../daemon/src/daemon.ts";
 import { createEchoAgent } from "../../../daemon/src/echo-agent.ts";
@@ -29,16 +29,23 @@ const append = (event: Parameters<typeof daemon.store.append>[1]): void => {
   daemon.store.append(main.id, event);
 };
 
+// {{FILE}} in a program is a picture on disk and {{ASSET}} one in the daemon's asset store.
+const file = "/usr/share/pixmaps/archlinux-logo.png";
+const asset = existsSync(file)
+  ? daemon.assets.put({ path: file }).handle
+  : "asset://img-ffffffffffff";
+
 for (const name of wanted) {
   const doc = DOCS[name];
   if (doc === undefined) throw new Error(`no doc named ${name}`);
   append({ type: "user_message", app: "desktop", text: doc.ask });
-  append({
-    type: "agent_message_chunk",
-    messageId: `m-${name}`,
-    text: `${doc.before}\n\n\`\`\`openui\n${doc.program}\n\`\`\`\n\n${doc.after ?? "Tell me if you want it another way."}`,
-  });
-  append({ type: "turn_ended", stopReason: "end_turn" });
+  const program = doc.program.replaceAll("{{FILE}}", file).replaceAll("{{ASSET}}", asset);
+  const text = doc.streaming
+    ? `${doc.before}\n\n\`\`\`openui\n${program}`
+    : `${doc.before}\n\n\`\`\`openui\n${program}\n\`\`\`\n\n${doc.after ?? "Tell me if you want it another way."}`;
+  append({ type: "agent_message_chunk", messageId: `m-${name}`, text });
+  // A doc that is still streaming has no end to its fence and its turn goes on.
+  if (doc.streaming !== true) append({ type: "turn_ended", stopReason: "end_turn" });
 }
 
 writeFileSync(join(dirname(paths.socket), "scene-ready"), "");

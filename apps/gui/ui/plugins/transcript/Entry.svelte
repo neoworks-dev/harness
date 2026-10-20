@@ -15,7 +15,7 @@
   import { GUTTER } from "./layout.ts";
   import { opened } from "./opened.svelte.ts";
   import { transcript } from "./state.svelte.ts";
-  import { hasButtons } from "./components.ts";
+  import { hasButtons, isForm } from "./components.ts";
   import type { WorkEntry } from "./work.ts";
 
   interface Props {
@@ -31,8 +31,12 @@
 
   const asks = $derived(entry.kind === "question" && hasButtons(entry.item.component));
   const key = $derived(`${daemon.sessionId}/${entry.id}`);
+  /** A UI with fields or buttons is there to be used: it is open. */
+  const usable = $derived(isForm(entry.item.component));
+  /** Always open: a question to answer, a UI to use. */
+  const pinned = $derived(asks || usable);
   const open = $derived(
-    asks || transcript.expanded || opened.has(key) || (entry.kind === "thought" && transcript.showThoughts),
+    pinned || transcript.expanded || opened.has(key) || (entry.kind === "thought" && transcript.showThoughts),
   );
   const stub = $derived(asks && transcript.stubbed === entry.id && !transcript.expanded);
   let hover = $state(false);
@@ -50,9 +54,9 @@
 
 <View>
   <View
-    onpress={asks ? undefined : () => opened.toggle(key)}
+    onpress={pinned ? undefined : () => opened.toggle(key)}
     onhover={(h: boolean) => (hover = h)}
-    hover={asks ? undefined : { background: p.hover, color: p.fg }}
+    hover={pinned ? undefined : { background: p.hover, color: p.fg }}
     style={{
       direction: "row",
       align: "center",
@@ -63,7 +67,7 @@
       radius: p.radius.s,
       fontSize: 14,
       color: asks ? p.fg : p.muted,
-      cursor: asks ? undefined : "pointer",
+      cursor: pinned ? undefined : "pointer",
     }}
   >
     <View style={{ width: GUTTER, height: 24, align: "center", justify: "center", color: tint, opacity: spins || tint ? 1 : 0.7 }}>
@@ -88,7 +92,7 @@
     {#if entry.at !== undefined}
       <Text style={{ fontSize: 12, opacity: hover ? 1 : 0 }}>{clockTime(entry.at)}</Text>
     {/if}
-    {#if !asks}
+    {#if !pinned}
       <Icon svg={open ? caretDown : caretRight} size={12} />
     {/if}
   </View>

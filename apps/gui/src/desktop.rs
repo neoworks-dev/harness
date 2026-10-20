@@ -290,7 +290,10 @@ mod tests {
             "https://a.example/\nb",
             "",
         ] {
-            assert!(open_url_with(opener.as_os_str(), refused).is_err(), "{refused}");
+            assert!(
+                open_url_with(opener.as_os_str(), refused).is_err(),
+                "{refused}"
+            );
         }
         assert!(!log.exists());
 

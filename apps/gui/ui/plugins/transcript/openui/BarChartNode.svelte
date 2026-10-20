@@ -28,7 +28,9 @@
   const plot = $derived(chart - AXIS - 4);
   const slot = $derived(plot / Math.max(1, labels.length));
   const barWidth = $derived(layout.bar(slot));
-  const trackWidth = $derived(Math.max(60, chart - layout.labelWidth - (series.length > 1 && !stacked ? 110 : 64)));
+  const labelWidth = $derived(Math.min(layout.labelWidth, Math.floor(chart * 0.35)));
+  const valueWidth = $derived(series.length > 1 && !stacked ? 100 : 50);
+  const trackWidth = $derived(Math.max(30, chart - labelWidth - valueWidth - 20));
 </script>
 
 <View style={{ gap: 10 }}>
@@ -36,7 +38,7 @@
     <View style={{ gap: 8, width: chart }}>
       {#each labels as label, index}
         <View style={{ direction: "row", align: "center", gap: 10 }}>
-          <Text style={{ width: layout.labelWidth, shrink: 0, color: p.muted, fontSize: 12, truncate: true, textAlign: "right" }}>{label}</Text>
+          <Text style={{ width: labelWidth, shrink: 0, color: p.muted, fontSize: 12, truncate: true, textAlign: "right" }}>{label}</Text>
           <View style={{ width: trackWidth, gap: 3 }}>
             {#if stacked}
               <View style={{ direction: "row", height: 14, radius: 3, overflow: "hidden" }}>
@@ -50,7 +52,7 @@
               {/each}
             {/if}
           </View>
-          <Text style={{ color: p.fg, fontSize: 12, fontFamily: "mono", nowrap: true }}>{stacked ? fmt(series.reduce((sum, s) => sum + (s.values[index] ?? 0), 0)) : series.map((s) => fmt(s.values[index] ?? 0)).join(" / ")}</Text>
+          <Text style={{ color: p.fg, fontSize: 12, fontFamily: "mono", nowrap: true, width: valueWidth, shrink: 0 }}>{stacked ? fmt(series.reduce((sum, s) => sum + (s.values[index] ?? 0), 0)) : series.map((s) => fmt(s.values[index] ?? 0)).join(" / ")}</Text>
         </View>
       {/each}
     </View>

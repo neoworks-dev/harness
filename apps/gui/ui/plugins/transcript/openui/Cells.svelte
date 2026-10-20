@@ -23,7 +23,7 @@
   {#each rows as row}
     <View style={{ direction: "row", gap, align: "stretch" }}>
       {#each row as at}
-        <View style={{ width: cell, shrink: 0 }}>
+        <View style={{ width: cell }}>
           <Node node={at.node} path={childPath(path, prop, at.index)} width={cell} fill />
         </View>
       {/each}

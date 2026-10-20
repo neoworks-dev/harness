@@ -10,7 +10,8 @@
   import { useColumn } from "../../../widgets/column.ts";
   import { provideDoc } from "./context.ts";
   import Node from "./Node.svelte";
-  import { DocSession, viewOf } from "./state.svelte.ts";
+  import { DocSession } from "./session.ts";
+  import { viewOf } from "./state.svelte.ts";
 
   interface Props {
     ui: UiDoc;
@@ -43,6 +44,7 @@
     view,
     send: (item, action, args) => void daemon.action(item, action, args),
     open: (url) => void open(url),
+    copy: (text) => void clipboard.write(text),
   }));
   provideDoc(session);
 

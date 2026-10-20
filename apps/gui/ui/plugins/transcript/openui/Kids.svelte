@@ -23,7 +23,10 @@
   const parts = $derived(segments(children));
 </script>
 
-<View style={{ gap, align }}>
+<!-- The transparent border is no decoration: without any border or fill, the host laid a column of
+  these out taller than its children in some docs (an option card row among fields), by up to a
+  third. -->
+<View style={{ gap, align, borderWidth: 1, borderColor: "transparent" }}>
   {#each parts as part}
     {#if part.kind === "node"}
       <Node node={part.at.node} path={childPath(path, prop, part.at.index)} {width} />

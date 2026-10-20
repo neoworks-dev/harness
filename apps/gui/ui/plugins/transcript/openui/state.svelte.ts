@@ -2,16 +2,11 @@
 // starts at, the value just chosen here), kept for the window's lifetime: the chat's list builds
 // a row anew each time it scrolls into view, and the state must outlive that. The daemon holds
 // the rest (docs/openui.md): a doc here only draws, and sends what the user does.
-import { clipboard } from "@neoworks/svelte-gpui";
-import type { UiDoc, UiNode } from "@suite/protocol/types";
-import { firstButton, neighbour, focusOrder } from "./focus.ts";
-import { DEBOUNCE_MS, HOLD_MS, outbox, same, type Send } from "./form.ts";
+import type { UiNode } from "@suite/protocol/types";
+import { neighbour, focusOrder } from "./focus.ts";
+import { HOLD_MS, same } from "./form.ts";
 
-/** A value chosen here that the daemon has not echoed yet. */
-interface Held {
-  value: unknown;
-  at: number;
-}
+import type { Held } from "./session.ts";
 
 /** What one doc remembers. */
 export class DocView {
@@ -84,82 +79,4 @@ export function viewOf(session: string | undefined, ref: string, id: string): Do
     views.set(key, view);
   }
   return view;
-}
-
-/** What a doc needs of the window around it. */
-export interface Host {
-  ref: string;
-  ui: UiDoc;
-  view: DocView;
-  send: Send;
-  /** Opens an address in the system's browser (or says it can't). */
-  open: (url: string) => void;
-}
-
-/** One doc as its parts reach it: the daemon's values, what was chosen here, what is sent. */
-export class DocSession {
-  constructor(private host: () => Host) {}
-
-  get ref(): string {
-    return this.host().ref;
-  }
-  get doc(): string {
-    return this.host().ui.id;
-  }
-  get view(): DocView {
-    return this.host().view;
-  }
-  /** The doc's root, for moving between its fields. */
-  get rootNode(): UiNode | undefined {
-    return this.host().ui.root;
-  }
-  /** Still arriving: it draws, but no field or button can be used. */
-  get streaming(): boolean {
-    return this.host().ui.streaming === true;
-  }
-
-  /** The value of a field now: what was chosen here, else the daemon's. */
-  value(node: UiNode): unknown {
-    const key = node.key;
-    const held = key === undefined ? undefined : this.view.held[key];
-    return held === undefined ? node.props["value"] : held.value;
-  }
-
-  /**
-   * A field's new value. It goes at once, or after a pause with `soon` (typing, a slider being
-   * dragged). Until the daemon echoes it the value shows as chosen, unless `hold` is false: a text
-   * field keeps its own text while it has focus.
-   */
-  input(node: UiNode, value: unknown, options: { soon?: boolean; hold?: boolean } = {}): void {
-    const key = node.key;
-    if (key === undefined || this.streaming) return;
-    if (options.hold !== false) this.view.hold(key, value);
-    const delay = options.soon === true ? DEBOUNCE_MS : 0;
-    outbox.queue(this.ref, { doc: this.doc, key, value }, delay, this.host().send);
-  }
-
-  /** The button Enter presses in a field: the form's first, else the doc's first one that can be pressed. */
-  firstButton(form?: UiNode): UiNode | undefined {
-    return firstButton(form ?? this.host().ui.root);
-  }
-
-  /** Opens an address (a link). */
-  open(url: string): void {
-    this.host().open(url);
-  }
-
-  /** What waits for a field goes out now (it lost the keyboard). */
-  flush(node: UiNode): void {
-    if (node.key !== undefined) outbox.flush(this.ref, this.doc, node.key);
-  }
-
-  /** Presses a button: the form's values first, then the press; an address is opened, text copied. */
-  press(node: UiNode): void {
-    if (this.streaming || node.props["disabled"] === true) return;
-    const url = node.props["url"];
-    const copy = node.props["copy"];
-    if (typeof url === "string") this.host().open(url);
-    else if (typeof copy === "string") void clipboard.write(copy);
-    else if (node.key !== undefined) outbox.press(this.ref, this.doc, node.key, this.host().send);
-  }
 }

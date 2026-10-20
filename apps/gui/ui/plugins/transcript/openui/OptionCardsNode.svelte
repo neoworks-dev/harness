@@ -54,7 +54,6 @@
             hover={{ borderColor: chosen ? p.accent : p.muted }}
             style={{
               width: cell,
-              shrink: 0,
               padding: 12,
               gap: 4,
               radius: p.radius.s,

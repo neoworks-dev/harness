@@ -89,7 +89,7 @@
   onblur={leave}
   {onkey}
   style={{ ...fieldLook(p, { focused, error }), paddingX: 12, paddingY: 8, color: p.fg, maxWidth: 520, opacity: off ? 0.6 : undefined }}
-  hover={{ borderColor: error ? p.danger : p.muted }}
-  focus={{ borderColor: error ? p.danger : p.accent }}
+  hover={off ? undefined : { borderColor: error ? p.danger : p.muted }}
+  focus={off ? undefined : { borderColor: error ? p.danger : p.accent }}
 />
 <FieldError {node} />

@@ -5,6 +5,8 @@ export interface SceneDoc {
   before: string;
   program: string;
   after?: string;
+  /** The fence is left open, as while the agent is still writing it. */
+  streaming?: boolean;
 }
 
 const lines = (...parts: string[]): string => parts.join("\n");
@@ -136,140 +138,22 @@ export const DOCS: Record<string, SceneDoc> = {
   },
   images: {
     ask: "show me pictures",
-    before: "Two pictures.",
+    before:
+      "A web picture, then a gallery of a stored one, one on disk, a missing one and a web one.",
     program: lines(
       "root = Stack([one, gallery])",
-      'one = Image("https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png", "A demonstration")',
-      'gallery = ImageGallery([Image("https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png", "First"), Image("/nonexistent/second.png", "Second"), Image("asset://img-ffffffffffff", "Third")])',
+      'one = Image("https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png", "A web picture")',
+      'gallery = ImageGallery([Image("{{ASSET}}", "From the asset store"), Image("{{FILE}}", "From disk"), Image("/nonexistent/second.png", "Missing"), Image("https://example.com/not-an-image", "Not an image")])',
     ),
   },
-  b1: {
-    ask: "b1",
-    before: "b1",
+  streaming: {
+    ask: "ask me",
+    before: "Fill this in.",
+    streaming: true,
     program: lines(
-      'root = Card([plan], "A")',
-      'plan = FormControl("Plan", OptionCards("plan", [OptionCard("free", "Free", "For trying it out"), OptionCard("pro", "Pro", "For teams")]))',
-    ),
-  },
-  b2: {
-    ask: "b2",
-    before: "b2",
-    program: lines(
-      'root = Card([r], "A")',
-      'r = FormControl("Region", RadioGroup("region", [Option("eu", "Europe"), Option("us", "United States")]))',
-    ),
-  },
-  b3: {
-    ask: "b3",
-    before: "b3",
-    program: lines(
-      'root = Card([FollowUpBlock([FollowUpItem("Why is it slow?"), FollowUpItem("Show")])], "A")',
-    ),
-  },
-  b4: {
-    ask: "b4",
-    before: "b4",
-    program: lines(
-      'root = Card([FormControl("Extras", CheckBoxGroup("extras", [CheckBoxItem("ci", "CI minutes", "Faster builds", true), CheckBoxItem("sso", "SSO")]))], "A")',
-    ),
-  },
-  c1: {
-    ask: "c1",
-    before: "c1",
-    program: lines(
-      'root = Card([plan, radio, picks], "A")',
-      'plan = FormControl("Plan", OptionCards("plan", [OptionCard("free", "Free", "For trying it out"), OptionCard("pro", "Pro", "For teams that ship every day"), OptionCard("ent", "Enterprise", "Single sign-on and an audit trail")]))',
-      'radio = FormControl("Region", RadioGroup("region", [Option("eu", "Europe"), Option("us", "United States")]))',
-      'picks = FormControl("Extras", CheckBoxGroup("extras", [CheckBoxItem("ci", "CI minutes", "Faster builds", true), CheckBoxItem("sso", "SSO")]))',
-    ),
-  },
-  c2: {
-    ask: "c2",
-    before: "c2",
-    program: lines(
-      'root = Card([radio, picks, toggles, follow], "A")',
-      'radio = FormControl("Region", RadioGroup("region", [Option("eu", "Europe"), Option("us", "United States")]))',
-      'picks = FormControl("Extras", CheckBoxGroup("extras", [CheckBoxItem("ci", "CI minutes", "Faster builds", true), CheckBoxItem("sso", "SSO")]))',
-      'toggles = FormControl("Notify", SwitchGroup("notify", [SwitchItem("mail", "Email", "Weekly digest", true), SwitchItem("chat", "Chat")]))',
-      'follow = FollowUpBlock([FollowUpItem("Why is it slow?"), FollowUpItem("Show the queries")])',
-    ),
-  },
-  d1: {
-    ask: "d1",
-    before: "d1",
-    program: lines(
-      'root = Card([plan, radio, picks, toggles], "A")',
-      'plan = FormControl("Plan", OptionCards("plan", [OptionCard("free", "Free", "For trying it out"), OptionCard("pro", "Pro", "For teams that ship every day"), OptionCard("ent", "Enterprise", "Single sign-on and an audit trail")]))',
-      'radio = FormControl("Region", RadioGroup("region", [Option("eu", "Europe"), Option("us", "United States"), Option("ap", "Asia Pacific")]))',
-      'picks = FormControl("Extras", CheckBoxGroup("extras", [CheckBoxItem("ci", "CI minutes", "Faster builds", true), CheckBoxItem("sso", "SSO"), CheckBoxItem("audit", "Audit log", "Keep every change")]))',
-      'toggles = FormControl("Notify", SwitchGroup("notify", [SwitchItem("mail", "Email", "Weekly digest", true), SwitchItem("chat", "Chat")]))',
-    ),
-  },
-  d2: {
-    ask: "d2",
-    before: "d2",
-    program: lines(
-      'root = Card([radio, picks, toggles, follow], "A")',
-      'radio = FormControl("Region", RadioGroup("region", [Option("eu", "Europe"), Option("us", "United States"), Option("ap", "Asia Pacific")]))',
-      'picks = FormControl("Extras", CheckBoxGroup("extras", [CheckBoxItem("ci", "CI minutes", "Faster builds", true), CheckBoxItem("sso", "SSO"), CheckBoxItem("audit", "Audit log", "Keep every change")]))',
-      'toggles = FormControl("Notify", SwitchGroup("notify", [SwitchItem("mail", "Email", "Weekly digest", true), SwitchItem("chat", "Chat")]))',
-      'follow = FollowUpBlock([FollowUpItem("Why is it slow?"), FollowUpItem("Show the queries"), FollowUpItem("Compare with last month")])',
-    ),
-  },
-  e1: {
-    ask: "e1",
-    before: "e1",
-    program: lines(
-      'root = Card([plan, toggles], "A")',
-      'plan = FormControl("Plan", OptionCards("plan", [OptionCard("free", "Free", "For trying it out"), OptionCard("pro", "Pro", "For teams that ship every day")]))',
-      'toggles = FormControl("Notify", SwitchGroup("notify", [SwitchItem("mail", "Email", "Weekly digest", true), SwitchItem("chat", "Chat")]))',
-    ),
-  },
-  e2: {
-    ask: "e2",
-    before: "e2",
-    program: lines(
-      'root = Card([plan, radio], "A")',
-      'plan = FormControl("Plan", OptionCards("plan", [OptionCard("free", "Free", "For trying it out"), OptionCard("pro", "Pro", "For teams that ship every day")]))',
-      'radio = FormControl("Region", RadioGroup("region", [Option("eu", "Europe"), Option("us", "United States"), Option("ap", "Asia Pacific")]))',
-    ),
-  },
-  e3: {
-    ask: "e3",
-    before: "e3",
-    program: lines(
-      'root = Card([plan, radio, toggles], "A")',
-      'plan = FormControl("Plan", OptionCards("plan", [OptionCard("free", "Free", "For trying it out"), OptionCard("pro", "Pro", "For teams that ship every day")]))',
-      'radio = FormControl("Region", RadioGroup("region", [Option("eu", "Europe"), Option("us", "United States"), Option("ap", "Asia Pacific")]))',
-      'toggles = FormControl("Notify", SwitchGroup("notify", [SwitchItem("mail", "Email", "Weekly digest", true), SwitchItem("chat", "Chat")]))',
-    ),
-  },
-  f1: {
-    ask: "f1",
-    before: "f1",
-    program: lines(
-      'root = Card([radio, toggles, plan], "A")',
-      'radio = FormControl("Region", RadioGroup("region", [Option("eu", "Europe"), Option("us", "United States"), Option("ap", "Asia Pacific")]))',
-      'toggles = FormControl("Notify", SwitchGroup("notify", [SwitchItem("mail", "Email", "Weekly digest", true), SwitchItem("chat", "Chat")]))',
-      'plan = FormControl("Plan", OptionCards("plan", [OptionCard("free", "Free", "For trying it out"), OptionCard("pro", "Pro", "For teams that ship every day"), OptionCard("ent", "Enterprise", "Single sign-on and an audit trail")]))',
-    ),
-  },
-  f2: {
-    ask: "f2",
-    before: "f2",
-    program: lines(
-      'root = Card([plan], "A")',
-      'plan = FormControl("Plan", OptionCards("plan", [OptionCard("free", "Free", "For trying it out"), OptionCard("pro", "Pro", "For teams that ship every day"), OptionCard("ent", "Enterprise", "Single sign-on and an audit trail")]))',
-    ),
-  },
-  f3: {
-    ask: "f3",
-    before: "f3",
-    program: lines(
-      'root = Card([plan, radio, radio2], "A")',
-      'plan = FormControl("Plan", OptionCards("plan", [OptionCard("free", "Free", "For trying it out"), OptionCard("pro", "Pro", "For teams that ship every day"), OptionCard("ent", "Enterprise", "Single sign-on and an audit trail")]))',
-      'radio = FormControl("Region", RadioGroup("region", [Option("eu", "Europe"), Option("us", "United States"), Option("ap", "Asia Pacific")]))',
-      'radio2 = FormControl("Region", RadioGroup("region2", [Option("eu", "Europe"), Option("us", "United States"), Option("ap", "Asia Pacific")]))',
+      'root = Card([f, Text("Half way")], "Streaming")',
+      'f = Form("s", [FormControl("Name", Input("name", "Your name")), FormControl("Pick", Select("pick", [Option("a", "A")]))], Buttons([Button("Send", null, "primary")]))',
+      "half = Stack([Tex",
     ),
   },
 };
