@@ -1061,7 +1061,6 @@ pub(crate) fn file_name(src: &str) -> String {
     }
 }
 
-/// The sources of the images that are drawn in full: not inside a table or the like.
 /// Narrows the widest columns until they fit `avail` cells together (each keeps one).
 pub(crate) fn fit_columns(widths: &mut [usize], avail: usize) {
     let mut total: usize = widths.iter().sum();
@@ -1086,13 +1085,51 @@ pub(crate) fn fit_columns(widths: &mut [usize], avail: usize) {
     }
 }
 
+/// The sources of the images that are drawn in full: not inside a table or the like. Images of
+/// OpenUI docs count too, also those in a text's blocks.
 pub(crate) fn sources(c: &pb::Component, out: &mut Vec<String>) {
     match c {
         pb::Component::ImageComponent(v) => out.push(v.src.clone()),
         pb::Component::CardComponent(v) => v.children.iter().for_each(|c| sources(c, out)),
         pb::Component::RowComponent(v) => v.children.iter().for_each(|c| sources(c, out)),
         pb::Component::StackComponent(v) => v.children.iter().for_each(|c| sources(c, out)),
+        pb::Component::TextComponent(v) => block_sources(&v.blocks, out),
+        pb::Component::OpenUiComponent(v) => doc_sources(&v.ui, out),
         _ => {}
+    }
+}
+
+fn block_sources(bs: &[pb::Block], out: &mut Vec<String>) {
+    for b in bs {
+        match b {
+            pb::Block::OpenUiBlock(v) => doc_sources(&v.ui, out),
+            pb::Block::QuoteBlock(v) => block_sources(&v.blocks, out),
+            pb::Block::ListBlock(v) => v.items.iter().for_each(|i| block_sources(&i.blocks, out)),
+            _ => {}
+        }
+    }
+}
+
+/// The `src` of every `Image` in a doc, a gallery's included.
+fn doc_sources(doc: &pb::UiDoc, out: &mut Vec<String>) {
+    fn visit(value: &serde_json::Value, out: &mut Vec<String>) {
+        match value {
+            serde_json::Value::Array(items) => items.iter().for_each(|v| visit(v, out)),
+            serde_json::Value::Object(map) => {
+                if map.get("component").and_then(|c| c.as_str()) == Some("Image")
+                    && let Some(src) = value.pointer("/props/src").and_then(|s| s.as_str())
+                {
+                    out.push(src.to_string());
+                }
+                map.values().for_each(|v| visit(v, out));
+            }
+            _ => {}
+        }
+    }
+    if let Some(root) = &doc.root
+        && let Ok(value) = serde_json::to_value(root)
+    {
+        visit(&value, out);
     }
 }
 

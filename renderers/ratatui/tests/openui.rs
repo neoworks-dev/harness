@@ -11,8 +11,8 @@ use ratatui::style::{Color, Modifier};
 use serde_json::{Value, json};
 use suite_protocol::ViewItem;
 use suite_renderer_ratatui::{
-    ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiEdit, UiKind, UiState, openui_docs,
-    openui_targets, plain_text, render_item, render_item_images,
+    ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiEdit, UiKind, UiState, image_sources,
+    openui_docs, openui_targets, plain_text, render_item, render_item_images,
 };
 
 fn pal() -> Palette {
@@ -1438,7 +1438,7 @@ fn a_metric_indicator_colors_its_change_by_direction_unless_told_otherwise() {
 fn metric_indicators_sit_in_rows_and_table_cells_and_never_overflow() {
     let up = || indicator(json!({"value": "812", "delta": "3%", "direction": "up"}));
     let it = doc(row(vec![up(), tag("live"), up()], json!({})));
-    assert_eq!(lines(&it, 80), ["812 ▲ 3%   [live]   812 ▲ 3%"]);
+    assert_eq!(lines(&it, 80), ["812 ▲ 3%    live    812 ▲ 3%"]);
     let table = doc(node(
         "Table",
         json!({"columns": ["Region", "Orders"], "rows": [["EU", up()], ["US", up()]]}),
@@ -1739,8 +1739,8 @@ fn an_entity_list_is_columns_of_title_subtitle_and_trailing() {
     assert_eq!(
         lines(&it, 80),
         [
-            "Ada Lovelace  analyst                         [admin]",
-            "Grace Hopper  rear admiral, compiler pioneer  [owner]",
+            "Ada Lovelace  analyst                          admin",
+            "Grace Hopper  rear admiral, compiler pioneer   owner",
             "Linus",
         ]
     );
@@ -1762,7 +1762,7 @@ fn a_long_subtitle_is_cut_before_the_list_stacks() {
     let it = doc(people());
     let out = lines(&it, 40);
     assert_eq!(out.len(), 3, "{out:?}");
-    assert_eq!(out[1], "Grace Hopper  rear admiral, co…  [owner]");
+    assert_eq!(out[1], "Grace Hopper  rear admiral, co…   owner");
 }
 
 #[test]
@@ -1771,9 +1771,9 @@ fn a_narrow_entity_list_puts_the_subtitle_under_the_title() {
     assert_eq!(
         lines(&it, 24),
         [
-            "Ada Lovelace  [admin]",
+            "Ada Lovelace   admin",
             "  analyst",
-            "Grace Hopper  [owner]",
+            "Grace Hopper   owner",
             "  rear admiral, compiler",
             "  pioneer",
             "Linus",
@@ -2376,4 +2376,36 @@ fn a_form_in_a_card_keeps_its_focus_line() {
     // The field, not its label: the first line of the focused target.
     assert!(out[line].contains("│ [ "), "{line} {out:?}");
     assert_eq!(openui_targets(&it, &opts).len(), 1);
+}
+
+#[test]
+fn the_images_of_a_doc_are_asked_for_also_in_cards_and_galleries() {
+    let image = |src: &str| node("Image", json!({"src": src, "alt": "room"}));
+    let it = doc(node(
+        "Grid",
+        json!({"children": [
+            node("Card", json!({"children": [image("https://x.test/a.jpg"), text("Hôtel A")]})),
+            node("Card", json!({"children": [
+                node("ImageGallery", json!({"images": [image("https://x.test/b.jpg"), image("asset://img-c")]})),
+            ]})),
+        ]}),
+    ));
+    assert_eq!(
+        image_sources(&it),
+        [
+            "https://x.test/a.jpg",
+            "https://x.test/b.jpg",
+            "asset://img-c"
+        ]
+    );
+    let in_text = item_of(
+        "agent",
+        "",
+        &json!({"type": "text", "blocks": [
+            {"type": "paragraph", "spans": [{"text": "Here:"}]},
+            {"type": "openui", "ui": {"id": "0", "root": image("/tmp/d.png")}},
+        ]})
+        .to_string(),
+    );
+    assert_eq!(image_sources(&in_text), ["/tmp/d.png"]);
 }
