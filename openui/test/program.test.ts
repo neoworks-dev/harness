@@ -96,6 +96,20 @@ describe("evaluating", () => {
     expect(p.doc().errors).toBeUndefined();
   });
 
+  test("a gallery holds its images as Image nodes", () => {
+    const p = program('root = ImageGallery([Image("a.png", "A"), Image("b.png")])');
+    expect(p.doc().root).toEqual({
+      component: "ImageGallery",
+      props: {
+        images: [
+          { component: "Image", props: { src: "a.png", alt: "A" } },
+          { component: "Image", props: { src: "b.png" } },
+        ],
+      },
+    });
+    expect(p.doc().errors).toBeUndefined();
+  });
+
   test("a metric indicator keeps its value, change, direction and note", () => {
     const p = program('root = MetricIndicator(1284, "12%", "up", null, "vs last week")');
     expect(p.doc().root).toEqual({

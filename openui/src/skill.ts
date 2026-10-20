@@ -67,6 +67,8 @@ Lay a dashboard out the way a page is, not as one long column:
   (\`MetricIndicator("$1.2M", "8%", "up")\`); use \`Metric\` for the headline numbers of a page.
 - Use \`Carousel\` for more cards than fit side by side (five or more options or items, each
   small); the user scrolls through them. For two to four cards a \`Grid\` is better.
+- Use \`ImageGallery\` for several pictures of one thing (photos, screenshots, a before and
+  after); \`Image\` for a single one.
 
 ## Forms and buttons
 

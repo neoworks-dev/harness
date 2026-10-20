@@ -58,6 +58,8 @@ Lay a dashboard out the way a page is, not as one long column:
   (`MetricIndicator("$1.2M", "8%", "up")`); use `Metric` for the headline numbers of a page.
 - Use `Carousel` for more cards than fit side by side (five or more options or items, each
   small); the user scrolls through them. For two to four cards a `Grid` is better.
+- Use `ImageGallery` for several pictures of one thing (photos, screenshots, a before and
+  after); `Image` for a single one.
 
 ## Forms and buttons
 
@@ -137,6 +139,7 @@ Metric(label: string, value: string | number, delta?: string, tone?: "accent" | 
 MetricIndicator(value: string | number, delta?: string, direction?: "up" | "down", tone?: "accent" | "muted" | "success" | "danger", subtext?: string) — A compact inline metric: a value with an optional change, an up or down arrow in the change's tone (default: up success, down danger) and a note; use it in cards, tables and lists where Metric is too big
 Progress(value: number, label?: string) — A progress bar; value is 0 to 1
 Image(src: string, alt?: string) — An image from a URL or asset handle
+ImageGallery(images: Image[]) — Several images of one subject: the first large, the others small beside it
 Link(text: string, url: string) — A link
 
 ### Charts

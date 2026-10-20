@@ -245,6 +245,12 @@ const Image = define(
   z.object({ src: z.string(), alt: z.string().optional() }),
 );
 
+const ImageGallery = define(
+  "ImageGallery",
+  "Several images of one subject: the first large, the others small beside it",
+  z.object({ images: z.array(Image.ref) }),
+);
+
 const Link = define("Link", "A link", z.object({ text: z.string(), url: z.string() }));
 
 // ─── Charts ─────────────────────────────────────────────────────────────────
@@ -519,6 +525,7 @@ export const library = createLibrary({
     MetricIndicator,
     Progress,
     Image,
+    ImageGallery,
     Link,
     BarChart,
     LineChart,
@@ -585,6 +592,7 @@ export const library = createLibrary({
         "MetricIndicator",
         "Progress",
         "Image",
+        "ImageGallery",
         "Link",
       ],
     },

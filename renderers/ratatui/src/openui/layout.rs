@@ -125,6 +125,7 @@ impl<'a> Cx<'a> {
             "MetricIndicator" => self.ui_metric_indicator(n, w),
             "Progress" => self.ui_progress(n, w),
             "Image" => self.ui_image(n, w),
+            "ImageGallery" => self.ui_gallery(n, w),
             "Link" => self.ui_link(n, w),
             "BarChart" => self.ui_bar_chart(n, w),
             "LineChart" => self.ui_line_chart(n, false, w),

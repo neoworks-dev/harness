@@ -29,6 +29,7 @@ const ORDER: Record<string, string[]> = {
   MetricIndicator: ["value", "delta", "direction", "tone", "subtext"],
   Progress: ["value", "label"],
   Image: ["src", "alt"],
+  ImageGallery: ["images"],
   Link: ["text", "url"],
   BarChart: ["labels", "series", "horizontal", "stacked"],
   LineChart: ["labels", "series"],

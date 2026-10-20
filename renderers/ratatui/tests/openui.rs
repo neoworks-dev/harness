@@ -4,14 +4,15 @@
 mod common;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use common::*;
 use ratatui::style::{Color, Modifier};
 use serde_json::{Value, json};
 use suite_protocol::ViewItem;
 use suite_renderer_ratatui::{
-    Options, Palette, UiEdit, UiKind, UiState, openui_docs, openui_targets, plain_text,
-    render_item, render_item_images,
+    ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiEdit, UiKind, UiState, openui_docs,
+    openui_targets, plain_text, render_item, render_item_images,
 };
 
 fn pal() -> Palette {
@@ -1053,6 +1054,185 @@ fn follow_ups_can_be_focused_but_do_not_ask_for_the_keyboard() {
         keyed("Input", "name", json!({"name": "name"})),
     ]));
     assert!(openui_docs(&both)[0].interactive);
+}
+
+// ---- image galleries ----
+
+fn picture(src: &str, alt: &str) -> Value {
+    node("Image", json!({"src": src, "alt": alt}))
+}
+
+fn gallery(n: usize) -> Value {
+    let names = [
+        "Harbour",
+        "Market",
+        "Lighthouse",
+        "Dunes",
+        "Cliffs",
+        "Bridge",
+    ];
+    let images: Vec<Value> = (0..n)
+        .map(|i| picture(&format!("/p/{i}.png"), names[i % names.len()]))
+        .collect();
+    node("ImageGallery", json!({"images": images}))
+}
+
+/// Pictures of 400x300 pixels in 10x20 pixel cells, `ready` of them known.
+fn pictures(ready: &[usize], rows: u16) -> Options {
+    let status: HashMap<String, ImageStatus> = ready
+        .iter()
+        .map(|i| {
+            (
+                format!("/p/{i}.png"),
+                ImageStatus::Ready {
+                    width: 400,
+                    height: 300,
+                },
+            )
+        })
+        .collect();
+    Options {
+        images: Some(ImageOptions {
+            max_rows: rows,
+            cell: (10, 20),
+            status: Arc::new(status),
+        }),
+        ..Options::default()
+    }
+}
+
+fn slot(line: usize, x: u16, cols: u16, rows: u16, src: &str) -> ImageSlot {
+    ImageSlot {
+        line,
+        x,
+        cols,
+        rows,
+        src: src.into(),
+    }
+}
+
+#[test]
+fn a_gallery_is_one_large_picture_with_small_ones_stacked_beside_it() {
+    let it = doc(gallery(4));
+    let out = render_item_images(&it, 80, &pictures(&[0, 1, 2, 3], 12));
+    assert_eq!(
+        out.images,
+        [
+            slot(0, 0, 32, 12, "/p/0.png"),
+            slot(0, 34, 8, 3, "/p/1.png"),
+            slot(4, 34, 8, 3, "/p/2.png"),
+            slot(8, 34, 8, 3, "/p/3.png"),
+        ]
+    );
+    let text = plain_text(&out.lines);
+    assert_eq!(text.len(), 12 + 1);
+    assert_eq!(text[12], "Harbour · 400×300");
+    assert!(text[..12].iter().all(String::is_empty));
+    // Nothing is left of the marks and nothing is wider than the view.
+    assert!(out.lines.iter().all(|l| l.width() <= 80));
+    assert!(
+        out.lines
+            .iter()
+            .flat_map(|l| &l.spans)
+            .all(|s| s.content != "\u{2060}")
+    );
+}
+
+#[test]
+fn a_gallery_shows_four_pictures_and_counts_the_rest() {
+    let it = doc(gallery(6));
+    let out = render_item_images(&it, 80, &pictures(&[0, 1, 2, 3, 4, 5], 12));
+    assert_eq!(out.images.len(), 4);
+    assert_eq!(
+        plain_text(&out.lines).last().unwrap(),
+        "Harbour · 400×300  +2 more"
+    );
+    // Two pictures: the large one and one beside it.
+    let out = render_item_images(&doc(gallery(2)), 80, &pictures(&[0, 1], 12));
+    assert_eq!(out.images.len(), 2);
+    assert_eq!((out.images[1].x, out.images[1].line), (34, 0));
+    assert_eq!((out.images[1].cols, out.images[1].rows), (16, 6));
+}
+
+#[test]
+fn a_narrow_gallery_keeps_the_large_picture_and_says_how_many_more() {
+    let out = render_item_images(&doc(gallery(4)), 30, &pictures(&[0, 1, 2, 3], 12));
+    assert_eq!(out.images.len(), 1);
+    assert_eq!(out.images[0].cols, 30);
+    assert_eq!(
+        plain_text(&out.lines).last().unwrap(),
+        "Harbour · 400×300  +3 more"
+    );
+}
+
+#[test]
+fn pictures_that_are_not_there_yet_keep_their_text() {
+    let it = doc(gallery(3));
+    // One is ready: the images one after the other, as `Image` draws them.
+    let out = render_item_images(&it, 80, &pictures(&[1], 12));
+    let text = plain_text(&out.lines);
+    assert_eq!(out.images, [slot(1, 0, 32, 12, "/p/1.png")]);
+    assert_eq!(text[0], "[image Harbour] loading image…");
+    assert!(text.contains(&"[image Lighthouse] loading image…".to_string()));
+    // Two ready, one still loading: the gallery, then the text of the third.
+    let out = render_item_images(&it, 80, &pictures(&[0, 2], 12));
+    assert_eq!(out.images.len(), 2);
+    assert_eq!(
+        plain_text(&out.lines).last().unwrap(),
+        "[image Market] loading image…"
+    );
+    // Without room for pictures they are placeholders.
+    assert_eq!(
+        lines(&it, 80),
+        ["[image Harbour]", "[image Market]", "[image Lighthouse]"]
+    );
+}
+
+#[test]
+fn a_picture_in_a_row_or_grid_keeps_its_room() {
+    // Measuring the row draws its children once without keeping them.
+    let it = doc(row(
+        vec![picture("/p/0.png", "Harbour"), tag("new")],
+        json!({}),
+    ));
+    let out = render_item_images(&it, 80, &pictures(&[0], 12));
+    assert_eq!(out.images.len(), 1);
+    assert_eq!((out.images[0].line, out.images[0].x), (0, 0));
+    let it = doc(node(
+        "Grid",
+        json!({"children": [
+            card("A", vec![picture("/p/0.png", "Harbour")]),
+            card("B", vec![picture("/p/1.png", "Market")]),
+        ]}),
+    ));
+    let out = render_item_images(&it, 100, &pictures(&[0, 1], 12));
+    assert_eq!(out.images.len(), 2);
+    assert!(out.images[0].x < out.images[1].x);
+}
+
+#[test]
+fn galleries_fit_at_every_width() {
+    for n in [2, 4, 6] {
+        let ready: Vec<usize> = (0..n).collect();
+        let opts = pictures(&ready, 12);
+        let it = doc(card("Trip", vec![gallery(n)]));
+        for width in 1..=120u16 {
+            let out = render_item_images(&it, width, &opts);
+            for (i, line) in out.lines.iter().enumerate() {
+                assert!(line.width() <= usize::from(width), "{width} line {i}");
+            }
+            for s in &out.images {
+                assert!(
+                    usize::from(s.x + s.cols) <= usize::from(width),
+                    "{width}: {s:?}"
+                );
+                assert!(
+                    s.line + usize::from(s.rows) <= out.lines.len(),
+                    "{width}: {s:?}"
+                );
+            }
+        }
+    }
 }
 
 // ---- carousels ----

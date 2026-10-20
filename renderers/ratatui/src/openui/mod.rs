@@ -169,6 +169,13 @@ pub(crate) struct Run {
     pub(crate) focus_line: Option<usize>,
 }
 
+impl Run {
+    /// Drawing only to measure: the lines will be thrown away.
+    pub(crate) fn drawing_to_measure(&self) -> bool {
+        self.quiet > 0
+    }
+}
+
 /// A node of the doc: an object with `component`, optionally `key` and `partial`, and `props`.
 #[derive(Clone, Copy)]
 pub(crate) struct N<'a>(&'a Value);
