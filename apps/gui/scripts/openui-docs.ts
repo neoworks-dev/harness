@@ -163,6 +163,18 @@ export const DOCS: Record<string, SceneDoc> = {
       'gallery = ImageGallery([Image("{{ASSET}}", "From the asset store"), Image("{{FILE}}", "From disk"), Image("/nonexistent/second.png", "Missing"), Image("https://example.com/not-an-image", "Not an image")])',
     ),
   },
+  places: {
+    ask: "find me a hotel",
+    before: "Three design hotels, each card a photo, a line on it and what to do next.",
+    program: lines(
+      "root = Grid([c1, c2, c3])",
+      'c1 = Card([Image("https://www.superbude.com/site/assets/files/231380/superbude_hotel_hamburg_st__pauli_interior_dreibettbude_9.1600x0.jpg", "Superbude St. Pauli room"), Text("Playful design hostel in St. Pauli, a lively bar downstairs."), Text("**€270–340** for 3 nights", "muted"), b1], "Superbude St. Pauli")',
+      'b1 = Buttons([Button("Website", @OpenUrl("https://www.superbude.com"), "secondary"), Button("More like this", @ToAssistant("More like Superbude"), "secondary")])',
+      'c2 = Card([Image("https://image.motel-one.com/fileadmin/dam/Hotels/Hamburg/Hamburg_am_Michel/Redesign_2024_Rooms_Only/medium-MotelOne-HamburgamMichel_TheOne-3261.jpeg?w=1250&h=833&format=jpeg&quality=80&fit=cover", "Motel One room"), Text("Small, tidy, dark blue rooms by the Michel and the harbour."), Text("**€290–350** for 3 nights", "muted"), b2], "Motel One Michel")',
+      'b2 = Buttons([Button("Website", @OpenUrl("https://www.motel-one.com"), "secondary"), Button("Compare", @ToAssistant("Compare Motel One"), "secondary")])',
+      'c3 = Card([Image("{{FILE}}", "A picture on disk"), Text("A card whose picture is on disk, without buttons.")], "From disk")',
+    ),
+  },
   streaming: {
     ask: "ask me",
     before: "Fill this in.",

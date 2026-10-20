@@ -11,11 +11,13 @@
     alt?: string;
     width: number;
     height: number;
-    /** Corner radius; the box's own when absent. */
-    radius?: number;
+    /** Corner radius, or each corner's; the box's own when absent. */
+    radius?: number | [number, number, number, number];
+    /** `cover` fills the box and crops, `contain` (the default) shows all of the picture. */
+    fit?: "contain" | "cover";
   }
 
-  let { src, alt, width, height, radius }: Props = $props();
+  let { src, alt, width, height, radius, fit = "contain" }: Props = $props();
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
 
@@ -61,7 +63,7 @@
 {#if url !== undefined && failure === undefined}
   <Image
     src={url}
-    fit="contain"
+    {fit}
     style={{ width, height, radius: radius ?? p.radius.s, background: p.raised }}
     onerror={() => (failure = "could not be loaded")}
   />

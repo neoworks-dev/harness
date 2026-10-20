@@ -32,6 +32,11 @@ export function insideCard(width: number): number {
   return Math.max(0, width - (CARD_PADDING + 1) * 2);
 }
 
+/** How tall a card's cover picture is across `width`: 16:9, but never more than 240 pixels. */
+export function coverHeight(width: number): number {
+  return Math.round(Math.min(width * (9 / 16), 240));
+}
+
 /** How many columns of at least `min` fit in `width` with `gap` between, at most `max`. */
 export function columnsFor(
   width: number,

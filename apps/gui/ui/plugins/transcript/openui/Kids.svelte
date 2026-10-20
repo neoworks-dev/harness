@@ -17,10 +17,12 @@
     prop?: string;
     gap?: number;
     align?: "start" | "center" | "end" | "stretch";
+    /** Leading children drawn elsewhere (a card's cover picture); the rest keep their paths. */
+    skip?: number;
   }
 
-  let { children, path, width, prop = "children", gap = 12, align = "stretch" }: Props = $props();
-  const parts = $derived(segments(children));
+  let { children, path, width, prop = "children", gap = 12, align = "stretch", skip = 0 }: Props = $props();
+  const parts = $derived(segments(children).filter((part) => part.kind !== "node" || part.at.index >= skip));
 </script>
 
 <!-- The transparent border is no decoration: without any border or fill, the host laid a column of
