@@ -384,6 +384,37 @@ impl<'a> Cx<'a> {
         (spans, n.line("label"))
     }
 
+    /// `1,284 ▲ 12% vs last week`: the value bold, the change with its arrow in the tone's color
+    /// (up is success and down danger unless the node says otherwise), the note muted.
+    pub(super) fn ui_metric_indicator(&mut self, n: N<'_>, w: usize) -> Lines {
+        let (arrow, by_direction) = match n.str("direction") {
+            Some("up") => ("▲", Some(pb::Tone::Success)),
+            Some("down") => ("▼", Some(pb::Tone::Danger)),
+            _ => ("", None),
+        };
+        let change = match (arrow, n.line("delta")) {
+            ("", None) => None,
+            ("", Some(d)) => Some(d),
+            (a, None) => Some(a.to_string()),
+            (a, Some(d)) => Some(format!("{a} {d}")),
+        };
+        let mut spans = vec![Span::styled(
+            n.prop("value").map(scalar).unwrap_or_default(),
+            Style::new().add_modifier(Modifier::BOLD),
+        )];
+        if let Some(change) = change {
+            let style = match n.tone().or(by_direction) {
+                Some(t) => Style::new().fg(self.p.tone(t)),
+                None => self.p.muted_style(),
+            };
+            spans.push(Span::styled(format!(" {change}"), style));
+        }
+        if let Some(note) = n.line("subtext") {
+            spans.push(Span::styled(format!(" {note}"), self.p.muted_style()));
+        }
+        wrap(&spans, w)
+    }
+
     /// The value in bold with the delta in the tone's color, the label muted under them.
     pub(super) fn ui_metric(&mut self, n: N<'_>, w: usize) -> Lines {
         self.ui_metric_strip(&[n], w)

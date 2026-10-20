@@ -25,6 +25,7 @@ const ORDER: Record<string, string[]> = {
   ListItem: ["title", "subtitle", "trailing"],
   Callout: ["text", "tone", "title"],
   Metric: ["label", "value", "delta", "tone"],
+  MetricIndicator: ["value", "delta", "direction", "tone", "subtext"],
   Progress: ["value", "label"],
   Image: ["src", "alt"],
   Link: ["text", "url"],

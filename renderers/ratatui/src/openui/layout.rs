@@ -121,6 +121,7 @@ impl<'a> Cx<'a> {
             "Tag" => self.ui_tag(n, w),
             "EntityList" => self.ui_entity_list(n, path, w),
             "Metric" => self.ui_metric(n, w),
+            "MetricIndicator" => self.ui_metric_indicator(n, w),
             "Progress" => self.ui_progress(n, w),
             "Image" => self.ui_image(n, w),
             "Link" => self.ui_link(n, w),
@@ -281,7 +282,7 @@ impl<'a> Cx<'a> {
     fn ui_min(&mut self, n: N<'_>, pref: usize) -> usize {
         let word = |s: &str| s.split_whitespace().map(width).max().unwrap_or(0);
         let min = match n.name() {
-            "Metric" | "Tag" | "Link" | "Button" | "FollowUpItem" => pref,
+            "Metric" | "MetricIndicator" | "Tag" | "Link" | "Button" | "FollowUpItem" => pref,
             "Header" => word(n.str("title").unwrap_or("")),
             "Text" | "Callout" => {
                 let blocks = n

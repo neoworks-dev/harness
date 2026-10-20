@@ -63,6 +63,8 @@ Lay a dashboard out the way a page is, not as one long column:
 - Use \`CheckBoxGroup\` to pick any number from a list (its value is the list of checked
   names) and \`SwitchGroup\` for a few settings that are on or off (its value is an object).
   Several single CheckBoxes or Switches are fine for one or two; use a group beyond that.
+- Use \`MetricIndicator\` for a number with its change inline in a card, list or table cell
+  (\`MetricIndicator("$1.2M", "8%", "up")\`); use \`Metric\` for the headline numbers of a page.
 
 ## Forms and buttons
 

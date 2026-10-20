@@ -54,6 +54,8 @@ Lay a dashboard out the way a page is, not as one long column:
 - Use `CheckBoxGroup` to pick any number from a list (its value is the list of checked
   names) and `SwitchGroup` for a few settings that are on or off (its value is an object).
   Several single CheckBoxes or Switches are fine for one or two; use a group beyond that.
+- Use `MetricIndicator` for a number with its change inline in a card, list or table cell
+  (`MetricIndicator("$1.2M", "8%", "up")`); use `Metric` for the headline numbers of a page.
 
 ## Forms and buttons
 
@@ -129,6 +131,7 @@ EntityList(items: ListItem[]) — Rows of things with a title, a muted subtitle 
 ListItem(title: string, subtitle?: string, trailing?: string | number | Tag) — One row of EntityList; trailing is a value or a Tag
 Callout(text: string, tone?: "accent" | "muted" | "success" | "danger", title?: string) — A highlighted note; text is markdown
 Metric(label: string, value: string | number, delta?: string, tone?: "accent" | "muted" | "success" | "danger") — A headline number with an optional change
+MetricIndicator(value: string | number, delta?: string, direction?: "up" | "down", tone?: "accent" | "muted" | "success" | "danger", subtext?: string) — A compact inline metric: a value with an optional change, an up or down arrow in the change's tone (default: up success, down danger) and a note; use it in cards, tables and lists where Metric is too big
 Progress(value: number, label?: string) — A progress bar; value is 0 to 1
 Image(src: string, alt?: string) — An image from a URL or asset handle
 Link(text: string, url: string) — A link

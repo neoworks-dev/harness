@@ -1055,6 +1055,88 @@ fn follow_ups_can_be_focused_but_do_not_ask_for_the_keyboard() {
     assert!(openui_docs(&both)[0].interactive);
 }
 
+// ---- metric indicators ----
+
+fn indicator(props: Value) -> Value {
+    node("MetricIndicator", props)
+}
+
+#[test]
+fn a_metric_indicator_is_the_value_an_arrow_with_the_change_and_a_note() {
+    let it = doc(column(vec![
+        indicator(
+            json!({"value": 1284, "delta": "12%", "direction": "up", "subtext": "vs last week"}),
+        ),
+        indicator(json!({"value": "3.2s", "delta": "0.4s", "direction": "down"})),
+        indicator(json!({"value": "99.9%", "delta": "stable"})),
+        indicator(json!({"value": "17", "direction": "up"})),
+        indicator(json!({"value": "42"})),
+    ]));
+    assert_eq!(
+        lines(&it, 80),
+        [
+            "1284 ▲ 12% vs last week",
+            "3.2s ▼ 0.4s",
+            "99.9% stable",
+            "17 ▲",
+            "42",
+        ]
+    );
+}
+
+#[test]
+fn a_metric_indicator_colors_its_change_by_direction_unless_told_otherwise() {
+    let color = |props: Value| {
+        let rendered = render_item(&doc(indicator(props)), 80, &Options::default());
+        let span = rendered[0]
+            .spans
+            .iter()
+            .find(|s| s.content.contains("5%"))
+            .unwrap();
+        span.style.fg
+    };
+    let p = pal();
+    assert_eq!(
+        color(json!({"value": 1, "delta": "5%", "direction": "up"})),
+        Some(p.success)
+    );
+    assert_eq!(
+        color(json!({"value": 1, "delta": "5%", "direction": "down"})),
+        Some(p.danger)
+    );
+    // Costs going down are good news.
+    assert_eq!(
+        color(json!({"value": 1, "delta": "5%", "direction": "down", "tone": "success"})),
+        Some(p.success)
+    );
+    assert_eq!(color(json!({"value": 1, "delta": "5%"})), Some(p.muted));
+    let rendered = render_item(
+        &doc(indicator(json!({"value": 7}))),
+        80,
+        &Options::default(),
+    );
+    assert!(
+        rendered[0].spans[0]
+            .style
+            .add_modifier
+            .contains(Modifier::BOLD)
+    );
+}
+
+#[test]
+fn metric_indicators_sit_in_rows_and_table_cells_and_never_overflow() {
+    let up = || indicator(json!({"value": "812", "delta": "3%", "direction": "up"}));
+    let it = doc(row(vec![up(), tag("live"), up()], json!({})));
+    assert_eq!(lines(&it, 80), ["812 ▲ 3%   [live]   812 ▲ 3%"]);
+    let table = doc(node(
+        "Table",
+        json!({"columns": ["Region", "Orders"], "rows": [["EU", up()], ["US", up()]]}),
+    ));
+    assert_eq!(lines(&table, 80)[2], "EU     │ 812 ▲ 3%");
+    assert_fits(&it, &Options::default());
+    assert_fits(&doc(up()), &Options::default());
+}
+
 // ---- option cards ----
 
 fn plans(value: Option<&str>) -> Value {

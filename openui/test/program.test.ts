@@ -96,6 +96,15 @@ describe("evaluating", () => {
     expect(p.doc().errors).toBeUndefined();
   });
 
+  test("a metric indicator keeps its value, change, direction and note", () => {
+    const p = program('root = MetricIndicator(1284, "12%", "up", null, "vs last week")');
+    expect(p.doc().root).toEqual({
+      component: "MetricIndicator",
+      props: { value: 1284, delta: "12%", direction: "up", subtext: "vs last week" },
+    });
+    expect(p.doc().errors).toBeUndefined();
+  });
+
   test("Text and Callout carry the parsed markdown beside their text", () => {
     const p = program('root = Callout("**hi**", "danger")');
     expect(p.doc().root?.props).toEqual({

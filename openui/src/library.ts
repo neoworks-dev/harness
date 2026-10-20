@@ -215,6 +215,18 @@ const Metric = define(
   }),
 );
 
+const MetricIndicator = define(
+  "MetricIndicator",
+  "A compact inline metric: a value with an optional change, an up or down arrow in the change's tone (default: up success, down danger) and a note; use it in cards, tables and lists where Metric is too big",
+  z.object({
+    value: z.union([z.string(), z.number()]),
+    delta: z.string().optional(),
+    direction: z.enum(["up", "down"]).optional(),
+    tone: tone.optional(),
+    subtext: z.string().optional(),
+  }),
+);
+
 const Progress = define(
   "Progress",
   "A progress bar; value is 0 to 1",
@@ -497,6 +509,7 @@ export const library = createLibrary({
     ListItem,
     Callout,
     Metric,
+    MetricIndicator,
     Progress,
     Image,
     Link,
@@ -561,6 +574,7 @@ export const library = createLibrary({
         "ListItem",
         "Callout",
         "Metric",
+        "MetricIndicator",
         "Progress",
         "Image",
         "Link",

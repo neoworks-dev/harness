@@ -74,22 +74,23 @@ Arguments are positional in the order listed. Optional ones are marked `?`, and 
 
 ### Content
 
-| Component    | Props                                                                                                      |
-| ------------ | ---------------------------------------------------------------------------------------------------------- |
-| `Text`       | `text: string` (markdown), `tone?: Tone`, `role?: "title" \| "body" \| "code"`                             |
-| `Code`       | `code: string`, `language?: string`                                                                        |
-| `Table`      | `columns: string[]`, `rows: (string \| number \| bool \| Node)[][]` (cells may be `Tag`, `Link` or `Text`) |
-| `List`       | `items: (string \| Node)[]`, `ordered?: bool`                                                              |
-| `KeyValue`   | `pairs: KV[]`                                                                                              |
-| `KV`         | `key: string`, `value: string \| number`, `tone?: Tone`                                                    |
-| `Tag`        | `label: string`, `tone?: Tone`                                                                             |
-| `EntityList` | `items: ListItem[]`                                                                                        |
-| `ListItem`   | `title: string`, `subtitle?: string`, `trailing?: string \| number \| Tag`                                 |
-| `Callout`    | `text: string` (markdown), `tone?: Tone`, `title?: string`                                                 |
-| `Metric`     | `label: string`, `value: string \| number`, `delta?: string`, `tone?: Tone`                                |
-| `Progress`   | `value: number` (0..1), `label?: string`                                                                   |
-| `Image`      | `src: string`, `alt?: string`                                                                              |
-| `Link`       | `text: string`, `url: string`                                                                              |
+| Component         | Props                                                                                                                                           |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Text`            | `text: string` (markdown), `tone?: Tone`, `role?: "title" \| "body" \| "code"`                                                                  |
+| `Code`            | `code: string`, `language?: string`                                                                                                             |
+| `Table`           | `columns: string[]`, `rows: (string \| number \| bool \| Node)[][]` (cells may be `Tag`, `Link` or `Text`)                                      |
+| `List`            | `items: (string \| Node)[]`, `ordered?: bool`                                                                                                   |
+| `KeyValue`        | `pairs: KV[]`                                                                                                                                   |
+| `KV`              | `key: string`, `value: string \| number`, `tone?: Tone`                                                                                         |
+| `Tag`             | `label: string`, `tone?: Tone`                                                                                                                  |
+| `EntityList`      | `items: ListItem[]`                                                                                                                             |
+| `ListItem`        | `title: string`, `subtitle?: string`, `trailing?: string \| number \| Tag`                                                                      |
+| `Callout`         | `text: string` (markdown), `tone?: Tone`, `title?: string`                                                                                      |
+| `Metric`          | `label: string`, `value: string \| number`, `delta?: string`, `tone?: Tone`                                                                     |
+| `MetricIndicator` | `value: string \| number`, `delta?: string`, `direction?: "up" \| "down"`, `tone?: Tone` (default: up success, down danger), `subtext?: string` |
+| `Progress`        | `value: number` (0..1), `label?: string`                                                                                                        |
+| `Image`           | `src: string`, `alt?: string`                                                                                                                   |
+| `Link`            | `text: string`, `url: string`                                                                                                                   |
 
 ### Charts
 
@@ -140,6 +141,7 @@ The ratatui renderer's rules (the README there is the full reference):
 - **Cards** float: a full rounded outline (`╭─ title ─╮ │ │ ╰─╯`, `tone` colors it) around a fill in the theme's surface color, one cell of padding inside. `sunk` is the fill without the outline, `clear` neither.
 - **Entity lists.** An `EntityList` is one row per `ListItem` in columns: the title bold, the subtitle muted, the trailing value or `Tag` right-aligned (numbers line up), `Ada Lovelace  analyst  [admin]`. A subtitle that does not fit is cut down to a minimum, and a list that still does not fit puts each subtitle muted under its title.
 - **Metrics.** A metric strip puts each `Metric` in its own column, divided by `│`: the value bold, the `delta` after it in its tone, the label muted under them. A single Metric is the same column on its own.
+- **Metric indicators.** A `MetricIndicator` is one inline line, `1284 ▲ 12% vs last week`: the value bold, the change with a `▲` / `▼` for `direction` in the tone's color (up is success, down danger unless `tone` says otherwise), the `subtext` muted. It sits in rows, cards, lists and table cells like text.
 - **Disclosure** is local: `Tabs` is a tab strip (`│ Overview │ Billing │`, the selected one reversed) over the selected tab's children; `AccordionItem` is `▸ title` / `▾ title`. Both are focusable and toggle with Enter, Left/Right switch tabs.
 - **Charts** are drawn by meaning, not by pixels: vertical bars with eighth blocks (`▁▂▃▄▅▆▇█`), horizontal ones half-height (`▄▄▄▖`) so neighbouring bars never touch, value at the end, horizontal whatever `horizontal` says once the labels don't fit under vertical bars; line and area charts on a braille canvas with a legend; pie and donut as one stacked bar of the slices with a `label  42%` legend; sparklines with `▁▂▃▄▅▆▇█`.
 - **Option cards.** `OptionCards` draws its options as small framed cards, as many side by side as fit (22 to 34 cells each, a further row when they do not), each `(•) Title` over its muted description; the chosen card has the accent frame. The group is one focus target that works like a `RadioGroup` (Left/Right choose).
