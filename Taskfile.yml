@@ -1,0 +1,199 @@
+# The Makefile's targets, plus the dev loops. `task --list` shows them all; `task check` builds,
+# lints and tests everything. On Arch the binary is `go-task`.
+version: "3"
+
+vars:
+  GO_MODULES: cli sdk-go renderers/tui protocol/go apps/photo
+  # Named, so rustfmt leaves path dependencies outside this repo (svelte-gpui's host) alone.
+  RUST_PACKAGES: -p suite-protocol -p suite-sdk -p suite-renderer-gpui -p suite-renderer-ratatui -p suite-pad -p suite-term -p suite-gui -p suite-github
+
+tasks:
+  default:
+    cmds:
+      - "{{.TASK_EXE}} --list"
+
+  check:
+    desc: Install, check codegen and formatting, lint, typecheck, build and test everything
+    cmds:
+      - task: install
+      - task: codegen:check
+      - task: format:check
+      - task: lint
+      - task: typecheck
+      - task: build
+      - task: test
+
+  install:
+    desc: Install the JS dependencies from the lockfile
+    cmds:
+      - bun install --frozen-lockfile
+
+  # Building
+
+  build:
+    desc: Build every binary into bin/
+    cmds:
+      - task: build:suite
+      - task: build:photo
+      - task: build:term
+      - task: build:gui
+
+  build:suite:
+    desc: The CLI and daemon launcher (bin/suite)
+    cmds:
+      - go build -o bin/suite ./cli
+
+  build:photo:
+    desc: The photo editor stand-in app (bin/photo)
+    cmds:
+      - go build -o bin/photo ./apps/photo
+
+  build:term:
+    desc: The terminal app (bin/suite-term), what `suite` with no arguments opens
+    cmds:
+      - cargo build --release -p suite-term
+      - cp target/release/suite-term bin/suite-term.tmp && mv bin/suite-term.tmp bin/suite-term
+
+  build:gui:
+    desc: The desktop app (bin/suite-gui) and its UI bundle
+    summary: Needs svelte-gpui and extension-system (built with `bun run build`) checked out next to this repo.
+    cmds:
+      - task: gui:bundle
+      - cargo build --release -p suite-gui
+      - cp target/release/suite-gui bin/suite-gui.tmp && mv bin/suite-gui.tmp bin/suite-gui
+
+  gui:bundle:
+    desc: Bundle the desktop app's Svelte UI (apps/gui/dist/gui.js)
+    cmds:
+      - bun apps/gui/build.mjs
+
+  # Running
+
+  up:
+    desc: Make sure the daemon is running
+    deps: [build:suite]
+    cmds:
+      - bin/suite up
+
+  down:
+    desc: Stop the daemon
+    cmds:
+      - bin/suite down
+
+  daemon:
+    desc: Run the daemon in the foreground
+    cmds:
+      - bun run daemon/src/main.ts
+
+  gui:
+    desc: Open the desktop app the way users do (`suite gui`), after building it
+    deps: [build:suite, build:gui]
+    cmds:
+      - bin/suite gui {{.CLI_ARGS}}
+
+  gui:dev:
+    desc: The desktop app with hot reload; a saved .svelte or .ts file updates the open window
+    summary: |
+      Watches and rebundles the UI, and runs a window that reloads when the bundle changes.
+      Rust changes (apps/gui/src) still need a restart of this task. Pick the session with
+      SUITE_GUI_SESSION=<id> or SUITE_GUI_NEW=1.
+    deps: [up]
+    cmds:
+      - cargo build --release -p suite-gui
+      - task: gui:bundle
+      - |
+        bun apps/gui/build.mjs --watch &
+        watcher=$!
+        trap 'kill $watcher 2>/dev/null' EXIT
+        target/release/suite-gui --bundle apps/gui/dist/gui.js --watch
+
+  gui:shot:
+    desc: "Screenshot the desktop app headless, e.g. `task gui:shot -- /tmp/gui.png 4` (SCENE, SEED: see apps/gui/scripts/shot.sh)"
+    cmds:
+      - apps/gui/scripts/shot.sh {{.CLI_ARGS}}
+
+  term:
+    desc: Open the terminal app, after building it
+    deps: [build:suite, build:term]
+    cmds:
+      - bin/suite
+
+  # Testing and linting
+
+  test:
+    desc: Run the TS, Go and Rust tests
+    cmds:
+      - task: test:ts
+      - task: test:go
+      - task: test:rust
+
+  test:ts:
+    cmds:
+      - bun test
+
+  test:go:
+    cmds:
+      - for: { var: GO_MODULES, split: " " }
+        cmd: echo "go test {{.ITEM}}" && go -C {{.ITEM}} test ./...
+
+  test:rust:
+    cmds:
+      - cargo test --workspace --quiet
+
+  lint:
+    desc: Lint TS, Go and Rust
+    cmds:
+      - task: lint:ts
+      - task: lint:go
+      - task: lint:rust
+
+  lint:ts:
+    cmds:
+      - bunx oxlint --type-aware --deny-warnings
+
+  lint:go:
+    cmds:
+      - out=$(gofmt -l {{.GO_MODULES}}); if [ -n "$out" ]; then echo "gofmt needed:"; echo "$out"; exit 1; fi
+      - for: { var: GO_MODULES, split: " " }
+        cmd: go -C {{.ITEM}} vet ./...
+
+  lint:rust:
+    cmds:
+      - cargo fmt {{.RUST_PACKAGES}} --check
+      - cargo clippy --workspace --all-targets --quiet -- -D warnings
+
+  typecheck:
+    desc: Typecheck the TS workspace and the desktop app's Svelte
+    cmds:
+      - bunx tsc -p tsconfig.json --noEmit
+      - cd apps/gui && bunx svelte-check --tsconfig ./tsconfig.json --fail-on-warnings
+
+  format:
+    desc: Format TS, Go and Rust in place
+    cmds:
+      - bunx prettier --write .
+      - gofmt -w {{.GO_MODULES}}
+      - cargo fmt {{.RUST_PACKAGES}}
+
+  format:check:
+    cmds:
+      - bunx prettier --check .
+
+  # Generated code
+
+  codegen:
+    desc: Regenerate protocol types from the JSON Schemas and resolve fixtures (checked in)
+    cmds:
+      - bun run protocol/codegen/main.ts
+      - bun run daemon/scripts/fixtures.ts
+
+  codegen:check:
+    desc: Fail if the checked-in generated types are stale
+    cmds:
+      - bun run protocol/codegen/main.ts --check
+      - bun run daemon/scripts/fixtures.ts --check
+
+  openui:skill:
+    desc: Regenerate the openui skill from the library (harness/skills/openui/SKILL.md)
+    cmds:
+      - bun run --cwd openui skill
