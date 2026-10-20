@@ -241,7 +241,7 @@ const Progress = define(
 
 const Image = define(
   "Image",
-  "An image from a URL or asset handle",
+  "An image: an asset handle, or the URL of the image file itself (png, jpeg, gif, webp), not of a page showing it",
   z.object({ src: z.string(), alt: z.string().optional() }),
 );
 

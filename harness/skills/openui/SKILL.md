@@ -138,7 +138,7 @@ Callout(text: string, tone?: "accent" | "muted" | "success" | "danger", title?: 
 Metric(label: string, value: string | number, delta?: string, tone?: "accent" | "muted" | "success" | "danger") — A headline number with an optional change
 MetricIndicator(value: string | number, delta?: string, direction?: "up" | "down", tone?: "accent" | "muted" | "success" | "danger", subtext?: string) — A compact inline metric: a value with an optional change, an up or down arrow in the change's tone (default: up success, down danger) and a note; use it in cards, tables and lists where Metric is too big
 Progress(value: number, label?: string) — A progress bar; value is 0 to 1
-Image(src: string, alt?: string) — An image from a URL or asset handle
+Image(src: string, alt?: string) — An image: an asset handle, or the URL of the image file itself (png, jpeg, gif, webp), not of a page showing it
 ImageGallery(images: Image[]) — Several images of one subject: the first large, the others small beside it
 Link(text: string, url: string) — A link
 

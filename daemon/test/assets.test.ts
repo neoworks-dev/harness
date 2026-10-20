@@ -176,7 +176,7 @@ test("fetch downloads an image once, following redirects, and refuses what isn't
   expect(await store.fetch(`${web.url}/moved`)).toEqual(a);
   expect(web.hits()).toBe(2);
   expect(await failure(store.fetch(`${web.url}/page.html`))).toContain(
-    "is not a png, jpeg, gif or webp",
+    "not a png, jpeg, gif or webp image (text/plain",
   );
   expect(await failure(store.fetch(`${web.url}/missing.png`))).toContain("HTTP 404");
   expect(await failure(store.fetch("file:///etc/passwd"))).toContain("only http and https");

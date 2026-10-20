@@ -110,15 +110,15 @@ function parseRemote(url: string): URL {
   return parsed;
 }
 
-async function readCapped(res: Response, url: string): Promise<Uint8Array> {
+async function readCapped(res: Response): Promise<Uint8Array> {
   const length = Number(res.headers.get("content-length") ?? 0);
-  if (length > FETCH_MAX_BYTES) throw new BadRequestError(`${url} is larger than 20 MB`);
+  if (length > FETCH_MAX_BYTES) throw new BadRequestError("larger than 20 MB");
   const chunks: Uint8Array[] = [];
   let size = 0;
   if (res.body) {
     for await (const chunk of res.body) {
       size += chunk.byteLength;
-      if (size > FETCH_MAX_BYTES) throw new BadRequestError(`${url} is larger than 20 MB`);
+      if (size > FETCH_MAX_BYTES) throw new BadRequestError("larger than 20 MB");
       chunks.push(chunk);
     }
   }
@@ -186,7 +186,8 @@ export class AssetStore {
 
   /**
    * Downloads the image at `url` (http or https, a public host) and stores it. The same URL is
-   * downloaded once while the daemon runs; a failed download is tried again next time.
+   * downloaded once while the daemon runs; a failed download is tried again next time. Errors
+   * leave the URL out: whoever asked knows it.
    */
   fetch(url: string): Promise<Asset> {
     const known = this.fetched.get(url);
@@ -206,19 +207,21 @@ export class AssetStore {
       try {
         res = await fetch(target, { headers: FETCH_HEADERS, redirect: "manual", signal });
       } catch (err) {
-        throw new BadRequestError(`can't download ${url}: ${errorMessage(err)}`);
+        throw new BadRequestError(errorMessage(err));
       }
       const location = res.headers.get("location");
       if (res.status >= 300 && res.status < 400 && location !== null) {
-        if (hops >= FETCH_MAX_REDIRECTS) throw new BadRequestError(`${url}: too many redirects`);
+        if (hops >= FETCH_MAX_REDIRECTS) throw new BadRequestError("too many redirects");
         target = parseRemote(new URL(location, target).href);
         continue;
       }
-      if (!res.ok) throw new BadRequestError(`${url}: HTTP ${res.status}`);
-      const bytes = await readCapped(res, url);
+      if (!res.ok) throw new BadRequestError(`HTTP ${res.status}`);
+      const bytes = await readCapped(res);
       const mime = sniff(bytes);
       if (mime === undefined || !REMOTE_IMAGE_TYPES.has(mime)) {
-        throw new BadRequestError(`${url} is not a png, jpeg, gif or webp image`);
+        throw new BadRequestError(
+          `not a png, jpeg, gif or webp image (${res.headers.get("content-type") ?? "no type"})`,
+        );
       }
       const name = decodeURIComponent(basename(target.pathname)) || target.hostname;
       return this.put({ bytes, name, mime });
