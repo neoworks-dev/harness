@@ -137,6 +137,15 @@ impl<'a> Cx<'a> {
             "Slider" => self.ui_slider(n, w),
             "Button" => self.ui_button_line(n, w),
             "Buttons" => self.ui_buttons(n, w),
+            "FollowUpBlock" => self.ui_follow_ups(n, w),
+            "FollowUpItem" => {
+                let (spans, focused) = self.follow_up_spans(n, w);
+                let mut line = Line::from(spans);
+                if focused {
+                    self.mark_focus(&mut line);
+                }
+                vec![line]
+            }
             other => vec![self.placeholder(
                 &format!("[unsupported: {}]", crate::text::one_line(other)),
                 w,
@@ -268,7 +277,7 @@ impl<'a> Cx<'a> {
     fn ui_min(&mut self, n: N<'_>, pref: usize) -> usize {
         let word = |s: &str| s.split_whitespace().map(width).max().unwrap_or(0);
         let min = match n.name() {
-            "Metric" | "Tag" | "Link" | "Button" => pref,
+            "Metric" | "Tag" | "Link" | "Button" | "FollowUpItem" => pref,
             "Header" => word(n.str("title").unwrap_or("")),
             "Text" | "Callout" => {
                 let blocks = n

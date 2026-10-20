@@ -43,6 +43,11 @@ Lay a dashboard out the way a page is, not as one long column:
 - Several small cards beat one tall one. Cut long tables to the rows that matter (top 5–8,
   then "other").
 
+## Picking components
+
+- End a reply with `FollowUpBlock` when there are obvious next questions: two to four short
+  ones. Choosing one sends its text to you as the user's next message.
+
 ## Forms and buttons
 
 - A form answers you with `@ToAssistant("message", context?)`: when the user presses the
@@ -142,6 +147,8 @@ Slider(name: string, min: number, max: number, step?: number, value?: $binding<n
 DatePicker(name: string, rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — A date, YYYY-MM-DD
 Button(label: string, action?: ActionExpression, variant?: "primary" | "secondary" | "danger") — A button. Without an action it sends its label to the assistant
 Buttons(buttons: Button[]) — A row of buttons
+FollowUpBlock(items: FollowUpItem[]) — Suggested next questions as pills at the end of a reply; choosing one sends its text to the assistant
+FollowUpItem(text: string) — One suggestion of FollowUpBlock
 
 ## Built-in Functions
 

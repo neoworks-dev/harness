@@ -52,6 +52,11 @@ Lay a dashboard out the way a page is, not as one long column:
 - Several small cards beat one tall one. Cut long tables to the rows that matter (top 5–8,
   then "other").
 
+## Picking components
+
+- End a reply with \`FollowUpBlock\` when there are obvious next questions: two to four short
+  ones. Choosing one sends its text to you as the user's next message.
+
 ## Forms and buttons
 
 - A form answers you with \`@ToAssistant("message", context?)\`: when the user presses the

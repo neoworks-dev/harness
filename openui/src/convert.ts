@@ -73,8 +73,13 @@ function text(value: unknown): string {
   return "";
 }
 
+/** Nodes that run a plan when pressed: a button, a follow-up suggestion. */
+function pressable(component: string): boolean {
+  return component === "Button" || component === "FollowUpItem";
+}
+
 function interactive(component: string): boolean {
-  return INPUTS.has(component) || component === "Button";
+  return INPUTS.has(component) || pressable(component);
 }
 
 /** The interactive nodes of each statement, counted. */
@@ -144,7 +149,7 @@ export class Converter {
     }
     const key = interactive(el.typeName) ? this.key(place) : undefined;
     if (key !== undefined && INPUTS.has(el.typeName)) this.input(el, key, at.form, props);
-    if (key !== undefined && el.typeName === "Button") this.button(el, key, at.form, props);
+    if (key !== undefined && pressable(el.typeName)) this.button(el, key, at.form, props);
     if (
       (el.typeName === "Text" || el.typeName === "Callout") &&
       typeof el.props.text === "string"
@@ -212,7 +217,8 @@ export class Converter {
     form: string | undefined,
     props: Record<string, unknown>,
   ): void {
-    const label = text(el.props.label);
+    // A follow-up suggestion is a button whose label is its text.
+    const label = text(el.typeName === "Button" ? el.props.label : el.props.text);
     // Without an action a button sends its label to the assistant.
     const plan: ActionPlan = isPlan(el.props.action)
       ? el.props.action

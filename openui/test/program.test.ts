@@ -249,6 +249,15 @@ describe("actions", () => {
     ]);
   });
 
+  test("a follow-up suggestion is pressed like a button and sends its text", async () => {
+    const p = program('root = FollowUpBlock([FollowUpItem("Why?"), FollowUpItem("Show costs")])');
+    expect(keysOf(p)).toEqual(["root.items.0", "root.items.1"]);
+    expect(byKey(p, "root.items.1")?.props).toEqual({ text: "Show costs" });
+    expect((await p.press("root.items.1")).assistant).toEqual([
+      { message: "Show costs", label: "Show costs" },
+    ]);
+  });
+
   test("a button that only opens a link or copies text says so and the press is the client's", async () => {
     const p = program(
       [

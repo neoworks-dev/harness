@@ -554,14 +554,13 @@ impl<'a> Cx<'a> {
         vec![line]
     }
 
-    /// Buttons side by side, wrapping.
-    pub(super) fn ui_buttons(&mut self, n: N<'_>, w: usize) -> Lines {
+    /// Pieces of spans side by side with two cells between them, wrapping onto further lines.
+    /// The focus mark goes on the line of the first piece that has focus.
+    fn ui_pieces(&mut self, pieces: Vec<(Vec<Span<'static>>, bool)>, w: usize) -> Lines {
         let mut lines: Lines = Vec::new();
         let mut cur: Vec<Span<'static>> = Vec::new();
         let mut mark = false;
-        for button in n.nodes("buttons") {
-            let focused = button.key().is_some_and(|k| self.ui_focused(k));
-            let spans = self.button_spans(button);
+        for (spans, focused) in pieces {
             let need: usize = spans.iter().map(|s| width(&s.content)).sum();
             let used: usize = cur.iter().map(|s| width(&s.content)).sum();
             if !cur.is_empty() && used + 2 + need > w {
@@ -573,7 +572,7 @@ impl<'a> Cx<'a> {
             cur.extend(spans);
             if focused && !mark {
                 mark = true;
-                // The mark goes on the line the button ends up on.
+                // The mark goes on the line the piece ends up on.
                 let mut line = Line::from(std::mem::take(&mut cur));
                 self.mark_focus(&mut line);
                 cur = line.spans;
@@ -583,6 +582,59 @@ impl<'a> Cx<'a> {
             lines.push(Line::from(cur));
         }
         lines
+    }
+
+    /// Buttons side by side, wrapping.
+    pub(super) fn ui_buttons(&mut self, n: N<'_>, w: usize) -> Lines {
+        let mut pieces = Vec::new();
+        for button in n.nodes("buttons") {
+            let focused = button.key().is_some_and(|k| self.ui_focused(k));
+            pieces.push((self.button_spans(button), focused));
+        }
+        self.ui_pieces(pieces, w)
+    }
+
+    /// `( Why is it slow? )`: a suggestion as a pill, reversed while it has focus. Choosing it
+    /// sends its text, so it is a target like a button.
+    pub(super) fn follow_up_spans(&mut self, item: N<'_>, w: usize) -> (Vec<Span<'static>>, bool) {
+        let text = item.line("text").unwrap_or_default();
+        let mut focused = false;
+        if let Some(key) = item.key() {
+            self.ui_target(
+                key,
+                UiKind::Button {
+                    url: None,
+                    copy: None,
+                    disabled: false,
+                },
+                text.clone(),
+                Value::Null,
+            );
+            focused = self.ui_focused(key);
+        }
+        let spans = if focused {
+            let st = Style::new()
+                .fg(self.p.accent)
+                .add_modifier(Modifier::REVERSED | Modifier::BOLD);
+            vec![Span::styled(format!("( {text} )"), st)]
+        } else {
+            vec![
+                Span::styled("( ", self.p.muted_style()),
+                Span::styled(text, Style::new().fg(self.p.accent)),
+                Span::styled(" )", self.p.muted_style()),
+            ]
+        };
+        (crate::text::truncate_spans(spans, w), focused)
+    }
+
+    /// Suggestions as pills side by side, wrapping.
+    pub(super) fn ui_follow_ups(&mut self, n: N<'_>, w: usize) -> Lines {
+        let pieces = n
+            .nodes("items")
+            .into_iter()
+            .map(|item| self.follow_up_spans(item, w))
+            .collect();
+        self.ui_pieces(pieces, w)
     }
 
     /// The label (with `*` when required) over the input, the hint under it.

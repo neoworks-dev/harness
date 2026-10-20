@@ -978,6 +978,83 @@ fn buttons_have_variants_and_a_focused_one_is_reversed() {
     assert_eq!(lines(&it, 30).len(), 3);
 }
 
+fn follow_ups() -> Value {
+    node(
+        "FollowUpBlock",
+        json!({"items": [
+            keyed("FollowUpItem", "f.0", json!({"text": "Why is it slow?"})),
+            keyed("FollowUpItem", "f.1", json!({"text": "Show the queries"})),
+            keyed("FollowUpItem", "f.2", json!({"text": "Fix it"})),
+        ]}),
+    )
+}
+
+#[test]
+fn follow_ups_are_pills_in_a_row_that_wraps() {
+    let it = doc(follow_ups());
+    assert_eq!(
+        lines(&it, 80),
+        ["( Why is it slow? )  ( Show the queries )  ( Fix it )"]
+    );
+    assert_eq!(
+        lines(&it, 40),
+        ["( Why is it slow? )", "( Show the queries )  ( Fix it )"]
+    );
+    // A pill that is wider than the view is cut.
+    assert_eq!(lines(&it, 10)[0], "( Why is …");
+    assert_fits(&it, &focused("f.1"));
+}
+
+#[test]
+fn a_focused_follow_up_is_reversed_and_a_target_like_a_button() {
+    let it = doc(follow_ups());
+    let rendered = render_item(&it, 80, &focused("f.1"));
+    let reversed: Vec<&str> = rendered[0]
+        .spans
+        .iter()
+        .filter(|s| s.style.add_modifier.contains(Modifier::REVERSED))
+        .map(|s| s.content.as_ref())
+        .collect();
+    assert_eq!(reversed, ["( Show the queries )"]);
+    let targets = openui_targets(&it, &Options::default());
+    let got: Vec<(&str, &str)> = targets
+        .iter()
+        .map(|t| (t.id.as_str(), t.label.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("f.0", "Why is it slow?"),
+            ("f.1", "Show the queries"),
+            ("f.2", "Fix it")
+        ]
+    );
+    assert!(targets.iter().all(|t| matches!(
+        t.kind,
+        UiKind::Button {
+            disabled: false,
+            url: None,
+            copy: None
+        }
+    )));
+    // The first line of the focused pill is reported, wherever it wrapped to.
+    let rendered = render_item_images(&it, 40, &focused("f.2"));
+    assert_eq!(rendered.focus_line, Some(1));
+}
+
+#[test]
+fn follow_ups_can_be_focused_but_do_not_ask_for_the_keyboard() {
+    let it = doc(follow_ups());
+    let docs = openui_docs(&it);
+    assert!(docs[0].focusable && !docs[0].interactive);
+    // Next to a form's field they are part of the form.
+    let both = doc(column(vec![
+        follow_ups(),
+        keyed("Input", "name", json!({"name": "name"})),
+    ]));
+    assert!(openui_docs(&both)[0].interactive);
+}
+
 // ---- focus targets ----
 
 #[test]

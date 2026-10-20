@@ -103,21 +103,23 @@ Arguments are positional in the order listed. Optional ones are marked `?`, and 
 
 ### Forms
 
-| Component     | Props                                                                                                                                  |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `Form`        | `name: string`, `children: Node[]`, `buttons?: Buttons`                                                                                |
-| `FormControl` | `label: string`, `input: Node`, `hint?: string`                                                                                        |
-| `Input`       | `name: string`, `placeholder?: string`, `type?: "text" \| "email" \| "url" \| "number" \| "password"`, `rules?: Rules`, `value?: $var` |
-| `TextArea`    | `name: string`, `placeholder?: string`, `rules?: Rules`, `value?: $var`                                                                |
-| `Select`      | `name: string`, `options: Option[]`, `placeholder?: string`, `rules?: Rules`, `value?: $var`                                           |
-| `Option`      | `value: string`, `label?: string`                                                                                                      |
-| `RadioGroup`  | `name: string`, `options: Option[]`, `rules?: Rules`, `value?: $var`                                                                   |
-| `CheckBox`    | `name: string`, `label: string`, `rules?: Rules`, `value?: $var`                                                                       |
-| `Switch`      | `name: string`, `label: string`, `value?: $var`                                                                                        |
-| `Slider`      | `name: string`, `min: number`, `max: number`, `step?: number`, `value?: $var`                                                          |
-| `DatePicker`  | `name: string`, `rules?: Rules`, `value?: $var` (`YYYY-MM-DD`)                                                                         |
-| `Button`      | `label: string`, `action?: Action`, `variant?: "primary" \| "secondary" \| "danger"`                                                   |
-| `Buttons`     | `buttons: Button[]`                                                                                                                    |
+| Component       | Props                                                                                                                                  |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `Form`          | `name: string`, `children: Node[]`, `buttons?: Buttons`                                                                                |
+| `FormControl`   | `label: string`, `input: Node`, `hint?: string`                                                                                        |
+| `Input`         | `name: string`, `placeholder?: string`, `type?: "text" \| "email" \| "url" \| "number" \| "password"`, `rules?: Rules`, `value?: $var` |
+| `TextArea`      | `name: string`, `placeholder?: string`, `rules?: Rules`, `value?: $var`                                                                |
+| `Select`        | `name: string`, `options: Option[]`, `placeholder?: string`, `rules?: Rules`, `value?: $var`                                           |
+| `Option`        | `value: string`, `label?: string`                                                                                                      |
+| `RadioGroup`    | `name: string`, `options: Option[]`, `rules?: Rules`, `value?: $var`                                                                   |
+| `CheckBox`      | `name: string`, `label: string`, `rules?: Rules`, `value?: $var`                                                                       |
+| `Switch`        | `name: string`, `label: string`, `value?: $var`                                                                                        |
+| `Slider`        | `name: string`, `min: number`, `max: number`, `step?: number`, `value?: $var`                                                          |
+| `DatePicker`    | `name: string`, `rules?: Rules`, `value?: $var` (`YYYY-MM-DD`)                                                                         |
+| `Button`        | `label: string`, `action?: Action`, `variant?: "primary" \| "secondary" \| "danger"`                                                   |
+| `Buttons`       | `buttons: Button[]`                                                                                                                    |
+| `FollowUpBlock` | `items: FollowUpItem[]` (suggested next questions)                                                                                     |
+| `FollowUpItem`  | `text: string` (choosing it sends the text to the assistant)                                                                           |
 
 `Rules` is the spec's validation object (`required`, `email`, `url`, `numeric`, `minLength`, `maxLength`, `min`, `max`, `pattern`). Actions are the spec's built-ins (`@ToAssistant`, `@OpenUrl`, `@Set`, `@Reset`, `@Run`) plus the library's `@Copy(text)`.
 
@@ -131,8 +133,9 @@ The ratatui renderer's rules (the README there is the full reference):
 - **Metrics.** A metric strip puts each `Metric` in its own column, divided by `│`: the value bold, the `delta` after it in its tone, the label muted under them. A single Metric is the same column on its own.
 - **Disclosure** is local: `Tabs` is a tab strip (`│ Overview │ Billing │`, the selected one reversed) over the selected tab's children; `AccordionItem` is `▸ title` / `▾ title`. Both are focusable and toggle with Enter, Left/Right switch tabs.
 - **Charts** are drawn by meaning, not by pixels: vertical bars with eighth blocks (`▁▂▃▄▅▆▇█`), horizontal ones half-height (`▄▄▄▖`) so neighbouring bars never touch, value at the end, horizontal whatever `horizontal` says once the labels don't fit under vertical bars; line and area charts on a braille canvas with a legend; pie and donut as one stacked bar of the slices with a `label  42%` legend; sparklines with `▁▂▃▄▅▆▇█`.
+- **Follow-ups.** A `FollowUpBlock` is its items as pills, `( Why is it slow? )  ( Show the queries )`, side by side and wrapping, the focused one reversed. They are focusable (Left/Right between them, Enter or Space sends the text) but are not a form: a doc with only follow-ups does not take the editor's place, it is reached with Ctrl-P / Ctrl-N.
 - **Forms.** Every input is a focusable field: `Label *` over `[ value or placeholder▏ ]`, the error under it in the danger tone. `Select` shows the chosen option with `▾` and opens a list on Enter; `RadioGroup` `(•)`/`( )`; `CheckBox` `[x]`/`[ ]`; `Switch` `● on`/`○ off`; `Slider` a bar with the number; `DatePicker` a text field checked as `YYYY-MM-DD`.
-- **Focus.** A doc with keyed nodes is a form: in `apps/term` it takes the editor's place like a prompt, and Tab / Shift-Tab, typing, Space, Left/Right, Enter and Esc work it (the full key list is under **Forms** in `apps/term/README.md`). Docs with only tabs or accordions are reached with Ctrl-P / Ctrl-N. While `streaming` the doc draws but takes no focus.
+- **Focus.** A doc with keyed nodes is a form: in `apps/term` it takes the editor's place like a prompt, and Tab / Shift-Tab, typing, Space, Left/Right, Enter and Esc work it (the full key list is under **Forms** in `apps/term/README.md`). Docs with only tabs, accordions or follow-ups are reached with Ctrl-P / Ctrl-N. While `streaming` the doc draws but takes no focus.
 - **Errors.** `errors` are not drawn in the chat; a doc with no root but errors shows one muted line `[ui: <first error message>]`.
 
 ## How the daemon does it
@@ -143,7 +146,7 @@ The code is `openui/` (the `suite@1` library, `Program`: lang-core parse, evalua
 - **While streaming** only the statement being written is `partial`, and `errors` stay out: what looks broken may be unfinished. Queries do not start, and `openui.input` and `openui.press` do nothing.
 - **Keys.** An interactive node's `key` is the id of the statement it is in, when that statement has only that one (`service = FormControl("Service", Select("service", …))`: `service`). Otherwise the statement id and the path to the node: `c.buttons.1`, `root.children.2` (a node made by `@Each`).
 - **Fields.** An input bound to a `$variable` writes it; any other keeps its value in the doc, per form and name. Select and RadioGroup only take one of their options, a Slider is held to `min`..`max`, a CheckBox and a Switch take a bool, and the rest a string; anything else is ignored. A required CheckBox or Switch has to be on. A DatePicker has to be `YYYY-MM-DD`. A field that failed is checked again whenever it changes. Messages are lang-core's ("Please enter a valid email").
-- **Buttons.** A button with no action sends its label to the agent. `url` is only set for `http:`, `https:` and `mailto:` addresses. `@OpenUrl` and `@Copy` inside a plan of several steps do nothing. `disabled` is set while a mutation the button runs is in flight.
+- **Buttons.** A button with no action sends its label to the agent; a `FollowUpItem` is such a button whose label is its text. `url` is only set for `http:`, `https:` and `mailto:` addresses. `@OpenUrl` and `@Copy` inside a plan of several steps do nothing. `disabled` is set while a mutation the button runs is in flight.
 - **What the agent hears** is one input per `@ToAssistant`: `[ui action] The user pressed "Deploy" in an OpenUI doc: Deploy with these settings`, then `form deploy: {…}` (the form's values; outside a form `state: {…}` with the `$variables`), then `context: {…}`.
 - **Tools.** A `Query` runs when its doc is finished and draws, and after a `@Run` of it, through the gateway (`app.tool`), and is not recorded. A `Mutation` runs on press and is recorded in the session like a button that runs a tool (so its result shows in the chat with the app's template). A failing tool is an entry in `errors`; the doc keeps the query's defaults.
 - **State** is kept per view, item and doc, in memory, and a doc is told apart by its item `ref` (`m-<messageId>` for a message) and `id`.

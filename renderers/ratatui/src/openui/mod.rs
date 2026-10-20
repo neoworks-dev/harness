@@ -403,19 +403,17 @@ fn docs_of_blocks<'a>(blocks: &'a [pb::Block], out: &mut Vec<&'a pb::UiDoc>) {
 fn scan(v: &Value, interactive: &mut bool, focusable: &mut bool) {
     match v {
         Value::Object(map) => {
-            if map.get("component").is_some_and(Value::is_string) {
+            if let Some(name) = map.get("component").and_then(Value::as_str) {
                 if map
                     .get("key")
                     .and_then(Value::as_str)
                     .is_some_and(|k| !k.is_empty())
                 {
-                    *interactive = true;
+                    // Suggestions are reached with Ctrl-P / Ctrl-N; they don't ask for the keyboard.
+                    *interactive |= name != "FollowUpItem";
                     *focusable = true;
                 }
-                if matches!(
-                    map.get("component").and_then(Value::as_str),
-                    Some("Tabs" | "Accordion")
-                ) {
+                if matches!(name, "Tabs" | "Accordion") {
                     *focusable = true;
                 }
             }

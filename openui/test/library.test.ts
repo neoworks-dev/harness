@@ -46,6 +46,8 @@ const ORDER: Record<string, string[]> = {
   DatePicker: ["name", "rules", "value"],
   Button: ["label", "action", "variant"],
   Buttons: ["buttons"],
+  FollowUpBlock: ["items"],
+  FollowUpItem: ["text"],
 };
 
 test("every component takes its arguments in the order docs/openui.md lists", () => {

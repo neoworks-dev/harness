@@ -370,6 +370,17 @@ const Button = define(
 );
 const Buttons = define("Buttons", "A row of buttons", z.object({ buttons: z.array(Button.ref) }));
 
+const FollowUpItem = define(
+  "FollowUpItem",
+  "One suggestion of FollowUpBlock",
+  z.object({ text: z.string() }),
+);
+const FollowUpBlock = define(
+  "FollowUpBlock",
+  "Suggested next questions as pills at the end of a reply; choosing one sends its text to the assistant",
+  z.object({ items: z.array(FollowUpItem.ref) }),
+);
+
 const Form = define(
   "Form",
   "Inputs submitted together; a button inside checks their rules first and a message carries their values",
@@ -435,6 +446,8 @@ export const library = createLibrary({
     DatePicker,
     Button,
     Buttons,
+    FollowUpBlock,
+    FollowUpItem,
   ],
   actions: [Copy],
   componentGroups: [
@@ -499,6 +512,8 @@ export const library = createLibrary({
         "DatePicker",
         "Button",
         "Buttons",
+        "FollowUpBlock",
+        "FollowUpItem",
       ],
     },
   ],

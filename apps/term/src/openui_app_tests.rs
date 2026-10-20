@@ -537,6 +537,32 @@ fn tabs_and_accordions_are_reached_with_ctrl_p_and_switch_with_the_arrows() {
 }
 
 #[test]
+fn follow_ups_wait_for_ctrl_p_and_send_their_text_with_enter() {
+    let reply: ViewItem = serde_json::from_value(json!({
+        "ref": "f1", "kind": "agent",
+        "component": {"type": "openui", "ui": {"id": "0", "root": node("FollowUpBlock", json!({"items": [
+            keyed("FollowUpItem", "f.0", json!({"text": "Why is it slow?"})),
+            keyed("FollowUpItem", "f.1", json!({"text": "Show the queries"})),
+        ]}))}}
+    }))
+    .unwrap();
+    let mut app = app();
+    show(&mut app, vec![user("u1", "check the db"), reply]);
+    // Suggestions don't take the editor's place.
+    assert!(!app.prompt.engaged);
+    assert!(text(&mut app).contains("( Why is it slow? )  ( Show the queries )"));
+    press(&mut app, ctrl('p'));
+    assert!(app.prompt.engaged);
+    assert_eq!(focused(&app).as_deref(), Some("f.0"));
+    // Right goes on to the next pill, Enter sends it.
+    press(&mut app, key(KeyCode::Right));
+    assert_eq!(focused(&app).as_deref(), Some("f.1"));
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), [pressed("0", "f.1")]);
+    press(&mut app, key(KeyCode::Left));
+    assert_eq!(press(&mut app, ch(' ')), [pressed("0", "f.0")]);
+}
+
+#[test]
 fn the_chat_scrolls_to_the_focused_field() {
     let mut app = app();
     let mut items: Vec<ViewItem> = (0..30)
