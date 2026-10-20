@@ -43,6 +43,7 @@
         "@mariozechner/pi-ai": "0.73.1",
         "@modelcontextprotocol/sdk": "^1.32.1",
         "@suite/harness": "workspace:*",
+        "@suite/openui": "workspace:*",
         "@suite/protocol": "workspace:*",
         "ajv": "^8.20.0",
         "diff": "^9.0.0",
@@ -61,6 +62,14 @@
       },
       "devDependencies": {
         "@types/proper-lockfile": "^4.1.4",
+      },
+    },
+    "openui": {
+      "name": "@suite/openui",
+      "dependencies": {
+        "@openuidev/lang-core": "^1.0.1",
+        "@suite/protocol": "workspace:*",
+        "zod": "^4.0.0",
       },
     },
     "protocol": {
@@ -179,6 +188,8 @@
 
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.43.0", "", {}, "sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg=="],
 
+    "@openuidev/lang-core": ["@openuidev/lang-core@1.0.1", "", { "dependencies": { "ci-info": "^4.4.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": ">=1.0.0", "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["@modelcontextprotocol/sdk"] }, "sha512-4vBa7FRM6C4v4aCvBAmAtTgFWiEQiNTazG9h4Xy9fC6P/p6+9kZu4RdTyLToBEvdxrYn/gDy/PakEH8PU3lUcw=="],
+
     "@oxlint-tsgolint/darwin-arm64": ["@oxlint-tsgolint/darwin-arm64@7.0.2004", "", { "os": "darwin", "cpu": "arm64" }, "sha512-uJk3ttju7Lz+Nv8WG4CsLyewoL1qf/Ny8S8OksJ7Bm/F14Tc9gMfW6arM1PCc57IzH/X/I79YsCWTgxX1FKibQ=="],
 
     "@oxlint-tsgolint/darwin-x64": ["@oxlint-tsgolint/darwin-x64@7.0.2004", "", { "os": "darwin", "cpu": "x64" }, "sha512-0BFfHTzDxNDFPcu0UZAXT6CyCJHAXM0dZveyDb4KEHa2qF/DSnOKOrmvK/wFuFol9kvijbGM9JfuOsor+zWXRw=="],
@@ -268,6 +279,8 @@
     "@suite/harness": ["@suite/harness@workspace:harness"],
 
     "@suite/lsp": ["@suite/lsp@workspace:services/lsp"],
+
+    "@suite/openui": ["@suite/openui@workspace:openui"],
 
     "@suite/protocol": ["@suite/protocol@workspace:protocol"],
 
@@ -378,6 +391,8 @@
     "chalk": ["chalk@5.6.2", "", {}, "sha512-7NzBL0rN6fMUW+f7A6Io4h40qQlG+xGmtMxfbnH/K7TAtt8JQWVQK+6g0UXKMeVJoyV5EkkNsErQ8pVD3bLHbA=="],
 
     "chokidar": ["chokidar@4.0.3", "", { "dependencies": { "readdirp": "^4.0.1" } }, "sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA=="],
+
+    "ci-info": ["ci-info@4.4.0", "", {}, "sha512-77PSwercCZU2Fc4sX94eF8k8Pxte6JAwL4/ICZLFjJLqegs7kCuAsqqj/70NQF6TvDpgFjkubQB2FW2ZZddvQg=="],
 
     "clsx": ["clsx@2.1.1", "", {}, "sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA=="],
 
