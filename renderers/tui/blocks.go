@@ -74,6 +74,8 @@ func (r *renderer) block(b protocol.Block, w int) []line {
 		return []line{lit(strings.Repeat("─", w), style{fg: rBorder})}
 	case protocol.TableBlock:
 		return r.tableBlock(v, w)
+	case protocol.OpenUiBlock:
+		return unsupported("openui", w)
 	}
 	return nil
 }

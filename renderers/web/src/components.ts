@@ -136,6 +136,11 @@ function renderTableBlock(doc: Document, table: TableBlock): HTMLElement {
   return el(doc, "div", "suite-table-wrap", {}, grid);
 }
 
+/** What a renderer without the component draws in its place (docs/openui.md: web doesn't yet). */
+function renderUnsupported(doc: Document, kind: string): HTMLElement {
+  return el(doc, "div", "suite-unsupported", {}, `[unsupported component: ${kind}]`);
+}
+
 export function renderBlock(ctx: RenderContext, block: Block): HTMLElement {
   const { doc } = ctx;
   switch (block.type) {
@@ -155,6 +160,8 @@ export function renderBlock(ctx: RenderContext, block: Block): HTMLElement {
       return el(doc, "hr", "suite-rule");
     case "table_block":
       return renderTableBlock(doc, block);
+    case "openui":
+      return renderUnsupported(doc, "openui");
   }
 }
 
@@ -368,6 +375,8 @@ export function renderComponent(ctx: RenderContext, component: Component): HTMLE
       return renderButton(ctx, component);
     case "link":
       return renderLink(doc, component);
+    case "openui":
+      return renderUnsupported(doc, "openui");
   }
 }
 

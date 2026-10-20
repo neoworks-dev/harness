@@ -154,7 +154,7 @@ h1.suite-heading, h2.suite-heading { font-size: var(--suite-title-size); }
 .suite-image { margin: 0; }
 .suite-image img { max-width: 100%; height: auto; border-radius: 6px; }
 .suite-image figcaption { color: var(--suite-muted); font-size: 0.9em; }
-.suite-image-fallback {
+.suite-image-fallback, .suite-unsupported {
   display: inline-block;
   max-width: 100%;
   padding: var(--suite-space-s) var(--suite-space-m);

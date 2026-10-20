@@ -598,16 +598,23 @@ impl Layout<'_> {
             Component::ProgressComponent(progress) => self.progress(progress, ctx),
             Component::ButtonComponent(button) => self.button(button, ctx),
             Component::LinkComponent(link) => self.link(link, ctx),
+            // Drawn by the terminal renderer only (docs/openui.md); the others say so.
+            Component::OpenUiComponent(_) => self.unsupported("openui", ctx),
             Component::Unknown(value) => {
                 let kind = value.get("type").and_then(|t| t.as_str()).unwrap_or("?");
-                let style = self.text_style(None, ctx.scale);
-                Node::Text(self.plain(
-                    &format!("[unsupported component: {kind}]"),
-                    style,
-                    theme.muted,
-                ))
+                self.unsupported(kind, ctx)
             }
         }
+    }
+
+    /// The placeholder for a component this renderer doesn't draw.
+    fn unsupported(&self, kind: &str, ctx: Ctx) -> Node {
+        let style = self.text_style(None, ctx.scale);
+        Node::Text(self.plain(
+            &format!("[unsupported component: {kind}]"),
+            style,
+            self.theme.muted,
+        ))
     }
 
     fn children(&mut self, children: &[Component], ctx: Ctx) -> Vec<Node> {
@@ -690,6 +697,7 @@ impl Layout<'_> {
             }
             Block::RuleBlock(_) => Node::Rule(theme.border),
             Block::TableBlock(table) => self.table_block(table, ctx, role),
+            Block::OpenUiBlock(_) => self.unsupported("openui", ctx),
             Block::Unknown(_) => return None,
         })
     }

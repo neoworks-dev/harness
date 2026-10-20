@@ -37,8 +37,16 @@ func (r *renderer) component(c protocol.Component, w int) []line {
 		return wrapRuns(r.button(v), w)
 	case protocol.LinkComponent:
 		return wrapRuns(linkRuns(v.URL, v.Text, style{}), w)
+	case protocol.OpenUiComponent:
+		return unsupported("openui", w)
 	}
 	return nil // a component from a newer protocol: nothing to draw
+}
+
+// unsupported is the line for a component this renderer knows of and
+// doesn't draw (OpenUI is the terminal app's; docs/openui.md).
+func unsupported(kind string, w int) []line {
+	return wrapRuns([]run{{"[unsupported component: " + kind + "]", style{fg: rMuted}}}, w)
 }
 
 func (r *renderer) children(cs []protocol.Component, gap int, w int) []line {
