@@ -23,6 +23,7 @@
   let failure = $state<string>();
   const name = $derived(pictureName(src, alt));
 
+  // What the effect reads is only the source: the state it sets is written, never read, here.
   $effect(() => {
     const source = sourceOf(src, daemon.cwd);
     url = undefined;
@@ -32,8 +33,9 @@
       downloaded(source.url, (address) => daemon.fetchAsset(address)).then(
         (handle) => {
           if (!current) return;
-          url = daemon.assetSrc(handle);
-          if (url === undefined) failure = "the daemon is not reachable";
+          const found = daemon.assetSrc(handle);
+          if (found === undefined) failure = "the daemon is not reachable";
+          else url = found;
         },
         (error: unknown) => {
           if (current) failure = error instanceof Error ? error.message : String(error);
@@ -44,8 +46,9 @@
       };
     }
     if (source.kind === "asset") {
-      url = daemon.assetSrc(source.handle);
-      if (url === undefined) failure = "the asset is not reachable";
+      const found = daemon.assetSrc(source.handle);
+      if (found === undefined) failure = "the asset is not reachable";
+      else url = found;
     } else if (source.kind === "file") {
       url = source.path;
     } else {

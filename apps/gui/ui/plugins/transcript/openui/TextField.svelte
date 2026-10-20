@@ -3,6 +3,7 @@
   // keyboard and ignores what the daemon sends for it; typing goes to the daemon after a pause,
   // and a date only once it is `YYYY-MM-DD` or empty. Up and Down move on to the neighbouring
   // field (in a text area, from its first or last line), Enter presses the form's first button.
+  import { untrack } from "svelte";
   import { Input } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../../kernel/slots/context.ts";
@@ -14,7 +15,7 @@
   import { str } from "./props.ts";
   import type { NodeProps } from "./Node.svelte";
 
-  let { node }: NodeProps = $props();
+  let { node, onopen }: NodeProps & { onopen?: () => void } = $props();
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
   const doc = useDoc();
@@ -31,10 +32,11 @@
   let element: { focus(): void; blur(): void; getSelection(): { firstRow: boolean; lastRow: boolean } | null } | undefined = $state();
   let focused = $state(false);
   const incoming = $derived(textOf(doc.value(node)));
-  // svelte-ignore state_referenced_locally
-  let text = $state(textOf(doc.value(node)));
+  let text = $state(untrack(() => textOf(doc.value(node))));
+  // A value chosen elsewhere (a day from the calendar) is held, and shows even while the field has the keyboard.
+  const chosen = $derived(doc.view.held[key] !== undefined);
   $effect(() => {
-    if (!focused) text = incoming;
+    if (!focused || chosen) text = incoming;
   });
   $effect(() => doc.view.echoed(key, node.props["value"]));
   $effect(() => doc.view.register(key, () => element?.focus()));
@@ -61,6 +63,10 @@
       element?.blur();
       event.preventDefault();
       event.stopPropagation();
+    } else if (event.key === "ArrowDown" && event.alt && onopen !== undefined) {
+      // As in most date pickers, Alt-Down opens the calendar.
+      onopen();
+      event.preventDefault();
     } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       const at = element?.getSelection();
       const edge = event.key === "ArrowDown" ? at?.lastRow : at?.firstRow;

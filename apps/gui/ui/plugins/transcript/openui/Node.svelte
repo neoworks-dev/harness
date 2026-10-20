@@ -6,6 +6,7 @@
   import ButtonNode from "./ButtonNode.svelte";
   import ButtonsNode from "./ButtonsNode.svelte";
   import CalloutNode from "./CalloutNode.svelte";
+  import DateNode from "./DateNode.svelte";
   import CardNode from "./CardNode.svelte";
   import CarouselNode from "./CarouselNode.svelte";
   import CheckBoxNode from "./CheckBoxNode.svelte";
@@ -87,7 +88,7 @@
     FormControl: FormControlNode,
     Input: TextField,
     TextArea: TextField,
-    DatePicker: TextField,
+    DatePicker: DateNode,
     Select: SelectNode,
     RadioGroup: RadioNode,
     OptionCards: OptionCardsNode,

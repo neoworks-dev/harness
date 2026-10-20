@@ -11,6 +11,23 @@ export interface SceneDoc {
 
 const lines = (...parts: string[]): string => parts.join("\n");
 
+/** Cards, stacks and tabs in turn, `levels` deep, with a field at the bottom. */
+function deepProgram(levels: number): string {
+  const wrap = (level: number, inner: string): string => {
+    if (level % 3 === 0) return `Card([${inner}], "Level ${level}")`;
+    if (level % 3 === 1) return `Stack([Text("Level ${level}", "muted"), ${inner}])`;
+    return `Tabs([Tab("Level ${level}", [${inner}])])`;
+  };
+  const lines: string[] = [];
+  for (let level = 0; level < levels - 1; level += 1) {
+    lines.push(`${level === 0 ? "root" : `l${level}`} = ${wrap(level, `l${level + 1}`)}`);
+  }
+  lines.push(
+    `l${levels - 1} = Stack([Text("The bottom."), FormControl("Deep field", Input("deep", "typed at the bottom"))])`,
+  );
+  return lines.join("\n");
+}
+
 export const DOCS: Record<string, SceneDoc> = {
   hello: {
     ask: "show me a card",
@@ -155,5 +172,15 @@ export const DOCS: Record<string, SceneDoc> = {
       'f = Form("s", [FormControl("Name", Input("name", "Your name")), FormControl("Pick", Select("pick", [Option("a", "A")]))], Buttons([Button("Send", null, "primary")]))',
       "half = Stack([Tex",
     ),
+  },
+  date: {
+    ask: "when?",
+    before: "Pick a day.",
+    program: lines('root = Card([FormControl("Date", DatePicker("when"))], "When")'),
+  },
+  deep: {
+    ask: "nest it",
+    before: "Cards inside stacks inside tabs, a dozen levels down.",
+    program: deepProgram(12),
   },
 };

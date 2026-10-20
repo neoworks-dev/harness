@@ -2,7 +2,7 @@
 
 [OpenUI](https://github.com/thesysdev/openui) (spec 1.0, `@openuidev/lang-core`) is how the model and apps describe UI beyond the fixed component set: a compact, streamable program, one statement per line, with reactive state, forms and tool queries. The suite uses it as the **authoring** format. The daemon parses and evaluates every program with `lang-core`, and renderers draw the evaluated tree. A renderer never parses OpenUI Lang, evaluates an expression or holds `$state`; it draws `UiNode`s, keeps purely visual state (selected tab, open accordion, cursor, scroll) and sends what the user does back.
 
-The terminal renderer (`renderers/ratatui`, used by `apps/term`) is the first to draw it. web, GPUI and the Go TUI show a placeholder until they follow.
+The terminal renderer (`renderers/ratatui`, used by `apps/term`) is the first to draw it, and the desktop window (`apps/gui`, in Svelte) draws it too. web, the Rust GPUI renderer and the Go TUI show a placeholder until they follow.
 
 ````
 model (```openui fence) ─┐
@@ -154,6 +154,19 @@ The ratatui renderer's rules (the README there is the full reference):
 - **Forms.** Every input is a focusable field: `Label *` over `[ value or placeholder▏ ]`, the error under it in the danger tone. `Select` shows the chosen option with `▾` and opens a list on Enter; `RadioGroup` `(•)`/`( )`; `CheckBox` `[x]`/`[ ]`; `Switch` `● on`/`○ off`; `Slider` a bar with the number; `DatePicker` a text field checked as `YYYY-MM-DD`.
 - **Focus.** A doc with keyed nodes is a form: in `apps/term` it takes the editor's place like a prompt, and Tab / Shift-Tab, typing, Space, Left/Right, Enter and Esc work it (the full key list is under **Forms** in `apps/term/README.md`). Docs with only tabs, accordions, carousels or follow-ups are reached with Ctrl-P / Ctrl-N. While `streaming` the doc draws but takes no focus.
 - **Errors.** `errors` are not drawn in the chat; a doc with no root but errors shows one muted line `[ui: <first error message>]`.
+
+## Drawing it in the GUI
+
+The desktop window (`apps/gui`, `ui/plugins/transcript/openui/`) draws the same tree as real cards, charts and controls instead of character art, and keeps the terminal's meaning: what a prop does, how layout adapts to the width, what is sent when. The README there has what the user sees and the keys.
+
+- **Where.** A ` ```openui ` block is drawn in its place among the agent's prose, a UI result of a tool (an app's template) under its row, which stays open while the doc has a field or a button. Layout works from the width the column gives (never measured after the fact), so a doc is laid out in the first frame.
+- **Layout.** Pixels where the terminal has cells: a `Grid` or a run of sibling Cards has as many columns as fit at 240 px (at most `columns`), every card in a row as tall as the tallest; a run of two or more Metrics, and a row of only Metrics, is one band divided by thin rules; a row Stack stacks when its children do not fit at their narrowest and wraps with `wrap`; a Carousel shows as many slides as fit (at most `visible`) with `‹ 2–3/5 ›` under them. `EntityList` puts each subtitle under its title when the row does not fit.
+- **Content.** Cards are rounded on the surface colour (`tone` colours the outline and title, `sunk` is the fill alone, `clear` neither), `Tag` is a pill on a wash of its tone, `Callout` has a bar in its tone, tables right-align number columns, `Code` is the chat's code block. A `MetricIndicator` is one inline line with a caret for the direction.
+- **Charts** are drawn, not typed: bars are views with a value axis and a tooltip on hover (they lie down when the labels do not fit under them or with `horizontal`), lines, areas and slices are SVG paths tinted with the series' colour.
+- **Fields** are real controls: text fields (the field keeps its own text while it has the keyboard and ignores the `value` coming back for it), a dropdown for `Select`, rings for `RadioGroup`, cards for `OptionCards`, boxes and switches, a slider to drag, and a calendar for `DatePicker`. The label has a `*` when `required`, the `error` shows under the field in the danger colour. Typing goes to the daemon about 150 ms after the last key (a date once it is `YYYY-MM-DD` or empty), everything else at once; a press sends what is waiting first. A value chosen here shows until the daemon echoes it.
+- **Keys.** Tab and Shift-Tab go through the fields and buttons of the doc in drawing order (what a closed accordion item or another tab hides is skipped) once one has the keyboard, Esc gives it back. Enter in a field presses the form's first button. A button with a `url` opens in the system's browser (`open_url` in the host: `http`, `https` and `mailto` only), one with `copy` copies.
+- **Streaming.** A doc that is still `streaming` draws but its controls are dimmed and send nothing.
+- **Images** come from the daemon: an `asset://` handle, a path, or an `http(s)` URL, which the window has the daemon download with `asset.fetch` into its asset store (`fetchAsset` in the TypeScript SDK) and then reads from there. Each picture has a box of fixed size, and says why when it cannot be loaded.
 
 ## How the daemon does it
 

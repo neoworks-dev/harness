@@ -51,7 +51,7 @@
             radius: [6, 6, 0, 0],
           }}
         >
-          <Text style={{ fontWeight: index === at ? "medium" : "normal" }}>{str(tab, "label") ?? ""}</Text>
+          <Text style={{ fontWeight: index === at ? "medium" : "normal", nowrap: true }}>{str(tab, "label") ?? ""}</Text>
         </View>
       {/each}
     {/snippet}

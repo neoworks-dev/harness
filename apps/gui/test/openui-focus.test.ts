@@ -32,6 +32,11 @@ test("a form's targets are its fields and buttons in drawing order, and a node's
     buttons: node("Buttons", { buttons: [node("Button", { label: "Go" }, "go")] }),
   });
   expect(focusOrder(form, view())).toEqual(["a", "b", "go"]);
+  const dated = node("FormControl", {
+    label: "When",
+    input: node("DatePicker", { name: "when" }, "when"),
+  });
+  expect(focusOrder(dated, view())).toEqual(["when", "when/calendar"]);
   expect(childPath("/children.2", "tabs", 1)).toBe("/children.2/tabs.1");
   expect(childPath("", "input")).toBe("/input");
 });

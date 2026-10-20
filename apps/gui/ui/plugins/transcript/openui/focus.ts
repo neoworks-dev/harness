@@ -4,6 +4,11 @@
 import type { UiNode } from "@suite/protocol/types";
 import { isNode, nodes } from "./props.ts";
 
+/** The id of a date picker's calendar button. */
+export function calendarId(key: string): string {
+  return `${key}/calendar`;
+}
+
 export function childPath(path: string, prop: string, index?: number): string {
   return index === undefined ? `${path}/${prop}` : `${path}/${prop}.${index}`;
 }
@@ -42,6 +47,8 @@ export function focusOrder(root: UiNode, view: Disclosure): string[] {
 
 function walk(node: UiNode, path: string, view: Disclosure, out: string[]): void {
   if (node.key !== undefined && FIELDS.has(node.component)) out.push(node.key);
+  // The button beside a date's text field is a stop of its own.
+  if (node.key !== undefined && node.component === "DatePicker") out.push(calendarId(node.key));
   if (node.component === "Tabs") {
     const tabs = nodes(node, "tabs");
     if (tabs.length === 0) return;

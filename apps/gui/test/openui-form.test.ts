@@ -15,6 +15,12 @@ import {
   textOf,
   weekday,
 } from "../ui/plugins/transcript/openui/form.ts";
+import {
+  MONTHS,
+  monthGrid,
+  shiftMonth,
+  WEEKDAYS,
+} from "../ui/plugins/transcript/openui/calendar.ts";
 
 type Sent = { ref: string; action: string; args: unknown };
 
@@ -159,4 +165,26 @@ test("a press sends what waits for its doc first, and nothing of another doc", (
   box.flush("m-2", "0");
   expect(sent).toHaveLength(4);
   expect(box.waiting).toBe(false);
+});
+
+test("a month is weeks of seven days from Monday, and the arrows roll over the year", () => {
+  // October 2026 starts on a Thursday.
+  const weeks = monthGrid(2026, 10);
+  expect(weeks).toHaveLength(5);
+  expect(weeks.every((week) => week.length === 7)).toBe(true);
+  expect(weeks[0]).toEqual([undefined, undefined, undefined, 1, 2, 3, 4]);
+  expect(weeks[4]?.slice(0, 5)).toEqual([26, 27, 28, 29, 30]);
+  expect(weeks.flat().filter((day) => day !== undefined)).toHaveLength(31);
+  // February 2026 is exactly four weeks, starting on a Sunday: six leading blanks.
+  expect(monthGrid(2026, 2)[0]?.[6]).toBe(1);
+  expect(
+    monthGrid(2024, 2)
+      .flat()
+      .filter((day) => day !== undefined),
+  ).toHaveLength(29);
+  expect(shiftMonth(2026, 12, 1)).toEqual({ year: 2027, month: 1 });
+  expect(shiftMonth(2026, 1, -1)).toEqual({ year: 2025, month: 12 });
+  expect(shiftMonth(2026, 5, 0)).toEqual({ year: 2026, month: 5 });
+  expect(WEEKDAYS).toHaveLength(7);
+  expect(MONTHS[9]).toBe("October");
 });
