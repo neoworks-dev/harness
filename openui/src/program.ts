@@ -9,9 +9,11 @@ import {
   createStreamingParser,
   evaluate,
   evaluateRoot,
+  parseExpression,
   split,
   tokenize,
   validate,
+  isReactiveAssign,
   type ActionStep,
   type ASTNode,
   type ElementNode,
@@ -21,11 +23,12 @@ import {
   type QueryManager,
   type Store,
 } from "@openuidev/lang-core";
-import type { Block, UiDoc, UiError } from "@suite/protocol/types";
-import { Converter, isRecord, type ButtonInfo, type Field } from "./convert.ts";
-import { library } from "./library.ts";
+import type { Block, UiDoc, UiError, UiNode } from "@suite/protocol/types";
+import { type AppLibrary, instanceProgram, SUITE_ONLY } from "./components.ts";
+import { Converter, isElement, isPlan, isRecord, type ButtonInfo, type Field } from "./convert.ts";
 
-const schema = library.toJSONSchema();
+/** The actions are the suite's whatever apps add. */
+const schema = SUITE_ONLY.schema;
 
 /** Runs the tool a Query or a Mutation names; a mutation is something the user did. */
 export type CallTool = (
@@ -40,6 +43,11 @@ export interface ProgramEnv {
   markdown: (source: string) => Block[];
   /** Without it queries keep their defaults and mutations fail. */
   callTool?: CallTool;
+  /**
+   * The library to parse with, asked again whenever the program is set, as apps come and go.
+   * Without it the suite's alone. A component of an app is run as a program of its own.
+   */
+  apps?: () => AppLibrary;
 }
 
 /** What a pressed button asks of the host: a message for the agent. */
@@ -90,14 +98,59 @@ function uiError(error: { code: string; message: string; statementId?: string })
   return out;
 }
 
+/** One use of an app's component: the program that draws it, with its own state. */
+interface Instance {
+  name: string;
+  program: Program;
+}
+
+function isNode(value: unknown): value is UiNode {
+  return isRecord(value) && typeof value.component === "string" && isRecord(value.props);
+}
+
+/** A prop of a node with the `key`s of the nodes in it under `prefix`. */
+function prefixValue(value: unknown, prefix: string): unknown {
+  if (Array.isArray(value)) return value.map((item) => prefixValue(item, prefix));
+  if (isNode(value)) return prefixKeys(value, prefix);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([name, item]) => [name, prefixValue(item, prefix)]),
+  );
+}
+
+/** `key`s of a node tree under `prefix`, so what a use of a component holds can be found again. */
+function prefixKeys(node: UiNode, prefix: string): UiNode {
+  const props = Object.fromEntries(
+    Object.entries(node.props).map(([name, item]) => [name, prefixValue(item, prefix)]),
+  );
+  return node.key === undefined ? { ...node, props } : { ...node, key: prefix + node.key, props };
+}
+
+/** The arguments of a call as JSON the component's program can read: data, nothing of the AST. */
+function argsOf(props: Record<string, unknown>): unknown {
+  return JSON.parse(
+    JSON.stringify(props, (_, value: unknown) =>
+      isElement(value) || isPlan(value) || isReactiveAssign(value) ? null : value,
+    ),
+  );
+}
+
 export class Program {
   private readonly store: Store = createStore();
   private readonly queries: QueryManager;
-  private readonly parser = createStreamingParser(schema, library.root);
+  private lib: AppLibrary = SUITE_ONLY;
+  private parser = createStreamingParser(this.lib.schema, this.lib.library.root);
+  /** The uses of app components, by where they sit in this program (`root.children.0`). */
+  private readonly instances = new Map<string, Instance>();
+  private touched = new Set<string>();
+  private expansionErrors: UiError[] = [];
   private readonly values = new Map<string, unknown>();
   private readonly errors = new Map<string, string>();
   private readonly context: EvaluationContext;
   private source = "";
+  /** The statements of the source by id, read when a query asks for one (see `plain`). */
+  private statements: Map<string, ReturnType<typeof split>[number]> | undefined;
+  private resolving = new Set<string>();
   private streaming = true;
   private parsed: ParseResult | undefined;
   private crash: string | undefined;
@@ -128,7 +181,7 @@ export class Program {
     this.queries.subscribe(() => this.later());
     this.context = {
       getState: (name) => this.store.get(name),
-      resolveRef: (name) => this.queries.getMutationResult(name) ?? this.queries.getResult(name),
+      resolveRef: (name) => this.resolve(name),
       actions: schema.actions,
     };
   }
@@ -136,7 +189,13 @@ export class Program {
   /** Sets the program text. `streaming` is true while more of it may still arrive. */
   set(source: string, streaming: boolean): void {
     if (source === this.source && streaming === this.streaming && this.parsed) return;
+    const lib = this.env.apps?.() ?? SUITE_ONLY;
+    if (lib !== this.lib) {
+      this.lib = lib;
+      this.parser = createStreamingParser(lib.schema, lib.library.root);
+    }
     this.source = source;
+    this.statements = undefined;
     this.streaming = streaming;
     this.crash = undefined;
     try {
@@ -149,6 +208,42 @@ export class Program {
     this.rendered = undefined;
   }
 
+  /** What a reference names: a mutation's result, a query's, else a plain statement's value. */
+  private resolve(name: string): unknown {
+    const mutation = this.queries.getMutationResult(name);
+    if (mutation !== undefined && mutation !== null) return mutation;
+    const query = this.queries.getResult(name);
+    if (query !== undefined && query !== null) return query;
+    return this.plain(name);
+  }
+
+  /**
+   * The value of a plain statement (`args = {…}`, `limit = 5`), for what lang-core leaves as a
+   * reference: the arguments of a Query or Mutation. In an element's props it inlines them.
+   */
+  private plain(name: string): unknown {
+    if (this.resolving.has(name)) return null;
+    this.statements ??= new Map(
+      split(tokenize(autoClose(this.source.trim()).text)).map((stmt) => [stmt.id, stmt]),
+    );
+    const statement = this.statements.get(name);
+    if (!statement) return null;
+    const expression = parseExpression(statement.tokens);
+    // A query or a mutation is a statement too, but its value is its result, not its call.
+    if (
+      expression.k === "Comp" &&
+      (expression.name === "Query" || expression.name === "Mutation")
+    ) {
+      return null;
+    }
+    this.resolving.add(name);
+    try {
+      return evaluate(expression, this.context);
+    } finally {
+      this.resolving.delete(name);
+    }
+  }
+
   /** The evaluated doc. */
   doc(): UiDoc {
     return this.current().doc;
@@ -157,10 +252,18 @@ export class Program {
   dispose(): void {
     this.disposed = true;
     this.queries.dispose();
+    for (const { program } of this.instances.values()) program.dispose();
+    this.instances.clear();
   }
 
   /** A field's new value. False when there is no such field, the value isn't one it takes, or the doc is streaming. */
   input(key: string, value: unknown): boolean {
+    const routed = this.route(key);
+    if (routed) {
+      const ok = !this.streaming && routed.program.input(routed.key, value);
+      if (ok) this.rendered = undefined;
+      return ok;
+    }
     const field = this.current().fields.get(key);
     if (!field || this.streaming) return false;
     const next = this.coerce(field, value);
@@ -175,6 +278,15 @@ export class Program {
 
   /** Presses a button: checks its form, runs its action plan, and returns what to tell the agent. */
   async press(key: string): Promise<PressResult> {
+    const routed = this.route(key);
+    if (routed) {
+      if (this.streaming) return { refused: "streaming", assistant: [] };
+      try {
+        return await routed.program.press(routed.key);
+      } finally {
+        this.rendered = undefined;
+      }
+    }
     const button = this.current().buttons.get(key);
     if (!button) return { refused: "unknown", assistant: [] };
     if (this.streaming) return { refused: "streaming", assistant: [] };
@@ -198,6 +310,68 @@ export class Program {
     } finally {
       this.rendered = undefined;
     }
+  }
+
+  // ─── App components ───────────────────────────────────────────────────────
+
+  /** The use of a component a key (`<where>/<key inside it>`) belongs to, and the key in it. */
+  private route(key: string): { program: Program; key: string } | undefined {
+    const at = key.indexOf("/");
+    if (at < 0) return undefined;
+    this.current();
+    const instance = this.instances.get(key.slice(0, at));
+    return instance && { program: instance.program, key: key.slice(at + 1) };
+  }
+
+  /**
+   * One use of an app's component, drawn: its program runs with the arguments of the call, in a
+   * program of its own that is kept for as long as the use stays in the doc, so `$state`, queries
+   * and keys belong to the use and two uses of one component share nothing.
+   */
+  private expand(
+    name: string,
+    id: string,
+    args: Record<string, unknown>,
+    partial: boolean,
+    statement: string | undefined,
+  ): UiNode {
+    const registered = this.lib.components.get(name);
+    let instance = this.instances.get(id);
+    if (instance?.name !== name) {
+      instance?.program.dispose();
+      // Without `apps`: a component is made of the library alone.
+      const program = new Program(
+        `${this.id}/${id}`,
+        this.env.callTool
+          ? { markdown: this.env.markdown, callTool: this.env.callTool }
+          : { markdown: this.env.markdown },
+      );
+      program.onChange = () => this.later();
+      instance = { name, program };
+      this.instances.set(id, instance);
+    }
+    this.touched.add(id);
+    const failed = (why: string): UiNode => {
+      const text = `${name} could not be drawn: ${why}`;
+      return {
+        component: "Callout",
+        props: { text, tone: "danger", blocks: this.env.markdown(text) },
+      };
+    };
+    if (!registered) return failed("no app registers it");
+    instance.program.set(
+      instanceProgram(registered.component.openui, argsOf(args)),
+      this.streaming,
+    );
+    const doc = instance.program.doc();
+    for (const error of doc.errors ?? []) {
+      const own: UiError = { code: error.code, message: `${name}: ${error.message}` };
+      if (statement !== undefined) own.statementId = statement;
+      this.expansionErrors.push(own);
+    }
+    if (!doc.root) return failed(doc.errors?.[0]?.message ?? "its program drew nothing");
+    const root = prefixKeys(doc.root, `${id}/`);
+    return partial ? { ...root, partial: true } : root;
   }
 
   // ─── Running actions ──────────────────────────────────────────────────────
@@ -411,6 +585,8 @@ export class Program {
       return { doc, fields: new Map(), buttons: new Map() };
     }
     this.store.initialize(parsed.stateDeclarations, {});
+    this.touched = new Set();
+    this.expansionErrors = [];
     // Tools run for a finished program only; a streaming one is still being written.
     if (!this.streaming) this.startQueries(parsed);
     const evalErrors: OpenUIError[] = [];
@@ -418,7 +594,7 @@ export class Program {
     try {
       root = evaluateRoot(parsed, {
         ctx: this.context,
-        library,
+        library: this.lib.library,
         store: this.store,
         errors: evalErrors,
       });
@@ -436,8 +612,17 @@ export class Program {
       error: (field) => this.errors.get(field.id),
       mutationLoading: (id) => this.queries.getMutationResult(id)?.status === "loading",
       markdown: (source) => this.env.markdown(source),
+      isAppComponent: (name) => this.lib.components.has(name),
+      expand: (name, id, args, partial, statement) =>
+        this.expand(name, id, args, partial, statement),
     });
     if (root) doc.root = converter.convert(root);
+    // A use that is gone takes its state with it.
+    for (const [id, instance] of this.instances) {
+      if (this.touched.has(id)) continue;
+      instance.program.dispose();
+      this.instances.delete(id);
+    }
     if (this.streaming) {
       // What looks broken may only be unfinished: errors wait for the end.
       doc.streaming = true;
@@ -445,6 +630,7 @@ export class Program {
       const errors = [
         ...parsed.meta.errors.filter((error) => error.severity !== "warning").map(uiError),
         ...evalErrors.map(uiError),
+        ...this.expansionErrors,
         ...this.queries.getSnapshot().__openui_errors.map(uiError),
       ];
       if (errors.length > 0) doc.errors = errors;

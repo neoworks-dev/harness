@@ -2,6 +2,7 @@
 // long as the view lives so typed values and $variables survive the item being re-sent
 // (docs/openui.md). A Program parses, evaluates and handles input; this keeps them and renders
 // templates written in OpenUI Lang.
+import type { AppLibrary } from "@suite/openui/components";
 import { Program, type CallTool } from "@suite/openui/program";
 import type { UiDoc } from "@suite/protocol/types";
 import { parseMarkdown } from "./markdown.ts";
@@ -28,11 +29,13 @@ export class OpenUiDocs {
 
   /**
    * `changed` is told of an item whose doc changed on its own (a query answered), `tools` runs
-   * the tools Query and Mutation name.
+   * the tools Query and Mutation name, `apps` gives the library with the components of the apps
+   * (asked whenever a program is set, as apps come and go).
    */
   constructor(
     private readonly changed: (ref: string) => void,
     private readonly tools?: CallTool,
+    private readonly apps?: () => AppLibrary,
   ) {}
 
   private static id(ref: string, doc: string): string {
@@ -47,6 +50,7 @@ export class OpenUiDocs {
       program = new Program(doc, {
         markdown: (text) => parseMarkdown(text),
         ...(this.tools && { callTool: this.tools }),
+        ...(this.apps && { apps: this.apps }),
       });
       program.onChange = () => this.changed(ref);
       this.programs.set(id, program);

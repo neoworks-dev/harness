@@ -3,12 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./components": "./src/components.ts",
     "./library": "./src/library.ts",
     "./program": "./src/program.ts",
     "./skill": "./src/skill.ts"
-  },
-  "scripts": {
-    "skill": "bun scripts/skill.ts"
   },
   "dependencies": {
     "@openuidev/lang-core": "^1.0.1",

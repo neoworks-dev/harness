@@ -22,8 +22,8 @@ function sameFocus(a: FocusTarget | undefined, b: FocusTarget | undefined): bool
 export class ToldState {
   /** What the agent thinks is open: app → version it was told about. */
   private readonly told = new Map<string, number>();
-  /** Every connector it ever heard of (open or not): the last version and tools. */
-  private readonly seen = new Map<string, { v: number; tools: string[] }>();
+  /** Every connector it ever heard of (open or not): the last version, tools and components. */
+  private readonly seen = new Map<string, { v: number; tools: string[]; components: string[] }>();
   /** The last focus it was told. */
   private focus?: FocusTarget;
 
@@ -31,7 +31,11 @@ export class ToldState {
   apply(event: SessionEvent): void {
     if (event.type === "app_connected") {
       this.told.set(event.app, event.v);
-      this.seen.set(event.app, { v: event.v, tools: event.tools });
+      // An event that does not say keeps what it knew.
+      let components = event.components;
+      if (components === undefined) components = this.seen.get(event.app)?.components;
+      components ??= [];
+      this.seen.set(event.app, { v: event.v, tools: event.tools, components });
     } else if (event.type === "app_disconnected") {
       this.told.delete(event.app);
     } else if (event.type === "focus_changed") {
@@ -56,13 +60,18 @@ export class ToldState {
         tools: c.tools,
       };
       const before = this.seen.get(c.app);
+      const components = c.components ?? [];
       if (!before) {
-        // First time it hears of it: say what it is for.
+        // First time it hears of it: say what it is for, and what it adds to the UI library.
         if (c.description !== undefined) event.description = c.description;
+        if (components.length > 0) event.components = components;
       } else if (before.v === c.v) {
         event.reconnect = true;
       } else {
         event.previous = before.v;
+        if (before.components.join("\0") !== components.join("\0")) {
+          event.components = components;
+        }
         const added = c.tools.filter((t) => !before.tools.includes(t));
         const removed = before.tools.filter((t) => !c.tools.includes(t));
         if (added.length > 0) event.added = added;

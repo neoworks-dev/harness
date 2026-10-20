@@ -63,6 +63,8 @@ function describeToolCall(name: string, args: unknown): { title: string; kind: T
     }
     case "wait":
       return { title: "wait for messages", kind: "other" };
+    case "ui_library":
+      return { title: "UI library", kind: "other" };
     case "todo_write":
       return { title: "update todos", kind: "think" };
     case "skill":
@@ -107,6 +109,8 @@ function imagesOf(content: unknown, details: unknown): ToolCallContent[] {
  * title`, a search gets its count on top. The rest stays, for the expanded view.
  */
 function shownText(toolName: string, output: string, details: unknown): string {
+  // The library is for the model too: the chat says it was read.
+  if (toolName === "ui_library") return `${output.split("\n").length} lines`;
   if (!isRecord(details)) return output;
   if (toolName === "web_fetch" && typeof details.lines === "number") {
     const parts = [`${details.lines} lines`];

@@ -1,16 +1,10 @@
-// The openui skill: what neo loads to learn OpenUI Lang and the suite@1 library. Generated from
-// the library, so it never goes stale: `bun run --cwd openui skill` writes it, and a test fails
-// when the file on disk is not what this produces.
+// What an agent is told about OpenUI when it calls `ui_library` (the gateway tool): the guidance
+// on when and how to draw UI, lang-core's reference for the language and the suite@1 library, and
+// the components the connected apps add. Generated from the library and the apps' registrations
+// when asked, so it never goes stale.
 import { generateSystemPrompt } from "@openuidev/lang-core";
+import { type AppComponents, paramList } from "./components.ts";
 import { library } from "./library.ts";
-
-export const SKILL_PATH = "harness/skills/openui/SKILL.md";
-
-const DESCRIPTION =
-  "Draw UI in the chat instead of prose. Load it whenever the user asks to show, visualize, " +
-  "chart, compare or get an overview or status of something, whenever an answer has several " +
-  "numbers, a breakdown, a trend or rows of data, and whenever you need several inputs or a " +
-  "choice from the user.";
 
 const GUIDANCE = `# OpenUI
 
@@ -74,6 +68,11 @@ Lay a dashboard out the way a page is, not as one long column:
   it: \`Buttons([Button("Website", @OpenUrl("https://…"), "secondary"), Button("Tell me
   more", @ToAssistant("Tell me more about …"), "secondary")])\`. A card of things to choose
   between without buttons leaves the user nothing to press.
+- Use \`Box\` and \`Shape\` only for what no component above is: a colour swatch, a timeline,
+  a bar of parts, a gauge. A Box is a column or row with a gap, padding, a tone fill and a tone
+  border; its \`width\` is "fill", "fit" or a share of the parent (\`0.3\`), never pixels or
+  cells. A Shape draws a rect, line, path or arc in a box of 0 to 1 that its parent sizes;
+  Shapes next to each other share one box. Colours are tones (accent, muted, success, danger).
 
 ## Forms and buttons
 
@@ -85,6 +84,14 @@ Lay a dashboard out the way a page is, not as one long column:
 - \`@OpenUrl("https://…")\` opens a link, \`@Copy("text")\` copies text; neither involves you.
 - \`$variables\` are state in the app: bind one to an input as its last argument
   (\`Select("env", options, null, null, $env)\`) and other statements can read it.
+
+## App components
+
+Connected apps add components to the library: they are listed at the end of this text, under
+the app that offers them, and called like any other component, with their arguments in order.
+Use one when it is for what you are showing: it brings its own preview, controls and buttons,
+and each one you write has a state of its own. An app that connects later announces its
+components in \`<app connected=… components=…/>\`: call \`ui_library\` again to read them.
 
 ## Data from apps
 
@@ -121,8 +128,8 @@ send = Button("Deploy", @ToAssistant("Deploy with these settings"), "primary")
 \`\`\``,
 ];
 
-/** The text of SKILL.md. */
-export function skillMarkdown(): string {
+/** The guidance and the reference for the language and the library. */
+export function skillText(): string {
   const reference = generateSystemPrompt({
     library: library.toSpec(),
     promptOptions: {
@@ -133,5 +140,24 @@ export function skillMarkdown(): string {
       examples: EXAMPLES,
     },
   });
-  return `---\nname: openui\ndescription: ${DESCRIPTION}\n---\n\n${GUIDANCE}${reference}\n`;
+  return `${GUIDANCE}${reference}`;
+}
+
+/** The components of the apps, one list per app: `Name(arg: type, other?: type) — what it is`. */
+export function appComponentsText(apps: AppComponents): string {
+  const names = Object.keys(apps).sort();
+  if (names.length === 0) return "No connected app adds components right now.";
+  const parts = names.map((app) => {
+    const lines = Object.entries(apps[app] ?? {}).map(
+      ([name, component]) =>
+        `${name}(${paramList(component.params)}) — ${component.description.trim()}`,
+    );
+    return `## ${app}\n${lines.join("\n")}`;
+  });
+  return `${parts.join("\n\n")}`;
+}
+
+/** What `ui_library` returns: the skill, then the components the connected apps add. */
+export function uiLibraryText(apps: AppComponents): string {
+  return `${skillText()}\n# App components\n\nCalled like the components above; each use has a state of its own.\n\n${appComponentsText(apps)}\n`;
 }

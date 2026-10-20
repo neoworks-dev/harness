@@ -1,0 +1,34 @@
+  ⟦border bg:surface|╭─ ⟧⟦bg:surface bold|One⟧⟦border bg:surface| ───────────────────────────────╮⟧ ⟦accent bg:surface|╭─ ⟧⟦accent bg:surface bold|Two⟧⟦accent bg:surface| ──────────────────────────────╮⟧
+  ⟦border bg:surface|│ ⟧⟦bg:surface|First slide⟧⟦bg:surface|                        ⟧⟦border bg:surface| │⟧ ⟦accent bg:surface|│ ⟧⟦bg:surface|Second slide⟧⟦bg:surface|                      ⟧⟦accent bg:surface| │⟧
+  ⟦border bg:surface|╰─────────────────────────────────────╯⟧ ⟦accent bg:surface|╰────────────────────────────────────╯⟧
+                                    ⟦muted|‹⟧⟦muted| 1–2/3 ⟧⟦accent bold|›⟧
+  ⟦border|──────────────────────────────────────────────────────────────────────────────⟧
+  ⟦fg bg:surface|  fn main() {                                                                 ⟧
+  ⟦fg bg:surface|      println!("hi");                                                         ⟧
+  ⟦fg bg:surface|  }                                                                           ⟧
+  ⟦muted|Branch⟧  main
+  ⟦muted|Status⟧  ⟦success bold|clean⟧
+  ⟦bold|Ada Lovelace⟧  ⟦muted|analyst⟧  ⟦accent bg:#2C364C| admin ⟧
+  ⟦bold|Grace Hopper⟧  ⟦muted|admiral⟧       42
+  ⟦bold|$1.2M⟧⟦success| ▲ 8%⟧⟦muted| vs last month⟧
+  ⟦muted|[image front]⟧
+  ⟦muted|[image back]⟧
+  ⟦accent underlined|Docs⟧⟦muted| (https://example.com/docs)⟧
+  ⟦muted|7 ⟧                      ⟦accent|⣀⣀⣠⣤⣤⣶⣶⣿⣿⣿⣷⣶⣶⣶⣦⣤⣤⣤⣤⣀⣀⣀⣀⟧
+  ⟦muted|  ⟧             ⟦accent|⣀⣀⣤⣤⣴⣶⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣶⣶⣶⣦⣤⣤⣤⣄⣀⣀⟧
+  ⟦muted|  ⟧   ⟦accent|⢀⣀⣀⣤⣤⣴⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⟧
+  ⟦muted|  ⟧⟦accent|⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⟧
+  ⟦muted|  ⟧⟦accent|⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⟧
+  ⟦muted|0 ⟧⟦accent|⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⟧
+    ⟦muted|Mon                          Tue                         Wed⟧
+  ⟦accent|━ ⟧Visits
+  ⟦border|╭────────────────────────────────╮⟧ ⟦border|╭────────────────────────────────╮⟧
+  ⟦border|│ ⟧⟦muted|( )⟧ Free                      ⟦border| │⟧ ⟦border|│ ⟧⟦muted|( )⟧ Pro                       ⟦border| │⟧
+  ⟦border|│ ⟧    ⟦muted|For trying it out⟧         ⟦border| │⟧ ⟦border|│ ⟧    ⟦muted|For teams⟧                 ⟦border| │⟧
+  ⟦border|╰────────────────────────────────╯⟧ ⟦border|╰────────────────────────────────╯⟧
+  ⟦success|[x]⟧ Alerts
+      ⟦muted|Tell me when it breaks⟧
+  ⟦muted|[ ]⟧ Digest
+  ⟦success|● on ⟧ Dark mode
+  ⟦muted|○ off⟧ Beta
+  ⟦muted|( ⟧⟦accent|Why is it slow?⟧⟦muted| )⟧  ⟦muted|( ⟧⟦accent|Show the queries⟧⟦muted| )⟧

@@ -6,11 +6,12 @@
 //! pure. Tabs and accordion items have no key: they are named by their node path in the doc.
 //!
 //! The pieces: `layout` (stacks, rows, cards, tabs, accordions, steps), `content` (text, code,
-//! tables, metrics…), `charts` and `forms`.
+//! tables, metrics…), `charts`, `forms` and `generic` (Box and Shape).
 
 mod charts;
 mod content;
 mod forms;
+mod generic;
 mod layout;
 
 pub use forms::is_date;
@@ -300,7 +301,7 @@ impl<'a> Cx<'a> {
             self.ui.form.take(),
             std::mem::take(&mut self.ui.in_control),
         );
-        let lines = self.ui_node(node, "", w);
+        let lines = self.ui_sized(node, "", w);
         (
             self.ui.doc,
             self.ui.streaming,

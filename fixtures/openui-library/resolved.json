@@ -1,0 +1,259 @@
+[
+  {
+    "ref": "m-m1",
+    "kind": "agent",
+    "component": {
+      "type": "text",
+      "blocks": [
+        {
+          "type": "openui",
+          "ui": {
+            "id": "0",
+            "root": {
+              "component": "Stack",
+              "props": {
+                "children": [
+                  {
+                    "component": "Carousel",
+                    "props": {
+                      "children": [
+                        {
+                          "component": "Card",
+                          "props": {
+                            "children": [
+                              {
+                                "component": "Text",
+                                "props": {
+                                  "text": "First slide",
+                                  "blocks": [
+                                    { "type": "paragraph", "spans": [{ "text": "First slide" }] }
+                                  ]
+                                }
+                              }
+                            ],
+                            "title": "One"
+                          }
+                        },
+                        {
+                          "component": "Card",
+                          "props": {
+                            "children": [
+                              {
+                                "component": "Text",
+                                "props": {
+                                  "text": "Second slide",
+                                  "blocks": [
+                                    { "type": "paragraph", "spans": [{ "text": "Second slide" }] }
+                                  ]
+                                }
+                              }
+                            ],
+                            "title": "Two",
+                            "tone": "accent"
+                          }
+                        },
+                        {
+                          "component": "Card",
+                          "props": {
+                            "children": [
+                              {
+                                "component": "Text",
+                                "props": {
+                                  "text": "Third slide",
+                                  "blocks": [
+                                    { "type": "paragraph", "spans": [{ "text": "Third slide" }] }
+                                  ]
+                                }
+                              }
+                            ],
+                            "title": "Three",
+                            "tone": "success"
+                          }
+                        }
+                      ],
+                      "visible": 2
+                    }
+                  },
+                  { "component": "Separator", "props": {} },
+                  {
+                    "component": "Code",
+                    "props": { "code": "fn main() {\n    println!(\"hi\");\n}", "language": "rust" }
+                  },
+                  {
+                    "component": "KeyValue",
+                    "props": {
+                      "pairs": [
+                        { "component": "KV", "props": { "key": "Branch", "value": "main" } },
+                        {
+                          "component": "KV",
+                          "props": { "key": "Status", "value": "clean", "tone": "success" }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "component": "EntityList",
+                    "props": {
+                      "items": [
+                        {
+                          "component": "ListItem",
+                          "props": {
+                            "title": "Ada Lovelace",
+                            "subtitle": "analyst",
+                            "trailing": {
+                              "component": "Tag",
+                              "props": { "label": "admin", "tone": "accent" }
+                            }
+                          }
+                        },
+                        {
+                          "component": "ListItem",
+                          "props": {
+                            "title": "Grace Hopper",
+                            "subtitle": "admiral",
+                            "trailing": 42
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "component": "MetricIndicator",
+                    "props": {
+                      "value": "$1.2M",
+                      "delta": "8%",
+                      "direction": "up",
+                      "subtext": "vs last month"
+                    }
+                  },
+                  {
+                    "component": "ImageGallery",
+                    "props": {
+                      "images": [
+                        {
+                          "component": "Image",
+                          "props": { "src": "asset://img-front", "alt": "front" }
+                        },
+                        {
+                          "component": "Image",
+                          "props": { "src": "asset://img-back", "alt": "back" }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "component": "Link",
+                    "props": { "text": "Docs", "url": "https://example.com/docs" }
+                  },
+                  {
+                    "component": "AreaChart",
+                    "props": {
+                      "labels": ["Mon", "Tue", "Wed"],
+                      "series": [
+                        {
+                          "component": "Series",
+                          "props": { "name": "Visits", "values": [3, 7, 5] }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "component": "Form",
+                    "props": {
+                      "name": "settings",
+                      "children": [
+                        {
+                          "component": "OptionCards",
+                          "key": "plan",
+                          "props": {
+                            "name": "plan",
+                            "options": [
+                              {
+                                "component": "OptionCard",
+                                "props": {
+                                  "value": "free",
+                                  "title": "Free",
+                                  "description": "For trying it out"
+                                }
+                              },
+                              {
+                                "component": "OptionCard",
+                                "props": {
+                                  "value": "pro",
+                                  "title": "Pro",
+                                  "description": "For teams"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "component": "CheckBoxGroup",
+                          "key": "features",
+                          "props": {
+                            "name": "features",
+                            "items": [
+                              {
+                                "component": "CheckBoxItem",
+                                "props": {
+                                  "name": "alerts",
+                                  "label": "Alerts",
+                                  "description": "Tell me when it breaks",
+                                  "checked": true
+                                }
+                              },
+                              {
+                                "component": "CheckBoxItem",
+                                "props": { "name": "digest", "label": "Digest" }
+                              }
+                            ],
+                            "value": ["alerts"]
+                          }
+                        },
+                        {
+                          "component": "SwitchGroup",
+                          "key": "prefs",
+                          "props": {
+                            "name": "prefs",
+                            "items": [
+                              {
+                                "component": "SwitchItem",
+                                "props": { "name": "dark", "label": "Dark mode", "checked": true }
+                              },
+                              {
+                                "component": "SwitchItem",
+                                "props": { "name": "beta", "label": "Beta" }
+                              }
+                            ],
+                            "value": { "dark": true, "beta": false }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "component": "FollowUpBlock",
+                    "props": {
+                      "items": [
+                        {
+                          "component": "FollowUpItem",
+                          "key": "follow.items.0",
+                          "props": { "text": "Why is it slow?" }
+                        },
+                        {
+                          "component": "FollowUpItem",
+                          "key": "follow.items.1",
+                          "props": { "text": "Show the queries" }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+]

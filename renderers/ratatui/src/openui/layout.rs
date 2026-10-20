@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 use serde_json::Value;
 use suite_protocol as pb;
 
+use super::generic::{Ask, ask, share_of};
 use super::{N, UiKind, join};
 use crate::render::{Cx, Lines, prefixed, stack};
 use crate::text::{clip, sline, truncate, width};
@@ -18,17 +19,17 @@ fn path_id(path: &str) -> String {
     }
 }
 
-fn space(gap: Option<&str>) -> Option<pb::Space> {
+pub(super) fn space(gap: Option<&str>) -> Option<pb::Space> {
     (gap == Some("l")).then_some(pb::Space::L)
 }
 
 /// A child of a container: the node and its path in the doc.
-type Kid<'n> = (N<'n>, String);
+pub(super) type Kid<'n> = (N<'n>, String);
 
 /// The fewest cells a grid column gets before the grid takes one column less.
 const GRID_MIN: usize = 30;
 
-fn kids_of<'n>(n: N<'n>, prop: &str, path: &str) -> Vec<Kid<'n>> {
+pub(super) fn kids_of<'n>(n: N<'n>, prop: &str, path: &str) -> Vec<Kid<'n>> {
     n.nodes(prop)
         .into_iter()
         .enumerate()
@@ -49,7 +50,7 @@ pub(super) fn max_width(lines: &[Line<'_>]) -> usize {
 }
 
 /// `lines` shifted right by `by` cells.
-fn shift(lines: Lines, by: usize) -> Lines {
+pub(super) fn shift(lines: Lines, by: usize) -> Lines {
     if by == 0 {
         return lines;
     }
@@ -113,6 +114,8 @@ impl<'a> Cx<'a> {
             "Tabs" => self.ui_tabs(n, path, w),
             "Accordion" => self.ui_accordion(n, path, w),
             "Steps" => self.ui_steps(n, w),
+            "Box" => self.ui_box(n, path, w),
+            "Shape" => self.ui_canvas(&[n], w),
             "Text" => self.ui_text(n, w),
             "Callout" => self.ui_callout(n, w),
             "Code" => self.ui_code(n, w),
@@ -178,14 +181,14 @@ impl<'a> Cx<'a> {
 
     /// Draws siblings that follow each other down the page, one part each. A run of two or
     /// more `Card`s is one `Grid` and a run of two or more `Metric`s one strip: the terminal
-    /// lays a page out, whatever column the program asked for.
-    fn ui_flow(&mut self, kids: &[Kid<'_>], w: usize) -> Vec<Lines> {
+    /// lays a page out, whatever column the program asked for. A run of `Shape`s is one canvas.
+    pub(super) fn ui_flow(&mut self, kids: &[Kid<'_>], w: usize) -> Vec<Lines> {
         let mut parts = Vec::new();
         let mut i = 0;
         while i < kids.len() {
             let name = kids[i].0.name();
             let mut j = i + 1;
-            if matches!(name, "Card" | "Metric") {
+            if matches!(name, "Card" | "Metric" | "Shape") {
                 while j < kids.len() && kids[j].0.name() == name {
                     j += 1;
                 }
@@ -197,7 +200,11 @@ impl<'a> Cx<'a> {
                     let ms: Vec<N<'_>> = run.iter().map(|k| k.0).collect();
                     self.ui_metric_strip(&ms, w)
                 }
-                _ => self.ui_node(run[0].0, &run[0].1, w),
+                ("Shape", _) => {
+                    let shapes: Vec<N<'_>> = run.iter().map(|k| k.0).collect();
+                    self.ui_canvas(&shapes, w)
+                }
+                _ => self.ui_sized(run[0].0, &run[0].1, w),
             };
             if !lines.is_empty() {
                 parts.push(lines);
@@ -208,10 +215,15 @@ impl<'a> Cx<'a> {
     }
 
     fn ui_stack(&mut self, n: N<'_>, path: &str, w: usize) -> Lines {
-        if n.str("direction") == Some("row") {
-            return self.ui_row(n, path, w);
-        }
         let gap = n.str("gap");
+        if n.str("direction") == Some("row") {
+            return self.ui_row(n, path, w, gap);
+        }
+        self.ui_column(n, path, w, gap)
+    }
+
+    /// The children top to bottom, shifted by `align`.
+    pub(super) fn ui_column(&mut self, n: N<'_>, path: &str, w: usize, gap: Option<&str>) -> Lines {
         let align = n.str("align").unwrap_or("start");
         let kids = kids_of(n, "children", path);
         let parts = self
@@ -382,8 +394,8 @@ impl<'a> Cx<'a> {
 
     /// Children side by side at their preferred widths; when they don't fit, squeezed down to
     /// their minimum, else wrapped onto further lines (`wrap`) or stacked.
-    fn ui_row(&mut self, n: N<'_>, path: &str, w: usize) -> Lines {
-        let gap = match n.str("gap") {
+    pub(super) fn ui_row(&mut self, n: N<'_>, path: &str, w: usize, gap: Option<&str>) -> Lines {
+        let gap = match gap {
             Some("none") => 0,
             Some("s") => 2,
             Some("l") => 5,
@@ -423,6 +435,39 @@ impl<'a> Cx<'a> {
             return Vec::new();
         }
         let gaps_total = gap * (count - 1);
+        // A Box says how wide it wants to be (see `generic`): a share of what the gaps leave,
+        // its content's width, or what the others leave.
+        let room = w.saturating_sub(gaps_total);
+        let mut fills = Vec::new();
+        for (i, item) in items.iter_mut().enumerate() {
+            if item.node.name() != "Box" {
+                continue;
+            }
+            match ask(item.node) {
+                Some(Ask::Share(s)) => {
+                    item.pref = share_of(s, room);
+                    item.min = item.pref;
+                }
+                Some(Ask::Fill) => fills.push(i),
+                Some(Ask::Fit) | None => {
+                    let (node, p) = (item.node, item.path.clone());
+                    item.pref = self.quiet(|cx| cx.box_natural(node, &p, w));
+                    item.min = self.ui_min(node, item.pref);
+                }
+            }
+        }
+        if !fills.is_empty() {
+            let taken: usize = (0..count)
+                .filter(|i| !fills.contains(i))
+                .map(|i| items[i].pref)
+                .sum();
+            let left = room.saturating_sub(taken);
+            for (k, i) in fills.iter().enumerate() {
+                let each = left / fills.len() + usize::from(k < left % fills.len());
+                items[*i].pref = each.max(1);
+                items[*i].min = items[*i].pref;
+            }
+        }
         let pref_total: usize = items.iter().map(|i| i.pref).sum::<usize>() + gaps_total;
         let min_total: usize = items.iter().map(|i| i.min).sum::<usize>() + gaps_total;
 

@@ -3,6 +3,7 @@
   import type { UiNode } from "@suite/protocol/types";
   import AccordionNode from "./AccordionNode.svelte";
   import BarChartNode from "./BarChartNode.svelte";
+  import BoxNode from "./BoxNode.svelte";
   import ButtonNode from "./ButtonNode.svelte";
   import ButtonsNode from "./ButtonsNode.svelte";
   import CalloutNode from "./CalloutNode.svelte";
@@ -32,6 +33,7 @@
   import RadioNode from "./RadioNode.svelte";
   import SelectNode from "./SelectNode.svelte";
   import SeparatorNode from "./SeparatorNode.svelte";
+  import ShapeNode from "./ShapeNode.svelte";
   import SliderNode from "./SliderNode.svelte";
   import SparklineNode from "./SparklineNode.svelte";
   import StackNode from "./StackNode.svelte";
@@ -66,6 +68,8 @@
     Tabs: TabsNode,
     Accordion: AccordionNode,
     Steps: StepsNode,
+    Box: BoxNode,
+    Shape: ShapeNode,
     Code: CodeNode,
     Table: TableNode,
     List: ListNode,

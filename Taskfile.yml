@@ -192,8 +192,3 @@ tasks:
     cmds:
       - bun run protocol/codegen/main.ts --check
       - bun run daemon/scripts/fixtures.ts --check
-
-  openui:skill:
-    desc: Regenerate the openui skill from the library (harness/skills/openui/SKILL.md)
-    cmds:
-      - bun run --cwd openui skill

@@ -5,6 +5,7 @@ import { library } from "../src/library.ts";
 // props are only ever added at the end.
 const ORDER: Record<string, string[]> = {
   Stack: ["children", "direction", "gap", "wrap", "align", "justify"],
+  Grid: ["children", "columns"],
   Carousel: ["children", "visible"],
   Card: ["children", "title", "tone", "variant"],
   Header: ["title", "subtitle"],
@@ -15,6 +16,19 @@ const ORDER: Record<string, string[]> = {
   AccordionItem: ["title", "children", "open"],
   Steps: ["steps"],
   Step: ["title", "detail", "status"],
+  Box: [
+    "children",
+    "dir",
+    "gap",
+    "pad",
+    "align",
+    "justify",
+    "wrap",
+    "width",
+    "fill",
+    "border",
+    "rounded",
+  ],
   Text: ["text", "tone", "role"],
   Code: ["code", "language"],
   Table: ["columns", "rows"],
@@ -31,6 +45,7 @@ const ORDER: Record<string, string[]> = {
   Image: ["src", "alt"],
   ImageGallery: ["images"],
   Link: ["text", "url"],
+  Shape: ["kind", "points", "tone", "fill", "aspect"],
   BarChart: ["labels", "series", "horizontal", "stacked"],
   LineChart: ["labels", "series"],
   AreaChart: ["labels", "series"],
@@ -69,5 +84,5 @@ test("every component takes its arguments in the order docs/openui.md lists", ()
 });
 
 test("the library has the Copy action", () => {
-  expect(Object.keys(library.actions)).toEqual(["Copy"]);
+  expect(Object.keys(library.actions ?? {})).toEqual(["Copy"]);
 });

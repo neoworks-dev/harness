@@ -2409,3 +2409,274 @@ fn the_images_of_a_doc_are_asked_for_also_in_cards_and_galleries() {
     );
     assert_eq!(image_sources(&in_text), ["/tmp/d.png"]);
 }
+
+// ─── Box and Shape ──────────────────────────────────────────────────────────
+
+fn boxed(children: Vec<Value>, extra: Value) -> Value {
+    let mut props = json!({"children": children});
+    if let (Some(p), Some(e)) = (props.as_object_mut(), extra.as_object()) {
+        p.extend(e.clone());
+    }
+    node("Box", props)
+}
+
+fn shape(kind: &str, points: Value, extra: Value) -> Value {
+    let mut props = json!({"kind": kind, "points": points});
+    if let (Some(p), Some(e)) = (props.as_object_mut(), extra.as_object()) {
+        p.extend(e.clone());
+    }
+    node("Shape", props)
+}
+
+fn widths(it: &ViewItem, width: u16) -> Vec<usize> {
+    lines(it, width).iter().map(|l| l.chars().count()).collect()
+}
+
+#[test]
+fn a_box_in_a_row_is_a_share_of_what_the_gaps_leave() {
+    let half = |label: &str| boxed(vec![text(label)], json!({"width": 0.5, "border": "muted"}));
+    let it = doc(boxed(
+        vec![half("left"), half("right")],
+        json!({"dir": "row", "gap": "s"}),
+    ));
+    // 40 cells less the gap of 2, in two halves.
+    let rows = lines(&it, 40);
+    assert_eq!(rows.len(), 3, "{rows:?}");
+    assert_eq!(
+        rows[0],
+        format!("┌{}┐  ┌{}┐", "─".repeat(17), "─".repeat(17))
+    );
+    assert!(
+        rows[1].starts_with("│left") && rows[1].contains("│  │right"),
+        "{rows:?}"
+    );
+    assert_eq!(widths(&it, 40), [40, 40, 40]);
+}
+
+#[test]
+fn a_box_in_a_row_without_a_width_takes_its_content_and_a_fill_box_what_is_left() {
+    let it = doc(boxed(
+        vec![
+            boxed(vec![text("ab")], json!({"border": "muted"})),
+            boxed(
+                vec![text("rest")],
+                json!({"width": "fill", "border": "accent"}),
+            ),
+        ],
+        json!({"dir": "row", "gap": "none"}),
+    ));
+    assert_eq!(widths(&it, 20), [20, 20, 20]);
+    assert_eq!(lines(&it, 20)[1], format!("│ab││rest{}│", " ".repeat(10)));
+}
+
+#[test]
+fn a_box_fills_a_column_unless_it_asks_for_less() {
+    let framed = |extra: Value| {
+        let mut props = json!({"border": "accent"});
+        if let Some(p) = props.as_object_mut() {
+            p.extend(extra.as_object().cloned().unwrap_or_default());
+        }
+        doc(column(vec![boxed(vec![text("hi")], props)]))
+    };
+    assert_eq!(widths(&framed(json!({})), 30), [30, 30, 30]);
+    assert_eq!(widths(&framed(json!({"width": "fill"})), 30), [30, 30, 30]);
+    assert_eq!(widths(&framed(json!({"width": "fit"})), 30), [4, 4, 4]);
+    assert_eq!(widths(&framed(json!({"width": 0.5})), 30), [15, 15, 15]);
+    // More than the whole is the whole.
+    assert_eq!(widths(&framed(json!({"width": 3})), 30), [30, 30, 30]);
+}
+
+#[test]
+fn a_box_frames_pads_and_washes_in_tones() {
+    let it = doc(boxed(
+        vec![text("hi")],
+        json!({"border": "danger", "fill": "success", "pad": "s", "rounded": true, "width": "fit"}),
+    ));
+    assert_eq!(lines(&it, 20), ["╭────╮", "│ hi │", "╰────╯"]);
+    let drawn = render_item(&it, 20, &Options::default());
+    let edge = &drawn[0].spans[0];
+    assert_eq!(edge.style.fg, Some(pal().danger));
+    assert!(edge.style.bg.is_some(), "the fill reaches the frame");
+    // Every cell of the middle line has the wash behind it.
+    assert!(drawn[1].spans.iter().all(|s| s.style.bg == edge.style.bg));
+    // Square corners unless rounded.
+    let square = doc(boxed(
+        vec![text("hi")],
+        json!({"border": "muted", "width": "fit"}),
+    ));
+    assert_eq!(lines(&square, 20), ["┌──┐", "│hi│", "└──┘"]);
+}
+
+#[test]
+fn a_box_without_a_frame_pad_or_fill_is_just_its_children() {
+    let plain = doc(boxed(vec![text("a"), text("b")], json!({})));
+    let stack = doc(column(vec![text("a"), text("b")]));
+    assert_eq!(lines(&plain, 20), lines(&stack, 20));
+    assert!(lines(&doc(boxed(vec![], json!({}))), 20).is_empty());
+}
+
+#[test]
+fn a_box_row_wraps_and_a_column_gap_l_is_a_blank_line() {
+    let tags = vec![tag("one"), tag("two"), tag("three")];
+    let wrapped = doc(boxed(tags.clone(), json!({"dir": "row", "wrap": true})));
+    assert_eq!(lines(&wrapped, 12).len(), 2);
+    let spaced = doc(boxed(vec![text("a"), text("b")], json!({"gap": "l"})));
+    assert_eq!(lines(&spaced, 20), ["a", "", "b"]);
+}
+
+#[test]
+fn a_filled_rect_is_blocks_and_an_outline_leaves_its_inside_empty() {
+    // 4 cells across at aspect 2: 8 dots by 4 dots, one row.
+    let whole = doc(shape("rect", json!([0, 0, 1, 1]), json!({"fill": true})));
+    assert_eq!(lines(&whole, 4), ["████"]);
+    let half = doc(shape("rect", json!([0, 0, 1, 0.5]), json!({"fill": true})));
+    assert_eq!(lines(&half, 4), ["▀▀▀▀"]);
+    let left = doc(shape("rect", json!([0, 0, 0.5, 1]), json!({"fill": true})));
+    assert_eq!(lines(&left, 4), ["██"]);
+    // 12 dots square: three rows, the middle one hollow.
+    let outline = doc(shape("rect", json!([0, 0, 1, 1]), json!({"aspect": 1})));
+    let rows = lines(&outline, 6);
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[1], "▌    ▐");
+}
+
+#[test]
+fn a_shape_is_drawn_in_its_tone() {
+    let it = doc(shape(
+        "rect",
+        json!([0, 0, 1, 1]),
+        json!({"tone": "danger", "fill": true}),
+    ));
+    let drawn = render_item(&it, 4, &Options::default());
+    assert!(
+        drawn[0]
+            .spans
+            .iter()
+            .all(|s| s.style.fg == Some(pal().danger))
+    );
+    let plain = doc(shape("rect", json!([0, 0, 1, 1]), json!({"fill": true})));
+    let drawn = render_item(&plain, 4, &Options::default());
+    assert!(drawn[0].spans.iter().all(|s| s.style.fg == Some(pal().fg)));
+}
+
+#[test]
+fn the_aspect_sets_the_height_and_the_height_is_held() {
+    let tall = |aspect: f64| {
+        let it = doc(shape(
+            "rect",
+            json!([0, 0, 1, 1]),
+            json!({"fill": true, "aspect": aspect}),
+        ));
+        lines(&it, 20).len()
+    };
+    assert_eq!(tall(1.0), 10);
+    assert_eq!(tall(2.0), 5);
+    assert_eq!(tall(10.0), 1);
+    // A very narrow box is not a very tall one.
+    assert_eq!(tall(0.01), 16);
+    // Nonsense falls back to the default.
+    assert_eq!(tall(-3.0), 5);
+}
+
+#[test]
+fn lines_arcs_and_paths_are_drawn_and_what_is_not_a_shape_is_not() {
+    let ink = |it: &ViewItem, w: u16| lines(it, w).join("").chars().filter(|c| *c != ' ').count();
+    let diagonal = doc(shape("line", json!([0, 0, 1, 1]), json!({})));
+    assert!(ink(&diagonal, 10) >= 10);
+    let ring = doc(shape(
+        "arc",
+        json!([0.5, 0.5, 0.5, 0, 1]),
+        json!({"aspect": 1}),
+    ));
+    let pie = doc(shape(
+        "arc",
+        json!([0.5, 0.5, 0.5, 0, 1]),
+        json!({"aspect": 1, "fill": true}),
+    ));
+    assert!(ink(&pie, 10) > ink(&ring, 10));
+    // A quarter turn from the top is the upper right: nothing on the left.
+    let quarter = doc(shape(
+        "arc",
+        json!([0.5, 0.5, 0.5, 0, 0.25]),
+        json!({"aspect": 1, "fill": true}),
+    ));
+    for row in lines(&quarter, 10) {
+        assert!(row.chars().take(5).all(|c| c == ' '), "{row:?}");
+    }
+    let triangle = doc(shape(
+        "path",
+        json!([0.5, 0, 1, 1, 0, 1]),
+        json!({"fill": true, "aspect": 1}),
+    ));
+    let drawn = lines(&triangle, 10);
+    assert!(drawn[0].trim().chars().count() < drawn.last().map_or(0, |l| l.trim().chars().count()));
+    // Too few points and an unknown kind draw nothing.
+    for bad in [
+        shape("rect", json!([0, 0]), json!({})),
+        shape("blob", json!([0, 0, 1, 1]), json!({})),
+    ] {
+        assert_eq!(ink(&doc(bad), 10), 0);
+    }
+}
+
+#[test]
+fn shapes_that_follow_each_other_share_one_box() {
+    let a = shape(
+        "rect",
+        json!([0, 0, 0.5, 1]),
+        json!({"fill": true, "tone": "accent"}),
+    );
+    let b = shape(
+        "rect",
+        json!([0.5, 0, 0.5, 1]),
+        json!({"fill": true, "tone": "danger"}),
+    );
+    let together = doc(column(vec![a.clone(), b.clone()]));
+    assert_eq!(lines(&together, 4), ["████"]);
+    let drawn = render_item(&together, 4, &Options::default());
+    assert_eq!(drawn[0].spans.len(), 2);
+    assert_eq!(drawn[0].spans[0].style.fg, Some(pal().accent));
+    assert_eq!(drawn[0].spans[1].style.fg, Some(pal().danger));
+    // Something between them ends the run.
+    let apart = doc(column(vec![a, text("x"), b]));
+    assert_eq!(lines(&apart, 4), ["██", "x", "  ██"]);
+}
+
+#[test]
+fn box_and_shape_never_overflow() {
+    let it = doc(boxed(
+        vec![
+            boxed(
+                vec![
+                    text("a few words"),
+                    shape("arc", json!([0.5, 0.5, 0.5, 0, 0.7]), json!({"fill": true})),
+                ],
+                json!({"border": "accent", "pad": "l", "fill": "muted", "width": 0.6, "rounded": true}),
+            ),
+            boxed(
+                vec![tag("tag")],
+                json!({"width": "fit", "border": "danger"}),
+            ),
+        ],
+        json!({"dir": "row", "pad": "m", "border": "muted"}),
+    ));
+    assert_fits(&it, &Options::default());
+    assert_fits(&fixture("openui-boxes"), &Options::default());
+}
+
+/// The fixtures use every component of the library (a daemon test checks that), so one this
+/// renderer leaves out shows up here as the placeholder.
+#[test]
+fn nothing_in_the_openui_fixtures_is_left_undrawn() {
+    for name in fixture_names().iter().filter(|n| n.starts_with("openui-")) {
+        for it in fixture_items(name) {
+            for width in [40u16, 80] {
+                let drawn = lines(&it, width).join("\n");
+                assert!(
+                    !drawn.contains("[unsupported"),
+                    "{name} at {width}: {drawn}"
+                );
+            }
+        }
+    }
+}

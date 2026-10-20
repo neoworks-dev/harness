@@ -413,7 +413,10 @@ export class Hub {
           () => {
             if (id !== undefined) this.send(client, { topic: "bus.ack", id });
           },
-          (err: unknown) => this.fail(client, id, "internal", String(err)),
+          (err: unknown) => {
+            if (err instanceof BadRequestError) this.fail(client, id, "bad_request", err.message);
+            else this.fail(client, id, "internal", String(err));
+          },
         );
         return;
       }

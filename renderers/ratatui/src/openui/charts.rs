@@ -33,7 +33,7 @@ fn series_of(n: N<'_>) -> Vec<Series> {
         .collect()
 }
 
-fn nums(v: Option<&Value>) -> Vec<f64> {
+pub(super) fn nums(v: Option<&Value>) -> Vec<f64> {
     v.and_then(Value::as_array)
         .map(|a| {
             a.iter()
@@ -599,14 +599,14 @@ fn bar_cells(halves: usize, color: Color) -> Span<'static> {
 }
 
 /// A canvas of braille cells (2x4 dots each), every cell in the color of what drew last.
-struct Braille {
+pub(super) struct Braille {
     cols: usize,
     bits: Vec<Vec<u8>>,
     color: Vec<Vec<Option<Color>>>,
 }
 
 impl Braille {
-    fn new(cols: usize, rows: usize) -> Braille {
+    pub(super) fn new(cols: usize, rows: usize) -> Braille {
         Braille {
             cols,
             bits: vec![vec![0; cols]; rows],
@@ -614,7 +614,7 @@ impl Braille {
         }
     }
 
-    fn dot(&mut self, x: usize, y: usize, color: Color) {
+    pub(super) fn dot(&mut self, x: usize, y: usize, color: Color) {
         let (cx, cy) = (x / 2, y / 4);
         if cx >= self.cols || cy >= self.bits.len() {
             return;
@@ -635,7 +635,7 @@ impl Braille {
     }
 
     /// Bresenham.
-    fn line(&mut self, from: (usize, usize), to: (usize, usize), color: Color) {
+    pub(super) fn line(&mut self, from: (usize, usize), to: (usize, usize), color: Color) {
         let (mut x, mut y) = (from.0 as i64, from.1 as i64);
         let (x1, y1) = (to.0 as i64, to.1 as i64);
         let (dx, dy) = ((x1 - x).abs(), -(y1 - y).abs());
@@ -658,18 +658,32 @@ impl Braille {
         }
     }
 
+    /// Like [`Braille::rows`], but a cell drawn all over is a block: whole, or a half of it.
+    pub(super) fn block_rows(&self) -> Vec<Vec<Span<'static>>> {
+        self.cells(|bits| match bits {
+            0xff => '█',
+            // The upper two dots of each column, the lower two, the left column, the right one.
+            0x1b => '▀',
+            0xe4 => '▄',
+            0x47 => '▌',
+            0xb8 => '▐',
+            b => char::from_u32(0x2800 + u32::from(b)).unwrap_or(' '),
+        })
+    }
+
     fn rows(&self) -> Vec<Vec<Span<'static>>> {
+        self.cells(|b| char::from_u32(0x2800 + u32::from(b)).unwrap_or(' '))
+    }
+
+    /// Each row as spans, a cell with nothing drawn a space and the rest `glyph` of their dots.
+    fn cells(&self, glyph: impl Fn(u8) -> char) -> Vec<Vec<Span<'static>>> {
         self.bits
             .iter()
             .zip(&self.color)
             .map(|(bits, colors)| {
                 let mut spans: Vec<Span<'static>> = Vec::new();
                 for (b, c) in bits.iter().zip(colors) {
-                    let ch = if *b == 0 {
-                        ' '
-                    } else {
-                        char::from_u32(0x2800 + u32::from(*b)).unwrap_or(' ')
-                    };
+                    let ch = if *b == 0 { ' ' } else { glyph(*b) };
                     let style = c.map_or(Style::new(), |c| Style::new().fg(c));
                     push_text(&mut spans, &ch.to_string(), style);
                 }

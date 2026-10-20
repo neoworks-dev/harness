@@ -80,6 +80,7 @@ fn app_presence(app: &str, home: bool) -> AppPresence {
     AppPresence {
         description: None,
         templates: None,
+        components: None,
         app: app.into(),
         kind: ConnectorKind::App,
         title: None,

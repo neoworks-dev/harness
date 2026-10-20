@@ -1128,8 +1128,20 @@ type AppPresence struct {
 	PID *int64 `json:"pid,omitempty"`
 	// View templates for this app's tool results, keyed by tool name (without the app prefix). Format: protocol/README.md#templates. Kept by the daemon so results still render after the app closes.
 	Templates map[string]json.RawMessage `json:"templates,omitempty"`
+	// OpenUI components this app offers the agent, built from the library, keyed by name. Format: protocol/README.md#components. Kept by the daemon so docs that use them still draw after the app closes.
+	Components map[string]AppComponent `json:"components,omitempty"`
 	// One line for the agent about what the app is for, shown when it first connects in a session. Default: the first sentence of the MCP server's instructions.
 	Description *string `json:"description,omitempty"`
+}
+
+// AppComponent: An OpenUI component an app offers: what the agent may write as Name(…), and the program that draws it. The name is a PascalCase identifier that no library component, no other app's component and none of Query, Mutation or Action has; a clash rejects the registration.
+type AppComponent struct {
+	// What it is and when to use it; the agent reads it.
+	Description string `json:"description"`
+	// Its arguments, positional in this order, by name. Each is string, number, boolean or any, optionally an array (string[]) and optionally optional (string?); the optional ones come last.
+	Params map[string]string `json:"params"`
+	// The program, OpenUI Lang over the library (not over other app components). The arguments are the object `args`; each use has its own $state, queries and keys.
+	Openui string `json:"openui"`
 }
 
 // McpEndpoint: The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it.
@@ -1678,6 +1690,8 @@ type AppConnected struct {
 	Tools []string `json:"tools"`
 	// One line about the connector; only in the first app_connected a session gets for it.
 	Description *string `json:"description,omitempty"`
+	// Names of the OpenUI components the connector offers (ui_library has their signatures). The full current list: with the first app_connected a session gets for it when there are any, and with an update when it changed (empty: it has none now). Rendered as components=….
+	Components []string `json:"components,omitempty"`
 	// The session already saw this exact version: earlier schemas still apply. Rendered as <app reconnected=…/>.
 	Reconnect *bool `json:"reconnect,omitempty"`
 	// Tools new since the previous version (omitted when none).

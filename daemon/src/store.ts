@@ -1,6 +1,7 @@
 // Session store: SQLite event log, one row per event, gap-free per-session sequence numbers.
 import { Database } from "bun:sqlite";
 import type {
+  AppComponent,
   ConnectorKind,
   LaunchSpec,
   SessionEvent,
@@ -55,6 +56,8 @@ export interface StoredConnector {
   launch?: LaunchSpec;
   /** View templates by tool name (without the app prefix). */
   templates?: Record<string, unknown>;
+  /** The OpenUI components it offers, by name. */
+  components?: Record<string, AppComponent>;
 }
 
 export interface StoredTool {

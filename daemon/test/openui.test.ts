@@ -384,3 +384,175 @@ test("a message that starts finishes the one before it", () => {
   const first = v.snapshot().items[0];
   expect(docs(blocksOf(first))[0]?.streaming).toBeUndefined();
 });
+
+describe("app components", () => {
+  const BRIGHTNESS = {
+    description: "An image with a brightness slider and live preview",
+    params: { asset: "string", name: "string?" },
+    openui: `
+      $level  = 0
+      root    = Card([pic, slider, apply], args.name)
+      pic     = Image(preview.asset, args.name)
+      slider  = Slider("level", -100, 100, 5, $level)
+      preview = Query("photo-editor.preview", { asset: args.asset, brightness: $level }, { asset: args.asset })
+      save    = Mutation("photo-editor.brightness", { asset: args.asset, amount: $level })
+      apply   = Button("Apply", @Run(save), "primary")
+    `,
+  };
+
+  async function setup(): Promise<{
+    daemon: TestDaemon;
+    session: string;
+    app: McpApp;
+    owner: object;
+  }> {
+    const daemon = await startTestDaemon();
+    cleanups.push(() => daemon.stop());
+    const app = startMcpApp({
+      tools: [
+        {
+          name: "preview",
+          description: "A preview of an asset at a brightness",
+          inputSchema: {
+            type: "object",
+            properties: { asset: { type: "string" }, brightness: { type: "number" } },
+          },
+          handler: (args) => ({
+            content: [{ type: "text", text: "preview" }],
+            structuredContent: { asset: `${String(args.asset)}@${String(args.brightness)}` },
+          }),
+        },
+        {
+          name: "brightness",
+          description: "Change the brightness of an asset",
+          inputSchema: {
+            type: "object",
+            properties: { asset: { type: "string" }, amount: { type: "number" } },
+          },
+          handler: (args) => ({
+            content: [{ type: "text", text: "done" }],
+            structuredContent: { asset: String(args.asset), amount: Number(args.amount) },
+          }),
+        },
+      ],
+    });
+    cleanups.push(() => app.close());
+    const owner = {};
+    await daemon.connectors.presence(owner, {
+      app: "photo-editor",
+      kind: "app",
+      open: true,
+      mcp: app.endpoint,
+      components: {
+        BrightnessCard: BRIGHTNESS,
+        Chip: {
+          description: "A small label",
+          params: { text: "string" },
+          openui: 'root = Tag(args.text, "accent")',
+        },
+      },
+    });
+    return { daemon, session: daemon.focus.current().session, app, owner };
+  }
+
+  const doc = (daemon: TestDaemon, session: string): UiDoc | undefined => {
+    const item = daemon.views
+      .get(session)
+      .snapshot()
+      .items.find((i) => i.ref === "m-m1");
+    return docs(blocksOf(item))[0];
+  };
+
+  const until = async (check: () => boolean): Promise<void> => {
+    for (let i = 0; i < 100 && !check(); i++) await Bun.sleep(10);
+  };
+
+  const act = (daemon: TestDaemon, session: string, action: string, args: unknown): Promise<void> =>
+    daemon.actions.run({ session, ref: "m-m1", action, args }, "test");
+
+  test("a doc uses a component of a connected app: the reply shows library components, each use with a state of its own", async () => {
+    const { daemon, session, app } = await setup();
+    const patches: ViewPatch[] = [];
+    daemon.views.get(session);
+    daemon.views.onPatch((p) => patches.push(p));
+    daemon.store.append(
+      session,
+      chunk(
+        `Two photos:\n\n${fence(
+          [
+            "root = Stack([a, b])",
+            'a = BrightnessCard("asset://one", "Sunset")',
+            'b = BrightnessCard("asset://two")',
+          ].join("\n"),
+        )}`,
+      ),
+    );
+    daemon.store.append(session, { type: "turn_ended", stopReason: "end_turn" });
+
+    // The previews answer by themselves.
+    await until(() => JSON.stringify(doc(daemon, session)).includes("asset://two@0"));
+    const drawn = JSON.stringify(doc(daemon, session));
+    expect(drawn).toContain("asset://one@0");
+    expect(drawn).not.toContain("BrightnessCard");
+    expect(doc(daemon, session)?.errors).toBeUndefined();
+    expect(patches.some((p) => p.ops.some((o) => o.op === "set" && o.item.ref === "m-m1"))).toBe(
+      true,
+    );
+
+    // Moving the first slider asks for the first photo's preview only.
+    await act(daemon, session, "openui.input", { doc: "0", key: "a/slider", value: 40 });
+    await until(() => JSON.stringify(doc(daemon, session)).includes("asset://one@40"));
+    const sliders = JSON.stringify(doc(daemon, session)).match(
+      /"component":"Slider"[^}]*"value":(-?\d+)/g,
+    );
+    expect(sliders?.map((s) => s.split(":").at(-1))).toEqual(["40", "0"]);
+    expect(app.calls.filter((c) => c.name === "preview").map((c) => c.args)).toContainEqual({
+      asset: "asset://one",
+      brightness: 40,
+    });
+    expect(
+      app.calls.filter((c) => c.name === "preview" && c.args.asset === "asset://two"),
+    ).toHaveLength(1);
+
+    // Apply runs the first use's mutation with its own level, and is recorded like a tool call.
+    await act(daemon, session, "openui.press", { doc: "0", key: "a/apply" });
+    await until(() => app.calls.some((c) => c.name === "brightness"));
+    expect(app.calls.filter((c) => c.name === "brightness")).toEqual([
+      { name: "brightness", args: { asset: "asset://one", amount: 40 } },
+    ]);
+    expect(daemon.store.readTypes(session, ["tool_call"]).map((r) => r.event)).toMatchObject([
+      { tool: "photo-editor.brightness", rawInput: { asset: "asset://one", amount: 40 } },
+    ]);
+  });
+
+  test("the components stay known after the app closes, and a clash is refused at registration", async () => {
+    const { daemon, session, owner } = await setup();
+    await daemon.connectors.presence(owner, { app: "photo-editor", kind: "app", open: false });
+    expect(daemon.connectors.isOpen("photo-editor")).toBe(false);
+    expect([...daemon.connectors.library().components.keys()]).toEqual(["BrightnessCard", "Chip"]);
+    expect(Object.keys(daemon.connectors.componentsOf(true))).toEqual([]);
+    daemon.store.append(session, chunk(fence('root = Stack([Chip("new")])')));
+    daemon.store.append(session, { type: "turn_ended", stopReason: "end_turn" });
+    expect(doc(daemon, session)?.errors).toBeUndefined();
+    expect(doc(daemon, session)?.root?.props.children).toMatchObject([
+      { component: "Tag", props: { label: "new", tone: "accent" } },
+    ]);
+
+    const mine = { description: "x", params: {}, openui: 'root = Text("x")' };
+    const refused = (components: Record<string, typeof mine>): Promise<unknown> =>
+      daemon.connectors.presence({}, { app: "notes", kind: "app", open: true, components });
+    expect(refused({ Card: mine })).rejects.toThrow("the library already has that name");
+    expect(refused({ BrightnessCard: mine })).rejects.toThrow(
+      "photo-editor already registered that name",
+    );
+    expect(refused({ "notes.Card": mine })).rejects.toThrow("PascalCase");
+    // A refused registration leaves nothing of the app behind.
+    expect(daemon.connectors.isOpen("notes")).toBe(false);
+    expect(daemon.connectors.connector("notes")).toBeUndefined();
+    await daemon.connectors.presence(
+      {},
+      { app: "notes", kind: "app", open: true, components: { NoteCard: mine } },
+    );
+    expect(Object.keys(daemon.connectors.componentsOf(true))).toEqual(["notes"]);
+  });
+});

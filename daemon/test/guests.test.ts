@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { SessionEvent, ViewItem } from "@suite/protocol/types";
+import { SYSTEM_PROMPT } from "../../harness/src/system-prompt.ts";
 import { loadGuestConfigs } from "../src/guests/config.ts";
 import { describeCall, type GuestConfig, mcpResultText } from "../src/guests/guests.ts";
+import { GUEST_PROMPT, MAIN_PROMPT } from "../src/guests/prompt.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { FakeAgent } from "./fake-agent.ts";
 import { type AppTool, startMcpApp } from "./mcp-app.ts";
@@ -902,4 +904,14 @@ describe("/approvals", () => {
       asked,
     );
   });
+});
+
+test("every prompt tells the harness to call ui_library before its first openui block", () => {
+  const line =
+    "You can show UI by writing a ```openui block. Call ui_library before your first one.";
+  expect(GUEST_PROMPT).toContain(line);
+  expect(MAIN_PROMPT).toContain(line);
+  // neo's own prompt says the same, word for word.
+  expect(SYSTEM_PROMPT).toContain(line);
+  expect(GUEST_PROMPT).toContain("components=…");
 });

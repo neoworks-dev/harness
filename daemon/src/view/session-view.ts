@@ -1,6 +1,7 @@
 // A session's chat as drawn: session events → view items, and each new event → the ops that
 // update every pane. Streaming text is merged here (re-parsed, only changed tail blocks sent);
 // tool results are filled into their app's template, or a generic card when there is none.
+import type { AppLibrary } from "@suite/openui/components";
 import type { CallTool, Program } from "@suite/openui/program";
 import type {
   Block,
@@ -88,11 +89,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function connectedNotice(event: Extract<SessionEvent, { type: "app_connected" }>): string {
   if (event.reconnect === true) return `${event.app} is back (v${event.v})`;
   if (event.previous === undefined) {
-    return `${event.app} connected (v${event.v}): ${event.tools.join(", ")}`;
+    const parts = [event.tools.join(", ")];
+    if (event.components?.length) parts.push(`UI: ${event.components.join(", ")}`);
+    return `${event.app} connected (v${event.v}): ${parts.join("; ")}`;
   }
   const changes: string[] = [];
   if (event.added?.length) changes.push(`+ ${event.added.join(", ")}`);
   if (event.removed?.length) changes.push(`− ${event.removed.join(", ")}`);
+  if (event.components?.length) changes.push(`UI: ${event.components.join(", ")}`);
+  else if (event.components) changes.push("UI: none");
   const what = changes.length > 0 ? changes.join("; ") : "schemas changed";
   return `${event.app} updated (v${event.v}): ${what}`;
 }
@@ -148,8 +153,9 @@ export class SessionView {
     private readonly log: Logger,
     private readonly only?: string,
     tools?: CallTool,
+    apps?: () => AppLibrary,
   ) {
-    this.docs = new OpenUiDocs((ref) => this.changed(ref), tools);
+    this.docs = new OpenUiDocs((ref) => this.changed(ref), tools, apps);
   }
 
   /** The seq of the last event applied. */

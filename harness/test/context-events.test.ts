@@ -138,3 +138,50 @@ test("first connect says what the app is for; a reconnect or a tool change says 
     "go",
   ]);
 });
+
+test("an app's UI components are in its announcement, and an update says the list again", () => {
+  const lines = formatPrompt("go", [
+    {
+      type: "app_connected",
+      app: "photo-editor",
+      kind: "app",
+      v: 1,
+      tools: ["open", "crop"],
+      components: ["BrightnessCard", "PhotoCard"],
+      description: "Edits one image at a time.",
+    },
+    { type: "app_connected", app: "notes", kind: "app", v: 1, tools: ["add"] },
+    {
+      type: "app_connected",
+      app: "browser",
+      kind: "app",
+      v: 4,
+      tools: ["navigate"],
+      previous: 3,
+      components: ["PageCard"],
+    },
+    {
+      type: "app_connected",
+      app: "maps",
+      kind: "app",
+      v: 3,
+      tools: ["go"],
+      previous: 2,
+      components: [],
+    },
+  ]).split("\n");
+  expect(lines).toEqual([
+    '<app connected="photo-editor" kind="app" v="1" tools="open, crop" components="BrightnessCard, PhotoCard" about="Edits one image at a time."/>',
+    '<app connected="notes" kind="app" v="1" tools="add"/>',
+    '<app updated="browser" v="4" components="PageCard"/>',
+    '<app updated="maps" v="3" components=""/>',
+    "go",
+  ]);
+});
+
+test("every harness is told to call ui_library before its first openui block", () => {
+  expect(SYSTEM_PROMPT).toContain(OPENUI_LINE);
+});
+
+const OPENUI_LINE =
+  "You can show UI by writing a ```openui block. Call ui_library before your first one.";

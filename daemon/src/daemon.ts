@@ -234,6 +234,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     (tool) => connectors.template(tool),
     log,
     (session) => openUiTools({ store, gateway }, session),
+    () => connectors.library(),
   );
   const actions = new ActionRunner({
     store,
