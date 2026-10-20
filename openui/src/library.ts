@@ -71,6 +71,15 @@ const Stack = define(
   }),
 );
 
+const Grid = define(
+  "Grid",
+  "Lays children out in columns, left to right then down; columns is a maximum, a narrow screen uses fewer (default: as many as fit)",
+  z.object({
+    children: z.array(node),
+    columns: z.number().optional(),
+  }),
+);
+
 const Card = define(
   "Card",
   "A framed group with an optional title; tone colors the frame, variant sunk fills it, clear has no frame",
@@ -384,6 +393,7 @@ export const library = createLibrary({
   root: "Stack",
   components: [
     Stack,
+    Grid,
     Card,
     Header,
     Separator,
@@ -432,6 +442,7 @@ export const library = createLibrary({
       name: "Layout",
       components: [
         "Stack",
+        "Grid",
         "Card",
         "Header",
         "Separator",

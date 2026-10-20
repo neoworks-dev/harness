@@ -1,6 +1,6 @@
 ---
 name: openui
-description: Show a result as UI rather than prose, such as a dashboard, charts, a table, a step list, metrics, or a form that asks the user for several inputs at once. Load it before writing an openui block in a reply.
+description: Draw UI in the chat instead of prose. Load it whenever the user asks to show, visualize, chart, compare or get an overview or status of something, whenever an answer has several numbers, a breakdown, a trend or rows of data, and whenever you need several inputs or a choice from the user.
 ---
 
 # OpenUI
@@ -10,22 +10,38 @@ A reply can contain UI: a program in OpenUI Lang, written in a fenced block with
 before and after. The user never sees the program.
 
 ```openui
-root = Card([header, rows], "Disk usage")
-header = Header("Disk usage", "/dev/nvme0n1")
+root = Card([usage, rows], "Disk usage · /dev/nvme0n1")
+usage = Progress(0.72, "used")
 rows = Table(["Path", "Size"], [["/home", "310 GB"], ["/var", "42 GB"]])
 ```
 
 ## When to use it
 
 - Use it for what reads better as UI: several numbers (Metric), a trend (LineChart, BarChart,
-  Sparkline), a table, steps with their status, or a form when you need several inputs from
-  the user at once.
+  Sparkline), a breakdown (BarChart, PieChart, Table), steps with their status, or a form when
+  you need several inputs from the user at once. "Show me", "visualize", "how much", "what's
+  the status of" are asks for UI.
 - Prefer prose for a simple answer, an explanation or a single question. Don't wrap every
   reply in a card.
 - Keep a program small: what fits in one screen of a terminal. Several short blocks in one
   reply are fine; each is a program of its own and shares nothing with the others.
 - Write the prose around it the way you would without the UI: say what the block shows, and
   don't explain the syntax. Close the fence.
+
+## Layout
+
+Lay a dashboard out the way a page is, not as one long column:
+
+- Key numbers first, as Metrics side by side: `Stack([m1, m2, m3], "row")`. A Metric's value
+  is the number, its label says what it is, its delta the change or context ("of 896 GB").
+- Then the details as Cards in a `Grid`: a chart next to a table, two breakdowns next to
+  each other. The app puts as many side by side as the screen fits.
+- A Card's title is its heading. Don't add a Header that repeats it; use Header once, for the
+  whole page, or not at all.
+- Don't repeat what a component already shows: a Progress draws its percentage, so its label
+  says what it measures ("used"), not "92% used".
+- Several small cards beat one tall one. Cut long tables to the rows that matter (top 5–8,
+  then "other").
 
 ## Forms and buttons
 
@@ -78,6 +94,7 @@ Props marked `$binding<type>` accept a `$variable` reference for two-way binding
 
 ### Layout
 Stack(children: Component[], direction?: "column" | "row", gap?: "none" | "s" | "m" | "l", wrap?: boolean, align?: "start" | "center" | "end" | "stretch", justify?: "start" | "center" | "end" | "between") — Lays children out top to bottom, or side by side with direction "row"
+Grid(children: Component[], columns?: number) — Lays children out in columns, left to right then down; columns is a maximum, a narrow screen uses fewer (default: as many as fit)
 Card(children: Component[], title?: string, tone?: "accent" | "muted" | "success" | "danger", variant?: "card" | "sunk" | "clear") — A framed group with an optional title; tone colors the frame, variant sunk fills it, clear has no frame
 Header(title: string, subtitle?: string) — A heading with an optional subtitle
 Separator() — A horizontal rule
@@ -305,12 +322,17 @@ Always write the root = Stack(...) statement first so the UI shell appears immed
 
 ## Examples
 
-A dashboard from numbers you already have:
+A dashboard from numbers you already have: key numbers in a row, details in a grid of cards:
 
 ```openui
-root = Stack([kpis, trend])
-kpis = Stack([Metric("Revenue", "$25k", "+19%", "success"), Metric("Churn", "2.1%", "+0.4pt", "danger")], "row")
-trend = BarChart(["Jan", "Feb", "Mar"], [Series("Revenue", [12, 15, 14]), Series("Costs", [9, 9, 10])])
+root = Stack([kpis, details])
+kpis = Stack([used, free, largest], "row")
+used = Metric("Used", "820 GB", "of 896 GB", "danger")
+free = Metric("Free", "72 GB", "8%", "success")
+largest = Metric("Largest", "Documents", "355 GB")
+details = Grid([where, docs])
+where = Card([BarChart(["Documents", ".cache", "Games", "Other"], [Series("GB", [355, 65, 48, 103])], true)], "Where the space goes")
+docs = Card([Table(["Path", "Size"], [["neoworks", "210 GB"], ["clients", "45 GB"], ["other", "47 GB"]])], "Documents")
 ```
 
 A form that asks for several things, and answers you when it is sent:

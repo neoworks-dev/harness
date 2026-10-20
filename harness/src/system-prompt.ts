@@ -65,7 +65,9 @@ export function systemPrompt(skills: Skill[]): string {
   return `${SYSTEM_PROMPT}
 
 Skills are instructions for particular kinds of work and are not in this prompt. Before you
-start work one of them covers, load it with the skill tool: skill {name}.
+start work one of them covers, load it with the skill tool: skill {name}. Go by what the
+request is, not by its words: the user won't name a skill, so load one whenever its
+description fits what you are about to do.
 
 ${lines.join("\n")}`;
 }
