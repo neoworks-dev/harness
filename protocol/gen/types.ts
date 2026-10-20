@@ -910,7 +910,8 @@ export type Component =
   | KvComponent
   | ProgressComponent
   | ButtonComponent
-  | LinkComponent;
+  | LinkComponent
+  | OpenUiComponent;
 
 export type ComponentTag = Component["type"];
 
@@ -1044,9 +1045,22 @@ export interface LinkComponent {
   text?: string;
 }
 
+/** A UI written in OpenUI Lang (an app's template or a Query result), parsed and evaluated by the daemon (docs/openui.md). Renderers draw the evaluated tree. */
+export interface OpenUiComponent {
+  type: "openui";
+  ui: UiDoc;
+}
+
 /** A block of parsed markdown. */
 export type Block =
-  ParagraphBlock | HeadingBlock | ListBlock | CodeBlock | QuoteBlock | RuleBlock | TableBlock;
+  | ParagraphBlock
+  | HeadingBlock
+  | ListBlock
+  | CodeBlock
+  | QuoteBlock
+  | RuleBlock
+  | TableBlock
+  | OpenUiBlock;
 
 export type BlockTag = Block["type"];
 
@@ -1097,6 +1111,40 @@ export interface TableBlock {
   rows: TableCell[][];
   /** Per column, as the separator row says; a column without one is left-aligned. */
   align?: ColumnAlign[];
+}
+
+/** An ```openui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/openui.md). Streams like any block. */
+export interface OpenUiBlock {
+  type: "openui";
+  ui: UiDoc;
+}
+
+/** One evaluated OpenUI program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions. */
+export interface UiDoc {
+  id: string;
+  root?: UiNode;
+  /** The program is still arriving: draw it, but inputs and buttons can't be used yet. */
+  streaming?: boolean;
+  errors?: UiError[];
+}
+
+/** An evaluated component of the suite OpenUI library (docs/openui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node. */
+export interface UiNode {
+  /** Library component name, e.g. Card, Input, BarChart. */
+  component: string;
+  /** Set on interactive nodes (inputs, buttons): stable within the doc, names the node in openui.input / openui.press. */
+  key?: string;
+  /** Still streaming in. */
+  partial?: boolean;
+  /** Props by name. */
+  props: Record<string, unknown>;
+}
+
+/** A problem the parser or evaluator reported; the broken piece is left out of the tree. */
+export interface UiError {
+  code: string;
+  message: string;
+  statementId?: string;
 }
 
 export interface TableCell {

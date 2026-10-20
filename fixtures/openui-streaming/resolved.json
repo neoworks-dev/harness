@@ -1,0 +1,56 @@
+[
+  {
+    "ref": "m1",
+    "kind": "agent",
+    "component": {
+      "type": "text",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "spans": [
+            {
+              "text": "Checking:"
+            }
+          ]
+        },
+        {
+          "type": "openui",
+          "ui": {
+            "id": "0",
+            "root": {
+              "component": "Card",
+              "props": {
+                "title": "Disk usage",
+                "children": [
+                  {
+                    "component": "Header",
+                    "props": {
+                      "title": "Disk usage",
+                      "subtitle": "/dev/nvme0n1"
+                    }
+                  },
+                  {
+                    "component": "Progress",
+                    "props": {
+                      "value": 0.72,
+                      "label": "72% used"
+                    }
+                  },
+                  {
+                    "component": "Table",
+                    "partial": true,
+                    "props": {
+                      "columns": ["Path", "Size"],
+                      "rows": [["/home", "310 GB"], ["/var"]]
+                    }
+                  }
+                ]
+              }
+            },
+            "streaming": true
+          }
+        }
+      ]
+    }
+  }
+]

@@ -1,0 +1,147 @@
+[
+  {
+    "ref": "m1",
+    "kind": "agent",
+    "component": {
+      "type": "text",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "spans": [
+            {
+              "text": "The deploy is halfway:"
+            }
+          ]
+        },
+        {
+          "type": "openui",
+          "ui": {
+            "id": "0",
+            "root": {
+              "component": "Stack",
+              "props": {
+                "children": [
+                  {
+                    "component": "Steps",
+                    "props": {
+                      "steps": [
+                        {
+                          "component": "Step",
+                          "props": {
+                            "title": "Build",
+                            "detail": "2m 10s",
+                            "status": "done"
+                          }
+                        },
+                        {
+                          "component": "Step",
+                          "props": {
+                            "title": "Canary",
+                            "detail": "5% of traffic",
+                            "status": "current"
+                          }
+                        },
+                        {
+                          "component": "Step",
+                          "props": {
+                            "title": "Rollout",
+                            "status": "pending"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "component": "LineChart",
+                    "props": {
+                      "labels": ["10:00", "10:05", "10:10", "10:15", "10:20"],
+                      "series": [
+                        {
+                          "component": "Series",
+                          "props": {
+                            "name": "p50",
+                            "values": [120, 118, 125, 119, 117]
+                          }
+                        },
+                        {
+                          "component": "Series",
+                          "props": {
+                            "name": "p99",
+                            "values": [340, 360, 410, 380, 350]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "component": "Accordion",
+                    "props": {
+                      "items": [
+                        {
+                          "component": "AccordionItem",
+                          "props": {
+                            "title": "Canary hosts",
+                            "children": [
+                              {
+                                "component": "List",
+                                "props": {
+                                  "items": ["web-1", "web-4"]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "component": "AccordionItem",
+                          "props": {
+                            "title": "Warnings",
+                            "open": true,
+                            "children": [
+                              {
+                                "component": "Callout",
+                                "props": {
+                                  "text": "p99 rose **18%** during the canary.",
+                                  "tone": "danger",
+                                  "title": "Latency",
+                                  "blocks": [
+                                    {
+                                      "type": "paragraph",
+                                      "spans": [
+                                        {
+                                          "text": "p99 rose "
+                                        },
+                                        {
+                                          "text": "18%",
+                                          "bold": true
+                                        },
+                                        {
+                                          "text": " during the canary."
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "type": "paragraph",
+          "spans": [
+            {
+              "text": "I'll continue once the canary is clean."
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

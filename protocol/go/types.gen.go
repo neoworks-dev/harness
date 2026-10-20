@@ -2059,7 +2059,7 @@ func (v Usage) MarshalJSON() ([]byte, error) {
 }
 
 // Component: The fixed component set. Apps combine these; they never add new ones.
-// Value is one of: CardComponent, RowComponent, StackComponent, TextComponent, ImageComponent, FileComponent, CodeComponent, DiffComponent, TableComponent, KvComponent, ProgressComponent, ButtonComponent, LinkComponent, UnknownComponent.
+// Value is one of: CardComponent, RowComponent, StackComponent, TextComponent, ImageComponent, FileComponent, CodeComponent, DiffComponent, TableComponent, KvComponent, ProgressComponent, ButtonComponent, LinkComponent, OpenUiComponent, UnknownComponent.
 type Component struct {
 	Value ComponentVariant
 }
@@ -2176,6 +2176,12 @@ func (u *Component) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "link":
 		var v LinkComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "openui":
+		var v OpenUiComponent
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -2472,8 +2478,24 @@ func (v LinkComponent) MarshalJSON() ([]byte, error) {
 	}{"link", plain(v)})
 }
 
+// OpenUiComponent: A UI written in OpenUI Lang (an app's template or a Query result), parsed and evaluated by the daemon (docs/openui.md). Renderers draw the evaluated tree.
+type OpenUiComponent struct {
+	UI UiDoc `json:"ui"`
+}
+
+func (OpenUiComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v OpenUiComponent) MarshalJSON() ([]byte, error) {
+	type plain OpenUiComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"openui", plain(v)})
+}
+
 // Block: A block of parsed markdown.
-// Value is one of: ParagraphBlock, HeadingBlock, ListBlock, CodeBlock, QuoteBlock, RuleBlock, TableBlock, UnknownBlock.
+// Value is one of: ParagraphBlock, HeadingBlock, ListBlock, CodeBlock, QuoteBlock, RuleBlock, TableBlock, OpenUiBlock, UnknownBlock.
 type Block struct {
 	Value BlockVariant
 }
@@ -2554,6 +2576,12 @@ func (u *Block) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "table_block":
 		var v TableBlock
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "openui":
+		var v OpenUiBlock
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -2681,6 +2709,50 @@ func (v TableBlock) MarshalJSON() ([]byte, error) {
 		Tag string `json:"type"`
 		plain
 	}{"table_block", plain(v)})
+}
+
+// OpenUiBlock: An ```openui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/openui.md). Streams like any block.
+type OpenUiBlock struct {
+	UI UiDoc `json:"ui"`
+}
+
+func (OpenUiBlock) isBlock() {}
+
+// MarshalJSON adds the "type" tag.
+func (v OpenUiBlock) MarshalJSON() ([]byte, error) {
+	type plain OpenUiBlock
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"openui", plain(v)})
+}
+
+// UiDoc: One evaluated OpenUI program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions.
+type UiDoc struct {
+	ID   string  `json:"id"`
+	Root *UiNode `json:"root,omitempty"`
+	// The program is still arriving: draw it, but inputs and buttons can't be used yet.
+	Streaming *bool     `json:"streaming,omitempty"`
+	Errors    []UiError `json:"errors,omitempty"`
+}
+
+// UiNode: An evaluated component of the suite OpenUI library (docs/openui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node.
+type UiNode struct {
+	// Library component name, e.g. Card, Input, BarChart.
+	Component string `json:"component"`
+	// Set on interactive nodes (inputs, buttons): stable within the doc, names the node in openui.input / openui.press.
+	Key *string `json:"key,omitempty"`
+	// Still streaming in.
+	Partial *bool `json:"partial,omitempty"`
+	// Props by name.
+	Props map[string]json.RawMessage `json:"props"`
+}
+
+// UiError: A problem the parser or evaluator reported; the broken piece is left out of the tree.
+type UiError struct {
+	Code        string  `json:"code"`
+	Message     string  `json:"message"`
+	StatementID *string `json:"statementId,omitempty"`
 }
 
 type TableCell struct {

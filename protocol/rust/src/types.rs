@@ -2327,6 +2327,7 @@ pub enum Component {
     ProgressComponent(ProgressComponent),
     ButtonComponent(ButtonComponent),
     LinkComponent(LinkComponent),
+    OpenUiComponent(OpenUiComponent),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -2371,6 +2372,9 @@ impl Serialize for Component {
             }
             Component::LinkComponent(v) => {
                 ("link", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            Component::OpenUiComponent(v) => {
+                ("openui", serde_json::to_value(v).map_err(S::Error::custom)?)
             }
             Component::Unknown(v) => return v.serialize(serializer),
         };
@@ -2424,6 +2428,9 @@ impl<'de> Deserialize<'de> for Component {
                 .map_err(D::Error::custom),
             "link" => serde_json::from_value(value)
                 .map(Component::LinkComponent)
+                .map_err(D::Error::custom),
+            "openui" => serde_json::from_value(value)
+                .map(Component::OpenUiComponent)
                 .map_err(D::Error::custom),
             _ => Ok(Component::Unknown(value)),
         }
@@ -2505,6 +2512,12 @@ impl From<ButtonComponent> for Component {
 impl From<LinkComponent> for Component {
     fn from(v: LinkComponent) -> Self {
         Component::LinkComponent(v)
+    }
+}
+
+impl From<OpenUiComponent> for Component {
+    fn from(v: OpenUiComponent) -> Self {
+        Component::OpenUiComponent(v)
     }
 }
 
@@ -2729,6 +2742,14 @@ pub struct LinkComponent {
     pub text: Option<String>,
 }
 
+/// A UI written in OpenUI Lang (an app's template or a Query result), parsed and evaluated by the daemon (docs/openui.md). Renderers draw the evaluated tree.
+/// Tagged `type: "openui"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OpenUiComponent {
+    #[serde(rename = "ui")]
+    pub ui: UiDoc,
+}
+
 /// A block of parsed markdown.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
@@ -2739,6 +2760,7 @@ pub enum Block {
     QuoteBlock(QuoteBlock),
     RuleBlock(RuleBlock),
     TableBlock(TableBlock),
+    OpenUiBlock(OpenUiBlock),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -2765,6 +2787,7 @@ impl Serialize for Block {
                 "table_block",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            Block::OpenUiBlock(v) => ("openui", serde_json::to_value(v).map_err(S::Error::custom)?),
             Block::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -2799,6 +2822,9 @@ impl<'de> Deserialize<'de> for Block {
                 .map_err(D::Error::custom),
             "table_block" => serde_json::from_value(value)
                 .map(Block::TableBlock)
+                .map_err(D::Error::custom),
+            "openui" => serde_json::from_value(value)
+                .map(Block::OpenUiBlock)
                 .map_err(D::Error::custom),
             _ => Ok(Block::Unknown(value)),
         }
@@ -2844,6 +2870,12 @@ impl From<RuleBlock> for Block {
 impl From<TableBlock> for Block {
     fn from(v: TableBlock) -> Self {
         Block::TableBlock(v)
+    }
+}
+
+impl From<OpenUiBlock> for Block {
+    fn from(v: OpenUiBlock) -> Self {
+        Block::OpenUiBlock(v)
     }
 }
 
@@ -2915,6 +2947,60 @@ pub struct TableBlock {
     /// Per column, as the separator row says; a column without one is left-aligned.
     #[serde(rename = "align", default, skip_serializing_if = "Option::is_none")]
     pub align: Option<Vec<ColumnAlign>>,
+}
+
+/// An ```openui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/openui.md). Streams like any block.
+/// Tagged `type: "openui"` inside [`Block`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OpenUiBlock {
+    #[serde(rename = "ui")]
+    pub ui: UiDoc,
+}
+
+/// One evaluated OpenUI program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UiDoc {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "root", default, skip_serializing_if = "Option::is_none")]
+    pub root: Option<UiNode>,
+    /// The program is still arriving: draw it, but inputs and buttons can't be used yet.
+    #[serde(rename = "streaming", default, skip_serializing_if = "Option::is_none")]
+    pub streaming: Option<bool>,
+    #[serde(rename = "errors", default, skip_serializing_if = "Option::is_none")]
+    pub errors: Option<Vec<UiError>>,
+}
+
+/// An evaluated component of the suite OpenUI library (docs/openui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UiNode {
+    /// Library component name, e.g. Card, Input, BarChart.
+    #[serde(rename = "component")]
+    pub component: String,
+    /// Set on interactive nodes (inputs, buttons): stable within the doc, names the node in openui.input / openui.press.
+    #[serde(rename = "key", default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// Still streaming in.
+    #[serde(rename = "partial", default, skip_serializing_if = "Option::is_none")]
+    pub partial: Option<bool>,
+    /// Props by name.
+    #[serde(rename = "props")]
+    pub props: BTreeMap<String, serde_json::Value>,
+}
+
+/// A problem the parser or evaluator reported; the broken piece is left out of the tree.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UiError {
+    #[serde(rename = "code")]
+    pub code: String,
+    #[serde(rename = "message")]
+    pub message: String,
+    #[serde(
+        rename = "statementId",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub statement_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

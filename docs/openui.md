@@ -1,0 +1,132 @@
+# OpenUI in the suite
+
+[OpenUI](https://github.com/thesysdev/openui) (spec 1.0, `@openuidev/lang-core`) is how the model and apps describe UI beyond the fixed component set: a compact, streamable program, one statement per line, with reactive state, forms and tool queries. The suite uses it as the **authoring** format. The daemon parses and evaluates every program with `lang-core`, and renderers draw the evaluated tree. A renderer never parses OpenUI Lang, evaluates an expression or holds `$state`; it draws `UiNode`s, keeps purely visual state (selected tab, open accordion, cursor, scroll) and sends what the user does back.
+
+The terminal renderer (`renderers/ratatui`, used by `apps/term`) is the first to draw it. web, GPUI and the Go TUI show a placeholder until they follow.
+
+```
+model (```openui fence) ─┐
+app template (OpenUI Lang)┴─► daemon: lang-core parse → evaluate ($state store, queries) → UiDoc
+                                         ▲                                                 │
+                 ui.action openui.input / openui.press                       view.snapshot / view.patch
+                                         └──────────────── renderer ◄──────────────────────┘
+```
+
+## Where programs come from
+
+- **The model** writes a fenced block with the language `openui` in a normal message. The daemon's markdown parser turns that fence into an `OpenUiBlock` (`{type: "openui", ui: UiDoc}`) among the message's other blocks, so it streams like text: every chunk re-parses the program and the block is replaced by the `blocks` op from the first changed block on. `ui.streaming` is true until the message is complete. The model learns the language and the library from the **`openui` skill** (`harness/skills/openui/SKILL.md`, generated from the library by `bun run --cwd openui skill`; a test fails when it's stale).
+- **Apps** may register a template that is OpenUI Lang instead of component JSON: `templates: {"<tool>": {"openui": "<program>"}}` in `app.presence`. The tool's `structuredContent` is appended to the program as a last statement `data = <value>` (a later statement wins, so a template can't shadow it), and the result is an `OpenUiComponent` (`{type: "openui", ui: UiDoc}`). A template that fails to produce a root falls back to the generic card, as JSON templates do.
+
+## The wire format
+
+```jsonc
+// UiDoc: one evaluated program
+{ "id": "0",              // unique within the item: the n-th OpenUI doc in the item, in document order
+  "root": UiNode,         // absent until there is something to draw
+  "streaming": true,      // still arriving: draw it, but no field or button can be used yet
+  "errors": [ { "code": "unknown-component", "message": "…", "statementId": "chart" } ] }
+
+// UiNode: one evaluated component
+{ "component": "Input",   // library name (the tables below)
+  "key": "email",         // only on interactive nodes: stable within the doc
+  "partial": true,        // this node is still streaming in
+  "props": { … } }        // concrete JSON by prop name; an object with "component" is a child node
+```
+
+Props are what the library declares (tables below), already evaluated: expressions, `@Each`, ternaries and references are resolved, and markdown is parsed. The daemon adds to the props:
+
+| Node | Added props |
+| --- | --- |
+| `Text`, `Callout` | `blocks`: the text as parsed markdown (`Block[]` of the view format, never another `openui` block). Draw these, not `text`. |
+| inputs (`Input`, `TextArea`, `Select`, `RadioGroup`, `CheckBox`, `Switch`, `Slider`, `DatePicker`) | `value`: the current value (string, bool or number, see below; absent = empty). `error`: the validation message to show, set after a submit attempt fails or a field is left invalid. `required`: true when the rules say so (draw a marker). |
+| `Button` | `url` when its only action is `@OpenUrl` (the client opens or shows it), `copy` when its only action is `@Copy` (the client copies). Otherwise pressing sends `openui.press`. `disabled` when it can't be pressed now. |
+
+The `key` of an interactive node is its statement id, or the statement id plus a path when the node is inline or produced by `@Each` (`row.2.done`). It stays the same while the program re-evaluates.
+
+## What the user does
+
+Both go over the existing `ui.action {session, ref, action, args}`:
+
+- `openui.input {doc, key, value}` is a field's new value: a string for `Input`, `TextArea`, `DatePicker`, `Select`, `RadioGroup`; a bool for `CheckBox`, `Switch`; a number for `Slider`. The daemon writes it to the bound `$variable` or form field, re-evaluates and patches the item (`set`). Clients send it as the value changes, debounced (about 150 ms) for typing, and always right before an `openui.press`. While a field has focus the client keeps its own text and cursor and ignores the `value` coming back for that field.
+- `openui.press {doc, key}` presses a button. The daemon runs its action plan: `@Set`, `@Reset`, `@Run` (queries and mutations call app tools through the gateway, as `app.tool` actions do), and `@ToAssistant(message, context?)`, which sends the agent an input like a button press does today, with the form's values and the context attached. A button inside a `Form` first validates the form's fields: if any fails, the daemon sets their `error` props and runs nothing.
+
+Nothing is sent while `streaming` is true. State lives in the daemon, per session, item and doc, in memory: a restart keeps the program but forgets typed values.
+
+## The library (`suite@1`)
+
+Arguments are positional in the order listed. Optional ones are marked `?`, and `Node` means a component call. **The order is part of the format**: stored programs carry no prop names, so props are only ever added at the end (spec §3). `Tone` = `accent | muted | success | danger`.
+
+### Layout
+
+| Component | Props |
+| --- | --- |
+| `Stack` | `children: Node[]`, `direction?: "column" \| "row"` (column), `gap?: "none" \| "s" \| "m" \| "l"` (m), `wrap?: bool`, `align?: "start" \| "center" \| "end" \| "stretch"`, `justify?: "start" \| "center" \| "end" \| "between"` |
+| `Card` | `children: Node[]`, `title?: string`, `tone?: Tone`, `variant?: "card" \| "sunk" \| "clear"` |
+| `Header` | `title: string`, `subtitle?: string` |
+| `Separator` | (none) |
+| `Tabs` | `tabs: Tab[]` |
+| `Tab` | `label: string`, `children: Node[]` |
+| `Accordion` | `items: AccordionItem[]` |
+| `AccordionItem` | `title: string`, `children: Node[]`, `open?: bool` |
+| `Steps` | `steps: Step[]` |
+| `Step` | `title: string`, `detail?: string`, `status?: "done" \| "current" \| "pending" \| "failed"` |
+
+### Content
+
+| Component | Props |
+| --- | --- |
+| `Text` | `text: string` (markdown), `tone?: Tone`, `role?: "title" \| "body" \| "code"` |
+| `Code` | `code: string`, `language?: string` |
+| `Table` | `columns: string[]`, `rows: (string \| number \| bool \| Node)[][]` (cells may be `Tag`, `Link` or `Text`) |
+| `List` | `items: (string \| Node)[]`, `ordered?: bool` |
+| `KeyValue` | `pairs: KV[]` |
+| `KV` | `key: string`, `value: string \| number`, `tone?: Tone` |
+| `Tag` | `label: string`, `tone?: Tone` |
+| `Callout` | `text: string` (markdown), `tone?: Tone`, `title?: string` |
+| `Metric` | `label: string`, `value: string \| number`, `delta?: string`, `tone?: Tone` |
+| `Progress` | `value: number` (0..1), `label?: string` |
+| `Image` | `src: string`, `alt?: string` |
+| `Link` | `text: string`, `url: string` |
+
+### Charts
+
+| Component | Props |
+| --- | --- |
+| `BarChart` | `labels: string[]`, `series: Series[]`, `horizontal?: bool`, `stacked?: bool` |
+| `LineChart` | `labels: string[]`, `series: Series[]` |
+| `AreaChart` | `labels: string[]`, `series: Series[]` |
+| `PieChart` | `slices: Slice[]`, `donut?: bool` |
+| `Sparkline` | `values: number[]`, `label?: string` |
+| `Series` | `name: string`, `values: number[]` |
+| `Slice` | `label: string`, `value: number` |
+
+### Forms
+
+| Component | Props |
+| --- | --- |
+| `Form` | `name: string`, `children: Node[]`, `buttons?: Buttons` |
+| `FormControl` | `label: string`, `input: Node`, `hint?: string` |
+| `Input` | `name: string`, `placeholder?: string`, `type?: "text" \| "email" \| "url" \| "number" \| "password"`, `rules?: Rules`, `value?: $var` |
+| `TextArea` | `name: string`, `placeholder?: string`, `rules?: Rules`, `value?: $var` |
+| `Select` | `name: string`, `options: Option[]`, `placeholder?: string`, `rules?: Rules`, `value?: $var` |
+| `Option` | `value: string`, `label?: string` |
+| `RadioGroup` | `name: string`, `options: Option[]`, `rules?: Rules`, `value?: $var` |
+| `CheckBox` | `name: string`, `label: string`, `rules?: Rules`, `value?: $var` |
+| `Switch` | `name: string`, `label: string`, `value?: $var` |
+| `Slider` | `name: string`, `min: number`, `max: number`, `step?: number`, `value?: $var` |
+| `DatePicker` | `name: string`, `rules?: Rules`, `value?: $var` (`YYYY-MM-DD`) |
+| `Button` | `label: string`, `action?: Action`, `variant?: "primary" \| "secondary" \| "danger"` |
+| `Buttons` | `buttons: Button[]` |
+
+`Rules` is the spec's validation object (`required`, `email`, `url`, `numeric`, `minLength`, `maxLength`, `min`, `max`, `pattern`). Actions are the spec's built-ins (`@ToAssistant`, `@OpenUrl`, `@Set`, `@Reset`, `@Run`) plus the library's `@Copy(text)`.
+
+## Drawing it in a terminal
+
+The ratatui renderer's rules (the README there is the full reference):
+
+- **Layout.** A `row` Stack measures each child's minimum and preferred width and splits the width among them, wrapping to further lines with `wrap`, and stacking when the children don't fit at their minimum. Cards are `╭ title` frames like the `card` component; `sunk` uses the surface color, `clear` has no frame.
+- **Disclosure** is local: `Tabs` is a tab strip (`│ Overview │ Billing │`, the selected one reversed) over the selected tab's children; `AccordionItem` is `▸ title` / `▾ title`. Both are focusable and toggle with Enter, Left/Right switch tabs.
+- **Charts** are drawn by meaning, not by pixels: bars with eighth blocks (`▏▎▍▌▋▊▉█`), value at the end, horizontal whatever `horizontal` says once the labels don't fit under vertical bars; line and area charts on a braille canvas with a legend; pie and donut as one stacked bar of the slices with a `label  42%` legend; sparklines with `▁▂▃▄▅▆▇█`.
+- **Forms.** Every input is a focusable field: `Label *` over `[ value or placeholder▏ ]`, the error under it in the danger tone. `Select` shows the chosen option with `▾` and opens a list on Enter; `RadioGroup` `(•)`/`( )`; `CheckBox` `[x]`/`[ ]`; `Switch` `● on`/`○ off`; `Slider` a bar with the number; `DatePicker` a text field checked as `YYYY-MM-DD`.
+- **Focus.** An item whose doc has interactive nodes takes focus like an item with buttons does today. Inside it, Tab / Shift-Tab (and Up/Down outside a text field) move between fields, buttons, tabs and accordion items in drawing order; typing edits the focused text field (Enter in a `TextArea` is a newline, elsewhere Enter presses the form's first button), Space toggles a checkbox or switch, Left/Right pick an option or move a slider. Esc gives focus back to the editor. While `streaming` the doc draws but takes no focus.
+- **Errors.** `errors` are not drawn in the chat; a doc with no root but errors shows one muted line `[ui: <first error message>]`.
