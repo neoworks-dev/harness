@@ -51,6 +51,7 @@ pub enum Envelope {
     SecretAnswerMessage(SecretAnswerMessage),
     AssetPutMessage(AssetPutMessage),
     AssetGetMessage(AssetGetMessage),
+    AssetFetchMessage(AssetFetchMessage),
     AssetInfoMessage(AssetInfoMessage),
     FileChangedMessage(FileChangedMessage),
     AppContextMessage(AppContextMessage),
@@ -181,6 +182,10 @@ impl Serialize for Envelope {
                 "asset.get",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            Envelope::AssetFetchMessage(v) => (
+                "asset.fetch",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             Envelope::AssetInfoMessage(v) => (
                 "asset.info",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
@@ -300,6 +305,9 @@ impl<'de> Deserialize<'de> for Envelope {
                 .map_err(D::Error::custom),
             "asset.get" => serde_json::from_value(value)
                 .map(Envelope::AssetGetMessage)
+                .map_err(D::Error::custom),
+            "asset.fetch" => serde_json::from_value(value)
+                .map(Envelope::AssetFetchMessage)
                 .map_err(D::Error::custom),
             "asset.info" => serde_json::from_value(value)
                 .map(Envelope::AssetInfoMessage)
@@ -495,6 +503,12 @@ impl From<AssetPutMessage> for Envelope {
 impl From<AssetGetMessage> for Envelope {
     fn from(v: AssetGetMessage) -> Self {
         Envelope::AssetGetMessage(v)
+    }
+}
+
+impl From<AssetFetchMessage> for Envelope {
+    fn from(v: AssetFetchMessage) -> Self {
+        Envelope::AssetFetchMessage(v)
     }
 }
 
@@ -1001,7 +1015,24 @@ pub struct AssetRef {
     pub handle: String,
 }
 
-/// Daemon → client: reply to asset.put / asset.get.
+/// Client → daemon: download an image from the web into the asset store, so a client can show a remote picture. Replied to with asset.info; the same URL is downloaded once. bus.error bad_request when it isn't a public http(s) image.
+/// Tagged `topic: "asset.fetch"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AssetFetchMessage {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: AssetUrl,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AssetUrl {
+    /// An http:// or https:// URL.
+    #[serde(rename = "url")]
+    pub url: String,
+}
+
+/// Daemon → client: reply to asset.put / asset.get / asset.fetch.
 /// Tagged `topic: "asset.info"` inside [`Envelope`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssetInfoMessage {

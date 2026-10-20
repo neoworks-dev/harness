@@ -614,6 +614,11 @@ export const examples: Record<string, Envelope> = {
     payload: { data: "iVBORw0KGgo=", name: "crop.png", mime: "image/png" },
   },
   "asset-get": { topic: "asset.get", id: "22", payload: { handle: "asset://img-7f3a91c2" } },
+  "asset-fetch": {
+    topic: "asset.fetch",
+    id: "23",
+    payload: { url: "https://example.com/hotel.jpg" },
+  },
   "asset-info": {
     topic: "asset.info",
     id: "22",

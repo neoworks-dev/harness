@@ -314,6 +314,9 @@ fn assets_and_file_changes() {
         browser.get_asset("asset://img-ffffffffffff"),
         Err(suite_sdk::Error::Daemon(_))
     ));
+    // Only public web images are downloaded.
+    let refused = browser.fetch_asset("http://127.0.0.1:1/a.png");
+    assert!(matches!(refused, Err(suite_sdk::Error::Daemon(_))), "{refused:?}");
 
     editor.file_changed("/site/src/Header.tsx").expect("send");
     let changed = wait_for(&events, "file.changed", |e| match e {

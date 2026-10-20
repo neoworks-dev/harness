@@ -3,7 +3,7 @@ import { statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Envelope } from "@suite/protocol/types";
 import { validateEnvelope } from "@suite/protocol/validate";
-import { AssetStore } from "../src/assets.ts";
+import { AssetStore, isPrivateAddress } from "../src/assets.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
@@ -139,4 +139,76 @@ test("file.changed: agent edits are announced, app saves are passed on to the ot
     payload: { path: "/site/b.txt", app: "code-editor" },
   });
   expect(changed(editor)).toHaveLength(1);
+});
+
+/** What a promise failed with; "" when it didn't. */
+const failure = (work: Promise<unknown>): Promise<string> =>
+  work.then(
+    () => "",
+    (err: unknown) => String(err),
+  );
+
+/** A local web server: /a.png is an image, /moved redirects to it, /page.html is not one. */
+function server(): { url: string; hits: () => number } {
+  let hits = 0;
+  const s = Bun.serve({
+    port: 0,
+    fetch(req) {
+      hits++;
+      const path = new URL(req.url).pathname;
+      if (path === "/a.png") return new Response(PNG);
+      if (path === "/moved") return Response.redirect("/a.png", 302);
+      if (path === "/page.html") return new Response("<html></html>");
+      return new Response("gone", { status: 404 });
+    },
+  });
+  cleanups.push(() => s.stop(true));
+  return { url: `http://127.0.0.1:${s.port}`, hits: () => hits };
+}
+
+test("fetch downloads an image once, following redirects, and refuses what isn't one", async () => {
+  const d = await daemon();
+  const web = server();
+  const store = new AssetStore(join(d.dir, "assets-fetch"), { privateHosts: true });
+  const a = await store.fetch(`${web.url}/moved`);
+  expect(a).toMatchObject({ name: "a.png", mime: "image/png", size: PNG.length });
+  expect(store.get(a.handle)).toEqual(a);
+  expect(await store.fetch(`${web.url}/moved`)).toEqual(a);
+  expect(web.hits()).toBe(2);
+  expect(await failure(store.fetch(`${web.url}/page.html`))).toContain(
+    "is not a png, jpeg, gif or webp",
+  );
+  expect(await failure(store.fetch(`${web.url}/missing.png`))).toContain("HTTP 404");
+  expect(await failure(store.fetch("file:///etc/passwd"))).toContain("only http and https");
+});
+
+test("fetch refuses this machine and private networks, also behind a redirect", async () => {
+  const d = await daemon();
+  const web = server();
+  const store = new AssetStore(join(d.dir, "assets-private"));
+  expect(await failure(store.fetch(`${web.url}/a.png`))).toContain("is not a public host");
+  expect(await failure(store.fetch("http://localhost:1/a.png"))).toContain("is not a public host");
+  expect(web.hits()).toBe(0);
+  for (const address of ["127.0.0.1", "10.1.2.3", "172.20.0.1", "192.168.1.1", "169.254.169.254"]) {
+    expect(isPrivateAddress(address)).toBe(true);
+  }
+  for (const address of ["::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1"]) {
+    expect(isPrivateAddress(address)).toBe(true);
+  }
+  expect(isPrivateAddress("93.184.215.14")).toBe(false);
+  expect(isPrivateAddress("2606:2800:21f:cb07:6820:80da:af6b:8b2c")).toBe(false);
+});
+
+test("asset.fetch over the bus answers with asset.info or bad_request", async () => {
+  const d = await daemon();
+  const c = connect(d, "term");
+  c.send({ topic: "asset.fetch", id: "1", payload: { url: "http://127.0.0.1:1/a.png" } });
+  c.send({ topic: "asset.fetch", id: "2", payload: { url: "ftp://example.com/a.png" } });
+  await Bun.sleep(50);
+  const errors = c.received.filter((e) => e.topic === "bus.error");
+  const codes = errors.map((e) => [e.id, e.topic === "bus.error" && e.payload.code]);
+  expect(codes.sort((a, b) => String(a[0]).localeCompare(String(b[0])))).toEqual([
+    ["1", "bad_request"],
+    ["2", "bad_request"],
+  ]);
 });

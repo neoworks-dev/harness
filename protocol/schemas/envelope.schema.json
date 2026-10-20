@@ -98,6 +98,9 @@
           "$ref": "#/$defs/AssetGetMessage"
         },
         {
+          "$ref": "#/$defs/AssetFetchMessage"
+        },
+        {
           "$ref": "#/$defs/AssetInfoMessage"
         },
         {
@@ -859,8 +862,36 @@
       "required": ["handle"],
       "additionalProperties": false
     },
+    "AssetFetchMessage": {
+      "description": "Client → daemon: download an image from the web into the asset store, so a client can show a remote picture. Replied to with asset.info; the same URL is downloaded once. bus.error bad_request when it isn't a public http(s) image.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "asset.fetch"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/AssetUrl"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "AssetUrl": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "An http:// or https:// URL."
+        }
+      },
+      "required": ["url"],
+      "additionalProperties": false
+    },
     "AssetInfoMessage": {
-      "description": "Daemon → client: reply to asset.put / asset.get.",
+      "description": "Daemon → client: reply to asset.put / asset.get / asset.fetch.",
       "type": "object",
       "properties": {
         "topic": {

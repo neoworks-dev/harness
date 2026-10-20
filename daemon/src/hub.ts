@@ -273,11 +273,15 @@ export class Hub {
     }
   }
 
-  /** Acks a request when the work is done, or fails it with what went wrong. */
-  private settle(client: Client, id: string | undefined, work: Promise<void>): void {
+  /**
+   * Answers a request when the work is done (with the envelope it made, else an ack), or fails
+   * it with what went wrong.
+   */
+  private settle(client: Client, id: string | undefined, work: Promise<Envelope | void>): void {
     work.then(
-      () => {
-        if (id !== undefined) this.send(client, { topic: "bus.ack", id });
+      (reply) => {
+        if (reply) this.send(client, reply);
+        else if (id !== undefined) this.send(client, { topic: "bus.ack", id });
       },
       (err: unknown) => {
         if (err instanceof NotFoundError) this.fail(client, id, "not_found", err.message);
@@ -461,6 +465,16 @@ export class Hub {
           payload: this.requireAssets().require(msg.payload.handle),
         });
         return;
+      case "asset.fetch": {
+        const assets = this.requireAssets();
+        const { id } = msg;
+        this.settle(
+          client,
+          id,
+          assets.fetch(msg.payload.url).then((payload) => ({ topic: "asset.info", id, payload })),
+        );
+        return;
+      }
       case "secret.answer": {
         // Never log or echo msg.payload.value: not here, not in an error.
         const { id, value } = msg.payload;

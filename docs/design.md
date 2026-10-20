@@ -386,7 +386,7 @@ This keeps all three renderers thin without a shared library across three langua
 
 ### As built (Phase 5)
 
-- **Asset store.** Content-addressed files under `<data>/assets` (`asset://img-<12 hex>`, `file-…` for non-images), so the same bytes always get the same handle; a JSON sidecar keeps the name, type and producing app. Bus: `asset.put {path|data}` / `asset.get {handle}` → `asset.info`; HTTP `/assets` for browsers. The agent's bash and read take handles as paths (bash commands get them substituted); write and edit refuse them.
+- **Asset store.** Content-addressed files under `<data>/assets` (`asset://img-<12 hex>`, `file-…` for non-images), so the same bytes always get the same handle; a JSON sidecar keeps the name, type and producing app. Bus: `asset.put {path|data}` / `asset.get {handle}` / `asset.fetch {url}` → `asset.info`; `asset.fetch` downloads a web image so clients only ever read files (http(s) to public addresses only, redirects checked too, png / jpeg / gif / webp up to 20 MB, 8 s, each URL once while the daemon runs); HTTP `/assets` for browsers. The agent's bash and read take handles as paths (bash commands get them substituted); write and edit refuse them.
 - **`file.changed`** is derived from the diffs of the agent's write/edit results and passed on when an app sends it after saving (not echoed to the sender).
 - **The lsp service** is a separate process the daemon starts (`kind: service`), driving gopls / typescript-language-server / rust-analyzer per project root; files are re-read before each request. Editors call it through the gateway like the agent does.
 - **The working directory** is told to the model once per session (`<session cwd=…/>` in the first prompt), since the system prompt carries no session state.

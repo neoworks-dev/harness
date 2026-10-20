@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetFetchMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -227,6 +227,12 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "asset.get":
 		var v AssetGetMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "asset.fetch":
+		var v AssetFetchMessage
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -892,7 +898,29 @@ type AssetRef struct {
 	Handle string `json:"handle"`
 }
 
-// AssetInfoMessage: Daemon → client: reply to asset.put / asset.get.
+// AssetFetchMessage: Client → daemon: download an image from the web into the asset store, so a client can show a remote picture. Replied to with asset.info; the same URL is downloaded once. bus.error bad_request when it isn't a public http(s) image.
+type AssetFetchMessage struct {
+	ID      string   `json:"id"`
+	Payload AssetUrl `json:"payload"`
+}
+
+func (AssetFetchMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v AssetFetchMessage) MarshalJSON() ([]byte, error) {
+	type plain AssetFetchMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"asset.fetch", plain(v)})
+}
+
+type AssetUrl struct {
+	// An http:// or https:// URL.
+	URL string `json:"url"`
+}
+
+// AssetInfoMessage: Daemon → client: reply to asset.put / asset.get / asset.fetch.
 type AssetInfoMessage struct {
 	ID      string `json:"id"`
 	Payload Asset  `json:"payload"`

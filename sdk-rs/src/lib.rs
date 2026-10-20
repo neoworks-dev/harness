@@ -22,12 +22,13 @@ pub use socket::default_socket_path;
 pub use suite_protocol as protocol;
 use suite_protocol::{
     AgentFocus, AgentMove, AgentMoveMessage, AppContext, AppContextMessage, AppPresence,
-    AppPresenceMessage, Asset, AssetGetMessage, AssetPut, AssetPutMessage, AssetRef, ConnectorInfo,
-    ConnectorsList, Envelope, ErrorInfo, FileChanged, FileChangedMessage, SecretAnswer,
-    SecretAnswerMessage, SecretRequest, SessionCancel, SessionCreate, SessionCreateParams,
-    SessionEventRecord, SessionInfo, SessionInput, SessionInputMessage, SessionList, SessionRef,
-    SessionSubscribe, SessionUnsubscribe, SubscribeParams, SubscribedPayload, Theme, UiAction,
-    UiActionMessage, ViewPatch, ViewRef, ViewSnapshot, ViewSubscribe, ViewUnsubscribe,
+    AppPresenceMessage, Asset, AssetFetchMessage, AssetGetMessage, AssetPut, AssetPutMessage,
+    AssetRef, AssetUrl, ConnectorInfo, ConnectorsList, Envelope, ErrorInfo, FileChanged,
+    FileChangedMessage, SecretAnswer, SecretAnswerMessage, SecretRequest, SessionCancel,
+    SessionCreate, SessionCreateParams, SessionEventRecord, SessionInfo, SessionInput,
+    SessionInputMessage, SessionList, SessionRef, SessionSubscribe, SessionUnsubscribe,
+    SubscribeParams, SubscribedPayload, Theme, UiAction, UiActionMessage, ViewPatch, ViewRef,
+    ViewSnapshot, ViewSubscribe, ViewUnsubscribe,
 };
 pub use view::ViewState;
 
@@ -404,6 +405,21 @@ impl Client {
             })
         };
         match self.call(Effect::None, get)? {
+            Envelope::AssetInfoMessage(reply) => Ok(reply.payload),
+            _ => Err(Error::Unexpected),
+        }
+    }
+
+    /// Has the daemon download the image at an `http(s)://` URL into the asset store (once per
+    /// URL); the asset, or an error when it isn't a public image. Blocks while it downloads.
+    pub fn fetch_asset(&self, url: &str) -> Result<Asset> {
+        let fetch = |id| {
+            Envelope::AssetFetchMessage(AssetFetchMessage {
+                id,
+                payload: AssetUrl { url: url.into() },
+            })
+        };
+        match self.call(Effect::None, fetch)? {
             Envelope::AssetInfoMessage(reply) => Ok(reply.payload),
             _ => Err(Error::Unexpected),
         }

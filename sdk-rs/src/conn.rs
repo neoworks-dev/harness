@@ -500,6 +500,7 @@ fn request_id(envelope: &Envelope) -> Option<String> {
         Envelope::AssetPutMessage(m) => Some(m.id.clone()),
         Envelope::AppContextMessage(m) => m.id.clone(),
         Envelope::AssetGetMessage(m) => Some(m.id.clone()),
+        Envelope::AssetFetchMessage(m) => Some(m.id.clone()),
         _ => None,
     }
 }

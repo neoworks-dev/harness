@@ -31,6 +31,7 @@ export type Envelope =
   | SecretAnswerMessage
   | AssetPutMessage
   | AssetGetMessage
+  | AssetFetchMessage
   | AssetInfoMessage
   | FileChangedMessage
   | AppContextMessage
@@ -352,7 +353,19 @@ export interface AssetRef {
   handle: string;
 }
 
-/** Daemon → client: reply to asset.put / asset.get. */
+/** Client → daemon: download an image from the web into the asset store, so a client can show a remote picture. Replied to with asset.info; the same URL is downloaded once. bus.error bad_request when it isn't a public http(s) image. */
+export interface AssetFetchMessage {
+  topic: "asset.fetch";
+  id: string;
+  payload: AssetUrl;
+}
+
+export interface AssetUrl {
+  /** An http:// or https:// URL. */
+  url: string;
+}
+
+/** Daemon → client: reply to asset.put / asset.get / asset.fetch. */
 export interface AssetInfoMessage {
   topic: "asset.info";
   id: string;
