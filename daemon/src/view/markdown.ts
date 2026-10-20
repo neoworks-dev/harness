@@ -183,3 +183,44 @@ export function parseMarkdown(source: string, openui?: OpenUiHost): Block[] {
   const tokens = Lexer.lex(source, { gfm: true });
   return blocks(tokens, openui && { host: openui, count: 0 });
 }
+
+/** A link reference definition, which can change how text above it reads. */
+const LINK_DEFINITION = /^ {0,3}\[[^\]\n]+\]:/m;
+
+/**
+ * A message's markdown parsed as it grows. Text added at the end can only change the last
+ * top-level block, so the blocks before it are kept, the same objects, and only the rest is parsed
+ * again: a long message no longer costs more to extend with every chunk. A link definition can
+ * change text above it and a carriage return changes offsets, so either means parsing it all.
+ */
+export class GrowingMarkdown {
+  /** How much of the source the settled blocks come from. */
+  private chars = 0;
+  private settled: Block[] = [];
+  /** openui fences among the settled blocks. */
+  private fences = 0;
+
+  /** The blocks of `source`, which extends what the previous call was given. */
+  parse(source: string, openui?: OpenUiHost): Block[] {
+    if (source.length < this.chars || source.includes("\r") || LINK_DEFINITION.test(source)) {
+      this.reset();
+      return parseMarkdown(source, openui);
+    }
+    const tokens = Lexer.lex(source.slice(this.chars), { gfm: true });
+    let last = tokens.length - 1;
+    while (last > 0 && tokens[last]?.type === "space") last--;
+    const done = tokens.slice(0, Math.max(last, 0));
+    const fences = openui && { host: openui, count: this.fences };
+    this.settled.push(...blocks(done, fences));
+    for (const token of done) this.chars += token.raw.length;
+    if (fences) this.fences = fences.count;
+    return [...this.settled, ...blocks(tokens.slice(Math.max(last, 0)), fences)];
+  }
+
+  /** Forgets what was parsed: the next call parses the whole source. */
+  reset(): void {
+    this.chars = 0;
+    this.settled = [];
+    this.fences = 0;
+  }
+}

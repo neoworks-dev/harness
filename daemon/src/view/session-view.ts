@@ -19,7 +19,7 @@ import type {
 import type { Logger } from "../log.ts";
 import { MAIN, MESSAGES_APP } from "../messages.ts";
 import { diffLines } from "./diff.ts";
-import { parseMarkdown } from "./markdown.ts";
+import { GrowingMarkdown, parseMarkdown } from "./markdown.ts";
 import { isOpenUiTemplate, OpenUiDocs, templateProgram } from "./openui.ts";
 import { resolveTemplate, TemplateError } from "./template.ts";
 
@@ -33,6 +33,7 @@ interface Stream {
   blocks: Block[];
   /** The message is complete: an openui fence still open is a finished program. */
   ended: boolean;
+  markdown: GrowingMarkdown;
 }
 
 interface Call {
@@ -108,7 +109,7 @@ function firstChange(before: Block[], after: Block[]): number {
   while (
     i < before.length &&
     i < after.length &&
-    JSON.stringify(before[i]) === JSON.stringify(after[i])
+    (before[i] === after[i] || JSON.stringify(before[i]) === JSON.stringify(after[i]))
   )
     i++;
   return i;
@@ -565,10 +566,15 @@ export class SessionView {
     };
   }
 
-  /** The blocks of a streamed message; its openui fences are programs, running ones. */
-  private blocksOf(stream: Stream): Block[] {
-    if (stream.kind === "thought") return parseMarkdown(stream.raw);
-    return parseMarkdown(stream.raw, (index, program, closed) =>
+  /**
+   * The blocks of a streamed message; its openui fences are programs, running ones. A chunk only
+   * parses the message's end again; `all` parses all of it, for when a doc or the end changes
+   * what blocks already settled say.
+   */
+  private blocksOf(stream: Stream, all = false): Block[] {
+    if (all) stream.markdown.reset();
+    if (stream.kind === "thought") return stream.markdown.parse(stream.raw);
+    return stream.markdown.parse(stream.raw, (index, program, closed) =>
       this.docs.doc(stream.ref, String(index), program, !closed && !stream.ended),
     );
   }
@@ -584,7 +590,14 @@ export class SessionView {
     // A message that starts means the one before it is complete.
     const finished: ViewOp[] = [];
     if (!existing && kind === "agent") finished.push(...this.finishStreams());
-    const stream: Stream = existing ?? { ref, kind, raw: "", blocks: [], ended: false };
+    const stream: Stream = existing ?? {
+      ref,
+      kind,
+      raw: "",
+      blocks: [],
+      ended: false,
+      markdown: new GrowingMarkdown(),
+    };
     stream.raw += chunk;
     if (existing && this.replaying) {
       this.unparsed.add(ref);
@@ -611,7 +624,7 @@ export class SessionView {
       stream.ended = true;
       if (stream.kind !== "agent" || !stream.raw.includes("```")) continue;
       const before = stream.blocks;
-      const blocks = this.blocksOf(stream);
+      const blocks = this.blocksOf(stream, true);
       const from = firstChange(before, blocks);
       stream.blocks = blocks;
       if (from < before.length || from < blocks.length) {
@@ -733,7 +746,7 @@ export class SessionView {
     const stream = this.streams.get(ref);
     if (stream) {
       if (current.component.type !== "text") return;
-      stream.blocks = this.blocksOf(stream);
+      stream.blocks = this.blocksOf(stream, true);
       item = { ...current, component: { ...current.component, blocks: stream.blocks } };
     } else {
       const call = [...this.calls.values()].find((c) => c.ref === ref);
