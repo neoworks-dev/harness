@@ -271,12 +271,8 @@ impl<'a> Cx<'a> {
         self.kv(&pb::KvComponent { items }, w)
     }
 
-    /// The label muted over the value in bold, with the delta in the tone's color.
-    pub(super) fn ui_metric(&mut self, n: N<'_>, w: usize) -> Lines {
-        let mut out = Vec::new();
-        if let Some(label) = n.line("label") {
-            out.push(sline(truncate(&label, w), self.p.muted_style()));
-        }
+    /// The value in bold with the delta after it in the tone's color, and the label.
+    fn metric_parts(&self, n: N<'_>) -> (Vec<Span<'static>>, Option<String>) {
         let value = n.prop("value").map(scalar).unwrap_or_default();
         let mut spans = vec![Span::styled(
             value,
@@ -289,16 +285,119 @@ impl<'a> Cx<'a> {
             };
             spans.push(Span::styled(format!(" {delta}"), style));
         }
-        out.push(Line::from(truncate_spans(spans, w)));
+        (spans, n.line("label"))
+    }
+
+    /// The value in bold with the delta in the tone's color, the label muted under them.
+    pub(super) fn ui_metric(&mut self, n: N<'_>, w: usize) -> Lines {
+        self.ui_metric_strip(&[n], w)
+    }
+
+    /// Metrics side by side, each a column: value and delta over the label, `│` between
+    /// them. More than fit one line wrap onto further strips.
+    pub(super) fn ui_metric_strip(&mut self, ms: &[N<'_>], w: usize) -> Lines {
+        let w = w.max(1);
+        let cols: Vec<(Vec<Span<'static>>, Option<String>, usize)> = ms
+            .iter()
+            .map(|m| {
+                let (top, label) = self.metric_parts(*m);
+                let top = truncate_spans(top, w);
+                let label = label.map(|l| truncate(&l, w));
+                let cell = line_width(&top).max(label.as_deref().map_or(0, width));
+                (top, label, cell)
+            })
+            .collect();
+        let total = |sep: usize| cols.iter().map(|c| c.2).sum::<usize>() + sep * (cols.len() - 1);
+        // Roomy dividers when the strip is one line anyway.
+        let sep = if total(5) <= w { 5 } else { 3 };
+        let mut rows: Vec<Vec<usize>> = vec![Vec::new()];
+        let mut used = 0;
+        for (i, c) in cols.iter().enumerate() {
+            let row = rows.last_mut().expect("a row");
+            let need = c.2 + if row.is_empty() { 0 } else { sep };
+            if !row.is_empty() && used + need > w {
+                used = 0;
+                rows.push(vec![i]);
+                used += c.2;
+            } else {
+                used += need;
+                row.push(i);
+            }
+        }
+        let border = Style::new().fg(self.p.border);
+        let divider = |spans: &mut Vec<Span<'static>>| {
+            let pad = " ".repeat(sep / 2);
+            spans.push(Span::raw(pad.clone()));
+            spans.push(Span::styled("│", border));
+            spans.push(Span::raw(pad));
+        };
+        let mut out: Lines = Vec::new();
+        for row in rows {
+            if !out.is_empty() {
+                out.push(Line::default());
+            }
+            let labelled = row.iter().any(|i| cols[*i].1.is_some());
+            let (mut top, mut under): (Vec<Span<'static>>, Vec<Span<'static>>) =
+                (Vec::new(), Vec::new());
+            for (k, i) in row.iter().enumerate() {
+                let (spans, label, cell) = &cols[*i];
+                let last = k + 1 == row.len();
+                if k > 0 {
+                    divider(&mut top);
+                    divider(&mut under);
+                }
+                top.extend(spans.iter().cloned());
+                let label = label.clone().unwrap_or_default();
+                let (top_pad, under_pad) = (cell - line_width(spans), cell - width(&label));
+                if !label.is_empty() {
+                    under.push(Span::styled(label, self.p.muted_style()));
+                }
+                if !last {
+                    for (line, pad) in [(&mut top, top_pad), (&mut under, under_pad)] {
+                        if pad > 0 {
+                            line.push(Span::raw(" ".repeat(pad)));
+                        }
+                    }
+                }
+            }
+            out.push(Line::from(top));
+            if labelled {
+                out.push(Line::from(under));
+            }
+        }
         out
     }
 
+    /// `▰▰▰▱▱▱ 60% label`; the percent is left out when the label says it (`92% used`).
     pub(super) fn ui_progress(&mut self, n: N<'_>, w: usize) -> Lines {
-        let c = pb::ProgressComponent {
-            value: n.num("value").unwrap_or(0.0),
-            label: n.line("label"),
+        let value = n.num("value").filter(|v| !v.is_nan()).unwrap_or(0.0);
+        let value = value.clamp(0.0, 1.0);
+        let percent = (value * 100.0).round() as u32;
+        let label = n.line("label");
+        let said = label.as_deref().is_some_and(|l| says_percent(l, percent));
+        let tail = match (&label, said) {
+            (Some(l), true) => l.clone(),
+            (Some(l), false) => format!("{percent}% {l}"),
+            (None, _) => format!("{percent}%"),
         };
-        self.progress(&c, w)
+        let bar_for = |cells: usize| -> Vec<Span<'static>> {
+            let filled = ((value * cells as f64).round() as usize).min(cells);
+            vec![
+                Span::styled("▰".repeat(filled), Style::new().fg(self.p.accent)),
+                Span::styled("▱".repeat(cells - filled), self.p.muted_style()),
+            ]
+        };
+        let tail_style = self.p.muted_style();
+        let bar_max = 40;
+        // The bar and its text on one line when the bar keeps at least ten cells.
+        if w >= width(&tail) + 11 {
+            let mut spans = bar_for((w - width(&tail) - 1).min(bar_max));
+            spans.push(Span::styled(format!(" {tail}"), tail_style));
+            return vec![Line::from(spans)];
+        }
+        let mut out = vec![Line::from(bar_for(w.min(bar_max)))];
+        out.extend(wrap(&[Span::styled(tail, tail_style)], w));
+        out
     }
 
     pub(super) fn ui_image(&mut self, n: N<'_>, w: usize) -> Lines {
@@ -317,4 +416,29 @@ impl<'a> Cx<'a> {
         let text = n.str("text");
         wrap(&link(url, text, Style::new(), &self.p), w)
     }
+}
+
+/// Whether `label` has a number with a `%` after it that rounds to `percent`.
+fn says_percent(label: &str, percent: u32) -> bool {
+    let chars: Vec<char> = label.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i].is_ascii_digit() {
+            let start = i;
+            while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
+                i += 1;
+            }
+            let number: String = chars[start..i].iter().collect();
+            if chars.get(i) == Some(&'%')
+                && number
+                    .parse::<f64>()
+                    .is_ok_and(|v| v.round() as u32 == percent)
+            {
+                return true;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    false
 }

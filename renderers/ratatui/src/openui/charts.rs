@@ -12,8 +12,6 @@ use crate::text::{push_text, truncate, width, wrap};
 
 /// Heights of a column cell, one eighth to a whole.
 const UP: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-/// Widths of a bar's last cell, one eighth to a whole.
-const RIGHT: [char; 8] = ['▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
 /// Rows of a column chart and of a line chart's canvas.
 const ROWS: usize = 6;
 /// The most cells a bar, a canvas or a stacked bar takes.
@@ -251,7 +249,7 @@ impl<'a> Cx<'a> {
         Some(out)
     }
 
-    /// One row per bar: `label ████▍ 12`; stacked, one row per label with the segments.
+    /// One row per bar: `label ▄▄▄▄▖ 12`; stacked, one row per label with the segments.
     fn bars_chart(
         &self,
         series: &[Series],
@@ -282,7 +280,7 @@ impl<'a> Cx<'a> {
             .unwrap_or(1);
         let lead = if label_w > 0 { label_w + 1 } else { 0 };
         let bar_w = w.saturating_sub(lead + 1 + value_w).clamp(1, MAX_BAR);
-        let unit = bar_w * 8;
+        let unit = bar_w * 2;
         let head = |i: usize, first: bool| -> Span<'static> {
             if label_w == 0 {
                 return Span::raw("");
@@ -590,10 +588,12 @@ impl<'a> Cx<'a> {
     }
 }
 
-fn bar_cells(eighths: usize, color: Color) -> Span<'static> {
-    let mut text = "█".repeat(eighths / 8);
-    if !eighths.is_multiple_of(8) {
-        text.push(RIGHT[eighths % 8 - 1]);
+/// A lying bar of `halves` half cells, half a line tall: the upper half of its line stays
+/// empty, so bars on neighbouring lines never touch.
+fn bar_cells(halves: usize, color: Color) -> Span<'static> {
+    let mut text = "▄".repeat(halves / 2);
+    if halves % 2 == 1 {
+        text.push('▖');
     }
     Span::styled(text, Style::new().fg(color))
 }

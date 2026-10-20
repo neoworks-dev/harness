@@ -10,8 +10,8 @@ use ratatui::style::{Color, Modifier};
 use serde_json::{Value, json};
 use suite_protocol::ViewItem;
 use suite_renderer_ratatui::{
-    Options, Palette, UiEdit, UiKind, UiState, openui_docs, openui_targets, render_item,
-    render_item_images,
+    Options, Palette, UiEdit, UiKind, UiState, openui_docs, openui_targets, plain_text,
+    render_item, render_item_images,
 };
 
 fn pal() -> Palette {
@@ -84,6 +84,18 @@ fn metric(label: &str, value: &str) -> Value {
     node("Metric", json!({"label": label, "value": value}))
 }
 
+fn tag(label: &str) -> Value {
+    node("Tag", json!({"label": label}))
+}
+
+fn card(title: &str, children: Vec<Value>) -> Value {
+    node("Card", json!({"title": title, "children": children}))
+}
+
+fn column(children: Vec<Value>) -> Value {
+    node("Stack", json!({"children": children}))
+}
+
 fn row(children: Vec<Value>, extra: Value) -> Value {
     let mut props = json!({"direction": "row", "children": children});
     if let (Some(p), Some(e)) = (props.as_object_mut(), extra.as_object()) {
@@ -95,46 +107,32 @@ fn row(children: Vec<Value>, extra: Value) -> Value {
 #[test]
 fn a_row_puts_children_side_by_side_at_their_own_widths() {
     let it = doc(row(
-        vec![
-            metric("Revenue", "$25k"),
-            metric("Customers", "412"),
-            metric("Churn", "2.1%"),
-        ],
+        vec![tag("Revenue"), tag("Customers"), tag("Churn")],
         json!({}),
     ));
-    assert_eq!(
-        lines(&it, 80),
-        ["Revenue   Customers   Churn", "$25k      412         2.1%"]
-    );
+    assert_eq!(lines(&it, 80), ["[Revenue]   [Customers]   [Churn]"]);
 }
 
 #[test]
 fn a_row_squeezes_text_before_it_stacks() {
     let it = doc(row(
-        vec![text("one two three four five six seven"), metric("A", "1")],
+        vec![text("one two three four five six seven"), tag("A")],
         json!({}),
     ));
     let out = lines(&it, 30);
     assert!(out.len() >= 2, "{out:?}");
     // The text gave way, the metric kept its width next to it.
-    assert!(out[0].ends_with("A"), "{out:?}");
+    assert!(out[0].ends_with("[A]"), "{out:?}");
     assert!(out.iter().all(|l| l.chars().count() <= 30), "{out:?}");
 }
 
 #[test]
 fn a_row_that_cannot_be_squeezed_stacks() {
     let it = doc(row(
-        vec![
-            metric("Revenue", "$25k"),
-            metric("Customers", "412"),
-            metric("Churn", "2.1%"),
-        ],
+        vec![tag("Revenue"), tag("Customers"), tag("Churn")],
         json!({}),
     ));
-    assert_eq!(
-        lines(&it, 12),
-        ["Revenue", "$25k", "Customers", "412", "Churn", "2.1%"]
-    );
+    assert_eq!(lines(&it, 12), ["[Revenue]", "[Customers]", "[Churn]"]);
 }
 
 #[test]
@@ -155,11 +153,8 @@ fn a_wrapping_row_breaks_into_lines_of_whole_children() {
 
 #[test]
 fn a_row_justifies_between_and_aligns_children_to_the_bottom() {
-    let it = doc(row(
-        vec![metric("A", "1"), metric("B", "2")],
-        json!({"justify": "between"}),
-    ));
-    assert_eq!(lines(&it, 10), ["A        B", "1        2"]);
+    let it = doc(row(vec![tag("A"), tag("B")], json!({"justify": "between"})));
+    assert_eq!(lines(&it, 10), ["[A]    [B]"]);
     let it = doc(row(
         vec![
             node(
@@ -194,7 +189,14 @@ fn stacks_align_their_children_and_gap_l_is_a_blank_line() {
 fn card_variants() {
     let kids = json!([text("body")]);
     let it = doc(node("Card", json!({"children": kids, "title": "Hello"})));
-    assert_eq!(lines(&it, 30), ["╭ Hello", "│ body"]);
+    assert_eq!(
+        lines(&it, 20),
+        [
+            "╭─ Hello ──────────╮",
+            "│ body             │",
+            "╰──────────────────╯"
+        ]
+    );
     let it = doc(node(
         "Card",
         json!({"children": kids, "title": "Hello", "variant": "clear"}),
@@ -221,7 +223,44 @@ fn card_variants() {
     ));
     let rendered = render_item(&it, 30, &Options::default());
     assert_eq!(rendered[0].spans[0].style.fg, Some(pal().danger));
+    assert_eq!(rendered[0].spans[1].style.fg, Some(pal().danger));
     assert_eq!(rendered[1].spans[0].style.fg, Some(pal().danger));
+    assert_eq!(rendered[2].spans[0].style.fg, Some(pal().danger));
+}
+
+#[test]
+fn a_card_floats_on_the_surface_color_inside_its_outline() {
+    let it = doc(card("Hello", vec![text("body")]));
+    let rendered = render_item(&it, 20, &Options::default());
+    assert_eq!(rendered.len(), 3);
+    // Every cell of the box, the outline included, is on the surface; the outline in the
+    // border color, the title bold.
+    for line in &rendered {
+        assert_eq!(line.width(), 20);
+        assert!(
+            line.spans.iter().all(|s| s.style.bg == Some(pal().surface)),
+            "{line:?}"
+        );
+    }
+    assert_eq!(rendered[0].spans[0].style.fg, Some(pal().border));
+    assert!(
+        rendered[0]
+            .spans
+            .iter()
+            .any(|s| s.content == "Hello" && s.style.add_modifier.contains(Modifier::BOLD))
+    );
+    // A card in a card is on the same surface; its outline tells it apart.
+    let it = doc(card("Outer", vec![card("Inner", vec![text("deep")])]));
+    assert_eq!(
+        lines(&it, 24),
+        [
+            "╭─ Outer ──────────────╮",
+            "│ ╭─ Inner ──────────╮ │",
+            "│ │ deep             │ │",
+            "│ ╰──────────────────╯ │",
+            "╰──────────────────────╯"
+        ]
+    );
 }
 
 #[test]
@@ -429,13 +468,13 @@ fn lists_key_values_metrics_and_progress() {
             "2. [x]",
             "Region  eu",
             "Errors  3",
-            "Churn",
             "2.1% +0.4pt",
-            "▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░ 50% half",
+            "Churn",
+            &format!("{}{} 50% half", "▰".repeat(16), "▱".repeat(15)),
         ]
     );
     let rendered = render_item(&it, 40, &Options::default());
-    let delta = rendered[5]
+    let delta = rendered[4]
         .spans
         .iter()
         .find(|s| s.content.contains("+0.4pt"))
@@ -471,7 +510,7 @@ fn series(name: &str, values: &[f64]) -> Value {
 }
 
 #[test]
-fn horizontal_bars_use_eighth_blocks_with_the_value_at_the_end() {
+fn horizontal_bars_are_half_height_with_the_value_at_the_end() {
     let it = doc(node(
         "BarChart",
         json!({"labels": ["a", "bb"], "series": [series("n", &[8.0, 4.5])], "horizontal": true}),
@@ -481,15 +520,13 @@ fn horizontal_bars_use_eighth_blocks_with_the_value_at_the_end() {
     assert!(out[0].starts_with("a  "), "{out:?}");
     assert!(out[0].ends_with(" 8"), "{out:?}");
     assert!(out[1].ends_with(" 4.5"), "{out:?}");
-    let bar = |l: &str| {
-        l.chars()
-            .filter(|c| "▏▎▍▌▋▊▉█".contains(*c))
-            .collect::<String>()
-    };
+    let bar = |l: &str| l.chars().filter(|c| "▄▖".contains(*c)).collect::<String>();
     // Room for 23 cells after the label and before the value.
     assert_eq!(bar(&out[0]).chars().count(), 23);
-    // 4.5 of 8 is 12.9 cells: 13, rounded to eighths.
-    assert_eq!(bar(&out[1]), "█".repeat(13));
+    // 4.5 of 8 is 12.9 cells: 13, rounded to halves. The upper half of every line stays empty,
+    // so neighbouring bars never merge.
+    assert_eq!(bar(&out[1]), "▄".repeat(13));
+    assert!(!out.iter().any(|l| l.contains('█')), "{out:?}");
 }
 
 #[test]
@@ -1256,4 +1293,258 @@ fn colors_come_from_the_palette() {
             .any(|s| s.style.fg == Some(c))
     };
     assert!(has(Color::Rgb(1, 2, 3)) && has(Color::Rgb(9, 9, 9)));
+}
+
+// ---- grids, strips and the rest of the dashboard look ----
+
+/// The column where the left card of a side-by-side pair ends and the right one starts.
+fn card_starts(line: &str) -> Vec<usize> {
+    line.chars()
+        .enumerate()
+        .filter(|(_, c)| *c == '╭')
+        .map(|(i, _)| i)
+        .collect()
+}
+
+#[test]
+fn sibling_cards_are_a_grid_that_stacks_when_narrow() {
+    let it = doc(column(vec![
+        card("One", vec![text("short")]),
+        card("Two", vec![text("a"), text("b"), text("c")]),
+    ]));
+    let wide = lines(&it, 80);
+    // Side by side with a one cell gap, columns of the same width.
+    assert_eq!(card_starts(&wide[0]), [0, 41], "{wide:?}");
+    assert!(
+        wide.iter()
+            .all(|l| l.chars().count() == 79 + 1 || l.chars().count() == 80)
+    );
+    // Both outlines end on the tallest card's line: five lines, bottoms aligned.
+    assert_eq!(wide.len(), 5, "{wide:?}");
+    assert!(
+        wide[4].starts_with('╰') && wide[4].ends_with('╯'),
+        "{wide:?}"
+    );
+    assert_eq!(wide[4].matches('╰').count(), 2, "{wide:?}");
+    assert!(wide[1].starts_with("│ short"), "{wide:?}");
+    // Too narrow for two columns of 36: one under the other.
+    let narrow = lines(&it, 40);
+    assert_eq!(narrow.len(), 3 + 5, "{narrow:?}");
+    assert_eq!(card_starts(&narrow[0]), [0]);
+    assert_eq!(card_starts(&narrow[3]), [0]);
+    // Three cards at 80: two columns, then the third under the first.
+    let it = doc(column(vec![
+        card("A", vec![text("a")]),
+        card("B", vec![text("b")]),
+        card("C", vec![text("c")]),
+    ]));
+    let out = lines(&it, 80);
+    assert_eq!(out.len(), 6, "{out:?}");
+    assert_eq!(card_starts(&out[3]), [0], "{out:?}");
+    // A single card, or cards split by something else, stay as they are.
+    let it = doc(column(vec![
+        card("A", vec![text("a")]),
+        text("between"),
+        card("B", vec![text("b")]),
+    ]));
+    assert!(lines(&it, 80).iter().all(|l| card_starts(l).len() <= 1));
+}
+
+#[test]
+fn cards_in_a_card_or_a_tab_are_a_grid_too() {
+    let two = vec![card("A", vec![text("a")]), card("B", vec![text("b")])];
+    let it = doc(node("Card", json!({"children": two, "title": "Outer"})));
+    let out = lines(&it, 90);
+    assert_eq!(out.len(), 5, "{out:?}");
+    assert_eq!(card_starts(&out[1]).len(), 2, "{out:?}");
+    let tabs = node(
+        "Tabs",
+        json!({"tabs": [node("Tab", json!({"label": "x", "children": two}))]}),
+    );
+    let out = lines(&doc(tabs), 80);
+    assert_eq!(card_starts(&out[1]).len(), 2, "{out:?}");
+}
+
+#[test]
+fn a_grid_has_at_most_columns_columns_and_as_many_as_fit() {
+    let cards: Vec<Value> = (0..4)
+        .map(|i| card(&format!("C{i}"), vec![text("x")]))
+        .collect();
+    let grid = |columns: Option<u32>| {
+        let mut props = json!({"children": cards});
+        if let Some(c) = columns {
+            props["columns"] = json!(c);
+        }
+        doc(node("Grid", props))
+    };
+    // 120 cells hold three columns of 36; `columns` can only lower that.
+    assert_eq!(card_starts(&lines(&grid(None), 120)[0]).len(), 3);
+    assert_eq!(card_starts(&lines(&grid(Some(2)), 120)[0]).len(), 2);
+    assert_eq!(card_starts(&lines(&grid(Some(1)), 120)[0]).len(), 1);
+    assert_eq!(card_starts(&lines(&grid(Some(4)), 80)[0]).len(), 2);
+    // Narrow: one column whatever was asked for.
+    assert_eq!(card_starts(&lines(&grid(Some(4)), 40)[0]).len(), 1);
+    // The widths share the room: 118 = 40 + 39 + 39 (the spare cell goes to the first).
+    let first = &lines(&grid(None), 120)[0];
+    assert_eq!(card_starts(first), [0, 41, 81], "{first:?}");
+    // Not only cards: a chart next to a table, each at its column.
+    let it = doc(node(
+        "Grid",
+        json!({"children": [
+            node("BarChart", json!({"labels": ["a"], "series": [series("n", &[1.0])], "horizontal": true})),
+            text("beside"),
+        ]}),
+    ));
+    let out = lines(&it, 80);
+    assert!(
+        out[0].starts_with("a ") && out[0].contains("beside"),
+        "{out:?}"
+    );
+    assert_fits(&it, &Options::default());
+}
+
+#[test]
+fn a_grid_row_is_as_tall_as_its_tallest_cell_in_every_cell() {
+    let it = doc(node(
+        "Grid",
+        json!({"children": [
+            card("Tall", vec![text("1"), text("2"), text("3"), text("4")]),
+            card("Short", vec![text("1")]),
+            card("Next", vec![text("n")]),
+        ]}),
+    ));
+    let out = lines(&it, 80);
+    // 6 lines for the first row, 3 for the lone card under it.
+    assert_eq!(out.len(), 6 + 3, "{out:?}");
+    assert!(out[5].matches('╯').count() == 2, "{out:?}");
+    assert!(out[6].starts_with("╭─ Next"), "{out:?}");
+}
+
+#[test]
+fn metrics_in_a_column_or_a_row_are_a_strip_divided_by_bars() {
+    let ms = || {
+        vec![
+            node(
+                "Metric",
+                json!({"label": "Used", "value": "820 GB", "delta": "of 896 GB", "tone": "danger"}),
+            ),
+            metric("Free", "72 GB"),
+        ]
+    };
+    let expect = ["820 GB of 896 GB  │  72 GB", "Used              │  Free"];
+    assert_eq!(lines(&doc(column(ms())), 80), expect);
+    assert_eq!(lines(&doc(row(ms(), json!({}))), 80), expect);
+    // Narrower: tighter dividers.
+    assert_eq!(
+        lines(&doc(column(ms())), 25),
+        ["820 GB of 896 GB │ 72 GB", "Used             │ Free"]
+    );
+    // Value bold, delta in its tone, label muted.
+    let rendered = render_item(&doc(column(ms())), 80, &Options::default());
+    let span = |row: usize, text: &str| {
+        rendered[row]
+            .spans
+            .iter()
+            .find(|s| s.content.contains(text))
+            .unwrap()
+            .style
+    };
+    assert!(span(0, "820 GB").add_modifier.contains(Modifier::BOLD));
+    assert_eq!(span(0, "of 896").fg, Some(pal().danger));
+    assert_eq!(span(1, "Used").fg, Some(pal().muted));
+    assert_eq!(span(0, "│").fg, Some(pal().border));
+    // More than fit wrap into further strips.
+    let many: Vec<Value> = (0..4)
+        .map(|i| metric(&format!("Label {i}"), "1234567"))
+        .collect();
+    let out = lines(&doc(column(many)), 30);
+    assert_eq!(out.len(), 5, "{out:?}");
+    assert_eq!(out[2], "");
+    // A single Metric is the same column on its own.
+    assert_eq!(
+        lines(&doc(column(vec![metric("Free", "72 GB")])), 30),
+        ["72 GB", "Free"]
+    );
+}
+
+#[test]
+fn bars_never_touch_and_the_labels_stay_left() {
+    let it = doc(node(
+        "BarChart",
+        json!({"labels": ["Documents", ".cache", "Other"], "series": [series("GB", &[355.0, 65.0, 103.0])], "horizontal": true}),
+    ));
+    let out = lines(&it, 40);
+    assert_eq!(out.len(), 3, "{out:?}");
+    // No full block anywhere: the upper half of each line is empty, a gap between bars.
+    assert!(out.iter().all(|l| !l.contains('█')), "{out:?}");
+    assert!(out[0].starts_with("Documents "), "{out:?}");
+    assert!(out[1].starts_with(".cache    "), "{out:?}");
+    assert!(out[1].ends_with(" 65"), "{out:?}");
+    let rendered = render_item(&it, 40, &Options::default());
+    assert_eq!(rendered[1].spans[0].style.fg, Some(pal().muted));
+}
+
+#[test]
+fn a_progress_label_that_says_the_percent_is_not_said_twice() {
+    let progress = |value: f64, label: Option<&str>| {
+        let mut props = json!({"value": value});
+        if let Some(l) = label {
+            props["label"] = json!(l);
+        }
+        lines(&doc(node("Progress", props)), 60).remove(0)
+    };
+    let tail = |l: &str| l.trim_start_matches(['▰', '▱']).to_string();
+    assert_eq!(tail(&progress(0.92, Some("92% used"))), " 92% used");
+    assert_eq!(tail(&progress(0.92, Some("used: 92%"))), " used: 92%");
+    // A different number, or none: the bar's percent comes first.
+    assert_eq!(tail(&progress(0.92, Some("of 896 GB"))), " 92% of 896 GB");
+    assert_eq!(tail(&progress(0.5, Some("92% used"))), " 50% 92% used");
+    assert_eq!(tail(&progress(0.6, None)), " 60%");
+    let bar = progress(0.5, None);
+    assert_eq!(bar.matches('▰').count(), bar.matches('▱').count(), "{bar}");
+}
+
+#[test]
+fn a_table_has_no_blank_line_under_its_header() {
+    let table = node(
+        "Table",
+        json!({"columns": ["Path", "Size"], "rows": [["a", 1], ["b", 22]]}),
+    );
+    let it = doc(table.clone());
+    let out = lines(&it, 40);
+    assert_eq!(out.len(), 4, "{out:?}");
+    assert_eq!(out[1], "─────┼─────");
+    assert!(out.iter().all(|l| !l.trim().is_empty()));
+    // In a card, next to another, narrow or wide.
+    let boxed = doc(column(vec![
+        card("A", vec![table.clone()]),
+        card("B", vec![table.clone()]),
+    ]));
+    for w in [40, 80] {
+        let out = lines(&boxed, w);
+        assert_eq!(out.len(), if w == 40 { 12 } else { 6 }, "{out:?}");
+        assert!(out[2].contains('┼'), "{out:?}");
+        assert!(out[3].contains("│ a"), "{out:?}");
+    }
+}
+
+#[test]
+fn a_form_in_a_card_keeps_its_focus_line() {
+    let form = node(
+        "Form",
+        json!({"name": "f", "children": [
+            node("FormControl", json!({"label": "Name", "input": keyed("Input", "name", json!({"name": "name"}))})),
+        ]}),
+    );
+    let it = doc(column(vec![
+        card("First", vec![text("a"), text("b")]),
+        card("Second", vec![form]),
+    ]));
+    let opts = focused("name");
+    let r = render_item_images(&it, 80, &opts);
+    let line = r.focus_line.expect("focus line");
+    let out = plain_text(&r.lines);
+    // The field, not its label: the first line of the focused target.
+    assert!(out[line].contains("│ [ "), "{line} {out:?}");
+    assert_eq!(openui_targets(&it, &opts).len(), 1);
 }

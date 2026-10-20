@@ -6,7 +6,7 @@ use serde_json::Value;
 use suite_protocol as pb;
 
 use super::{N, UiKind, join};
-use crate::render::{Cx, Lines, card_inner, prefixed, stack};
+use crate::render::{Cx, Lines, prefixed, stack};
 use crate::text::{clip, sline, truncate, width};
 
 /// The id of the target for the node at `path`.
@@ -20,6 +20,27 @@ fn path_id(path: &str) -> String {
 
 fn space(gap: Option<&str>) -> Option<pb::Space> {
     (gap == Some("l")).then_some(pb::Space::L)
+}
+
+/// A child of a container: the node and its path in the doc.
+type Kid<'n> = (N<'n>, String);
+
+/// The fewest cells a grid column gets before the grid takes one column less.
+const GRID_MIN: usize = 36;
+
+fn kids_of<'n>(n: N<'n>, prop: &str, path: &str) -> Vec<Kid<'n>> {
+    n.nodes(prop)
+        .into_iter()
+        .enumerate()
+        .map(|(i, k)| (k, join(path, &format!("{prop}.{i}"))))
+        .collect()
+}
+
+/// `lines` with blank lines added up to `height`.
+fn grow(lines: &mut Lines, height: usize) {
+    if lines.len() < height {
+        lines.resize(height, Line::default());
+    }
 }
 
 /// The widest line.
@@ -84,7 +105,8 @@ impl<'a> Cx<'a> {
         let w = w.max(1);
         let mut lines = match n.name() {
             "Stack" => self.ui_stack(n, path, w),
-            "Card" => self.ui_card(n, path, w),
+            "Card" => self.ui_card_h(n, path, w, 0),
+            "Grid" => self.ui_grid(n, path, w),
             "Header" => self.ui_header(n, w),
             "Separator" => vec![sline("─".repeat(w), Style::new().fg(self.p.border))],
             "Tabs" => self.ui_tabs(n, path, w),
@@ -124,7 +146,7 @@ impl<'a> Cx<'a> {
         lines
     }
 
-    /// The children of the node's `prop` array, stacked.
+    /// The children of the node's `prop` array, stacked (see [`Cx::ui_flow`]).
     pub(super) fn ui_children(
         &mut self,
         n: N<'_>,
@@ -133,14 +155,40 @@ impl<'a> Cx<'a> {
         w: usize,
         gap: Option<&str>,
     ) -> Lines {
+        let kids = kids_of(n, prop, path);
+        let parts = self.ui_flow(&kids, w);
+        stack(parts, space(gap))
+    }
+
+    /// Draws siblings that follow each other down the page, one part each. A run of two or
+    /// more `Card`s is one `Grid` and a run of two or more `Metric`s one strip: the terminal
+    /// lays a page out, whatever column the program asked for.
+    fn ui_flow(&mut self, kids: &[Kid<'_>], w: usize) -> Vec<Lines> {
         let mut parts = Vec::new();
-        for (i, kid) in n.nodes(prop).into_iter().enumerate() {
-            let lines = self.ui_node(kid, &join(path, &format!("{prop}.{i}")), w);
+        let mut i = 0;
+        while i < kids.len() {
+            let name = kids[i].0.name();
+            let mut j = i + 1;
+            if matches!(name, "Card" | "Metric") {
+                while j < kids.len() && kids[j].0.name() == name {
+                    j += 1;
+                }
+            }
+            let run = &kids[i..j];
+            let lines = match (name, run.len()) {
+                ("Card", 2..) => self.grid_of(run, None, w),
+                ("Metric", 2..) => {
+                    let ms: Vec<N<'_>> = run.iter().map(|k| k.0).collect();
+                    self.ui_metric_strip(&ms, w)
+                }
+                _ => self.ui_node(run[0].0, &run[0].1, w),
+            };
             if !lines.is_empty() {
                 parts.push(lines);
             }
+            i = j;
         }
-        stack(parts, space(gap))
+        parts
     }
 
     fn ui_stack(&mut self, n: N<'_>, path: &str, w: usize) -> Lines {
@@ -149,20 +197,70 @@ impl<'a> Cx<'a> {
         }
         let gap = n.str("gap");
         let align = n.str("align").unwrap_or("start");
-        let mut parts = Vec::new();
-        for (i, kid) in n.nodes("children").into_iter().enumerate() {
-            let lines = self.ui_node(kid, &join(path, &format!("children.{i}")), w);
-            if lines.is_empty() {
-                continue;
-            }
-            let room = w.saturating_sub(max_width(&lines));
-            parts.push(match align {
-                "center" => shift(lines, room / 2),
-                "end" => shift(lines, room),
-                _ => lines,
-            });
-        }
+        let kids = kids_of(n, "children", path);
+        let parts = self
+            .ui_flow(&kids, w)
+            .into_iter()
+            .map(|lines| {
+                let room = w.saturating_sub(max_width(&lines));
+                match align {
+                    "center" => shift(lines, room / 2),
+                    "end" => shift(lines, room),
+                    _ => lines,
+                }
+            })
+            .collect();
         stack(parts, space(gap))
+    }
+
+    /// An explicit `Grid`: its children in as many columns as fit, at most `columns`.
+    fn ui_grid(&mut self, n: N<'_>, path: &str, w: usize) -> Lines {
+        let kids = kids_of(n, "children", path);
+        let max = n.num("columns").filter(|c| *c >= 1.0).map(|c| c as usize);
+        self.grid_of(&kids, max, w)
+    }
+
+    /// Cells left to right, then down. Every column is as wide as the others (the spare cells
+    /// go to the first ones), a cell of a row is as tall as the row's tallest.
+    fn grid_of(&mut self, kids: &[Kid<'_>], max: Option<usize>, w: usize) -> Lines {
+        if kids.is_empty() {
+            return Vec::new();
+        }
+        let fit = (w + 1) / (GRID_MIN + 1);
+        let cols = fit.max(1).min(max.unwrap_or(usize::MAX)).min(kids.len());
+        let room = w.saturating_sub(cols - 1);
+        let widths: Vec<usize> = (0..cols)
+            .map(|c| (room / cols + usize::from(c < room % cols)).max(1))
+            .collect();
+        let mut out: Lines = Vec::new();
+        let mut loose = false;
+        for row in kids.chunks(cols) {
+            let heights: Vec<usize> = row
+                .iter()
+                .zip(&widths)
+                .map(|(k, cw)| self.quiet(|cx| cx.grid_cell(k, *cw, 0)).len())
+                .collect();
+            let height = heights.iter().copied().max().unwrap_or(0);
+            let mut parts = Vec::new();
+            for (k, cw) in row.iter().zip(&widths) {
+                parts.push((self.grid_cell(k, *cw, height), *cw));
+            }
+            let cards = row.iter().all(|k| k.0.name() == "Card");
+            if !out.is_empty() && (loose || !cards) {
+                out.push(Line::default());
+            }
+            loose = !cards;
+            out.extend(columns(parts, &vec![1; cols - 1], "start"));
+        }
+        out
+    }
+
+    fn grid_cell(&mut self, k: &Kid<'_>, w: usize, height: usize) -> Lines {
+        if k.0.name() == "Card" {
+            self.ui_card_h(k.0, &k.1, w, height)
+        } else {
+            self.ui_node(k.0, &k.1, w)
+        }
     }
 
     /// The narrowest a node is drawn in. Text breaks at words and containers give way; what
@@ -196,6 +294,10 @@ impl<'a> Cx<'a> {
             Some("l") => 5,
             _ => 3,
         };
+        let kids = n.nodes("children");
+        if kids.len() >= 2 && kids.iter().all(|k| k.name() == "Metric") {
+            return self.ui_metric_strip(&kids, w);
+        }
         let wrap = n.bool("wrap") == Some(true);
         let valign = n.str("align").unwrap_or("start");
         let justify = n.str("justify").unwrap_or("start");
@@ -308,53 +410,96 @@ impl<'a> Cx<'a> {
         out
     }
 
-    fn ui_card(&mut self, n: N<'_>, path: &str, w: usize) -> Lines {
+    fn title_style(&self, tone: Option<pb::Tone>) -> Style {
+        let st = Style::new().add_modifier(Modifier::BOLD);
+        match tone {
+            Some(t) => st.fg(self.p.tone(t)),
+            None => st,
+        }
+    }
+
+    /// A card at least `min_h` lines tall (cards of a grid row are stretched to the tallest).
+    /// `card` (the default) floats: a rounded outline in the tone (or the border color), the
+    /// title in the top edge, a surface-colored fill and one cell of padding inside. `sunk`
+    /// is the fill without the outline, `clear` neither.
+    pub(super) fn ui_card_h(&mut self, n: N<'_>, path: &str, w: usize, min_h: usize) -> Lines {
         let title = n.line("title");
         let tone = n.tone();
-        match n.str("variant") {
-            Some("clear") => {
-                let mut out = Vec::new();
-                if let Some(t) = &title {
-                    let mut st = Style::new().add_modifier(Modifier::BOLD);
-                    if let Some(tone) = tone {
-                        st = st.fg(self.p.tone(tone));
-                    }
-                    out.push(sline(truncate(t, w), st));
-                }
-                out.extend(self.ui_children(n, "children", path, w, None));
-                out
+        let variant = n.str("variant");
+        let boxed = !matches!(variant, Some("clear" | "sunk")) && w >= 6;
+        if variant == Some("sunk") {
+            let pad = usize::from(w >= 4);
+            let inner = w - 2 * pad;
+            let mut body = self.ui_children(n, "children", path, inner, None);
+            if let Some(t) = &title {
+                body.insert(0, sline(truncate(t, inner), self.title_style(tone)));
             }
-            Some("sunk") => {
-                let inner = if w < 4 { w } else { w - 2 };
-                let mut body = self.ui_children(n, "children", path, inner, None);
-                if let Some(t) = &title {
-                    let mut st = Style::new().add_modifier(Modifier::BOLD);
-                    if let Some(tone) = tone {
-                        st = st.fg(self.p.tone(tone));
-                    }
-                    body.insert(0, sline(truncate(t, inner), st));
-                }
-                let surface = self.p.surface;
-                body.into_iter()
-                    .map(|mut line| {
-                        if w >= 4 {
-                            line.spans.insert(0, Span::raw(" "));
-                        }
-                        let used = line.width();
-                        line.spans
-                            .push(Span::raw(" ".repeat(w.saturating_sub(used))));
-                        for s in &mut line.spans {
-                            s.style = s.style.bg(surface);
-                        }
-                        line
-                    })
-                    .collect()
+            grow(&mut body, min_h);
+            return body
+                .into_iter()
+                .map(|line| self.surface_row(line, w, pad))
+                .collect();
+        }
+        if !boxed {
+            let mut out = Vec::new();
+            if let Some(t) = &title {
+                out.push(sline(truncate(t, w), self.title_style(tone)));
             }
-            _ => {
-                let body = self.ui_children(n, "children", path, card_inner(w), None);
-                self.card_frame(title.as_deref(), tone, body, w)
+            out.extend(self.ui_children(n, "children", path, w, None));
+            grow(&mut out, min_h);
+            return out;
+        }
+        let inner = w - 4;
+        let mut body = self.ui_children(n, "children", path, inner, None);
+        grow(&mut body, min_h.saturating_sub(2));
+        let edge = Style::new().fg(tone.map_or(self.p.border, |t| self.p.tone(t)));
+        let mut out = Vec::with_capacity(body.len() + 2);
+        let title = title.map(|t| truncate(&t, w - 6)).filter(|t| !t.is_empty());
+        let mut top = Vec::new();
+        match title {
+            Some(t) => {
+                let rest = w - width(&t) - 5;
+                top.push(Span::styled("╭─ ", edge));
+                top.push(Span::styled(t, self.title_style(tone)));
+                top.push(Span::styled(format!(" {}╮", "─".repeat(rest)), edge));
+            }
+            None => top.push(Span::styled(format!("╭{}╮", "─".repeat(w - 2)), edge)),
+        }
+        out.push(self.fill(Line::from(top)));
+        for line in body {
+            let used = line.width();
+            let mut spans = vec![Span::styled("│ ", edge)];
+            spans.extend(line.spans);
+            if used < inner {
+                spans.push(Span::raw(" ".repeat(inner - used)));
+            }
+            spans.push(Span::styled(" │", edge));
+            out.push(self.fill(Line::from(spans)));
+        }
+        let bottom = Span::styled(format!("╰{}╯", "─".repeat(w - 2)), edge);
+        out.push(self.fill(Line::from(bottom)));
+        out
+    }
+
+    /// The surface color behind every span that has no background of its own (a reversed
+    /// span swaps its colors, so it keeps the terminal's).
+    fn fill(&self, mut line: Line<'static>) -> Line<'static> {
+        for s in &mut line.spans {
+            if s.style.bg.is_none() && !s.style.add_modifier.contains(Modifier::REVERSED) {
+                s.style = s.style.bg(self.p.surface);
             }
         }
+        line
+    }
+
+    /// `line` between `pad` cells on each side, filled to `w` on the surface color.
+    fn surface_row(&self, mut line: Line<'static>, w: usize, pad: usize) -> Line<'static> {
+        line.spans.insert(0, Span::raw(" ".repeat(pad)));
+        let used = line.width();
+        if used < w {
+            line.spans.push(Span::raw(" ".repeat(w - used)));
+        }
+        self.fill(line)
     }
 
     /// The title in bold; the subtitle muted after it, or under it when they do not fit.
