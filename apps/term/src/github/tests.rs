@@ -822,6 +822,7 @@ fn app(fake: &Arc<Fake>) -> App {
         home: None,
         no_color: false,
         history: HistoryStore::default(),
+        prefs: crate::theme::Prefs::default(),
     });
     *app.github_mut() = github(fake);
     app.tick(NOW);
@@ -1004,6 +1005,7 @@ fn a_session_switch_closes_the_view_and_drops_the_cache() {
     app_settle(&mut app);
     // Another session in another directory.
     let info = suite_protocol::SessionInfo {
+        harness: None,
         id: "s2".into(),
         title: None,
         cwd: "/work/other".into(),

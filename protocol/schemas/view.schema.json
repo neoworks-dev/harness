@@ -8,37 +8,85 @@
       "description": "The fixed component set. Apps combine these; they never add new ones.",
       "type": "object",
       "oneOf": [
-        { "$ref": "#/$defs/CardComponent" },
-        { "$ref": "#/$defs/RowComponent" },
-        { "$ref": "#/$defs/StackComponent" },
-        { "$ref": "#/$defs/TextComponent" },
-        { "$ref": "#/$defs/ImageComponent" },
-        { "$ref": "#/$defs/FileComponent" },
-        { "$ref": "#/$defs/CodeComponent" },
-        { "$ref": "#/$defs/DiffComponent" },
-        { "$ref": "#/$defs/TableComponent" },
-        { "$ref": "#/$defs/KvComponent" },
-        { "$ref": "#/$defs/ProgressComponent" },
-        { "$ref": "#/$defs/ButtonComponent" },
-        { "$ref": "#/$defs/LinkComponent" }
+        {
+          "$ref": "#/$defs/CardComponent"
+        },
+        {
+          "$ref": "#/$defs/RowComponent"
+        },
+        {
+          "$ref": "#/$defs/StackComponent"
+        },
+        {
+          "$ref": "#/$defs/TextComponent"
+        },
+        {
+          "$ref": "#/$defs/ImageComponent"
+        },
+        {
+          "$ref": "#/$defs/FileComponent"
+        },
+        {
+          "$ref": "#/$defs/CodeComponent"
+        },
+        {
+          "$ref": "#/$defs/DiffComponent"
+        },
+        {
+          "$ref": "#/$defs/TableComponent"
+        },
+        {
+          "$ref": "#/$defs/KvComponent"
+        },
+        {
+          "$ref": "#/$defs/ProgressComponent"
+        },
+        {
+          "$ref": "#/$defs/ButtonComponent"
+        },
+        {
+          "$ref": "#/$defs/LinkComponent"
+        },
+        {
+          "$ref": "#/$defs/OpenUiComponent"
+        }
       ],
-      "discriminator": { "propertyName": "type" }
+      "discriminator": {
+        "propertyName": "type"
+      }
     },
     "Tone": {
       "description": "Meaning, not color: renderers map it through the theme.",
       "type": "string",
       "enum": ["accent", "muted", "success", "danger"]
     },
-    "Space": { "type": "string", "enum": ["s", "m", "l"] },
-    "TextRole": { "type": "string", "enum": ["title", "body", "code"] },
+    "Space": {
+      "type": "string",
+      "enum": ["s", "m", "l"]
+    },
+    "TextRole": {
+      "type": "string",
+      "enum": ["title", "body", "code"]
+    },
     "CardComponent": {
       "description": "A titled box. TUI: a box or indented block.",
       "type": "object",
       "properties": {
-        "type": { "const": "card" },
-        "title": { "type": "string" },
-        "tone": { "$ref": "#/$defs/Tone" },
-        "children": { "type": "array", "items": { "$ref": "#/$defs/Component" } }
+        "type": {
+          "const": "card"
+        },
+        "title": {
+          "type": "string"
+        },
+        "tone": {
+          "$ref": "#/$defs/Tone"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Component"
+          }
+        }
       },
       "required": ["type", "children"],
       "additionalProperties": false
@@ -47,9 +95,18 @@
       "description": "Children side by side; renderers may wrap them when space runs out.",
       "type": "object",
       "properties": {
-        "type": { "const": "row" },
-        "gap": { "$ref": "#/$defs/Space" },
-        "children": { "type": "array", "items": { "$ref": "#/$defs/Component" } }
+        "type": {
+          "const": "row"
+        },
+        "gap": {
+          "$ref": "#/$defs/Space"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Component"
+          }
+        }
       },
       "required": ["type", "children"],
       "additionalProperties": false
@@ -58,9 +115,18 @@
       "description": "Children top to bottom.",
       "type": "object",
       "properties": {
-        "type": { "const": "stack" },
-        "gap": { "$ref": "#/$defs/Space" },
-        "children": { "type": "array", "items": { "$ref": "#/$defs/Component" } }
+        "type": {
+          "const": "stack"
+        },
+        "gap": {
+          "$ref": "#/$defs/Space"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Component"
+          }
+        }
       },
       "required": ["type", "children"],
       "additionalProperties": false
@@ -69,10 +135,21 @@
       "description": "Rich text, already parsed from markdown by the daemon.",
       "type": "object",
       "properties": {
-        "type": { "const": "text" },
-        "role": { "$ref": "#/$defs/TextRole" },
-        "tone": { "$ref": "#/$defs/Tone" },
-        "blocks": { "type": "array", "items": { "$ref": "#/$defs/Block" } }
+        "type": {
+          "const": "text"
+        },
+        "role": {
+          "$ref": "#/$defs/TextRole"
+        },
+        "tone": {
+          "$ref": "#/$defs/Tone"
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Block"
+          }
+        }
       },
       "required": ["type", "blocks"],
       "additionalProperties": false
@@ -81,12 +158,25 @@
       "description": "TUI fallback (no Kitty/Sixel): [image W×H · src].",
       "type": "object",
       "properties": {
-        "type": { "const": "image" },
-        "src": { "type": "string", "description": "asset:// handle, file path or data: URL." },
-        "alt": { "type": "string" },
-        "caption": { "type": "string" },
-        "width": { "type": "integer" },
-        "height": { "type": "integer" }
+        "type": {
+          "const": "image"
+        },
+        "src": {
+          "type": "string",
+          "description": "asset:// handle, file path or data: URL."
+        },
+        "alt": {
+          "type": "string"
+        },
+        "caption": {
+          "type": "string"
+        },
+        "width": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        }
       },
       "required": ["type", "src"],
       "additionalProperties": false
@@ -95,8 +185,12 @@
       "description": "A file chip. TUI: 📄 path.",
       "type": "object",
       "properties": {
-        "type": { "const": "file" },
-        "path": { "type": "string" },
+        "type": {
+          "const": "file"
+        },
+        "path": {
+          "type": "string"
+        },
         "name": {
           "type": "string",
           "description": "Display name; defaults to the path's base name."
@@ -109,9 +203,15 @@
       "description": "A code or output block, monospace. Highlighting is optional and renderer-local.",
       "type": "object",
       "properties": {
-        "type": { "const": "code" },
-        "code": { "type": "string" },
-        "language": { "type": "string" }
+        "type": {
+          "const": "code"
+        },
+        "code": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        }
       },
       "required": ["type", "code"],
       "additionalProperties": false
@@ -120,9 +220,18 @@
       "description": "A change to a file as lines, already diffed by the daemon. Web/GPUI may show it side by side; TUI as a colored unified diff.",
       "type": "object",
       "properties": {
-        "type": { "const": "diff" },
-        "path": { "type": "string" },
-        "lines": { "type": "array", "items": { "$ref": "#/$defs/DiffLine" } }
+        "type": {
+          "const": "diff"
+        },
+        "path": {
+          "type": "string"
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DiffLine"
+          }
+        }
       },
       "required": ["type", "lines"],
       "additionalProperties": false
@@ -130,13 +239,20 @@
     "DiffLine": {
       "type": "object",
       "properties": {
-        "kind": { "$ref": "#/$defs/DiffLineKind" },
-        "text": { "type": "string" },
+        "kind": {
+          "$ref": "#/$defs/DiffLineKind"
+        },
+        "text": {
+          "type": "string"
+        },
         "old": {
           "type": "integer",
           "description": "Line number in the old text (context, remove)."
         },
-        "new": { "type": "integer", "description": "Line number in the new text (context, add)." }
+        "new": {
+          "type": "integer",
+          "description": "Line number in the new text (context, add)."
+        }
       },
       "required": ["kind", "text"],
       "additionalProperties": false
@@ -150,9 +266,24 @@
       "description": "A grid. TUI: box-drawn, columns cut to fit.",
       "type": "object",
       "properties": {
-        "type": { "const": "table" },
-        "columns": { "type": "array", "items": { "type": "string" } },
-        "rows": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } }
+        "type": {
+          "const": "table"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
       },
       "required": ["type", "columns", "rows"],
       "additionalProperties": false
@@ -161,8 +292,15 @@
       "description": "A key–value list. TUI: aligned lines.",
       "type": "object",
       "properties": {
-        "type": { "const": "kv" },
-        "items": { "type": "array", "items": { "$ref": "#/$defs/KvItem" } }
+        "type": {
+          "const": "kv"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KvItem"
+          }
+        }
       },
       "required": ["type", "items"],
       "additionalProperties": false
@@ -170,8 +308,12 @@
     "KvItem": {
       "type": "object",
       "properties": {
-        "key": { "type": "string" },
-        "value": { "type": "string" },
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
         "tone": {
           "$ref": "#/$defs/Tone",
           "description": "Highlights the value (accent) or colors it by meaning."
@@ -184,9 +326,17 @@
       "description": "A bar. TUI: ▓▓▓░░ 60%.",
       "type": "object",
       "properties": {
-        "type": { "const": "progress" },
-        "value": { "type": "number", "minimum": 0, "maximum": 1 },
-        "label": { "type": "string" }
+        "type": {
+          "const": "progress"
+        },
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "label": {
+          "type": "string"
+        }
       },
       "required": ["type", "value"],
       "additionalProperties": false
@@ -195,13 +345,19 @@
       "description": "Sends ui.action when pressed. Actions starting with copy: are handled by the client (copy the rest to the clipboard). TUI: [k] Label.",
       "type": "object",
       "properties": {
-        "type": { "const": "button" },
-        "label": { "type": "string" },
+        "type": {
+          "const": "button"
+        },
+        "label": {
+          "type": "string"
+        },
         "action": {
           "type": "string",
           "description": "app.tool, copy:<text> (client-side), suite.permit {id, option} (answers a permission_request) or suite.choose {id, option} (answers a choice)."
         },
-        "args": { "description": "Arguments for the action." },
+        "args": {
+          "description": "Arguments for the action."
+        },
         "key": {
           "type": "string",
           "description": "Single-key hint; renderers bind it while the item has keyboard focus."
@@ -218,31 +374,78 @@
       "description": "TUI: underlined text plus the URL.",
       "type": "object",
       "properties": {
-        "type": { "const": "link" },
-        "url": { "type": "string" },
-        "text": { "type": "string" }
+        "type": {
+          "const": "link"
+        },
+        "url": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
       },
       "required": ["type", "url"],
+      "additionalProperties": false
+    },
+    "OpenUiComponent": {
+      "description": "A UI written in OpenUI Lang (an app's template or a Query result), parsed and evaluated by the daemon (docs/openui.md). Renderers draw the evaluated tree.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "openui"
+        },
+        "ui": {
+          "$ref": "#/$defs/UiDoc"
+        }
+      },
+      "required": ["type", "ui"],
       "additionalProperties": false
     },
     "Block": {
       "description": "A block of parsed markdown.",
       "type": "object",
       "oneOf": [
-        { "$ref": "#/$defs/ParagraphBlock" },
-        { "$ref": "#/$defs/HeadingBlock" },
-        { "$ref": "#/$defs/ListBlock" },
-        { "$ref": "#/$defs/CodeBlock" },
-        { "$ref": "#/$defs/QuoteBlock" },
-        { "$ref": "#/$defs/RuleBlock" }
+        {
+          "$ref": "#/$defs/ParagraphBlock"
+        },
+        {
+          "$ref": "#/$defs/HeadingBlock"
+        },
+        {
+          "$ref": "#/$defs/ListBlock"
+        },
+        {
+          "$ref": "#/$defs/CodeBlock"
+        },
+        {
+          "$ref": "#/$defs/QuoteBlock"
+        },
+        {
+          "$ref": "#/$defs/RuleBlock"
+        },
+        {
+          "$ref": "#/$defs/TableBlock"
+        },
+        {
+          "$ref": "#/$defs/OpenUiBlock"
+        }
       ],
-      "discriminator": { "propertyName": "type" }
+      "discriminator": {
+        "propertyName": "type"
+      }
     },
     "ParagraphBlock": {
       "type": "object",
       "properties": {
-        "type": { "const": "paragraph" },
-        "spans": { "type": "array", "items": { "$ref": "#/$defs/Span" } }
+        "type": {
+          "const": "paragraph"
+        },
+        "spans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Span"
+          }
+        }
       },
       "required": ["type", "spans"],
       "additionalProperties": false
@@ -250,9 +453,20 @@
     "HeadingBlock": {
       "type": "object",
       "properties": {
-        "type": { "const": "heading" },
-        "level": { "type": "integer", "minimum": 1, "maximum": 6 },
-        "spans": { "type": "array", "items": { "$ref": "#/$defs/Span" } }
+        "type": {
+          "const": "heading"
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6
+        },
+        "spans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Span"
+          }
+        }
       },
       "required": ["type", "level", "spans"],
       "additionalProperties": false
@@ -260,10 +474,22 @@
     "ListBlock": {
       "type": "object",
       "properties": {
-        "type": { "const": "list" },
-        "ordered": { "type": "boolean" },
-        "start": { "type": "integer", "description": "First number of an ordered list." },
-        "items": { "type": "array", "items": { "$ref": "#/$defs/ListItem" } }
+        "type": {
+          "const": "list"
+        },
+        "ordered": {
+          "type": "boolean"
+        },
+        "start": {
+          "type": "integer",
+          "description": "First number of an ordered list."
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ListItem"
+          }
+        }
       },
       "required": ["type", "ordered", "items"],
       "additionalProperties": false
@@ -271,8 +497,16 @@
     "ListItem": {
       "type": "object",
       "properties": {
-        "checked": { "type": "boolean", "description": "Set for task list items." },
-        "blocks": { "type": "array", "items": { "$ref": "#/$defs/Block" } }
+        "checked": {
+          "type": "boolean",
+          "description": "Set for task list items."
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Block"
+          }
+        }
       },
       "required": ["blocks"],
       "additionalProperties": false
@@ -280,9 +514,15 @@
     "CodeBlock": {
       "type": "object",
       "properties": {
-        "type": { "const": "code_block" },
-        "code": { "type": "string" },
-        "language": { "type": "string" }
+        "type": {
+          "const": "code_block"
+        },
+        "code": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        }
       },
       "required": ["type", "code"],
       "additionalProperties": false
@@ -290,28 +530,181 @@
     "QuoteBlock": {
       "type": "object",
       "properties": {
-        "type": { "const": "quote" },
-        "blocks": { "type": "array", "items": { "$ref": "#/$defs/Block" } }
+        "type": {
+          "const": "quote"
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Block"
+          }
+        }
       },
       "required": ["type", "blocks"],
       "additionalProperties": false
     },
     "RuleBlock": {
       "type": "object",
-      "properties": { "type": { "const": "rule" } },
+      "properties": {
+        "type": {
+          "const": "rule"
+        }
+      },
       "required": ["type"],
       "additionalProperties": false
+    },
+    "TableBlock": {
+      "description": "A markdown table. Renderers that can't draw a grid show the cells as aligned monospace text.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "table_block"
+        },
+        "header": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TableCell"
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/TableCell"
+            }
+          }
+        },
+        "align": {
+          "type": "array",
+          "description": "Per column, as the separator row says; a column without one is left-aligned.",
+          "items": {
+            "$ref": "#/$defs/ColumnAlign"
+          }
+        }
+      },
+      "required": ["type", "header", "rows"],
+      "additionalProperties": false
+    },
+    "OpenUiBlock": {
+      "description": "An ```openui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/openui.md). Streams like any block.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "openui"
+        },
+        "ui": {
+          "$ref": "#/$defs/UiDoc"
+        }
+      },
+      "required": ["type", "ui"],
+      "additionalProperties": false
+    },
+    "UiDoc": {
+      "description": "One evaluated OpenUI program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "root": {
+          "$ref": "#/$defs/UiNode"
+        },
+        "streaming": {
+          "type": "boolean",
+          "description": "The program is still arriving: draw it, but inputs and buttons can't be used yet."
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UiError"
+          }
+        }
+      },
+      "required": ["id"],
+      "additionalProperties": false
+    },
+    "UiNode": {
+      "description": "An evaluated component of the suite OpenUI library (docs/openui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node.",
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string",
+          "description": "Library component name, e.g. Card, Input, BarChart."
+        },
+        "key": {
+          "type": "string",
+          "description": "Set on interactive nodes (inputs, buttons): stable within the doc, names the node in openui.input / openui.press."
+        },
+        "partial": {
+          "type": "boolean",
+          "description": "Still streaming in."
+        },
+        "props": {
+          "description": "Props by name.",
+          "type": "object",
+          "additionalProperties": {}
+        }
+      },
+      "required": ["component", "props"],
+      "additionalProperties": false
+    },
+    "UiError": {
+      "description": "A problem the parser or evaluator reported; the broken piece is left out of the tree.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "statementId": {
+          "type": "string"
+        }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": false
+    },
+    "TableCell": {
+      "type": "object",
+      "properties": {
+        "spans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Span"
+          }
+        }
+      },
+      "required": ["spans"],
+      "additionalProperties": false
+    },
+    "ColumnAlign": {
+      "type": "string",
+      "enum": ["left", "center", "right"]
     },
     "Span": {
       "description": "A run of inline text with uniform style.",
       "type": "object",
       "properties": {
-        "text": { "type": "string" },
-        "bold": { "type": "boolean" },
-        "italic": { "type": "boolean" },
-        "code": { "type": "boolean" },
-        "strike": { "type": "boolean" },
-        "href": { "type": "string" }
+        "text": {
+          "type": "string"
+        },
+        "bold": {
+          "type": "boolean"
+        },
+        "italic": {
+          "type": "boolean"
+        },
+        "code": {
+          "type": "boolean"
+        },
+        "strike": {
+          "type": "boolean"
+        },
+        "href": {
+          "type": "string"
+        }
       },
       "required": ["text"],
       "additionalProperties": false
@@ -324,13 +717,19 @@
           "type": "string",
           "description": "Stable id; patches and ui.action address items by it."
         },
-        "kind": { "$ref": "#/$defs/ItemKind" },
+        "kind": {
+          "$ref": "#/$defs/ItemKind"
+        },
         "label": {
           "type": "string",
           "description": "Who it's from (user items: the app) or the tool call's title."
         },
-        "state": { "$ref": "#/$defs/ItemState" },
-        "component": { "$ref": "#/$defs/Component" }
+        "state": {
+          "$ref": "#/$defs/ItemState"
+        },
+        "component": {
+          "$ref": "#/$defs/Component"
+        }
       },
       "required": ["ref", "kind", "component"],
       "additionalProperties": false
@@ -347,18 +746,30 @@
     "ViewOp": {
       "type": "object",
       "oneOf": [
-        { "$ref": "#/$defs/SetViewOp" },
-        { "$ref": "#/$defs/BlocksViewOp" },
-        { "$ref": "#/$defs/RemoveViewOp" }
+        {
+          "$ref": "#/$defs/SetViewOp"
+        },
+        {
+          "$ref": "#/$defs/BlocksViewOp"
+        },
+        {
+          "$ref": "#/$defs/RemoveViewOp"
+        }
       ],
-      "discriminator": { "propertyName": "op" }
+      "discriminator": {
+        "propertyName": "op"
+      }
     },
     "SetViewOp": {
       "description": "Replace the item with this ref, or append it if it's new.",
       "type": "object",
       "properties": {
-        "op": { "const": "set" },
-        "item": { "$ref": "#/$defs/ViewItem" }
+        "op": {
+          "const": "set"
+        },
+        "item": {
+          "$ref": "#/$defs/ViewItem"
+        }
       },
       "required": ["op", "item"],
       "additionalProperties": false
@@ -367,11 +778,28 @@
       "description": "Streaming text: in the text component at `path` (child indexes from the item's component; [] is the component itself), replace blocks[from..] with these.",
       "type": "object",
       "properties": {
-        "op": { "const": "blocks" },
-        "ref": { "type": "string" },
-        "path": { "type": "array", "items": { "type": "integer" } },
-        "from": { "type": "integer", "minimum": 0 },
-        "blocks": { "type": "array", "items": { "$ref": "#/$defs/Block" } }
+        "op": {
+          "const": "blocks"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "from": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Block"
+          }
+        }
       },
       "required": ["op", "ref", "path", "from", "blocks"],
       "additionalProperties": false
@@ -379,8 +807,12 @@
     "RemoveViewOp": {
       "type": "object",
       "properties": {
-        "op": { "const": "remove" },
-        "ref": { "type": "string" }
+        "op": {
+          "const": "remove"
+        },
+        "ref": {
+          "type": "string"
+        }
       },
       "required": ["op", "ref"],
       "additionalProperties": false
@@ -389,13 +821,22 @@
       "description": "Everything in the session as drawn, as of seq.",
       "type": "object",
       "properties": {
-        "session": { "type": "string" },
+        "session": {
+          "type": "string"
+        },
         "agent": {
           "type": "string",
           "description": "Set for a per-agent view (view.subscribe with agent): only that agent's work."
         },
-        "seq": { "type": "integer" },
-        "items": { "type": "array", "items": { "$ref": "#/$defs/ViewItem" } }
+        "seq": {
+          "type": "integer"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ViewItem"
+          }
+        }
       },
       "required": ["session", "seq", "items"],
       "additionalProperties": false
@@ -404,13 +845,22 @@
       "description": "Changes caused by the session event with this seq, applied in order.",
       "type": "object",
       "properties": {
-        "session": { "type": "string" },
+        "session": {
+          "type": "string"
+        },
         "agent": {
           "type": "string",
           "description": "Set for a per-agent view: patches of the main view have none."
         },
-        "seq": { "type": "integer" },
-        "ops": { "type": "array", "items": { "$ref": "#/$defs/ViewOp" } }
+        "seq": {
+          "type": "integer"
+        },
+        "ops": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ViewOp"
+          }
+        }
       },
       "required": ["session", "seq", "ops"],
       "additionalProperties": false
@@ -419,10 +869,18 @@
       "description": "Theme tokens served by the daemon. Web maps them to CSS variables, GPUI to its theme, TUIs to the nearest 16/256/true color.",
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
-        "colors": { "$ref": "#/$defs/ThemeColors" },
-        "spacing": { "$ref": "#/$defs/ThemeSpacing" },
-        "text": { "$ref": "#/$defs/ThemeText" }
+        "name": {
+          "type": "string"
+        },
+        "colors": {
+          "$ref": "#/$defs/ThemeColors"
+        },
+        "spacing": {
+          "$ref": "#/$defs/ThemeSpacing"
+        },
+        "text": {
+          "$ref": "#/$defs/ThemeText"
+        }
       },
       "required": ["name", "colors", "spacing", "text"],
       "additionalProperties": false
@@ -431,14 +889,31 @@
       "description": "#rrggbb colors.",
       "type": "object",
       "properties": {
-        "fg": { "type": "string" },
-        "bg": { "type": "string" },
-        "surface": { "type": "string", "description": "Card and code backgrounds." },
-        "border": { "type": "string" },
-        "accent": { "type": "string" },
-        "muted": { "type": "string" },
-        "success": { "type": "string" },
-        "danger": { "type": "string" }
+        "fg": {
+          "type": "string"
+        },
+        "bg": {
+          "type": "string"
+        },
+        "surface": {
+          "type": "string",
+          "description": "Card and code backgrounds."
+        },
+        "border": {
+          "type": "string"
+        },
+        "accent": {
+          "type": "string"
+        },
+        "muted": {
+          "type": "string"
+        },
+        "success": {
+          "type": "string"
+        },
+        "danger": {
+          "type": "string"
+        }
       },
       "required": ["fg", "bg", "surface", "border", "accent", "muted", "success", "danger"],
       "additionalProperties": false
@@ -447,9 +922,15 @@
       "description": "Pixels. TUIs use 0/0/1 blank lines for s/m/l (see renderers/README.md).",
       "type": "object",
       "properties": {
-        "s": { "type": "integer" },
-        "m": { "type": "integer" },
-        "l": { "type": "integer" }
+        "s": {
+          "type": "integer"
+        },
+        "m": {
+          "type": "integer"
+        },
+        "l": {
+          "type": "integer"
+        }
       },
       "required": ["s", "m", "l"],
       "additionalProperties": false
@@ -457,9 +938,15 @@
     "ThemeText": {
       "type": "object",
       "properties": {
-        "title": { "$ref": "#/$defs/TextStyle" },
-        "body": { "$ref": "#/$defs/TextStyle" },
-        "code": { "$ref": "#/$defs/TextStyle" }
+        "title": {
+          "$ref": "#/$defs/TextStyle"
+        },
+        "body": {
+          "$ref": "#/$defs/TextStyle"
+        },
+        "code": {
+          "$ref": "#/$defs/TextStyle"
+        }
       },
       "required": ["title", "body", "code"],
       "additionalProperties": false
@@ -467,9 +954,16 @@
     "TextStyle": {
       "type": "object",
       "properties": {
-        "size": { "type": "integer", "description": "Pixels." },
-        "weight": { "type": "integer" },
-        "mono": { "type": "boolean" }
+        "size": {
+          "type": "integer",
+          "description": "Pixels."
+        },
+        "weight": {
+          "type": "integer"
+        },
+        "mono": {
+          "type": "boolean"
+        }
       },
       "required": ["size", "weight", "mono"],
       "additionalProperties": false

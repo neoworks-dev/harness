@@ -68,6 +68,7 @@ fn opts() -> ChatOpts {
         active: None,
         in_panel: false,
         marker: Style::new(),
+        ui: Default::default(),
     }
 }
 
@@ -144,9 +145,8 @@ fn sources_resolve_to_files() {
         Ok(PathBuf::from("/tmp/a.png"))
     );
     assert!(
-        ok("https://x.test/a.png", None)
-            .unwrap_err()
-            .contains("remote")
+        ok("https://x.test/a.png", None).is_err(),
+        "no daemon to ask"
     );
     assert!(
         ok("data:image/png;base64,AAAA", None)
@@ -154,13 +154,19 @@ fn sources_resolve_to_files() {
             .contains("inline")
     );
     assert!(ok("asset://img-1", None).is_err(), "no daemon to ask");
-    let assets: Assets = Arc::new(|handle| match handle {
+    let assets: Assets = Arc::new(|src| match src {
         "asset://img-1" => Ok(PathBuf::from("/store/img-1.png")),
+        "https://x.test/a.png" => Ok(PathBuf::from("/store/img-2.png")),
         _ => Err("unknown asset".into()),
     });
     assert_eq!(
         ok("asset://img-1", Some(&assets)),
         Ok(PathBuf::from("/store/img-1.png"))
+    );
+    assert_eq!(
+        ok("https://x.test/a.png", Some(&assets)),
+        Ok(PathBuf::from("/store/img-2.png")),
+        "the daemon downloads web images"
     );
     assert_eq!(
         ok("asset://nope", Some(&assets)),
@@ -374,6 +380,7 @@ fn app_with(images: Option<Images>, dir: &Dir) -> App {
         home: None,
         no_color: false,
         history: HistoryStore::default(),
+        prefs: crate::theme::Prefs::default(),
     });
     if let Some(images) = images {
         app.set_images(images);

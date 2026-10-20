@@ -1,0 +1,10 @@
+⟦fg|● ⟧Checking:
+
+  ⟦border bg:surface|╭─ ⟧⟦bg:surface bold|Disk usage⟧⟦border bg:surface| ───────────────────────────────────────────────────────────────╮⟧
+  ⟦border bg:surface|│ ⟧⟦bg:surface bold|Disk usage⟧⟦muted bg:surface|  /dev/nvme0n1⟧⟦bg:surface|                                                  ⟧⟦border bg:surface| │⟧
+  ⟦border bg:surface|│ ⟧⟦accent bg:surface|▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰⟧⟦muted bg:surface|▱▱▱▱▱▱▱▱▱▱▱⟧⟦muted bg:surface| 72% used⟧⟦bg:surface|                         ⟧⟦border bg:surface| │⟧
+  ⟦border bg:surface|│ ⟧⟦bg:surface bold|Path⟧⟦bg:surface| ⟧⟦border bg:surface| │ ⟧⟦bg:surface bold|Size⟧⟦bg:surface|                                                              ⟧⟦border bg:surface| │⟧
+  ⟦border bg:surface|│ ⟧⟦border bg:surface|──────┼───────⟧⟦bg:surface|                                                            ⟧⟦border bg:surface| │⟧
+  ⟦border bg:surface|│ ⟧⟦bg:surface|/home⟧⟦bg:surface|⟧⟦border bg:surface| │ ⟧⟦bg:surface|310 GB⟧⟦bg:surface|                                                            ⟧⟦border bg:surface| │⟧
+  ⟦border bg:surface|│ ⟧⟦bg:surface|/var⟧⟦bg:surface| ⟧⟦border bg:surface| │ ⟧⟦bg:surface|⟧⟦bg:surface|                                                                  ⟧⟦border bg:surface| │⟧
+  ⟦border bg:surface|╰────────────────────────────────────────────────────────────────────────────╯⟧

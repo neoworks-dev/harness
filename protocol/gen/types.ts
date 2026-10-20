@@ -29,8 +29,11 @@ export type Envelope =
   | ViewPatchMessage
   | ThemeMessage
   | UiActionMessage
+  | SecretRequestMessage
+  | SecretAnswerMessage
   | AssetPutMessage
   | AssetGetMessage
+  | AssetFetchMessage
   | AssetInfoMessage
   | FileChangedMessage
   | AppContextMessage
@@ -348,6 +351,35 @@ export interface UiAction {
   args?: unknown;
 }
 
+/** Daemon → only the client whose command asked: a question whose answer is a secret (an API key, a login code). Never a session event and never stored or logged. Answered with secret.answer. */
+export interface SecretRequestMessage {
+  topic: "secret.request";
+  payload: SecretRequest;
+}
+
+export interface SecretRequest {
+  /** Echoed by secret.answer. */
+  id: string;
+  session: string;
+  /** What is asked for, e.g. DeepSeek API key. */
+  title: string;
+  /** Hint shown in the empty field, e.g. sk-… */
+  placeholder?: string;
+}
+
+/** Client → daemon: the answer to a secret.request, from the client that was asked (any other gets bus.error bad_request). The value is never stored or logged, not even in errors. Without a value the question was cancelled. */
+export interface SecretAnswerMessage {
+  topic: "secret.answer";
+  payload: SecretAnswer;
+}
+
+export interface SecretAnswer {
+  /** The secret.request's id; an unknown one gets bus.error not_found. */
+  id: string;
+  /** What the user typed. Absent: cancelled. */
+  value?: string;
+}
+
 /** Client → daemon: store a file or bytes in the asset store. Replied to with asset.info. Identical content gets the same handle. */
 export interface AssetPutMessage {
   topic: "asset.put";
@@ -379,7 +411,19 @@ export interface AssetRef {
   handle: string;
 }
 
-/** Daemon → client: reply to asset.put / asset.get. */
+/** Client → daemon: download an image from the web into the asset store, so a client can show a remote picture. Replied to with asset.info; the same URL is downloaded once. bus.error bad_request when it isn't a public http(s) image. */
+export interface AssetFetchMessage {
+  topic: "asset.fetch";
+  id: string;
+  payload: AssetUrl;
+}
+
+export interface AssetUrl {
+  /** An http:// or https:// URL. */
+  url: string;
+}
+
+/** Daemon → client: reply to asset.put / asset.get / asset.fetch. */
 export interface AssetInfoMessage {
   topic: "asset.info";
   id: string;
@@ -529,8 +573,10 @@ export type SessionEvent =
   | Usage
   | EditsReverted
   | UserNote
+  | Notice
   | SubagentStarted
-  | SubagentEnded;
+  | SubagentEnded
+  | AgentMessage;
 
 export type SessionEventTag = SessionEvent["type"];
 
@@ -610,7 +656,7 @@ export interface TextContent {
   text: string;
 }
 
-/** An image a tool returned (pi's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log. */
+/** An image a tool returned (neo's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log. */
 export interface ImageContent {
   type: "image";
   src: string;
@@ -674,7 +720,7 @@ export interface FocusChanged {
 /** A complete message in the harness's native format. Views ignore it; the harness rebuilds its context from these after a restart. */
 export interface HarnessMessage {
   type: "harness_message";
-  /** Which harness wrote it, e.g. pi. */
+  /** Which harness wrote it, e.g. neo. */
   harness: string;
   /** Opaque to everyone but that harness. */
   message: unknown;
@@ -757,11 +803,21 @@ export interface UserNote {
   about?: string;
 }
 
+/** A line for the user in the chat, from the daemon: the outcome of /login, /logout and /accounts, a login URL to open. Never a secret. Not a context event: the agent doesn't see it. */
+export interface Notice {
+  type: "notice";
+  text: string;
+  tone?: NoticeTone;
+}
+
+/** muted unless set. */
+export type NoticeTone = "muted" | "danger";
+
 /** The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event. */
 export interface SubagentStarted {
   type: "subagent_started";
   id: string;
-  /** Harness name: pi, claude, codex… */
+  /** Harness name: neo, claude, codex… */
   agent: string;
   task: string;
   /** The model it runs with, when one was chosen for this task or by the user. */
@@ -771,6 +827,8 @@ export interface SubagentStarted {
   cwd?: string;
   /** A subagent working in another directory runs as its own session (parent = this one); its id. */
   child?: string;
+  /** The delegate call returned at once and the subagent outlives the turn: a turn's end does not close it, and its final reply reaches the main agent as an agent_message. */
+  background?: boolean;
 }
 
 /** The subagent started by subagent_started finished, failed or was stopped. */
@@ -779,6 +837,20 @@ export interface SubagentEnded {
   id: string;
   stopReason: StopReason;
   error?: string;
+}
+
+/** One agent told another something with send_message, or a background subagent's final reply (`reply`). `from` and `to` are `main` (the session's own agent) or a subagent's id (the one in subagent_started). Not a context event: the daemon delivers it to the recipient itself (appended to its next tool result, or as the turn an idle agent starts). */
+export interface AgentMessage {
+  type: "agent_message";
+  from: string;
+  to: string;
+  /** Harness name of the sender, when it is a subagent. */
+  fromAgent?: string;
+  /** Harness name of the recipient, when it is a subagent. */
+  toAgent?: string;
+  text: string;
+  /** The sender's final reply: a background subagent finished and this is what it gives back. */
+  reply?: boolean;
 }
 
 /** One labelled fact of a permission request, drawn as a highlighted key–value row above the content. */
@@ -823,10 +895,10 @@ export interface PermissionResolved {
 
 export type PermissionOptionKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
 
-/** The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness "suite", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for the suite's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session. */
+/** The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness "suite", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for the suite's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session. */
 export interface SettingChanged {
   type: "setting_changed";
-  /** pi, claude, codex… */
+  /** neo, claude, codex… */
   harness: string;
   option: SettingName;
   value: string;
@@ -911,7 +983,8 @@ export type Component =
   | KvComponent
   | ProgressComponent
   | ButtonComponent
-  | LinkComponent;
+  | LinkComponent
+  | OpenUiComponent;
 
 export type ComponentTag = Component["type"];
 
@@ -1045,8 +1118,22 @@ export interface LinkComponent {
   text?: string;
 }
 
+/** A UI written in OpenUI Lang (an app's template or a Query result), parsed and evaluated by the daemon (docs/openui.md). Renderers draw the evaluated tree. */
+export interface OpenUiComponent {
+  type: "openui";
+  ui: UiDoc;
+}
+
 /** A block of parsed markdown. */
-export type Block = ParagraphBlock | HeadingBlock | ListBlock | CodeBlock | QuoteBlock | RuleBlock;
+export type Block =
+  | ParagraphBlock
+  | HeadingBlock
+  | ListBlock
+  | CodeBlock
+  | QuoteBlock
+  | RuleBlock
+  | TableBlock
+  | OpenUiBlock;
 
 export type BlockTag = Block["type"];
 
@@ -1089,6 +1176,55 @@ export interface QuoteBlock {
 export interface RuleBlock {
   type: "rule";
 }
+
+/** A markdown table. Renderers that can't draw a grid show the cells as aligned monospace text. */
+export interface TableBlock {
+  type: "table_block";
+  header: TableCell[];
+  rows: TableCell[][];
+  /** Per column, as the separator row says; a column without one is left-aligned. */
+  align?: ColumnAlign[];
+}
+
+/** An ```openui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/openui.md). Streams like any block. */
+export interface OpenUiBlock {
+  type: "openui";
+  ui: UiDoc;
+}
+
+/** One evaluated OpenUI program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions. */
+export interface UiDoc {
+  id: string;
+  root?: UiNode;
+  /** The program is still arriving: draw it, but inputs and buttons can't be used yet. */
+  streaming?: boolean;
+  errors?: UiError[];
+}
+
+/** An evaluated component of the suite OpenUI library (docs/openui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node. */
+export interface UiNode {
+  /** Library component name, e.g. Card, Input, BarChart. */
+  component: string;
+  /** Set on interactive nodes (inputs, buttons): stable within the doc, names the node in openui.input / openui.press. */
+  key?: string;
+  /** Still streaming in. */
+  partial?: boolean;
+  /** Props by name. */
+  props: Record<string, unknown>;
+}
+
+/** A problem the parser or evaluator reported; the broken piece is left out of the tree. */
+export interface UiError {
+  code: string;
+  message: string;
+  statementId?: string;
+}
+
+export interface TableCell {
+  spans: Span[];
+}
+
+export type ColumnAlign = "left" | "center" | "right";
 
 /** A run of inline text with uniform style. */
 export interface Span {

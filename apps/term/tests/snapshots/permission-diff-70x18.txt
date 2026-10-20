@@ -1,9 +1,9 @@
-● pi asks: Edit src/app.ts · answer below
+● Edit src/app.ts · answer below
 
 
 
 ──────────────────────────────────────────────────────────────────────
-▎ ● pi asks: Edit src/app.ts
+▎ ● Edit src/app.ts
 ▎   src/app.ts
 ▎   @@ -1,40 +1,40 @@
 ▎   -const old0 = 0;
@@ -13,6 +13,6 @@
 ▎
 ▎   [1 Allow once]  [2 Always allow]  [3 Reject]
 ▎ enter allow once · ←/→ choose · tab add a note · esc dismiss
-~/site · pi
+~/site · neo
 
 ? ask before acting (shift+tab to cycle)

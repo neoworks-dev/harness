@@ -11,7 +11,8 @@
       "task": "Fix the failing login test",
       "model": "sonnet",
       "cwd": "/home/user/site/.worktrees/fix-login",
-      "child": "s_0123456789"
+      "child": "s_0123456789",
+      "background": true
     }
   }
 }

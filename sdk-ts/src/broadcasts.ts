@@ -4,6 +4,7 @@ import type {
   ConnectorInfo,
   Envelope,
   FileChanged,
+  SecretRequest,
   SessionInfo,
   Theme,
 } from "@suite/protocol/types";
@@ -15,6 +16,7 @@ export class Broadcasts {
   readonly connectors: WatchedValue<ConnectorInfo[]>;
   readonly sessions: WatchedValue<SessionInfo[]>;
   readonly fileChanges: Callbacks<FileChanged>;
+  readonly secretRequests: Callbacks<SecretRequest>;
 
   constructor(onError: (error: Error) => void) {
     this.focus = new WatchedValue<AgentFocus | undefined>("agent focus", undefined, onError);
@@ -22,6 +24,7 @@ export class Broadcasts {
     this.connectors = new WatchedValue<ConnectorInfo[]>("connectors", [], onError);
     this.sessions = new WatchedValue<SessionInfo[]>("sessions", [], onError);
     this.fileChanges = new Callbacks<FileChanged>(onError);
+    this.secretRequests = new Callbacks<SecretRequest>(onError);
   }
 
   /**
@@ -49,6 +52,9 @@ export class Broadcasts {
         return;
       case "file.changed":
         this.fileChanges.callAll(frame.payload);
+        return;
+      case "secret.request":
+        this.secretRequests.callAll(frame.payload);
         return;
       default:
     }

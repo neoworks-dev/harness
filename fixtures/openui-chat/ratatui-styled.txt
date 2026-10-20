@@ -1,0 +1,19 @@
+⟦fg|● ⟧The deploy is halfway:
+
+  ⟦success|✓ ⟧Build⟦muted|  2m 10s⟧
+  ⟦accent|● ⟧⟦bold|Canary⟧⟦muted|  5% of traffic⟧
+  ⟦muted|○ ⟧⟦muted|Rollout⟧
+  ⟦muted|410 ⟧                 ⟦success|⣀⣀⣀⣀⠤⠤⠤⠔⠒⠒⠒⠊⠉⠉⠉⠉⠉⠒⠒⠒⠒⠒⠒⠒⠤⠤⠤⠤⠤⠤⣀⣀⣀⣀⣀⟧
+  ⟦muted|    ⟧⟦success|⠒⠒⠒⠒⠒⠒⠒⠊⠉⠉⠉⠉⠉⠉⠉⠉⠉⟧                                   ⟦success|⠉⠉⠉⠉⠉⠒⠒⠒⟧
+  ⟦muted|    ⟧
+  ⟦muted|    ⟧
+  ⟦muted|    ⟧
+  ⟦muted|117 ⟧⟦accent|⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⡠⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⢄⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⟧
+      ⟦muted|10:00        10:05          10:10         10:15        10:20⟧
+  ⟦accent|━ ⟧p50  ⟦success|━ ⟧p99
+  ⟦muted|▸ ⟧Canary hosts
+  ⟦muted|▾ ⟧⟦bold|Warnings⟧
+    ⟦danger|┃ ⟧⟦danger bold|Latency⟧
+    ⟦danger|┃ ⟧p99 rose ⟦bold|18%⟧ during the canary.
+
+  I'll continue once the canary is clean.

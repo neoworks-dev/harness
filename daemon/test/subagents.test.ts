@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { createPiAgent } from "@suite/harness/pi";
+import { createNeoAgent } from "@suite/harness/neo";
 import type { Envelope, SessionEvent, ViewItem, ViewPatch } from "@suite/protocol/types";
 import type { GuestConfig } from "../src/guests/guests.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
@@ -178,7 +178,7 @@ describe("the gate", () => {
       .snapshot()
       .items.find((i) => i.ref === `p-${request.id}`);
     // Answered: the facts stay, the task and buttons are gone.
-    expect(item).toMatchObject({ label: "main asks: Start a subagent?", state: "done" });
+    expect(item).toMatchObject({ label: "Start a subagent?", state: "done" });
     if (item?.component.type !== "stack") throw new Error("not a stack");
     const [kv, outcome] = item.component.children;
     expect(
@@ -213,6 +213,29 @@ describe("the gate", () => {
     ]);
     await answer(daemon, session, "reject");
     await call;
+  });
+});
+
+describe("the models tool", () => {
+  test("starts a harness that isn't running to list what it takes, by delegate's names", async () => {
+    const { daemon, session } = await setup();
+    const all = await daemon.gateway.call("models", {}, undefined, session);
+    expect(all.isError).toBeUndefined();
+    const listed = resultOf(all);
+    expect(listed).toContain("fake (Fake)\n  models:\n    small");
+    expect(listed).toContain("    large");
+    expect(listed).toContain("  efforts:\n    low");
+    expect(listed).toContain("Give delegate a value as its model or effort.");
+
+    const narrowed = resultOf(
+      await daemon.gateway.call("models", { agent: "fake", query: "lar" }, undefined, session),
+    );
+    expect(narrowed).toContain("    large");
+    expect(narrowed).not.toContain("    small");
+
+    const unknown = await daemon.gateway.call("models", { agent: "nope" }, undefined, session);
+    expect(unknown.isError).toBe(true);
+    expect(resultOf(unknown)).toStartWith("No guest named nope");
   });
 });
 
@@ -498,11 +521,11 @@ describe("delegating into a directory", () => {
     }
   });
 
-  test("pi in a worktree is a session of the daemon's pi, working there", async () => {
+  test("neo in a worktree is a session of the daemon's neo, working there", async () => {
     const repo = gitRepo();
     const model = fakeModel([reply("Hi from the worktree.")]);
-    const pi = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
-    const daemon = await startTestDaemon({ agent: pi });
+    const neo = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+    const daemon = await startTestDaemon({ agent: neo });
     cleanups.push(() => daemon.stop());
     daemon.store.onAppend(({ session, event }) => {
       if (event.type !== "permission_request" || event.title !== "Start a subagent?") return;
@@ -516,17 +539,17 @@ describe("delegating into a directory", () => {
     const session = daemon.sessions.create({ cwd: repo }).id;
     const result = await daemon.gateway.call(
       "delegate",
-      { agent: "pi", task: "say hi", worktree: "pi-w" },
+      { agent: "neo", task: "say hi", worktree: "neo-w" },
       undefined,
       { session, text: true },
     );
     expect(resultOf(result)).toContain("Hi from the worktree.");
-    const dir = join(repo, ".worktrees", "pi-w");
+    const dir = join(repo, ".worktrees", "neo-w");
     expect(existsSync(dir)).toBe(true);
     const child = daemon.sessions.list().find((s) => s.parent === session);
     expect(child).toMatchObject({ cwd: dir });
     expect(model.requests).toHaveLength(1);
-    // The parent's log has the delegation, not pi's words.
+    // The parent's log has the delegation, not neo's words.
     expect(events(daemon, session).some((e) => e.type === "agent_message_chunk")).toBe(false);
   });
 

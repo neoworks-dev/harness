@@ -6,7 +6,8 @@ One agent session shared across every app in the suite. The design is in [docs/d
 | -------------------- | ----------------------------------------------------------------- | ----- |
 | `protocol/`          | JSON Schemas (source of truth) + generated TS, Go, Rust types     | 0     |
 | `daemon/`            | TS on Bun: session store, bus hub, turn queue                     | 1     |
-| `harness/`           | TS on Bun: pi-based agent, core tools, system prompt              | 1     |
+| `harness/`           | TS on Bun: neo, our agent (loop, core tools, system prompt)       | 1     |
+| `websearch/`         | Web, news and image search across engines; pages as markdown      | 6     |
 | `cli/`               | Go: `suite status / sessions / attach / tools / focus / move`     | 1-3   |
 | `sdk-ts/`, `sdk-go/` | Bus clients (sessions, presence; TS tool server: `sdk-ts-tools/`) | 2     |
 | `sdk-rs/`            | Rust bus client for GPUI apps                                     | 3     |
@@ -59,14 +60,24 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/
 | `SUITE_MODEL`                         | `deepseek/deepseek-flash` (`provider/model-id`)             |
 | `SUITE_IMAGES`                        | `1`/`0`: the model takes images (default: pi's registry)    |
 | `SUITE_THINKING`                      | `off` (`minimal`…`xhigh`)                                   |
-| `<PROVIDER>_API_KEY`, `SUITE_API_KEY` | falls back to API-key entries in `~/.pi/agent/auth.json`    |
-| `SUITE_AGENT`                         | `pi`; `echo` is an offline scripted agent for tests         |
+| `SUITE_SAFE_SEARCH`                   | `moderate` (`strict`, `off`) until `/safesearch` picks one  |
+| `SUITE_SEARXNG_URL`                   | a SearXNG instance neo's web search asks too                |
+| `TINYFISH_API_KEY`                    | TinyFish's search API, asked too (or `/login tinyfish`)     |
+| `<PROVIDER>_API_KEY`, `SUITE_API_KEY` | else `SUITE_AUTH`, then pi's `~/.pi/agent/auth.json`        |
+| `SUITE_AUTH`                          | `auth.json` in `SUITE_DATA_DIR`: what `/login` writes       |
+| `SUITE_AGENT`                         | `neo`; `echo` is an offline scripted agent for tests        |
 | `SUITE_PORT`                          | 127.0.0.1 port for `/bus` + `/mcp` (default: any free port) |
 | `SUITE_GUESTS`                        | `claude,codex`; `none` turns guest agents off               |
 | `SUITE_GUEST_PERMISSIONS`             | `ask` (buttons in the chat) or `allow`                      |
 | `SUITE_TITLES`                        | `off`: no model writes session titles (`/title` still does) |
 
-`model` and `thinkingLevel` can also be set in `~/.config/suite/config.json`; env wins.
+`model`, `thinkingLevel` and `web` (`{"safeSearch": "strict", "searxng": "http://…"}`) can also be set in `~/.config/suite/config.json`; env wins.
+
+neo searches the web itself: `web_search` asks several engines at once (web, news or images; no key needed) and lists what they found, and `web_fetch` saves a page as markdown in a file that the agent greps and reads in parts. You're asked before each fetch unless approvals is `auto`. Safe search is your setting, not the agent's: `/safesearch strict|moderate|off` sets it for every session (no value: a card to pick from). TinyFish's free search API is asked too once you add its key with `/login tinyfish`. The search engines are in [websearch](websearch/README.md).
+
+Skills are instructions neo loads when the work calls for them: a folder with a `SKILL.md` (frontmatter `name` and `description`, then the text) in `~/.config/suite/skills/` or in a project's `.suite/skills/`. neo sees each skill's description and loads the text with its `skill` tool. The suite ships `openui`, which teaches it to answer with dashboards, charts and forms.
+
+Keys and accounts: `/login` adds an API key or an account (ChatGPT, GitHub Copilot, Claude Pro/Max, which neo only may use), `/logout` removes one, `/accounts` lists them. Keys are typed into a hidden field, never into the chat.
 
 ## Session titles
 
@@ -76,13 +87,15 @@ Which model writes titles is your choice, for every session: `/title-model <harn
 
 ## Guest agents
 
-Claude Code and Codex can work in a session as the session's harness or as guests, through their ACP adapters (fetched by `bunx` on first use; they use your existing `claude` / `codex` logins). The agent hands them coding tasks with its `delegate` tool, or you address one directly in any pane: `/claude fix the failing test`, `/codex …`. Their messages and tool calls stream into the same chat, labelled; the agent hears what they did. When the agent wants to start a guest, or a guest asks before running something, the chat shows the options as buttons. A delegation shows as one tool item (`pi · first line of the task`, running, then done or failed, with the subagent's reply as its result); its thoughts and tool calls are in the log and can be opened per agent (in the terminal app: the agents list under the prompt). Guests reach the same apps through the daemon's MCP gateway.
+Claude Code and Codex can work in a session as the session's harness or as guests, through their ACP adapters (fetched by `bunx` on first use; they use your existing `claude` / `codex` logins). The agent hands them coding tasks with its `delegate` tool, or you address one directly in any pane: `/claude fix the failing test`, `/codex …`. Their messages and tool calls stream into the same chat, labelled; the agent hears what they did. When the agent wants to start a guest, or a guest asks before running something, the chat shows the options as buttons. A delegation shows as one tool item (`neo · first line of the task`, running, then done or failed, with the subagent's reply as its result); its thoughts and tool calls are in the log and can be opened per agent (in the terminal app: the agents list under the prompt). Guests reach the same apps through the daemon's MCP gateway.
 
 How much asks first is the session's approvals mode: `/approvals ask|review|edits|auto` (no value: the next one; Shift-Tab in the terminal app). In `ask` (the default for every new session) the agent's file edits show their diff before anything is written, and its commands, starting a guest and guests' requests ask too. In `review` each edit is written right away and a card with its diff asks Keep or Revert for that one edit (the agent is told when you revert); everything else still asks. In `edits` edits are written right away and, when the turn ends, a card offers Keep, Revert all or reverting single files (the agent is told what you reverted); everything else still asks. In `auto` nothing asks. Reading files never asks, in any mode, except sensitive ones (`.env` files, private keys, `~/.ssh`, credential and token files), which always ask, as does a command that mentions one. An answer can carry a note for the agent (in the terminal app, Tab on a prompt: "use tabs instead").
 
-Each session runs on one harness that you pick: pi (the default), Claude Code or Codex. `/harness claude` switches (no name: a list; your last choice is the default for new sessions), and the next turn goes to the new one, which first gets a short summary of what was said while another harness ran. The agent can hand work to any harness, also its own, with `delegate`, optionally naming the model and effort; you are asked first (unless approvals is auto) with one card, "Start a subagent?": the harness, model, effort and directory that will run, highlighted, and the task. A model or effort the harness lists and doesn't know is refused before anything is asked, with the valid names. `delegate` can also name a `cwd` or a git `worktree` (created as `.worktrees/<name>` on a branch of that name): the subagent then runs as a session of its own in that directory, which the terminal app's sidebar groups under its worktree.
+Each session runs on one harness that you pick: neo (the default), Claude Code or Codex. `/harness claude` switches (no name: a list; your last choice is the default for new sessions), and the next turn goes to the new one, which first gets a short summary of what was said while another harness ran. The agent can hand work to any harness, also its own, with `delegate`, optionally naming the model and effort; you are asked first (unless approvals is auto) with one card, "Start a subagent?": the harness, model, effort and directory that will run, highlighted, and the task. A model or effort the harness lists and doesn't know is refused before anything is asked, with the valid names. `delegate` can also name a `cwd` or a git `worktree` (created as `.worktrees/<name>` on a branch of that name): the subagent then runs as a session of its own in that directory, which the terminal app's sidebar groups under its worktree.
 
-You choose the models: `/model` (the session's harness) or `/model claude` shows what that harness offers, `/model claude sonnet` sets it; `/effort` and `/mode` work the same way. Choices hold for the session and become the default for new ones; until you choose, each harness uses its own defaults. `/resume` lists earlier Claude Code / Codex conversations in the session's directory (also ones started outside the suite) and continues the one you pick.
+You choose the models: `/model` (the session's harness) or `/model claude` shows what that harness offers (for neo: the models of every provider you are logged in to or have a key for, as `provider/model-id`; OpenRouter's list is its live one), `/model claude sonnet` sets it; `/effort` and `/mode` work the same way. Choices hold for the session and become the default for new ones; until you choose, each harness uses its own defaults. After you pick an OpenRouter model for neo, a second card asks which host runs it (DeepInfra fp8, say, with price and context); "Any" lets OpenRouter choose. You can also type the host: `/model openrouter/deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8`. `/resume` lists earlier Claude Code / Codex conversations in the session's directory (also ones started outside the suite) and continues the one you pick.
+
+Claude Code and Codex use their own logins. To run one on an API key from `/login`, pick a model of that provider: `/model codex openrouter/openai/gpt-5-mini` (OpenAI, OpenRouter, Groq, xAI, Fireworks and Vercel AI Gateway work, as Codex needs the Responses API), `/model claude deepseek/deepseek-v4-pro` (Anthropic, DeepSeek, OpenRouter, Moonshot, Z.ai and MiniMax work). `/model codex` and `/model claude` list them. A model without a provider goes back to the harness's own login. A Claude Pro/Max login is for neo only.
 
 ## Moving the agent between apps
 

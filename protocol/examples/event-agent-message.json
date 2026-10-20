@@ -1,0 +1,15 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 16,
+    "ts": 1760565601350,
+    "event": {
+      "type": "agent_message",
+      "from": "main",
+      "to": "d_1a2b3c4d",
+      "toAgent": "claude",
+      "text": "Also run the e2e tests before you finish."
+    }
+  }
+}

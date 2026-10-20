@@ -15,6 +15,6 @@
   /codex <task>    give a task to Codex
 ────────────────────────────────────────────────────────────
 > /c
-~/site · pi
+~/site · neo
 ◐ working 12s
 ⏵⏵ auto mode on (shift+tab to cycle)

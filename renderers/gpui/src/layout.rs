@@ -8,7 +8,8 @@ use std::sync::Arc;
 use suite_protocol::{
     Block, ButtonComponent, CardComponent, CodeComponent, Component, DiffComponent, DiffLineKind,
     FileComponent, ImageComponent, ItemKind, ItemState, KvComponent, LinkComponent, ListBlock,
-    ProgressComponent, Span, TableComponent, TextComponent, TextRole, ViewItem,
+    ProgressComponent, Span, TableBlock, TableCell, TableComponent, TextComponent, TextRole,
+    ViewItem,
 };
 
 use crate::theme::{ChatTheme, Paint, TextStyle};
@@ -597,16 +598,23 @@ impl Layout<'_> {
             Component::ProgressComponent(progress) => self.progress(progress, ctx),
             Component::ButtonComponent(button) => self.button(button, ctx),
             Component::LinkComponent(link) => self.link(link, ctx),
+            // Drawn by the terminal renderer only (docs/openui.md); the others say so.
+            Component::OpenUiComponent(_) => self.unsupported("openui", ctx),
             Component::Unknown(value) => {
                 let kind = value.get("type").and_then(|t| t.as_str()).unwrap_or("?");
-                let style = self.text_style(None, ctx.scale);
-                Node::Text(self.plain(
-                    &format!("[unsupported component: {kind}]"),
-                    style,
-                    theme.muted,
-                ))
+                self.unsupported(kind, ctx)
             }
         }
+    }
+
+    /// The placeholder for a component this renderer doesn't draw.
+    fn unsupported(&self, kind: &str, ctx: Ctx) -> Node {
+        let style = self.text_style(None, ctx.scale);
+        Node::Text(self.plain(
+            &format!("[unsupported component: {kind}]"),
+            style,
+            self.theme.muted,
+        ))
     }
 
     fn children(&mut self, children: &[Component], ctx: Ctx) -> Vec<Node> {
@@ -688,6 +696,8 @@ impl Layout<'_> {
                 Node::Box(node)
             }
             Block::RuleBlock(_) => Node::Rule(theme.border),
+            Block::TableBlock(table) => self.table_block(table, ctx, role),
+            Block::OpenUiBlock(_) => self.unsupported("openui", ctx),
             Block::Unknown(_) => return None,
         })
     }
@@ -932,6 +942,35 @@ impl Layout<'_> {
         Node::Table(TableNode {
             header,
             rows,
+            border: theme.border,
+            pad: Insets::xy(theme.s, theme.m),
+        })
+    }
+
+    /// A markdown table: the table component's grid, with styled cells.
+    fn table_block(&self, table: &TableBlock, ctx: Ctx, role: Option<TextRole>) -> Node {
+        let theme = self.theme;
+        let style = self.text_style(role, ctx.scale);
+        let columns = table
+            .header
+            .len()
+            .max(table.rows.iter().map(Vec::len).max().unwrap_or(0));
+        let row = |cells: &[TableCell], weight: Option<u16>| -> Vec<TextNode> {
+            (0..columns)
+                .map(|i| {
+                    let spans = cells.get(i).map_or(&[][..], |c| c.spans.as_slice());
+                    let mut node = self.spans(spans, style, ctx);
+                    node.nowrap = true;
+                    if let Some(weight) = weight {
+                        node.style.weight = weight;
+                    }
+                    node
+                })
+                .collect()
+        };
+        Node::Table(TableNode {
+            header: row(&table.header, Some(theme.title.weight)),
+            rows: table.rows.iter().map(|r| row(r, None)).collect(),
             border: theme.border,
             pad: Insets::xy(theme.s, theme.m),
         })

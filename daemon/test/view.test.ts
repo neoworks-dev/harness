@@ -238,7 +238,7 @@ describe("session view", () => {
     const { view } = feed([
       { type: "app_connected", app: "pad", kind: "app", v: 1, tools: [] },
       { type: "focus_changed", app: "pad", context: { file: "a.txt" } },
-      { type: "harness_message", harness: "pi", message: {} },
+      { type: "harness_message", harness: "neo", message: {} },
       { type: "turn_ended", stopReason: "end_turn" },
       { type: "turn_ended", stopReason: "error", error: "rate limited" },
     ]);
@@ -426,6 +426,30 @@ describe("view over the bus", () => {
       topic: "bus.error",
       id: "b",
       payload: { code: "bad_request" },
+    });
+  });
+});
+
+describe("permission requests", () => {
+  test("a command to run is previewed as bash code", () => {
+    const { view } = feed([
+      {
+        type: "permission_request",
+        id: "r1",
+        agent: "neo",
+        title: "Run this command?",
+        kind: "execute",
+        content: [{ type: "text", text: "cd /tmp && ls\n" }],
+        options: [{ id: "allow", name: "Allow", kind: "allow_once" }],
+      },
+    ]);
+    const [item] = view.snapshot().items;
+    expect(item?.label).toBe("Run this command?");
+    if (item?.component.type !== "stack") throw new Error("no preview");
+    expect(item.component.children[0]).toEqual({
+      type: "code",
+      code: "cd /tmp && ls",
+      language: "bash",
     });
   });
 });

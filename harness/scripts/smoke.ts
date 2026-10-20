@@ -1,10 +1,10 @@
-// Live smoke test (not part of `bun test`): one real prompt through the pi agent with the real
+// Live smoke test (not part of `bun test`): one real prompt through the neo agent with the real
 // config. Usage: bun run harness/scripts/smoke.ts
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadHarnessConfig } from "../src/config.ts";
-import { createPiAgent } from "../src/pi-agent.ts";
+import { createNeoAgent } from "../src/neo-agent.ts";
 import type { AgentUpdate } from "../src/agent.ts";
 
 function show(update: AgentUpdate): string | undefined {
@@ -30,7 +30,7 @@ const logger = {
 };
 process.stdout.write(`model ${config.provider}/${config.modelId}, cwd ${cwd}\n`);
 
-const session = await createPiAgent({ config, logger }).newSession({
+const session = await createNeoAgent({ config, logger }).newSession({
   sessionId: "smoke",
   cwd,
   mcpServers: [],

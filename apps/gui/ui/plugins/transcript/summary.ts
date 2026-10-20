@@ -96,6 +96,16 @@ export function textLines(blocks: readonly Block[]): TextLine[] {
           });
         });
         break;
+      case "table_block":
+        for (const row of [block.header, ...block.rows]) {
+          const spans: Span[] = [];
+          row.forEach((cell, index) => {
+            if (index > 0) spans.push({ text: " │ " });
+            spans.push(...cell.spans);
+          });
+          out.push({ spans, mono: false, prefix: "" });
+        }
+        break;
       case "rule":
         break;
     }

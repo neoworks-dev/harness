@@ -2,7 +2,7 @@
 // `suite` store (kernel/suite.svelte.ts). Everything it reads is reactive. No `$state` of its own:
 // the store has it (see the README).
 import { Service, type Context } from "@neoworks/extension-system";
-import type { ViewItem } from "@suite/protocol/types";
+import type { SecretRequest, ViewItem } from "@suite/protocol/types";
 import { suite } from "../suite.svelte.ts";
 
 declare module "@neoworks/extension-system" {
@@ -126,5 +126,16 @@ export class DaemonService extends Service {
   onRecord(listener: Parameters<Store["onRecord"]>[0]): () => void {
     const stop = this.ctx.effect(() => suite.onRecord(listener), "daemon.onRecord");
     return () => void stop();
+  }
+
+  /** The daemon asks this window for a secret; stops when the plugin unloads. */
+  onSecretRequest(listener: (request: SecretRequest) => void): () => void {
+    const stop = this.ctx.effect(() => suite.onSecretRequest(listener), "daemon.onSecretRequest");
+    return () => void stop();
+  }
+
+  /** Answers a secret request with the typed value, or without one when cancelled. */
+  answerSecret(id: string, value?: string): void {
+    suite.answerSecret(id, value);
   }
 }

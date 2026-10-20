@@ -16,9 +16,9 @@ connecting to the session…
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 > message the agent · / for commands
-~/site · pi
+~/site · neo
 
 ? ask before acting (shift+tab to cycle)
-● main · pi
-○ pi · deepseek-v4-flash  search tools: weather                                 1m 12s · 3.4k tokens
+● main · neo
+○ neo · deepseek-v4-flash  search tools: weather                                1m 12s · 3.4k tokens
 ○ claude · sonnet ⎇ fix-login  starting…                                                          5s

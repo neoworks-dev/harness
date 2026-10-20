@@ -1,6 +1,7 @@
 // A session's chat as drawn: session events → view items, and each new event → the ops that
 // update every pane. Streaming text is merged here (re-parsed, only changed tail blocks sent);
 // tool results are filled into their app's template, or a generic card when there is none.
+import type { CallTool, Program } from "@suite/openui/program";
 import type {
   Block,
   Component,
@@ -16,8 +17,10 @@ import type {
   ViewSnapshot,
 } from "@suite/protocol/types";
 import type { Logger } from "../log.ts";
+import { MAIN, MESSAGES_APP } from "../messages.ts";
 import { diffLines } from "./diff.ts";
 import { parseMarkdown } from "./markdown.ts";
+import { isOpenUiTemplate, OpenUiDocs, templateProgram } from "./openui.ts";
 import { resolveTemplate, TemplateError } from "./template.ts";
 
 /** Finds the template registered for a tool (app.tool), if any. */
@@ -25,8 +28,11 @@ export type TemplateLookup = (tool: string) => unknown;
 
 interface Stream {
   ref: string;
+  kind: "agent" | "thought";
   raw: string;
   blocks: Block[];
+  /** The message is complete: an openui fence still open is a finished program. */
+  ended: boolean;
 }
 
 interface Call {
@@ -42,6 +48,7 @@ interface Call {
 }
 
 type Plan = Extract<SessionEvent, { type: "plan" }>;
+type AgentMessage = Extract<SessionEvent, { type: "agent_message" }>;
 type PermissionRequest = Extract<SessionEvent, { type: "permission_request" }>;
 type Choice = Extract<SessionEvent, { type: "choice" }>;
 
@@ -89,6 +96,12 @@ function connectedNotice(event: Extract<SessionEvent, { type: "app_connected" }>
   return `${event.app} updated (v${event.v}): ${what}`;
 }
 
+/** Who a message is from or to: `main`, or `claude d_1a2b3c4d`. */
+function partyLabel(id: string, agent: string | undefined): string {
+  if (id === MAIN) return MAIN;
+  return agent === undefined ? id : `${agent} ${id}`;
+}
+
 /** The first index where two block lists differ. */
 function firstChange(before: Block[], after: Block[]): number {
   let i = 0;
@@ -112,10 +125,15 @@ export class SessionView {
   private readonly choices = new Map<string, Choice>();
   /** Subagents running right now (subagent_started … subagent_ended): id → agent label. */
   private readonly windows = new Map<string, string>();
+  /** Those of them that outlive a turn (started in the background). */
+  private readonly background = new Set<string>();
+  private readonly docs: OpenUiDocs;
   private seq = 0;
   /** Inside `replay`, and the streams whose text has grown since they were parsed. */
   private replaying = false;
   private readonly unparsed = new Set<string>();
+  /** Told of the ops a change outside the event log makes (an OpenUI doc answering). */
+  onOps: ((ops: ViewOp[]) => void) | undefined;
 
   /**
    * `only` makes a per-agent view: just that agent's work (what its labelled events say), with
@@ -128,7 +146,15 @@ export class SessionView {
     private readonly templates: TemplateLookup,
     private readonly log: Logger,
     private readonly only?: string,
-  ) {}
+    tools?: CallTool,
+  ) {
+    this.docs = new OpenUiDocs((ref) => this.changed(ref), tools);
+  }
+
+  /** The seq of the last event applied. */
+  get lastSeq(): number {
+    return this.seq;
+  }
 
   snapshot(): ViewSnapshot {
     const snapshot: ViewSnapshot = {
@@ -161,7 +187,7 @@ export class SessionView {
     for (const ref of this.unparsed) {
       const stream = this.streams.get(ref);
       if (stream === undefined) continue;
-      stream.blocks = parseMarkdown(stream.raw);
+      stream.blocks = this.blocksOf(stream);
       this.applyOp({ op: "blocks", ref, path: [], from: 0, blocks: stream.blocks });
     }
     this.unparsed.clear();
@@ -180,11 +206,17 @@ export class SessionView {
     switch (event.type) {
       case "subagent_started":
         this.windows.set(event.id, event.agent);
+        if (event.background === true) this.background.add(event.id);
         return [];
       case "subagent_ended":
         this.windows.delete(event.id);
+        this.background.delete(event.id);
         return [];
+      case "agent_message":
+        return [this.messageOp(event, seq)];
       case "user_message": {
+        // The turn that messages from other agents start: their rows are what the chat shows.
+        if (event.app === MESSAGES_APP) return [];
         const children: Component[] = [text(plain(event.text))];
         for (const src of event.images ?? []) children.push({ type: "image", src });
         const component: Component =
@@ -244,13 +276,19 @@ export class SessionView {
         }
         return [this.notice(`n${seq}`, parts.join("; "))];
       }
+      case "notice":
+        return [this.notice(`n${seq}`, event.text, event.tone ?? "muted")];
       case "turn_ended": {
-        // A subagent whose end was never logged (a crash) must not hide the next turns' work.
-        this.windows.clear();
-        if (event.stopReason === "end_turn") return [];
+        // A subagent whose end was never logged (a crash) must not hide the next turns' work. One
+        // in the background runs on past the turn.
+        for (const id of [...this.windows.keys()]) {
+          if (!this.background.has(id)) this.windows.delete(id);
+        }
+        const finished = this.finishStreams();
+        if (event.stopReason === "end_turn") return finished;
         const what = event.error ?? `stopped: ${event.stopReason.replace("_", " ")}`;
         const tone = event.stopReason === "cancelled" ? "muted" : "danger";
-        return [this.notice(`e${seq}`, what, tone)];
+        return [...finished, this.notice(`e${seq}`, what, tone)];
       }
       case "app_connected":
         return [this.notice(`n${seq}`, connectedNotice(event))];
@@ -308,13 +346,31 @@ export class SessionView {
         this.windows.set(event.id, event.agent);
         if (event.agent !== agent) return [];
         return [this.taskItem(`s-${event.id}`, event.task)];
+      case "agent_message": {
+        // Written to this agent: like the task, a turn's input. Written by it: a row, but not its
+        // final reply, which is its last message already.
+        if (event.toAgent === agent) {
+          const from = partyLabel(event.from, event.fromAgent);
+          const item: ViewItem = {
+            ref: `a${seq}`,
+            kind: "user",
+            label: `from ${from}`,
+            component: text(parseMarkdown(event.text)),
+          };
+          return [{ op: "set", item }];
+        }
+        if (event.fromAgent !== agent || event.reply === true) return [];
+        return [this.messageOp(event, seq)];
+      }
       case "subagent_ended": {
         const owner = this.windows.get(event.id);
         this.windows.delete(event.id);
-        if (owner !== agent || event.stopReason === "end_turn") return [];
+        if (owner !== agent) return [];
+        const finished = this.finishStreams();
+        if (event.stopReason === "end_turn") return finished;
         const what = event.error ?? `stopped: ${event.stopReason.replace("_", " ")}`;
         const tone = event.stopReason === "cancelled" ? "muted" : "danger";
-        return [this.notice(`e${seq}`, what, tone)];
+        return [...finished, this.notice(`e${seq}`, what, tone)];
       }
       case "agent_message_chunk":
         if (event.agent !== agent) return [];
@@ -332,6 +388,8 @@ export class SessionView {
       case "plan":
         if (event.agent !== agent) return [];
         return this.planOps(event);
+      case "turn_ended":
+        return this.finishStreams();
       case "permission_request":
         if (event.agent !== agent) return [];
         this.permissions.set(event.id, event);
@@ -346,6 +404,20 @@ export class SessionView {
       default:
         return [];
     }
+  }
+
+  /** A message between agents, a compact row: `message: main → claude d_1a2b3c4d`, expands. */
+  private messageOp(event: AgentMessage, seq: number): ViewOp {
+    const from = partyLabel(event.from, event.fromAgent);
+    const to = partyLabel(event.to, event.toAgent);
+    const item: ViewItem = {
+      ref: `a${seq}`,
+      kind: "tool",
+      label: `${event.reply === true ? "reply" : "message"}: ${from} → ${to}`,
+      state: "done",
+      component: text(parseMarkdown(event.text)),
+    };
+    return { op: "set", item };
   }
 
   private taskItem(ref: string, task: string): ViewOp {
@@ -399,7 +471,11 @@ export class SessionView {
     answer?: string | null,
     note?: string,
   ): ViewItem {
-    const label = `${request.agent} asks: ${request.title}`;
+    // What is asked; a guest's named like its calls, `claude: …`.
+    const label =
+      this.guestAsking(request) && this.only === undefined
+        ? `${request.agent}: ${request.title}`
+        : request.title;
     const details: Component[] = [];
     if (request.details?.length) {
       const items = request.details.map(({ key, value }) => ({
@@ -418,7 +494,9 @@ export class SessionView {
         key: String(i + 1),
       }));
       const row: Component = { type: "row", gap: "s", children: buttons };
-      const preview = [...details, ...this.contentComponents(request.content)];
+      // A command to run is shell, highlighted and broken where it is long.
+      const language = request.kind === "execute" ? "bash" : undefined;
+      const preview = [...details, ...this.contentComponents(request.content, language)];
       const component: Component =
         preview.length === 0 ? row : { type: "stack", gap: "s", children: [...preview, row] };
       return { ref: `p-${request.id}`, kind: "tool", label, state: "pending", component };
@@ -437,6 +515,19 @@ export class SessionView {
           ? answered
           : { type: "stack", gap: "s", children: [...details, answered] },
     };
+  }
+
+  /**
+   * Whether a guest asks, not the session's own agent: the call it is about is a guest's, or
+   * its toolCallId has a guest's `name:` prefix (the session's own guest has `name-main:`).
+   */
+  private guestAsking(request: PermissionRequest): boolean {
+    const id = request.toolCallId;
+    if (id === undefined) return false;
+    const call = this.calls.get(id);
+    if (call) return call.agent !== undefined;
+    const prefix = /^([^:]+):/.exec(id)?.[1];
+    return prefix !== undefined && !prefix.endsWith("-main");
   }
 
   /** A choice: one button per option (with its description, if any) until one is picked. */
@@ -474,6 +565,14 @@ export class SessionView {
     };
   }
 
+  /** The blocks of a streamed message; its openui fences are programs, running ones. */
+  private blocksOf(stream: Stream): Block[] {
+    if (stream.kind === "thought") return parseMarkdown(stream.raw);
+    return parseMarkdown(stream.raw, (index, program, closed) =>
+      this.docs.doc(stream.ref, String(index), program, !closed && !stream.ended),
+    );
+  }
+
   /** Streaming text: re-parse the whole message, send only the blocks that changed. */
   private stream(
     ref: string,
@@ -482,13 +581,16 @@ export class SessionView {
     agent: string | undefined,
   ): ViewOp[] {
     const existing = this.streams.get(ref);
-    const stream = existing ?? { ref, raw: "", blocks: [] };
+    // A message that starts means the one before it is complete.
+    const finished: ViewOp[] = [];
+    if (!existing && kind === "agent") finished.push(...this.finishStreams());
+    const stream: Stream = existing ?? { ref, kind, raw: "", blocks: [], ended: false };
     stream.raw += chunk;
     if (existing && this.replaying) {
       this.unparsed.add(ref);
       return [];
     }
-    const blocks = parseMarkdown(stream.raw);
+    const blocks = this.blocksOf(stream);
     const from = firstChange(stream.blocks, blocks);
     stream.blocks = blocks;
     this.streams.set(ref, stream);
@@ -496,12 +598,30 @@ export class SessionView {
       const component = kind === "thought" ? text(blocks, { tone: "muted" }) : text(blocks);
       const item: ViewItem = { ref, kind, component };
       if (agent !== undefined) item.label = agent;
-      return [{ op: "set", item }];
+      return [...finished, { op: "set", item }];
     }
     return [{ op: "blocks", ref, path: [], from, blocks: blocks.slice(from) }];
   }
 
-  /** A delegation reads `pi · first line of the task`, whatever the harness called its tool. */
+  /** The turn is over: an openui fence a message left open is a finished program. */
+  private finishStreams(): ViewOp[] {
+    const ops: ViewOp[] = [];
+    for (const stream of this.streams.values()) {
+      if (stream.ended) continue;
+      stream.ended = true;
+      if (stream.kind !== "agent" || !stream.raw.includes("```")) continue;
+      const before = stream.blocks;
+      const blocks = this.blocksOf(stream);
+      const from = firstChange(before, blocks);
+      stream.blocks = blocks;
+      if (from < before.length || from < blocks.length) {
+        ops.push({ op: "blocks", ref: stream.ref, path: [], from, blocks: blocks.slice(from) });
+      }
+    }
+    return ops;
+  }
+
+  /** A delegation reads `neo · first line of the task`, whatever the harness called its tool. */
   private callLabel(call: Call): string {
     if (call.agent !== undefined || call.tool !== "delegate" || !isRecord(call.rawInput)) {
       return call.title;
@@ -528,6 +648,14 @@ export class SessionView {
     const template = result && this.templates(result.tool);
     if (result && template !== undefined && call.status === "completed") {
       try {
+        if (isOpenUiTemplate(template)) {
+          const source = templateProgram(template, result.rawOutput);
+          const ui = this.docs.doc(call.ref, "0", source, false);
+          if (ui.root) return { type: "openui", ui };
+          const why = ui.errors?.[0]?.message ?? "no root";
+          this.log.warn(`openui template for ${result.tool} drew nothing: ${why}`);
+          return this.fallback(call);
+        }
         return resolveTemplate(template, result.rawOutput);
       } catch (err) {
         const why = err instanceof TemplateError ? err.message : String(err);
@@ -554,7 +682,10 @@ export class SessionView {
   }
 
   /** Diffs, images and text output as components (a diff, an image, or the text as code). */
-  private contentComponents(content: ToolCallContent[] | undefined): Component[] {
+  private contentComponents(
+    content: ToolCallContent[] | undefined,
+    language?: string,
+  ): Component[] {
     const children: Component[] = [];
     for (const item of content ?? []) {
       if (item.type === "diff") {
@@ -566,7 +697,10 @@ export class SessionView {
       } else if (item.type === "image") {
         children.push({ type: "image", src: item.src });
       } else if (item.text.trim() !== "") {
-        children.push({ type: "code", code: item.text.replace(/\n+$/, "") });
+        const code = item.text.replace(/\n+$/, "");
+        children.push(
+          language === undefined ? { type: "code", code } : { type: "code", code, language },
+        );
       }
     }
     return children;
@@ -583,6 +717,32 @@ export class SessionView {
     }
     if (children.length === 1 && children[0]) return children[0];
     return { type: "stack", gap: "s", children };
+  }
+
+  /** Doc `doc` of item `ref`, running: where typed values and $variables live. */
+  program(ref: string, doc: string): Program | undefined {
+    return this.docs.program(ref, doc);
+  }
+
+  /** An OpenUI doc of item `ref` changed (a value was typed, a query answered): send the item again. */
+  changed(ref: string): void {
+    const at = this.index.get(ref);
+    const current = at === undefined ? undefined : this.items[at];
+    if (!current) return;
+    let item: ViewItem | undefined;
+    const stream = this.streams.get(ref);
+    if (stream) {
+      if (current.component.type !== "text") return;
+      stream.blocks = this.blocksOf(stream);
+      item = { ...current, component: { ...current.component, blocks: stream.blocks } };
+    } else {
+      const call = [...this.calls.values()].find((c) => c.ref === ref);
+      if (call) item = this.toolItem(call);
+    }
+    if (!item || JSON.stringify(item) === JSON.stringify(current)) return;
+    const op: ViewOp = { op: "set", item };
+    this.applyOp(op);
+    this.onOps?.([op]);
   }
 
   private applyOp(op: ViewOp): void {

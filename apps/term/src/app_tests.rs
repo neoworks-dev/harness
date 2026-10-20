@@ -19,6 +19,7 @@ fn app() -> App {
         home: Some("/home/me".into()),
         no_color: false,
         history: HistoryStore::default(),
+        prefs: crate::theme::Prefs::default(),
     });
     app.tick(NOW);
     app.awaiting = None;
@@ -71,7 +72,7 @@ fn prompt(r: &str, state: &str, labels: &[&str]) -> ViewItem {
         })
         .collect();
     serde_json::from_value(json!({
-        "ref": r, "kind": "tool", "label": "claude asks: run ls?", "state": state,
+        "ref": r, "kind": "tool", "label": "claude: run ls?", "state": state,
         "component": {"type":"row","children": children}
     }))
     .unwrap()
@@ -273,6 +274,25 @@ fn up_and_down_walk_the_history_with_the_draft_kept() {
     app.handle_key(key(KeyCode::Down));
     app.handle_key(key(KeyCode::Down));
     assert_eq!(app.editor_text(), "draft");
+}
+
+#[test]
+fn a_recalled_command_does_not_stop_the_walk() {
+    let mut app = app();
+    for text in ["first", "/model"] {
+        type_str(&mut app, text);
+        app.handle_key(key(KeyCode::Enter));
+    }
+    app.handle_key(key(KeyCode::Up));
+    assert_eq!(app.editor_text(), "/model");
+    assert!(!app.menu_visible());
+    app.handle_key(key(KeyCode::Up));
+    assert_eq!(app.editor_text(), "first");
+    app.handle_key(key(KeyCode::Down));
+    assert_eq!(app.editor_text(), "/model");
+    // Typing opens it again.
+    app.handle_key(key(KeyCode::Backspace));
+    assert!(app.menu_visible());
 }
 
 #[test]
@@ -709,6 +729,16 @@ fn a_prompt_arriving_while_idle_takes_the_editors_place_at_once() {
 }
 
 #[test]
+fn a_prompt_right_after_sending_takes_the_editors_place_at_once() {
+    let mut app = app();
+    type_str(&mut app, "/model");
+    app.handle_key(key(KeyCode::Enter));
+    app.tick(NOW + 100);
+    show(&mut app, vec![prompt("p1", "pending", &["Yes", "No"])]);
+    assert!(app.prompt.engaged, "sending ended the typing");
+}
+
+#[test]
 fn a_prompt_waits_while_the_user_types_and_takes_over_after_a_pause() {
     let mut app = typing_then_prompt(100);
     assert!(!app.prompt.engaged);
@@ -954,13 +984,13 @@ fn events_of_other_sessions_are_ignored() {
 #[test]
 fn settings_and_approvals_come_from_setting_changed() {
     let mut app = app();
-    app.handle_event(setting("pi", SettingName::Model, "sonnet"));
+    app.handle_event(setting("neo", SettingName::Model, "sonnet"));
     app.handle_event(setting("claude", SettingName::Effort, "high"));
     app.handle_event(setting("suite", SettingName::Approvals, "auto"));
     assert_eq!(app.approvals(), Approvals::Auto);
     let line = app.status_lines(100)[0].to_string();
     assert!(
-        line.ends_with("pi · model sonnet"),
+        line.ends_with("neo · model sonnet"),
         "only the harness's own: {line}"
     );
     assert!(!line.contains("suite") && !line.contains("auto"));
@@ -981,8 +1011,8 @@ fn settings_and_approvals_come_from_setting_changed() {
 #[test]
 fn the_harness_comes_from_its_setting_and_defaults_to_pi() {
     let mut app = app();
-    assert_eq!(app.harness(), "pi");
-    assert!(app.status_lines(100)[0].to_string().ends_with("· pi"));
+    assert_eq!(app.harness(), "neo");
+    assert!(app.status_lines(100)[0].to_string().ends_with("· neo"));
     app.handle_event(setting("claude", SettingName::Model, "opus"));
     app.on_setting("suite", "harness", "claude");
     assert_eq!(app.harness(), "claude");
@@ -992,7 +1022,7 @@ fn the_harness_comes_from_its_setting_and_defaults_to_pi() {
             .ends_with("· claude · model opus")
     );
     app.begin_session("s2", "/w");
-    assert_eq!(app.harness(), "pi", "a new session starts over");
+    assert_eq!(app.harness(), "neo", "a new session starts over");
 }
 
 #[test]
@@ -1058,6 +1088,7 @@ fn queued_inputs_are_counted_while_a_turn_runs() {
     app.handle_key(key(KeyCode::Enter));
     assert!(app.status_lines(100)[1].to_string().contains("1 queued"));
     let fx = app.handle_msg(Msg::Sessions(Ok(vec![SessionInfo {
+        harness: None,
         parent: None,
         id: "s1".into(),
         title: None,
@@ -1138,6 +1169,7 @@ fn the_switcher_lists_filters_and_switches() {
     let text = screen_text(&mut app, 80, 20);
     assert!(text.contains("loading…"), "{text}");
     let info = |id: &str, title: &str, cwd: &str, last: i64| SessionInfo {
+        harness: None,
         parent: None,
         id: id.into(),
         title: Some(title.into()),
@@ -1187,6 +1219,7 @@ fn the_switcher_can_start_a_new_session_and_follow_it() {
         }]
     );
     let fx = app.handle_msg(Msg::Created(Ok(SessionInfo {
+        harness: None,
         parent: None,
         id: "s9".into(),
         title: None,
@@ -1251,7 +1284,7 @@ fn permission_with_diff(changed: usize) -> ViewItem {
         })
         .collect();
     serde_json::from_value(json!({
-        "ref": "p-7", "kind": "tool", "label": "pi asks: Edit src/app.ts", "state": "pending",
+        "ref": "p-7", "kind": "tool", "label": "Edit src/app.ts", "state": "pending",
         "component": {"type":"stack","gap":"s","children":[
             {"type":"diff","path":"src/app.ts","lines":lines},
             {"type":"row","gap":"s","children":buttons}]}
@@ -1297,7 +1330,7 @@ fn edit_review_card() -> ViewItem {
         })
         .collect::<Vec<_>>();
     serde_json::from_value(json!({
-        "ref": "p-9", "kind": "tool", "label": "pi asks: Edited src/a.ts — keep it?",
+        "ref": "p-9", "kind": "tool", "label": "Edited src/a.ts — keep it?",
         "state": "pending",
         "component": {"type":"stack","gap":"s","children":[
             {"type":"diff","path":"src/a.ts","lines":lines},
@@ -1494,6 +1527,7 @@ fn the_review_card_after_an_edits_turn_is_answered_with_keys() {
 
 fn info(id: &str, title: &str, last: i64) -> SessionInfo {
     SessionInfo {
+        harness: None,
         parent: None,
         id: id.into(),
         title: Some(title.into()),
@@ -1671,6 +1705,44 @@ fn tab_walks_sessions_plan_files_and_back() {
     );
 }
 
+fn command_event() -> Event {
+    record(
+        "s1",
+        6,
+        NOW,
+        SessionEvent::ToolCall(
+            serde_json::from_value(serde_json::json!({
+                "toolCallId": "t1", "title": "bash: cargo build", "kind": "execute",
+                "status": "in_progress", "rawInput": {"command": "cargo build --release"}
+            }))
+            .unwrap(),
+        ),
+    )
+}
+
+#[test]
+fn the_agents_commands_show_next_to_the_chat() {
+    let mut app = app();
+    assert!(!screen_text(&mut app, 120, 24).contains("Terminal"));
+    app.handle_event(command_event());
+    let text = screen_text(&mut app, 120, 24);
+    assert!(
+        text.contains("Terminal") && text.contains("$ cargo build --release"),
+        "{text}"
+    );
+    // Tab gets there, Esc gives the keys back.
+    app.handle_key(key(KeyCode::Tab));
+    assert_eq!(app.focus, Some(Focus::Panel(Panel::Terminal)));
+    app.handle_key(key(KeyCode::Esc));
+    assert_eq!(app.focus, None);
+    // Too narrow for both: the chat keeps its room.
+    assert!(!screen_text(&mut app, 80, 24).contains("Terminal"));
+    // /terminal hides it.
+    type_str(&mut app, "/terminal");
+    app.handle_key(key(KeyCode::Enter));
+    assert!(!screen_text(&mut app, 120, 24).contains("Terminal"));
+}
+
 #[test]
 fn the_plan_column_wins_when_both_do_not_fit() {
     let mut app = overview();
@@ -1775,7 +1847,7 @@ fn the_sidebar_appears_with_a_plan_and_tab_cycles_focus() {
 #[test]
 fn layout_at_100x30() {
     let mut app = scenario();
-    app.handle_event(setting("pi", SettingName::Model, "sonnet"));
+    app.handle_event(setting("neo", SettingName::Model, "sonnet"));
     let text = screen_text(&mut app, 100, 30);
     snapshot("layout-100x30", &text);
 }
@@ -1811,7 +1883,7 @@ fn help_lists_keys_and_commands() {
     let mut app = scenario();
     type_str(&mut app, "/help");
     app.handle_key(key(KeyCode::Enter));
-    snapshot("help-100x47", &screen_text(&mut app, 100, 47));
+    snapshot("help-100x48", &screen_text(&mut app, 100, 48));
     app.handle_key(key(KeyCode::Esc));
     app.handle_key(key(KeyCode::Char('?')));
     assert_eq!(app.overlay, Overlay::Help, "? on an empty editor");
@@ -1869,6 +1941,7 @@ fn no_color_uses_no_colors() {
         home: None,
         no_color: true,
         history: HistoryStore::default(),
+        prefs: crate::theme::Prefs::default(),
     });
     show(
         &mut app,
@@ -1881,6 +1954,41 @@ fn no_color_uses_no_colors() {
         assert_eq!(cell.fg, ratatui::style::Color::Reset, "{cell:?}");
         assert_eq!(cell.bg, ratatui::style::Color::Reset);
     }
+}
+
+#[test]
+fn theme_paints_the_whole_screen_and_switches() {
+    use ratatui::style::Color;
+    let backgrounds = |app: &mut App| {
+        let mut terminal = Terminal::new(TestBackend::new(60, 14)).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let mut seen: Vec<Color> = buffer.content().iter().map(|c| c.bg).collect();
+        seen.dedup();
+        (seen, buffer[(59, 0)].fg)
+    };
+    let mut app = scenario();
+    // Dark by default: near-black where nothing else is painted, the theme's text color.
+    let (seen, fg) = backgrounds(&mut app);
+    assert!(seen.contains(&Color::Rgb(28, 29, 32)));
+    assert!(!seen.contains(&Color::Reset));
+    assert_ne!(fg, Color::Reset);
+
+    type_str(&mut app, "/theme light");
+    app.handle_key(key(KeyCode::Enter));
+    let (seen, _) = backgrounds(&mut app);
+    assert!(seen.contains(&Color::Rgb(244, 235, 217)));
+    assert!(!seen.contains(&Color::Reset));
+
+    // No name: the next one, which leaves the terminal's own colors.
+    type_str(&mut app, "/theme");
+    app.handle_key(key(KeyCode::Enter));
+    let (seen, _) = backgrounds(&mut app);
+    assert!(seen.contains(&Color::Reset));
+
+    type_str(&mut app, "/theme sepia");
+    app.handle_key(key(KeyCode::Enter));
+    assert!(screen_text(&mut app, 60, 14).contains("usage: /theme [dark|light|terminal]"));
 }
 
 #[test]
@@ -1946,4 +2054,270 @@ fn a_prompt_answered_below_the_chat_leaves_one_line_in_the_chat_and_starts_on_th
             args: Some(json!({"id":"m1","option":"haiku"})),
         }]
     );
+}
+
+#[test]
+fn a_long_choice_scrolls_to_the_focused_button() {
+    let mut app = app();
+    long_chat(&mut app, 10);
+    let rows: Vec<_> = (0..120)
+        .map(|i| {
+            json!({"type":"button","label":format!("model-{i:03}"),"action":"suite.choose",
+                   "args":{"id":"c","option":format!("m{i}")},"current": i == 0})
+        })
+        .collect();
+    let item: ViewItem = serde_json::from_value(json!({
+        "ref":"q-c","kind":"tool","label":"Model","state":"pending",
+        "component":{"type":"stack","gap":"s","children":rows}}))
+    .unwrap();
+    patch(&mut app, item);
+    // Opens on the current one, at the top of the list.
+    let s = screen_text(&mut app, 80, 24);
+    assert!(s.contains("model-000") && !s.contains("model-119"), "{s}");
+    // Up wraps to the last one: the list follows to the bottom.
+    app.handle_key(key(KeyCode::Up));
+    let s = screen_text(&mut app, 80, 24);
+    assert!(s.contains("model-119") && !s.contains("model-000"), "{s}");
+    // Back down to the top; going down then scrolls only once the focus leaves the window.
+    for _ in 0..2 {
+        app.handle_key(key(KeyCode::Down));
+        screen_text(&mut app, 80, 24);
+    }
+    let s = screen_text(&mut app, 80, 24);
+    assert!(s.contains("model-000") && s.contains("model-001"), "{s}");
+    for _ in 0..30 {
+        app.handle_key(key(KeyCode::Down));
+        screen_text(&mut app, 80, 24);
+    }
+    let s = screen_text(&mut app, 80, 24);
+    assert!(
+        s.contains("enter model-031") && s.contains("[model-031]"),
+        "{s}"
+    );
+    assert!(!s.contains("model-000"), "{s}");
+}
+
+// ---- type to find an option of a long choice ----
+
+/// `/model` with several providers: 12 options, the third and fourth with a description, the
+/// first one in effect.
+fn model_choice(app: &mut App) {
+    long_chat(app, 3);
+    let providers = ["claude", "openrouter", "openai"];
+    let names = ["Haiku 4.5", "Sonnet 4.5", "GPT 5", "Gemini 2.5"];
+    let rows: Vec<_> = (0..12)
+        .map(|i| {
+            let (provider, name) = (providers[i % 3], names[i % 4]);
+            let button = json!({"type":"button","label":format!("{name} · {provider}"),
+                "action":"suite.choose","args":{"id":"c","option":format!("{provider}/{i}/{name}")},
+                "current": i == 0, "key": (i < 9).then(|| (i + 1).to_string())});
+            if i == 3 || i == 4 {
+                json!({"type":"row","children":[button,
+                    {"type":"text","tone":"muted","blocks":[{"type":"paragraph",
+                        "spans":[{"text": format!("reasons about code {i}")}]}]}]})
+            } else {
+                button
+            }
+        })
+        .collect();
+    let item: ViewItem = serde_json::from_value(json!({
+        "ref":"q-c","kind":"tool","label":"Model","state":"pending",
+        "component":{"type":"stack","gap":"s","children":rows}}))
+    .unwrap();
+    patch(app, item);
+}
+
+fn picked(fx: &[Effect]) -> String {
+    match fx {
+        [Effect::Action { args: Some(a), .. }] => a["option"].as_str().unwrap().to_string(),
+        other => panic!("not one action: {other:?}"),
+    }
+}
+
+#[test]
+fn typing_filters_a_long_choice_and_enter_picks_the_match() {
+    let mut app = app();
+    model_choice(&mut app);
+    let s = screen_text(&mut app, 80, 24);
+    assert!(
+        s.contains("filter › ") && s.contains("type to find an option"),
+        "{s}"
+    );
+    assert!(s.contains("[Haiku 4.5 · claude] ✓"), "{s}");
+    // Case does not matter, every word must occur, and the order stays.
+    type_str(&mut app, "OPENROUTER sonnet");
+    let s = screen_text(&mut app, 80, 24);
+    assert!(s.contains("filter › OPENROUTER sonnet"), "{s}");
+    assert!(s.contains("[Sonnet 4.5 · openrouter]"), "{s}");
+    assert!(!s.contains("Haiku") && !s.contains("GPT"), "{s}");
+    assert!(s.contains("enter sonnet 4.5 · openrouter"), "{s}");
+    snapshot("choice-filter-70x14", &screen_text(&mut app, 70, 14));
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert_eq!(picked(&fx), "openrouter/1/Sonnet 4.5");
+}
+
+#[test]
+fn the_filter_takes_digits_and_edits_with_backspace_and_ctrl_u() {
+    let mut app = app();
+    model_choice(&mut app);
+    // 7 would press the seventh button on a short card; here it is text, found in the id.
+    assert!(app.handle_key(key(KeyCode::Char('7'))).is_empty());
+    assert!(app.active_ref().is_some());
+    let s = screen_text(&mut app, 80, 24);
+    assert!(
+        s.contains("filter › 7") && s.contains("Gemini 2.5 · openrouter"),
+        "{s}"
+    );
+    assert!(!s.contains("Haiku"), "{s}");
+    app.handle_key(key(KeyCode::Backspace));
+    let s = screen_text(&mut app, 80, 24);
+    assert!(s.contains("type to find an option"), "{s}");
+    type_str(&mut app, "gpt");
+    app.handle_key(ctrl('u'));
+    // Cleared: the focus is back on the option in effect.
+    let s = screen_text(&mut app, 80, 24);
+    assert!(s.contains("type to find an option"), "{s}");
+    assert_eq!(
+        picked(&app.handle_key(key(KeyCode::Enter))),
+        "claude/0/Haiku 4.5"
+    );
+}
+
+#[test]
+fn a_description_is_searched_and_the_arrows_stay_among_the_matches() {
+    let mut app = app();
+    model_choice(&mut app);
+    type_str(&mut app, "reasons");
+    // Options 3 and 4 have the text; the first match has the focus.
+    let s = screen_text(&mut app, 80, 24);
+    assert!(
+        s.contains("[Gemini 2.5 · claude]") && s.contains("reasons about code 3"),
+        "{s}"
+    );
+    assert!(
+        s.contains("[Haiku 4.5 · openrouter]") && !s.contains("Sonnet"),
+        "{s}"
+    );
+    // Down, down (wraps), down: on the second match.
+    for _ in 0..3 {
+        app.handle_key(key(KeyCode::Down));
+    }
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert_eq!(picked(&fx), "openrouter/4/Haiku 4.5");
+}
+
+#[test]
+fn nothing_matching_says_so_and_enter_does_nothing() {
+    let mut app = app();
+    model_choice(&mut app);
+    type_str(&mut app, "zzz");
+    let s = screen_text(&mut app, 80, 24);
+    assert!(s.contains("no match") && !s.contains("Haiku"), "{s}");
+    assert!(!s.contains("enter "), "{s}");
+    snapshot("choice-no-match-70x14", &screen_text(&mut app, 70, 14));
+    assert!(app.handle_key(key(KeyCode::Enter)).is_empty());
+    assert!(app.handle_key(key(KeyCode::Tab)).is_empty());
+    assert!(app.note.is_none());
+    assert!(app.active_ref().is_some());
+    // Backspacing back to a match brings the list back.
+    for _ in 0..3 {
+        app.handle_key(key(KeyCode::Backspace));
+    }
+    assert_eq!(
+        picked(&app.handle_key(key(KeyCode::Enter))),
+        "claude/0/Haiku 4.5"
+    );
+}
+
+#[test]
+fn esc_clears_the_filter_first_and_then_dismisses() {
+    let mut app = app();
+    model_choice(&mut app);
+    type_str(&mut app, "gpt");
+    app.handle_key(key(KeyCode::Esc));
+    assert!(app.active_ref().is_some(), "the first Esc only clears");
+    let s = screen_text(&mut app, 80, 24);
+    assert!(
+        s.contains("type to find an option") && s.contains("Haiku"),
+        "{s}"
+    );
+    app.handle_key(key(KeyCode::Esc));
+    assert_eq!(app.active_ref(), None, "the second one dismisses");
+}
+
+#[test]
+fn a_note_goes_with_the_focused_match() {
+    let mut app = app();
+    model_choice(&mut app);
+    type_str(&mut app, "gemini");
+    app.handle_key(key(KeyCode::Tab));
+    type_str(&mut app, "thanks");
+    let fx = app.handle_key(key(KeyCode::Enter));
+    match &fx[..] {
+        [Effect::Action { args: Some(a), .. }] => {
+            assert_eq!(a["option"], "claude/3/Gemini 2.5");
+            assert_eq!(a["note"], "thanks");
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_choice_of_nine_or_a_permission_has_no_filter() {
+    let mut app = app();
+    show(
+        &mut app,
+        vec![prompt("p1", "pending", &["Allow once", "Reject"])],
+    );
+    let s = screen_text(&mut app, 80, 24);
+    assert!(!s.contains("filter ›"), "{s}");
+    app.handle_key(key(KeyCode::Char('x')));
+    assert!(app.active_ref().is_some());
+    let rows: Vec<_> = (0..9)
+        .map(|i| {
+            json!({"type":"button","label":format!("m{i}"),"action":"suite.choose",
+                        "args":{"id":"c","option":format!("m{i}")}})
+        })
+        .collect();
+    let item: ViewItem = serde_json::from_value(json!({
+        "ref":"q-c","kind":"tool","label":"Model","state":"pending",
+        "component":{"type":"stack","children":rows}}))
+    .unwrap();
+    show(&mut app, vec![item]);
+    let s = screen_text(&mut app, 80, 24);
+    assert!(!s.contains("filter ›") && s.contains("[9 m8]"), "{s}");
+    assert_eq!(picked(&app.handle_key(key(KeyCode::Char('9')))), "m8");
+}
+
+#[test]
+fn a_filtered_list_scrolls_to_the_focused_match() {
+    let mut app = app();
+    long_chat(&mut app, 10);
+    let rows: Vec<_> = (0..120)
+        .map(|i| {
+            json!({"type":"button","label":format!("model-{i:03}"),"action":"suite.choose",
+                   "args":{"id":"c","option":format!("m{i}")}})
+        })
+        .collect();
+    let item: ViewItem = serde_json::from_value(json!({
+        "ref":"q-c","kind":"tool","label":"Model","state":"pending",
+        "component":{"type":"stack","gap":"s","children":rows}}))
+    .unwrap();
+    patch(&mut app, item);
+    // 40 matches (those with a 1 in them: 1x, x1x ...) do not fit; the filter stays in view.
+    type_str(&mut app, "model-01");
+    let s = screen_text(&mut app, 80, 18);
+    assert!(
+        s.contains("filter › model-01") && s.contains("model-010"),
+        "{s}"
+    );
+    assert!(!s.contains("model-000") && !s.contains("model-020"), "{s}");
+    app.handle_key(key(KeyCode::Up));
+    let s = screen_text(&mut app, 80, 18);
+    assert!(
+        s.contains("filter › model-01") && s.contains("model-019"),
+        "{s}"
+    );
+    assert!(s.contains("enter model-019"), "{s}");
+    assert_eq!(picked(&app.handle_key(key(KeyCode::Enter))), "m19");
 }

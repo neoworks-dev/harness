@@ -1,7 +1,7 @@
-// tools_search, tools_call, apps_launch, apps_focus, delegate: native definitions from
-// protocol/core-tools.json (so the tool list is fixed whatever is connected), executed by the
-// daemon's MCP gateway. The harness is an MCP client of the gateway (design §4).
-import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
+// tools_search, tools_call, apps_launch, apps_focus, delegate, models, send_message, wait: native
+// definitions from protocol/core-tools.json (so the tool list is fixed whatever is connected),
+// executed by the daemon's MCP gateway. The harness is an MCP client of the gateway (design §4).
+import type { AgentTool, AgentToolResult } from "../loop/index.ts";
 import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -23,10 +23,17 @@ const LABELS: Record<CoreToolName, string> = {
   apps_launch: "Launch app",
   apps_focus: "Focus app",
   delegate: "Delegate",
+  models: "Models",
+  send_message: "Send message",
+  wait: "Wait",
 };
 
-// A guest can work for a long time; cancelling the turn aborts it through the signal.
-const TIMEOUTS: Partial<Record<CoreToolName, number>> = { delegate: 4 * 60 * 60_000 };
+// A guest can work for a long time, and a wait lasts up to an hour; cancelling the turn aborts
+// them through the signal.
+const TIMEOUTS: Partial<Record<CoreToolName, number>> = {
+  delegate: 4 * 60 * 60_000,
+  wait: 65 * 60_000,
+};
 
 /** Connects lazily on first use and again after a failure (the daemon may have restarted). */
 export function connectGateway(server: McpServer): GatewayConnection {
@@ -88,7 +95,7 @@ export function createGatewayTools(gateway: GatewayConnection | undefined): Agen
       const result = await gateway.call(def.name, asRecord(params), signal);
       const content = toContent(result);
       if (result.isError) {
-        // pi turns a thrown error into an error tool result with this text.
+        // neo turns a thrown error into an error tool result with this text.
         throw new Error(content.map((c) => (c.type === "text" ? c.text : "[image]")).join("\n"));
       }
       return { content, details: result.structuredContent ?? {} };

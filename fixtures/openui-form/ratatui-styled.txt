@@ -1,0 +1,21 @@
+  ⟦bold|Service⟧⟦danger| *⟧
+  ⟦muted|[ ⟧API                                    ⟦muted|▾⟧⟦muted| ]⟧
+  ⟦bold|Notify email⟧⟦danger| *⟧
+  ⟦danger|[ ⟧ops@                                    ⟦danger| ]⟧
+  ⟦danger|Please enter a valid email⟧
+  ⟦muted|We send the report here⟧
+  ⟦bold|Environment⟧
+  ⟦accent|(•)⟧ Staging  ⟦muted|( )⟧ Production
+  ⟦bold|Notes⟧
+  ⟦muted|[ ⟧⟦muted|Anything the reviewers should know⟧      ⟦muted| ]⟧
+  ⟦muted|[ ⟧                                        ⟦muted| ]⟧
+  ⟦muted|[ ⟧                                        ⟦muted| ]⟧
+  ⟦bold|Date⟧
+  ⟦muted|[ ⟧2026-10-21                              ⟦muted| ]⟧
+  ⟦bold|Canary traffic⟧
+  ⟦accent|━━━━━━⟧⟦accent bold|●⟧⟦muted|───────────────────────⟧⟦bold| 10⟧⟦muted|  (0–50)⟧
+  ⟦success|● on ⟧ Post to #deploys
+  ⟦muted|[ ]⟧ I checked the migration⟦danger| *⟧
+  ⟦danger|This field is required⟧
+
+  ⟦accent bold|[ Deploy ]⟧  [ Runbook ↗ ]

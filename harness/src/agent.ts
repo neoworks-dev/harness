@@ -1,5 +1,5 @@
 // The ACP-style contract between the daemon and an agent. The daemon only talks to agents through
-// this, so the pi harness can be swapped for another implementation (or a guest bridge) later.
+// this, so the neo harness can be swapped for another implementation (or a guest bridge) later.
 //
 // Flow per session: newSession/loadSession once, then prompt() per turn. The daemon appends every
 // AgentUpdate to the session log in the order onUpdate is called, then appends turn_ended with
@@ -23,6 +23,9 @@ import type {
   Usage,
   UserNote,
 } from "@suite/protocol/types";
+import type { SafeSearch } from "@neoworks/websearch";
+
+export type { SafeSearch };
 
 /** What an agent may emit during a prompt (ACP session/update plus harness_message and usage). */
 export type AgentUpdate =
@@ -47,8 +50,19 @@ export interface ConfigOption {
   category: ConfigCategory;
   /** The current value, if known. */
   current?: string;
-  /** The values to offer. A harness may accept others (pi: any provider/model). */
+  /** The values to offer. A harness may accept others (neo: any provider/model). */
   values: { value: string; name: string; description?: string }[];
+}
+
+/** What a harness wants to ask or tell the user after a setting was set (see followUp). */
+export interface FollowUp {
+  /** A second question. Picking a value sets the same category again; no pick: nothing happens. */
+  choice?: {
+    title: string;
+    options: { value: string; name: string; description?: string }[];
+  };
+  /** Something to tell the user (a lookup failed and the step was skipped). */
+  notice?: string;
 }
 
 /** What an agent's own tool asks the user before it acts. */
@@ -104,6 +118,11 @@ export interface NewSessionParams {
    * and after an edit when the user reviews each one. Absent: they just run.
    */
   requestPermission?: RequestPermission;
+  /**
+   * The user's safe-search choice (/safesearch), read at each web search; undefined: the
+   * harness's configured default.
+   */
+  safeSearch?: () => SafeSearch | undefined;
 }
 
 export interface LoadSessionParams extends NewSessionParams {
@@ -129,6 +148,14 @@ export interface PromptParams {
    * block), put before the pending events. Absent when there is nothing to catch up on.
    */
   summary?: string;
+  /**
+   * Takes the messages other agents sent this one since the last call (already formatted as
+   * <message from=…>…</message>). neo calls it when a turn starts and after each batch of tool
+   * calls and puts them in the conversation as user messages; an adapter that can't be told
+   * anything mid-turn calls it when the turn starts (the daemon adds the rest to its tool
+   * results, see messages.ts).
+   */
+  takeMessages?: () => string[];
   /** Called synchronously for each update, in order. */
   onUpdate: (update: AgentUpdate) => void;
 }
@@ -146,8 +173,16 @@ export interface AgentSession {
   cancel(): void;
   /** The options the user can set; absent when the harness has none. */
   configOptions?(): ConfigOption[];
+  /** Like configOptions, for a harness that has to look something up first; preferred when set. */
+  loadConfigOptions?(): Promise<ConfigOption[]>;
   /** Sets one for the following turns. Rejects with a message the user can read. */
   setConfigOption?(category: ConfigCategory, value: string): Promise<void>;
+  /**
+   * Asked by the daemon after a successful setConfigOption the user made with /model, /effort or
+   * /mode: a second step the harness knows about (neo: which OpenRouter host runs the model).
+   * Never rejects; undefined: nothing more to ask.
+   */
+  followUp?(category: ConfigCategory, value: string): Promise<FollowUp | undefined>;
 }
 
 /** What generateText takes. */
@@ -160,7 +195,7 @@ export interface GenerateTextParams {
 }
 
 export interface Agent {
-  /** Short name, e.g. "pi"; also used as HarnessMessage.harness. */
+  /** Short name, e.g. "neo"; also used as HarnessMessage.harness. */
   readonly name: string;
   newSession(params: NewSessionParams): Promise<AgentSession>;
   loadSession(params: LoadSessionParams): Promise<AgentSession>;

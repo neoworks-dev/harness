@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, AssetPutMessage, AssetGetMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetFetchMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -219,6 +219,18 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		u.Value = v
+	case "secret.request":
+		var v SecretRequestMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "secret.answer":
+		var v SecretAnswerMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
 	case "asset.put":
 		var v AssetPutMessage
 		if err := json.Unmarshal(data, &v); err != nil {
@@ -227,6 +239,12 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "asset.get":
 		var v AssetGetMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "asset.fetch":
+		var v AssetFetchMessage
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -874,6 +892,55 @@ type UiAction struct {
 	Args json.RawMessage `json:"args,omitempty"`
 }
 
+// SecretRequestMessage: Daemon → only the client whose command asked: a question whose answer is a secret (an API key, a login code). Never a session event and never stored or logged. Answered with secret.answer.
+type SecretRequestMessage struct {
+	Payload SecretRequest `json:"payload"`
+}
+
+func (SecretRequestMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v SecretRequestMessage) MarshalJSON() ([]byte, error) {
+	type plain SecretRequestMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"secret.request", plain(v)})
+}
+
+type SecretRequest struct {
+	// Echoed by secret.answer.
+	ID      string `json:"id"`
+	Session string `json:"session"`
+	// What is asked for, e.g. DeepSeek API key.
+	Title string `json:"title"`
+	// Hint shown in the empty field, e.g. sk-…
+	Placeholder *string `json:"placeholder,omitempty"`
+}
+
+// SecretAnswerMessage: Client → daemon: the answer to a secret.request, from the client that was asked (any other gets bus.error bad_request). The value is never stored or logged, not even in errors. Without a value the question was cancelled.
+type SecretAnswerMessage struct {
+	Payload SecretAnswer `json:"payload"`
+}
+
+func (SecretAnswerMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v SecretAnswerMessage) MarshalJSON() ([]byte, error) {
+	type plain SecretAnswerMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"secret.answer", plain(v)})
+}
+
+type SecretAnswer struct {
+	// The secret.request's id; an unknown one gets bus.error not_found.
+	ID string `json:"id"`
+	// What the user typed. Absent: cancelled.
+	Value *string `json:"value,omitempty"`
+}
+
 // AssetPutMessage: Client → daemon: store a file or bytes in the asset store. Replied to with asset.info. Identical content gets the same handle.
 type AssetPutMessage struct {
 	ID      string   `json:"id"`
@@ -925,7 +992,29 @@ type AssetRef struct {
 	Handle string `json:"handle"`
 }
 
-// AssetInfoMessage: Daemon → client: reply to asset.put / asset.get.
+// AssetFetchMessage: Client → daemon: download an image from the web into the asset store, so a client can show a remote picture. Replied to with asset.info; the same URL is downloaded once. bus.error bad_request when it isn't a public http(s) image.
+type AssetFetchMessage struct {
+	ID      string   `json:"id"`
+	Payload AssetUrl `json:"payload"`
+}
+
+func (AssetFetchMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v AssetFetchMessage) MarshalJSON() ([]byte, error) {
+	type plain AssetFetchMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"asset.fetch", plain(v)})
+}
+
+type AssetUrl struct {
+	// An http:// or https:// URL.
+	URL string `json:"url"`
+}
+
+// AssetInfoMessage: Daemon → client: reply to asset.put / asset.get / asset.fetch.
 type AssetInfoMessage struct {
 	ID      string `json:"id"`
 	Payload Asset  `json:"payload"`
@@ -1093,7 +1182,7 @@ type SessionEventRecord struct {
 }
 
 // SessionEvent: Everything that happens in a session. Views must ignore types they don't know.
-// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, SubagentStarted, SubagentEnded, UnknownSessionEvent.
+// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, Notice, SubagentStarted, SubagentEnded, AgentMessage, UnknownSessionEvent.
 type SessionEvent struct {
 	Value SessionEventVariant
 }
@@ -1262,6 +1351,12 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		u.Value = v
+	case "notice":
+		var v Notice
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
 	case "subagent_started":
 		var v SubagentStarted
 		if err := json.Unmarshal(data, &v); err != nil {
@@ -1270,6 +1365,12 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "subagent_ended":
 		var v SubagentEnded
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "agent_message":
+		var v AgentMessage
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -1498,7 +1599,7 @@ func (v TextContent) MarshalJSON() ([]byte, error) {
 	}{"text", plain(v)})
 }
 
-// ImageContent: An image a tool returned (pi's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log.
+// ImageContent: An image a tool returned (neo's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log.
 type ImageContent struct {
 	Src      string  `json:"src"`
 	MimeType *string `json:"mimeType,omitempty"`
@@ -1634,7 +1735,7 @@ func (v FocusChanged) MarshalJSON() ([]byte, error) {
 
 // HarnessMessage: A complete message in the harness's native format. Views ignore it; the harness rebuilds its context from these after a restart.
 type HarnessMessage struct {
-	// Which harness wrote it, e.g. pi.
+	// Which harness wrote it, e.g. neo.
 	Harness string `json:"harness"`
 	// Opaque to everyone but that harness.
 	Message json.RawMessage `json:"message"`
@@ -1773,10 +1874,35 @@ func (v UserNote) MarshalJSON() ([]byte, error) {
 	}{"user_note", plain(v)})
 }
 
+// Notice: A line for the user in the chat, from the daemon: the outcome of /login, /logout and /accounts, a login URL to open. Never a secret. Not a context event: the agent doesn't see it.
+type Notice struct {
+	Text string      `json:"text"`
+	Tone *NoticeTone `json:"tone,omitempty"`
+}
+
+func (Notice) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v Notice) MarshalJSON() ([]byte, error) {
+	type plain Notice
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"notice", plain(v)})
+}
+
+// NoticeTone: muted unless set.
+type NoticeTone string
+
+const (
+	NoticeToneMuted  NoticeTone = "muted"
+	NoticeToneDanger NoticeTone = "danger"
+)
+
 // SubagentStarted: The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event.
 type SubagentStarted struct {
 	ID string `json:"id"`
-	// Harness name: pi, claude, codex…
+	// Harness name: neo, claude, codex…
 	Agent string `json:"agent"`
 	Task  string `json:"task"`
 	// The model it runs with, when one was chosen for this task or by the user.
@@ -1786,6 +1912,8 @@ type SubagentStarted struct {
 	Cwd *string `json:"cwd,omitempty"`
 	// A subagent working in another directory runs as its own session (parent = this one); its id.
 	Child *string `json:"child,omitempty"`
+	// The delegate call returned at once and the subagent outlives the turn: a turn's end does not close it, and its final reply reaches the main agent as an agent_message.
+	Background *bool `json:"background,omitempty"`
 }
 
 func (SubagentStarted) isSessionEvent() {}
@@ -1815,6 +1943,30 @@ func (v SubagentEnded) MarshalJSON() ([]byte, error) {
 		Tag string `json:"type"`
 		plain
 	}{"subagent_ended", plain(v)})
+}
+
+// AgentMessage: One agent told another something with send_message, or a background subagent's final reply (`reply`). `from` and `to` are `main` (the session's own agent) or a subagent's id (the one in subagent_started). Not a context event: the daemon delivers it to the recipient itself (appended to its next tool result, or as the turn an idle agent starts).
+type AgentMessage struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	// Harness name of the sender, when it is a subagent.
+	FromAgent *string `json:"fromAgent,omitempty"`
+	// Harness name of the recipient, when it is a subagent.
+	ToAgent *string `json:"toAgent,omitempty"`
+	Text    string  `json:"text"`
+	// The sender's final reply: a background subagent finished and this is what it gives back.
+	Reply *bool `json:"reply,omitempty"`
+}
+
+func (AgentMessage) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v AgentMessage) MarshalJSON() ([]byte, error) {
+	type plain AgentMessage
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"agent_message", plain(v)})
 }
 
 // PermissionDetail: One labelled fact of a permission request, drawn as a highlighted key–value row above the content.
@@ -1886,9 +2038,9 @@ const (
 	PermissionOptionKindRejectAlways PermissionOptionKind = "reject_always"
 )
 
-// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness "suite", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for the suite's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session.
+// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness "suite", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for the suite's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session.
 type SettingChanged struct {
-	// pi, claude, codex…
+	// neo, claude, codex…
 	Harness string      `json:"harness"`
 	Option  SettingName `json:"option"`
 	Value   string      `json:"value"`
@@ -2032,7 +2184,7 @@ func (v Usage) MarshalJSON() ([]byte, error) {
 }
 
 // Component: The fixed component set. Apps combine these; they never add new ones.
-// Value is one of: CardComponent, RowComponent, StackComponent, TextComponent, ImageComponent, FileComponent, CodeComponent, DiffComponent, TableComponent, KvComponent, ProgressComponent, ButtonComponent, LinkComponent, UnknownComponent.
+// Value is one of: CardComponent, RowComponent, StackComponent, TextComponent, ImageComponent, FileComponent, CodeComponent, DiffComponent, TableComponent, KvComponent, ProgressComponent, ButtonComponent, LinkComponent, OpenUiComponent, UnknownComponent.
 type Component struct {
 	Value ComponentVariant
 }
@@ -2149,6 +2301,12 @@ func (u *Component) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "link":
 		var v LinkComponent
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "openui":
+		var v OpenUiComponent
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -2445,8 +2603,24 @@ func (v LinkComponent) MarshalJSON() ([]byte, error) {
 	}{"link", plain(v)})
 }
 
+// OpenUiComponent: A UI written in OpenUI Lang (an app's template or a Query result), parsed and evaluated by the daemon (docs/openui.md). Renderers draw the evaluated tree.
+type OpenUiComponent struct {
+	UI UiDoc `json:"ui"`
+}
+
+func (OpenUiComponent) isComponent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v OpenUiComponent) MarshalJSON() ([]byte, error) {
+	type plain OpenUiComponent
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"openui", plain(v)})
+}
+
 // Block: A block of parsed markdown.
-// Value is one of: ParagraphBlock, HeadingBlock, ListBlock, CodeBlock, QuoteBlock, RuleBlock, UnknownBlock.
+// Value is one of: ParagraphBlock, HeadingBlock, ListBlock, CodeBlock, QuoteBlock, RuleBlock, TableBlock, OpenUiBlock, UnknownBlock.
 type Block struct {
 	Value BlockVariant
 }
@@ -2521,6 +2695,18 @@ func (u *Block) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "rule":
 		var v RuleBlock
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "table_block":
+		var v TableBlock
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "openui":
+		var v OpenUiBlock
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -2630,6 +2816,81 @@ func (v RuleBlock) MarshalJSON() ([]byte, error) {
 		plain
 	}{"rule", plain(v)})
 }
+
+// TableBlock: A markdown table. Renderers that can't draw a grid show the cells as aligned monospace text.
+type TableBlock struct {
+	Header []TableCell   `json:"header"`
+	Rows   [][]TableCell `json:"rows"`
+	// Per column, as the separator row says; a column without one is left-aligned.
+	Align []ColumnAlign `json:"align,omitempty"`
+}
+
+func (TableBlock) isBlock() {}
+
+// MarshalJSON adds the "type" tag.
+func (v TableBlock) MarshalJSON() ([]byte, error) {
+	type plain TableBlock
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"table_block", plain(v)})
+}
+
+// OpenUiBlock: An ```openui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/openui.md). Streams like any block.
+type OpenUiBlock struct {
+	UI UiDoc `json:"ui"`
+}
+
+func (OpenUiBlock) isBlock() {}
+
+// MarshalJSON adds the "type" tag.
+func (v OpenUiBlock) MarshalJSON() ([]byte, error) {
+	type plain OpenUiBlock
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"openui", plain(v)})
+}
+
+// UiDoc: One evaluated OpenUI program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions.
+type UiDoc struct {
+	ID   string  `json:"id"`
+	Root *UiNode `json:"root,omitempty"`
+	// The program is still arriving: draw it, but inputs and buttons can't be used yet.
+	Streaming *bool     `json:"streaming,omitempty"`
+	Errors    []UiError `json:"errors,omitempty"`
+}
+
+// UiNode: An evaluated component of the suite OpenUI library (docs/openui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node.
+type UiNode struct {
+	// Library component name, e.g. Card, Input, BarChart.
+	Component string `json:"component"`
+	// Set on interactive nodes (inputs, buttons): stable within the doc, names the node in openui.input / openui.press.
+	Key *string `json:"key,omitempty"`
+	// Still streaming in.
+	Partial *bool `json:"partial,omitempty"`
+	// Props by name.
+	Props map[string]json.RawMessage `json:"props"`
+}
+
+// UiError: A problem the parser or evaluator reported; the broken piece is left out of the tree.
+type UiError struct {
+	Code        string  `json:"code"`
+	Message     string  `json:"message"`
+	StatementID *string `json:"statementId,omitempty"`
+}
+
+type TableCell struct {
+	Spans []Span `json:"spans"`
+}
+
+type ColumnAlign string
+
+const (
+	ColumnAlignLeft   ColumnAlign = "left"
+	ColumnAlignCenter ColumnAlign = "center"
+	ColumnAlignRight  ColumnAlign = "right"
+)
 
 // Span: A run of inline text with uniform style.
 type Span struct {

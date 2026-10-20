@@ -123,6 +123,7 @@
     let label = row.harness;
     if (row.model !== undefined) label += ` · ${modelLabel(row.model)}`;
     if (row.child !== undefined && row.cwd !== undefined) label += ` ⎇ ${dirLabel(row.cwd)}`;
+    if (row.background === true) label += " [bg]";
     return label;
   }
 

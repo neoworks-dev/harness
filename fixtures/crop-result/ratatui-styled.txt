@@ -1,4 +1,4 @@
-⟦success|● ⟧⟦bold|photo-editor.crop⟧
+⟦muted|● ⟧⟦bold|photo-editor.crop⟧
   ⟦border|╭ ⟧⟦bold|Cropped image⟧
   ⟦border|│ ⟧⟦muted|[image asset://img-7f3 · 1920×1080]⟧
   ⟦border|│ ⟧1920×1080

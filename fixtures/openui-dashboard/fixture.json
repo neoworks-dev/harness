@@ -1,0 +1,16 @@
+{
+  "description": "An app's OpenUI template: a card with metrics in a row, tabs over a bar chart and sparkline, a donut chart and a table with tags; data from the tool's structuredContent.",
+  "item": {
+    "kind": "tool",
+    "label": "analytics.revenue",
+    "state": "done"
+  },
+  "template": {
+    "openui": "root = Card([header, kpis, tabs], \"Revenue\")\nheader = Header(\"Monthly revenue\", \"Last 6 months\")\nkpis = Stack([m1, m2, m3], \"row\")\nm1 = Metric(\"Revenue\", \"$25k\", \"+19%\", \"success\")\nm2 = Metric(\"Customers\", 412, \"+12\", \"success\")\nm3 = Metric(\"Churn\", \"2.1%\", \"+0.4pt\", \"danger\")\ntabs = Tabs([Tab(\"Trend\", [chart, spark]), Tab(\"Mix\", [pie]), Tab(\"Accounts\", [table])])\nchart = BarChart(data.months, [Series(\"Revenue\", data.revenue), Series(\"Costs\", data.costs)])\nspark = Sparkline(data.revenue, \"Revenue\")\npie = PieChart([Slice(\"Pro\", 62), Slice(\"Team\", 28), Slice(\"Free\", 10)], true)\ntable = Table([\"Account\", \"Plan\", \"MRR\"], [[\"Acme\", Tag(\"Pro\", \"accent\"), 1200], [\"Globex\", Tag(\"Team\"), 480], [\"Initech\", Tag(\"Free\", \"muted\"), 0]])"
+  },
+  "data": {
+    "months": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+    "revenue": [12, 15, 14, 18, 21, 25],
+    "costs": [9, 9, 10, 11, 11, 12]
+  }
+}

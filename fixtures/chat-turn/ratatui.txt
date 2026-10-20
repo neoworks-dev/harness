@@ -16,8 +16,7 @@ now in overlay
   │ [c Copy handle]
 
 ● edit src/Header.tsx
-  ⎿ Applied 1 edit(s) to src/Header.tsx.
-    src/Header.tsx  +1 −0
+  ⎿ Applied 1 edit(s) to src/Header.tsx.  … +1 lines
 
 ● bash: npm run build
   ⎿ vite v6.0.0 building for production...

@@ -6,7 +6,7 @@
     "ts": 1760565601000,
     "event": {
       "type": "harness_message",
-      "harness": "pi",
+      "harness": "neo",
       "message": { "role": "user", "content": "Create hello.txt", "timestamp": 1760565600100 }
     }
   }

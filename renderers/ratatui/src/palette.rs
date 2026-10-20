@@ -63,6 +63,15 @@ impl Palette {
         blend(self.bg, self.fg, 14).unwrap_or(self.surface)
     }
 
+    /// A chip's background: its color mixed into the background, the band's without one. Themes
+    /// without true colors get the surface color.
+    pub(crate) fn tint(&self, color: Option<Color>) -> Color {
+        match color {
+            Some(c) => blend(self.bg, c, 22).unwrap_or(self.surface),
+            None => self.band(),
+        }
+    }
+
     /// Text on the surface color: code.
     pub(crate) fn code_style(&self) -> Style {
         Style::new().fg(self.fg).bg(self.surface)

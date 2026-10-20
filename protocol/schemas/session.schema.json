@@ -96,10 +96,16 @@
           "$ref": "#/$defs/UserNote"
         },
         {
+          "$ref": "#/$defs/Notice"
+        },
+        {
           "$ref": "#/$defs/SubagentStarted"
         },
         {
           "$ref": "#/$defs/SubagentEnded"
+        },
+        {
+          "$ref": "#/$defs/AgentMessage"
         }
       ],
       "discriminator": {
@@ -286,7 +292,7 @@
       "additionalProperties": false
     },
     "ImageContent": {
-      "description": "An image a tool returned (pi's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log.",
+      "description": "An image a tool returned (neo's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log.",
       "type": "object",
       "properties": {
         "type": {
@@ -445,7 +451,7 @@
         },
         "harness": {
           "type": "string",
-          "description": "Which harness wrote it, e.g. pi."
+          "description": "Which harness wrote it, e.g. neo."
         },
         "message": {
           "description": "Opaque to everyone but that harness."
@@ -631,6 +637,28 @@
       "required": ["type", "note"],
       "additionalProperties": false
     },
+    "Notice": {
+      "description": "A line for the user in the chat, from the daemon: the outcome of /login, /logout and /accounts, a login URL to open. Never a secret. Not a context event: the agent doesn't see it.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "notice"
+        },
+        "text": {
+          "type": "string"
+        },
+        "tone": {
+          "$ref": "#/$defs/NoticeTone"
+        }
+      },
+      "required": ["type", "text"],
+      "additionalProperties": false
+    },
+    "NoticeTone": {
+      "description": "muted unless set.",
+      "type": "string",
+      "enum": ["muted", "danger"]
+    },
     "SubagentStarted": {
       "description": "The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event.",
       "type": "object",
@@ -643,7 +671,7 @@
         },
         "agent": {
           "type": "string",
-          "description": "Harness name: pi, claude, codex…"
+          "description": "Harness name: neo, claude, codex…"
         },
         "task": {
           "type": "string"
@@ -662,6 +690,10 @@
         "child": {
           "type": "string",
           "description": "A subagent working in another directory runs as its own session (parent = this one); its id."
+        },
+        "background": {
+          "type": "boolean",
+          "description": "The delegate call returned at once and the subagent outlives the turn: a turn's end does not close it, and its final reply reaches the main agent as an agent_message."
         }
       },
       "required": ["type", "id", "agent", "task"],
@@ -685,6 +717,38 @@
         }
       },
       "required": ["type", "id", "stopReason"],
+      "additionalProperties": false
+    },
+    "AgentMessage": {
+      "description": "One agent told another something with send_message, or a background subagent's final reply (`reply`). `from` and `to` are `main` (the session's own agent) or a subagent's id (the one in subagent_started). Not a context event: the daemon delivers it to the recipient itself (appended to its next tool result, or as the turn an idle agent starts).",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "agent_message"
+        },
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "fromAgent": {
+          "type": "string",
+          "description": "Harness name of the sender, when it is a subagent."
+        },
+        "toAgent": {
+          "type": "string",
+          "description": "Harness name of the recipient, when it is a subagent."
+        },
+        "text": {
+          "type": "string"
+        },
+        "reply": {
+          "type": "boolean",
+          "description": "The sender's final reply: a background subagent finished and this is what it gives back."
+        }
+      },
+      "required": ["type", "from", "to", "text"],
       "additionalProperties": false
     },
     "PermissionDetail": {
@@ -795,7 +859,7 @@
       "enum": ["allow_once", "allow_always", "reject_once", "reject_always"]
     },
     "SettingChanged": {
-      "description": "The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness \"suite\", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness \"suite\", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness \"suite\", value \"<harness> <model>\", \"<harness>\" for the harness's own default model, or \"default\" for the suite's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session.",
+      "description": "The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness \"suite\", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness \"suite\", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness \"suite\", value \"<harness> <model>\", \"<harness>\" for the harness's own default model, or \"default\" for the suite's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session.",
       "type": "object",
       "properties": {
         "type": {
@@ -803,7 +867,7 @@
         },
         "harness": {
           "type": "string",
-          "description": "pi, claude, codex…"
+          "description": "neo, claude, codex…"
         },
         "option": {
           "$ref": "#/$defs/SettingName"

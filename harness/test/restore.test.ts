@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { fauxToolCall, type Message } from "@mariozechner/pi-ai";
 import type { SessionEvent } from "@suite/protocol/types";
 import type { AgentSession, AgentUpdate } from "../src/agent.ts";
-import { createPiAgent } from "../src/pi-agent.ts";
+import { createNeoAgent } from "../src/neo-agent.ts";
 import { INTERRUPTED_RESULT, repairMessages, restoreMessages } from "../src/restore.ts";
 import { fakeModel, reply, TEST_CONFIG, type FakeModel } from "./fake-model.ts";
 import { tempDir } from "./helpers.ts";
@@ -29,7 +29,7 @@ function call(id: string): ReturnType<typeof fauxToolCall> {
 function logged(messages: Message[]): SessionEvent[] {
   return messages.flatMap((message): SessionEvent[] => [
     { type: "user_message", app: "cli", text: "ignored" },
-    { type: "harness_message", harness: "pi", message },
+    { type: "harness_message", harness: "neo", message },
     { type: "harness_message", harness: "other", message: user("not ours") },
   ]);
 }
@@ -52,7 +52,7 @@ function expectValid(messages: Message[]): void {
 }
 
 async function load(history: SessionEvent[], model: FakeModel): Promise<AgentSession> {
-  const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
   return agent.loadSession({ sessionId: "s1", cwd: await tempDir(), history, mcpServers: [] });
 }
 
@@ -62,7 +62,7 @@ async function prompt(session: AgentSession, text: string): Promise<AgentUpdate[
   return updates;
 }
 
-test("restores only the pi messages, in order", () => {
+test("restores only the neo messages, in order", () => {
   const assistant = reply("hello");
   const messages = restoreMessages(logged([user("a"), assistant, user("b")]));
   expect(messages).toEqual([user("a"), assistant, user("b")]);
@@ -71,7 +71,7 @@ test("restores only the pi messages, in order", () => {
 test("a completed session continues exactly where it left off", async () => {
   // First run: a real session produces the log.
   const first = fakeModel([reply([call("c1")], "toolUse"), reply("all done")]);
-  const agent = createPiAgent({ config: TEST_CONFIG, streamFn: first.streamFn });
+  const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: first.streamFn });
   const session = await agent.newSession({ sessionId: "s1", cwd: await tempDir(), mcpServers: [] });
   const history: SessionEvent[] = [];
   const updates = await prompt(session, "first");
@@ -160,8 +160,8 @@ test("repair is deterministic", () => {
 test("junk harness messages are skipped with a warning", () => {
   const warnings: string[] = [];
   const history: SessionEvent[] = [
-    { type: "harness_message", harness: "pi", message: { nope: true } },
-    { type: "harness_message", harness: "pi", message: user("kept") },
+    { type: "harness_message", harness: "neo", message: { nope: true } },
+    { type: "harness_message", harness: "neo", message: user("kept") },
   ];
   const logger = { warn: (m: string) => warnings.push(m), error: () => {} };
   expect(restoreMessages(history, logger)).toEqual([user("kept")]);

@@ -15,6 +15,7 @@ import type {
   LinkComponent,
   ListBlock,
   Span,
+  TableBlock,
   TableComponent,
   ViewItem,
 } from "@suite/protocol/types";
@@ -118,6 +119,28 @@ function renderList(ctx: RenderContext, block: ListBlock): HTMLElement {
   return list;
 }
 
+/** A markdown table: styled cells that wrap, aligned per column as the separator row says. */
+function renderTableBlock(doc: Document, table: TableBlock): HTMLElement {
+  const columns = Math.max(table.header.length, ...table.rows.map((row) => row.length));
+  const row = (cells: TableBlock["header"], tag: "th" | "td"): HTMLElement => {
+    const tr = el(doc, "tr", "");
+    for (let c = 0; c < columns; c++) {
+      const attrs = { scope: tag === "th" ? "col" : undefined, "data-align": table.align?.[c] };
+      tr.append(el(doc, tag, "", attrs, ...renderSpans(doc, cells[c]?.spans ?? [])));
+    }
+    return tr;
+  };
+  const head = el(doc, "thead", "", {}, row(table.header, "th"));
+  const body = el(doc, "tbody", "", {}, ...table.rows.map((cells) => row(cells, "td")));
+  const grid = el(doc, "table", "suite-table suite-md-table", {}, head, body);
+  return el(doc, "div", "suite-table-wrap", {}, grid);
+}
+
+/** What a renderer without the component draws in its place (docs/openui.md: web doesn't yet). */
+function renderUnsupported(doc: Document, kind: string): HTMLElement {
+  return el(doc, "div", "suite-unsupported", {}, `[unsupported component: ${kind}]`);
+}
+
 export function renderBlock(ctx: RenderContext, block: Block): HTMLElement {
   const { doc } = ctx;
   switch (block.type) {
@@ -135,6 +158,10 @@ export function renderBlock(ctx: RenderContext, block: Block): HTMLElement {
       return el(doc, "blockquote", "suite-quote", {}, ...renderBlocks(ctx, block.blocks));
     case "rule":
       return el(doc, "hr", "suite-rule");
+    case "table_block":
+      return renderTableBlock(doc, block);
+    case "openui":
+      return renderUnsupported(doc, "openui");
   }
 }
 
@@ -348,6 +375,8 @@ export function renderComponent(ctx: RenderContext, component: Component): HTMLE
       return renderButton(ctx, component);
     case "link":
       return renderLink(doc, component);
+    case "openui":
+      return renderUnsupported(doc, "openui");
   }
 }
 

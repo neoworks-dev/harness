@@ -15,8 +15,10 @@
 //! assert_eq!(lines.len(), 1);
 //! ```
 
+mod openui;
 mod palette;
 mod render;
+mod shell;
 mod summary;
 mod text;
 
@@ -27,13 +29,16 @@ use ratatui::text::Line;
 use suite_protocol as pb;
 use suite_protocol::ViewItem;
 
+pub use openui::{
+    UiDocInfo, UiEdit, UiKind, UiOption, UiState, UiTarget, is_date, openui_docs, openui_targets,
+};
 pub use palette::Palette;
 
 /// What to draw and how.
 #[derive(Debug, Clone, Default)]
 pub struct Options {
     /// Tool items: the full result under the header instead of a summary of up to three lines.
-    /// Items with buttons are always drawn in full.
+    /// Items with buttons, and OpenUI docs with fields or buttons, are always drawn in full.
     pub expanded: bool,
     /// Thought items: the text (dim italic) instead of one `∴ thinking` line.
     pub show_thoughts: bool,
@@ -43,10 +48,18 @@ pub struct Options {
     pub preview_lines: Option<usize>,
     /// Highlights the n-th button of this item (index into [`buttons`]).
     pub focused_button: Option<usize>,
+    /// Draws a button as `[Label]` without the key that triggers it (a card that takes its
+    /// keys for something else, such as a filter).
+    pub hide_keys: bool,
+    /// Prose (paragraphs, headings, lists, quotes) wraps at this many cells at most, however
+    /// wide the item; tables and code still use the whole width. None: the whole width.
+    pub prose_width: Option<usize>,
     pub theme: Palette,
     /// Reserve rows for images the app can draw itself (see [`ImageOptions`]). None: an image is
     /// a one-line `[image …]` placeholder.
     pub images: Option<ImageOptions>,
+    /// The visual state of the item's OpenUI docs (focus, tabs, edits…), per doc id.
+    pub openui: HashMap<String, UiState>,
 }
 
 /// What the app knows about an image source (`src` of an image component).
@@ -89,6 +102,8 @@ pub struct ImageSlot {
 pub struct Rendered {
     pub lines: Vec<Line<'static>>,
     pub images: Vec<ImageSlot>,
+    /// The first line of the focused OpenUI target, if the state has one in view.
+    pub focus_line: Option<usize>,
 }
 
 /// The cells a `width`x`height` pixel image takes in a terminal whose cells are `cell` pixels:
@@ -126,6 +141,8 @@ pub struct ButtonRef {
     pub key: String,
     /// The value in effect now (a picker's current model): focus starts here.
     pub current: bool,
+    /// What a choice says about this option: the text after the button in its row.
+    pub description: Option<String>,
 }
 
 impl ButtonRef {
@@ -151,15 +168,144 @@ fn collect(c: &pb::Component, out: &mut Vec<ButtonRef>) {
             args: b.args.clone(),
             key: render::button_key(b, out.len()),
             current: b.current == Some(true),
+            description: None,
         }),
         pb::Component::CardComponent(v) => v.children.iter().for_each(|c| collect(c, out)),
-        pb::Component::RowComponent(v) => v.children.iter().for_each(|c| collect(c, out)),
+        pb::Component::RowComponent(v) => {
+            let mut last: Option<usize> = None;
+            for child in &v.children {
+                match child {
+                    // The first text after a button in a row says what the button does.
+                    pb::Component::TextComponent(t) => {
+                        if let Some(i) = last.take()
+                            && let Some(button) = out.get_mut(i)
+                        {
+                            button.description = Some(blocks_text(&t.blocks));
+                        }
+                    }
+                    other => {
+                        let before = out.len();
+                        collect(other, out);
+                        last = (out.len() > before).then(|| out.len() - 1);
+                    }
+                }
+            }
+        }
         pb::Component::StackComponent(v) => v.children.iter().for_each(|c| collect(c, out)),
         _ => {}
     }
 }
 
+/// The text of a run of blocks, one per line.
+fn blocks_text(blocks: &[pb::Block]) -> String {
+    let spans = |list: &[pb::Span]| list.iter().map(|s| s.text.as_str()).collect::<String>();
+    let mut lines = Vec::new();
+    for block in blocks {
+        match block {
+            pb::Block::ParagraphBlock(b) => lines.push(spans(&b.spans)),
+            pb::Block::HeadingBlock(b) => lines.push(spans(&b.spans)),
+            pb::Block::CodeBlock(b) => lines.push(b.code.clone()),
+            pb::Block::QuoteBlock(b) => lines.push(blocks_text(&b.blocks)),
+            pb::Block::ListBlock(b) => lines.extend(
+                b.items
+                    .iter()
+                    .map(|item| format!("- {}", blocks_text(&item.blocks))),
+            ),
+            pb::Block::TableBlock(b) => {
+                let row = |cells: &[pb::TableCell]| {
+                    cells
+                        .iter()
+                        .map(|c| spans(&c.spans))
+                        .collect::<Vec<_>>()
+                        .join(" | ")
+                };
+                lines.push(row(&b.header));
+                lines.extend(b.rows.iter().map(|r| row(r)));
+            }
+            pb::Block::RuleBlock(_) | pb::Block::OpenUiBlock(_) | pb::Block::Unknown(_) => {}
+        }
+    }
+    lines.join("\n")
+}
+
+/// The item with only the buttons at the `keep` positions of [`buttons`] (and the text that
+/// follows each in its row). Everything else stays; a row left without a button goes.
+pub fn keep_buttons(item: &ViewItem, keep: &[usize]) -> ViewItem {
+    let mut item = item.clone();
+    let mut next = 0;
+    item.component = prune(item.component, keep, &mut next).unwrap_or_else(|| {
+        pb::Component::StackComponent(pb::StackComponent {
+            gap: None,
+            children: Vec::new(),
+        })
+    });
+    item
+}
+
+fn prune(c: pb::Component, keep: &[usize], next: &mut usize) -> Option<pb::Component> {
+    match c {
+        pb::Component::ButtonComponent(_) => {
+            let at = *next;
+            *next += 1;
+            keep.contains(&at).then_some(c)
+        }
+        pb::Component::CardComponent(mut v) => {
+            v.children = prune_children(v.children, false, keep, next);
+            Some(pb::Component::CardComponent(v))
+        }
+        pb::Component::StackComponent(mut v) => {
+            v.children = prune_children(v.children, false, keep, next);
+            Some(pb::Component::StackComponent(v))
+        }
+        pb::Component::RowComponent(mut v) => {
+            let had = v.children.iter().any(render::has_buttons);
+            v.children = prune_children(v.children, true, keep, next);
+            let has = v.children.iter().any(render::has_buttons);
+            (has || !had).then_some(pb::Component::RowComponent(v))
+        }
+        other => Some(other),
+    }
+}
+
+fn prune_children(
+    children: Vec<pb::Component>,
+    row: bool,
+    keep: &[usize],
+    next: &mut usize,
+) -> Vec<pb::Component> {
+    let mut out = Vec::new();
+    // Whether the last button seen in a row was kept: its text follows it.
+    let mut last = None;
+    for child in children {
+        let is_text = matches!(child, pb::Component::TextComponent(_));
+        if row && is_text && last.is_some() {
+            if last == Some(true) {
+                out.push(child);
+            }
+            last = None;
+            continue;
+        }
+        let buttons = render::has_buttons(&child);
+        let kept = prune(child, keep, next);
+        if buttons {
+            last = Some(kept.as_ref().is_some_and(render::has_buttons));
+        }
+        out.extend(kept);
+    }
+    out
+}
+
 /// The item as styled lines, none wider than `width` cells (no lines at all for width 0).
+/// A shell command as styled spans (command names, strings, variables, operators, comments),
+/// newlines kept and the text unchanged; `base` is patched under every span.
+pub fn highlight_shell(
+    source: &str,
+    palette: &Palette,
+    base: ratatui::style::Style,
+) -> Vec<ratatui::text::Span<'static>> {
+    shell::highlight(source, palette, base)
+}
+
 pub fn render_item(item: &ViewItem, width: u16, opts: &Options) -> Vec<Line<'static>> {
     render_item_images(item, width, opts).lines
 }
@@ -174,6 +320,7 @@ pub fn render_item_images(item: &ViewItem, width: u16, opts: &Options) -> Render
     Rendered {
         lines,
         images: cx.take_slots(),
+        focus_line: cx.ui.focus_line,
     }
 }
 

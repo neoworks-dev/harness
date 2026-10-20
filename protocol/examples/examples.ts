@@ -336,7 +336,7 @@ export const examples: Record<string, Envelope> = {
         agent: "claude",
         title: "Start a subagent?",
         details: [
-          { key: "Harness", value: "pi" },
+          { key: "Harness", value: "neo" },
           { key: "Model", value: "deepseek/deepseek-v4-flash" },
           { key: "Effort", value: "medium" },
           {
@@ -346,7 +346,7 @@ export const examples: Record<string, Envelope> = {
         ],
         content: [{ type: "text", text: "Fix the failing login test and run the suite." }],
         options: [
-          { id: "allow", name: "Start pi", kind: "allow_once" },
+          { id: "allow", name: "Start neo", kind: "allow_once" },
           { id: "reject", name: "Reject", kind: "reject_once" },
         ],
       },
@@ -380,6 +380,15 @@ export const examples: Record<string, Envelope> = {
       },
     },
   },
+  "event-notice": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 16,
+      ts: 1760565601400,
+      event: { type: "notice", text: "Logged in to deepseek (API key)." },
+    },
+  },
   "event-subagent-started": {
     topic: "session.events",
     payload: {
@@ -394,6 +403,7 @@ export const examples: Record<string, Envelope> = {
         model: "sonnet",
         cwd: "/home/user/site/.worktrees/fix-login",
         child: "s_0123456789",
+        background: true,
       },
     },
   },
@@ -404,6 +414,21 @@ export const examples: Record<string, Envelope> = {
       seq: 15,
       ts: 1760565601300,
       event: { type: "subagent_ended", id: "d_1a2b3c4d", stopReason: "end_turn" },
+    },
+  },
+  "event-agent-message": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 16,
+      ts: 1760565601350,
+      event: {
+        type: "agent_message",
+        from: "main",
+        to: "d_1a2b3c4d",
+        toAgent: "claude",
+        text: "Also run the e2e tests before you finish.",
+      },
     },
   },
   "event-edits-reverted": {
@@ -603,11 +628,21 @@ export const examples: Record<string, Envelope> = {
       ts: 1760565601000,
       event: {
         type: "harness_message",
-        harness: "pi",
+        harness: "neo",
         message: { role: "user", content: "Create hello.txt", timestamp: 1760565600100 },
       },
     },
   },
+  "secret-request": {
+    topic: "secret.request",
+    payload: { id: "s1", session, title: "DeepSeek API key", placeholder: "sk-…" },
+  },
+  "secret-request-minimal": {
+    topic: "secret.request",
+    payload: { id: "s2", session, title: "Login code" },
+  },
+  "secret-answer": { topic: "secret.answer", payload: { id: "s1", value: "sk-example" } },
+  "secret-answer-cancelled": { topic: "secret.answer", payload: { id: "s1" } },
   "asset-put": {
     topic: "asset.put",
     id: "20",
@@ -619,6 +654,11 @@ export const examples: Record<string, Envelope> = {
     payload: { data: "iVBORw0KGgo=", name: "crop.png", mime: "image/png" },
   },
   "asset-get": { topic: "asset.get", id: "22", payload: { handle: "asset://img-7f3a91c2" } },
+  "asset-fetch": {
+    topic: "asset.fetch",
+    id: "23",
+    payload: { url: "https://example.com/hotel.jpg" },
+  },
   "asset-info": {
     topic: "asset.info",
     id: "22",

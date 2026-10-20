@@ -8,6 +8,8 @@
     "harness",
     "sdk-ts",
     "sdk-ts-tools",
+    "websearch",
+    "openui",
     "renderers/web",
     "services/lsp",
     "apps/browser",

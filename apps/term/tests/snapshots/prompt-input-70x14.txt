@@ -1,4 +1,4 @@
-● claude asks: run ls? · answer below
+● claude: run ls? · answer below
 
 
 
@@ -6,9 +6,9 @@
 
 
 ──────────────────────────────────────────────────────────────────────
-▎ ● claude asks: run ls?
+▎ ● claude: run ls?
 ▎   [1 Yes]  [2 No]
 ▎ enter yes · ←/→ choose · tab add a note · esc dismiss
-~/site · pi
+~/site · neo
 
 ? ask before acting (shift+tab to cycle)

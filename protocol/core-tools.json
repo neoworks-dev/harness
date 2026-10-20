@@ -71,13 +71,13 @@
     },
     {
       "name": "delegate",
-      "description": "Hand a task to a subagent: another agent harness (pi; claude: Claude Code; codex: Codex), the one you run on included. It works in this session's directory (or the cwd or git worktree you name, as its own session there) with its own tools plus the same connectors, and its final reply comes back as the result. The user is asked before it starts. model and effort are optional: without them it uses what the user chose for that harness, else its own defaults. Write the task so it stands alone; follow-up delegations to the same agent continue its conversation. Subagents can't delegate.",
+      "description": "Hand a task to a subagent: another agent harness (neo; claude: Claude Code; codex: Codex), the one you run on included. It works in this session's directory (or the cwd or git worktree you name, as its own session there) with its own tools plus the same connectors. The user is asked before it starts. model and effort are optional: without them it uses what the user chose for that harness, else its own defaults; models lists the names each harness takes. Write the task so it stands alone; follow-up delegations to the same agent continue its conversation. By default you wait and its final reply is the result; nothing can be sent to it meanwhile, and it can't message you. With background: true the call returns at once with the subagent's id and you carry on: its final reply arrives later as a message, and send_message and wait talk to it meanwhile. One subagent per harness and directory at a time. Subagents can't delegate.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "agent": {
             "type": "string",
-            "enum": ["pi", "claude", "codex"],
+            "enum": ["neo", "claude", "codex"],
             "description": "Which harness."
           },
           "task": {
@@ -99,9 +99,72 @@
           "worktree": {
             "type": "string",
             "description": "Work in a git worktree of this session's repository with this name (created as .worktrees/<name> on a new branch of that name if it doesn't exist). Not together with cwd."
+          },
+          "background": {
+            "type": "boolean",
+            "description": "Return at once with the subagent's id; its final reply arrives later as a message. Use it to run several subagents side by side, or to steer one while it works. Default: wait for the reply."
           }
         },
         "required": ["agent", "task"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "models",
+      "description": "The models and reasoning efforts a subagent harness takes, by the names delegate's model and effort want, with the one the user chose for it and the harness's default marked. Without agent it lists every harness. A harness that isn't running yet is started to ask it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "enum": ["neo", "claude", "codex"],
+            "description": "Which harness. Default: all of them."
+          },
+          "query": {
+            "type": "string",
+            "description": "Only models whose name or id contains one of these words (e.g. sonnet, deepseek). Default: all, the first 40."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "send_message",
+      "description": "Send a message to a running subagent or to another agent of this session. to is a subagent's id (d_…, from delegate), its harness name (neo, claude, codex) when only one of that harness runs, or main for the session's own agent. Use it to steer a subagent, add context, answer its question, or, as a subagent, to ask or report to main or to a peer. The recipient reads it with its next tool result, or when it starts a turn if it is idle; the call returns without waiting for an answer: wait does that. A subagent started without background can't be reached until it finishes, and can't message main. Messages between a pair of agents are limited; a recipient that has ended gives an error.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "description": "A subagent's id (d_…) or harness name, or main."
+          },
+          "text": {
+            "type": "string",
+            "description": "The message. Write it so it stands alone."
+          }
+        },
+        "required": ["to", "text"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "wait",
+      "description": "Block until a message arrives for you or one of the subagents you name ends, and return what came in. Use it after delegating with background: true, or after asking something with send_message. It returns at once when messages are already waiting, and, for the session's agent, when no subagent is running. Without for it waits for any message; with for it also returns when one of those subagents has ended. After timeoutSeconds (default 60) with nothing new it returns and says so: call it again if you still need to.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "for": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Subagent ids (or harness names) whose end also ends the wait."
+          },
+          "timeoutSeconds": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 3600,
+            "description": "How long to wait at most. Default 60."
+          }
+        },
         "additionalProperties": false
       }
     }

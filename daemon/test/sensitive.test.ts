@@ -34,6 +34,7 @@ test("sensitive files", () => {
     "~/.gnupg/pubring.kbx",
     "~/.netrc",
     "~/.pi/agent/auth.json",
+    "~/.local/share/suite/auth.json",
     "~/.config/gh/hosts.yml",
     "~/.docker/config.json",
     "~/.kube/config",

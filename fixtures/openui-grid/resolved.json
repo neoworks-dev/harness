@@ -1,0 +1,118 @@
+[
+  {
+    "ref": "m-m1",
+    "kind": "agent",
+    "component": {
+      "type": "text",
+      "blocks": [
+        {
+          "type": "openui",
+          "ui": {
+            "id": "0",
+            "root": {
+              "component": "Stack",
+              "props": {
+                "children": [
+                  {
+                    "component": "Stack",
+                    "props": {
+                      "children": [
+                        {
+                          "component": "Metric",
+                          "props": {
+                            "label": "Used",
+                            "value": "820 GB",
+                            "delta": "of 896 GB",
+                            "tone": "danger"
+                          }
+                        },
+                        {
+                          "component": "Metric",
+                          "props": {
+                            "label": "Free",
+                            "value": "72 GB",
+                            "delta": "8%",
+                            "tone": "success"
+                          }
+                        },
+                        {
+                          "component": "Metric",
+                          "props": { "label": "Largest", "value": "Documents", "delta": "355 GB" }
+                        }
+                      ],
+                      "direction": "row"
+                    }
+                  },
+                  {
+                    "component": "Grid",
+                    "props": {
+                      "children": [
+                        {
+                          "component": "Card",
+                          "props": {
+                            "children": [
+                              {
+                                "component": "BarChart",
+                                "props": {
+                                  "labels": ["Documents", ".cache", "Games", "Other"],
+                                  "series": [
+                                    {
+                                      "component": "Series",
+                                      "props": { "name": "GB", "values": [355, 65, 48, 103] }
+                                    }
+                                  ],
+                                  "horizontal": true
+                                }
+                              }
+                            ],
+                            "title": "Where the space goes"
+                          }
+                        },
+                        {
+                          "component": "Card",
+                          "props": {
+                            "children": [
+                              {
+                                "component": "Table",
+                                "props": {
+                                  "columns": ["Path", "Size"],
+                                  "rows": [
+                                    ["neoworks", "210 GB"],
+                                    ["clients", "45 GB"],
+                                    ["other", "47 GB"]
+                                  ]
+                                }
+                              }
+                            ],
+                            "title": "Documents"
+                          }
+                        },
+                        {
+                          "component": "Card",
+                          "props": {
+                            "children": [
+                              {
+                                "component": "Sparkline",
+                                "props": {
+                                  "values": [610, 655, 700, 742, 790, 820],
+                                  "label": "Used, GB"
+                                }
+                              }
+                            ],
+                            "title": "Last 6 months",
+                            "tone": "accent"
+                          }
+                        }
+                      ],
+                      "columns": 2
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+]

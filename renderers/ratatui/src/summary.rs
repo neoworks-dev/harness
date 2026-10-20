@@ -1,9 +1,7 @@
-//! The compact form of a tool result: a few lines under the item's header.
+//! The compact form of a tool result: one line under the item's header.
 //!
-//! The result is flattened into leaves (a card's title, a text, a code block, a diff, ...), and
-//! the line budget is shared out so that every leaf gets a line before any gets a second: the
-//! `Exit code 1` after a screenful of output is not cut off. A leaf that is cut ends in
-//! `… +N lines`.
+//! The result is flattened into leaves (a card's title, a text, a code block, a diff, ...); the
+//! first leaf's first line is shown, and what is left out is counted at its end: `… +N lines`.
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -12,8 +10,8 @@ use suite_protocol as pb;
 use crate::render::{Cx, Lines};
 use crate::text::{clean, one_line, sline, truncate, truncate_spans, width};
 
-/// Lines shown before anything is cut (the `… +N lines` markers come on top).
-const BUDGET: usize = 3;
+/// Lines shown; the `… +N lines` count goes at the end of the last one.
+const BUDGET: usize = 1;
 
 fn is_image(leaf: &Leaf<'_>) -> bool {
     matches!(leaf, Leaf::Comp(pb::Component::ImageComponent(_)))
@@ -66,20 +64,29 @@ impl Cx<'_> {
                 continue;
             }
             shown += lines.len();
-            let cut = total - lines.len();
+            dropped += total - lines.len();
             out.extend(lines);
-            if cut > 0 {
-                out.push(self.more(cut));
-            }
         }
         if dropped > 0 {
-            out.push(self.more(dropped));
+            self.more(&mut out, dropped, w);
         }
         out
     }
 
-    fn more(&self, n: usize) -> Line<'static> {
-        sline(format!("… +{n} lines"), self.p.muted_style())
+    /// `… +N lines` after the last line, which is cut to make room; a line of its own when
+    /// nothing was shown.
+    fn more(&self, out: &mut Lines, n: usize, w: usize) {
+        let tag = format!("… +{n} lines");
+        let muted = self.p.muted_style();
+        match out.last_mut() {
+            Some(last) if w > width(&tag) + 2 => {
+                let spans = std::mem::take(&mut last.spans);
+                let mut spans = truncate_spans(spans, w - width(&tag) - 2);
+                spans.push(Span::styled(format!("  {tag}"), muted));
+                last.spans = spans;
+            }
+            _ => out.push(sline(truncate(&tag, w), muted)),
+        }
     }
 
     /// At most `avail` lines of the leaf, and how many lines it has in all.
@@ -95,6 +102,11 @@ impl Cx<'_> {
             }
             Leaf::Comp(pb::Component::CodeComponent(v)) => return code_lines(&v.code, w, avail),
             Leaf::Comp(pb::Component::TextComponent(v)) => self.text(v, w),
+            Leaf::Comp(pb::Component::OpenUiComponent(v)) => {
+                let (lines, total) = self.openui_summary(&v.ui, w);
+                let shown = lines.len().min(avail);
+                return (lines.into_iter().take(shown).collect(), total);
+            }
             Leaf::Comp(pb::Component::DiffComponent(v)) => vec![self.diff_line(v, w)],
             Leaf::Comp(pb::Component::KvComponent(v)) => vec![self.kv_line(v, w)],
             Leaf::Comp(pb::Component::ImageComponent(v)) => {

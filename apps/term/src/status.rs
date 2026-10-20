@@ -80,7 +80,7 @@ pub struct Status<'a> {
     pub cwd: &'a str,
     pub branch: Option<&'a str>,
     pub settings: &'a [HarnessSettings],
-    /// The session's agent (`pi`, `claude`, `codex`).
+    /// The session's agent (`neo`, `claude`, `codex`).
     pub harness: &'a str,
     /// The app the agent is in, when that isn't this one.
     pub agent_in: Option<&'a str>,
@@ -101,7 +101,7 @@ impl Status<'_> {
         [self.line1(width), self.line2(width), self.line3(width)]
     }
 
-    /// `~/site · main ↑1 · pi · model sonnet · in photo-editor`: the harness is always named,
+    /// `~/site · main ↑1 · neo · model sonnet · in photo-editor`: the harness is always named,
     /// with only its own settings.
     fn line1(&self, width: usize) -> Line<'static> {
         let s = self.styles;
@@ -209,7 +209,7 @@ mod tests {
             cwd: "~/site",
             branch: Some("main ↑1"),
             settings,
-            harness: "pi",
+            harness: "neo",
             agent_in: None,
             usage: None,
             working_secs: None,
@@ -227,25 +227,25 @@ mod tests {
         let styles = Styles::new(&Palette::default(), false);
         let mut settings = Vec::new();
         let s = status(&styles, &settings);
-        assert_eq!(s.lines(80)[0].to_string(), "~/site · main ↑1 · pi");
-        record_setting(&mut settings, "pi", "model", "sonnet");
+        assert_eq!(s.lines(80)[0].to_string(), "~/site · main ↑1 · neo");
+        record_setting(&mut settings, "neo", "model", "sonnet");
         record_setting(&mut settings, "suite", "approvals", "auto");
         let mut s = status(&styles, &settings);
         assert_eq!(
             s.lines(80)[0].to_string(),
-            "~/site · main ↑1 · pi · model sonnet"
+            "~/site · main ↑1 · neo · model sonnet"
         );
         s.agent_in = Some("photo-editor");
         s.branch = None;
         assert_eq!(
             s.lines(80)[0].to_string(),
-            "~/site · pi · model sonnet · in photo-editor"
+            "~/site · neo · model sonnet · in photo-editor"
         );
-        record_setting(&mut settings, "pi", "effort", "high");
-        record_setting(&mut settings, "pi", "model", "opus");
+        record_setting(&mut settings, "neo", "effort", "high");
+        record_setting(&mut settings, "neo", "model", "opus");
         assert_eq!(
             status(&styles, &settings).lines(80)[0].to_string(),
-            "~/site · main ↑1 · pi · model opus · effort high"
+            "~/site · main ↑1 · neo · model opus · effort high"
         );
         assert_eq!(status(&styles, &settings).lines(20)[0].width(), 20);
         // Another harness's settings stay out of sight until it is the session's.

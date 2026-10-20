@@ -1,6 +1,8 @@
 // ui.action: a button in a view was pressed. An action naming an open app's tool (app.tool) runs
 // that tool directly, and its result shows in the chat like any tool call (rendered with the
-// app's template). Otherwise the agent gets it as input, so it can act on it or explain.
+// app's template). openui.input and openui.press belong to an OpenUI doc (docs/openui.md).
+// Otherwise the agent gets it as input, so it can act on it or explain.
+import type { AssistantMessage, CallTool } from "@suite/openui/program";
 import type { Component, UiAction } from "@suite/protocol/types";
 import { BadRequestError } from "./focus.ts";
 import type { Gateway } from "./gateway/gateway.ts";
@@ -10,7 +12,7 @@ import type { SessionManager } from "./sessions.ts";
 import type { SessionStore } from "./store.ts";
 import type { ViewManager } from "./view/views.ts";
 
-interface Parts {
+export interface Parts {
   store: SessionStore;
   sessions: SessionManager;
   connectors: ConnectorRegistry;
@@ -19,6 +21,88 @@ interface Parts {
   asker?: Asker;
   /** Stops one running subagent of the session (suite.cancel_agent {id}). */
   cancelAgent?: (session: string, id: string) => boolean;
+}
+
+/**
+ * Runs an app's tool for the user and records it in the session like a tool call of the agent's,
+ * so its result shows in the chat (drawn with the app's template).
+ */
+async function runAppTool(
+  parts: Pick<Parts, "store" | "gateway">,
+  session: string,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ isError: boolean; text: string; structured?: unknown }> {
+  const { store, gateway } = parts;
+  const toolCallId = `ui-${crypto.randomUUID()}`;
+  store.append(session, {
+    type: "tool_call",
+    toolCallId,
+    tool: name,
+    title: name,
+    kind: "other",
+    status: "in_progress",
+    rawInput: args,
+  });
+  const result = await gateway.call("tools_call", { name, args });
+  const lines: string[] = [];
+  for (const c of result.content) if (c.type === "text") lines.push(c.text);
+  const text = lines.join("\n");
+  const update: Parameters<SessionStore["append"]>[1] = {
+    type: "tool_call_update",
+    toolCallId,
+    status: result.isError ? "failed" : "completed",
+    content: [{ type: "text", text }],
+  };
+  if (result.structuredContent !== undefined) update.rawOutput = result.structuredContent;
+  store.append(session, update);
+  const out: { isError: boolean; text: string; structured?: unknown } = {
+    isError: result.isError === true,
+    text,
+  };
+  if (result.structuredContent !== undefined) out.structured = result.structuredContent;
+  return out;
+}
+
+/** What a tool returned as data: its structured result, else its text, as JSON when it is. */
+function toolData(result: { text: string; structured?: unknown }): unknown {
+  if (result.structured !== undefined) return result.structured;
+  try {
+    return JSON.parse(result.text);
+  } catch {
+    return result.text;
+  }
+}
+
+/**
+ * The tools an OpenUI program's Query and Mutation call, for a session. A mutation is something
+ * the user did, so it is recorded like a button that runs a tool; a query is a read and is not.
+ */
+export function openUiTools(parts: Pick<Parts, "store" | "gateway">, session: string): CallTool {
+  return async (name, args, kind) => {
+    if (kind === "mutation") {
+      const result = await runAppTool(parts, session, name, args);
+      if (result.isError) throw new Error(result.text);
+      return toolData(result);
+    }
+    const result = await parts.gateway.call("tools_call", { name, args });
+    const lines: string[] = [];
+    for (const c of result.content) if (c.type === "text") lines.push(c.text);
+    const text = lines.join("\n");
+    if (result.isError) throw new Error(text);
+    return toolData({ text, structured: result.structuredContent });
+  };
+}
+
+/** The line that tells the agent what a button of an OpenUI doc sends. */
+function openUiInput(sent: AssistantMessage): string {
+  const lines = [`[ui action] The user pressed "${sent.label}" in an OpenUI doc: ${sent.message}`];
+  if (sent.values) {
+    const where = sent.form === undefined ? "state" : `form ${sent.form}`;
+    lines.push(`${where}: ${JSON.stringify(sent.values)}`);
+  }
+  if (sent.context !== undefined) lines.push(`context: ${JSON.stringify(sent.context)}`);
+  return lines.join("\n");
 }
 
 function findLabel(component: Component, action: string): string | undefined {
@@ -56,6 +140,10 @@ export class ActionRunner {
       this.parts.asker.answer(session, kind, id, option, from, added);
       return;
     }
+    if (action === "openui.input" || action === "openui.press") {
+      await this.openUi(session, ref, action, args, from);
+      return;
+    }
     if (action === "suite.cancel_agent") {
       const fields: Record<string, unknown> = Object.assign({}, args);
       const { id } = fields;
@@ -67,37 +155,16 @@ export class ActionRunner {
       }
       return;
     }
-    const { store, connectors, gateway, sessions, views } = this.parts;
+    const { connectors, sessions, views } = this.parts;
     const dot = action.indexOf(".");
     const app = action.slice(0, dot);
     const tool = action.slice(dot + 1);
     const known = dot > 0 && connectors.connector(app)?.tools.some((t) => t.name === tool) === true;
 
     if (known && connectors.isOpen(app)) {
-      const toolCallId = `ui-${crypto.randomUUID()}`;
       const callArgs: Record<string, unknown> = {};
       if (typeof args === "object" && args !== null) Object.assign(callArgs, args);
-      store.append(session, {
-        type: "tool_call",
-        toolCallId,
-        tool: action,
-        title: action,
-        kind: "other",
-        status: "in_progress",
-        rawInput: callArgs,
-      });
-      const result = await gateway.call("tools_call", { name: action, args: callArgs });
-      const lines: string[] = [];
-      for (const c of result.content) if (c.type === "text") lines.push(c.text);
-      const text = lines.join("\n");
-      const update: Parameters<SessionStore["append"]>[1] = {
-        type: "tool_call_update",
-        toolCallId,
-        status: result.isError ? "failed" : "completed",
-        content: [{ type: "text", text }],
-      };
-      if (result.structuredContent !== undefined) update.rawOutput = result.structuredContent;
-      store.append(session, update);
+      await runAppTool(this.parts, session, action, callArgs);
       return;
     }
 
@@ -113,5 +180,35 @@ export class ActionRunner {
       from,
       `[ui action] The user pressed ${pressed} (${action} ${JSON.stringify(args ?? {})}) in an earlier result; ${why}.`,
     );
+  }
+
+  /**
+   * openui.input {doc, key, value} and openui.press {doc, key}. Actions on a doc that is still
+   * streaming, or on a node it no longer has, change nothing.
+   */
+  private async openUi(
+    session: string,
+    ref: string,
+    action: string,
+    args: unknown,
+    from: string,
+  ): Promise<void> {
+    const fields: Record<string, unknown> = Object.assign({}, args);
+    const { doc, key, value } = fields;
+    if (typeof doc !== "string" || typeof key !== "string") {
+      throw new BadRequestError(`${action} needs args {doc, key}`);
+    }
+    const found = this.parts.views.openUi(session, ref, doc);
+    if (!found) throw new BadRequestError(`${ref} has no OpenUI doc ${doc}`);
+    const { program, view } = found;
+    if (action === "openui.input") {
+      if (program.input(key, value)) view.changed(ref);
+      return;
+    }
+    const result = await program.press(key);
+    view.changed(ref);
+    for (const sent of result.assistant) {
+      this.parts.sessions.input(session, from, openUiInput(sent));
+    }
   }
 }

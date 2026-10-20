@@ -49,8 +49,11 @@ pub enum Envelope {
     ViewPatchMessage(ViewPatchMessage),
     ThemeMessage(ThemeMessage),
     UiActionMessage(UiActionMessage),
+    SecretRequestMessage(SecretRequestMessage),
+    SecretAnswerMessage(SecretAnswerMessage),
     AssetPutMessage(AssetPutMessage),
     AssetGetMessage(AssetGetMessage),
+    AssetFetchMessage(AssetFetchMessage),
     AssetInfoMessage(AssetInfoMessage),
     FileChangedMessage(FileChangedMessage),
     AppContextMessage(AppContextMessage),
@@ -173,12 +176,24 @@ impl Serialize for Envelope {
                 "ui.action",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            Envelope::SecretRequestMessage(v) => (
+                "secret.request",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::SecretAnswerMessage(v) => (
+                "secret.answer",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             Envelope::AssetPutMessage(v) => (
                 "asset.put",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
             Envelope::AssetGetMessage(v) => (
                 "asset.get",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::AssetFetchMessage(v) => (
+                "asset.fetch",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
             Envelope::AssetInfoMessage(v) => (
@@ -295,11 +310,20 @@ impl<'de> Deserialize<'de> for Envelope {
             "ui.action" => serde_json::from_value(value)
                 .map(Envelope::UiActionMessage)
                 .map_err(D::Error::custom),
+            "secret.request" => serde_json::from_value(value)
+                .map(Envelope::SecretRequestMessage)
+                .map_err(D::Error::custom),
+            "secret.answer" => serde_json::from_value(value)
+                .map(Envelope::SecretAnswerMessage)
+                .map_err(D::Error::custom),
             "asset.put" => serde_json::from_value(value)
                 .map(Envelope::AssetPutMessage)
                 .map_err(D::Error::custom),
             "asset.get" => serde_json::from_value(value)
                 .map(Envelope::AssetGetMessage)
+                .map_err(D::Error::custom),
+            "asset.fetch" => serde_json::from_value(value)
+                .map(Envelope::AssetFetchMessage)
                 .map_err(D::Error::custom),
             "asset.info" => serde_json::from_value(value)
                 .map(Envelope::AssetInfoMessage)
@@ -486,6 +510,18 @@ impl From<UiActionMessage> for Envelope {
     }
 }
 
+impl From<SecretRequestMessage> for Envelope {
+    fn from(v: SecretRequestMessage) -> Self {
+        Envelope::SecretRequestMessage(v)
+    }
+}
+
+impl From<SecretAnswerMessage> for Envelope {
+    fn from(v: SecretAnswerMessage) -> Self {
+        Envelope::SecretAnswerMessage(v)
+    }
+}
+
 impl From<AssetPutMessage> for Envelope {
     fn from(v: AssetPutMessage) -> Self {
         Envelope::AssetPutMessage(v)
@@ -495,6 +531,12 @@ impl From<AssetPutMessage> for Envelope {
 impl From<AssetGetMessage> for Envelope {
     fn from(v: AssetGetMessage) -> Self {
         Envelope::AssetGetMessage(v)
+    }
+}
+
+impl From<AssetFetchMessage> for Envelope {
+    fn from(v: AssetFetchMessage) -> Self {
+        Envelope::AssetFetchMessage(v)
     }
 }
 
@@ -1005,6 +1047,51 @@ pub struct UiAction {
     pub args: Option<serde_json::Value>,
 }
 
+/// Daemon → only the client whose command asked: a question whose answer is a secret (an API key, a login code). Never a session event and never stored or logged. Answered with secret.answer.
+/// Tagged `topic: "secret.request"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecretRequestMessage {
+    #[serde(rename = "payload")]
+    pub payload: SecretRequest,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecretRequest {
+    /// Echoed by secret.answer.
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "session")]
+    pub session: String,
+    /// What is asked for, e.g. DeepSeek API key.
+    #[serde(rename = "title")]
+    pub title: String,
+    /// Hint shown in the empty field, e.g. sk-…
+    #[serde(
+        rename = "placeholder",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub placeholder: Option<String>,
+}
+
+/// Client → daemon: the answer to a secret.request, from the client that was asked (any other gets bus.error bad_request). The value is never stored or logged, not even in errors. Without a value the question was cancelled.
+/// Tagged `topic: "secret.answer"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecretAnswerMessage {
+    #[serde(rename = "payload")]
+    pub payload: SecretAnswer,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecretAnswer {
+    /// The secret.request's id; an unknown one gets bus.error not_found.
+    #[serde(rename = "id")]
+    pub id: String,
+    /// What the user typed. Absent: cancelled.
+    #[serde(rename = "value", default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+}
+
 /// Client → daemon: store a file or bytes in the asset store. Replied to with asset.info. Identical content gets the same handle.
 /// Tagged `topic: "asset.put"` inside [`Envelope`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1049,7 +1136,24 @@ pub struct AssetRef {
     pub handle: String,
 }
 
-/// Daemon → client: reply to asset.put / asset.get.
+/// Client → daemon: download an image from the web into the asset store, so a client can show a remote picture. Replied to with asset.info; the same URL is downloaded once. bus.error bad_request when it isn't a public http(s) image.
+/// Tagged `topic: "asset.fetch"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AssetFetchMessage {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: AssetUrl,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AssetUrl {
+    /// An http:// or https:// URL.
+    #[serde(rename = "url")]
+    pub url: String,
+}
+
+/// Daemon → client: reply to asset.put / asset.get / asset.fetch.
 /// Tagged `topic: "asset.info"` inside [`Envelope`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssetInfoMessage {
@@ -1266,8 +1370,10 @@ pub enum SessionEvent {
     Usage(Usage),
     EditsReverted(EditsReverted),
     UserNote(UserNote),
+    Notice(Notice),
     SubagentStarted(SubagentStarted),
     SubagentEnded(SubagentEnded),
+    AgentMessage(AgentMessage),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -1352,12 +1458,19 @@ impl Serialize for SessionEvent {
                 "user_note",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            SessionEvent::Notice(v) => {
+                ("notice", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
             SessionEvent::SubagentStarted(v) => (
                 "subagent_started",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
             SessionEvent::SubagentEnded(v) => (
                 "subagent_ended",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            SessionEvent::AgentMessage(v) => (
+                "agent_message",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
             SessionEvent::Unknown(v) => return v.serialize(serializer),
@@ -1437,11 +1550,17 @@ impl<'de> Deserialize<'de> for SessionEvent {
             "user_note" => serde_json::from_value(value)
                 .map(SessionEvent::UserNote)
                 .map_err(D::Error::custom),
+            "notice" => serde_json::from_value(value)
+                .map(SessionEvent::Notice)
+                .map_err(D::Error::custom),
             "subagent_started" => serde_json::from_value(value)
                 .map(SessionEvent::SubagentStarted)
                 .map_err(D::Error::custom),
             "subagent_ended" => serde_json::from_value(value)
                 .map(SessionEvent::SubagentEnded)
+                .map_err(D::Error::custom),
+            "agent_message" => serde_json::from_value(value)
+                .map(SessionEvent::AgentMessage)
                 .map_err(D::Error::custom),
             _ => Ok(SessionEvent::Unknown(value)),
         }
@@ -1574,6 +1693,12 @@ impl From<UserNote> for SessionEvent {
     }
 }
 
+impl From<Notice> for SessionEvent {
+    fn from(v: Notice) -> Self {
+        SessionEvent::Notice(v)
+    }
+}
+
 impl From<SubagentStarted> for SessionEvent {
     fn from(v: SubagentStarted) -> Self {
         SessionEvent::SubagentStarted(v)
@@ -1583,6 +1708,12 @@ impl From<SubagentStarted> for SessionEvent {
 impl From<SubagentEnded> for SessionEvent {
     fn from(v: SubagentEnded) -> Self {
         SessionEvent::SubagentEnded(v)
+    }
+}
+
+impl From<AgentMessage> for SessionEvent {
+    fn from(v: AgentMessage) -> Self {
+        SessionEvent::AgentMessage(v)
     }
 }
 
@@ -1784,7 +1915,7 @@ pub struct TextContent {
     pub text: String,
 }
 
-/// An image a tool returned (pi's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log.
+/// An image a tool returned (neo's read of a picture, an adapter's image block), for views to show. src is a file path or an asset:// handle; the bytes stay out of the log.
 /// Tagged `type: "image"` inside [`ToolCallContent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ImageContent {
@@ -1896,7 +2027,7 @@ pub struct FocusChanged {
 /// Tagged `type: "harness_message"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HarnessMessage {
-    /// Which harness wrote it, e.g. pi.
+    /// Which harness wrote it, e.g. neo.
     #[serde(rename = "harness")]
     pub harness: String,
     /// Opaque to everyone but that harness.
@@ -2021,13 +2152,32 @@ pub struct UserNote {
     pub about: Option<String>,
 }
 
+/// A line for the user in the chat, from the daemon: the outcome of /login, /logout and /accounts, a login URL to open. Never a secret. Not a context event: the agent doesn't see it.
+/// Tagged `type: "notice"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Notice {
+    #[serde(rename = "text")]
+    pub text: String,
+    #[serde(rename = "tone", default, skip_serializing_if = "Option::is_none")]
+    pub tone: Option<NoticeTone>,
+}
+
+/// muted unless set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NoticeTone {
+    #[serde(rename = "muted")]
+    Muted,
+    #[serde(rename = "danger")]
+    Danger,
+}
+
 /// The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event.
 /// Tagged `type: "subagent_started"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SubagentStarted {
     #[serde(rename = "id")]
     pub id: String,
-    /// Harness name: pi, claude, codex…
+    /// Harness name: neo, claude, codex…
     #[serde(rename = "agent")]
     pub agent: String,
     #[serde(rename = "task")]
@@ -2043,6 +2193,13 @@ pub struct SubagentStarted {
     /// A subagent working in another directory runs as its own session (parent = this one); its id.
     #[serde(rename = "child", default, skip_serializing_if = "Option::is_none")]
     pub child: Option<String>,
+    /// The delegate call returned at once and the subagent outlives the turn: a turn's end does not close it, and its final reply reaches the main agent as an agent_message.
+    #[serde(
+        rename = "background",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub background: Option<bool>,
 }
 
 /// The subagent started by subagent_started finished, failed or was stopped.
@@ -2055,6 +2212,27 @@ pub struct SubagentEnded {
     pub stop_reason: StopReason,
     #[serde(rename = "error", default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+/// One agent told another something with send_message, or a background subagent's final reply (`reply`). `from` and `to` are `main` (the session's own agent) or a subagent's id (the one in subagent_started). Not a context event: the daemon delivers it to the recipient itself (appended to its next tool result, or as the turn an idle agent starts).
+/// Tagged `type: "agent_message"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentMessage {
+    #[serde(rename = "from")]
+    pub from: String,
+    #[serde(rename = "to")]
+    pub to: String,
+    /// Harness name of the sender, when it is a subagent.
+    #[serde(rename = "fromAgent", default, skip_serializing_if = "Option::is_none")]
+    pub from_agent: Option<String>,
+    /// Harness name of the recipient, when it is a subagent.
+    #[serde(rename = "toAgent", default, skip_serializing_if = "Option::is_none")]
+    pub to_agent: Option<String>,
+    #[serde(rename = "text")]
+    pub text: String,
+    /// The sender's final reply: a background subagent finished and this is what it gives back.
+    #[serde(rename = "reply", default, skip_serializing_if = "Option::is_none")]
+    pub reply: Option<bool>,
 }
 
 /// One labelled fact of a permission request, drawn as a highlighted key–value row above the content.
@@ -2134,11 +2312,11 @@ pub enum PermissionOptionKind {
     RejectAlways,
 }
 
-/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value pi, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness "suite", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for the suite's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session.
+/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness "suite", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for the suite's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session.
 /// Tagged `type: "setting_changed"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SettingChanged {
-    /// pi, claude, codex…
+    /// neo, claude, codex…
     #[serde(rename = "harness")]
     pub harness: String,
     #[serde(rename = "option")]
@@ -2306,6 +2484,7 @@ pub enum Component {
     ProgressComponent(ProgressComponent),
     ButtonComponent(ButtonComponent),
     LinkComponent(LinkComponent),
+    OpenUiComponent(OpenUiComponent),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -2350,6 +2529,9 @@ impl Serialize for Component {
             }
             Component::LinkComponent(v) => {
                 ("link", serde_json::to_value(v).map_err(S::Error::custom)?)
+            }
+            Component::OpenUiComponent(v) => {
+                ("openui", serde_json::to_value(v).map_err(S::Error::custom)?)
             }
             Component::Unknown(v) => return v.serialize(serializer),
         };
@@ -2403,6 +2585,9 @@ impl<'de> Deserialize<'de> for Component {
                 .map_err(D::Error::custom),
             "link" => serde_json::from_value(value)
                 .map(Component::LinkComponent)
+                .map_err(D::Error::custom),
+            "openui" => serde_json::from_value(value)
+                .map(Component::OpenUiComponent)
                 .map_err(D::Error::custom),
             _ => Ok(Component::Unknown(value)),
         }
@@ -2484,6 +2669,12 @@ impl From<ButtonComponent> for Component {
 impl From<LinkComponent> for Component {
     fn from(v: LinkComponent) -> Self {
         Component::LinkComponent(v)
+    }
+}
+
+impl From<OpenUiComponent> for Component {
+    fn from(v: OpenUiComponent) -> Self {
+        Component::OpenUiComponent(v)
     }
 }
 
@@ -2708,6 +2899,14 @@ pub struct LinkComponent {
     pub text: Option<String>,
 }
 
+/// A UI written in OpenUI Lang (an app's template or a Query result), parsed and evaluated by the daemon (docs/openui.md). Renderers draw the evaluated tree.
+/// Tagged `type: "openui"` inside [`Component`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OpenUiComponent {
+    #[serde(rename = "ui")]
+    pub ui: UiDoc,
+}
+
 /// A block of parsed markdown.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
@@ -2717,6 +2916,8 @@ pub enum Block {
     CodeBlock(CodeBlock),
     QuoteBlock(QuoteBlock),
     RuleBlock(RuleBlock),
+    TableBlock(TableBlock),
+    OpenUiBlock(OpenUiBlock),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -2739,6 +2940,11 @@ impl Serialize for Block {
             ),
             Block::QuoteBlock(v) => ("quote", serde_json::to_value(v).map_err(S::Error::custom)?),
             Block::RuleBlock(v) => ("rule", serde_json::to_value(v).map_err(S::Error::custom)?),
+            Block::TableBlock(v) => (
+                "table_block",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Block::OpenUiBlock(v) => ("openui", serde_json::to_value(v).map_err(S::Error::custom)?),
             Block::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -2770,6 +2976,12 @@ impl<'de> Deserialize<'de> for Block {
                 .map_err(D::Error::custom),
             "rule" => serde_json::from_value(value)
                 .map(Block::RuleBlock)
+                .map_err(D::Error::custom),
+            "table_block" => serde_json::from_value(value)
+                .map(Block::TableBlock)
+                .map_err(D::Error::custom),
+            "openui" => serde_json::from_value(value)
+                .map(Block::OpenUiBlock)
                 .map_err(D::Error::custom),
             _ => Ok(Block::Unknown(value)),
         }
@@ -2809,6 +3021,18 @@ impl From<QuoteBlock> for Block {
 impl From<RuleBlock> for Block {
     fn from(v: RuleBlock) -> Self {
         Block::RuleBlock(v)
+    }
+}
+
+impl From<TableBlock> for Block {
+    fn from(v: TableBlock) -> Self {
+        Block::TableBlock(v)
+    }
+}
+
+impl From<OpenUiBlock> for Block {
+    fn from(v: OpenUiBlock) -> Self {
+        Block::OpenUiBlock(v)
     }
 }
 
@@ -2868,6 +3092,89 @@ pub struct QuoteBlock {
 /// Tagged `type: "rule"` inside [`Block`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuleBlock {}
+
+/// A markdown table. Renderers that can't draw a grid show the cells as aligned monospace text.
+/// Tagged `type: "table_block"` inside [`Block`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TableBlock {
+    #[serde(rename = "header")]
+    pub header: Vec<TableCell>,
+    #[serde(rename = "rows")]
+    pub rows: Vec<Vec<TableCell>>,
+    /// Per column, as the separator row says; a column without one is left-aligned.
+    #[serde(rename = "align", default, skip_serializing_if = "Option::is_none")]
+    pub align: Option<Vec<ColumnAlign>>,
+}
+
+/// An ```openui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/openui.md). Streams like any block.
+/// Tagged `type: "openui"` inside [`Block`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OpenUiBlock {
+    #[serde(rename = "ui")]
+    pub ui: UiDoc,
+}
+
+/// One evaluated OpenUI program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UiDoc {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "root", default, skip_serializing_if = "Option::is_none")]
+    pub root: Option<UiNode>,
+    /// The program is still arriving: draw it, but inputs and buttons can't be used yet.
+    #[serde(rename = "streaming", default, skip_serializing_if = "Option::is_none")]
+    pub streaming: Option<bool>,
+    #[serde(rename = "errors", default, skip_serializing_if = "Option::is_none")]
+    pub errors: Option<Vec<UiError>>,
+}
+
+/// An evaluated component of the suite OpenUI library (docs/openui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UiNode {
+    /// Library component name, e.g. Card, Input, BarChart.
+    #[serde(rename = "component")]
+    pub component: String,
+    /// Set on interactive nodes (inputs, buttons): stable within the doc, names the node in openui.input / openui.press.
+    #[serde(rename = "key", default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// Still streaming in.
+    #[serde(rename = "partial", default, skip_serializing_if = "Option::is_none")]
+    pub partial: Option<bool>,
+    /// Props by name.
+    #[serde(rename = "props")]
+    pub props: BTreeMap<String, serde_json::Value>,
+}
+
+/// A problem the parser or evaluator reported; the broken piece is left out of the tree.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UiError {
+    #[serde(rename = "code")]
+    pub code: String,
+    #[serde(rename = "message")]
+    pub message: String,
+    #[serde(
+        rename = "statementId",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub statement_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TableCell {
+    #[serde(rename = "spans")]
+    pub spans: Vec<Span>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ColumnAlign {
+    #[serde(rename = "left")]
+    Left,
+    #[serde(rename = "center")]
+    Center,
+    #[serde(rename = "right")]
+    Right,
+}
 
 /// A run of inline text with uniform style.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

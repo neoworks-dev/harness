@@ -141,15 +141,18 @@ fn tool_diffs_become_tagged_files_and_sidebar_wants_width() {
     assert!(w.branch().is_none());
     assert!(w.wants_sidebar(100));
     assert!(!w.wants_sidebar(99));
-    let out = sidebar(&w, 40, 8, Some(Panel::Files));
+    let out = sidebar(&w, 40, 9, Some(Panel::Files));
     let expected = "\
 │ Files
-│ M src/a.ts (agent)
-│ A docs/new.md (claude)
-│ M /elsewhere/x.txt (claude)
+│ ▾ /elsewhere/
+│   M x.txt (claude)
+│ ▾ docs/
+│   A new.md (claude)
+│ ▾ src/
+│   M a.ts (agent)
 │ M b.rs (agent)";
     assert_eq!(
-        out.lines().take(5).collect::<Vec<_>>().join("\n"),
+        out.lines().take(8).collect::<Vec<_>>().join("\n"),
         expected,
         "{out}"
     );
@@ -187,12 +190,13 @@ fn sidebar_snapshot_plan_above_files() {
 │
 │ Files
 │ main ↑1
-│ M src/a.ts (agent)
-│ A src/b.ts
-│ D old.txt
+│ ▾ src/
+│   M a.ts (agent)
+│   A b.ts
+│ U lock.json
 │ ? notes.md
-│ U lock.json";
-    assert_eq!(sidebar(&w, 26, 16, None), expected);
+│ D old.txt";
+    assert_eq!(sidebar(&w, 26, 17, None), expected);
     // Squeezed: the plan keeps its in-progress entry, the files are capped.
     let squeezed = "\
 │ Plan
@@ -203,10 +207,10 @@ fn sidebar_snapshot_plan_above_files() {
 │
 │ Files
 │ main ↑1
-│ M src/a.ts (agent)
-│ A src/b.ts
-│ D old.txt
-│ … 2 more";
+│ ▾ src/
+│   M a.ts (agent)
+│   A b.ts
+│ … 3 more";
     assert_eq!(sidebar(&w, 26, 12, None), squeezed);
 }
 
@@ -298,16 +302,16 @@ fn overlay_takes_keys_until_closed() {
     };
     assert_eq!(
         draw(&w),
-        "a.rs  +20 −0   lines 1–5 of 21\n@@ -1 +1 @@\n+l0\n+l1\n+l2\n+l3"
+        "a.rs  +20 −0   lines 1–5 of 21\n    @@ -1 +1 @@\n  1 +l0\n  2 +l1\n  3 +l2\n  4 +l3"
     );
     // Whatever panel is focused, the overlay gets the keys.
     assert_eq!(
         w.handle_key(Panel::Plan, key(KeyCode::Char('j'))),
         WidgetAction::Redraw
     );
-    assert!(draw(&w).contains("+l0\n+l1\n+l2\n+l3\n+l4"));
+    assert!(draw(&w).contains("  1 +l0\n  2 +l1\n  3 +l2\n  4 +l3\n  5 +l4"));
     w.handle_key(Panel::Files, key(KeyCode::Char('G')));
-    assert!(draw(&w).ends_with("+l19"));
+    assert!(draw(&w).ends_with(" 20 +l19"));
     assert_eq!(
         w.handle_key(Panel::Files, key(KeyCode::Esc)),
         WidgetAction::Redraw
@@ -440,8 +444,10 @@ fn real_git_end_to_end() {
     );
     assert!(w.wants_sidebar(120));
 
-    // The diff of the modified file.
+    // The tree: src/ and its file, then the files at the top. The modified file, whole with
+    // its change marked.
     w.handle_key(Panel::Files, key(KeyCode::Char('j')));
+    assert_eq!(w.files.selected().unwrap().rel, "src/a.txt");
     assert_eq!(
         w.handle_key(Panel::Files, key(KeyCode::Enter)),
         WidgetAction::Redraw
@@ -453,11 +459,16 @@ fn real_git_end_to_end() {
     let d = w.diff.as_ref().unwrap();
     assert_eq!(d.counts(), (1, 1));
     assert!(d.lines().iter().any(|l| l.text == "+changed"));
+    assert!(
+        d.lines().iter().any(|l| l.text == " one"),
+        "the rest of the file"
+    );
     w.handle_key(Panel::Files, key(KeyCode::Esc));
     assert!(!w.overlay_open());
 
     // The untracked file shows whole.
-    w.handle_key(Panel::Files, key(KeyCode::Char('j')));
+    w.handle_key(Panel::Files, key(KeyCode::Char('G')));
+    assert_eq!(w.files.selected().unwrap().rel, "new.txt");
     w.handle_key(Panel::Files, key(KeyCode::Enter));
     wait_until(&mut w, "the untracked diff", |w| {
         w.diff.as_ref().is_some_and(DiffView::is_loaded)
@@ -474,7 +485,9 @@ fn real_git_end_to_end() {
     });
     let rels: Vec<_> = sub.files.entries().iter().map(|e| e.rel.as_str()).collect();
     assert_eq!(rels, ["../gone.txt", "a.txt", "../new.txt"]);
-    sub.handle_key(Panel::Files, key(KeyCode::Char('j')));
+    // ../ with the two files outside, then a.txt.
+    sub.handle_key(Panel::Files, key(KeyCode::Char('G')));
+    assert_eq!(sub.files.selected().unwrap().rel, "a.txt");
     sub.handle_key(Panel::Files, key(KeyCode::Enter));
     wait_until(&mut sub, "the sub diff", |w| {
         w.diff.as_ref().is_some_and(DiffView::is_loaded)

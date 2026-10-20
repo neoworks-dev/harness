@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createReadTool } from "../src/tools/read.ts";
+import { tagLines } from "../src/tools/hashline.ts";
 import { createWriteTool } from "../src/tools/write.ts";
 import { errorMessage, resultText, tempDir } from "./helpers.ts";
 
@@ -13,8 +14,10 @@ test("read returns the file text and resolves relative paths against the cwd", a
   const cwd = await tempDir();
   await writeFile(join(cwd, "a.txt"), "one\ntwo\n");
   const read = createReadTool(cwd);
-  expect(resultText(await read.execute("t", { path: "a.txt" }))).toBe("one\ntwo");
-  expect(resultText(await read.execute("t", { path: join(cwd, "a.txt") }))).toBe("one\ntwo");
+  const tagged = tagLines(["one", "two"]).join("\n");
+  expect(tagged).toMatch(/^1:[0-9a-z]{2}\|one\n2:[0-9a-z]{2}\|two$/);
+  expect(resultText(await read.execute("t", { path: "a.txt" }))).toBe(tagged);
+  expect(resultText(await read.execute("t", { path: join(cwd, "a.txt") }))).toBe(tagged);
 });
 
 test("read honours offset and limit and says how to continue", async () => {
@@ -22,11 +25,12 @@ test("read honours offset and limit and says how to continue", async () => {
   await writeFile(join(cwd, "f"), lines(10));
   const read = createReadTool(cwd);
   const text = resultText(await read.execute("t", { path: "f", offset: 3, limit: 2 }));
-  expect(text).toStartWith("line 3\nline 4\n");
+  // Numbered from the offset.
+  expect(text).toStartWith(`${tagLines(["line 3", "line 4"], 3).join("\n")}\n`);
   expect(text).toContain("Showing lines 3-4 of 10");
   expect(text).toContain("offset=5");
   const rest = resultText(await read.execute("t", { path: "f", offset: 9 }));
-  expect(rest).toBe("line 9\nline 10");
+  expect(rest).toBe(tagLines(["line 9", "line 10"], 9).join("\n"));
   expect(await errorMessage(read.execute("t", { path: "f", offset: 11 }))).toContain("beyond");
 });
 
@@ -34,8 +38,8 @@ test("read truncates at 2000 lines", async () => {
   const cwd = await tempDir();
   await writeFile(join(cwd, "big"), lines(2500));
   const text = resultText(await createReadTool(cwd).execute("t", { path: "big" }));
-  expect(text).toContain("line 2000\n");
-  expect(text).not.toContain("line 2001\n");
+  expect(text).toContain("|line 2000\n");
+  expect(text).not.toContain("|line 2001\n");
   expect(text).toContain("Use offset=2001 to continue");
 });
 
@@ -51,7 +55,9 @@ test("read truncates at 50KB", async () => {
 test("read strips a BOM and CRLF", async () => {
   const cwd = await tempDir();
   await writeFile(join(cwd, "w"), "﻿a\r\nb\r\n");
-  expect(resultText(await createReadTool(cwd).execute("t", { path: "w" }))).toBe("a\nb");
+  expect(resultText(await createReadTool(cwd).execute("t", { path: "w" }))).toBe(
+    tagLines(["a", "b"]).join("\n"),
+  );
 });
 
 test("read returns images as base64 and rejects other binary files", async () => {

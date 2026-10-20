@@ -27,7 +27,11 @@ export const COMMANDS: readonly Command[] = [
   daemon("resume", "[claude|codex]", "continue an earlier Claude Code / Codex conversation"),
   daemon("claude", "<task>", "give a task to Claude Code", true),
   daemon("codex", "<task>", "give a task to Codex", true),
-  daemon("harness", "[pi|claude|codex]", "switch this session's agent: pi, claude, codex"),
+  daemon(
+    "harness",
+    "[neo|claude|codex]",
+    "switch this session's agent: neo (based on pi), claude, codex",
+  ),
   daemon("title", "", "write this session's title again, with a model"),
   daemon("title-model", "[harness] [model|default]", "show or set the model that writes titles"),
   daemon(
@@ -35,6 +39,10 @@ export const COMMANDS: readonly Command[] = [
     "[ask|review|edits|auto]",
     "ask, review each edit, accept edits, or auto (no value: next)",
   ),
+  daemon("safesearch", "[strict|moderate|off]", "how much adult content web search may return"),
+  daemon("login", "[provider]", "add an API key or an account (ChatGPT, Copilot, Claude Pro/Max)"),
+  daemon("logout", "[provider]", "remove a stored API key or account"),
+  daemon("accounts", "", "list the API keys and accounts in use"),
 ];
 
 /** Whether the text is a command being typed: a slash, and no space or newline yet. */

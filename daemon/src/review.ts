@@ -1,7 +1,7 @@
 // Review of edits that were written without asking (design §9, approvals). In edits mode, after
 // the turn: one card offers to keep them or put the files back (a choice: Keep, Revert all,
 // Revert <file> when there are several files). In review mode, after each edit an ACP harness
-// made (pi's own tools ask themselves, see permissions.ts): a card with the diff and Keep or
+// made (neo's own tools ask themselves, see permissions.ts): a card with the diff and Keep or
 // Revert. Reverting restores each file to what it was before, unless it changed again since,
 // and tells the agent (edits_reverted).
 import { readFile, rm, writeFile } from "node:fs/promises";

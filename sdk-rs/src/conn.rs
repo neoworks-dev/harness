@@ -342,6 +342,7 @@ impl Io {
             Envelope::SessionChangedMessage(message) => {
                 self.emit(Event::SessionChanged(message.payload));
             }
+            Envelope::SecretRequestMessage(message) => self.emit(Event::Secret(message.payload)),
             Envelope::ViewPatchMessage(message) => {
                 let key = (
                     message.payload.session.clone(),
@@ -499,6 +500,7 @@ fn request_id(envelope: &Envelope) -> Option<String> {
         Envelope::AssetPutMessage(m) => Some(m.id.clone()),
         Envelope::AppContextMessage(m) => m.id.clone(),
         Envelope::AssetGetMessage(m) => Some(m.id.clone()),
+        Envelope::AssetFetchMessage(m) => Some(m.id.clone()),
         _ => None,
     }
 }

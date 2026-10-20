@@ -1,0 +1,111 @@
+// How messages between agents are drawn: compact rows in the chat, hidden background work, and
+// the per-agent transcripts.
+import { describe, expect, test } from "bun:test";
+import type { SessionEvent } from "@suite/protocol/types";
+import { silentLogger } from "../src/log.ts";
+import { SessionView } from "../src/view/session-view.ts";
+
+function feed(events: SessionEvent[], agent?: string): SessionView {
+  const view = new SessionView("s", () => undefined, silentLogger, agent);
+  for (const [i, event] of events.entries()) view.apply({ session: "s", seq: i + 1, ts: 0, event });
+  return view;
+}
+
+const started: SessionEvent = {
+  type: "subagent_started",
+  id: "d_1",
+  agent: "claude",
+  task: "fix it",
+  background: true,
+};
+const foreground: SessionEvent = {
+  type: "subagent_started",
+  id: "d_1",
+  agent: "claude",
+  task: "fix it",
+};
+const ask: SessionEvent = {
+  type: "agent_message",
+  from: "d_1",
+  fromAgent: "claude",
+  to: "main",
+  text: "Which database?",
+};
+const answer: SessionEvent = {
+  type: "agent_message",
+  from: "main",
+  to: "d_1",
+  toAgent: "claude",
+  text: "Staging.",
+};
+const reply: SessionEvent = {
+  type: "agent_message",
+  from: "d_1",
+  fromAgent: "claude",
+  to: "main",
+  text: "Done.",
+  reply: true,
+};
+const turnEnd: SessionEvent = { type: "turn_ended", stopReason: "end_turn" };
+const working: SessionEvent = {
+  type: "agent_message_chunk",
+  messageId: "m-1",
+  text: "working",
+  agent: "claude",
+};
+
+describe("in the chat", () => {
+  test("a message is a compact row, labelled by who told whom", () => {
+    const items = feed([started, ask, answer, reply]).snapshot().items;
+    expect(items.map((i) => [i.kind, i.state, i.label])).toEqual([
+      ["tool", "done", "message: claude d_1 → main"],
+      ["tool", "done", "message: main → claude d_1"],
+      ["tool", "done", "reply: claude d_1 → main"],
+    ]);
+    expect(items[0]?.component).toMatchObject({ type: "text" });
+  });
+
+  test("the turn a message starts shows as its row, not as something the user said", () => {
+    const items = feed([
+      ask,
+      { type: "user_message", app: "agents", text: '<message from="d_1">…</message>' },
+      { type: "user_message", app: "cli", text: "thanks" },
+    ]).snapshot().items;
+    expect(items.map((i) => i.kind)).toEqual(["tool", "user"]);
+  });
+
+  test("a background subagent stays hidden past the end of a turn, until it ends", () => {
+    expect(feed([started, turnEnd, working]).snapshot().items).toEqual([]);
+    const ended: SessionEvent = { type: "subagent_ended", id: "d_1", stopReason: "end_turn" };
+    expect(
+      feed([started, turnEnd, ended, working])
+        .snapshot()
+        .items.map((i) => i.kind),
+    ).toEqual(["agent"]);
+  });
+
+  test("one the agent waited for is closed by the turn's end, as before", () => {
+    const items = feed([foreground, turnEnd, working]).snapshot().items;
+    expect(items.map((i) => i.kind)).toEqual(["agent"]);
+  });
+});
+
+describe("in an agent's transcript", () => {
+  test("what was written to it is input like its task; what it sent is a row", () => {
+    const items = feed([started, answer, ask], "claude").snapshot().items;
+    expect(items.map((i) => [i.kind, i.label])).toEqual([
+      ["user", "task"],
+      ["user", "from main"],
+      ["tool", "message: claude d_1 → main"],
+    ]);
+  });
+
+  test("its final reply is not repeated; another agent's messages are not here", () => {
+    expect(
+      feed([started, reply], "claude")
+        .snapshot()
+        .items.map((i) => i.label),
+    ).toEqual(["task"]);
+    expect(feed([started, answer], "neo").snapshot().items).toEqual([]);
+  });
+});

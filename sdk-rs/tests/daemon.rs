@@ -200,12 +200,12 @@ fn a_view_of_one_agents_work_is_told_apart_from_the_sessions() {
         .id;
 
     let main = client.subscribe_view(&session).expect("session view");
-    let pi = client
-        .subscribe_agent_view(&session, "pi")
+    let neo = client
+        .subscribe_agent_view(&session, "neo")
         .expect("agent view");
     assert_eq!(
-        (main.agent.as_deref(), pi.agent.as_deref()),
-        (None, Some("pi"))
+        (main.agent.as_deref(), neo.agent.as_deref()),
+        (None, Some("neo"))
     );
     // Both snapshots also arrive as events, each with its own agent.
     let mut agents = Vec::new();
@@ -215,9 +215,9 @@ fn a_view_of_one_agents_work_is_told_apart_from_the_sessions() {
             _ => None,
         }));
     }
-    assert_eq!(agents, [None, Some("pi".to_string())]);
+    assert_eq!(agents, [None, Some("neo".to_string())]);
 
-    // The echo agent's reply is in the session's view; pi did nothing, so its view stays empty.
+    // The echo agent's reply is in the session's view; neo did nothing, so its view stays empty.
     client
         .input(&session, "sdk-test", "hello", &[])
         .expect("input");
@@ -230,7 +230,7 @@ fn a_view_of_one_agents_work_is_told_apart_from_the_sessions() {
         (session.as_str(), None)
     );
     client
-        .unsubscribe_agent_view(&session, "pi")
+        .unsubscribe_agent_view(&session, "neo")
         .expect("unsubscribe");
 }
 
@@ -314,6 +314,12 @@ fn assets_and_file_changes() {
         browser.get_asset("asset://img-ffffffffffff"),
         Err(suite_sdk::Error::Daemon(_))
     ));
+    // Only public web images are downloaded.
+    let refused = browser.fetch_asset("http://127.0.0.1:1/a.png");
+    assert!(
+        matches!(refused, Err(suite_sdk::Error::Daemon(_))),
+        "{refused:?}"
+    );
 
     editor.file_changed("/site/src/Header.tsx").expect("send");
     let changed = wait_for(&events, "file.changed", |e| match e {

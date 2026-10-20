@@ -12,7 +12,7 @@ export type AgentState = "running" | "done" | "failed" | "stopped";
 
 export interface AgentRow {
   id: string;
-  /** Harness name: pi, claude, codex… */
+  /** Harness name: neo, claude, codex… */
   harness: string;
   model?: string;
   task: string;
@@ -20,6 +20,8 @@ export interface AgentRow {
   cwd?: string;
   /** The session it runs as, when it works in a directory of its own. */
   child?: string;
+  /** Started with `background`: it keeps running when the turn that started it ends. */
+  background?: boolean;
   state: AgentState;
   startedMs: number;
   endedMs?: number;
@@ -79,6 +81,7 @@ export function applyAgentEvent(
       if (event.model !== undefined) row.model = event.model;
       if (event.cwd !== undefined) row.cwd = event.cwd;
       if (event.child !== undefined) row.child = event.child;
+      if (event.background === true) row.background = true;
       return [...rows, row];
     }
     case "subagent_ended": {
@@ -88,14 +91,23 @@ export function applyAgentEvent(
         row.id === event.id ? { ...row, state, endedMs: record.ts, activity } : row,
       );
     }
-    // A delegation lives inside a turn: when the turn is over nothing still runs.
+    // A delegation lives inside a turn: when the turn is over nothing still runs, but for the ones
+    // that were started in the background.
     case "turn_ended":
-      if (!rows.some((row) => row.state === "running")) return rows;
+      if (!rows.some((row) => row.state === "running" && row.background !== true)) return rows;
       return rows.map((row) =>
-        row.state === "running"
+        row.state === "running" && row.background !== true
           ? { ...row, state: "failed", endedMs: record.ts, activity: "interrupted" }
           : row,
       );
+    // A message to or from a running subagent is what it does now.
+    case "agent_message":
+      return rows.map((row) => {
+        if (row.state !== "running") return row;
+        if (row.id === event.to) return { ...row, activity: `← ${event.from}` };
+        if (row.id === event.from) return { ...row, activity: `→ ${event.to}` };
+        return row;
+      });
     case "tool_call":
       return note(rows, event.agent, { activity: event.title });
     case "agent_thought_chunk":

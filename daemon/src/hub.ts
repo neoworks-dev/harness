@@ -37,10 +37,23 @@ export interface HubParts {
   assets?: AssetStore;
   /** Runs a ui.action; rejects with NotFoundError/BadRequestError for impossible ones. */
   action?: (action: UiAction, from: string) => Promise<void>;
-  /** A command typed as input (/model…): its work, or undefined when the text isn't one. */
-  command?: (session: string, text: string) => Promise<void> | undefined;
+  /**
+   * A command typed as input (/model…): its work, or undefined when the text isn't one. The
+   * context is bound to the client that typed it.
+   */
+  command?: (session: string, text: string, context: CommandContext) => Promise<void> | undefined;
   /** The harnesses a session can switch to with their options (session.settings). */
   settings?: (session: string, known?: boolean) => Promise<HarnessSettings[]>;
+}
+
+/** What a command can do with the client that ran it. */
+export interface CommandContext {
+  /**
+   * Asks that client for a secret (an API key, a login code). The question and the answer travel
+   * over the bus to it alone and are never stored or logged. undefined: cancelled, the client
+   * went away, or the signal aborted.
+   */
+  askSecret(title: string, placeholder?: string, signal?: AbortSignal): Promise<string | undefined>;
 }
 
 export interface DaemonInfo {
@@ -49,11 +62,18 @@ export interface DaemonInfo {
   startedAt: number;
 }
 
-interface Client {
+/** One connected client. Opaque outside the hub: handed to askSecret by whoever got it from a command. */
+export interface Client {
   transport: Transport;
   name?: string;
   subscriptions: Set<string>;
   views: Set<string>;
+}
+
+interface PendingSecret {
+  client: Client;
+  /** undefined: cancelled. */
+  resolve: (value: string | undefined) => void;
 }
 
 /** Best-effort id of an invalid frame, so the error can still be correlated. */
@@ -68,6 +88,9 @@ const SESSION_CHANGE_MS = 250;
 export class Hub {
   private readonly clients = new Set<Client>();
   private readonly pendingChanges = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Open secret questions by id. Kept only here: never in the store, never in a log. */
+  private readonly secrets = new Map<string, PendingSecret>();
+  private secretCount = 0;
 
   constructor(
     private readonly store: SessionStore,
@@ -113,6 +136,11 @@ export class Hub {
       receive: (frame) => this.receive(client, frame),
       closed: () => {
         this.clients.delete(client);
+        for (const [id, pending] of this.secrets) {
+          if (pending.client !== client) continue;
+          this.secrets.delete(id);
+          pending.resolve(undefined);
+        }
         void this.parts.connectors?.disconnect(client);
       },
     };
@@ -120,6 +148,41 @@ export class Hub {
 
   get clientCount(): number {
     return this.clients.size;
+  }
+
+  /**
+   * Asks one client for a secret and waits. Sent as secret.request to that client only; nothing
+   * about it reaches the session log or any other client. Resolves with the value, or undefined
+   * when the client answers without one, disconnects, or the signal aborts first (the client is
+   * not told: its field closes with the session or the next question).
+   */
+  askSecret(
+    client: Client,
+    question: { session: string; title: string; placeholder?: string },
+    signal?: AbortSignal,
+  ): Promise<string | undefined> {
+    if (!this.clients.has(client) || signal?.aborted === true) return Promise.resolve(undefined);
+    this.secretCount += 1;
+    const id = `s${this.secretCount}`;
+    return new Promise((resolve) => {
+      const done = (value: string | undefined): void => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve(value);
+      };
+      const onAbort = (): void => {
+        this.secrets.delete(id);
+        done(undefined);
+      };
+      this.secrets.set(id, { client, resolve: done });
+      signal?.addEventListener("abort", onAbort, { once: true });
+      const payload: Extract<Envelope, { topic: "secret.request" }>["payload"] = {
+        id,
+        session: question.session,
+        title: question.title,
+      };
+      if (question.placeholder !== undefined) payload.placeholder = question.placeholder;
+      this.send(client, { topic: "secret.request", payload });
+    });
   }
 
   private broadcast(record: SessionEventRecord): void {
@@ -213,11 +276,15 @@ export class Hub {
     }
   }
 
-  /** Acks a request when the work is done, or fails it with what went wrong. */
-  private settle(client: Client, id: string | undefined, work: Promise<void>): void {
+  /**
+   * Answers a request when the work is done (with the envelope it made, else an ack), or fails
+   * it with what went wrong.
+   */
+  private settle(client: Client, id: string | undefined, work: Promise<Envelope | void>): void {
     work.then(
-      () => {
-        if (id !== undefined) this.send(client, { topic: "bus.ack", id });
+      (reply) => {
+        if (reply) this.send(client, reply);
+        else if (id !== undefined) this.send(client, { topic: "bus.ack", id });
       },
       (err: unknown) => this.failed(client, id, err),
     );
@@ -312,7 +379,13 @@ export class Hub {
       case "session.input": {
         const { session, app, text, images } = msg.payload;
         const { focus } = this.parts;
-        const command = this.parts.command?.(session, text);
+        const command = this.parts.command?.(session, text, {
+          askSecret: (title, placeholder, signal) => {
+            const question: Parameters<Hub["askSecret"]>[1] = { session, title };
+            if (placeholder !== undefined) question.placeholder = placeholder;
+            return this.askSecret(client, question, signal);
+          },
+        });
         if (command) {
           if (!this.sessions.info(session)) throw new NotFoundError(`no session ${session}`);
           this.settle(client, msg.id, command);
@@ -414,6 +487,28 @@ export class Hub {
           payload: this.requireAssets().require(msg.payload.handle),
         });
         return;
+      case "asset.fetch": {
+        const assets = this.requireAssets();
+        const { id } = msg;
+        this.settle(
+          client,
+          id,
+          assets.fetch(msg.payload.url).then((payload) => ({ topic: "asset.info", id, payload })),
+        );
+        return;
+      }
+      case "secret.answer": {
+        // Never log or echo msg.payload.value: not here, not in an error.
+        const { id, value } = msg.payload;
+        const pending = this.secrets.get(id);
+        if (!pending) throw new NotFoundError(`no open secret question ${id}`);
+        if (pending.client !== client) {
+          throw new BadRequestError(`secret question ${id} was not asked of this client`);
+        }
+        this.secrets.delete(id);
+        pending.resolve(value);
+        return;
+      }
       case "file.changed":
         this.fileChanged({ ...msg.payload, app: msg.payload.app ?? client.name }, client);
         return;
@@ -431,6 +526,7 @@ export class Hub {
       case "agent.focus":
       case "view.snapshot":
       case "view.patch":
+      case "secret.request":
       case "theme":
         this.fail(
           client,

@@ -186,7 +186,7 @@ func TestRender(t *testing.T) {
 		{
 			name: "harness and unknown events print nothing",
 			events: []protocol.SessionEventVariant{
-				protocol.HarnessMessage{Harness: "pi", Message: []byte(`{}`)},
+				protocol.HarnessMessage{Harness: "neo", Message: []byte(`{}`)},
 				protocol.UnknownSessionEvent{Tag: "from_the_future", Raw: []byte(`{"type":"from_the_future"}`)},
 			},
 			want: "",

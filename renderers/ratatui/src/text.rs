@@ -187,6 +187,38 @@ pub(crate) fn hard_wrap(s: &str, w: usize) -> Vec<String> {
     out
 }
 
+/// [`hard_wrap`] for styled text (already cleaned): each line of the text broken after `w`
+/// cells, the styles kept. A trailing newline doesn't add an empty line.
+pub(crate) fn hard_wrap_spans(spans: &[Span<'static>], w: usize) -> Vec<Vec<Span<'static>>> {
+    let w = w.max(1);
+    let mut out: Vec<Vec<Span<'static>>> = Vec::new();
+    let mut cur: Vec<Span<'static>> = Vec::new();
+    let mut used = 0;
+    let mut ended = false;
+    for span in spans {
+        for cl in Clusters::new(&span.content) {
+            ended = false;
+            if cl == "\n" {
+                out.push(std::mem::take(&mut cur));
+                used = 0;
+                ended = true;
+                continue;
+            }
+            let (cl, cw) = fit(cl, w);
+            if used + cw > w {
+                out.push(std::mem::take(&mut cur));
+                used = 0;
+            }
+            push_text(&mut cur, cl, span.style);
+            used += cw;
+        }
+    }
+    if !cur.is_empty() || (!ended && !out.is_empty()) || (out.is_empty() && !spans.is_empty()) {
+        out.push(cur);
+    }
+    out
+}
+
 /// A cluster wider than the whole line (a CJK character at width 1) becomes `…`.
 fn fit(cluster: &str, w: usize) -> (&str, usize) {
     let cw = width(cluster);

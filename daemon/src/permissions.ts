@@ -15,6 +15,9 @@ import { editedTitle, KEEP_OR_REVERT, restore } from "./review.ts";
 import { displayPath, sensitiveInCommand, sensitivePath } from "./sensitive.ts";
 import type { Approvals } from "./settings.ts";
 
+/** An execute request's title: the command itself is the content, shown as code. */
+export const RUN_TITLE = "Run this command?";
+
 const OPTIONS: PermissionOption[] = [
   { id: "allow", name: "Allow", kind: "allow_once" },
   { id: "always", name: "Allow for this session", kind: "allow_always" },
@@ -113,11 +116,17 @@ export class Permissions {
       if (mode === "auto") return { allowed: true };
       const key = `${session}\0${request.kind}`;
       if (this.allowed.has(key)) return { allowed: true };
-      const answer = await this.options.asker.askWithNote(
-        session,
-        { type: "permission_request", agent, ...request, options: OPTIONS },
-        signal,
-      );
+      const question: Parameters<Asker["askWithNote"]>[1] = {
+        type: "permission_request",
+        agent,
+        ...request,
+        options: OPTIONS,
+      };
+      if (request.kind === "execute" && !request.content?.length) {
+        question.title = RUN_TITLE;
+        question.content = [{ type: "text", text: request.title }];
+      }
+      const answer = await this.options.asker.askWithNote(session, question, signal);
       if (answer.option === "always") this.allowed.add(key);
       return answerOf(answer);
     };

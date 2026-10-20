@@ -65,6 +65,12 @@ item rich-text kind=agent
             "The image is 512×512; browsers scale it down."
         code 13/400 mono fg=fg bg=surface pad=8 radius=6 scroll-x lang=tsx
           | <img src="/logo.png" alt="Logo" />
+        table border=border cell-pad=4/8 scroll-x
+          header "File" | "Change" | "Lines"
+          row "src/Header.tsx" | "edited" | "+4 −1"
+          row "public/logo.png" | "new" | "512×512"
+          header style 14/600 fg=fg
+          cell style 14/400 fg=fg
         rule border
         text 14/400 fg=fg
           "Anything else?"

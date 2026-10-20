@@ -61,14 +61,26 @@ pub const COMMANDS: &[Command] = &[
     },
     daemon(
         "harness",
-        "[pi|claude|codex]",
-        "switch this session's agent: pi, claude, codex",
+        "[neo|claude|codex]",
+        "switch this session's agent: neo (based on pi), claude, codex",
     ),
     daemon(
         "approvals",
         "[ask|review|edits|auto]",
         "ask, review each edit, accept edits, or auto (no value: next)",
     ),
+    daemon(
+        "safesearch",
+        "[strict|moderate|off]",
+        "how much adult content web search may return",
+    ),
+    daemon(
+        "login",
+        "[provider]",
+        "add an API key or an account (ChatGPT, Copilot, Claude Pro/Max)",
+    ),
+    daemon("logout", "[provider]", "remove a stored API key or account"),
+    daemon("accounts", "", "list the API keys and accounts in use"),
     local("sessions", "switch to another session (ctrl-s)"),
     local(
         "sidebar",
@@ -78,6 +90,18 @@ pub const COMMANDS: &[Command] = &[
     local("thoughts", "show or hide the agent's thoughts (ctrl-t)"),
     local("github", "GitHub issues and pull requests (ctrl-r)"),
     local("help", "keys and commands"),
+    local(
+        "terminal",
+        "show or hide the agent's commands and their output next to the chat (tab focuses it)",
+    ),
+    local(
+        "files",
+        "the changed files: a tree, enter opens a file (tab also gets there)",
+    ),
+    Command {
+        args: "[dark|light|terminal]",
+        ..local("theme", "dark or light background, or the terminal's own")
+    },
     local("quit", "leave; the session keeps running"),
 ];
 
@@ -228,6 +252,7 @@ mod tests {
 
     fn info(id: &str, title: Option<&str>, cwd: &str, last: i64) -> SessionInfo {
         SessionInfo {
+            harness: None,
             parent: None,
             id: id.into(),
             title: title.map(Into::into),

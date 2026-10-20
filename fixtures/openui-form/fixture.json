@@ -1,0 +1,43 @@
+{
+  "description": "A form in the agent's reply using every input: values the user entered (openui.input), a failed email check after pressing Deploy, a link button.",
+  "events": [
+    {
+      "type": "agent_message_chunk",
+      "messageId": "m1",
+      "text": "```openui\n$env = \"staging\"\nroot = Form(\"deploy\", [service, email, env, notes, when, canary, notify, agree], Buttons([deploy, docs]))\nservice = FormControl(\"Service\", Select(\"service\", [Option(\"api\", \"API\"), Option(\"web\", \"Web app\"), Option(\"worker\", \"Worker\")], \"Pick a service\", { required: true }))\nemail = FormControl(\"Notify email\", Input(\"email\", \"you@company.com\", \"email\", { required: true, email: true }), \"We send the report here\")\nenv = FormControl(\"Environment\", RadioGroup(\"env\", [Option(\"staging\", \"Staging\"), Option(\"prod\", \"Production\")], null, $env))\nnotes = FormControl(\"Notes\", TextArea(\"notes\", \"Anything the reviewers should know\"))\nwhen = FormControl(\"Date\", DatePicker(\"when\"))\ncanary = FormControl(\"Canary traffic\", Slider(\"canary\", 0, 50, 5))\nnotify = Switch(\"notify\", \"Post to #deploys\")\nagree = CheckBox(\"agree\", \"I checked the migration\", { required: true })\ndeploy = Button(\"Deploy\", @ToAssistant(\"Deploy with these settings\"), \"primary\")\ndocs = Button(\"Runbook\", @OpenUrl(\"https://example.com/runbook\"))\n```"
+    }
+  ],
+  "inputs": [
+    {
+      "doc": "0",
+      "key": "service",
+      "value": "api"
+    },
+    {
+      "doc": "0",
+      "key": "email",
+      "value": "ops@"
+    },
+    {
+      "doc": "0",
+      "key": "when",
+      "value": "2026-10-21"
+    },
+    {
+      "doc": "0",
+      "key": "canary",
+      "value": 10
+    },
+    {
+      "doc": "0",
+      "key": "notify",
+      "value": true
+    }
+  ],
+  "presses": [
+    {
+      "doc": "0",
+      "key": "deploy"
+    }
+  ]
+}

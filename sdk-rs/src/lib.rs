@@ -22,8 +22,9 @@ pub use socket::default_socket_path;
 pub use suite_protocol as protocol;
 use suite_protocol::{
     AgentFocus, AgentMove, AgentMoveMessage, AppContext, AppContextMessage, AppPresence,
-    AppPresenceMessage, Asset, AssetGetMessage, AssetPut, AssetPutMessage, AssetRef, ConnectorInfo,
-    ConnectorsList, Envelope, ErrorInfo, FileChanged, FileChangedMessage, SessionCancel,
+    AppPresenceMessage, Asset, AssetFetchMessage, AssetGetMessage, AssetPut, AssetPutMessage,
+    AssetRef, AssetUrl, ConnectorInfo, ConnectorsList, Envelope, ErrorInfo, FileChanged,
+    FileChangedMessage, SecretAnswer, SecretAnswerMessage, SecretRequest, SessionCancel,
     SessionCreate, SessionCreateParams, SessionEventRecord, SessionInfo, SessionInput,
     SessionInputMessage, SessionList, SessionRef, SessionSubscribe, SessionUnsubscribe,
     SubscribeParams, SubscribedPayload, Theme, UiAction, UiActionMessage, ViewPatch, ViewRef,
@@ -130,6 +131,9 @@ pub enum Event {
     FileChanged(FileChanged),
     /// `session.changed`: a session's state, title, preview or lines changed (for overviews).
     SessionChanged(SessionInfo),
+    /// `secret.request`: the daemon asks this client alone for a secret (an API key, a login
+    /// code). Answer it with [`Client::answer_secret`]; never log or store the value.
+    Secret(SecretRequest),
 }
 
 /// A connection to the daemon. Cheap to share behind an `Arc`; dropping it disconnects.
@@ -406,6 +410,21 @@ impl Client {
         }
     }
 
+    /// Has the daemon download the image at an `http(s)://` URL into the asset store (once per
+    /// URL); the asset, or an error when it isn't a public image. Blocks while it downloads.
+    pub fn fetch_asset(&self, url: &str) -> Result<Asset> {
+        let fetch = |id| {
+            Envelope::AssetFetchMessage(AssetFetchMessage {
+                id,
+                payload: AssetUrl { url: url.into() },
+            })
+        };
+        match self.call(Effect::None, fetch)? {
+            Envelope::AssetInfoMessage(reply) => Ok(reply.payload),
+            _ => Err(Error::Unexpected),
+        }
+    }
+
     /// Tells the other clients this app changed a file (after saving it). No reply; lost if
     /// the connection is down.
     pub fn file_changed(&self, path: &str) -> Result<()> {
@@ -414,6 +433,20 @@ impl Client {
                 path: path.into(),
                 app: None,
                 session: None,
+            },
+        });
+        self.commands
+            .send(Command::Send(Box::new(envelope)))
+            .map_err(|_| Error::Disconnected)
+    }
+
+    /// Answers a `secret.request`: the typed value, or `None` when the user cancelled. No reply;
+    /// lost if the connection is down (the daemon drops the question then anyway).
+    pub fn answer_secret(&self, id: &str, value: Option<String>) -> Result<()> {
+        let envelope = Envelope::SecretAnswerMessage(SecretAnswerMessage {
+            payload: SecretAnswer {
+                id: id.into(),
+                value,
             },
         });
         self.commands

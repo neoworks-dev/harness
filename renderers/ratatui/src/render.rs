@@ -5,8 +5,8 @@ use ratatui::text::{Line, Span};
 use suite_protocol as pb;
 
 use crate::text::{
-    clean, clip, hard_wrap, line_width, one_line, push_text, sline, truncate, truncate_spans,
-    width, wrap,
+    clean, clip, hard_wrap, hard_wrap_spans, line_width, one_line, push_text, sline, truncate,
+    truncate_spans, width, wrap,
 };
 use crate::{ImageOptions, ImageSlot, ImageStatus, Options, Palette, image_cells};
 
@@ -28,6 +28,8 @@ pub(crate) struct Cx<'a> {
     rooms: Vec<(u16, u16, String)>,
     /// Where those rooms ended up, once the item is laid out.
     slots: Vec<ImageSlot>,
+    /// What the OpenUI docs drawn so far noted (targets, the focused line).
+    pub(crate) ui: crate::openui::Run,
 }
 
 impl<'a> Cx<'a> {
@@ -39,6 +41,7 @@ impl<'a> Cx<'a> {
             budget: None,
             rooms: Vec::new(),
             slots: Vec::new(),
+            ui: Default::default(),
         }
     }
 
@@ -58,6 +61,7 @@ impl<'a> Cx<'a> {
             pb::ItemKind::Notice => self.notice(it, w),
         };
         self.place_rooms(&mut lines);
+        self.place_focus(&mut lines);
         clip(&mut lines, w);
         lines
     }
@@ -149,7 +153,14 @@ impl<'a> Cx<'a> {
         }
         let body = self.comp(&it.component, w.saturating_sub(2).max(1));
         if !body.is_empty() {
-            let bullet = vec![Span::styled("● ", Style::new().fg(self.p.fg))];
+            // A form or chart is not a sentence to bullet: it only takes the indent.
+            let opens_with_ui = matches!(&it.component, pb::Component::TextComponent(t)
+                if matches!(t.blocks.first(), Some(pb::Block::OpenUiBlock(_))));
+            let bullet = if opens_with_ui {
+                vec![Span::raw("  ")]
+            } else {
+                vec![Span::styled("● ", Style::new().fg(self.p.fg))]
+            };
             out.extend(prefixed(body, bullet, vec![Span::raw("  ")]));
         }
         out
@@ -188,35 +199,63 @@ impl<'a> Cx<'a> {
     }
 
     /// A header line (`● label`, the bullet colored by state), then the result: summarized
-    /// under `⎿`, or in full when expanded. Items with buttons are always shown in full:
-    /// the buttons are what the item is for.
+    /// under `⎿` in muted, or in full when expanded. Items with buttons are always shown in
+    /// full: the buttons are what the item is for.
     fn tool(&mut self, it: &pb::ViewItem, label: Option<String>, w: usize) -> Lines {
+        // Done is the usual case and stays quiet, so a failure stands out.
         let color = match it.state {
             Some(pb::ItemState::Running) => self.p.accent,
-            Some(pb::ItemState::Done) => self.p.success,
             Some(pb::ItemState::Failed) => self.p.danger,
-            Some(pb::ItemState::Pending) | None => self.p.muted,
+            Some(pb::ItemState::Done | pb::ItemState::Pending) | None => self.p.muted,
         };
         let bullet = vec![Span::styled("● ", Style::new().fg(color))];
         let mut out = match label {
             Some(label) => {
-                let bold = Span::styled(label, Style::new().add_modifier(Modifier::BOLD));
-                let head = wrap(&[bold], w.saturating_sub(2).max(1));
+                let spans = self.tool_label(&label);
+                let head = wrap(&spans, w.saturating_sub(2).max(1));
                 prefixed(head, bullet, vec![Span::raw("  ")])
             }
             None => vec![Line::from(bullet)],
         };
-        let prompt = has_buttons(&it.component);
+        // A doc with fields or buttons is a form to fill in; one that holds focus is in use.
+        let prompt = has_buttons(&it.component)
+            || crate::openui::interactive(&it.component)
+            || self.o.openui.values().any(|s| s.focus.is_some());
         if self.o.expanded || prompt {
             self.budget = self.o.preview_lines.filter(|_| prompt && !self.o.expanded);
             let body = self.comp(&it.component, w.saturating_sub(2).max(1));
             out.extend(indented(body, 2));
         } else {
-            let summary = self.summary(&it.component, w.saturating_sub(4).max(1));
+            let mut summary = self.summary(&it.component, w.saturating_sub(4).max(1));
+            tint(&mut summary, self.p.muted);
             let elbow = vec![Span::styled("  ⎿ ", self.p.muted_style())];
             out.extend(prefixed(summary, elbow, vec![Span::raw("    ")]));
         }
         out
+    }
+
+    /// The verb bold, what it acts on in the normal weight: `read` `src/a.rs`, `search the web:`
+    /// `query`. neo's commands (`bash: ls -la`) get the command highlighted.
+    fn tool_label(&self, label: &str) -> Vec<Span<'static>> {
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        if let Some(command) = label.strip_prefix("bash: ") {
+            let mut spans = vec![Span::styled("bash: ".to_string(), bold)];
+            spans.extend(crate::shell::highlight(command, &self.p, Style::new()));
+            return spans;
+        }
+        // A short lead-in ending in a colon is the verb; else the first word is.
+        let split = label
+            .find(": ")
+            .filter(|&at| label[..at].split(' ').count() <= 3)
+            .map(|at| at + 2)
+            .or_else(|| label.find(' ').map(|at| at + 1));
+        match split {
+            Some(at) => vec![
+                Span::styled(label[..at].to_string(), bold),
+                Span::raw(label[at..].to_string()),
+            ],
+            None => vec![Span::styled(label.to_string(), bold)],
+        }
     }
 
     // ---- components ----
@@ -231,7 +270,7 @@ impl<'a> Cx<'a> {
             pb::Component::ImageComponent(v) => self.image(v, w),
             pb::Component::FileComponent(v) => self.file(v, w),
             pb::Component::CodeComponent(v) => {
-                let lines = self.code(&v.code, w);
+                let lines = self.code(&v.code, v.language.as_deref(), true, w);
                 self.preview(lines)
             }
             pb::Component::DiffComponent(v) => {
@@ -242,6 +281,7 @@ impl<'a> Cx<'a> {
             pb::Component::KvComponent(v) => self.kv(v, w),
             pb::Component::ProgressComponent(v) => self.progress(v, w),
             pb::Component::ButtonComponent(v) => vec![self.button(v, w)],
+            pb::Component::OpenUiComponent(v) => self.openui_doc(&v.ui, w),
             pb::Component::LinkComponent(v) => {
                 wrap(&link(&v.url, v.text.as_deref(), Style::new(), &self.p), w)
             }
@@ -252,7 +292,7 @@ impl<'a> Cx<'a> {
         }
     }
 
-    fn placeholder(&self, text: &str, w: usize) -> Line<'static> {
+    pub(crate) fn placeholder(&self, text: &str, w: usize) -> Line<'static> {
         sline(truncate(text, w), self.p.muted_style())
     }
 
@@ -334,10 +374,20 @@ impl<'a> Cx<'a> {
 
     /// A gutter along the children, with the title on top. The tone colors both.
     fn card(&mut self, v: &pb::CardComponent, w: usize) -> Lines {
-        let tone = v.tone.map(|t| self.p.tone(t));
-        let title = v.title.as_deref().map(one_line).filter(|t| !t.is_empty());
-        let inner = if w < 6 { w } else { w - 2 };
-        let body = stack(self.children(&v.children, inner), None);
+        let body = stack(self.children(&v.children, card_inner(w)), None);
+        self.card_frame(v.title.as_deref(), v.tone, body, w)
+    }
+
+    /// The body inside the card's gutter (`card_inner` wide), the title on top.
+    pub(crate) fn card_frame(
+        &self,
+        title: Option<&str>,
+        tone: Option<pb::Tone>,
+        body: Lines,
+        w: usize,
+    ) -> Lines {
+        let tone = tone.map(|t| self.p.tone(t));
+        let title = title.map(one_line).filter(|t| !t.is_empty());
         if w < 6 {
             let mut out = Vec::new();
             if let Some(t) = title {
@@ -373,7 +423,7 @@ impl<'a> Cx<'a> {
         out
     }
 
-    pub(crate) fn text(&self, v: &pb::TextComponent, w: usize) -> Lines {
+    pub(crate) fn text(&mut self, v: &pb::TextComponent, w: usize) -> Lines {
         let mut lines = self.blocks(&v.blocks, w, true);
         match v.role {
             Some(pb::TextRole::Title) => restyle(&mut lines, |s| s.add_modifier(Modifier::BOLD)),
@@ -390,7 +440,7 @@ impl<'a> Cx<'a> {
     }
 
     /// Loose blocks are separated by a blank line; tight ones (inside list items) stack.
-    pub(crate) fn blocks(&self, bs: &[pb::Block], w: usize, loose: bool) -> Lines {
+    pub(crate) fn blocks(&mut self, bs: &[pb::Block], w: usize, loose: bool) -> Lines {
         let mut out: Lines = Vec::new();
         for b in bs {
             let lines = self.block(b, w);
@@ -405,18 +455,19 @@ impl<'a> Cx<'a> {
         out
     }
 
-    fn block(&self, b: &pb::Block, w: usize) -> Lines {
+    fn block(&mut self, b: &pb::Block, w: usize) -> Lines {
         match b {
-            pb::Block::ParagraphBlock(v) => wrap(&self.spans(&v.spans), w),
+            pb::Block::ParagraphBlock(v) => wrap(&self.spans(&v.spans), self.prose(w)),
             pb::Block::HeadingBlock(v) => {
+                let style = self.heading_style(v.level);
                 let mut spans = self.spans(&v.spans);
                 for s in &mut spans {
-                    s.style = s.style.add_modifier(Modifier::BOLD);
+                    s.style = style.patch(s.style);
                 }
-                wrap(&spans, w)
+                wrap(&spans, self.prose(w))
             }
             pb::Block::ListBlock(v) => self.list(v, w),
-            pb::Block::CodeBlock(v) => self.code(&v.code, w),
+            pb::Block::CodeBlock(v) => self.code(&v.code, v.language.as_deref(), false, w),
             pb::Block::QuoteBlock(v) => {
                 let mut inner = self.blocks(&v.blocks, w.saturating_sub(2).max(1), true);
                 tint(&mut inner, self.p.muted);
@@ -434,9 +485,176 @@ impl<'a> Cx<'a> {
                     })
                     .collect()
             }
-            pb::Block::RuleBlock(_) => vec![sline("─".repeat(w), Style::new().fg(self.p.border))],
+            pb::Block::RuleBlock(_) => vec![sline(
+                "─".repeat(self.prose(w)),
+                Style::new().fg(self.p.border),
+            )],
+            pb::Block::TableBlock(v) => self.table_block(v, w),
+            pb::Block::OpenUiBlock(v) => self.openui_doc(&v.ui, w),
             pb::Block::Unknown(_) => vec![self.placeholder("[unsupported block]", w)],
         }
+    }
+
+    /// Where prose wraps: the width, or `prose_width` when that is narrower.
+    fn prose(&self, w: usize) -> usize {
+        self.o.prose_width.map_or(w, |cap| w.min(cap.max(1)))
+    }
+
+    /// Levels 1 and 2 bold in the accent color, the rest bold. Not underlined: that is how
+    /// links look.
+    fn heading_style(&self, level: i64) -> Style {
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        match level {
+            1 | 2 => bold.fg(self.p.accent),
+            _ => bold,
+        }
+    }
+
+    /// A markdown table in a box. Cells wrap inside their column; columns that don't fit share
+    /// the room (the widest give first). Once a row takes more than one line, rules separate the
+    /// rows too. Too narrow for the box: each row as `header: cell` lines.
+    fn table_block(&self, v: &pb::TableBlock, w: usize) -> Lines {
+        let cols = v
+            .rows
+            .iter()
+            .map(Vec::len)
+            .chain([v.header.len()])
+            .max()
+            .unwrap_or(0);
+        if cols == 0 {
+            return Vec::new();
+        }
+        let cells = |row: &[pb::TableCell]| -> Vec<Vec<Span<'static>>> {
+            (0..cols)
+                .map(|c| {
+                    row.get(c)
+                        .map(|cell| self.spans(&cell.spans))
+                        .unwrap_or_default()
+                })
+                .collect()
+        };
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        let mut header = cells(&v.header);
+        for cell in &mut header {
+            for s in cell.iter_mut() {
+                s.style = bold.patch(s.style);
+            }
+        }
+        let body: Vec<_> = v.rows.iter().map(|r| cells(r)).collect();
+
+        // "│ " before each column, " │" after the last, " │ " between.
+        let frame = 3 * cols + 1;
+        if w < frame + cols {
+            return self.stacked_table(&header, &body, w);
+        }
+        let natural = |cell: &[Span<'static>]| {
+            wrap(cell, usize::MAX / 2)
+                .iter()
+                .map(|l| line_width(&l.spans))
+                .max()
+                .unwrap_or(0)
+        };
+        let mut widths: Vec<usize> = (0..cols)
+            .map(|c| {
+                body.iter()
+                    .chain([&header])
+                    .map(|row| natural(&row[c]))
+                    .max()
+                    .unwrap_or(0)
+                    .max(1)
+            })
+            .collect();
+        fit_columns(&mut widths, w - frame);
+
+        let align = |c: usize| {
+            v.align
+                .as_ref()
+                .and_then(|a| a.get(c).copied())
+                .unwrap_or(pb::ColumnAlign::Left)
+        };
+        let border = Style::new().fg(self.p.border);
+        let row_lines = |row: &[Vec<Span<'static>>]| -> Lines {
+            let wrapped: Vec<Lines> = row
+                .iter()
+                .zip(&widths)
+                .map(|(cell, cw)| wrap(cell, *cw))
+                .collect();
+            let height = wrapped.iter().map(Vec::len).max().unwrap_or(0).max(1);
+            (0..height)
+                .map(|i| {
+                    let mut spans = vec![Span::styled("│ ", border)];
+                    for (c, cw) in widths.iter().enumerate() {
+                        if c > 0 {
+                            spans.push(Span::styled(" │ ", border));
+                        }
+                        let line = wrapped[c]
+                            .get(i)
+                            .map(|l| l.spans.clone())
+                            .unwrap_or_default();
+                        let room = cw.saturating_sub(line_width(&line));
+                        let (left, right) = match align(c) {
+                            pb::ColumnAlign::Left => (0, room),
+                            pb::ColumnAlign::Right => (room, 0),
+                            pb::ColumnAlign::Center => (room / 2, room - room / 2),
+                        };
+                        if left > 0 {
+                            spans.push(Span::raw(" ".repeat(left)));
+                        }
+                        spans.extend(line);
+                        if right > 0 {
+                            spans.push(Span::raw(" ".repeat(right)));
+                        }
+                    }
+                    spans.push(Span::styled(" │", border));
+                    Line::from(spans)
+                })
+                .collect()
+        };
+        let rule = |l: &str, m: &str, r: &str| {
+            let inner: Vec<String> = widths.iter().map(|cw| "─".repeat(cw + 2)).collect();
+            sline(format!("{l}{}{r}", inner.join(m)), border)
+        };
+        let rows: Vec<Lines> = body.iter().map(|r| row_lines(r)).collect();
+        let ruled = rows.iter().any(|r| r.len() > 1);
+        let mut out = vec![rule("┌", "┬", "┐")];
+        out.extend(row_lines(&header));
+        out.push(rule("├", "┼", "┤"));
+        for (i, row) in rows.into_iter().enumerate() {
+            if ruled && i > 0 {
+                out.push(rule("├", "┼", "┤"));
+            }
+            out.extend(row);
+        }
+        out.push(rule("└", "┴", "┘"));
+        clip(&mut out, w);
+        out
+    }
+
+    /// A table too narrow for its box: each row's cells as `header: cell`, rows apart.
+    fn stacked_table(
+        &self,
+        header: &[Vec<Span<'static>>],
+        body: &[Vec<Vec<Span<'static>>>],
+        w: usize,
+    ) -> Lines {
+        let mut out = Vec::new();
+        for row in body {
+            if !out.is_empty() {
+                out.push(Line::default());
+            }
+            for (name, cell) in header.iter().zip(row) {
+                let mut spans = name.clone();
+                if !spans.is_empty() {
+                    spans.push(Span::styled(
+                        ": ",
+                        Style::new().add_modifier(Modifier::BOLD),
+                    ));
+                }
+                spans.extend(cell.iter().cloned());
+                out.extend(wrap(&spans, w));
+            }
+        }
+        out
     }
 
     fn spans(&self, spans: &[pb::Span]) -> Vec<Span<'static>> {
@@ -466,7 +684,7 @@ impl<'a> Cx<'a> {
 
     /// Bullets, numbers and task boxes; item text hangs under the marker's text, nested lists
     /// sit under the item's text.
-    fn list(&self, v: &pb::ListBlock, w: usize) -> Lines {
+    fn list(&mut self, v: &pb::ListBlock, w: usize) -> Lines {
         let start = v.start.unwrap_or(1);
         let last = start.saturating_add(v.items.len() as i64 - 1);
         let num_w = if v.ordered {
@@ -499,8 +717,31 @@ impl<'a> Cx<'a> {
     }
 
     /// Monospace on the surface color, indented 2, hard-wrapped, the band filling the width.
-    fn code(&self, code: &str, w: usize) -> Lines {
+    /// Shell is highlighted; with `reflow` (a command to approve, not code the model wrote in
+    /// its reply) long lines also break after `&&`, `|` and `;`.
+    pub(crate) fn code(&self, code: &str, language: Option<&str>, reflow: bool, w: usize) -> Lines {
         let st = self.p.code_style();
+        if crate::shell::is_shell(language) {
+            let inner = w.saturating_sub(2).max(1);
+            let code = clean(code);
+            let code = if reflow {
+                crate::shell::reflow(&code, inner).into()
+            } else {
+                code
+            };
+            let spans = crate::shell::highlight(&code, &self.p, st);
+            return hard_wrap_spans(&spans, inner)
+                .into_iter()
+                .map(|mut line| {
+                    let used = line_width(&line);
+                    if w >= 4 {
+                        line.insert(0, Span::styled("  ", st));
+                        line.push(Span::styled(" ".repeat(inner - used), st));
+                    }
+                    Line::from(line)
+                })
+                .collect();
+        }
         if w < 4 {
             return hard_wrap(code, w)
                 .into_iter()
@@ -572,18 +813,35 @@ impl<'a> Cx<'a> {
         &mut self,
         images: &ImageOptions,
         src: &str,
-        (iw, ih): (u32, u32),
+        size: (u32, u32),
         name: &str,
         w: usize,
     ) -> Lines {
         let max_cols = u16::try_from(w).unwrap_or(u16::MAX);
-        let (cols, rows) = image_cells(iw, ih, images.cell, max_cols, images.max_rows);
-        self.rooms.push((cols, rows, src.to_string()));
-        let mut out = vec![Line::from(Span::raw(SLOT_MARK))];
-        out.resize(usize::from(rows), Line::default());
-        let caption = format!("{name} · {iw}×{ih}");
+        let (mut out, _) = self.reserve(images, src, size, max_cols, images.max_rows);
+        let caption = format!("{name} · {}×{}", size.0, size.1);
         out.extend(wrap(&[Span::styled(caption, self.p.muted_style())], w));
         out
+    }
+
+    /// Room for a picture of `size` pixels in at most `max_cols` x `max_rows` cells: the marked
+    /// first line and the empty lines under it, and the cells taken. Measuring (a quiet draw)
+    /// reserves nothing, since its lines are thrown away.
+    pub(crate) fn reserve(
+        &mut self,
+        images: &ImageOptions,
+        src: &str,
+        (iw, ih): (u32, u32),
+        max_cols: u16,
+        max_rows: u16,
+    ) -> (Lines, (u16, u16)) {
+        let (cols, rows) = image_cells(iw, ih, images.cell, max_cols, max_rows);
+        if !self.ui.drawing_to_measure() {
+            self.rooms.push((cols, rows, src.to_string()));
+        }
+        let mut out = vec![Line::from(Span::raw(SLOT_MARK))];
+        out.resize(usize::from(rows), Line::default());
+        (out, (cols, rows))
     }
 
     fn file(&self, v: &pb::FileComponent, w: usize) -> Lines {
@@ -645,7 +903,7 @@ impl<'a> Cx<'a> {
         }
     }
 
-    fn kv(&self, v: &pb::KvComponent, w: usize) -> Lines {
+    pub(crate) fn kv(&self, v: &pb::KvComponent, w: usize) -> Lines {
         let keys: Vec<String> = v.items.iter().map(|i| one_line(&i.key)).collect();
         let key_w = keys
             .iter()
@@ -698,27 +956,7 @@ impl<'a> Cx<'a> {
                     .clamp(1, w)
             })
             .collect();
-        let avail = w.saturating_sub(3 * (cols - 1));
-        let mut total: usize = widths.iter().sum();
-        while total > avail {
-            let max = widths.iter().copied().max().unwrap_or(1);
-            if max <= 1 {
-                break;
-            }
-            // Cut the widest columns down towards the next widest in one go.
-            let next = widths
-                .iter()
-                .copied()
-                .filter(|w| *w < max)
-                .max()
-                .unwrap_or(1);
-            let ties = widths.iter().filter(|w| **w == max).count();
-            let cut = (max - next).min((total - avail).div_ceil(ties)).max(1);
-            for w in widths.iter_mut().filter(|w| **w == max) {
-                *w -= cut.min(*w - 1);
-            }
-            total = widths.iter().sum();
-        }
+        fit_columns(&mut widths, w.saturating_sub(3 * (cols - 1)));
 
         let border = Style::new().fg(self.p.border);
         let row_line = |row: &[String], st: Style| {
@@ -753,7 +991,7 @@ impl<'a> Cx<'a> {
     }
 
     /// `▓▓▓░░ 60% label` with a bar of up to 20 cells.
-    fn progress(&self, v: &pb::ProgressComponent, w: usize) -> Lines {
+    pub(crate) fn progress(&self, v: &pb::ProgressComponent, w: usize) -> Lines {
         let value = if v.value.is_nan() {
             0.0
         } else {
@@ -786,14 +1024,18 @@ impl<'a> Cx<'a> {
         self.next_button += 1;
         let key = button_key(b, idx);
         let focused = self.o.focused_button == Some(idx);
-        let mut spans = vec![
-            Span::raw("["),
-            Span::styled(
-                one_line(&key),
-                Style::new().fg(self.p.accent).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(format!(" {}]", one_line(&b.label))),
-        ];
+        let mut spans = if self.o.hide_keys {
+            vec![Span::raw(format!("[{}]", one_line(&b.label)))]
+        } else {
+            vec![
+                Span::raw("["),
+                Span::styled(
+                    one_line(&key),
+                    Style::new().fg(self.p.accent).add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(format!(" {}]", one_line(&b.label))),
+            ]
+        };
         if b.current == Some(true) {
             spans.push(Span::styled(" ✓", Style::new().fg(self.p.success)));
         }
@@ -806,22 +1048,88 @@ impl<'a> Cx<'a> {
     }
 }
 
+/// What a card's children get of its width: the gutter takes two cells.
+pub(crate) fn card_inner(w: usize) -> usize {
+    if w < 6 { w } else { w - 2 }
+}
+
 /// The last part of a path (the whole of anything else).
-fn file_name(src: &str) -> String {
+pub(crate) fn file_name(src: &str) -> String {
     match src.rsplit_once('/') {
         Some((_, name)) if !name.is_empty() && !src.contains("://") => one_line(name),
         _ => one_line(src),
     }
 }
 
-/// The sources of the images that are drawn in full: not inside a table or the like.
+/// Narrows the widest columns until they fit `avail` cells together (each keeps one).
+pub(crate) fn fit_columns(widths: &mut [usize], avail: usize) {
+    let mut total: usize = widths.iter().sum();
+    while total > avail {
+        let max = widths.iter().copied().max().unwrap_or(1);
+        if max <= 1 {
+            break;
+        }
+        // Cut the widest columns down towards the next widest in one go.
+        let next = widths
+            .iter()
+            .copied()
+            .filter(|w| *w < max)
+            .max()
+            .unwrap_or(1);
+        let ties = widths.iter().filter(|w| **w == max).count();
+        let cut = (max - next).min((total - avail).div_ceil(ties)).max(1);
+        for w in widths.iter_mut().filter(|w| **w == max) {
+            *w -= cut.min(*w - 1);
+        }
+        total = widths.iter().sum();
+    }
+}
+
+/// The sources of the images that are drawn in full: not inside a table or the like. Images of
+/// OpenUI docs count too, also those in a text's blocks.
 pub(crate) fn sources(c: &pb::Component, out: &mut Vec<String>) {
     match c {
         pb::Component::ImageComponent(v) => out.push(v.src.clone()),
         pb::Component::CardComponent(v) => v.children.iter().for_each(|c| sources(c, out)),
         pb::Component::RowComponent(v) => v.children.iter().for_each(|c| sources(c, out)),
         pb::Component::StackComponent(v) => v.children.iter().for_each(|c| sources(c, out)),
+        pb::Component::TextComponent(v) => block_sources(&v.blocks, out),
+        pb::Component::OpenUiComponent(v) => doc_sources(&v.ui, out),
         _ => {}
+    }
+}
+
+fn block_sources(bs: &[pb::Block], out: &mut Vec<String>) {
+    for b in bs {
+        match b {
+            pb::Block::OpenUiBlock(v) => doc_sources(&v.ui, out),
+            pb::Block::QuoteBlock(v) => block_sources(&v.blocks, out),
+            pb::Block::ListBlock(v) => v.items.iter().for_each(|i| block_sources(&i.blocks, out)),
+            _ => {}
+        }
+    }
+}
+
+/// The `src` of every `Image` in a doc, a gallery's included.
+fn doc_sources(doc: &pb::UiDoc, out: &mut Vec<String>) {
+    fn visit(value: &serde_json::Value, out: &mut Vec<String>) {
+        match value {
+            serde_json::Value::Array(items) => items.iter().for_each(|v| visit(v, out)),
+            serde_json::Value::Object(map) => {
+                if map.get("component").and_then(|c| c.as_str()) == Some("Image")
+                    && let Some(src) = value.pointer("/props/src").and_then(|s| s.as_str())
+                {
+                    out.push(src.to_string());
+                }
+                map.values().for_each(|v| visit(v, out));
+            }
+            _ => {}
+        }
+    }
+    if let Some(root) = &doc.root
+        && let Ok(value) = serde_json::to_value(root)
+    {
+        visit(&value, out);
     }
 }
 

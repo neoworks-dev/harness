@@ -1,5 +1,2 @@
 ● photo-editor.export
-  ⎿ Exporting logo
-    Format: PNG · Size: 512×512 · Quality: 90%
-    ▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░ 60% Compressing
-    … +2 lines
+  ⎿ Exporting logo  … +4 lines

@@ -10,7 +10,8 @@
 //   runcmd <c>    asks to run the command (kind execute, rawInput.command) and reports the answer
 //   editfile <p> <text>  asks to edit the file, and when allowed writes it and reports the
 //                 completed tool call with its diff (like an adapter that asks before it writes)
-//   config        reports what session/new (or resume) and set_config_option gave it
+//   config        reports what session/new (or resume) and set_config_option gave it (the
+//                 instructions, the disallowed tools, the settings)
 //   title <t>     replies {"title": "<t>"} (plus " (<model>)" once a model was set): a title
 //                 generateText asked for (the prompt's last line)
 //   started       reports how the conversation began: "new" or "resume" (resuming a session id
@@ -18,7 +19,15 @@
 //   suitetool <t> asks for permission to use the suite's own MCP tool <t> (titled
 //                 mcp__suite__<t>; "codex <t>": mcp.suite.<t>) and reports the answer
 //   cwd           reports the directory session/new (or resume) was given
+//   route         reports how the process was started: the CODEX_CONFIG, ANTHROPIC_*,
+//                 CLAUDE_CODE_{OAUTH,USE_,EXECUTABLE} and MODEL_PROVIDER variables it has, the initialize params
+//                 and the params of an authenticate request (Codex's gateway sign-in; header values are the
+//                 first 12 hex digits of their sha256, so the report holds no key)
 //   usage         sends usage_updates in the middle of one message (USD cost, then EUR cost)
+//   send <to> <text>  calls the suite's send_message and reports "sent: …" (or the error)
+//   spam <to>     sends 25 messages to <to> and reports how many were taken and the last answer
+//   listen        calls the suite's wait (5 s) and reports "heard: …"
+//   poll          calls tools_search until a message rides on a result, and reports it
 // It offers a model option (small, large) and an effort option (low, high), and one stored
 // conversation, "old-1", for session/list and session/resume.
 //   anything else sends a plan (one entry with an unknown status), a usage_update, and replies
@@ -38,10 +47,13 @@ let nextId = 1000;
 const waiting = new Map<number, (result: unknown) => void>();
 let gateway: HttpServer | undefined;
 let instructions: unknown;
+let disallowed: unknown;
 const config: Record<string, unknown> = {};
 let sessionId = "";
 let started = "new";
 let cwd = "";
+let initialize: unknown;
+let authenticated: unknown;
 
 const VALUES: Record<string, string[]> = { model: ["small", "large"], effort: ["low", "high"] };
 const CATEGORY: Record<string, string> = { model: "model", effort: "thought_level" };
@@ -77,6 +89,26 @@ function update(sessionId: string, value: Record<string, unknown>): void {
 
 function say(sessionId: string, text: string, kind = "agent_message_chunk"): void {
   update(sessionId, { sessionUpdate: kind, content: { type: "text", text } });
+}
+
+let suiteClient: Promise<Client> | undefined;
+
+/** A call of one of the suite's core tools as this agent: the text of the result, and whether it failed. */
+async function suite(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ text: string; isError: boolean }> {
+  if (!gateway) throw new Error("no MCP server");
+  const { url, headers } = gateway;
+  suiteClient ??= (async () => {
+    const client = new Client({ name: "fake-guest", version: "1" });
+    const requestInit = { headers: Object.fromEntries(headers.map((h) => [h.name, h.value])) };
+    await client.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit }));
+    return client;
+  })();
+  const result = await (await suiteClient).callTool({ name, arguments: args });
+  const blocks = result.content as { text?: string }[];
+  return { text: blocks.map((b) => b.text ?? "").join("\n"), isError: result.isError === true };
 }
 
 async function greet(sessionId: string, name: string): Promise<void> {
@@ -124,6 +156,19 @@ async function permission(sessionId: string, toolCall: Record<string, unknown>):
   return answer.outcome.optionId ?? answer.outcome.outcome;
 }
 
+/** The authenticate params with header values as sha256 prefixes, so a report holds no key. */
+function withHashedHeaders(params: Record<string, unknown>): unknown {
+  interface Shape {
+    _meta?: { gateway?: { headers?: Record<string, string> } };
+  }
+  const copy = structuredClone<Shape>(params);
+  const headers = copy._meta?.gateway?.headers ?? {};
+  for (const [name, value] of Object.entries(headers)) {
+    headers[name] = new Bun.CryptoHasher("sha256").update(value).digest("hex").slice(0, 12);
+  }
+  return copy;
+}
+
 function readOrUndefined(path: string): string | undefined {
   try {
     return readFileSync(path, "utf8");
@@ -162,6 +207,33 @@ async function prompt(params: {
     update(sessionId, { sessionUpdate: "plan", entries: [] });
     say(sessionId, `answer: ${answer.outcome.optionId ?? answer.outcome.outcome}`);
     return { stopReason: "end_turn" };
+  } else if (task.startsWith("send ")) {
+    const [to = "", ...rest] = task.slice(5).split(" ");
+    const sent = await suite("send_message", { to, text: rest.join(" ") });
+    say(sessionId, `${sent.isError ? "refused" : "sent"}: ${sent.text}`);
+    return { stopReason: "end_turn" };
+  } else if (task.startsWith("spam ")) {
+    let taken = 0;
+    let last = "";
+    for (let i = 0; i < 25; i++) {
+      const sent = await suite("send_message", { to: task.slice(5), text: `ping ${i}` });
+      if (!sent.isError) taken += 1;
+      last = sent.text;
+    }
+    say(sessionId, `taken: ${taken}; last: ${last}`);
+    return { stopReason: "end_turn" };
+  } else if (task === "listen") {
+    const heard = await suite("wait", { timeoutSeconds: 5 });
+    say(sessionId, `heard: ${heard.text}`);
+    return { stopReason: "end_turn" };
+  } else if (task === "poll") {
+    let text = "";
+    for (let i = 0; i < 200 && !text.includes("<message"); i++) {
+      text = (await suite("tools_search", { query: "zzz" })).text;
+      await Bun.sleep(30);
+    }
+    say(sessionId, `polled: ${text}`);
+    return { stopReason: "end_turn" };
   } else if (task.startsWith("readfile ")) {
     const path = task.slice(9);
     const toolCall = {
@@ -180,6 +252,15 @@ async function prompt(params: {
     const picked = await permission(sessionId, { toolCallId: "t9", title, kind: "other" });
     update(sessionId, { sessionUpdate: "plan", entries: [] });
     say(sessionId, `answer: ${picked}`);
+    return { stopReason: "end_turn" };
+  } else if (task === "route") {
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([name]) =>
+        /^(CODEX_CONFIG|MODEL_PROVIDER|ANTHROPIC_|CLAUDE_CODE_(OAUTH|USE_|EXECUTABLE))/.test(name),
+      ),
+    );
+    update(sessionId, { sessionUpdate: "plan", entries: [] });
+    say(sessionId, JSON.stringify({ env, initialize, authenticated }));
     return { stopReason: "end_turn" };
   } else if (task === "cwd") {
     update(sessionId, { sessionUpdate: "plan", entries: [] });
@@ -248,7 +329,7 @@ async function prompt(params: {
     });
   } else if (task === "config") {
     update(sessionId, { sessionUpdate: "plan", entries: [] });
-    say(sessionId, JSON.stringify({ instructions, config, session: sessionId }));
+    say(sessionId, JSON.stringify({ instructions, disallowed, config, session: sessionId }));
     return { stopReason: "end_turn" };
   } else if (task.startsWith("title ")) {
     // What generateText asks: the reply is a title (with the model it was asked on, if one was set).
@@ -300,7 +381,11 @@ async function handle(message: Record<string, unknown>): Promise<void> {
   try {
     let result: unknown = null;
     if (method === "initialize") {
+      initialize = params;
       result = { protocolVersion: 1, agentCapabilities: { mcpCapabilities: { http: true } } };
+    } else if (method === "authenticate") {
+      authenticated = withHashedHeaders(params);
+      result = {};
     } else if (method === "session/new") {
       // FAKE_ACP_HANG: an adapter that starts but never gets a conversation going.
       if (process.env.FAKE_ACP_HANG !== undefined) await new Promise(() => undefined);
@@ -309,8 +394,10 @@ async function handle(message: Record<string, unknown>): Promise<void> {
       cwd = params.cwd as string;
       const meta = (params._meta ?? {}) as {
         jetbrains?: { air?: { customInstructions?: string } };
+        claudeCode?: { options?: { disallowedTools?: string[] } };
       };
       instructions = meta.jetbrains?.air?.customInstructions?.slice(0, 40);
+      disallowed = meta.claudeCode?.options?.disallowedTools;
       sessionId = "acp-1";
       result = { sessionId, configOptions: configOptions() };
     } else if (method === "session/resume") {

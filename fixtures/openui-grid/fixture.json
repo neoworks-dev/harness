@@ -1,0 +1,10 @@
+{
+  "description": "The skill's dashboard: three metrics in a row, then an explicit two-column Grid of cards (a horizontal bar chart, a table, a sparkline in an accent card).",
+  "events": [
+    {
+      "type": "agent_message_chunk",
+      "messageId": "m1",
+      "text": "```openui\nroot = Stack([kpis, details])\nkpis = Stack([used, free, largest], \"row\")\nused = Metric(\"Used\", \"820 GB\", \"of 896 GB\", \"danger\")\nfree = Metric(\"Free\", \"72 GB\", \"8%\", \"success\")\nlargest = Metric(\"Largest\", \"Documents\", \"355 GB\")\ndetails = Grid([where, docs, trend], 2)\nwhere = Card([BarChart([\"Documents\", \".cache\", \"Games\", \"Other\"], [Series(\"GB\", [355, 65, 48, 103])], true)], \"Where the space goes\")\ndocs = Card([Table([\"Path\", \"Size\"], [[\"neoworks\", \"210 GB\"], [\"clients\", \"45 GB\"], [\"other\", \"47 GB\"]])], \"Documents\")\ntrend = Card([Sparkline([610, 655, 700, 742, 790, 820], \"Used, GB\")], \"Last 6 months\", \"accent\")\n```"
+    }
+  ]
+}

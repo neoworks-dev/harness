@@ -1,6 +1,8 @@
 // The gateway's MCP endpoint (Streamable HTTP, stateless): serves the fixed core tools to the
-// harness, the session's ACP harness and subagents (x-suite-guest: they don't get delegate).
-// x-suite-text marks an ACP client that gets text-only results. The tool list of a kind of
+// harness, the session's ACP harness and subagents (x-suite-guest: they don't get delegate or
+// models; send_message and wait they do).
+// x-suite-text marks an ACP client that gets text-only results and, appended to them, the
+// messages other agents wrote to it. The tool list of a kind of
 // client never changes; connector tools are reached through tools_search / tools_call.
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
@@ -24,7 +26,9 @@ function createServer(gateway: Gateway): Server {
   );
   server.setRequestHandler(ListToolsRequestSchema, (_request, extra) => ({
     tools: CORE_TOOLS.filter(
-      ({ name }) => name !== "delegate" || header(extra.requestInfo, "x-suite-guest") === undefined,
+      ({ name }) =>
+        (name !== "delegate" && name !== "models") ||
+        header(extra.requestInfo, "x-suite-guest") === undefined,
     ).map(({ name, description, inputSchema }) => ({
       name,
       description,

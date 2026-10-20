@@ -14,6 +14,7 @@ use suite_sdk::{Client, Event};
 
 use crate::app::{App, Config, Effect, Msg};
 use crate::history::HistoryStore;
+use crate::secret::SecretValue;
 
 /// What to show at start.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -304,7 +305,35 @@ fn work(client: &Client, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sen
                     .map_err(|e| e.to_string());
                 let _ = msgs.send(Msg::Created(result));
             }
+            Effect::Secret { id, value } => {
+                // The value is moved onto the wire and not kept; an error never carries it.
+                if let Err(err) = client.answer_secret(&id, value.map(SecretValue::take)) {
+                    fail("answering the question failed", err);
+                }
+            }
+            Effect::OpenUrl(url) => open_url(&url, msgs),
             Effect::Copy(_) | Effect::Quit => {}
+        }
+    }
+}
+
+/// Hands a link to the desktop; says so when there is nothing to hand it to.
+fn open_url(url: &str, msgs: &mpsc::Sender<Msg>) {
+    let child = std::process::Command::new("xdg-open")
+        .arg(url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    match child {
+        // Reaped on a thread of its own: some openers stay until the browser is up.
+        Ok(mut child) => {
+            thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
+        Err(_) => {
+            let _ = msgs.send(Msg::Notice(format!("no xdg-open to open {url}")));
         }
     }
 }
@@ -349,6 +378,7 @@ pub struct StartOptions {
     pub home: Option<String>,
     pub no_color: bool,
     pub history: HistoryStore,
+    pub prefs: crate::theme::Prefs,
     pub args: Args,
 }
 
@@ -414,6 +444,7 @@ pub fn start(options: StartOptions) -> Result<Started, StartError> {
         home: options.home,
         no_color: options.no_color,
         history: options.history,
+        prefs: options.prefs,
     });
     let driver = Driver::new(Arc::new(client), &app_id);
     // The sidebar's overview starts from this list; session.changed events keep it current.
@@ -448,6 +479,7 @@ mod tests {
 
     fn info(id: &str, cwd: &str, last: i64) -> SessionInfo {
         SessionInfo {
+            harness: None,
             parent: None,
             id: id.into(),
             title: None,

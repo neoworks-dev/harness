@@ -4,13 +4,19 @@ import {
   activePrompt,
   argsWithNote,
   copyText,
+  focusAfterFilter,
+  isLongChoice,
+  matchingButtons,
+  moveFocus,
   openPrompts,
   plainText,
   promptEngaged,
   promptOf,
+  scrollToRow,
   startButton,
   takesNote,
   TYPING_PAUSE_MS,
+  type PromptButton,
 } from "../ui/plugins/composer/prompt.ts";
 
 const text = (value: string): Component => ({
@@ -21,7 +27,7 @@ const text = (value: string): Component => ({
 const permission: ViewItem = {
   ref: "p-1",
   kind: "tool",
-  label: "pi asks: Write a.txt",
+  label: "neo asks: Write a.txt",
   state: "pending",
   component: {
     type: "stack",
@@ -89,7 +95,7 @@ const choice: ViewItem = {
 
 test("a permission card is its details and its buttons", () => {
   const prompt = promptOf(permission);
-  expect(prompt?.title).toBe("pi asks: Write a.txt");
+  expect(prompt?.title).toBe("neo asks: Write a.txt");
   expect(prompt?.body.map((c) => c.type)).toEqual(["kv"]);
   expect(prompt?.buttons.map((b) => b.label)).toEqual(["Allow", "Deny"]);
 });
@@ -158,4 +164,82 @@ test("text blocks flatten to lines", () => {
 test("a copy button has text for the clipboard and nothing to send", () => {
   expect(copyText({ label: "Copy", action: "copy:asset://x", current: false })).toBe("asset://x");
   expect(copyText({ label: "Allow", action: "suite.permit", current: false })).toBeUndefined();
+});
+
+// ---- type to find an option of a long choice ----
+
+/** Twelve models of three providers; the first two with a description, the third in effect. */
+function models(): PromptButton[] {
+  const providers = ["claude", "openrouter", "openai"];
+  const names = ["Haiku 4.5", "Sonnet 4.5", "GPT 5", "Gemini 2.5"];
+  return Array.from({ length: 12 }, (_, i) => {
+    const provider = providers[i % 3];
+    const name = names[i % 4];
+    const button: PromptButton = {
+      label: `${name} · ${provider}`,
+      action: "suite.choose",
+      args: { id: "c", option: `${provider}/${i}/${name}` },
+      current: i === 2,
+    };
+    if (i < 2) button.description = `reasons about code ${i}`;
+    return button;
+  });
+}
+
+test("only a choice with more than nine options is filtered", () => {
+  const all = models();
+  expect(isLongChoice(all)).toBe(true);
+  expect(isLongChoice(all.slice(0, 9))).toBe(false);
+  expect(isLongChoice(all.map((b) => ({ ...b, action: "suite.permit" })))).toBe(false);
+  expect(isLongChoice(promptOf(permission)?.buttons ?? [])).toBe(false);
+});
+
+test("every word must occur in the label, the option id or the description, in any case", () => {
+  const all = models();
+  const labels = (filter: string): (string | undefined)[] =>
+    matchingButtons(all, filter).map((i) => all[i]?.label);
+  expect(matchingButtons(all, "")).toEqual(all.map((_, i) => i));
+  expect(matchingButtons(all, "   ")).toHaveLength(12);
+  expect(labels("OPENROUTER")).toEqual([
+    "Sonnet 4.5 · openrouter",
+    "Haiku 4.5 · openrouter",
+    "Gemini 2.5 · openrouter",
+    "GPT 5 · openrouter",
+  ]);
+  expect(labels("openrouter haiku")).toEqual(["Haiku 4.5 · openrouter"]);
+  // The id has what the label lacks, the description counts, the order stays.
+  expect(matchingButtons(all, "openai/8")).toEqual([8]);
+  expect(matchingButtons(all, "reasons")).toEqual([0, 1]);
+  expect(matchingButtons(all, "  code   1 ")).toEqual([1]);
+  expect(matchingButtons(all, "gemini nope")).toEqual([]);
+});
+
+test("the focus moves over the matches only and wraps", () => {
+  const matches = [1, 4, 9];
+  expect(moveFocus(matches, 1, 1)).toBe(4);
+  expect(moveFocus(matches, 9, 1)).toBe(1);
+  expect(moveFocus(matches, 1, -1)).toBe(9);
+  expect(moveFocus(matches, 5, 1)).toBe(1);
+  expect(moveFocus(matches, 5, -1)).toBe(9);
+  expect(moveFocus([], 5, 1)).toBe(5);
+});
+
+test("a new filter focuses the first match, an empty one the current option", () => {
+  const all = models();
+  expect(focusAfterFilter(all, "openai")).toBe(2);
+  expect(focusAfterFilter(all, "sonnet openrouter")).toBe(1);
+  expect(focusAfterFilter(all, "")).toBe(2);
+  expect(focusAfterFilter(all, "nope")).toBeUndefined();
+});
+
+test("the list scrolls just far enough to show the focused row", () => {
+  // Rows of 28 in a window of 224 (eight rows).
+  expect(scrollToRow(3, 28, 0, 224)).toBeUndefined();
+  expect(scrollToRow(7, 28, 0, 224)).toBeUndefined();
+  expect(scrollToRow(8, 28, 0, 224)).toBe(28);
+  expect(scrollToRow(20, 28, 0, 224)).toBe(21 * 28 - 224);
+  expect(scrollToRow(2, 28, 200, 224)).toBe(56);
+  expect(scrollToRow(8, 28, 28, 224)).toBeUndefined();
+  // Not laid out yet: nothing to do.
+  expect(scrollToRow(8, 28, 0, 0)).toBeUndefined();
 });

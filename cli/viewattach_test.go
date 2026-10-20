@@ -119,8 +119,8 @@ func TestAttachViewButtons(t *testing.T) {
 	send("/x", "no button [x]")
 
 	// Anything that isn't "/" and one character goes to the daemon.
-	want := []string{"/usr/bin/env is missing", "/plain", "/model", "/resume abc", "/mode pi plan"}
-	stdinW.Write([]byte("/usr/bin/env is missing\n//plain\n/model\n/resume abc\n/mode pi plan\n"))
+	want := []string{"/usr/bin/env is missing", "/plain", "/model", "/resume abc", "/mode neo plan"}
+	stdinW.Write([]byte("/usr/bin/env is missing\n//plain\n/model\n/resume abc\n/mode neo plan\n"))
 	eventually(t, "inputs", func() bool { return len(d.Inputs()) == len(want) })
 	for i, in := range d.Inputs() {
 		if in.Text != want[i] {

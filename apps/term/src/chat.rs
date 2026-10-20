@@ -7,15 +7,21 @@ use std::sync::Arc;
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use suite_protocol::{ItemState, ViewItem, ViewPatch, ViewSnapshot};
+use suite_protocol::{ItemKind, ItemState, ViewItem, ViewPatch, ViewSnapshot};
 use suite_renderer_ratatui::{
-    ButtonRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, buttons, image_sources,
-    render_item_images,
+    ButtonRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiDocInfo, UiState, buttons,
+    image_sources, openui_docs, render_item_images,
 };
 use suite_sdk::ViewState;
 
 /// Lines of diff or code a prompt shows before the buttons (Ctrl-O shows all of it).
 const PREVIEW_LINES: usize = 12;
+
+/// Prose wraps at this many columns however wide the pane; tables and code use all of it.
+const PROSE_WIDTH: usize = 100;
+
+/// Finished tool calls in a row fold into one line from this many on (Ctrl-O shows them).
+const FOLD_MIN: usize = 3;
 
 /// Rows an image thumbnail takes at most, and with tool results expanded (Ctrl-O).
 const IMAGE_ROWS: u16 = 12;
@@ -52,6 +58,8 @@ pub struct ChatOpts {
     /// (the whole card when expanded).
     pub in_panel: bool,
     pub marker: Style,
+    /// The visual state of OpenUI docs (focus, tabs, edit buffers), per item and doc.
+    pub ui: HashMap<String, HashMap<String, UiState>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,18 +73,25 @@ struct CacheKey {
     marker: Style,
     /// Only for items that hold images: they redraw when an image's state changes.
     images: Option<ChatImages>,
+    /// Only for items that hold OpenUI docs.
+    ui: Option<HashMap<String, UiState>>,
 }
 
 struct Cached {
     key: CacheKey,
     lines: Rc<Vec<Line<'static>>>,
     slots: Rc<Vec<ImageSlot>>,
+    focus: Option<usize>,
 }
 
 struct Entry {
     r#ref: String,
+    /// The agent is thinking (thoughts hidden): drawn as the animated line instead.
+    thinking: bool,
     lines: Rc<Vec<Line<'static>>>,
     slots: Rc<Vec<ImageSlot>>,
+    /// The line of an OpenUI target that has focus.
+    focus: Option<usize>,
     offset: usize,
 }
 
@@ -98,6 +113,10 @@ pub struct Chat {
     generation: u64,
     cache: HashMap<String, Cached>,
     buttons: HashMap<String, Vec<ButtonRef>>,
+    /// The OpenUI docs of the items that have any with something to focus.
+    docs: HashMap<String, Vec<UiDocInfo>>,
+    /// Scroll to the focused OpenUI target of this item at the next layout.
+    reveal: Option<String>,
     /// Sources of the images of the items that have any.
     sources: HashMap<String, Vec<String>>,
     images: Option<ChatImages>,
@@ -111,6 +130,8 @@ pub struct Chat {
     unseen: bool,
     /// Whether a snapshot has arrived for the shown session.
     loaded: bool,
+    /// The colors of the last layout, for the thinking animation.
+    palette: Palette,
 }
 
 impl Chat {
@@ -131,6 +152,7 @@ impl Chat {
         self.loaded = true;
         self.revs.clear();
         self.buttons.clear();
+        self.docs.clear();
         self.sources.clear();
         for item in &self.state.items {
             self.next_rev += 1;
@@ -138,6 +160,10 @@ impl Chat {
             let b = buttons(item);
             if !b.is_empty() {
                 self.buttons.insert(item.r#ref.clone(), b);
+            }
+            let d = focusable_docs(item);
+            if !d.is_empty() {
+                self.docs.insert(item.r#ref.clone(), d);
             }
             let srcs = image_sources(item);
             if !srcs.is_empty() {
@@ -165,6 +191,12 @@ impl Chat {
                 } else {
                     self.buttons.insert(r.to_string(), b);
                 }
+                let d = focusable_docs(item);
+                if d.is_empty() {
+                    self.docs.remove(r);
+                } else {
+                    self.docs.insert(r.to_string(), d);
+                }
                 let srcs = image_sources(item);
                 if srcs.is_empty() {
                     self.sources.remove(r);
@@ -175,6 +207,7 @@ impl Chat {
             None => {
                 self.revs.remove(r);
                 self.buttons.remove(r);
+                self.docs.remove(r);
                 self.sources.remove(r);
                 self.cache.remove(r);
             }
@@ -189,24 +222,86 @@ impl Chat {
         self.buttons.get(r).map_or(&[], Vec::as_slice)
     }
 
-    /// Refs of items that have buttons, oldest first.
+    /// Whether the item has an OpenUI doc with fields or buttons that can be used now.
+    pub fn is_form(&self, r: &str) -> bool {
+        self.docs
+            .get(r)
+            .is_some_and(|d| d.iter().any(|d| d.interactive && !d.streaming))
+    }
+
+    /// Whether the item has OpenUI targets that can take focus now (fields, buttons, tabs,
+    /// accordion items).
+    pub fn has_targets(&self, r: &str) -> bool {
+        self.docs
+            .get(r)
+            .is_some_and(|d| d.iter().any(|d| d.focusable && !d.streaming))
+    }
+
+    /// Whether keys can answer the item: it has buttons or OpenUI targets.
+    pub fn is_prompt(&self, r: &str) -> bool {
+        self.buttons.contains_key(r) || self.has_targets(r)
+    }
+
+    /// Refs of items that have buttons or OpenUI targets, oldest first.
     pub fn prompt_refs(&self) -> Vec<&str> {
         self.state
             .items
             .iter()
-            .filter(|i| self.buttons.contains_key(&i.r#ref))
+            .filter(|i| self.is_prompt(&i.r#ref))
             .map(|i| i.r#ref.as_str())
             .collect()
     }
 
-    /// The items with buttons still waiting for an answer, oldest first.
+    /// The items with buttons still waiting for an answer, and the OpenUI forms the user has
+    /// not spoken after, oldest first.
     pub fn pending_prompts(&self) -> Vec<&str> {
+        let last_user = self
+            .state
+            .items
+            .iter()
+            .rposition(|i| i.kind == ItemKind::User);
         self.state
             .items
             .iter()
-            .filter(|i| self.buttons.contains_key(&i.r#ref) && i.state == Some(ItemState::Pending))
-            .map(|i| i.r#ref.as_str())
+            .enumerate()
+            .filter(|(at, i)| {
+                let asking =
+                    self.buttons.contains_key(&i.r#ref) && i.state == Some(ItemState::Pending);
+                asking || (self.is_form(&i.r#ref) && last_user.is_none_or(|u| *at > u))
+            })
+            .map(|(_, i)| i.r#ref.as_str())
             .collect()
+    }
+
+    /// Scroll to the item's focused OpenUI target once the next layout knows where it is.
+    pub fn reveal_focus(&mut self, r: &str) {
+        self.reveal = Some(r.to_string());
+    }
+
+    /// Brings the line of the focused OpenUI target (and the one under it) into view.
+    fn apply_reveal(&mut self) {
+        let Some(r) = self.reveal.take() else {
+            return;
+        };
+        let Some(line) = self
+            .entries
+            .iter()
+            .find(|e| e.r#ref == r)
+            .and_then(|e| e.focus.map(|l| e.offset + l))
+        else {
+            return;
+        };
+        let (top, height) = (self.top(), self.height.max(1));
+        if line < top {
+            self.top = Some(line.min(self.max_top()));
+        } else if line + 2 > top + height {
+            self.top = Some((line + 2 - height).min(self.max_top()));
+        } else {
+            return;
+        }
+        if self.top == Some(self.max_top()) {
+            self.follow();
+        }
     }
 
     // ---- images ----
@@ -263,15 +358,63 @@ impl Chat {
             images: self.images.clone(),
         };
         if self.layout_key.as_ref() == Some(&key) {
+            self.apply_reveal();
             return;
         }
         let was_total = self.total;
-        let mut entries = Vec::with_capacity(self.state.items.len());
+        let items = &self.state.items;
+        let last = items.len().saturating_sub(1);
+        // The items drawn, and whether each is the thinking line.
+        let shown: Vec<(usize, bool)> = items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| {
+                // A question the user allowed has done its job: the tool's own row says the rest.
+                if is_allowed_question(item) {
+                    return None;
+                }
+                // Hidden thoughts show while the agent thinks, as one animated line, and then go.
+                let thinking = item.kind == ItemKind::Thought && !opts.show_thoughts;
+                (!thinking || index == last).then_some((index, thinking))
+            })
+            .collect();
+        let mut entries: Vec<Entry> = Vec::with_capacity(shown.len());
         let mut offset = 0;
-        let mut live: usize = 0;
-        for item in &self.state.items {
-            live += 1;
+        // Tool rows follow each other without a blank line; prose and questions get one.
+        let mut after_tool = false;
+        let mut k = 0;
+        while k < shown.len() {
+            let (index, thinking) = shown[k];
+            let item = &items[index];
             let r = &item.r#ref;
+            let tool_row =
+                item.kind == ItemKind::Tool && !self.buttons.contains_key(r) && !self.is_form(r);
+            // A run of finished calls that something came after is folded to one line.
+            if !opts.expanded && foldable(item, &self.buttons, &self.docs) {
+                let end = (k..shown.len())
+                    .find(|&j| !foldable(&items[shown[j].0], &self.buttons, &self.docs))
+                    .unwrap_or(shown.len());
+                if end - k >= FOLD_MIN && end < shown.len() {
+                    let run: Vec<&ViewItem> =
+                        shown[k..end].iter().map(|&(i, _)| &items[i]).collect();
+                    if !entries.is_empty() && !after_tool {
+                        offset += 1;
+                    }
+                    entries.push(Entry {
+                        r#ref: r.clone(),
+                        thinking: false,
+                        lines: Rc::new(vec![folded_line(&run, usize::from(width), &opts.palette)]),
+                        slots: Rc::new(Vec::new()),
+                        focus: None,
+                        offset,
+                    });
+                    offset += 1;
+                    after_tool = true;
+                    k = end;
+                    continue;
+                }
+            }
+            k += 1;
             let rev = self.revs.get(r).copied().unwrap_or(0);
             let active = opts
                 .active
@@ -291,15 +434,27 @@ impl Chat {
                     .contains_key(r)
                     .then(|| self.images.clone())
                     .flatten(),
+                ui: self
+                    .docs
+                    .contains_key(r)
+                    .then(|| opts.ui.get(r).cloned().unwrap_or_default()),
             };
-            let (lines, slots) = match self.cache.get(r) {
+            let (lines, slots, focus) = match self.cache.get(r) {
                 // Ctrl-O (everything in full) keeps the whole card, e.g. a long diff.
-                _ if opts.in_panel && active.is_some() && !opts.expanded => {
-                    (Rc::new(vec![panel_stub(item, opts)]), Rc::new(Vec::new()))
+                _ if opts.in_panel
+                    && active.is_some()
+                    && !opts.expanded
+                    && !self.docs.contains_key(r) =>
+                {
+                    (
+                        Rc::new(vec![panel_stub(item, opts)]),
+                        Rc::new(Vec::new()),
+                        None,
+                    )
                 }
-                Some(c) if c.key == ckey => (c.lines.clone(), c.slots.clone()),
+                Some(c) if c.key == ckey => (c.lines.clone(), c.slots.clone(), c.focus),
                 _ => {
-                    let (lines, slots) = render(item, width, &ckey);
+                    let (lines, slots, focus) = render(item, width, &ckey);
                     let (lines, slots) = (Rc::new(lines), Rc::new(slots));
                     self.cache.insert(
                         r.clone(),
@@ -307,32 +462,38 @@ impl Chat {
                             key: ckey,
                             lines: lines.clone(),
                             slots: slots.clone(),
+                            focus,
                         },
                     );
-                    (lines, slots)
+                    (lines, slots, focus)
                 }
             };
             if lines.is_empty() {
                 continue;
             }
-            if !entries.is_empty() {
+            if !entries.is_empty() && !(after_tool && tool_row) {
                 offset += 1;
             }
+            after_tool = tool_row;
             let len = lines.len();
             entries.push(Entry {
                 r#ref: r.clone(),
+                thinking,
                 lines,
                 slots,
+                focus,
                 offset,
             });
             offset += len;
         }
+        let live = items.len();
         if self.cache.len() > live {
             let items = &self.state.items;
             self.cache
                 .retain(|r, _| items.iter().any(|i| &i.r#ref == r));
         }
         self.entries = entries;
+        self.palette = opts.palette;
         self.total = offset;
         self.layout_key = Some(key);
         if self.top.is_some() && self.total > was_total {
@@ -341,6 +502,7 @@ impl Chat {
         if let Some(top) = self.top {
             self.top = Some(top.min(self.max_top()));
         }
+        self.apply_reveal();
     }
 
     pub fn total_lines(&self) -> usize {
@@ -364,8 +526,13 @@ impl Chat {
         self.unseen
     }
 
-    /// The lines in view (at most the pane's height).
+    /// The lines in view (at most the pane's height), the thinking line still.
     pub fn visible(&self) -> Vec<Line<'static>> {
+        self.visible_at(None)
+    }
+
+    /// The lines in view, the thinking line animated for the time `now_ms`.
+    pub fn visible_at(&self, now_ms: Option<i64>) -> Vec<Line<'static>> {
         let top = self.top();
         let bottom = top + self.height;
         let mut out: Vec<Line<'static>> = Vec::with_capacity(self.height);
@@ -386,7 +553,10 @@ impl Chat {
                 if at >= bottom {
                     break;
                 }
-                out.push(line.clone());
+                match now_ms {
+                    Some(now) if e.thinking => out.push(thinking_line(line, now, &self.palette)),
+                    _ => out.push(line.clone()),
+                }
                 at += 1;
             }
         }
@@ -463,11 +633,133 @@ impl Chat {
     }
 }
 
-fn render(item: &ViewItem, width: u16, key: &CacheKey) -> (Vec<Line<'static>>, Vec<ImageSlot>) {
+/// A tool call that can fold into a run: finished, not a question (`p-`/`q-`, which say what was
+/// answered).
+fn foldable(
+    item: &ViewItem,
+    buttons: &HashMap<String, Vec<ButtonRef>>,
+    docs: &HashMap<String, Vec<UiDocInfo>>,
+) -> bool {
+    item.kind == ItemKind::Tool
+        && matches!(item.state, Some(ItemState::Done | ItemState::Failed))
+        && !buttons.contains_key(&item.r#ref)
+        && !docs
+            .get(&item.r#ref)
+            .is_some_and(|d| d.iter().any(|d| d.interactive))
+        && !item.r#ref.starts_with("p-")
+        && !item.r#ref.starts_with("q-")
+}
+
+/// A folded run: `● 15 tool calls · 7 fetch, 5 bash, 3 search · 1 failed`, all muted but the
+/// failures.
+fn folded_line(run: &[&ViewItem], width: usize, p: &Palette) -> Line<'static> {
+    let mut verbs: Vec<(String, usize)> = Vec::new();
+    for item in run {
+        let label = item.label.as_deref().unwrap_or("tool");
+        let verb = label
+            .split_whitespace()
+            .next()
+            .unwrap_or("tool")
+            .trim_end_matches(':')
+            .to_string();
+        match verbs.iter_mut().find(|(v, _)| *v == verb) {
+            Some((_, n)) => *n += 1,
+            None => verbs.push((verb, 1)),
+        }
+    }
+    // Most first; ties in the order they came.
+    verbs.sort_by_key(|v| std::cmp::Reverse(v.1));
+    let counts: Vec<String> = verbs.iter().map(|(v, n)| format!("{n} {v}")).collect();
+    let failed = run
+        .iter()
+        .filter(|i| i.state == Some(ItemState::Failed))
+        .count();
+    let muted = Style::new().fg(p.muted);
+    let mut text = format!("{} tool calls · {}", run.len(), counts.join(", "));
+    let tail = (failed > 0).then(|| format!(" · {failed} failed"));
+    let room = width.saturating_sub(2 + tail.as_ref().map_or(0, |t| t.chars().count()));
+    if text.chars().count() > room {
+        text = text
+            .chars()
+            .take(room.saturating_sub(1))
+            .collect::<String>()
+            + "…";
+    }
+    let mut spans = vec![Span::styled("● ", muted), Span::styled(text, muted)];
+    if let Some(tail) = tail {
+        spans.push(Span::styled(tail, Style::new().fg(p.danger)));
+    }
+    Line::from(spans)
+}
+
+/// A permission question that was answered with an allow: the session view marks it done.
+fn is_allowed_question(item: &ViewItem) -> bool {
+    item.kind == ItemKind::Tool
+        && item.r#ref.starts_with("p-")
+        && item.state == Some(ItemState::Done)
+}
+
+/// How long the light takes to sweep across the thinking line.
+const SWEEP_MS: i64 = 1600;
+
+/// The thinking line with a light sweeping over it: muted text, the accent color where the light
+/// is. Without true colors the lit characters are the accent color and bold.
+fn thinking_line(line: &Line<'static>, now_ms: i64, p: &Palette) -> Line<'static> {
+    let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len() as f32;
+    // From before the start to past the end, so the light comes in and leaves.
+    let phase = now_ms.rem_euclid(SWEEP_MS) as f32 / SWEEP_MS as f32;
+    let center = -4.0 + phase * (n + 8.0);
+    let spans = chars
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let light = (1.0 - (i as f32 - center).abs() / 4.0).max(0.0);
+            let style = match mix(p.muted, p.accent, light) {
+                Some(color) => Style::new().fg(color),
+                None if light > 0.5 => Style::new().fg(p.accent).add_modifier(Modifier::BOLD),
+                None => Style::new().fg(p.muted),
+            };
+            Span::styled(c.to_string(), style)
+        })
+        .collect::<Vec<_>>();
+    Line::from(spans)
+}
+
+/// `b` mixed into `a` by `t` (0 to 1); None unless both are true colors.
+fn mix(
+    a: ratatui::style::Color,
+    b: ratatui::style::Color,
+    t: f32,
+) -> Option<ratatui::style::Color> {
+    use ratatui::style::Color;
+    let (Color::Rgb(r0, g0, b0), Color::Rgb(r1, g1, b1)) = (a, b) else {
+        return None;
+    };
+    let m = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * t).round() as u8;
+    Some(Color::Rgb(m(r0, r1), m(g0, g1), m(b0, b1)))
+}
+
+/// The docs of an item that have anything to focus.
+fn focusable_docs(item: &ViewItem) -> Vec<UiDocInfo> {
+    openui_docs(item)
+        .into_iter()
+        .filter(|d| d.focusable)
+        .collect()
+}
+
+fn render(
+    item: &ViewItem,
+    width: u16,
+    key: &CacheKey,
+) -> (Vec<Line<'static>>, Vec<ImageSlot>, Option<usize>) {
     let opts = Options {
         expanded: key.expanded,
         show_thoughts: key.thoughts,
         focused_button: key.focused,
+        hide_keys: false,
+        prose_width: Some(PROSE_WIDTH),
         preview_lines: Some(PREVIEW_LINES),
         theme: key.palette,
         images: key.images.as_ref().map(|i| ImageOptions {
@@ -479,10 +771,11 @@ fn render(item: &ViewItem, width: u16, key: &CacheKey) -> (Vec<Line<'static>>, V
             cell: i.cell,
             status: i.status.clone(),
         }),
+        openui: key.ui.clone().unwrap_or_default(),
     };
     if key.focused.is_none() {
         let out = render_item_images(item, width, &opts);
-        return (out.lines, out.images);
+        return (out.lines, out.images, out.focus_line);
     }
     // The prompt being answered gets a bar in the margin.
     let inner = width.saturating_sub(2).max(1);
@@ -496,7 +789,7 @@ fn render(item: &ViewItem, width: u16, key: &CacheKey) -> (Vec<Line<'static>>, V
     for slot in &mut slots {
         slot.x += 2;
     }
-    (lines, slots)
+    (lines, slots, out.focus_line)
 }
 
 /// A line of the prompt being answered: the bar in the margin first.
@@ -507,12 +800,14 @@ pub fn barred(line: Line<'static>, marker: Style) -> Line<'static> {
 }
 
 /// The prompt as the input area shows it: the item with the n-th button focused and at most
-/// `preview` lines of any diff or code, each line with the bar in the margin.
+/// `preview` lines of any diff or code, each line with the bar in the margin. `hide_keys` draws
+/// the buttons without their keys.
 pub fn panel_lines(
     item: &ViewItem,
     width: u16,
     focused: usize,
     preview: usize,
+    hide_keys: bool,
     palette: Palette,
     marker: Style,
 ) -> Vec<Line<'static>> {
@@ -520,9 +815,12 @@ pub fn panel_lines(
         expanded: false,
         show_thoughts: false,
         focused_button: Some(focused),
+        hide_keys,
+        prose_width: Some(PROSE_WIDTH),
         preview_lines: Some(preview),
         theme: palette,
         images: None,
+        openui: HashMap::new(),
     };
     suite_renderer_ratatui::render_item(item, width.saturating_sub(2).max(1), &opts)
         .into_iter()
@@ -533,15 +831,29 @@ pub fn panel_lines(
 /// The one-line input for the answer's note: `note › text` with a cursor, or a hint while empty.
 /// A long note shows its end.
 pub fn note_line(text: &str, width: usize, accent: Style) -> Line<'static> {
-    let lead = "note › ";
-    let mut spans = vec![Span::styled(lead, accent)];
+    input_line(
+        "note › ",
+        "for the agent · enter sends · esc cancels",
+        text,
+        width,
+        accent,
+    )
+}
+
+/// The one-line filter of a long choice: `filter › text` with a cursor, or a hint while empty.
+pub fn filter_line(text: &str, width: usize, accent: Style) -> Line<'static> {
+    input_line("filter › ", "type to find an option", text, width, accent)
+}
+
+fn input_line(lead: &str, hint: &str, text: &str, width: usize, accent: Style) -> Line<'static> {
+    let mut spans = vec![Span::styled(lead.to_string(), accent)];
     if text.is_empty() {
         spans.push(Span::styled(
             " ",
             Style::new().add_modifier(Modifier::REVERSED),
         ));
         spans.push(Span::styled(
-            "for the agent · enter sends · esc cancels",
+            hint.to_string(),
             Style::new().add_modifier(Modifier::DIM),
         ));
     } else {
@@ -616,6 +928,7 @@ mod tests {
             active: None,
             in_panel: false,
             marker: Style::new(),
+            ui: Default::default(),
         }
     }
 
@@ -635,6 +948,46 @@ mod tests {
     }
 
     #[test]
+    fn allowed_questions_and_finished_thoughts_are_left_out() {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(vec![
+            item("u", "user", "go"),
+            item("t1", "thought", "hmm"),
+            prompt("p-1", "done", &[]),
+            prompt("p-2", "failed", &[]),
+            item("a", "agent", "ok"),
+            item("t2", "thought", "next"),
+        ]));
+        c.layout(40, 20, &opts());
+        let shown = texts(&c);
+        // The refused question stays; the allowed one and the earlier thought go; the agent is
+        // thinking again at the end.
+        assert_eq!(shown.iter().filter(|l| l.contains("asks")).count(), 1);
+        assert_eq!(shown.iter().filter(|l| l.contains("thinking")).count(), 1);
+        assert_eq!(shown.last().map(String::as_str), Some("∴ thinking"));
+    }
+
+    #[test]
+    fn the_thinking_line_has_a_light_that_moves() {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(vec![item("t", "thought", "x")]));
+        c.layout(40, 5, &opts());
+        let colors = |now: i64| -> Vec<Option<ratatui::style::Color>> {
+            let lines = c.visible_at(Some(now));
+            lines[0].spans.iter().map(|s| s.style.fg).collect()
+        };
+        let p = Palette::default();
+        let early = colors(SWEEP_MS / 3);
+        let late = colors(SWEEP_MS * 2 / 3);
+        assert_ne!(early, late);
+        // Somewhere lit (towards the accent), somewhere not.
+        assert!(early.contains(&Some(p.muted)));
+        assert!(early.iter().any(|c| *c != Some(p.muted)));
+        // The text itself is the same.
+        assert_eq!(plain_text(&c.visible_at(Some(5))), ["∴ thinking"]);
+    }
+
+    #[test]
     fn items_are_separated_by_a_blank_line_and_follow_the_tail() {
         let c = many(3);
         assert_eq!(c.total_lines(), 5);
@@ -644,6 +997,77 @@ mod tests {
         assert!(c.following());
         assert_eq!(texts(&c).last().unwrap(), "● line 9");
         assert_eq!(texts(&c).len(), 10);
+    }
+
+    fn call(r: &str, label: &str, state: &str) -> ViewItem {
+        serde_json::from_value(json!({
+            "ref": r, "kind": "tool", "label": label, "state": state,
+            "component": {"type":"code","code":"out"}
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn tool_rows_follow_each_other_without_a_blank_line() {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(vec![
+            call("t1", "read a", "done"),
+            call("t2", "read b", "running"),
+            prompt("p1", "pending", &["Allow"]),
+        ]));
+        c.layout(40, 20, &opts());
+        let t = texts(&c);
+        assert_eq!(t[..4], ["● read a", "  ⎿ out", "● read b", "  ⎿ out"]);
+        assert_eq!(t[4], "", "a question gets room");
+    }
+
+    #[test]
+    fn a_finished_run_of_calls_folds_into_one_line() {
+        let mut c = Chat::new();
+        let mut items = vec![
+            call("t1", "fetch https://a", "done"),
+            call("t2", "bash: ls", "done"),
+            call("t3", "fetch https://b", "failed"),
+            call("t4", "search the web: x", "done"),
+        ];
+        c.apply_snapshot(snapshot(items.clone()));
+        c.layout(80, 20, &opts());
+        assert_eq!(
+            c.total_lines(),
+            8,
+            "the tail run is still going: shown in full"
+        );
+
+        items.push(item("a1", "agent", "Done."));
+        c.apply_snapshot(snapshot(items.clone()));
+        c.layout(80, 20, &opts());
+        assert_eq!(
+            texts(&c),
+            [
+                "● 4 tool calls · 2 fetch, 1 bash, 1 search · 1 failed",
+                "",
+                "● Done."
+            ]
+        );
+        // Ctrl-O shows every call.
+        c.layout(
+            80,
+            20,
+            &ChatOpts {
+                expanded: true,
+                ..opts()
+            },
+        );
+        assert!(texts(&c).contains(&"● bash: ls".to_string()));
+
+        // Two are not worth folding.
+        c.apply_snapshot(snapshot(vec![
+            items[0].clone(),
+            items[1].clone(),
+            items[4].clone(),
+        ]));
+        c.layout(80, 20, &opts());
+        assert_eq!(texts(&c)[0], "● fetch https://a");
     }
 
     #[test]

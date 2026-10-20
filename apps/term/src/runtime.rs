@@ -49,6 +49,7 @@ pub fn main() -> ExitCode {
         home: std::env::var("HOME").ok(),
         no_color: std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty()),
         history: HistoryStore::in_data_dir(),
+        prefs: crate::theme::Prefs::in_data_dir(),
         args,
     });
     let started = match started {
@@ -108,13 +109,21 @@ impl Drop for Screen {
 fn run(mut app: crate::app::App, driver: Driver) -> io::Result<()> {
     let mut screen = Screen::enter()?;
     if let Some(picker) = screen.picker.take() {
-        // `asset://` handles are looked up with the daemon, on the image thread.
+        // `asset://` handles are looked up with the daemon, and web images downloaded by it,
+        // on the image thread.
         let client = driver.client().clone();
-        let assets: Assets = std::sync::Arc::new(move |handle| {
-            client
-                .get_asset(handle)
-                .map(|asset| asset.path.into())
-                .map_err(|err| format!("asset lookup failed: {err}"))
+        let assets: Assets = std::sync::Arc::new(move |src| {
+            if src.starts_with("asset://") {
+                client
+                    .get_asset(src)
+                    .map(|asset| asset.path.into())
+                    .map_err(|err| format!("asset lookup failed: {err}"))
+            } else {
+                client
+                    .fetch_asset(src)
+                    .map(|asset| asset.path.into())
+                    .map_err(|err| format!("download failed: {err}"))
+            }
         });
         let cwd = std::path::PathBuf::from(app.cwd());
         app.set_images(Images::new(picker, cwd, Some(assets)));

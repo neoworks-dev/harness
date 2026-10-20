@@ -5,6 +5,7 @@ import type {
   AgentFocus,
   AppPresence,
   HarnessSettings,
+  SecretRequest,
   SessionEventRecord,
   SessionInfo,
   SessionSettingsPayload,
@@ -35,6 +36,7 @@ import {
 const OFFERED_DELAY_MS = 50;
 
 type RecordListener = (record: SessionEventRecord) => void;
+type SecretListener = (request: SecretRequest) => void;
 
 function presence(app: string, cwd: string): AppPresence {
   return { app, kind: "app", title: "Desktop", open: true, context: { cwd } };
@@ -83,6 +85,7 @@ class Suite {
   private movingTo?: string;
   private readonly recordListeners = new Set<RecordListener>();
   private offeredScheduled = false;
+  private readonly secretListeners = new Set<SecretListener>();
 
   /** The session shown now, from the live list. */
   get session(): SessionInfo | undefined {
@@ -105,6 +108,9 @@ class Suite {
       client.sessions.on((sessions) => (this.sessions = sessions));
       client.focus.on((focus) => this.followFocus(focus));
       client.theme.on((theme) => (this.theme = theme));
+      client.onSecretRequest((request) => {
+        for (const listener of this.secretListeners) listener(request);
+      });
       this.theme = client.theme.value;
 
       this.appId = pickAppId(await client.listConnectors());
@@ -299,6 +305,24 @@ class Suite {
   onRecord(listener: RecordListener): Unsubscribe {
     this.recordListeners.add(listener);
     return () => this.recordListeners.delete(listener);
+  }
+
+  /**
+   * The daemon asks this window for a secret (an API key, a login code). Only the listener may
+   * keep it, and not beyond the answer.
+   */
+  onSecretRequest(listener: SecretListener): Unsubscribe {
+    this.secretListeners.add(listener);
+    return () => this.secretListeners.delete(listener);
+  }
+
+  /** Answers a secret request: the value, or none when cancelled. Nothing is kept or shown. */
+  answerSecret(id: string, value?: string): void {
+    try {
+      this.need().answerSecret(id, value);
+    } catch (error) {
+      this.error = message(error);
+    }
   }
 
   private async refreshBranch(): Promise<void> {

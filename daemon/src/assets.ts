@@ -2,7 +2,10 @@
 // that stay valid after the producing app is gone. Content-addressed: the id is a hash prefix, so
 // storing the same bytes twice returns the same handle. Files are kept under
 // <dataDir>/assets as <id>.<ext>, with <id>.json holding the name, mime and producing app.
+// Remote images are downloaded into it on request (fetch), so clients only ever read files.
 import { createHash } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import type { Asset } from "@suite/protocol/types";
@@ -13,6 +16,18 @@ export const ASSET_PREFIX = "asset://";
 /** Matches handles inside free text (commands, arguments). */
 export const ASSET_HANDLE = /asset:\/\/[a-z]+-[0-9a-f]{12}/g;
 const ID = /^[a-z]+-[0-9a-f]{12}$/;
+
+/** A remote image gets this long (less than a client waits for the answer), size and redirects. */
+const FETCH_TIMEOUT_MS = 8_000;
+const FETCH_MAX_BYTES = 20 * 1024 * 1024;
+const FETCH_MAX_REDIRECTS = 5;
+/** What a client can draw; anything else is refused before it is stored. */
+const REMOTE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+/** Some hosts refuse a request that doesn't say who asks. */
+const FETCH_HEADERS = {
+  "user-agent": "suite (image download)",
+  accept: "image/png,image/jpeg,image/gif,image/webp;q=0.9,*/*;q=0.1",
+};
 
 const MIME_BY_EXT: Record<string, string> = {
   ".png": "image/png",
@@ -82,6 +97,38 @@ function parseMeta(text: string): Meta | undefined {
   return meta;
 }
 
+function parseRemote(url: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new BadRequestError(`not a URL: ${url}`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new BadRequestError(`only http and https images are downloaded, not ${url}`);
+  }
+  return parsed;
+}
+
+async function readCapped(res: Response): Promise<Uint8Array> {
+  const length = Number(res.headers.get("content-length") ?? 0);
+  if (length > FETCH_MAX_BYTES) throw new BadRequestError("larger than 20 MB");
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  if (res.body) {
+    for await (const chunk of res.body) {
+      size += chunk.byteLength;
+      if (size > FETCH_MAX_BYTES) throw new BadRequestError("larger than 20 MB");
+      chunks.push(chunk);
+    }
+  }
+  return Buffer.concat(chunks);
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export interface PutParams {
   /** Absolute path of a file to copy in. */
   path?: string;
@@ -91,9 +138,110 @@ export interface PutParams {
   app?: string;
 }
 
+export interface StoreOptions {
+  /** Lets fetch reach loopback and private addresses; for tests. */
+  privateHosts?: boolean;
+}
+
+/** An address on this machine or a private network: a URL a model wrote must not reach it. */
+export function isPrivateAddress(address: string): boolean {
+  const v4 = address.startsWith("::ffff:") ? address.slice(7) : address;
+  if (isIP(v4) === 4) {
+    const [a = 0, b = 0] = v4.split(".").map(Number);
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      a >= 224
+    );
+  }
+  const v6 = address.toLowerCase();
+  return (
+    v6 === "::" ||
+    v6 === "::1" ||
+    v6.startsWith("fc") ||
+    v6.startsWith("fd") ||
+    v6.startsWith("fe8") ||
+    v6.startsWith("fe9") ||
+    v6.startsWith("fea") ||
+    v6.startsWith("feb") ||
+    v6.startsWith("ff")
+  );
+}
+
 export class AssetStore {
-  constructor(private readonly dir: string) {
+  /** Downloaded URLs and their assets; a download in progress is shared. */
+  private readonly fetched = new Map<string, Promise<Asset>>();
+
+  constructor(
+    private readonly dir: string,
+    private readonly options: StoreOptions = {},
+  ) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
+
+  /**
+   * Downloads the image at `url` (http or https, a public host) and stores it. The same URL is
+   * downloaded once while the daemon runs; a failed download is tried again next time. Errors
+   * leave the URL out: whoever asked knows it.
+   */
+  fetch(url: string): Promise<Asset> {
+    const known = this.fetched.get(url);
+    if (known) return known;
+    const download = this.download(url);
+    this.fetched.set(url, download);
+    download.catch(() => this.fetched.delete(url));
+    return download;
+  }
+
+  private async download(url: string): Promise<Asset> {
+    let target = parseRemote(url);
+    const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+    for (let hops = 0; ; hops++) {
+      await this.checkHost(target);
+      let res: Response;
+      try {
+        res = await fetch(target, { headers: FETCH_HEADERS, redirect: "manual", signal });
+      } catch (err) {
+        throw new BadRequestError(errorMessage(err));
+      }
+      const location = res.headers.get("location");
+      if (res.status >= 300 && res.status < 400 && location !== null) {
+        if (hops >= FETCH_MAX_REDIRECTS) throw new BadRequestError("too many redirects");
+        target = parseRemote(new URL(location, target).href);
+        continue;
+      }
+      if (!res.ok) throw new BadRequestError(`HTTP ${res.status}`);
+      const bytes = await readCapped(res);
+      const mime = sniff(bytes);
+      if (mime === undefined || !REMOTE_IMAGE_TYPES.has(mime)) {
+        throw new BadRequestError(
+          `not a png, jpeg, gif or webp image (${res.headers.get("content-type") ?? "no type"})`,
+        );
+      }
+      const name = decodeURIComponent(basename(target.pathname)) || target.hostname;
+      return this.put({ bytes, name, mime });
+    }
+  }
+
+  private async checkHost(url: URL): Promise<void> {
+    if (this.options.privateHosts) return;
+    const host = url.hostname.replace(/^\[|\]$/g, "");
+    let addresses = [host];
+    if (isIP(host) === 0) {
+      try {
+        addresses = (await lookup(host, { all: true })).map((a) => a.address);
+      } catch (err) {
+        throw new BadRequestError(`can't find ${host}: ${errorMessage(err)}`);
+      }
+    }
+    if (addresses.some(isPrivateAddress)) {
+      throw new BadRequestError(`${url.hostname} is not a public host`);
+    }
   }
 
   put(params: PutParams): Asset {

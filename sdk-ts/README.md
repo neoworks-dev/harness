@@ -184,6 +184,8 @@ Requests resolve when the daemon has acted.
 | `getAsset(handle)`                           | Looks an asset up (`not_found` if unknown).                                            |
 | `fileChanged(path)`                          | Tells other clients you changed a file. Throws `DisconnectedError` if offline.         |
 | `onFileChanged(callback)`                    | Another client or the agent changed a file (never your own).                           |
+| `onSecretRequest(callback)`                  | The daemon asks this client alone for a secret (an API key): show a masked field.      |
+| `answerSecret(id, value?)`                   | Answers it; no value means cancelled. Never store or log the value.                    |
 | `close()`                                    | Marks the app closed, disconnects for good.                                            |
 
 Everything that listens returns a function that stops it.

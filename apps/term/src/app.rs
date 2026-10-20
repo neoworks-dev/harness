@@ -3,6 +3,7 @@
 //! [`App::handle_key`], [`App::handle_event`] and [`App::handle_msg`] change the state and return
 //! [`Effect`]s for the runtime to carry out against the daemon; [`App::draw`] paints it.
 
+use std::cell::Cell;
 use std::path::PathBuf;
 
 use ratatui::Frame;
@@ -14,21 +15,26 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 use suite_protocol::{
-    AgentFocus, SessionEvent, SessionEventRecord, SessionInfo, SessionState, SettingName,
+    AgentFocus, SecretRequest, SessionEvent, SessionEventRecord, SessionInfo, SessionState,
+    SettingName,
 };
-use suite_renderer_ratatui::{ButtonRef, Palette};
+use suite_renderer_ratatui::{ButtonRef, Options, Palette, UiKind, UiTarget, openui_targets};
 use suite_sdk::Event;
 
 use crate::agents::{Agents, AgentsAction, MainRow, Transcript};
 use crate::chat::{self, Chat, ChatOpts};
+use crate::choice;
 use crate::editor::Editor;
+use crate::forms::{Forms, Outcome, Pending};
 use crate::github::{Github, Outgoing};
 use crate::history::{Histories, HistoryStore};
 use crate::images::Images;
 use crate::menu::{self, Command, Entry, Switcher};
+use crate::secret::{self, Secret, SecretValue};
 use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction};
 use crate::status::{Approvals, HarnessSettings, Status, record_setting};
 use crate::style::{Styles, plain_palette};
+use crate::theme::{Prefs, Theme};
 use crate::util::{fit_line, shorten_home, truncate, width};
 use crate::widgets::{Panel, WidgetAction, Widgets};
 
@@ -47,12 +53,16 @@ const EDITOR_ROWS: usize = 8;
 const SPINNER: [char; 4] = ['◐', '◓', '◑', '◒'];
 /// The chat needs at least this much beside the sessions sidebar, else the sidebar is hidden.
 const CHAT_MIN_WIDTH: u16 = 52;
+
+/// The terminal panel's width: two fifths of what the chat would have, within these.
+const TERMINAL_MIN_WIDTH: u16 = 40;
+const TERMINAL_MAX_WIDTH: u16 = 100;
 /// Most rows a prompt takes where the editor is (its question, preview, buttons and hint).
 const PANEL_ROWS: u16 = 16;
 /// How long the editor must have been idle before a prompt takes its place.
 const TYPING_PAUSE_MS: i64 = 800;
 /// The harness a session runs on until a `/harness` setting says otherwise.
-const DEFAULT_HARNESS: &str = "pi";
+const DEFAULT_HARNESS: &str = "neo";
 
 /// What the runtime does on the app's behalf. Requests to the daemon block, so the runtime runs
 /// them off the UI thread.
@@ -97,8 +107,15 @@ pub enum Effect {
     },
     /// Ask for the session's info again (queue length, whether it still runs).
     Refresh,
+    /// Answer a `secret.request`: the typed value, or none when cancelled. `Debug` hides it.
+    Secret {
+        id: String,
+        value: Option<SecretValue>,
+    },
     /// Put text on the clipboard (OSC 52).
     Copy(String),
+    /// Open a link of an OpenUI button in the browser (xdg-open).
+    OpenUrl(String),
     Quit,
 }
 
@@ -108,6 +125,8 @@ pub enum Msg {
     Sessions(Result<Vec<SessionInfo>, String>),
     Created(Result<SessionInfo, String>),
     Error(String),
+    /// Something to tell the user that is not an error.
+    Notice(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -141,16 +160,20 @@ struct PromptState {
     /// Prompts that were dismissed (Esc) or answered: not the active one any more.
     dismissed: Vec<String>,
     button: usize,
+    /// What was typed to find an option of a long choice.
+    filter: String,
     /// The prompt last seen as active, to notice a new one.
     seen: Option<String>,
     /// The prompt has taken the editor's place: keys go to it alone.
     engaged: bool,
     /// When the user last typed in the editor (ms): a prompt waits for a pause.
     typed_ms: i64,
+    /// The first button line shown when the buttons don't fit the panel; None: not drawn yet.
+    panel_top: Cell<Option<usize>>,
 }
 
 /// The keys line under a prompt in the input area.
-fn keys_hint(focused: Option<&ButtonRef>, buttons: usize) -> String {
+fn keys_hint(focused: Option<&ButtonRef>, buttons: usize, filter: Option<&str>) -> String {
     let mut parts = Vec::new();
     if let Some(button) = focused {
         parts.push(format!("enter {}", button.label.to_lowercase()));
@@ -161,7 +184,13 @@ fn keys_hint(focused: Option<&ButtonRef>, buttons: usize) -> String {
     if buttons > 1 {
         parts.insert(1.min(parts.len()), "←/→ choose".to_string());
     }
-    parts.push("esc dismiss".to_string());
+    parts.push(
+        match filter {
+            Some(f) if !f.is_empty() => "esc clear",
+            _ => "esc dismiss",
+        }
+        .to_string(),
+    );
     parts.join(" · ")
 }
 
@@ -193,6 +222,8 @@ pub struct Config {
     pub home: Option<String>,
     pub no_color: bool,
     pub history: HistoryStore,
+    /// Where `/theme` is kept.
+    pub prefs: Prefs,
 }
 
 pub struct App {
@@ -201,7 +232,12 @@ pub struct App {
     cwd: String,
     home: Option<String>,
     no_color: bool,
+    /// What is drawn with: the theme's colors (`/theme`) made of the daemon's.
     palette: Palette,
+    /// The daemon's theme, as it last said.
+    daemon_palette: Palette,
+    theme: Theme,
+    prefs: Prefs,
     styles: Styles,
 
     widgets: Widgets,
@@ -226,8 +262,12 @@ pub struct App {
     /// Ctrl-G while the sidebar was hidden: focus it once it is drawn.
     sessions_wanted: bool,
     prompt: PromptState,
+    /// The visual state of the OpenUI docs in the chat and the values on their way out.
+    forms: Forms,
     /// The note typed for the focused button's answer (Tab on a card).
     note: Option<Note>,
+    /// A secret the daemon asked for: a masked field that has the keys and the editor's place.
+    secret: Option<Secret>,
     menu_sel: usize,
     /// The editor text the slash menu was closed for.
     menu_closed_for: Option<String>,
@@ -255,16 +295,21 @@ pub struct App {
     last_spin: i64,
     size: (u16, u16),
     sidebar_shown: bool,
+    /// `/terminal` hides the terminal panel; it shows while there are commands and room.
+    terminal_on: bool,
+    /// Where the terminal panel was drawn last (the wheel scrolls it there).
+    terminal_area: Option<Rect>,
     dirty: bool,
     clear: bool,
 }
 
 impl App {
     pub fn new(config: Config) -> App {
+        let theme = config.prefs.theme();
         let palette = if config.no_color {
             plain_palette()
         } else {
-            Palette::default()
+            theme.palette(&Palette::default())
         };
         let now = crate::util::now_ms();
         let session = config.session.clone();
@@ -276,6 +321,9 @@ impl App {
             agents_tick: 0,
             styles: Styles::new(&palette, config.no_color),
             palette,
+            daemon_palette: Palette::default(),
+            theme,
+            prefs: config.prefs,
             app_id: config.app_id,
             session: config.session,
             cwd: config.cwd,
@@ -293,7 +341,9 @@ impl App {
             sessions_shown: false,
             sessions_wanted: false,
             prompt: PromptState::default(),
+            forms: Forms::default(),
             note: None,
+            secret: None,
             menu_sel: 0,
             menu_closed_for: None,
             expanded: false,
@@ -314,6 +364,8 @@ impl App {
             last_spin: 0,
             size: (80, 24),
             sidebar_shown: false,
+            terminal_on: true,
+            terminal_area: None,
             dirty: true,
             clear: false,
         }
@@ -411,7 +463,7 @@ impl App {
             self.take_github(out, &mut fx);
         }
         if self.running || self.sessions_shown && self.sessions.any_running() {
-            let frame = now_ms / 125;
+            let frame = now_ms / 80;
             if frame != self.last_spin {
                 self.last_spin = frame;
                 self.dirty = true;
@@ -426,6 +478,7 @@ impl App {
             self.dirty = true;
         }
         self.update_engaged();
+        self.send_due(&mut fx);
         if self.agents.ticks(now_ms, self.agents_tick) {
             self.dirty = true;
         }
@@ -442,6 +495,41 @@ impl App {
             self.awaiting = None;
         }
         fx
+    }
+
+    /// Draws with the theme's colors from now on (none with `NO_COLOR`).
+    fn apply_palette(&mut self) {
+        if self.no_color {
+            return;
+        }
+        self.palette = self.theme.palette(&self.daemon_palette);
+        self.styles = Styles::new(&self.palette, false);
+        self.widgets.set_palette(self.palette);
+        self.github.set_palette(self.palette);
+    }
+
+    /// `/theme [dark|light|terminal]`; no name: the next one.
+    fn switch_theme(&mut self, text: &str) {
+        let arg = text.split_whitespace().nth(1);
+        let theme = match arg {
+            None => self.theme.next(),
+            Some(name) => match Theme::parse(name) {
+                Some(theme) => theme,
+                None => {
+                    self.notify("usage: /theme [dark|light|terminal]", true);
+                    return;
+                }
+            },
+        };
+        self.theme = theme;
+        self.apply_palette();
+        match self.prefs.set_theme(theme) {
+            Ok(()) if self.no_color => {
+                self.notify(format!("theme: {} (NO_COLOR is set)", theme.name()), false)
+            }
+            Ok(()) => self.notify(format!("theme: {}", theme.name()), false),
+            Err(why) => self.notify(format!("theme: {} (not kept: {why})", theme.name()), true),
+        }
     }
 
     fn notify(&mut self, text: impl Into<String>, error: bool) {
@@ -486,20 +574,24 @@ impl App {
                     }
                 }
             }
-            Event::Connection(up) => self.connected = up,
-            Event::Theme(theme) => {
-                if !self.no_color {
-                    self.palette = Palette::from_theme(&theme);
-                    self.styles = Styles::new(&self.palette, false);
-                    self.widgets.set_palette(self.palette);
-                    self.github.set_palette(self.palette);
+            Event::Connection(up) => {
+                self.connected = up;
+                // The daemon drops a question with its connection: an answer would find none.
+                if !up && self.secret.take().is_some() {
+                    self.notify("connection lost: the question was dropped", true);
                 }
+            }
+            Event::Secret(request) => self.on_secret(request, &mut fx),
+            Event::Theme(theme) => {
+                self.daemon_palette = Palette::from_theme(&theme);
+                self.apply_palette();
             }
             Event::ViewSnapshot(snapshot) => {
                 if snapshot.session == self.session {
                     match (&snapshot.agent, self.transcript.as_mut()) {
                         (None, _) => {
                             self.chat.apply_snapshot(snapshot);
+                            self.refresh_forms();
                             self.sync_prompt();
                         }
                         (Some(agent), Some(t)) if *agent == t.agent.harness => {
@@ -514,6 +606,7 @@ impl App {
                     match (&patch.agent, self.transcript.as_mut()) {
                         (None, _) => {
                             self.chat.apply_patch(patch);
+                            self.refresh_forms();
                             self.sync_prompt();
                         }
                         (Some(agent), Some(t)) if *agent == t.agent.harness => {
@@ -527,6 +620,49 @@ impl App {
         }
         self.dirty = true;
         fx
+    }
+
+    /// The daemon asks this app alone for a secret. It is shown in the editor's place when the
+    /// question is for the shown session, else answered as cancelled (nothing could show it). A
+    /// newer question replaces the open one, which is answered as cancelled.
+    fn on_secret(&mut self, request: SecretRequest, fx: &mut Vec<Effect>) {
+        if request.session != self.session {
+            fx.push(Effect::Secret {
+                id: request.id,
+                value: None,
+            });
+            return;
+        }
+        self.cancel_secret(fx);
+        self.secret = Some(Secret::new(request.id, request.title, request.placeholder));
+        self.chat.follow();
+    }
+
+    /// Closes the open secret question, if any, answering it as cancelled.
+    fn cancel_secret(&mut self, fx: &mut Vec<Effect>) {
+        if let Some(secret) = self.secret.take() {
+            fx.push(Effect::Secret {
+                id: secret.id.clone(),
+                value: None,
+            });
+        }
+    }
+
+    /// Keys while a secret is asked for: they are all the field's. Enter answers, Esc cancels.
+    fn secret_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
+        let Some(secret) = self.secret.as_mut() else {
+            return;
+        };
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let alt = key.modifiers.contains(KeyModifiers::ALT);
+        let value = match secret.key(key.code, ctrl, alt) {
+            secret::Outcome::Typing => return,
+            secret::Outcome::Submit(value) => Some(value),
+            secret::Outcome::Cancel => None,
+        };
+        if let Some(Secret { id, .. }) = self.secret.take() {
+            fx.push(Effect::Secret { id, value });
+        }
     }
 
     fn on_focus(&mut self, focus: AgentFocus, fx: &mut Vec<Effect>) {
@@ -545,6 +681,7 @@ impl App {
             // move`): follow it. A new conversation starts in the same directory.
             let cwd = self.cwd.clone();
             let from = self.session.clone();
+            self.cancel_secret(fx);
             self.begin_session(&focus.session, &cwd);
             self.awaiting = None;
             fx.push(Effect::Switch {
@@ -628,6 +765,7 @@ impl App {
             Msg::Created(Ok(info)) => {
                 self.sessions.upsert(info.clone());
                 let from = self.session.clone();
+                self.cancel_secret(&mut fx);
                 self.begin_session(&info.id, &info.cwd);
                 self.awaiting = Some((info.id.clone(), self.now_ms + 3000));
                 fx.push(Effect::Switch {
@@ -639,6 +777,7 @@ impl App {
             }
             Msg::Created(Err(why)) => self.notify(format!("new session failed: {why}"), true),
             Msg::Error(why) => self.notify(why, true),
+            Msg::Notice(text) => self.notify(text, false),
         }
         fx
     }
@@ -656,7 +795,9 @@ impl App {
         self.approvals = Approvals::Ask;
         self.editor.clear();
         self.prompt = PromptState::default();
+        self.forms = Forms::default();
         self.note = None;
+        self.secret = None;
         self.overlay = Overlay::None;
         self.focus = None;
         self.menu_sel = 0;
@@ -673,7 +814,7 @@ impl App {
     /// The prompt the keys answer: one picked by hand, else the oldest one still pending.
     fn active_ref(&self) -> Option<&str> {
         if let Some(r) = &self.prompt.selected
-            && !self.chat.buttons_of(r).is_empty()
+            && self.chat.is_prompt(r)
         {
             return Some(r);
         }
@@ -717,6 +858,37 @@ impl App {
         self.active_ref().map_or(&[], |r| self.chat.buttons_of(r))
     }
 
+    /// The active prompt is a choice long enough to be filtered by typing.
+    fn filtering(&self) -> bool {
+        choice::is_long(self.active_buttons())
+    }
+
+    /// The options of the active prompt that match the filter (all of them for a card that
+    /// isn't filtered).
+    fn shown_buttons(&self) -> Vec<usize> {
+        let buttons = self.active_buttons();
+        if choice::is_long(buttons) {
+            choice::matching(buttons, &self.prompt.filter)
+        } else {
+            (0..buttons.len()).collect()
+        }
+    }
+
+    /// The filter changed: the focus goes to the first match (the current option when it is
+    /// empty) and the window of the list starts over.
+    fn refilter(&mut self) {
+        if let Some(at) = choice::refocus(self.active_buttons(), &self.prompt.filter) {
+            self.prompt.button = at;
+        }
+        self.prompt.panel_top.set(None);
+    }
+
+    /// A typed character, Backspace or Ctrl-U on a filtered choice.
+    fn edit_filter(&mut self, edit: impl FnOnce(&mut String)) {
+        edit(&mut self.prompt.filter);
+        self.refilter();
+    }
+
     /// A new active prompt starts on its current or first button and is scrolled into view.
     fn sync_prompt(&mut self) {
         let current = self.active_ref().map(str::to_string);
@@ -729,6 +901,9 @@ impl App {
             self.note = None;
         }
         if current != self.prompt.seen {
+            if let Some(old) = self.prompt.seen.clone() {
+                self.forms.blur(&old, self.now_ms);
+            }
             // A picker starts on the value in effect now, anything else on its first button.
             self.prompt.button = current
                 .as_deref()
@@ -737,12 +912,24 @@ impl App {
             if current.is_some() && self.prompt.selected.is_none() {
                 self.chat.follow();
             }
-            self.prompt.seen = current;
+            self.prompt.panel_top.set(None);
+            self.prompt.filter.clear();
+            self.prompt.seen = current.clone();
+            if let Some(r) = current.filter(|r| self.chat.has_targets(r)) {
+                let targets = self.form_targets(&r);
+                self.forms.enter(&r, &targets, self.now_ms);
+                self.chat.reveal_focus(&r);
+            }
         }
         self.update_engaged();
     }
 
     fn move_button(&mut self, delta: isize) {
+        if self.filtering() {
+            let shown = self.shown_buttons();
+            self.prompt.button = choice::step(&shown, self.prompt.button, delta);
+            return;
+        }
         let n = self.active_buttons().len();
         if n > 0 {
             self.prompt.button =
@@ -789,6 +976,9 @@ impl App {
             return;
         };
         let button = self.prompt.button;
+        if self.filtering() && !self.shown_buttons().contains(&button) {
+            return;
+        }
         if self.chat.buttons_of(&r).get(button).is_some_and(takes_note) {
             self.note = Some(Note {
                 r#ref: r,
@@ -872,6 +1062,191 @@ impl App {
         true
     }
 
+    // ---- OpenUI forms ----
+
+    /// The active prompt when it is an OpenUI item: keys move through its targets.
+    fn active_form(&self) -> Option<&str> {
+        self.active_ref().filter(|r| self.chat.has_targets(r))
+    }
+
+    /// The focus targets of an item's OpenUI docs, as drawn with their visual state.
+    fn form_targets(&self, r: &str) -> Vec<UiTarget> {
+        let Some(item) = self.chat.item(r) else {
+            return Vec::new();
+        };
+        let opts = Options {
+            openui: self.forms.doc_states(r),
+            ..Options::default()
+        };
+        openui_targets(item, &opts)
+    }
+
+    /// The daemon sent items again: values it has caught up with are not held here any more.
+    fn refresh_forms(&mut self) {
+        let refs: Vec<String> = self.forms.all().keys().cloned().collect();
+        for r in refs {
+            if self.chat.has_targets(&r) {
+                let targets = self.form_targets(&r);
+                self.forms.refresh(&r, &targets, self.now_ms);
+            }
+        }
+    }
+
+    fn input_effect(&self, p: Pending) -> Effect {
+        Effect::Action {
+            session: self.session.clone(),
+            item: p.item,
+            action: "openui.input".into(),
+            args: Some(serde_json::json!({"doc": p.doc, "key": p.key, "value": p.value})),
+        }
+    }
+
+    /// Sends the values whose pause is over.
+    fn send_due(&mut self, fx: &mut Vec<Effect>) {
+        if !self.forms.has_pending() {
+            return;
+        }
+        for p in self.forms.due(self.now_ms) {
+            fx.push(self.input_effect(p));
+        }
+    }
+
+    /// Keys while an OpenUI item has the editor's place.
+    fn form_key(&mut self, r: &str, key: KeyEvent, fx: &mut Vec<Effect>) {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+        if let KeyCode::Char(c) = key.code
+            && ctrl
+            && matches!(c, 'c' | 'p' | 'n' | 'o' | 't' | 's' | 'l' | 'g' | 'x')
+        {
+            match c {
+                'c' => self.ctrl_c(fx),
+                'p' => {
+                    self.select_prompt(-1);
+                }
+                'n' => {
+                    self.select_prompt(1);
+                }
+                _ => {
+                    self.ctrl_key(c, fx);
+                }
+            }
+            return;
+        }
+        match key.code {
+            KeyCode::Up if shift => return self.chat.scroll_up(1),
+            KeyCode::Down if shift => return self.chat.scroll_down(1),
+            _ => {}
+        }
+        let targets = self.form_targets(r);
+        let out = self.forms.key(r, &targets, key, self.now_ms);
+        if !out.taken {
+            match key.code {
+                KeyCode::PageUp => self.chat.page_up(),
+                KeyCode::PageDown => self.chat.page_down(),
+                KeyCode::Home => self.chat.to_top(),
+                KeyCode::End => self.chat.follow(),
+                _ => {}
+            }
+            return;
+        }
+        self.chat.reveal_focus(r);
+        self.apply_outcome(r, out, fx);
+        self.send_due(fx);
+    }
+
+    fn apply_outcome(&mut self, r: &str, out: Outcome, fx: &mut Vec<Effect>) {
+        if let Some(url) = out.url {
+            self.open_url(url, fx);
+        }
+        if let Some(text) = out.copy {
+            fx.push(Effect::Copy(text));
+            self.notify("copied", false);
+        }
+        if let Some((doc, key)) = out.press {
+            // What was typed goes first, so the press finds it.
+            for p in self.forms.flush(r) {
+                fx.push(self.input_effect(p));
+            }
+            fx.push(Effect::Action {
+                session: self.session.clone(),
+                item: r.to_string(),
+                action: "openui.press".into(),
+                args: Some(serde_json::json!({"doc": doc, "key": key})),
+            });
+        }
+        if out.leave {
+            self.esc(fx);
+        }
+    }
+
+    /// A link in the browser, for the schemes that make sense there; anything else is shown.
+    fn open_url(&mut self, url: String, fx: &mut Vec<Effect>) {
+        let scheme = url.split(':').next().unwrap_or("").to_ascii_lowercase();
+        if matches!(scheme.as_str(), "http" | "https" | "mailto") {
+            self.notify(format!("opening {url}"), false);
+            fx.push(Effect::OpenUrl(url));
+        } else {
+            self.notify(format!("link: {url}"), false);
+        }
+    }
+
+    /// One line under a form: what the focused target does with the keys.
+    fn form_hint(&self, r: &str, width: u16) -> Line<'static> {
+        let targets = self.form_targets(r);
+        let focused = self.forms.focused(r, &targets);
+        let mut parts: Vec<String> = Vec::new();
+        match focused {
+            Some(t) => {
+                if !t.label.is_empty() {
+                    parts.push(t.label.clone());
+                }
+                parts.push(
+                    match &t.kind {
+                        UiKind::Input { .. } | UiKind::Date => "type · enter submits",
+                        UiKind::TextArea => "type · enter newline",
+                        UiKind::Select { .. } if self.forms.is_open(r, t) => {
+                            "↑/↓ choose · enter picks"
+                        }
+                        UiKind::Select { .. } => "enter opens · ←/→ choose",
+                        UiKind::Radio { .. } => "←/→ choose",
+                        UiKind::CheckBox | UiKind::Switch => "space toggles",
+                        UiKind::CheckBoxGroup { .. } | UiKind::SwitchGroup { .. } => {
+                            "↑/↓ move · space toggles"
+                        }
+                        UiKind::Slider { .. } => "←/→ adjust",
+                        UiKind::Button { .. } => "enter presses",
+                        UiKind::Tabs { .. } => "←/→ switch tab",
+                        UiKind::Accordion => "enter opens / closes",
+                        UiKind::Carousel { .. } => "←/→ scroll",
+                    }
+                    .to_string(),
+                );
+                if !self.forms.is_open(r, t) {
+                    parts.push("tab next".to_string());
+                }
+            }
+            None => parts.push("tab to start".to_string()),
+        }
+        parts.push(
+            if focused.is_some_and(|t| self.forms.is_open(r, t)) {
+                "esc closes"
+            } else {
+                "esc input"
+            }
+            .to_string(),
+        );
+        let text = parts.join(" · ");
+        let w = usize::from(width);
+        chat::barred(
+            Line::from(Span::styled(
+                truncate(&text, w.saturating_sub(2)),
+                self.styles.muted,
+            )),
+            self.styles.accent,
+        )
+    }
+
     // ---- keys ----
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Vec<Effect> {
@@ -880,6 +1255,10 @@ impl App {
             return fx;
         }
         self.dirty = true;
+        if self.secret.is_some() {
+            self.secret_key(key, &mut fx);
+            return fx;
+        }
         if self.widgets.overlay_open() {
             self.widgets.handle_key(Panel::Files, key);
             return fx;
@@ -919,7 +1298,8 @@ impl App {
         fx
     }
 
-    /// The mouse wheel scrolls the chat (or the open diff). Other mouse events are ignored.
+    /// The mouse wheel scrolls the chat (or the open diff, or the terminal panel under the
+    /// pointer). Other mouse events are ignored.
     pub fn handle_mouse(&mut self, mouse: MouseEvent) {
         let down = match mouse.kind {
             MouseEventKind::ScrollUp => false,
@@ -931,6 +1311,15 @@ impl App {
             self.github.wheel(down);
         } else if let Some(t) = self.transcript.as_mut() {
             t.wheel(down);
+        } else if self
+            .terminal_area
+            .is_some_and(|a| (a.x..a.right()).contains(&mouse.column))
+        {
+            let code = if down { KeyCode::Down } else { KeyCode::Up };
+            for _ in 0..WHEEL_LINES {
+                self.widgets
+                    .handle_key(Panel::Terminal, KeyEvent::new(code, KeyModifiers::NONE));
+            }
         } else if self.widgets.overlay_open() {
             let code = if down { KeyCode::Down } else { KeyCode::Up };
             for _ in 0..WHEEL_LINES {
@@ -946,6 +1335,10 @@ impl App {
 
     pub fn handle_paste(&mut self, text: &str) {
         self.dirty = true;
+        if let Some(secret) = self.secret.as_mut() {
+            secret.paste(text);
+            return;
+        }
         if self.github.is_open() {
             self.github.paste(text);
             return;
@@ -959,6 +1352,13 @@ impl App {
             Overlay::None if self.note.is_some() => {
                 if let Some(note) = self.note.as_mut() {
                     note.text.extend(text.chars().filter(|c| !c.is_control()));
+                }
+            }
+            Overlay::None if self.prompt.engaged && self.active_form().is_some() => {
+                if let Some(r) = self.active_form().map(str::to_string) {
+                    let targets = self.form_targets(&r);
+                    self.forms.paste(&r, &targets, text, self.now_ms);
+                    self.chat.reveal_focus(&r);
                 }
             }
             Overlay::None => {
@@ -1069,10 +1469,11 @@ impl App {
         }
     }
 
-    /// Tab: editor, sessions, plan, files (the ones on screen), editor.
+    /// Tab: editor, sessions, terminal, plan, files (the ones on screen), editor.
     fn cycle_focus(&mut self) {
         let order = [
             (self.sessions_shown, Focus::Sessions),
+            (self.terminal_area.is_some(), Focus::Panel(Panel::Terminal)),
             (self.sidebar_shown, Focus::Panel(Panel::Plan)),
             (self.sidebar_shown, Focus::Panel(Panel::Files)),
         ];
@@ -1106,6 +1507,28 @@ impl App {
     fn enter_focus(&mut self) {
         if self.focus == Some(Focus::Sessions) {
             self.sessions.focus(&self.session);
+        }
+    }
+
+    /// `/files`: the files panel gets the keys.
+    fn focus_files(&mut self) {
+        if self.sidebar_shown {
+            self.focus = Some(Focus::Panel(Panel::Files));
+        } else if self.widgets.wants_sidebar(u16::MAX) {
+            self.notify("terminal too narrow for the files panel", false);
+        } else {
+            self.notify("no changed files", false);
+        }
+    }
+
+    /// `/terminal`: show or hide the agent's commands next to the chat.
+    fn toggle_terminal(&mut self) {
+        self.terminal_on = !self.terminal_on;
+        if self.terminal_on && !self.widgets.has_commands() {
+            self.notify(
+                "no commands yet; they show here once the agent runs one",
+                false,
+            );
         }
     }
 
@@ -1166,6 +1589,7 @@ impl App {
             return;
         }
         let from = self.session.clone();
+        self.cancel_secret(fx);
         self.begin_session(&info.id, &info.cwd);
         self.awaiting = Some((info.id.clone(), self.now_ms + 3000));
         fx.push(Effect::Switch {
@@ -1207,7 +1631,9 @@ impl App {
     }
 
     fn esc(&mut self, fx: &mut Vec<Effect>) {
-        if self.menu_visible() {
+        if self.prompt.engaged && self.filtering() && !self.prompt.filter.is_empty() {
+            self.edit_filter(String::clear);
+        } else if self.menu_visible() {
             self.menu_closed_for = Some(self.editor.text().to_string());
         } else if let Some(r) = self.active_ref().map(str::to_string) {
             self.prompt.dismissed.push(r);
@@ -1225,11 +1651,15 @@ impl App {
     /// Keys while a prompt has taken the editor's place: they answer it, and nothing else
     /// reaches the editor (and its draft).
     fn prompt_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
+        if let Some(r) = self.active_form().map(str::to_string) {
+            return self.form_key(&r, key, fx);
+        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         match key.code {
             KeyCode::Char(c) if ctrl => match c {
                 'c' => self.ctrl_c(fx),
+                'u' if self.filtering() => self.edit_filter(String::clear),
                 'p' => {
                     self.select_prompt(-1);
                 }
@@ -1241,6 +1671,17 @@ impl App {
                 }
                 _ => {}
             },
+            // On a long choice every character is for the filter, digits too.
+            KeyCode::Char(c) if self.filtering() => {
+                if !key.modifiers.contains(KeyModifiers::ALT) {
+                    self.edit_filter(|f| f.push(c));
+                }
+            }
+            KeyCode::Backspace if self.filtering() => {
+                self.edit_filter(|f| {
+                    f.pop();
+                });
+            }
             KeyCode::Char(c) => {
                 if let Some(n) = c.to_digit(10).filter(|n| (1..=9).contains(n))
                     && (n as usize) <= self.active_buttons().len()
@@ -1248,7 +1689,12 @@ impl App {
                     self.press(n as usize - 1, fx);
                 }
             }
-            KeyCode::Enter => self.press(self.prompt.button, fx),
+            KeyCode::Enter => {
+                // With nothing matching there is nothing to pick.
+                if !self.filtering() || self.shown_buttons().contains(&self.prompt.button) {
+                    self.press(self.prompt.button, fx);
+                }
+            }
             KeyCode::Tab => self.tab_on_prompt(),
             KeyCode::BackTab => self.cycle_approvals(fx),
             KeyCode::Esc => self.esc(fx),
@@ -1289,7 +1735,13 @@ impl App {
                 self.editor.insert_char(c);
             }
             KeyCode::Enter if alt || shift => self.editor.newline(),
-            KeyCode::Enter => self.enter(fx),
+            KeyCode::Enter => {
+                if self.enter(fx) {
+                    // Sent: the typing is over (see send), not just paused.
+                    self.histories.of(&self.session).reset();
+                    edited = false;
+                }
+            }
             KeyCode::BackTab => {
                 self.cycle_approvals(fx);
                 edited = false;
@@ -1447,14 +1899,21 @@ impl App {
     fn history_prev(&mut self) {
         let current = self.editor.text().to_string();
         if let Some(text) = self.histories.of(&self.session).older(&current) {
-            self.editor.set_text(&text);
+            self.recall(&text);
         }
     }
 
     fn history_next(&mut self) {
         if let Some(text) = self.histories.of(&self.session).newer() {
-            self.editor.set_text(&text);
+            self.recall(&text);
         }
+    }
+
+    /// A recalled `/command` keeps the menu closed, or the next Up/Down would move in it
+    /// instead of going on through the history.
+    fn recall(&mut self, text: &str) {
+        self.editor.set_text(text);
+        self.menu_closed_for = Some(text.to_string());
     }
 
     // ---- sending and commands ----
@@ -1491,23 +1950,24 @@ impl App {
         }
     }
 
-    fn enter(&mut self, fx: &mut Vec<Effect>) {
+    /// Enter in the editor; true when the text was sent or run, false when there's more to type.
+    fn enter(&mut self, fx: &mut Vec<Effect>) -> bool {
         let matches = self.menu_matches();
         if !matches.is_empty() {
             let cmd = matches[self.menu_sel.min(matches.len() - 1)];
             if cmd.needs_args {
                 self.editor.set_text(&format!("/{} ", cmd.name));
                 self.menu_sel = 0;
-                return;
+                return false;
             }
             self.editor.clear();
             self.menu_sel = 0;
             self.run_command(cmd.name, &format!("/{}", cmd.name), fx);
-            return;
+            return true;
         }
         let text = self.editor.text().trim().to_string();
         if text.is_empty() {
-            return;
+            return false;
         }
         self.editor.clear();
         self.menu_sel = 0;
@@ -1520,6 +1980,7 @@ impl App {
             Some(cmd) => self.run_command(cmd.name, &text, fx),
             None => self.send(text, fx),
         }
+        true
     }
 
     fn run_command(&mut self, name: &str, text: &str, fx: &mut Vec<Effect>) {
@@ -1530,6 +1991,9 @@ impl App {
             "thoughts" => self.show_thoughts = !self.show_thoughts,
             "help" => self.overlay = Overlay::Help,
             "github" => self.github.open(),
+            "theme" => self.switch_theme(text),
+            "files" => self.focus_files(),
+            "terminal" => self.toggle_terminal(),
             "quit" => fx.push(Effect::Quit),
             _ => self.send(text.to_string(), fx),
         }
@@ -1555,6 +2019,9 @@ impl App {
     fn send(&mut self, text: String, fx: &mut Vec<Effect>) {
         self.histories.record(&self.session, &text);
         self.chat.follow();
+        // Sending ends the typing: a card it brings (/model's choice) takes the editor's place at
+        // once instead of showing in the chat first.
+        self.prompt.typed_ms = 0;
         if self.running {
             self.queued += 1;
         }
@@ -1580,13 +2047,29 @@ impl App {
                 ..area
             });
         let left_w = left.map_or(0, |r| r.width);
-        let main = Rect {
+        let mut main = Rect {
             x: area.x + left_w,
             width: area.width - left_w - right_w,
             ..area
         };
+        // The agent's commands to the right of the chat, when the chat keeps its room.
+        let terminal = (self.terminal_on
+            && self.widgets.has_commands()
+            && main.width >= CHAT_MIN_WIDTH + 1 + TERMINAL_MIN_WIDTH)
+            .then(|| {
+                let w = (main.width * 2 / 5)
+                    .clamp(TERMINAL_MIN_WIDTH, TERMINAL_MAX_WIDTH)
+                    .min(main.width - CHAT_MIN_WIDTH - 1);
+                main.width -= w + 1;
+                Rect {
+                    x: main.x + main.width + 1,
+                    y: area.y,
+                    width: w,
+                    height: area.height,
+                }
+            });
         let side = side.map(|w| Rect {
-            x: main.x + main.width + 1,
+            x: area.x + area.width - w,
             y: area.y,
             width: w,
             height: area.height,
@@ -1600,7 +2083,13 @@ impl App {
         let rule_h = h.saturating_sub(status_h).min(1);
         let room = h - status_h - rule_h;
         // An engaged prompt takes the editor's place; a waiting one adds a hint row above it.
-        let panel = if self.prompt.engaged {
+        let panel = if let Some(secret) = &self.secret {
+            secret.lines(
+                usize::from(main.width),
+                self.styles.accent,
+                self.styles.muted,
+            )
+        } else if self.prompt.engaged {
             self.panel_lines(
                 main.width,
                 usize::from(room.saturating_sub(1).min(PANEL_ROWS)),
@@ -1631,6 +2120,7 @@ impl App {
             status: at(chat_h + rule_h + editor_h, status_h),
             agents: at(h, agents_h),
             side,
+            terminal,
             left,
         }
     }
@@ -1669,6 +2159,7 @@ impl App {
         self.size = (area.width, area.height);
         let areas = self.areas(area);
         self.sidebar_shown = areas.side.is_some();
+        self.terminal_area = areas.terminal;
         self.sessions_shown = areas.left.is_some();
         if std::mem::take(&mut self.sessions_wanted) {
             if self.sessions_shown {
@@ -1679,7 +2170,12 @@ impl App {
             }
         }
         match self.focus {
-            Some(Focus::Panel(_)) if !self.sidebar_shown => self.focus = None,
+            Some(Focus::Panel(Panel::Terminal)) if !self.terminal_area.is_some() => {
+                self.focus = None
+            }
+            Some(Focus::Panel(Panel::Plan | Panel::Files)) if !self.sidebar_shown => {
+                self.focus = None;
+            }
             Some(Focus::Sessions) if !self.sessions_shown => self.focus = None,
             Some(Focus::Agents) if !self.agents.visible(self.now_ms) => self.focus = None,
             _ => {}
@@ -1699,6 +2195,7 @@ impl App {
                 active: None,
                 in_panel: false,
                 marker: self.styles.accent,
+                ui: Default::default(),
             };
             if let Some(t) = self.transcript.as_mut() {
                 t.draw(frame, areas.chat, &opts, &self.styles);
@@ -1713,6 +2210,10 @@ impl App {
         }
         if let Some(left) = areas.left {
             self.draw_sessions(frame, left);
+        }
+        if let Some(terminal) = areas.terminal {
+            let focused = self.focus == Some(Focus::Panel(Panel::Terminal));
+            self.widgets.draw_terminal(frame, terminal, focused);
         }
         if let Some(side) = areas.side {
             let panel = match self.focus {
@@ -1729,7 +2230,11 @@ impl App {
             );
         }
         if areas.hint.height > 0 {
-            let hint = "permission needed — waiting until you stop typing";
+            let hint = if self.active_form().is_some() {
+                "form open — it takes the keys when you stop typing"
+            } else {
+                "permission needed — waiting until you stop typing"
+            };
             frame.render_widget(
                 Paragraph::new(Span::styled(
                     truncate(hint, usize::from(areas.hint.width)),
@@ -1745,6 +2250,9 @@ impl App {
         }
         self.draw_status(frame, areas.status);
         self.draw_agents(frame, areas.agents);
+        if !self.no_color && self.theme.paints() {
+            crate::theme::paint(frame.buffer_mut(), &self.palette);
+        }
     }
 
     /// The sessions on the left: the list, then a border and a gap before the chat.
@@ -1783,8 +2291,9 @@ impl App {
             active: self
                 .active_ref()
                 .map(|r| (r.to_string(), self.prompt.button)),
-            in_panel: self.prompt.engaged,
+            in_panel: self.prompt.engaged && self.active_form().is_none(),
             marker: self.styles.accent,
+            ui: self.forms.all().clone(),
         }
     }
 
@@ -1821,7 +2330,10 @@ impl App {
             );
             return;
         }
-        frame.render_widget(Paragraph::new(self.chat.visible()), content);
+        frame.render_widget(
+            Paragraph::new(self.chat.visible_at(Some(self.now_ms))),
+            content,
+        );
         if let Some(images) = self.images.as_mut() {
             for at in self.chat.placements() {
                 images.draw(frame.buffer_mut(), content, &at, self.styles.muted);
@@ -1939,30 +2451,100 @@ impl App {
         let Some(item) = self.chat.item(r) else {
             return Vec::new();
         };
+        if self.chat.has_targets(r) {
+            return vec![self.form_hint(r, width)];
+        }
         let buttons = self.chat.buttons_of(r);
-        let focused = self.prompt.button.min(buttons.len().saturating_sub(1));
+        let filtering = choice::is_long(buttons);
+        // A long choice shows only the options that match, numbered from its own first line.
+        let shown = filtering.then(|| choice::matching(buttons, &self.prompt.filter));
+        let filtered = shown
+            .as_ref()
+            .map(|s| suite_renderer_ratatui::keep_buttons(item, s));
+        let (item, focused) = match (&filtered, &shown) {
+            (Some(filtered), Some(shown)) => (
+                filtered,
+                shown
+                    .iter()
+                    .position(|&i| i == self.prompt.button)
+                    .unwrap_or(usize::MAX),
+            ),
+            _ => (
+                item,
+                self.prompt.button.min(buttons.len().saturating_sub(1)),
+            ),
+        };
         let w = usize::from(width);
         let marker = self.styles.accent;
         let tail = match &self.note {
             Some(note) => chat::note_line(&note.text, w.saturating_sub(2), marker),
             None => Line::from(Span::styled(
-                keys_hint(buttons.get(focused), buttons.len()),
+                keys_hint(
+                    buttons
+                        .get(self.prompt.button.min(buttons.len().saturating_sub(1)))
+                        .filter(|_| !shown.as_ref().is_some_and(Vec::is_empty)),
+                    shown.as_ref().map_or(buttons.len(), Vec::len),
+                    filtering.then_some(self.prompt.filter.as_str()),
+                ),
                 self.styles.muted,
             )),
         };
+        let nothing = shown.as_ref().is_some_and(Vec::is_empty);
+        // The question, then the filter field, then the options.
+        let head = 1 + usize::from(filtering);
         let budget = max_rows.saturating_sub(1).max(1);
+        let compose = |preview: usize| {
+            let mut body = chat::panel_lines(
+                item,
+                width,
+                focused,
+                preview,
+                filtering,
+                self.palette,
+                marker,
+            );
+            if filtering {
+                let field = chat::filter_line(&self.prompt.filter, w.saturating_sub(2), marker);
+                body.insert(1.min(body.len()), chat::barred(field, marker));
+                if nothing {
+                    body.push(chat::barred(
+                        Line::from(Span::styled("no match", self.styles.muted)),
+                        marker,
+                    ));
+                }
+            }
+            body
+        };
         let mut body = Vec::new();
         for preview in [10, 6, 3, 1, 0] {
-            body = chat::panel_lines(item, width, focused, preview, self.palette, marker);
+            body = compose(preview);
             if body.len() <= budget {
                 break;
             }
         }
         if body.len() > budget {
-            // Too small for the preview: keep the question and the buttons.
-            let rest = body.split_off(body.len() - (budget - 1));
-            body.truncate(1);
-            body.extend(rest);
+            // Too small for the preview: keep the question (and the filter) and a window of the
+            // buttons that follows the focused one, scrolling no further than it takes to show it.
+            let rows = budget.saturating_sub(head);
+            let mut rest = body.split_off(head.min(body.len()));
+            // The focused button is on the first line that differs from a drawing without one.
+            let unfocused =
+                chat::panel_lines(item, width, usize::MAX, 0, filtering, self.palette, marker);
+            let at = rest
+                .iter()
+                .zip(unfocused.iter().skip(1))
+                .position(|(a, b)| a != b)
+                .unwrap_or(rest.len().saturating_sub(1));
+            let max_top = rest.len().saturating_sub(rows);
+            let mut top = self.prompt.panel_top.get().unwrap_or(max_top);
+            if at < top {
+                top = at;
+            } else if at >= top + rows {
+                top = at + 1 - rows;
+            }
+            top = top.min(max_top);
+            self.prompt.panel_top.set(Some(top));
+            body.extend(rest.drain(top..top + rows));
         }
         let (at, of) = self.queue();
         if of > 1
@@ -2031,6 +2613,7 @@ impl App {
     /// The terminal cursor sits in the editor unless something else has the keys.
     fn editor_has_cursor(&self) -> bool {
         self.focus.is_none()
+            && self.secret.is_none()
             && self.overlay != Overlay::Switcher
             && !self.github.is_open()
             && self.transcript.is_none()
@@ -2117,7 +2700,7 @@ impl App {
             ),
             key(
                 "1-9, arrows, enter",
-                "answer a prompt (it takes the input's place)",
+                "answer a prompt or fill in a form: tab, type, space; esc: input",
             ),
             key("ctrl-p / ctrl-n", "pick an older prompt"),
             Line::default(),
@@ -2218,6 +2801,8 @@ struct Areas {
     /// The subagents list under the status lines.
     agents: Rect,
     side: Option<Rect>,
+    /// The terminal panel, between the chat and the side column.
+    terminal: Option<Rect>,
     /// The sessions sidebar.
     left: Option<Rect>,
 }
@@ -2229,3 +2814,11 @@ mod tests;
 #[cfg(test)]
 #[path = "agents_app_tests.rs"]
 mod agents_app_tests;
+
+#[cfg(test)]
+#[path = "secret_app_tests.rs"]
+mod secret_app_tests;
+
+#[cfg(test)]
+#[path = "openui_app_tests.rs"]
+mod openui_app_tests;

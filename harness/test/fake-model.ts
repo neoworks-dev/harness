@@ -1,4 +1,4 @@
-import type { StreamFn } from "@mariozechner/pi-agent-core";
+import type { StreamFn } from "../src/loop/index.ts";
 import {
   createAssistantMessageEventStream,
   fauxAssistantMessage,
@@ -14,7 +14,9 @@ export const TEST_CONFIG: HarnessConfig = {
   modelId: "deepseek-v4-flash",
   thinkingLevel: "off",
   apiKey: "test-key-not-real",
+  authPath: "/nonexistent/suite-auth.json",
   piAuthPath: "/nonexistent/auth.json",
+  web: { safeSearch: "moderate" },
 };
 
 export type Step =

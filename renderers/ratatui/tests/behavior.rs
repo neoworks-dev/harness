@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use suite_renderer_ratatui::{
     ImageOptions, ImageSlot, ImageStatus, Options, Palette, buttons, image_cells, image_sources,
-    plain_text, render_item, render_item_images,
+    keep_buttons, plain_text, render_item, render_item_images,
 };
 
 fn pal() -> Palette {
@@ -133,34 +133,120 @@ fn tool_bullets_show_the_state() {
     for (state, color) in [
         ("pending", pal().muted),
         ("running", pal().accent),
-        ("done", pal().success),
+        // Done is the usual case and stays quiet, so failures stand out.
+        ("done", pal().muted),
         ("failed", pal().danger),
     ] {
         let it = tool(state, &code("x"));
         let head = &render_item(&it, 40, &Options::default())[0];
         assert_eq!(head.spans[0].content, "● ");
         assert_eq!(head.spans[0].style.fg, Some(color), "{state}");
-        assert_eq!(head.spans[1].content, "bash: ls");
+        let label: String = head.spans[1..].iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(label, "bash: ls");
     }
 }
 
 #[test]
-fn compact_code_shows_the_first_lines_and_how_many_are_cut() {
-    let out = tool("done", &code("a\nb\nc\nd\ne\n"));
-    assert_eq!(
-        lines(&out, 40),
-        ["● bash: ls", "  ⎿ a", "    b", "    c", "    … +2 lines"]
+fn the_verb_is_bold_and_the_summary_muted() {
+    let bold = |s: &ratatui::text::Span<'_>| s.style.add_modifier.contains(Modifier::BOLD);
+    for (label, verb, rest) in [
+        ("fetch https://a.dev", "fetch ", "https://a.dev"),
+        ("search the web: a b: c", "search the web: ", "a b: c"),
+        ("update", "update", ""),
+    ] {
+        let it = item_of(
+            "tool",
+            &format!(r#""label":{},"state":"done","#, json!(label)),
+            &code("out"),
+        );
+        let lines = render_item(&it, 60, &Options::default());
+        let head = &lines[0].spans[1..];
+        assert_eq!((head[0].content.as_ref(), bold(&head[0])), (verb, true));
+        if !rest.is_empty() {
+            assert_eq!((head[1].content.as_ref(), bold(&head[1])), (rest, false));
+        }
+        let out = lines[1]
+            .spans
+            .iter()
+            .find(|s| s.content.contains("out"))
+            .unwrap();
+        assert_eq!(out.style.fg, Some(pal().muted));
+    }
+}
+
+#[test]
+fn prose_wraps_at_the_prose_width_but_code_does_not() {
+    let words = "word ".repeat(40);
+    let c = json!({"type": "text", "blocks": [
+        {"type": "paragraph", "spans": [{"text": words}]},
+        {"type": "code_block", "code": "x".repeat(150)}
+    ]});
+    let opts = Options {
+        prose_width: Some(50),
+        ..Options::default()
+    };
+    let lines = render_item(&item_of("agent", "", &c.to_string()), 160, &opts);
+    let widest = |text: bool| {
+        lines
+            .iter()
+            .filter(|l| text == !l.to_string().contains('x'))
+            .map(Line::width)
+            .max()
+            .unwrap()
+    };
+    assert!(widest(true) <= 52, "bullet + 50");
+    assert_eq!(widest(false), 160);
+}
+
+#[test]
+fn a_command_to_approve_is_highlighted_and_broken_at_its_operators() {
+    let c = json!({"type": "stack", "gap": "s", "children": [
+        {"type": "code", "language": "bash", "code": "cd /tmp/some/dir && cargo test --workspace 2>&1 | tail -20"},
+        {"type": "button", "label": "Allow", "action": "suite.permit", "key": "1"}
+    ]});
+    let it = item_of(
+        "tool",
+        r#""label":"Run this command?","state":"pending","#,
+        &c.to_string(),
     );
-    let short = tool("done", &code("a\nb"));
-    assert_eq!(lines(&short, 40), ["● bash: ls", "  ⎿ a", "    b"]);
+    let lines = render_item(&it, 40, &Options::default());
+    let text: Vec<String> = lines
+        .iter()
+        .map(|l| l.to_string().trim_end().to_string())
+        .collect();
+    assert_eq!(
+        text[1..4],
+        [
+            "    cd /tmp/some/dir &&",
+            "      cargo test --workspace 2>&1 |",
+            "      tail -20",
+        ]
+    );
+    let cargo = lines[2]
+        .spans
+        .iter()
+        .find(|s| s.content == "cargo")
+        .unwrap();
+    assert_eq!(cargo.style.fg, Some(pal().accent), "the command name");
+}
+
+#[test]
+fn compact_code_shows_the_first_line_and_how_many_are_cut() {
+    let out = tool("done", &code("a\nb\nc\nd\ne\n"));
+    assert_eq!(lines(&out, 40), ["● bash: ls", "  ⎿ a  … +4 lines"]);
+    let one = tool("done", &code("a"));
+    assert_eq!(lines(&one, 40), ["● bash: ls", "  ⎿ a"]);
     let long_line = tool("done", &code("0123456789abcdef"));
     assert_eq!(lines(&long_line, 12), ["● bash: ls", "  ⎿ 0123456…"]);
+    // The count keeps its room: the line is cut for it.
+    let long = tool("done", &code("0123456789abcdefghij\nx"));
+    assert_eq!(lines(&long, 24), ["● bash: ls", "  ⎿ 0123456…  … +1 lines"]);
     let empty = tool("done", &code("\n"));
     assert_eq!(lines(&empty, 40), ["● bash: ls"]);
 }
 
 #[test]
-fn compact_results_keep_the_last_leaf_visible() {
+fn compact_results_count_the_leaves_left_out() {
     let stack = format!(
         r#"{{"type":"stack","children":[{},{}]}}"#,
         code("1\n2\n3\n4\n5\n6"),
@@ -168,13 +254,7 @@ fn compact_results_keep_the_last_leaf_visible() {
     );
     assert_eq!(
         lines(&tool("failed", &stack), 40),
-        [
-            "● bash: ls",
-            "  ⎿ 1",
-            "    2",
-            "    … +4 lines",
-            "    Exit code 1"
-        ]
+        ["● bash: ls", "  ⎿ 1  … +6 lines"]
     );
 }
 
@@ -207,7 +287,7 @@ fn compact_summaries_by_component() {
     let card = r#"{"type":"card","title":"Cropped","children":[{"type":"link","url":"http://x"}]}"#;
     assert_eq!(
         lines(&tool("done", card), 40),
-        ["● bash: ls", "  ⎿ Cropped", "    http://x"]
+        ["● bash: ls", "  ⎿ Cropped  … +1 lines"]
     );
 
     let table = r#"{"type":"table","columns":["a","b"],"rows":[["1","2"],["3","4"]]}"#;
@@ -219,13 +299,8 @@ fn compact_summaries_by_component() {
     );
     assert_eq!(
         lines(&long, 14),
-        [
-            "● bash: ls",
-            "  ⎿ one two",
-            "    three four",
-            "    five six",
-            "    … +3 lines"
-        ]
+        // Too narrow for the count beside it.
+        ["● bash: ls", "  ⎿ one two", "    … +5 lines"]
     );
 }
 
@@ -248,17 +323,17 @@ fn tools_with_buttons_are_always_drawn_in_full() {
         {"type":"button","label":"Deny","action":"suite.permit","args":{"id":"1","option":"b"}}]}"#;
     let it = item_of(
         "tool",
-        r#""label":"claude asks: run rm","state":"pending","#,
+        r#""label":"claude: run rm","state":"pending","#,
         row,
     );
     assert_eq!(
         lines(&it, 60),
-        ["● claude asks: run rm", "  [y Allow]  [2 Deny]"]
+        ["● claude: run rm", "  [y Allow]  [2 Deny]"]
     );
     // Too narrow for one line: stacked.
     assert_eq!(
         lines(&it, 14),
-        ["● claude asks:", "  run rm", "  [y Allow]", "  [2 Deny]"]
+        ["● claude: run", "  rm", "  [y Allow]", "  [2 Deny]"]
     );
 }
 
@@ -287,7 +362,7 @@ fn permission(diff_lines: usize) -> suite_protocol::ViewItem {
         })
         .collect();
     item(
-        &json!({"ref":"p-7","kind":"tool","label":"pi asks: Edit src/app.ts","state":"pending",
+        &json!({"ref":"p-7","kind":"tool","label":"Edit src/app.ts","state":"pending",
             "component":{"type":"stack","gap":"s","children":[
                 {"type":"diff","path":"src/app.ts","lines":lines},
                 {"type":"row","gap":"s","children":buttons}]}})
@@ -301,7 +376,7 @@ fn a_permission_shows_its_diff_colored_and_the_buttons_below_a_gap() {
     assert_eq!(
         lines(&it, 60),
         [
-            "● pi asks: Edit src/app.ts",
+            "● Edit src/app.ts",
             "  src/app.ts",
             "  @@ -1,3 +1,3 @@",
             "  -line 0",
@@ -660,7 +735,7 @@ fn kv_aligns_values_and_wraps_them() {
 
 #[test]
 fn a_kv_value_with_a_tone_is_highlighted_in_the_full_and_the_compact_form() {
-    let kv = r#"{"type":"kv","items":[{"key":"Harness","value":"pi","tone":"accent"},{"key":"Model","value":"default"}]}"#;
+    let kv = r#"{"type":"kv","items":[{"key":"Harness","value":"neo","tone":"accent"},{"key":"Model","value":"default"}]}"#;
     let accent = pal().accent;
     let full = render_item(&item_of("agent", "", kv), 40, &Options::default());
     let value = |line: usize, text: &str| {
@@ -671,14 +746,18 @@ fn a_kv_value_with_a_tone_is_highlighted_in_the_full_and_the_compact_form() {
             .map(|s| s.style)
             .expect(text)
     };
-    assert_eq!(value(0, "pi").fg, Some(accent));
-    assert!(value(0, "pi").add_modifier.contains(Modifier::BOLD));
+    assert_eq!(value(0, "neo").fg, Some(accent));
+    assert!(value(0, "neo").add_modifier.contains(Modifier::BOLD));
     assert_eq!(value(1, "default").fg, None, "no tone, no highlight");
 
     let compact = render_item(&tool("done", kv), 60, &Options::default());
-    let pi = compact[1].spans.iter().find(|s| s.content == "pi").unwrap();
-    assert_eq!(pi.style.fg, Some(accent));
-    assert_eq!(compact[1].to_string(), "  ⎿ Harness: pi · Model: default");
+    let neo = compact[1]
+        .spans
+        .iter()
+        .find(|s| s.content == "neo")
+        .unwrap();
+    assert_eq!(neo.style.fg, Some(accent));
+    assert_eq!(compact[1].to_string(), "  ⎿ Harness: neo · Model: default");
 }
 
 #[test]
@@ -846,12 +925,12 @@ fn ten_columns_never_overflow() {
 fn colors_come_from_the_palette() {
     let mut theme: suite_protocol::Theme =
         serde_json::from_str(include_str!("../../../protocol/themes/default.json")).unwrap();
-    theme.colors.success = "#00ff00".into();
+    theme.colors.danger = "#00ff00".into();
     let opts = Options {
         theme: Palette::from_theme(&theme),
         ..Options::default()
     };
-    let head = &render_item(&tool("done", &code("x")), 40, &opts)[0];
+    let head = &render_item(&tool("failed", &code("x")), 40, &opts)[0];
     assert_eq!(head.spans[0].style.fg, Some(Color::Rgb(0, 255, 0)));
 }
 
@@ -1030,4 +1109,183 @@ fn a_collapsed_tool_result_keeps_the_text_and_the_picture() {
     for width in [1u16, 2, 5, 12] {
         assert_fits(&render_item(&it, width, &opts), width);
     }
+}
+
+fn choice() -> suite_protocol::ViewItem {
+    let button = |label: &str, id: &str| {
+        format!(
+            r#"{{"type":"button","label":"{label}","action":"suite.choose","args":{{"id":"c","option":"{id}"}}}}"#
+        )
+    };
+    let row = |label: &str, id: &str, about: &str| {
+        format!(
+            r#"{{"type":"row","children":[{},{}]}}"#,
+            button(label, id),
+            text(about)
+        )
+    };
+    let body = format!(
+        r#"{{"type":"stack","children":[{},{},{}]}}"#,
+        button("One", "a/1"),
+        row("Two", "a/2", "the second"),
+        row("Three", "b/3", "the third"),
+    );
+    tool("pending", &body)
+}
+
+#[test]
+fn a_buttons_description_is_the_text_after_it_in_its_row() {
+    let got: Vec<_> = buttons(&choice())
+        .into_iter()
+        .map(|b| b.description)
+        .collect();
+    assert_eq!(
+        got,
+        [None, Some("the second".into()), Some("the third".into())]
+    );
+}
+
+#[test]
+fn kept_buttons_drag_their_description_along_and_empty_rows_go() {
+    let kept = keep_buttons(&choice(), &[2]);
+    let got = buttons(&kept);
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].label, "Three");
+    assert_eq!(got[0].description.as_deref(), Some("the third"));
+    let shown = lines(&kept, 40).join("\n");
+    assert!(
+        !shown.contains("One") && !shown.contains("second"),
+        "{shown}"
+    );
+    assert!(buttons(&keep_buttons(&choice(), &[])).is_empty());
+}
+
+#[test]
+fn hidden_keys_leave_the_label_alone() {
+    let opts = Options {
+        hide_keys: true,
+        ..Options::default()
+    };
+    let got = lines_of(&choice(), 40, &opts).join("\n");
+    assert!(got.contains("[One]") && got.contains("[Two]"), "{got}");
+    assert!(!got.contains("[1 One]"));
+}
+
+// ---- markdown tables and headings ----
+
+fn table_block(header: &[&str], rows: &[&[&str]]) -> String {
+    let cells = |row: &[&str]| {
+        row.iter()
+            .map(|t| json!({"spans": [{"text": t}]}))
+            .collect::<Vec<_>>()
+    };
+    let block = json!({
+        "type": "table_block",
+        "header": cells(header),
+        "rows": rows.iter().map(|r| cells(r)).collect::<Vec<_>>(),
+    });
+    json!({"type": "text", "blocks": [block]}).to_string()
+}
+
+#[test]
+fn table_cells_wrap_in_their_column_and_rows_get_rules_then() {
+    let it = item_of(
+        "notice",
+        "",
+        &table_block(
+            &["Engine", "Status"],
+            &[
+                &["bing", "ok"],
+                &["duckduckgo", "blocked by a captcha page"],
+            ],
+        ),
+    );
+    let out = lines(&it, 30);
+    assert_eq!(
+        out,
+        [
+            "┌────────────┬───────────────┐",
+            "│ Engine     │ Status        │",
+            "├────────────┼───────────────┤",
+            "│ bing       │ ok            │",
+            "├────────────┼───────────────┤",
+            "│ duckduckgo │ blocked by a  │",
+            "│            │ captcha page  │",
+            "└────────────┴───────────────┘",
+        ]
+    );
+}
+
+#[test]
+fn a_table_too_narrow_for_its_box_lists_each_row() {
+    let it = item_of(
+        "notice",
+        "",
+        &table_block(&["a", "b", "c"], &[&["1", "2", "3"], &["4", "5", "6"]]),
+    );
+    assert_eq!(
+        lines(&it, 9),
+        ["a: 1", "b: 2", "c: 3", "", "a: 4", "b: 5", "c: 6"]
+    );
+    for w in 1..60 {
+        assert_fits(&render_item(&it, w, &Options::default()), w);
+    }
+}
+
+#[test]
+fn headings_stand_out_by_level() {
+    let heading = |level: u8| {
+        let c = json!({"type": "text", "blocks": [
+            {"type": "heading", "level": level, "spans": [{"text": "Title"}]}
+        ]});
+        let rendered = render_item(
+            &item_of("agent", "", &c.to_string()),
+            40,
+            &Options::default(),
+        );
+        let title = rendered[0].spans.iter().find(|s| s.content == "Title");
+        title.expect("the heading's text").style
+    };
+    let h1 = heading(1);
+    assert_eq!(h1.fg, Some(pal().accent));
+    // Not underlined: that is how links look.
+    assert!(h1.add_modifier.contains(Modifier::BOLD));
+    assert!(!h1.add_modifier.contains(Modifier::UNDERLINED));
+    assert_eq!(heading(2).fg, Some(pal().accent));
+    assert!(!heading(2).add_modifier.contains(Modifier::UNDERLINED));
+    assert!(heading(3).add_modifier.contains(Modifier::BOLD));
+    assert_eq!(heading(3).fg, None);
+}
+
+// ---- shell highlighting ----
+
+#[test]
+fn bash_rows_and_shell_code_are_highlighted() {
+    let it = tool("done", &text("ok"));
+    let rendered = render_item(&it, 60, &Options::default());
+    let ls = rendered[0]
+        .spans
+        .iter()
+        .find(|s| s.content == "ls")
+        .unwrap();
+    assert_eq!(ls.style.fg, Some(pal().accent));
+    assert!(ls.style.add_modifier.contains(Modifier::BOLD));
+
+    let block = json!({"type": "code", "language": "bash", "code": "echo \"hi there\" | wc -c"});
+    let it = item_of("notice", "", &block.to_string());
+    let rendered = render_item(&it, 12, &Options::default());
+    let all: String = rendered
+        .iter()
+        .flat_map(|l| l.spans.iter().map(|s| s.content.to_string()))
+        .collect();
+    // Wrapped to the width, nothing lost, every cell on the code background.
+    assert_eq!(all.replace(' ', ""), "echo\"hithere\"|wc-c");
+    assert_fits(&rendered, 12);
+    let string = rendered
+        .iter()
+        .flat_map(|l| l.spans.iter())
+        .find(|s| s.content.contains("\"hi"))
+        .unwrap();
+    assert_eq!(string.style.fg, Some(pal().success));
+    assert_eq!(string.style.bg, Some(pal().surface));
 }

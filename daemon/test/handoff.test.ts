@@ -24,27 +24,27 @@ function logOf(events: SessionEvent[]): { store: SessionStore; id: string } {
   return { store, id: "s" };
 }
 
-/** pi, pi, then claude twice, then pi: the log of a session that switched back and forth. */
+/** neo, neo, then claude twice, then neo: the log of a session that switched back and forth. */
 const switching: SessionEvent[] = [
   ...[user("one"), say("first"), say("A: one", "m2"), end],
   ...[user("two"), say("A: two"), end],
   switchTo("claude"),
   ...[user("three"), say("thinking", "a"), say("B: three", "b"), end],
   ...[user("four"), say("B: four"), end],
-  switchTo("pi"),
+  switchTo("neo"),
   ...[user("five"), say("A: five"), end],
 ];
 
 describe("turns", () => {
   test("a turn belongs to the harness chosen before it; its reply is the last message", () => {
     const { store } = logOf(switching);
-    const turns = turnsOf(store.read("s"), "pi");
+    const turns = turnsOf(store.read("s"), "neo");
     expect(turns.map((t) => [t.harness, t.user, t.reply])).toEqual([
-      ["pi", "one", "A: one"],
-      ["pi", "two", "A: two"],
+      ["neo", "one", "A: one"],
+      ["neo", "two", "A: two"],
       ["claude", "three", "B: three"],
       ["claude", "four", "B: four"],
-      ["pi", "five", "A: five"],
+      ["neo", "five", "A: five"],
     ]);
   });
 
@@ -54,11 +54,11 @@ describe("turns", () => {
       user("/claude again"),
       { type: "guest_turn", agent: "claude", task: "again", result: "ok", stopReason: "end_turn" },
       end,
-      ...[user("real"), say("sub", "s", "pi"), say("mine", "m"), end],
+      ...[user("real"), say("sub", "s", "neo"), say("mine", "m"), end],
       ...[user("running"), say("so far")],
     ]);
     // "/claude fix" ended without a guest_turn event (it was cancelled before): it still counts.
-    expect(turnsOf(store.read("s"), "pi").map((t) => [t.user, t.reply])).toEqual([
+    expect(turnsOf(store.read("s"), "neo").map((t) => [t.user, t.reply])).toEqual([
       ["/claude fix", ""],
       ["real", "mine"],
     ]);
@@ -67,10 +67,10 @@ describe("turns", () => {
 
 describe("what a harness missed", () => {
   const turn = (harness: string, user: string): Turn => ({ seq: 0, harness, user, reply: "" });
-  const turns = [turn("pi", "1"), turn("claude", "2"), turn("claude", "3"), turn("pi", "4")];
+  const turns = [turn("neo", "1"), turn("claude", "2"), turn("claude", "3"), turn("neo", "4")];
 
   test("the turns after its own last one; everything when it never ran, or lost its context", () => {
-    expect(missedTurns(turns, "pi", false).map((t) => t.user)).toEqual([]);
+    expect(missedTurns(turns, "neo", false).map((t) => t.user)).toEqual([]);
     expect(missedTurns(turns, "claude", false).map((t) => t.user)).toEqual(["4"]);
     expect(missedTurns(turns, "codex", false)).toHaveLength(4);
     expect(missedTurns(turns, "claude", true)).toHaveLength(4);
@@ -80,8 +80,8 @@ describe("what a harness missed", () => {
 describe("summary", () => {
   test("is a conversation-so-far block with user and agent texts", () => {
     const text = formatSummary([
-      { seq: 1, harness: "pi", user: "hello", reply: "hi there" },
-      { seq: 5, harness: "pi", user: "stop", reply: "" },
+      { seq: 1, harness: "neo", user: "hello", reply: "hi there" },
+      { seq: 5, harness: "neo", user: "stop", reply: "" },
     ]);
     expect(text).toBe(
       [
@@ -100,7 +100,7 @@ describe("summary", () => {
   test("older turns are dropped first to stay near 6000 characters; long texts are cut", () => {
     const turns: Turn[] = Array.from({ length: 30 }, (_, i) => ({
       seq: i,
-      harness: "pi",
+      harness: "neo",
       user: `question ${i}`,
       reply: `answer ${i} ${"x".repeat(990)}`,
     }));
@@ -109,32 +109,32 @@ describe("summary", () => {
     expect(text).toContain("question 29");
     expect(text).not.toContain("question 0\n");
     expect(text).toMatch(/\(\d+ older turns left out\)/);
-    const long = formatSummary([{ seq: 1, harness: "pi", user: "q", reply: "y".repeat(5000) }]);
+    const long = formatSummary([{ seq: 1, harness: "neo", user: "q", reply: "y".repeat(5000) }]);
     expect(long?.length).toBeLessThan(1700);
     expect(long).toContain("…");
   });
 
-  test("handoffSummary reads the log: pi gets what claude ran, claude what pi ran after it", () => {
+  test("handoffSummary reads the log: neo gets what claude ran, claude what neo ran after it", () => {
     const { store, id } = logOf(switching);
-    const forPi = handoffSummary(store, id, "pi", "pi");
-    expect(forPi).toBeUndefined(); // pi's own last turn is the newest
-    const forClaude = handoffSummary(store, id, "claude", "pi");
+    const forPi = handoffSummary(store, id, "neo", "neo");
+    expect(forPi).toBeUndefined(); // neo's own last turn is the newest
+    const forClaude = handoffSummary(store, id, "claude", "neo");
     expect(forClaude).toContain("User: five\nAgent: A: five");
     expect(forClaude).not.toContain("three");
-    const everything = handoffSummary(store, id, "claude", "pi", true) ?? "";
+    const everything = handoffSummary(store, id, "claude", "neo", true) ?? "";
     expect(everything).toContain("User: one\nAgent: A: one");
     expect(everything).toContain("User: four\nAgent: B: four");
     expect(everything.indexOf("User: one")).toBeLessThan(everything.indexOf("User: five"));
     // A harness that never ran gets it all.
-    expect(handoffSummary(store, id, "codex", "pi")).toContain("User: one");
+    expect(handoffSummary(store, id, "codex", "neo")).toContain("User: one");
 
     store.append(id, switchTo("claude"));
-    const back = handoffSummary(store, id, "pi", "pi");
+    const back = handoffSummary(store, id, "neo", "neo");
     expect(back).toBeUndefined();
     store.append(id, user("six"));
     store.append(id, end);
-    store.append(id, switchTo("pi"));
-    // The turn above ran on claude (the switch before it): pi missed it, after its "five".
-    expect(handoffSummary(store, id, "pi", "pi")).toContain("User: six\nAgent: (no reply)");
+    store.append(id, switchTo("neo"));
+    // The turn above ran on claude (the switch before it): neo missed it, after its "five".
+    expect(handoffSummary(store, id, "neo", "neo")).toContain("User: six\nAgent: (no reply)");
   });
 });

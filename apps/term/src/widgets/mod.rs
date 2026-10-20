@@ -15,7 +15,18 @@
 //!   ends and tool diffs; every 10 s anyway; one run at a time). Entries are git's changes plus
 //!   files an agent changed this session (from `diff` content of tool calls), tagged
 //!   `(agent)` / `(claude)`. Outside a repository only the touched files are listed and
-//!   `branch()` is None. Focused: Up/Down/j/k move, g/G ends, Enter opens the diff overlay.
+//!   `branch()` is None. Drawn as a tree: folders first (a folder holding only one folder is
+//!   joined with it, `apps/term/`), a folded one with the line counts of what is in it.
+//!   Focused: Up/Down/j/k move, g/G ends, Enter or Space folds a folder and opens a file,
+//!   Right/l opens a folder or goes into it, Left/h folds it or goes up to its folder.
+//! - **File view**: Enter on a file opens the diff overlay with the whole file as context and
+//!   unified (its changes marked in place); a file git sees no change in shows as it is.
+//! - **Syntax highlighting** (`syntax.rs`): the diff and file view color code by syntect's
+//!   grammar for the file name (`+++ b/` headers for a pull request's diff), worked out on a
+//!   thread once the text is in (the code shows plain until then), old and new lines parsed
+//!   apart and each hunk starting over. The colors are picked for a dark or light background,
+//!   not the theme's few; changed lines keep their tint behind them and the sign its color.
+//!   Without true colors, and past 20,000 lines, code stays plain.
 //! - **Diff overlay**: `git diff HEAD -- path` (the whole file for untracked ones) loaded in the
 //!   background and drawn over the chat, side by side from 90 columns on. While it is open it
 //!   takes every key whatever panel is focused: Up/Down/j/k, PgUp/PgDn, g/G, Ctrl-U/Ctrl-D
@@ -31,6 +42,8 @@ mod diff;
 mod files;
 mod git;
 mod plan;
+mod syntax;
+mod terminal;
 mod text;
 mod usage;
 
@@ -55,7 +68,11 @@ pub(crate) use diff::DiffView;
 use files::{FileKey, FilesState};
 use git::Runner;
 use plan::PlanState;
+use terminal::TerminalState;
 use usage::UsageState;
+
+/// Lines PgUp/PgDn move in the terminal panel.
+const TERMINAL_PAGE: usize = 10;
 
 /// The side column is only worth its width from here on.
 const SIDEBAR_MIN_WIDTH: u16 = 100;
@@ -65,6 +82,7 @@ const SIDEBAR_MIN_WIDTH: u16 = 100;
 pub enum Panel {
     Plan,
     Files,
+    Terminal,
 }
 
 /// What a key in a focused panel asks the shell to do.
@@ -83,6 +101,7 @@ pub struct Widgets {
     plan: PlanState,
     usage: UsageState,
     files: FilesState,
+    terminal: TerminalState,
     diff: Option<DiffView>,
     /// toolCallId -> the guest that made the call (None: the session's own agent).
     tool_agents: HashMap<String, Option<String>>,
@@ -107,6 +126,7 @@ impl Widgets {
             plan: PlanState::default(),
             usage: UsageState::default(),
             files: FilesState::default(),
+            terminal: TerminalState::default(),
             diff: None,
             tool_agents: HashMap::new(),
             runner,
@@ -132,8 +152,10 @@ impl Widgets {
             SessionEvent::ToolCall(call) => {
                 self.tool_agents
                     .insert(call.tool_call_id.clone(), call.agent.clone());
+                self.terminal.on_call(call);
             }
             SessionEvent::ToolCallUpdate(update) => {
+                self.terminal.on_update(update);
                 let mut changed = false;
                 for content in update.content.iter().flatten() {
                     let ToolCallContent::DiffContent(d) = content else {
@@ -259,6 +281,48 @@ impl Widgets {
         }
     }
 
+    /// Whether there is a command to show in the terminal panel.
+    pub fn has_commands(&self) -> bool {
+        self.terminal.has_any()
+    }
+
+    /// Draws the terminal panel into `area`: a border on its left, a title, the commands.
+    pub fn draw_terminal(&self, frame: &mut Frame, area: Rect, focused: bool) {
+        if area.width < 6 || area.height < 2 {
+            return;
+        }
+        let p = &self.palette;
+        let border = Style::new().fg(p.border);
+        for y in area.y..area.bottom() {
+            frame.buffer_mut()[(area.x, y)]
+                .set_symbol("│")
+                .set_style(border);
+        }
+        let inner = Rect {
+            x: area.x + 2,
+            y: area.y,
+            width: area.width - 3,
+            height: area.height,
+        };
+        let mut title = title_line("Terminal", focused, p);
+        if !self.terminal.following() {
+            title.spans.push(Span::styled(
+                "  scrolled · G follows",
+                Style::new().fg(p.muted),
+            ));
+        }
+        frame.render_widget(Paragraph::new(title), Rect { height: 1, ..inner });
+        let body = Rect {
+            y: inner.y + 1,
+            height: inner.height - 1,
+            ..inner
+        };
+        let lines = self
+            .terminal
+            .render(usize::from(body.width), usize::from(body.height), p);
+        frame.render_widget(Paragraph::new(lines), body);
+    }
+
     /// A diff the user opened from the files panel, drawn over `area` (the chat's area), if
     /// one is open.
     pub fn draw_overlay(&self, frame: &mut Frame, area: Rect) -> bool {
@@ -298,6 +362,11 @@ impl Widgets {
                 FileKey::Open => self.open_diff(),
                 FileKey::Handled => {}
             },
+            Panel::Terminal => {
+                if self.terminal.key(key, TERMINAL_PAGE) {
+                    return WidgetAction::Leave;
+                }
+            }
         }
         WidgetAction::Redraw
     }
@@ -310,7 +379,7 @@ impl Widgets {
                 mark: e.mark,
                 in_repo: self.files.in_repo(),
             };
-            self.diff = Some(DiffView::open(self.cwd.clone(), req));
+            self.diff = Some(DiffView::open_file(self.cwd.clone(), req));
         }
     }
 }

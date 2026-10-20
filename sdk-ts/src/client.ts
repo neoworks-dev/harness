@@ -9,6 +9,7 @@ import type {
   ConnectorInfo,
   Envelope,
   FileChanged,
+  SecretRequest,
   SessionCreateParams,
   SessionInfo,
   SessionInput,
@@ -286,6 +287,26 @@ export class Client {
    */
   fileChanged(path: string): void {
     this.connection.send({ topic: "file.changed", payload: { path, app: this.defaultApp() } });
+  }
+
+  /**
+   * Calls `callback` when the daemon asks this client (and no other) for a secret, such as an API
+   * key typed for `/login`: show a masked field and answer with `answerSecret`. The request is
+   * never stored or logged by the daemon, and neither should you. Returns the function that stops
+   * it.
+   */
+  onSecretRequest(callback: (request: SecretRequest) => void): Unsubscribe {
+    return this.broadcasts.secretRequests.add(callback);
+  }
+
+  /**
+   * Answers a secret request: the typed `value`, or nothing when the user cancelled. No reply
+   * comes back. The daemon never stores or logs the value, and you should not either. Throws
+   * `DisconnectedError` when there is no connection (the daemon drops the question then anyway).
+   */
+  answerSecret(id: string, value?: string): void {
+    const payload = value === undefined ? { id } : { id, value };
+    this.connection.send({ topic: "secret.answer", payload });
   }
 
   /**

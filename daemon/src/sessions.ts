@@ -1,6 +1,6 @@
 // Session manager: one turn at a time per session, inputs queued behind it. Talks to the agent only
 // through the ACP-style interface in @suite/harness/agent. A session runs on one harness at a time
-// (pi, or an ACP harness like Claude Code the user picked with /harness); each has its own agent
+// (neo, or an ACP harness like Claude Code the user picked with /harness); each has its own agent
 // session here, made on first use.
 import type {
   Agent,
@@ -8,16 +8,19 @@ import type {
   AgentUpdate,
   ConfigCategory,
   ConfigOption,
+  FollowUp,
   ContextEvent,
   McpServer,
   NewSessionParams,
   PromptParams,
   RequestPermission,
+  SafeSearch,
 } from "@suite/harness/agent";
 import type { SessionEvent, SessionInfo, TurnEnded } from "@suite/protocol/types";
 import type { ConnectorSnapshot } from "./gateway/registry.ts";
 import { handoffSummary } from "./handoff.ts";
 import type { Logger } from "./log.ts";
+import { MESSAGES_APP } from "./messages.ts";
 import type { SessionRow, SessionStore } from "./store.ts";
 import { type FocusTarget, ToldState } from "./told.ts";
 
@@ -103,8 +106,16 @@ export interface SessionManagerOptions {
   settings?: (sessionId: string, harness: string) => Partial<Record<ConfigCategory, string>>;
   /** The hook the agent's own bash, write and edit ask through (see permissions.ts). */
   requestPermission?: (sessionId: string) => RequestPermission;
+  /** The user's safe-search choice for the agent's web search (see Settings.safeSearch). */
+  safeSearch?: () => SafeSearch | undefined;
   /** Called for each new session (it may start on a harness the user chose before). */
   created?: (sessionId: string) => void;
+  /**
+   * Takes the messages other agents sent the agent of this session (see messages.ts). They
+   * reach a running turn as it goes; what is left when it ends, or arrives while the session is
+   * idle, starts a turn.
+   */
+  takeMessages?: (sessionId: string) => string[];
 }
 
 /** "/claude fix it" → claude, "fix it". */
@@ -117,6 +128,7 @@ function guestCommand(text: string): { name: string; task: string } | undefined 
 export class SessionManager {
   private readonly runtimes = new Map<string, Runtime>();
   private readonly stateListeners: ((sessionId: string) => void)[] = [];
+  private readonly cancelListeners: ((sessionId: string) => void)[] = [];
 
   constructor(
     private readonly store: SessionStore,
@@ -179,6 +191,7 @@ export class SessionManager {
     harness = this.harness(sessionId),
   ): Promise<ConfigOption[]> {
     const agentSession = await this.agentSession(sessionId, harness);
+    if (agentSession.loadConfigOptions) return agentSession.loadConfigOptions();
     return agentSession.configOptions?.() ?? [];
   }
 
@@ -200,6 +213,20 @@ export class SessionManager {
     }
   }
 
+  /**
+   * The second step a harness asks for after a setting was set (neo: which OpenRouter host);
+   * undefined when it has none.
+   */
+  async followUp(
+    sessionId: string,
+    category: ConfigCategory,
+    value: string,
+    harness = this.harness(sessionId),
+  ): Promise<FollowUp | undefined> {
+    const agentSession = await this.agentSession(sessionId, harness);
+    return agentSession.followUp?.(category, value);
+  }
+
   private agentSession(sessionId: string, harness: string): Promise<AgentSession> {
     const rt = this.runtime(sessionId);
     let session = rt.agentSessions.get(harness);
@@ -215,8 +242,22 @@ export class SessionManager {
     return session;
   }
 
+  /** Starts a turn on the messages waiting for the session's agent, when it is idle. */
+  wake(sessionId: string): void {
+    if (!this.store.getSession(sessionId) || this.runtime(sessionId).running) return;
+    const input = this.messageInput(sessionId);
+    if (input) this.input(sessionId, input.app, input.text);
+  }
+
+  /** The turn the messages waiting for the session's agent make, if there are any. */
+  private messageInput(sessionId: string): QueuedInput | undefined {
+    const messages = this.options.takeMessages?.(sessionId) ?? [];
+    return messages.length > 0 ? { app: MESSAGES_APP, text: messages.join("\n\n") } : undefined;
+  }
+
   /** Cancels the running turn; queued inputs still run. */
   cancel(sessionId: string): void {
+    for (const listener of this.cancelListeners) listener(sessionId);
     const rt = this.runtime(sessionId);
     if (!rt.running) return;
     if (rt.active) rt.active.cancel();
@@ -256,6 +297,23 @@ export class SessionManager {
         });
         this.options.log.info(`closed interrupted turn in ${row.id}`);
       }
+      // A subagent in the background outlives turns, but not the daemon.
+      const open = new Set<string>();
+      for (const { event } of this.store.readTypes(row.id, [
+        "subagent_started",
+        "subagent_ended",
+      ])) {
+        if (event.type === "subagent_started" && event.background === true) open.add(event.id);
+        else if (event.type === "subagent_ended") open.delete(event.id);
+      }
+      for (const id of open) {
+        this.store.append(row.id, {
+          type: "subagent_ended",
+          id,
+          stopReason: "error",
+          error: "Interrupted: the daemon stopped.",
+        });
+      }
     }
   }
 
@@ -287,8 +345,13 @@ export class SessionManager {
 
   private async drain(sessionId: string, rt: Runtime): Promise<void> {
     try {
-      for (let input = rt.queue.shift(); input; input = rt.queue.shift()) {
-        await this.runTurn(sessionId, rt, input);
+      let input = rt.queue.shift();
+      while (input) {
+        const stopReason = await this.runTurn(sessionId, rt, input);
+        // A turn that ended well goes on with what other agents wrote meanwhile.
+        input =
+          rt.queue.shift() ??
+          (stopReason === "end_turn" ? this.messageInput(sessionId) : undefined);
       }
     } finally {
       rt.running = false;
@@ -296,12 +359,15 @@ export class SessionManager {
     }
   }
 
-  private async runTurn(sessionId: string, rt: Runtime, input: QueuedInput): Promise<void> {
+  private async runTurn(
+    sessionId: string,
+    rt: Runtime,
+    input: QueuedInput,
+  ): Promise<TurnEnded["stopReason"]> {
     const command = guestCommand(input.text);
     const guest = command && this.options.guest?.(sessionId, command.name);
     if (command && guest) {
-      await this.runGuestTurn(sessionId, rt, input, guest, command.task);
-      return;
+      return this.runGuestTurn(sessionId, rt, input, guest, command.task);
     }
     const ended: TurnEnded = { type: "turn_ended", stopReason: "error" };
     let userLogged = false;
@@ -336,6 +402,7 @@ export class SessionManager {
       rt.active = undefined;
     }
     this.store.append(sessionId, ended);
+    return ended.stopReason;
   }
 
   /**
@@ -348,7 +415,7 @@ export class SessionManager {
     input: QueuedInput,
     guest: AgentSession,
     task: string,
-  ): Promise<void> {
+  ): Promise<TurnEnded["stopReason"]> {
     this.store.append(sessionId, userMessage(input));
     const ended: TurnEnded = { type: "turn_ended", stopReason: "cancelled" };
     if (task === "") {
@@ -364,6 +431,7 @@ export class SessionManager {
     }
     rt.cancelRequested = false;
     this.store.append(sessionId, ended);
+    return ended.stopReason;
   }
 
   private async prompt(
@@ -381,6 +449,8 @@ export class SessionManager {
     try {
       const params: PromptParams = { ...input, pendingEvents, onUpdate };
       if (summary !== undefined) params.summary = summary;
+      const { takeMessages } = this.options;
+      if (takeMessages) params.takeMessages = () => takeMessages(sessionId);
       const result = await agentSession.prompt(params);
       const out: Omit<TurnEnded, "type"> = { stopReason: result.stopReason };
       if (result.error !== undefined) out.error = result.error;
@@ -417,6 +487,7 @@ export class SessionManager {
     if (isDefault && this.options.requestPermission) {
       params.requestPermission = this.options.requestPermission(sessionId);
     }
+    if (isDefault && this.options.safeSearch) params.safeSearch = this.options.safeSearch;
     const settings = this.options.settings?.(sessionId, harness);
     if (settings && Object.keys(settings).length > 0) params.settings = settings;
     if (row.lastSeq === 0) return agent.newSession(params);
@@ -439,6 +510,11 @@ export class SessionManager {
     if (row.parent !== undefined) info.parent = row.parent;
     if (this.options.describe) Object.assign(info, this.options.describe(row.id));
     return info;
+  }
+
+  /** Called when someone cancels a session's turn (also when it is idle). */
+  onCancel(listener: (sessionId: string) => void): void {
+    this.cancelListeners.push(listener);
   }
 
   /** Called when a session starts or stops running, or its queue changes. */

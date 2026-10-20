@@ -9,17 +9,16 @@
 
 ⟦fg|● ⟧I'll crop the image to ⟦bold|512×512⟧ first.
 
-⟦success|● ⟧⟦bold|photo-editor.crop⟧
+⟦muted|● ⟧⟦bold|photo-editor.crop⟧
   ⟦border|╭ ⟧⟦bold|Cropped image⟧
   ⟦border|│ ⟧⟦muted|[image asset://img-7f3 · 512×512]⟧
   ⟦border|│ ⟧512×512
   ⟦border|│ ⟧[⟦accent bold|c⟧ Copy handle]
 
-⟦success|● ⟧⟦bold|edit src/Header.tsx⟧
-⟦muted|  ⎿ ⟧Applied 1 edit(s) to src/Header.tsx.
-    src/Header.tsx  ⟦success|+1⟧ ⟦danger|−0⟧
+⟦muted|● ⟧⟦bold|edit ⟧src/Header.tsx
+⟦muted|  ⎿ ⟧⟦muted|Applied 1 edit(s) to src/Header.tsx.⟧⟦muted|  … +1 lines⟧
 
-⟦accent|● ⟧⟦bold|bash: npm run build⟧
-⟦muted|  ⎿ ⟧vite v6.0.0 building for production...
+⟦accent|● ⟧⟦bold|bash: ⟧⟦accent bold|npm⟧ run build
+⟦muted|  ⎿ ⟧⟦muted|vite v6.0.0 building for production...⟧
 
 ⟦danger|Rate limited by the provider; try again in a minute.⟧

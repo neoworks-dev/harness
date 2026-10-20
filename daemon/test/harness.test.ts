@@ -1,5 +1,5 @@
-// The session's harness (/harness): turns run on pi or on an ACP harness (the fake ACP agent),
-// switching between them, delegate with model and effort, and pi subagents.
+// The session's harness (/harness): turns run on neo or on an ACP harness (the fake ACP agent),
+// switching between them, delegate with model and effort, and neo subagents.
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -7,7 +7,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { fauxToolCall } from "@mariozechner/pi-ai";
-import { createPiAgent } from "@suite/harness/pi";
+import { createNeoAgent } from "@suite/harness/neo";
 import type { Envelope, HarnessSettings, SessionEvent } from "@suite/protocol/types";
 import { validateEnvelope } from "@suite/protocol/validate";
 import { fakeModel, reply, TEST_CONFIG, withUsage } from "../../harness/test/fake-model.ts";
@@ -47,7 +47,7 @@ interface Setup {
 async function setup(
   options: {
     agent?: FakeAgent;
-    pi?: ReturnType<typeof createPiAgent>;
+    neo?: ReturnType<typeof createNeoAgent>;
     /** How delegate's "start a subagent?" question is answered; manual: by the test. */
     gate?: string;
     guests?: Record<string, GuestConfig>;
@@ -58,7 +58,7 @@ async function setup(
   const daemon = await startTestDaemon({
     agent,
     guests: options.guests ?? GUESTS,
-    pi: options.pi,
+    neo: options.neo,
     settingsTimeoutMs: options.settingsTimeoutMs,
   });
   cleanups.push(() => daemon.stop());
@@ -475,7 +475,7 @@ describe("a session on an ACP harness", () => {
     expect(prompt).not.toContain("conversation-so-far");
   });
 
-  test("cancel and the queue work as for pi", async () => {
+  test("cancel and the queue work as for neo", async () => {
     const { daemon, session } = await setup();
     await daemon.commands.run(session, "/harness fake");
     daemon.sessions.input(session, "cli", "wait");
@@ -565,7 +565,7 @@ describe("switching harness", () => {
     expect(second.indexOf("conversation-so-far")).toBeLessThan(second.indexOf("<app connected"));
     expect(second.endsWith("\nsecond")).toBe(true);
 
-    // Back to pi: only the turn it missed.
+    // Back to neo: only the turn it missed.
     await daemon.commands.run(session, "/harness main");
     daemon.sessions.input(session, "cli", "third");
     await agent.started(2);
@@ -575,7 +575,7 @@ describe("switching harness", () => {
     agent.release();
     await daemon.sessions.idle(session);
 
-    // And to the ACP harness again, which keeps its own conversation: just pi's turn.
+    // And to the ACP harness again, which keeps its own conversation: just neo's turn.
     await daemon.commands.run(session, "/harness fake");
     await say(daemon, session, "fourth");
     const fourth = thoughts(daemon, session)[1] ?? "";
@@ -729,10 +729,14 @@ describe("delegate from a session on an ACP harness", () => {
 
     const guest = await connect({ "x-suite-text": "1", "x-suite-guest": "fake" });
     expect(await names(guest)).not.toContain("delegate");
-    const subagent = await connect({ "x-suite-guest": "pi" });
+    expect(await names(guest)).not.toContain("models");
+    expect(await names(guest)).toContain("send_message");
+    expect(await names(guest)).toContain("wait");
+    const subagent = await connect({ "x-suite-guest": "neo" });
     expect(await names(subagent)).not.toContain("delegate");
-    const pi = await subagent.callTool({ name: "tools_search", arguments: { query: "greet" } });
-    expect(pi.structuredContent).toBeDefined();
+    expect(await names(subagent)).not.toContain("models");
+    const neo = await subagent.callTool({ name: "tools_search", arguments: { query: "greet" } });
+    expect(neo.structuredContent).toBeDefined();
   });
 
   test("delegating to the session's own harness starts a separate, labelled subagent", async () => {
@@ -846,17 +850,17 @@ describe("delegate from a session on an ACP harness", () => {
   });
 });
 
-describe("pi subagents", () => {
-  test("delegate to pi: a fresh pi session with the call's model and effort, labelled pi", async () => {
+describe("neo subagents", () => {
+  test("delegate to neo: a fresh neo session with the call's model and effort, labelled neo", async () => {
     const model = fakeModel([
-      withUsage(reply("Hi from pi."), { input: 10, output: 5 }, 0.01),
+      withUsage(reply("Hi from neo."), { input: 10, output: 5 }, 0.01),
       reply("Again."),
     ]);
-    const pi = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
-    const { daemon, session } = await setup({ pi, gate: "manual" });
+    const neo = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+    const { daemon, session } = await setup({ neo, gate: "manual" });
     const call = daemon.gateway.call(
       "delegate",
-      { agent: "pi", task: "say hi", model: "deepseek/other-model", effort: "high" },
+      { agent: "neo", task: "say hi", model: "deepseek/other-model", effort: "high" },
       undefined,
       { session, text: true },
     );
@@ -865,21 +869,21 @@ describe("pi subagents", () => {
       agent: "main",
       title: "Start a subagent?",
       details: [
-        { key: "Harness", value: "pi" },
+        { key: "Harness", value: "neo" },
         { key: "Model", value: "deepseek/other-model" },
         { key: "Effort", value: "high" },
         { key: "Directory", value: daemon.sessions.info(session)?.cwd },
       ],
       content: [{ type: "text", text: "say hi" }],
       options: [
-        { id: "allow", name: "Start pi" },
-        { id: "always", name: "Allow pi for this session" },
+        { id: "allow", name: "Start neo" },
+        { id: "always", name: "Allow neo for this session" },
         { id: "use:fake", name: "Use Fake" },
         { id: "use:other", name: "Use Other" },
         { id: "reject", name: "Reject" },
       ],
     });
-    expect(resultOf(await call)).toBe("Hi from pi.");
+    expect(resultOf(await call)).toBe("Hi from neo.");
     expect(model.models[0]).toEqual({ provider: "deepseek", id: "other-model" });
     expect(model.reasoning[0]).toBe("high");
 
@@ -887,16 +891,16 @@ describe("pi subagents", () => {
     const chunks = log.filter((e) => e.type === "agent_message_chunk");
     expect(chunks.length).toBeGreaterThan(0);
     for (const chunk of chunks) {
-      expect(chunk).toMatchObject({ agent: "pi" });
-      expect(chunk.type === "agent_message_chunk" && chunk.messageId.startsWith("pi-")).toBe(true);
+      expect(chunk).toMatchObject({ agent: "neo" });
+      expect(chunk.type === "agent_message_chunk" && chunk.messageId.startsWith("neo-")).toBe(true);
     }
-    // Its messages are not pi's history of this session.
+    // Its messages are not neo's history of this session.
     expect(log.some((e) => e.type === "harness_message")).toBe(false);
-    expect(log.find((e) => e.type === "usage")).toMatchObject({ agent: "pi" });
+    expect(log.find((e) => e.type === "usage")).toMatchObject({ agent: "neo" });
 
     // The next task is back on the defaults.
-    daemon.settings.set(session, "pi", "model", "deepseek/third-model");
-    const again = daemon.gateway.call("delegate", { agent: "pi", task: "again" }, undefined, {
+    daemon.settings.set(session, "neo", "model", "deepseek/third-model");
+    const again = daemon.gateway.call("delegate", { agent: "neo", task: "again" }, undefined, {
       session,
       text: true,
     });
@@ -908,11 +912,11 @@ describe("pi subagents", () => {
 
   test("an unknown model is the harness's error, and nothing runs", async () => {
     const model = fakeModel([]);
-    const pi = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
-    const { daemon, session } = await setup({ pi });
+    const neo = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+    const { daemon, session } = await setup({ neo });
     const result = await daemon.gateway.call(
       "delegate",
-      { agent: "pi", task: "x", model: "nope/x" },
+      { agent: "neo", task: "x", model: "nope/x" },
       undefined,
       { session, text: true },
     );
@@ -921,19 +925,19 @@ describe("pi subagents", () => {
     expect(model.requests).toHaveLength(0);
   });
 
-  test("a model pi doesn't list is refused with the valid names; its spelling is forgiven", async () => {
+  test("a model neo doesn't list is refused with the valid names; its spelling is forgiven", async () => {
     const model = fakeModel([reply("Hi.")]);
-    const pi = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
-    const { daemon, session } = await setup({ pi });
+    const neo = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+    const { daemon, session } = await setup({ neo });
     const unknown = await daemon.gateway.call(
       "delegate",
-      { agent: "pi", task: "x", model: "deepseek v9 turbo" },
+      { agent: "neo", task: "x", model: "deepseek v9 turbo" },
       undefined,
       { session, text: true },
     );
     expect(unknown.isError).toBe(true);
     expect(resultOf(unknown)).toStartWith(
-      'Unknown model "deepseek v9 turbo" for pi. Valid models: ',
+      'Unknown model "deepseek v9 turbo" for neo. Valid models: ',
     );
     expect(resultOf(unknown)).toContain("deepseek/deepseek-v4-flash");
     // Nothing was asked or run.
@@ -942,7 +946,7 @@ describe("pi subagents", () => {
 
     const spaced = await daemon.gateway.call(
       "delegate",
-      { agent: "pi", task: "x", model: "DeepSeek V4 Flash", effort: "LOW" },
+      { agent: "neo", task: "x", model: "DeepSeek V4 Flash", effort: "LOW" },
       undefined,
       { session, text: true },
     );
@@ -950,30 +954,30 @@ describe("pi subagents", () => {
     expect(model.models[0]).toEqual({ provider: "deepseek", id: "deepseek-v4-flash" });
   });
 
-  test("a pi subagent may not delegate", async () => {
+  test("a neo subagent may not delegate", async () => {
     const model = fakeModel([
       reply([fauxToolCall("delegate", { agent: "claude", task: "x" }, { id: "d1" })], "toolUse"),
       reply("Could not."),
     ]);
-    const pi = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
-    const { daemon, session } = await setup({ pi });
-    const result = await daemon.gateway.call("delegate", { agent: "pi", task: "x" }, undefined, {
+    const neo = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+    const { daemon, session } = await setup({ neo });
+    const result = await daemon.gateway.call("delegate", { agent: "neo", task: "x" }, undefined, {
       session,
       text: true,
     });
     expect(resultOf(result)).toBe("Could not.");
     const update = events(daemon, session).find(
-      (e) => e.type === "tool_call_update" && e.toolCallId === "pi:d1" && e.status === "failed",
+      (e) => e.type === "tool_call_update" && e.toolCallId === "neo:d1" && e.status === "failed",
     );
     expect(JSON.stringify(update)).toContain("Subagents can't delegate.");
   });
 
-  test("without a pi harness, delegate to pi says so", async () => {
+  test("without a neo harness, delegate to neo says so", async () => {
     const { daemon, session } = await setup();
-    const result = await daemon.gateway.call("delegate", { agent: "pi", task: "x" }, undefined, {
+    const result = await daemon.gateway.call("delegate", { agent: "neo", task: "x" }, undefined, {
       session,
       text: true,
     });
-    expect(resultOf(result)).toBe("No guest named pi (fake, other).");
+    expect(resultOf(result)).toBe("No guest named neo (fake, other).");
   });
 });

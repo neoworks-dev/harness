@@ -1,4 +1,4 @@
-// What running a task on a subagent takes and gives back (ACP guests and pi alike).
+// What running a task on a subagent takes and gives back (ACP guests and neo alike).
 import type { AgentUpdate, ContextEvent, PromptResult } from "@suite/harness/agent";
 import type { HarnessSettings } from "../settings.ts";
 
@@ -21,4 +21,9 @@ export interface RunOptions {
    * back afterwards. They are not recorded as the user's choices.
    */
   settings?: HarnessSettings;
+  /**
+   * Takes the messages other agents sent this one (see messages.ts): neo reads them as its turn
+   * goes, an adapter when the turn starts (the gateway adds later ones to its tool results).
+   */
+  takeMessages?: () => string[];
 }

@@ -2,6 +2,7 @@
 //! debounces requests and keeps at most one run in flight. Nothing here touches the terminal;
 //! the UI thread only ever calls `Runner::request` and `Runner::poll`, which don't block.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
@@ -28,6 +29,13 @@ pub(crate) struct GitEntry {
     pub change: Change,
 }
 
+/// Lines added and removed in a file since the last commit (an untracked file: all added).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct LineCount {
+    pub added: u32,
+    pub removed: u32,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct GitStatus {
     /// Branch name; None when git didn't say.
@@ -39,6 +47,8 @@ pub(crate) struct GitStatus {
     pub entries: Vec<GitEntry>,
     /// Where the session's directory is inside the repository (`src/a/`, empty at the root).
     pub prefix: String,
+    /// By path from the repository root, as in `entries`; binary files have none.
+    pub lines: BTreeMap<String, LineCount>,
 }
 
 impl GitStatus {
@@ -147,6 +157,52 @@ pub(crate) fn parse_status(out: &[u8]) -> GitStatus {
     status
 }
 
+/// `git diff --numstat -z` output: `added TAB removed TAB path NUL`, or for a rename
+/// `added TAB removed TAB NUL old NUL new NUL`. Binary files (`-`) are left out.
+pub(crate) fn parse_numstat(out: &[u8], into: &mut BTreeMap<String, LineCount>) {
+    let text = String::from_utf8_lossy(out);
+    let mut records = text.split('\0');
+    while let Some(rec) = records.next() {
+        let mut f = rec.splitn(3, '\t');
+        let (Some(added), Some(removed), Some(path)) = (f.next(), f.next(), f.next()) else {
+            continue;
+        };
+        let path = if path.is_empty() {
+            records.next(); // the old path
+            match records.next() {
+                Some(new) => new,
+                None => continue,
+            }
+        } else {
+            path
+        };
+        let (Ok(added), Ok(removed)) = (added.parse::<u32>(), removed.parse::<u32>()) else {
+            continue;
+        };
+        let count = into.entry(path.to_string()).or_default();
+        count.added += added;
+        count.removed += removed;
+    }
+}
+
+/// Untracked files larger than this aren't counted.
+const COUNT_LIMIT: u64 = 1 << 20;
+
+/// The lines of a new text file; None for a binary one, a directory or a big file.
+fn count_lines(path: &Path) -> Option<u32> {
+    let meta = std::fs::metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > COUNT_LIMIT {
+        return None;
+    }
+    let bytes = std::fs::read(path).ok()?;
+    if bytes.contains(&0) {
+        return None;
+    }
+    let newlines = bytes.iter().filter(|b| **b == b'\n').count();
+    let unterminated = bytes.last().is_some_and(|b| *b != b'\n');
+    u32::try_from(newlines + usize::from(unterminated)).ok()
+}
+
 fn change_of(xy: &str) -> Change {
     let mut c = xy.chars();
     let (x, y) = (c.next().unwrap_or('.'), c.next().unwrap_or('.'));
@@ -218,6 +274,37 @@ pub(crate) fn run_status(cwd: &Path) -> Option<GitStatus> {
     {
         status.prefix = String::from_utf8_lossy(&o.stdout).trim().to_string();
     }
+    // Staged and unstaged together, against the last commit. Without one yet: what is staged
+    // (against nothing) plus what isn't.
+    let numstat = |args: &[&str]| {
+        git(cwd)
+            .args(["diff", "--numstat", "-z"])
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| o.stdout)
+    };
+    let mut lines = BTreeMap::new();
+    if let Some(out) = numstat(&["HEAD", "--"]) {
+        parse_numstat(&out, &mut lines);
+    } else {
+        for out in [numstat(&["--cached", "--"]), numstat(&["--"])]
+            .into_iter()
+            .flatten()
+        {
+            parse_numstat(&out, &mut lines);
+        }
+    }
+    for e in &status.entries {
+        if e.change == Change::Untracked
+            && !e.path.ends_with('/')
+            && let Some(added) = count_lines(&cwd.join(status.rel(&e.path)))
+        {
+            lines.insert(e.path.clone(), LineCount { added, removed: 0 });
+        }
+    }
+    status.lines = lines;
     Some(status)
 }
 
@@ -303,6 +390,52 @@ impl Runner {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn numstat_counts_lines_per_path_and_follows_renames() {
+        let mut lines = BTreeMap::new();
+        parse_numstat(
+            b"12\t3\tsrc/a.rs\0-\t-\tlogo.png\x005\t0\t\0old.rs\0new.rs\0",
+            &mut lines,
+        );
+        assert_eq!(
+            lines.get("src/a.rs"),
+            Some(&LineCount {
+                added: 12,
+                removed: 3
+            })
+        );
+        assert_eq!(
+            lines.get("new.rs"),
+            Some(&LineCount {
+                added: 5,
+                removed: 0
+            })
+        );
+        assert!(!lines.contains_key("logo.png"), "binary");
+        assert!(!lines.contains_key("old.rs"));
+        // Staged and unstaged runs add up.
+        parse_numstat(b"1\t1\tsrc/a.rs\0", &mut lines);
+        assert_eq!(
+            lines.get("src/a.rs"),
+            Some(&LineCount {
+                added: 13,
+                removed: 4
+            })
+        );
+    }
+
+    #[test]
+    fn new_files_count_their_lines_unless_binary() {
+        let dir = std::env::temp_dir().join(format!("suite-term-count-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.txt"), "one\ntwo\nthree").unwrap();
+        std::fs::write(dir.join("b.bin"), b"\x00\x01\n").unwrap();
+        assert_eq!(count_lines(&dir.join("a.txt")), Some(3));
+        assert_eq!(count_lines(&dir.join("b.bin")), None);
+        assert_eq!(count_lines(&dir), None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

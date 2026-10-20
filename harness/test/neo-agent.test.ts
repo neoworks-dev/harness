@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxToolCall } from "@mariozechner/pi-ai";
+import {
+  getOAuthProvider,
+  registerOAuthProvider,
+  unregisterOAuthProvider,
+} from "@mariozechner/pi-ai/oauth";
 import type { PlanEntry, SessionEvent } from "@suite/protocol/types";
 import type {
   AgentSession,
@@ -10,7 +15,8 @@ import type {
   ConfigOption,
   PromptResult,
 } from "../src/agent.ts";
-import { createPiAgent } from "../src/pi-agent.ts";
+import type { StreamFn } from "../src/loop/index.ts";
+import { createNeoAgent } from "../src/neo-agent.ts";
 import { SYSTEM_PROMPT } from "../src/system-prompt.ts";
 import {
   fakeModel,
@@ -24,7 +30,7 @@ import { ofType, tempDir } from "./helpers.ts";
 
 async function newSession(model: FakeModel): Promise<{ session: AgentSession; cwd: string }> {
   const cwd = await tempDir();
-  const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
   return { session: await agent.newSession({ sessionId: "s1", cwd, mcpServers: [] }), cwd };
 }
 
@@ -88,6 +94,52 @@ test("pending events are prepended to the text sent to the model", async () => {
   expect(model.requests[0]?.[0]).toMatchObject({ role: "user", content: [{ text: expected }] });
 });
 
+test("messages from other agents join the conversation after each tool batch, once", async () => {
+  const model = fakeModel([
+    reply([fauxToolCall("todo_write", { todos: [] }, { id: "t1" })], "toolUse"),
+    reply("ok"),
+  ]);
+  const { session } = await newSession(model);
+  const waiting = ['<message from="d_1" agent="claude">\nlook at x\n</message>'];
+  const updates: AgentUpdate[] = [];
+  const result = await session.prompt({
+    text: "go",
+    app: "cli",
+    pendingEvents: [],
+    // Nothing yet when the turn starts; a message by the time the tool has run.
+    takeMessages: () => {
+      if (!updates.some((u) => u.type === "tool_call_update")) return [];
+      return waiting.splice(0);
+    },
+    onUpdate: (update) => updates.push(update),
+  });
+  expect(result.stopReason).toBe("end_turn");
+  // The second request has it after the tool result; the third (there is none) would not repeat it.
+  const second = model.requests[1] ?? [];
+  expect(second.map((m) => m.role)).toEqual(["user", "assistant", "toolResult", "user"]);
+  expect(JSON.stringify(second.at(-1))).toContain("look at x");
+  // It is part of the logged conversation, so a reload keeps it.
+  const logged = harnessMessages(updates).map((m) => JSON.stringify(m));
+  expect(logged.some((m) => m.includes("look at x"))).toBe(true);
+});
+
+test("messages that are there when the turn starts come after the user's text", async () => {
+  const model = fakeModel([reply("ok")]);
+  const { session } = await newSession(model);
+  const waiting = ['<message from="main">\nbegin with y\n</message>'];
+  await session.prompt({
+    text: "the task",
+    app: "delegate",
+    pendingEvents: [],
+    takeMessages: () => waiting.splice(0),
+    onUpdate: () => {},
+  });
+  const request = model.requests[0] ?? [];
+  expect(request.map((m) => m.role)).toEqual(["user", "user"]);
+  expect(JSON.stringify(request[0])).toContain("the task");
+  expect(JSON.stringify(request[1])).toContain("begin with y");
+});
+
 test("the working directory is told once per session, also across a reload", async () => {
   const model = fakeModel([reply("one"), reply("two"), reply("three")]);
   const { session, cwd } = await newSession(model);
@@ -98,7 +150,7 @@ test("the working directory is told once per session, also across a reload", asy
   expect(JSON.stringify(model.requests[1]?.at(-1))).not.toContain("<session cwd=");
 
   const history: SessionEvent[] = first.updates;
-  const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
   const loaded = await agent.loadSession({ sessionId: "s1", cwd, mcpServers: [], history });
   const third = await run(loaded, "c");
   expect(texts(third.updates)).not.toContain("<session cwd=");
@@ -237,7 +289,7 @@ test("a failing tool is reported as failed and the turn continues", async () => 
   expect(JSON.stringify(last?.content)).toContain("exited with code 2");
 });
 
-test("every pi message is logged as a harness_message", async () => {
+test("every neo message is logged as a harness_message", async () => {
   const model = fakeModel([
     reply([fauxToolCall("bash", { command: "echo hi" }, { id: "b1" })], "toolUse"),
     reply("done"),
@@ -252,7 +304,7 @@ test("every pi message is logged as a harness_message", async () => {
     "assistant",
   ]);
   for (const update of updates) {
-    if (update.type === "harness_message") expect(update.harness).toBe("pi");
+    if (update.type === "harness_message") expect(update.harness).toBe("neo");
   }
 });
 
@@ -278,14 +330,62 @@ test("the system prompt and tools are sent unchanged on every request", async ()
       "write",
       "edit",
       "todo_write",
+      "skill",
+      "web_search",
+      "web_fetch",
       "tools_search",
       "tools_call",
       "apps_launch",
       "apps_focus",
       "delegate",
+      "models",
+      "send_message",
+      "wait",
     ],
   });
   expect(seen[1]).toEqual(seen[0]);
+});
+
+test("a session lists its skills in the system prompt, and the skill tool loads one", async () => {
+  const root = await tempDir();
+  const bundled = join(root, "bundled");
+  await mkdir(join(bundled, "demo"), { recursive: true });
+  await writeFile(
+    join(bundled, "demo", "SKILL.md"),
+    "---\nname: demo\ndescription: Use when demoing\n---\n\nStep one.\nStep two.\n",
+  );
+  const cwd = join(root, "project");
+  await mkdir(join(cwd, ".suite", "skills", "local"), { recursive: true });
+  await writeFile(
+    join(cwd, ".suite", "skills", "local", "SKILL.md"),
+    "---\nname: local\ndescription: Project rules\n---\nUse tabs.",
+  );
+  const prompts: (string | undefined)[] = [];
+  const model = fakeModel([
+    (context) => {
+      prompts.push(context.systemPrompt);
+      return reply(
+        [{ type: "toolCall", id: "c1", name: "skill", arguments: { name: "demo" } }],
+        "toolUse",
+      );
+    },
+    (context) => {
+      const last = context.messages.at(-1);
+      prompts.push(JSON.stringify(last));
+      return reply("loaded");
+    },
+  ]);
+  const config = { ...TEST_CONFIG, skills: { bundled, user: join(root, "none") } };
+  const agent = createNeoAgent({ config, streamFn: model.streamFn });
+  const session = await agent.newSession({ sessionId: "s1", cwd, mcpServers: [] });
+  const { updates } = await run(session, "demo it");
+  expect(prompts[0]?.startsWith(SYSTEM_PROMPT)).toBe(true);
+  expect(prompts[0]).toContain("- demo: Use when demoing\n- local: Project rules");
+  expect(prompts[1]).toContain("Step one.\\nStep two.");
+  const call = updates.find((u) => u.type === "tool_call");
+  expect(call).toMatchObject({ tool: "skill", title: "skill demo", kind: "other" });
+  const done = ofType(updates, "tool_call_update").find((u) => u.status === "completed");
+  expect(done?.content).toEqual([{ type: "text", text: "2 lines" }]);
 });
 
 test("usage follows each assistant message with running totals", async () => {
@@ -329,7 +429,7 @@ test("usage keeps adding up after the session is loaded from the log", async () 
   ]);
   const { session, cwd } = await newSession(model);
   const first = await run(session, "a");
-  const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
   const loaded = await agent.loadSession({
     sessionId: "s1",
     cwd,
@@ -375,7 +475,7 @@ test("a throwing model resolves with an error instead of rejecting", async () =>
 
 test("a missing API key resolves with an error naming the env var, without calling the model", async () => {
   const model = fakeModel([reply("never")]);
-  const agent = createPiAgent({
+  const agent = createNeoAgent({
     config: { ...TEST_CONFIG, apiKey: undefined },
     streamFn: model.streamFn,
   });
@@ -430,10 +530,10 @@ test("cancel during a bash command stops it and ends the turn cancelled", async 
 
 async function sessionWith(
   model: FakeModel,
-  settings?: Parameters<ReturnType<typeof createPiAgent>["newSession"]>[0]["settings"],
+  settings?: Parameters<ReturnType<typeof createNeoAgent>["newSession"]>[0]["settings"],
   config = TEST_CONFIG,
 ): Promise<AgentSession> {
-  const agent = createPiAgent({ config, streamFn: model.streamFn });
+  const agent = createNeoAgent({ config, streamFn: model.streamFn });
   return agent.newSession({ sessionId: "s1", cwd: await tempDir(), mcpServers: [], settings });
 }
 
@@ -466,7 +566,7 @@ test("a bare model id means the configured provider", async () => {
 test("invalid stored settings fall back to the defaults", async () => {
   const warnings: string[] = [];
   const logger = { warn: (message: string) => warnings.push(message) } as never;
-  const agent = createPiAgent({ config: TEST_CONFIG, logger });
+  const agent = createNeoAgent({ config: TEST_CONFIG, logger });
   for (const settings of [
     { model: "nope/model", thought_level: "ludicrous" },
     { model: "deepseek/" },
@@ -543,6 +643,75 @@ test("the API key follows the model's provider", async () => {
   }
 });
 
+const COPILOT_ENV = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"];
+
+async function withAccount<T>(
+  provider: string,
+  account: unknown,
+  body: (config: typeof TEST_CONFIG) => Promise<T>,
+): Promise<T> {
+  const authPath = join(await tempDir(), "auth.json");
+  await writeFile(authPath, JSON.stringify({ [provider]: account }));
+  const saved = COPILOT_ENV.map((name) => process.env[name]);
+  for (const name of COPILOT_ENV) delete process.env[name];
+  try {
+    return await body({ ...TEST_CONFIG, apiKey: undefined, authPath, provider, modelId: "x" });
+  } finally {
+    COPILOT_ENV.forEach((name, i) => {
+      const value = saved[i];
+      if (value !== undefined) process.env[name] = value;
+    });
+  }
+}
+
+test("a Copilot login is sent as its token, to the base URL its token names", async () => {
+  const token = "tid=1;exp=2;proxy-ep=proxy.business.githubcopilot.com";
+  const account = { type: "oauth", access: token, refresh: "r", expires: Date.now() + 3_600_000 };
+  await withAccount("github-copilot", account, async (config) => {
+    const seen: { baseUrl: string; apiKey: string | undefined }[] = [];
+    const inner = fakeModel([reply("ok")]);
+    const streamFn: StreamFn = (model, context, options) => {
+      seen.push({ baseUrl: model.baseUrl, apiKey: options?.apiKey });
+      return inner.streamFn(model, context, options);
+    };
+    const agent = createNeoAgent({ config, streamFn });
+    const session = await agent.newSession({
+      sessionId: "s",
+      cwd: await tempDir(),
+      mcpServers: [],
+    });
+    expect((await run(session, "hi")).result).toEqual({ stopReason: "end_turn" });
+    expect(seen).toEqual([{ baseUrl: "https://api.business.githubcopilot.com", apiKey: token }]);
+  });
+});
+
+test("a login that can't be refreshed ends the turn with an error, without calling the model", async () => {
+  const original = getOAuthProvider("openai-codex");
+  if (!original) throw new Error("pi-ai has no openai-codex provider");
+  registerOAuthProvider({
+    ...original,
+    refreshToken: () => Promise.reject(new Error("invalid_grant")),
+  });
+  try {
+    const account = { type: "oauth", access: "a", refresh: "r", expires: Date.now() - 1000 };
+    await withAccount("openai-codex", account, async (config) => {
+      const model = fakeModel([reply("never")]);
+      const agent = createNeoAgent({ config, streamFn: model.streamFn });
+      const session = await agent.newSession({
+        sessionId: "s",
+        cwd: await tempDir(),
+        mcpServers: [],
+      });
+      const { result } = await run(session, "hi");
+      expect(result.stopReason).toBe("error");
+      expect(result.error).toContain("Log in again");
+      expect(model.requests).toEqual([]);
+    });
+  } finally {
+    unregisterOAuthProvider("openai-codex");
+  }
+});
+
 async function rejection(promise: Promise<void>): Promise<string> {
   try {
     await promise;
@@ -560,7 +729,7 @@ test("setConfigOption rejects values it can't use", async () => {
   expect(await rejection(setOption(session, "model", "nope/x"))).toContain(
     'Unknown model provider "nope"',
   );
-  expect(await rejection(setOption(session, "mode", "plan"))).toContain("pi has no mode setting");
+  expect(await rejection(setOption(session, "mode", "plan"))).toContain("neo has no mode setting");
   expect(optionOf(session, "model")?.current).toBe("deepseek/deepseek-v4-flash");
   expect(optionOf(session, "thought_level")?.current).toBe("off");
 });
@@ -593,7 +762,7 @@ test("generateText asks the configured model, or the one given, with the system 
       { type: "text", text: "o" },
     ]),
   ]);
-  const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
   expect(await agent.generateText?.({ system: "Be brief.", prompt: "Hello" })).toBe("one");
   expect(model.models[0]).toEqual({ provider: "deepseek", id: "deepseek-v4-flash" });
   expect(model.requests[0]).toMatchObject([{ role: "user", content: "Hello" }]);
@@ -605,7 +774,7 @@ test("generateText asks the configured model, or the one given, with the system 
 
 test("generateText rejects with the model's error, and for an unknown provider or no key", async () => {
   const model = fakeModel([reply([], "error", "rate limited")]);
-  const agent = createPiAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
   const asking = async (target: typeof agent, setting?: string): Promise<string> => {
     try {
       await target.generateText?.({ system: "s", prompt: "p", model: setting });
@@ -616,14 +785,14 @@ test("generateText rejects with the model's error, and for an unknown provider o
   };
   expect(await asking(agent)).toContain("rate limited");
   expect(await asking(agent, "nowhere/x")).toContain('Unknown model provider "nowhere"');
-  const keyless = createPiAgent({
+  const keyless = createNeoAgent({
     config: { ...TEST_CONFIG, apiKey: undefined },
     streamFn: fakeModel([]).streamFn,
   });
   const saved = process.env.DEEPSEEK_API_KEY;
   delete process.env.DEEPSEEK_API_KEY;
   try {
-    expect(await asking(keyless)).toContain('No API key for provider "deepseek"');
+    expect(await asking(keyless)).toContain('No API key or login for provider "deepseek"');
   } finally {
     if (saved !== undefined) process.env.DEEPSEEK_API_KEY = saved;
   }

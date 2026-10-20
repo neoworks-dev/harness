@@ -1,20 +1,25 @@
 // Wires the daemon's parts together. Used by main.ts and by tests (startTestDaemon).
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { findEnvKeys, getProviders } from "@mariozechner/pi-ai";
+import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import type { Agent, McpServer } from "@suite/harness/agent";
 import type { Theme } from "@suite/protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
-import { ActionRunner } from "./actions.ts";
+import { ActionRunner, openUiTools } from "./actions.ts";
 import { AssetStore } from "./assets.ts";
 import { FocusManager } from "./focus.ts";
 import { ViewManager } from "./view/views.ts";
 import { Gateway } from "./gateway/gateway.ts";
 import { mcpHandler } from "./gateway/mcp-server.ts";
 import { ConnectorRegistry } from "./gateway/registry.ts";
+import { createGuestAccounts } from "./guests/accounts.ts";
 import { createDelegate } from "./guests/delegate.ts";
 import { type GatewayRole, type GuestConfig, GuestManager } from "./guests/guests.ts";
 import { Asker } from "./asker.ts";
 import { Commands } from "./commands.ts";
+import { Login } from "./login.ts";
+import { MESSAGES_APP, Messenger } from "./messages.ts";
 import { handoffSummary } from "./handoff.ts";
 import { Permissions } from "./permissions.ts";
 import { Review } from "./review.ts";
@@ -45,14 +50,19 @@ export interface DaemonOptions {
   /** Guest agents (see guests/config.ts); none when absent. */
   guests?: Record<string, GuestConfig>;
   /**
-   * The pi harness delegate hands tasks to ("pi" subagents are new sessions of it). Defaults to
-   * `agent` when that is pi; tests give one with a fake model.
+   * The neo harness delegate hands tasks to ("neo" subagents are new sessions of it). Defaults to
+   * `agent` when that is neo; tests give one with a fake model.
    */
-  pi?: Agent;
+  neo?: Agent;
   /** Whether a model writes a session's title after its first message (default: yes). */
   titles?: boolean;
   /** How long a harness gets to tell its options for session.settings; for tests. */
   settingsTimeoutMs?: number;
+  /**
+   * Where /login keeps accounts (`authPath`, written) and where pi's are (`piAuthPath`, read
+   * only). Default: auth.json in the data dir and no pi file; main.ts passes the harness's paths.
+   */
+  accounts?: { authPath?: string; piAuthPath?: string };
 }
 
 export interface Daemon {
@@ -112,7 +122,10 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     const name = settings.harness(session);
     return name === agent.name || guests.has(name) ? name : agent.name;
   };
+  const authPath = options.accounts?.authPath ?? join(paths.dataDir, "auth.json");
+  const piAuthPath = options.accounts?.piAuthPath ?? join(paths.dataDir, "pi-auth.json");
   const guests = new GuestManager({
+    accounts: createGuestAccounts({ authPath, piAuthPath }),
     configs: options.guests ?? {},
     log,
     append: (session, event) => {
@@ -128,11 +141,22 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     guard: permissions.guard,
     handoff: (session, harness, all) => handoffSummary(store, session, harness, agent.name, all),
     storeImage: (data, mime) => assets.put({ bytes: Buffer.from(data, "base64"), mime }).handle,
-    pi: options.pi ?? (agent.name === "pi" ? agent : undefined),
+    neo: options.neo ?? (agent.name === "neo" ? agent : undefined),
     resolveAsset: (handle) => assets.resolve(handle),
     requestPermission: (session, name) => permissions.hook(session, name),
   });
   const summaries = new SessionSummaries(store);
+  const messenger = new Messenger({
+    append: (session, event) => {
+      store.append(session, event);
+    },
+    wake: (session) => sessions.wake(session),
+  });
+  // Whatever the user writes gives agents a fresh allowance of messages.
+  store.onAppend(({ session, event }) => {
+    if (event.type !== "user_message") return;
+    if (event.app !== MESSAGES_APP && event.app !== "delegate") messenger.newRound(session);
+  });
   const sessions = new SessionManager(store, agent, {
     describe: (sessionId) => ({ ...summaries.get(sessionId), harness: harnessOf(sessionId) }),
     defaultCwd: options.defaultCwd,
@@ -146,8 +170,10 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     agents: (name) => (guests.has(name) ? guests.agent(name) : undefined),
     settings: (sessionId, harness) => settings.get(sessionId, harness),
     requestPermission: (sessionId) => permissions.hook(sessionId, agent.name),
+    safeSearch: () => settings.safeSearch(),
     created: (sessionId) =>
       settings.inheritHarness(sessionId, (name) => name === agent.name || guests.has(name)),
+    takeMessages: (sessionId) => messenger.take(sessionId, undefined),
   });
   // After the summaries, so the start of a first message names the session before a model does.
   const titles = new Titles({
@@ -170,6 +196,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     asker,
     sessions,
     store,
+    messenger,
     settings: (session, guest) => settings.get(session, guest),
     append: (session, event) => {
       store.append(session, event);
@@ -179,6 +206,10 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     cwd: (session) => store.getSession(session)?.cwd ?? options.defaultCwd,
     autoApprove: (session) => settings.approvals(session) === "auto",
   });
+  // The user cancelling a turn stops the session's background subagents with it.
+  sessions.onCancel((session) => {
+    delegate.stopBackground(session);
+  });
   const gateway = new Gateway(connectors, {
     log,
     resolveAsset: (handle) => assets.resolve(handle),
@@ -186,6 +217,8 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       store.append(session, result);
     },
     delegate: delegate.run,
+    models: delegate.models,
+    messages: messenger,
     focus: (app, session) => {
       try {
         focus?.move({ app, session }, "agent");
@@ -196,7 +229,12 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     },
   });
   focus = new FocusManager(store, sessions, connectors, log);
-  const views = new ViewManager(store, (tool) => connectors.template(tool), log);
+  const views = new ViewManager(
+    store,
+    (tool) => connectors.template(tool),
+    log,
+    (session) => openUiTools({ store, gateway }, session),
+  );
   const actions = new ActionRunner({
     store,
     sessions,
@@ -206,13 +244,31 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     asker,
     cancelAgent: delegate.cancel,
   });
+  const notice = (session: string, text: string, tone?: "muted" | "danger"): void => {
+    store.append(
+      session,
+      tone === undefined ? { type: "notice", text } : { type: "notice", text, tone },
+    );
+  };
+  const login = new Login({
+    asker,
+    log,
+    notice,
+    authPath,
+    piAuthPath,
+    oauthProviders: getOAuthProviders,
+    apiProviders: getProviders,
+    envKeys: (provider) => findEnvKeys(provider) ?? [],
+  });
   const commands = new Commands({
     sessions,
     guests,
     settings,
     titles,
     asker,
+    login,
     log,
+    notice,
     main: agent.name,
     harness: harnessOf,
     harnesses: () => [agent.name, ...guests.names()],
@@ -230,7 +286,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       theme: options.theme ?? defaultTheme,
       assets,
       action: (action, from) => actions.run(action, from),
-      command: (session, text) => commands.run(session, text),
+      command: (session, text, context) => commands.run(session, text, context),
       settings: (session, known) => commands.settings(session, known),
     },
   );
@@ -280,6 +336,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     async stop(timeoutMs = 2000) {
       await started.stop();
       await sessions.shutdown(timeoutMs);
+      await delegate.shutdown(timeoutMs);
       asker.dropAll();
       guests.shutdown();
       await connectors.close();

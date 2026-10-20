@@ -43,7 +43,7 @@ test("an idle session shows branch, harness, the harness's settings and approval
     ...initialStatus(),
     harness: "claude",
     approvals: "auto",
-    settings: { claude: { model: "sonnet", effort: "high" }, pi: { model: "other" } },
+    settings: { claude: { model: "sonnet", effort: "high" }, neo: { model: "other" } },
   };
   const segments = statusSegments({ ...idle, status });
   expect(segments.map((s) => s.text)).toEqual(["main", "claude", "sonnet", "high", "auto"]);
@@ -81,7 +81,7 @@ test("a running turn shows elapsed time, the queue, usage and a lost connection"
     now: 66_000,
   });
   expect(segments.map((s) => s.text)).toEqual([
-    "pi",
+    "neo",
     "ask",
     "working 1m 05s",
     "2 queued",

@@ -2,7 +2,7 @@
 // streams what they do into the suite session. Two roles: guests, one per suite session and
 // name, that the session's agent reaches with delegate and the user with "/claude task"; and the
 // session's own agent when the user runs it on that harness (/harness claude), which has no
-// label in the log and gets the session's context events. pi subagents (subagent.ts) are
+// label in the log and gets the session's context events. neo subagents (subagent.ts) are
 // delegated to the same way.
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -40,13 +40,15 @@ import { BadRequestError } from "../focus.ts";
 import type { ConnectorSnapshot } from "../gateway/registry.ts";
 import type { Logger } from "../log.ts";
 import { NotFoundError } from "../sessions.ts";
-import type { Guard, Touches } from "../permissions.ts";
+import { type Guard, RUN_TITLE, type Touches } from "../permissions.ts";
 import type { Approvals, HarnessSettings } from "../settings.ts";
 import { type FocusTarget, ToldState } from "../told.ts";
 import { AcpConnection, AcpError } from "./acp.ts";
+import { CLAUDE_AGENT_TOOLS } from "./config.ts";
+import type { GuestAccounts, Route, RouteKind } from "./accounts.ts";
 import { GUEST_PROMPT, MAIN_PROMPT } from "./prompt.ts";
 import type { GuestRunResult, RunOptions } from "./run.ts";
-import { PI, PiSubagents, type SubagentOptions } from "./subagent.ts";
+import { NEO, NeoSubagents, type SubagentOptions } from "./subagent.ts";
 
 export interface GuestConfig {
   /** Shown to the main agent, e.g. "Claude Code". */
@@ -54,6 +56,11 @@ export interface GuestConfig {
   /** The ACP adapter. */
   command: string[];
   env?: Record<string, string>;
+  /**
+   * Which of the suite's API keys the guest can run on (see accounts.ts): `/model <name>
+   * provider/model` then starts it on that key. Unset: only its own login.
+   */
+  route?: RouteKind;
   /** ask: permission requests show as buttons in the chat; allow: the first allow option wins. */
   permissions: "ask" | "allow";
 }
@@ -94,13 +101,15 @@ export interface GuestManagerOptions {
    * its own conversation: `all` asks for every turn so far.
    */
   handoff?: (session: string, harness: string, all: boolean) => string | undefined;
-  /** pi, for delegate {agent: "pi"} (its subagent sessions are made with it). */
-  pi?: Agent;
+  /** neo, for delegate {agent: "neo"} (its subagent sessions are made with it). */
+  neo?: Agent;
   resolveAsset?: (handle: string) => string | undefined;
   /** Stores an image an adapter sent (base64) and returns its asset handle. */
   storeImage?: StoreImage;
-  /** The hook a pi subagent's own bash, write and edit ask through. */
+  /** The hook a neo subagent's own bash, write and edit ask through. */
   requestPermission?: (session: string, agent: string) => RequestPermission;
+  /** The suite's API keys, for guests with a `route`. */
+  accounts?: GuestAccounts;
 }
 
 /** A conversation the adapter has stored (session/list), for /resume. */
@@ -138,6 +147,8 @@ interface Guest {
   run?: Run;
   /** The adapter's config options (session/new, set_config_option), by ACP config id. */
   config: Map<string, ConfigOption>;
+  /** The API key it runs on, when the user picked one; else it uses its own login. */
+  route?: Route;
 }
 
 const KINDS = new Set<string>([
@@ -317,7 +328,8 @@ export function describeCall(title: string, rawInput: unknown): { title: string;
   const plain = title.replace(/^mcp(__|\.)suite(__|\.)/, "");
   // The view draws a delegation by its arguments (agent, task).
   if (plain === "delegate") return { title: plain, tool: plain };
-  if (!isRecord(rawInput)) return { title: plain };
+  const named = plain === "wait" ? "wait for messages" : plain;
+  if (!isRecord(rawInput)) return { title: named };
   const args = isRecord(rawInput.arguments) ? rawInput.arguments : rawInput;
   if (plain.includes("tools_call")) {
     const name = str(args.name);
@@ -325,15 +337,19 @@ export function describeCall(title: string, rawInput: unknown): { title: string;
   } else if (plain.includes("tools_search")) {
     const query = str(args.query);
     if (query !== undefined) return { title: `search tools: ${query}` };
+  } else if (plain === "send_message") {
+    const to = str(args.to);
+    const first = (str(args.text) ?? "").split("\n")[0] ?? "";
+    if (to !== undefined) return { title: `message ${to}: ${first.slice(0, 80)}` };
   }
-  return { title: plain };
+  return { title: named };
 }
 
 /**
  * Whether a permission request is for one of the suite's own MCP tools (tools_search, tools_call,
- * apps_launch, apps_focus, delegate), as Claude Code (`mcp__suite__tools_call`, also in its
- * `_meta.claudeCode.toolName`) and Codex (`mcp.suite.tools_call`, or the server and tool in the
- * input) name them. The gateway gates what needs gating, so these are not asked about twice.
+ * apps_launch, apps_focus, delegate, models, send_message, wait), as Claude Code
+ * (`mcp__suite__tools_call`, also in its `_meta.claudeCode.toolName`) and Codex
+ * (`mcp.suite.tools_call`, or the server and tool in the input) name them. The gateway gates what needs gating, so these are not asked about twice.
  */
 export function isSuiteTool(call: Record<string, unknown>): boolean {
   const named = (title: string | undefined): boolean => {
@@ -403,24 +419,24 @@ export class GuestManager {
   private readonly guests = new Map<string, Promise<Guest>>();
   /** Every running adapter (guests and sessions' own agents), to stop them with the daemon. */
   private readonly live = new Set<Guest>();
-  private readonly subagents?: PiSubagents;
+  private readonly subagents?: NeoSubagents;
 
   constructor(private readonly options: GuestManagerOptions) {
-    const { pi, requestPermission } = options;
-    if (!pi) return;
+    const { neo, requestPermission } = options;
+    if (!neo) return;
     const subagents: SubagentOptions = {
       log: options.log,
       cwd: options.cwd,
       // A guest of the gateway (no delegate), but one that sees structured results.
-      mcpServers: (session) => options.mcpServers(session, { name: PI, guest: true }),
-      settings: (session) => options.settings(session, PI),
+      mcpServers: (session) => options.mcpServers(session, { name: NEO, guest: true }),
+      settings: (session) => options.settings(session, NEO),
       connectors: options.connectors,
       focus: options.focus,
     };
     if (options.resolveAsset) subagents.resolveAsset = options.resolveAsset;
     if (requestPermission)
-      subagents.requestPermission = (session) => requestPermission(session, PI);
-    this.subagents = new PiSubagents(pi, subagents);
+      subagents.requestPermission = (session) => requestPermission(session, NEO);
+    this.subagents = new NeoSubagents(neo, subagents);
   }
 
   names(): string[] {
@@ -431,9 +447,9 @@ export class GuestManager {
     return Object.hasOwn(this.options.configs, name);
   }
 
-  /** Everything delegate can hand a task to: pi (when there is one) and the configured guests. */
+  /** Everything delegate can hand a task to: neo (when there is one) and the configured guests. */
   harnesses(): string[] {
-    return this.subagents ? [PI, ...this.names()] : this.names();
+    return this.subagents ? [NEO, ...this.names()] : this.names();
   }
 
   title(name: string): string {
@@ -450,7 +466,7 @@ export class GuestManager {
     task: string,
     opts: RunOptions,
   ): Promise<GuestRunResult> {
-    if (name === PI && this.subagents) return this.subagents.run(session, task, opts);
+    if (name === NEO && this.subagents) return this.subagents.run(session, task, opts);
     if (!this.has(name)) {
       return { stopReason: "error", error: `No guest named ${name}.`, text: "" };
     }
@@ -531,7 +547,7 @@ export class GuestManager {
 
   /**
    * The harness as the session's own agent (the user picked it with /harness): sessions create
-   * and load it like pi. Its conversation is the adapter's own, named in the log
+   * and load it like neo. Its conversation is the adapter's own, named in the log
    * (harness_message {acpSession}) so a restarted daemon resumes it.
    */
   agent(name: string): Agent {
@@ -574,6 +590,7 @@ export class GuestManager {
           images: params.images,
           events: params.pendingEvents,
         };
+        if (params.takeMessages) opts.takeMessages = params.takeMessages;
         if (summary !== undefined) opts.summary = summary;
         const result = await this.enqueue(current, params.text, opts);
         const out: PromptResult = { stopReason: result.stopReason };
@@ -582,16 +599,19 @@ export class GuestManager {
       },
       cancel: () => controller?.abort(),
       configOptions: () => [...guest.config.values()],
-      setConfigOption: (category, value) => this.setOption(guest, category, value),
+      loadConfigOptions: () => this.optionsOf(guest),
+      setConfigOption: async (category, value) => {
+        guest = await this.configureGuest(guest, category, value);
+      },
     };
   }
 
   /**
    * The options (models, effort levels) a harness offers, when they can be had without starting
-   * anything: pi's own, or those of an adapter that already runs. undefined: not known yet.
+   * anything: neo's own, or those of an adapter that already runs. undefined: not known yet.
    */
   async knownOptions(session: string, name: string): Promise<ConfigOption[] | undefined> {
-    if (name === PI && this.subagents) return this.subagents.configOptions(session);
+    if (name === NEO && this.subagents) return this.subagents.configOptions(session);
     for (const guest of this.live) {
       if (guest.name === name) return [...guest.config.values()];
     }
@@ -600,8 +620,27 @@ export class GuestManager {
 
   /** The guest's settable options (starts it for this session if it isn't running). */
   async configOptions(session: string, name: string): Promise<ConfigOption[]> {
-    const guest = await this.guest(session, name);
-    return [...guest.config.values()];
+    return this.optionsOf(await this.guest(session, name));
+  }
+
+  /**
+   * The guest's options, with the suite's accounts added to its models (a guest with a `route`):
+   * `provider/model` values that start it on that key.
+   */
+  private async optionsOf(guest: Guest): Promise<ConfigOption[]> {
+    const options = [...guest.config.values()];
+    const kind = this.options.configs[guest.name]?.route;
+    const { accounts } = this.options;
+    if (kind === undefined || !accounts) return options;
+    const extra = await accounts.models(kind);
+    return options.map((option) => {
+      if (option.category !== "model") return option;
+      const known = new Set(option.values.map((v) => v.value));
+      const values = [...option.values, ...extra.filter((m) => !known.has(m.value))];
+      const out: ConfigOption = { ...option, values };
+      if (guest.route !== undefined) out.current = guest.route.id;
+      return out;
+    });
   }
 
   /**
@@ -614,8 +653,50 @@ export class GuestManager {
     category: ConfigCategory,
     value: string,
   ): Promise<void> {
+    const key = `${session}\0${name}`;
     const guest = await this.guest(session, name);
-    await this.setOption(guest, category, value);
+    const changed = await this.configureGuest(guest, category, value);
+    if (changed !== guest) this.guests.set(key, Promise.resolve(changed));
+  }
+
+  /**
+   * Sets an option. A model that is `provider/model` of a suite account, or a plain model after
+   * one, restarts the adapter on the other key (continuing its conversation); the guest it
+   * returns is the one to keep using.
+   */
+  private async configureGuest(
+    guest: Guest,
+    category: ConfigCategory,
+    value: string,
+  ): Promise<Guest> {
+    const kind = this.options.configs[guest.name]?.route;
+    const { accounts } = this.options;
+    if (category !== "model" || kind === undefined || !accounts) {
+      await this.setOption(guest, category, value);
+      return guest;
+    }
+    const route = await accounts.route(kind, value);
+    if (route === undefined && guest.route === undefined) {
+      await this.setOption(guest, category, value);
+      return guest;
+    }
+    const next = route?.id === guest.route?.id ? guest : await this.reroute(guest, route);
+    if (route === undefined) await this.setOption(next, category, value);
+    return next;
+  }
+
+  /** Starts the adapter again on another key (or its own login), in the same conversation. */
+  private async reroute(guest: Guest, route: Route | undefined): Promise<Guest> {
+    // A turn that is running finishes first.
+    await guest.queue;
+    this.live.delete(guest);
+    guest.conn.kill();
+    return this.start(guest.session, guest.name, {
+      main: guest.main,
+      resume: guest.acpSession,
+      route: route ?? null,
+      lenient: true,
+    });
   }
 
   /** Conversations the guest has stored for this directory, newest first (session/list). */
@@ -745,24 +826,41 @@ export class GuestManager {
   }
 
   /** `target` gets the guest once it exists: the connection's updates and requests are its. */
-  private spawn(name: string, cwd: string, target: { guest?: Guest }): AcpConnection {
+  private spawn(
+    name: string,
+    cwd: string,
+    target: { guest?: Guest },
+    route?: Route,
+  ): AcpConnection {
     const config = this.options.configs[name];
     if (!config) throw new NotFoundError(`no guest ${name}`);
     return AcpConnection.spawn({
       command: config.command,
       cwd,
-      env: config.env,
+      env: route ? { ...config.env, ...route.env } : config.env,
       onNotification: (method, params) => this.onNotification(target.guest, method, params),
       onRequest: (method, params) => this.onRequest(target.guest, method, params),
     });
   }
 
-  private async initialize(conn: AcpConnection): Promise<void> {
+  private async initialize(conn: AcpConnection, route?: Route): Promise<void> {
+    const clientCapabilities: Record<string, unknown> = {
+      fs: { readTextFile: false, writeTextFile: false },
+      terminal: false,
+    };
+    // Codex's adapter takes a custom gateway only from a client that says it can sign in to one.
+    if (route?.gateway) clientCapabilities.auth = { _meta: { gateway: true } };
     await conn.request("initialize", {
       protocolVersion: 1,
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+      clientCapabilities,
       clientInfo: { name: "suite", version: "0.6.0" },
     });
+    if (route?.gateway) {
+      await conn.request("authenticate", {
+        methodId: "gateway",
+        _meta: { gateway: route.gateway },
+      });
+    }
   }
 
   /**
@@ -772,19 +870,41 @@ export class GuestManager {
   private async start(
     session: string,
     name: string,
-    opts: { main?: boolean; resume?: string },
+    opts: {
+      main?: boolean;
+      resume?: string;
+      /** The key to run on; null: the guest's own login; unset: what the session's model says. */
+      route?: Route | null;
+      /** Start a new conversation when the stored one can't be resumed (default: for main). */
+      lenient?: boolean;
+    },
   ): Promise<Guest> {
-    const { main = false, resume } = opts;
-    if (main && resume !== undefined) {
+    const { main = false, resume, route } = opts;
+    const { lenient = main } = opts;
+    if (lenient && resume !== undefined) {
       try {
-        return await this.open(session, name, main, resume);
+        return await this.open(session, name, main, resume, route);
       } catch (err) {
         this.options.log.warn(
           `${name} for ${session}: resuming ${resume} failed (${errorText(err)}); starting anew`,
         );
       }
+      return this.open(session, name, main, undefined, route);
     }
-    return this.open(session, name, main, main ? undefined : resume);
+    return this.open(session, name, main, resume, route);
+  }
+
+  /** The key the session's model setting names, if any (the guest is restarting or new). */
+  private async routeFromSettings(session: string, name: string): Promise<Route | undefined> {
+    const kind = this.options.configs[name]?.route;
+    const model = this.options.settings(session, name).model;
+    if (kind === undefined || model === undefined || !this.options.accounts) return undefined;
+    try {
+      return await this.options.accounts.route(kind, model);
+    } catch (err) {
+      this.options.log.warn(`${name} for ${session}: ${errorText(err)}; using its own login`);
+      return undefined;
+    }
   }
 
   private async open(
@@ -792,11 +912,13 @@ export class GuestManager {
     name: string,
     main: boolean,
     resume: string | undefined,
+    chosen?: Route | null,
   ): Promise<Guest> {
     const { log } = this.options;
     const cwd = this.options.cwd(session);
     const target: { guest?: Guest } = {};
-    const conn = this.spawn(name, cwd, target);
+    const route = chosen === undefined ? await this.routeFromSettings(session, name) : chosen;
+    const conn = this.spawn(name, cwd, target, route ?? undefined);
     void conn.exited.then((code) => {
       log.info(`${name} for ${session} exited (${code})`);
       const { guest } = target;
@@ -808,15 +930,19 @@ export class GuestManager {
       void this.guests.get(key)?.then((current) => current === guest && this.guests.delete(key));
     });
     try {
-      await this.initialize(conn);
+      await this.initialize(conn, route ?? undefined);
       const mcpServers = this.options
         .mcpServers(session, { name, guest: !main, text: true })
         .map((server) => ({ type: "http", ...server }));
       const params: Record<string, unknown> = {
         cwd,
         mcpServers,
-        // Both adapters append this to their own system prompt.
-        _meta: { jetbrains: { air: { customInstructions: main ? MAIN_PROMPT : GUEST_PROMPT } } },
+        _meta: {
+          // Both adapters append this to their own system prompt.
+          jetbrains: { air: { customInstructions: main ? MAIN_PROMPT : GUEST_PROMPT } },
+          // Claude Code's own subagents are off: delegate hands work on (Codex: CODEX_CONFIG).
+          claudeCode: { options: { disallowedTools: CLAUDE_AGENT_TOOLS } },
+        },
       };
       if (resume !== undefined) params.sessionId = resume;
       const created = await conn.request(
@@ -837,10 +963,13 @@ export class GuestManager {
         queue: Promise.resolve(),
         config,
       };
+      if (route) guest.route = route;
       target.guest = guest;
       this.live.add(guest);
       // Only what the user chose: everything else stays the guest's own default.
       for (const [category, value] of Object.entries(this.options.settings(session, name))) {
+        // The model of a key was given at launch.
+        if (route && category === "model") continue;
         try {
           await this.setOption(guest, category as ConfigCategory, value);
         } catch (err) {
@@ -861,7 +990,11 @@ export class GuestManager {
       return guest;
     } catch (err) {
       conn.kill();
-      throw err;
+      if (!route) throw err;
+      // What the adapter says may quote the request that carried the key.
+      let text = errorText(err);
+      for (const secret of route.secrets) text = text.replaceAll(secret, "***");
+      throw new Error(text);
     }
   }
 
@@ -912,8 +1045,14 @@ export class GuestManager {
     opts.signal?.addEventListener("abort", onAbort);
     guest.run = run;
     try {
+      // What arrived before this turn, ahead of the task (the gateway adds what comes during the
+      // turn to its tool results).
+      const waiting = opts.takeMessages?.() ?? [];
       const prompt = [
-        { type: "text", text: formatPrompt(task, events, undefined, opts.summary) },
+        {
+          type: "text",
+          text: [...waiting, formatPrompt(task, events, undefined, opts.summary)].join("\n\n"),
+        },
         ...(await imageBlocks(opts.images)),
       ];
       const result = await guest.conn.request("session/prompt", {
@@ -1067,6 +1206,11 @@ export class GuestManager {
     }
     if (kind !== undefined) request.kind = kind;
     if (content?.length) request.content = content;
+    else if (kind === "execute" && touches.command !== undefined) {
+      // The command as code to read, under a plain question.
+      request.content = [{ type: "text", text: touches.command }];
+      if (sensitive.length === 0) request.title = RUN_TITLE;
+    }
     const toolCallId = str(call.toolCallId);
     if (toolCallId !== undefined) {
       request.toolCallId = `${guest.main ? `${guest.name}-main` : guest.name}:${toolCallId}`;

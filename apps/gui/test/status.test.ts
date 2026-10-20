@@ -35,14 +35,14 @@ test("a turn runs from the user's message until it ends", () => {
 test("settings are kept per harness and the status shows the current one's", () => {
   const status = fold(
     { type: "setting_changed", harness: "claude", option: "model", value: "haiku" },
-    { type: "setting_changed", harness: "pi", option: "effort", value: "high" },
+    { type: "setting_changed", harness: "neo", option: "effort", value: "high" },
     { type: "setting_changed", harness: "suite", option: "harness", value: "claude" },
     { type: "setting_changed", harness: "suite", option: "approvals", value: "edits" },
   );
   expect(status.harness).toBe("claude");
   expect(status.approvals).toBe("edits");
   expect(currentSettings(status)).toEqual({ model: "haiku" });
-  expect(status.settings.pi).toEqual({ effort: "high" });
+  expect(status.settings.neo).toEqual({ effort: "high" });
 });
 
 test("only the session's own agent's usage is shown", () => {

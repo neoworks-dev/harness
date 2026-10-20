@@ -15,7 +15,7 @@ const stale: string[] = [];
 for (const name of readdirSync(dir).sort()) {
   const source = join(dir, name, "fixture.json");
   if (!existsSync(source)) continue;
-  const items = resolveFixture(name, JSON.parse(readFileSync(source, "utf8")));
+  const items = await resolveFixture(name, JSON.parse(readFileSync(source, "utf8")));
   const out = join(dir, name, "resolved.json");
   const content = await prettier.format(JSON.stringify(items), { ...config, parser: "json" });
   const current = existsSync(out) ? readFileSync(out, "utf8") : undefined;

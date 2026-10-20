@@ -69,6 +69,13 @@ function blockText(block: Block): string {
         .join("\n");
     case "rule":
       return "---";
+    case "table_block":
+      return [block.header, ...block.rows]
+        .map((row) => row.map((cell) => cell.spans.map((span) => span.text).join("")).join(" | "))
+        .join("\n");
+    case "openui":
+      // A drawn UI has no text of its own to copy.
+      return "";
   }
 }
 

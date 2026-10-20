@@ -2,8 +2,8 @@
 //! on background threads, and drawing them over the lines the renderer reserved for them.
 //!
 //! An image source (`src` of an image component) goes through two steps, each on a thread of
-//! its own so the screen never waits: a *probe* resolves it to a file (an `asset://` handle asks
-//! the daemon) and reads the size from its header, which lets the renderer reserve the right
+//! its own so the screen never waits: a *probe* resolves it to a file (an `asset://` handle or
+//! an `http(s)://` URL asks the daemon, which downloads the image into its asset store) and reads the size from its header, which lets the renderer reserve the right
 //! number of rows; an *encode* decodes it, scales it to the cells it is shown in and turns that
 //! into what the terminal protocol wants (kitty, sixel, iTerm2 or half blocks). Only images that
 //! are in view are encoded. Results are kept by (source, cells) and the oldest are let go.
@@ -80,13 +80,15 @@ pub fn detect(mode: Mode) -> Option<Picker> {
     Some(picker)
 }
 
-/// Turns an `asset://` handle into the stored file's path (a call to the daemon).
+/// Turns an `asset://` handle or an `http(s)://` URL into a file on disk: the stored file, or
+/// the image the daemon downloaded into the store (a call to the daemon either way).
 pub type Assets = Arc<dyn Fn(&str) -> Result<PathBuf, String> + Send + Sync>;
 
 /// Where the image behind `src` lives on disk: a path (relative ones to `cwd`), a `file://`
-/// URL, or an asset handle. Remote and inline images are not loaded.
+/// URL, an asset handle or a web address. Inline images are not loaded.
 pub fn resolve(src: &str, cwd: &Path, assets: Option<&Assets>) -> Result<PathBuf, String> {
-    if src.starts_with("asset://") {
+    let remote = src.starts_with("http://") || src.starts_with("https://");
+    if remote || src.starts_with("asset://") {
         return match assets {
             Some(assets) => assets(src),
             None => Err("no connection to look the image up".into()),
@@ -94,9 +96,6 @@ pub fn resolve(src: &str, cwd: &Path, assets: Option<&Assets>) -> Result<PathBuf
     }
     if src.starts_with("data:") {
         return Err("inline images are not shown".into());
-    }
-    if src.starts_with("http://") || src.starts_with("https://") {
-        return Err("remote images are not fetched".into());
     }
     let path = Path::new(src.strip_prefix("file://").unwrap_or(src));
     Ok(cwd.join(path))

@@ -1,0 +1,152 @@
+[
+  {
+    "ref": "openui-dashboard",
+    "kind": "tool",
+    "component": {
+      "type": "openui",
+      "ui": {
+        "id": "0",
+        "root": {
+          "component": "Card",
+          "props": {
+            "children": [
+              {
+                "component": "Header",
+                "props": { "title": "Monthly revenue", "subtitle": "Last 6 months" }
+              },
+              {
+                "component": "Stack",
+                "props": {
+                  "children": [
+                    {
+                      "component": "Metric",
+                      "props": {
+                        "label": "Revenue",
+                        "value": "$25k",
+                        "delta": "+19%",
+                        "tone": "success"
+                      }
+                    },
+                    {
+                      "component": "Metric",
+                      "props": {
+                        "label": "Customers",
+                        "value": 412,
+                        "delta": "+12",
+                        "tone": "success"
+                      }
+                    },
+                    {
+                      "component": "Metric",
+                      "props": {
+                        "label": "Churn",
+                        "value": "2.1%",
+                        "delta": "+0.4pt",
+                        "tone": "danger"
+                      }
+                    }
+                  ],
+                  "direction": "row"
+                }
+              },
+              {
+                "component": "Tabs",
+                "props": {
+                  "tabs": [
+                    {
+                      "component": "Tab",
+                      "props": {
+                        "label": "Trend",
+                        "children": [
+                          {
+                            "component": "BarChart",
+                            "props": {
+                              "labels": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+                              "series": [
+                                {
+                                  "component": "Series",
+                                  "props": { "name": "Revenue", "values": [12, 15, 14, 18, 21, 25] }
+                                },
+                                {
+                                  "component": "Series",
+                                  "props": { "name": "Costs", "values": [9, 9, 10, 11, 11, 12] }
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "component": "Sparkline",
+                            "props": { "values": [12, 15, 14, 18, 21, 25], "label": "Revenue" }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "component": "Tab",
+                      "props": {
+                        "label": "Mix",
+                        "children": [
+                          {
+                            "component": "PieChart",
+                            "props": {
+                              "slices": [
+                                { "component": "Slice", "props": { "label": "Pro", "value": 62 } },
+                                { "component": "Slice", "props": { "label": "Team", "value": 28 } },
+                                { "component": "Slice", "props": { "label": "Free", "value": 10 } }
+                              ],
+                              "donut": true
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "component": "Tab",
+                      "props": {
+                        "label": "Accounts",
+                        "children": [
+                          {
+                            "component": "Table",
+                            "props": {
+                              "columns": ["Account", "Plan", "MRR"],
+                              "rows": [
+                                [
+                                  "Acme",
+                                  {
+                                    "component": "Tag",
+                                    "props": { "label": "Pro", "tone": "accent" }
+                                  },
+                                  1200
+                                ],
+                                [
+                                  "Globex",
+                                  { "component": "Tag", "props": { "label": "Team" } },
+                                  480
+                                ],
+                                [
+                                  "Initech",
+                                  {
+                                    "component": "Tag",
+                                    "props": { "label": "Free", "tone": "muted" }
+                                  },
+                                  0
+                                ]
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "title": "Revenue"
+          }
+        }
+      }
+    },
+    "label": "analytics.revenue",
+    "state": "done"
+  }
+]

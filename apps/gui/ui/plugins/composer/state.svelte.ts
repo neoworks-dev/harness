@@ -19,6 +19,10 @@ import {
   activePrompt,
   argsWithNote,
   copyText,
+  focusAfterFilter,
+  isLongChoice,
+  matchingButtons,
+  moveFocus,
   promptEngaged,
   startButton,
   takesNote,
@@ -68,11 +72,17 @@ class Composer {
   typedAt = $state(0);
   /** The focused button of the question. */
   button = $state(0);
+  /** What was typed to find an option of a long choice. */
+  filter = $state("");
   /** The note being typed for the focused button's answer; undefined while there is none. */
   note = $state<string>();
 
   /** The oldest open question that was not put aside. */
   prompt = $derived(activePrompt(this.items, this.dismissed));
+  /** The question is a choice long enough to be filtered by typing. */
+  filtering = $derived(this.prompt !== undefined && isLongChoice(this.prompt.buttons));
+  /** The positions of the options that match the filter (every option when it isn't filtered). */
+  shown = $derived(this.shownButtons());
   /** The question is open but the user is typing, so the input stays (with a hint above). */
   waiting = $derived(this.prompt !== undefined && !this.engaged);
   menuVisible = $derived(
@@ -212,6 +222,8 @@ class Composer {
   }
 
   private send(text: string): void {
+    // Sending ends the typing: a question it brings (/model's choice) takes over at once.
+    this.typedAt = 0;
     const session = this.services?.daemon.sessionId;
     if (this.history.push(text) && session !== undefined) void appendHistory(session, text);
     void this.services?.daemon.send(this.withComments(text));
@@ -258,14 +270,38 @@ class Composer {
   startPrompt(prompt: Prompt | undefined): void {
     this.button = prompt ? startButton(prompt.buttons) : 0;
     this.note = undefined;
+    this.filter = "";
+  }
+
+  private shownButtons(): number[] {
+    const prompt = this.prompt;
+    if (!prompt) return [];
+    if (!this.filtering) return prompt.buttons.map((_, index) => index);
+    return matchingButtons(prompt.buttons, this.filter);
+  }
+
+  /** The filter changed (typed or cleared): the focus goes to the first match. */
+  setFilter(filter: string): void {
+    this.filter = filter;
+    const at = this.prompt && focusAfterFilter(this.prompt.buttons, filter);
+    if (at !== undefined) this.button = at;
   }
 
   moveButton(delta: number): void {
-    if (this.prompt) this.button = moveSelection(this.button, delta, this.prompt.buttons.length);
+    if (!this.prompt) return;
+    if (this.filtering) this.button = moveFocus(this.shown, this.button, delta);
+    else this.button = moveSelection(this.button, delta, this.prompt.buttons.length);
+  }
+
+  /** Enter: answers with the focused option, unless the filter leaves none. */
+  pressFocused(): void {
+    if (this.filtering && !this.shown.includes(this.button)) return;
+    this.press(this.button);
   }
 
   /** Tab on a button that takes a note opens the note field; on others it is "next button". */
   tab(): void {
+    if (this.filtering && !this.shown.includes(this.button)) return;
     if (takesNote(this.prompt?.buttons[this.button])) this.note = "";
     else this.moveButton(1);
   }
@@ -300,6 +336,7 @@ class Composer {
     if (this.helpOpen) this.helpOpen = false;
     else if (this.menuVisible) this.menuClosedFor = this.text;
     else if (this.note !== undefined) this.note = undefined;
+    else if (this.engaged && this.filtering && this.filter !== "") this.setFilter("");
     else if (this.prompt) this.dismissed = new Set([...this.dismissed, this.prompt.ref]);
     else return false;
     return true;

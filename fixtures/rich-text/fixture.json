@@ -1,5 +1,5 @@
 {
-  "description": "Markdown as the agent writes it: headings, inline styles, lists (task, nested, ordered), code, quote, rule; plus text roles and tones.",
+  "description": "Markdown as the agent writes it: headings, inline styles, lists (task, nested, ordered), code, quote, table, rule; plus text roles and tones.",
   "item": { "kind": "agent" },
   "template": {
     "type": "stack",
@@ -12,6 +12,6 @@
     ]
   },
   "data": {
-    "reply": "## Logo added\n\nI copied the image to `public/logo.png` and used it in **Header**, *styled* as before. ~~Old favicon~~ stays. See [the docs](https://example.com/logo).\n\n1. Copied the asset\n2. Edited `src/Header.tsx`:\n   - added the `<img>`\n   - kept the title\n\n- [x] build passes\n- [ ] update the favicon\n\n> The image is 512×512; browsers scale it down.\n\n```tsx\n<img src=\"/logo.png\" alt=\"Logo\" />\n```\n\n---\n\nAnything else?"
+    "reply": "## Logo added\n\nI copied the image to `public/logo.png` and used it in **Header**, *styled* as before. ~~Old favicon~~ stays. See [the docs](https://example.com/logo).\n\n1. Copied the asset\n2. Edited `src/Header.tsx`:\n   - added the `<img>`\n   - kept the title\n\n- [x] build passes\n- [ ] update the favicon\n\n> The image is 512×512; browsers scale it down.\n\n```tsx\n<img src=\"/logo.png\" alt=\"Logo\" />\n```\n\n| File | Change | Lines |\n| --- | :---: | ---: |\n| `src/Header.tsx` | edited | +4 −1 |\n| `public/logo.png` | **new** | 512×512 |\n\n---\n\nAnything else?"
   }
 }

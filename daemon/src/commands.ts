@@ -6,14 +6,19 @@
 //   /harness [name]                           the harness the session runs on; no name: pick one
 //   /title                                    write the session's title again, with a model
 //   /title-model [harness] [model|default]    the model that writes titles (for every session)
+//   /safesearch [strict|moderate|off]         what neo's web search may return, for every session
+//   /login [provider | key [provider]]        add an API key or an account (login.ts)
+//   /logout [provider], /accounts             remove a login; list what is logged in
 // The harness defaults to the one the session runs on. Nothing is chosen for the user.
-import type { ConfigOption } from "@suite/harness/agent";
+import type { ConfigOption, SafeSearch } from "@suite/harness/agent";
 import type { HarnessSettings } from "@suite/protocol/types";
 
 import type { Asker, Choice } from "./asker.ts";
 import { BadRequestError } from "./focus.ts";
 import type { GuestManager, StoredConversation } from "./guests/guests.ts";
+import type { CommandContext } from "./hub.ts";
 import type { Logger } from "./log.ts";
+import type { Login } from "./login.ts";
 import type { SessionManager } from "./sessions.ts";
 import {
   APPROVALS,
@@ -22,6 +27,8 @@ import {
   isSettingName,
   nextApprovals,
   parseApprovals,
+  parseSafeSearch,
+  SAFE_SEARCH,
   type Settings,
   type TitleModel,
   titleModelText,
@@ -40,8 +47,11 @@ export interface CommandParts {
   settings: Settings;
   titles: Titles;
   asker: Asker;
+  login: Login;
   log: Logger;
-  /** The daemon's own agent's harness name, e.g. pi. */
+  /** Tells the user something in the session's log. */
+  notice: (session: string, text: string, tone?: "muted" | "danger") => void;
+  /** The daemon's own agent's harness name, e.g. neo. */
   main: string;
   /** The harness the session runs on now. */
   harness: (session: string) => string;
@@ -62,17 +72,31 @@ export class Commands {
   constructor(private readonly parts: CommandParts) {}
 
   /** Runs a command; undefined when the text isn't one (it goes to the agent then). */
-  run(session: string, text: string): Promise<void> | undefined {
+  run(session: string, text: string, context?: CommandContext): Promise<void> | undefined {
     const [head, ...args] = text.trim().split(/\s+/);
     if (head?.startsWith("/") !== true) return undefined;
     const name = head.slice(1);
     if (isSettingName(name)) return this.setting(session, name, args);
     if (name === "resume") return this.resume(session, args);
     if (name === "approvals") return this.approvals(session, args);
+    if (name === "safesearch") return this.safeSearch(session, args);
     if (name === "harness") return this.harness(session, args);
     if (name === "title") return this.titleCommand(session, args);
     if (name === "title-model") return this.titleModel(session, args);
+    if (name === "login")
+      return this.needsClient(context, (c) => this.parts.login.login(session, args, c));
+    if (name === "logout") return this.parts.login.logout(session, args);
+    if (name === "accounts") return this.parts.login.accounts(session);
     return undefined;
+  }
+
+  /** Commands that ask the user something privately need the client that typed them. */
+  private needsClient(
+    context: CommandContext | undefined,
+    run: (context: CommandContext) => Promise<void>,
+  ): Promise<void> {
+    if (!context) return Promise.reject(new BadRequestError("this needs a client to ask"));
+    return run(context);
   }
 
   /**
@@ -131,6 +155,7 @@ export class Commands {
     const value = args[0];
     if (value !== undefined) {
       await this.apply(session, harness, name, value);
+      this.followUp(session, harness, name, value);
       return;
     }
     const option = (await this.options(session, harness)).find(
@@ -154,9 +179,45 @@ export class Commands {
     void this.parts.asker
       .ask(session, choice)
       .then(async (picked) => {
-        if (picked !== undefined) await this.apply(session, harness, name, picked);
+        if (picked === undefined) return;
+        await this.apply(session, harness, name, picked);
+        this.followUp(session, harness, name, picked);
       })
       .catch((err: unknown) => this.parts.log.warn(`/${name}: ${String(err)}`));
+  }
+
+  /**
+   * Once a setting is set, the harness may have a second question (neo: which OpenRouter host
+   * runs the model). It is asked after the command returns, as it may look something up; the
+   * answer is applied like a typed value but is not followed up again.
+   */
+  private followUp(
+    session: string,
+    harness: string,
+    name: HarnessSettingName,
+    value: string,
+  ): void {
+    if (!this.isSessionAgent(session, harness)) return;
+    const { sessions, asker, log } = this.parts;
+    void sessions
+      .followUp(session, CATEGORIES[name], value, harness)
+      .then(async (next) => {
+        if (!next) return;
+        if (next.notice !== undefined) this.parts.notice(session, next.notice, "muted");
+        if (!next.choice) return;
+        const { title, options } = next.choice;
+        const choice: Omit<Choice, "id"> = {
+          type: "choice",
+          title,
+          options: options.map((o) => {
+            const entry = { id: o.value, name: o.name };
+            return o.description === undefined ? entry : { ...entry, description: o.description };
+          }),
+        };
+        const picked = await asker.ask(session, choice);
+        if (picked !== undefined) await this.apply(session, harness, name, picked);
+      })
+      .catch((err: unknown) => log.warn(`/${name}: ${String(err)}`));
   }
 
   /** Whether the session manager runs it (the daemon's agent, the session's harness), not a guest. */
@@ -202,6 +263,46 @@ export class Commands {
     const { settings } = this.parts;
     // Without a value: the next mode, ask → review → edits → auto → ask.
     settings.setApprovals(session, mode ?? nextApprovals(settings.approvals(session)));
+    return Promise.resolve();
+  }
+
+  private safeSearch(session: string, args: string[]): Promise<void> {
+    const [value] = args;
+    const level = value === undefined ? undefined : parseSafeSearch(value);
+    if (args.length > 1 || (value !== undefined && level === undefined)) {
+      return Promise.reject(new BadRequestError(`usage: /safesearch [${SAFE_SEARCH.join("|")}]`));
+    }
+    const set = (picked: SafeSearch): void => {
+      this.parts.settings.setSafeSearch(picked);
+      this.parts.notice(session, `Safe search: ${picked}, for web searches in every session.`);
+    };
+    if (level !== undefined) {
+      set(level);
+      return Promise.resolve();
+    }
+    const current = this.parts.settings.safeSearch();
+    const choice: Omit<Choice, "id"> = {
+      type: "choice",
+      title: `Safe search for web searches (now: ${current ?? "the default from config.json"})`,
+      options: [
+        {
+          id: "strict",
+          name: "strict",
+          description: "No adult content; engines without a filter are left out",
+        },
+        { id: "moderate", name: "moderate", description: "No explicit images or videos" },
+        { id: "off", name: "off", description: "No filter" },
+      ],
+    };
+    if (current !== undefined) choice.current = current;
+    // The answer comes later, from a button; the command is done once the choice is shown.
+    void this.parts.asker
+      .ask(session, choice)
+      .then((picked) => {
+        const chosen = picked === undefined ? undefined : parseSafeSearch(picked);
+        if (chosen !== undefined) set(chosen);
+      })
+      .catch((err: unknown) => this.parts.log.warn(`/safesearch: ${String(err)}`));
     return Promise.resolve();
   }
 

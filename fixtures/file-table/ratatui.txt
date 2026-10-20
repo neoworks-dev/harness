@@ -1,4 +1,2 @@
 ● files.list
-  ⎿ ~/site/public
-    3 rows · name, size, modified
-    3 files, 1.25 MB total
+  ⎿ ~/site/public  … +2 lines
