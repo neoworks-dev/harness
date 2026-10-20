@@ -30,7 +30,7 @@ use suite_protocol as pb;
 use suite_protocol::ViewItem;
 
 pub use openui::{
-    UiDocInfo, UiEdit, UiKind, UiOption, UiState, UiTarget, openui_docs, openui_targets,
+    UiDocInfo, UiEdit, UiKind, UiOption, UiState, UiTarget, is_date, openui_docs, openui_targets,
 };
 pub use palette::Palette;
 

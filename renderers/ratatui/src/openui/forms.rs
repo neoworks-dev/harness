@@ -643,7 +643,7 @@ impl<'a> Cx<'a> {
 }
 
 /// `YYYY-MM-DD` with a month and a day that exist.
-pub(crate) fn is_date(s: &str) -> bool {
+pub fn is_date(s: &str) -> bool {
     let parts: Vec<&str> = s.split('-').collect();
     let [y, m, d] = parts[..] else {
         return false;

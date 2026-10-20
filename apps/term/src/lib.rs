@@ -8,6 +8,7 @@ pub mod chat;
 pub mod choice;
 pub mod driver;
 pub mod editor;
+pub mod forms;
 pub mod github;
 pub mod history;
 pub mod images;

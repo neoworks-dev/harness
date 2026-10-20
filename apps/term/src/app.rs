@@ -18,13 +18,14 @@ use suite_protocol::{
     AgentFocus, SecretRequest, SessionEvent, SessionEventRecord, SessionInfo, SessionState,
     SettingName,
 };
-use suite_renderer_ratatui::{ButtonRef, Palette};
+use suite_renderer_ratatui::{ButtonRef, Options, Palette, UiKind, UiTarget, openui_targets};
 use suite_sdk::Event;
 
 use crate::agents::{Agents, AgentsAction, MainRow, Transcript};
 use crate::chat::{self, Chat, ChatOpts};
 use crate::choice;
 use crate::editor::Editor;
+use crate::forms::{Forms, Outcome, Pending};
 use crate::github::{Github, Outgoing};
 use crate::history::{Histories, HistoryStore};
 use crate::images::Images;
@@ -113,6 +114,8 @@ pub enum Effect {
     },
     /// Put text on the clipboard (OSC 52).
     Copy(String),
+    /// Open a link of an OpenUI button in the browser (xdg-open).
+    OpenUrl(String),
     Quit,
 }
 
@@ -122,6 +125,8 @@ pub enum Msg {
     Sessions(Result<Vec<SessionInfo>, String>),
     Created(Result<SessionInfo, String>),
     Error(String),
+    /// Something to tell the user that is not an error.
+    Notice(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -257,6 +262,8 @@ pub struct App {
     /// Ctrl-G while the sidebar was hidden: focus it once it is drawn.
     sessions_wanted: bool,
     prompt: PromptState,
+    /// The visual state of the OpenUI docs in the chat and the values on their way out.
+    forms: Forms,
     /// The note typed for the focused button's answer (Tab on a card).
     note: Option<Note>,
     /// A secret the daemon asked for: a masked field that has the keys and the editor's place.
@@ -334,6 +341,7 @@ impl App {
             sessions_shown: false,
             sessions_wanted: false,
             prompt: PromptState::default(),
+            forms: Forms::default(),
             note: None,
             secret: None,
             menu_sel: 0,
@@ -470,6 +478,7 @@ impl App {
             self.dirty = true;
         }
         self.update_engaged();
+        self.send_due(&mut fx);
         if self.agents.ticks(now_ms, self.agents_tick) {
             self.dirty = true;
         }
@@ -582,6 +591,7 @@ impl App {
                     match (&snapshot.agent, self.transcript.as_mut()) {
                         (None, _) => {
                             self.chat.apply_snapshot(snapshot);
+                            self.refresh_forms();
                             self.sync_prompt();
                         }
                         (Some(agent), Some(t)) if *agent == t.agent.harness => {
@@ -596,6 +606,7 @@ impl App {
                     match (&patch.agent, self.transcript.as_mut()) {
                         (None, _) => {
                             self.chat.apply_patch(patch);
+                            self.refresh_forms();
                             self.sync_prompt();
                         }
                         (Some(agent), Some(t)) if *agent == t.agent.harness => {
@@ -765,6 +776,7 @@ impl App {
             }
             Msg::Created(Err(why)) => self.notify(format!("new session failed: {why}"), true),
             Msg::Error(why) => self.notify(why, true),
+            Msg::Notice(text) => self.notify(text, false),
         }
         fx
     }
@@ -782,6 +794,7 @@ impl App {
         self.approvals = Approvals::Ask;
         self.editor.clear();
         self.prompt = PromptState::default();
+        self.forms = Forms::default();
         self.note = None;
         self.secret = None;
         self.overlay = Overlay::None;
@@ -800,7 +813,7 @@ impl App {
     /// The prompt the keys answer: one picked by hand, else the oldest one still pending.
     fn active_ref(&self) -> Option<&str> {
         if let Some(r) = &self.prompt.selected
-            && !self.chat.buttons_of(r).is_empty()
+            && self.chat.is_prompt(r)
         {
             return Some(r);
         }
@@ -887,6 +900,9 @@ impl App {
             self.note = None;
         }
         if current != self.prompt.seen {
+            if let Some(old) = self.prompt.seen.clone() {
+                self.forms.blur(&old, self.now_ms);
+            }
             // A picker starts on the value in effect now, anything else on its first button.
             self.prompt.button = current
                 .as_deref()
@@ -897,7 +913,12 @@ impl App {
             }
             self.prompt.panel_top.set(None);
             self.prompt.filter.clear();
-            self.prompt.seen = current;
+            self.prompt.seen = current.clone();
+            if let Some(r) = current.filter(|r| self.chat.has_targets(r)) {
+                let targets = self.form_targets(&r);
+                self.forms.enter(&r, &targets, self.now_ms);
+                self.chat.reveal_focus(&r);
+            }
         }
         self.update_engaged();
     }
@@ -1040,6 +1061,187 @@ impl App {
         true
     }
 
+    // ---- OpenUI forms ----
+
+    /// The active prompt when it is an OpenUI item: keys move through its targets.
+    fn active_form(&self) -> Option<&str> {
+        self.active_ref().filter(|r| self.chat.has_targets(r))
+    }
+
+    /// The focus targets of an item's OpenUI docs, as drawn with their visual state.
+    fn form_targets(&self, r: &str) -> Vec<UiTarget> {
+        let Some(item) = self.chat.item(r) else {
+            return Vec::new();
+        };
+        let opts = Options {
+            openui: self.forms.doc_states(r),
+            ..Options::default()
+        };
+        openui_targets(item, &opts)
+    }
+
+    /// The daemon sent items again: values it has caught up with are not held here any more.
+    fn refresh_forms(&mut self) {
+        let refs: Vec<String> = self.forms.all().keys().cloned().collect();
+        for r in refs {
+            if self.chat.has_targets(&r) {
+                let targets = self.form_targets(&r);
+                self.forms.refresh(&r, &targets, self.now_ms);
+            }
+        }
+    }
+
+    fn input_effect(&self, p: Pending) -> Effect {
+        Effect::Action {
+            session: self.session.clone(),
+            item: p.item,
+            action: "openui.input".into(),
+            args: Some(serde_json::json!({"doc": p.doc, "key": p.key, "value": p.value})),
+        }
+    }
+
+    /// Sends the values whose pause is over.
+    fn send_due(&mut self, fx: &mut Vec<Effect>) {
+        if !self.forms.has_pending() {
+            return;
+        }
+        for p in self.forms.due(self.now_ms) {
+            fx.push(self.input_effect(p));
+        }
+    }
+
+    /// Keys while an OpenUI item has the editor's place.
+    fn form_key(&mut self, r: &str, key: KeyEvent, fx: &mut Vec<Effect>) {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+        if let KeyCode::Char(c) = key.code
+            && ctrl
+            && matches!(c, 'c' | 'p' | 'n' | 'o' | 't' | 's' | 'l' | 'g' | 'x')
+        {
+            match c {
+                'c' => self.ctrl_c(fx),
+                'p' => {
+                    self.select_prompt(-1);
+                }
+                'n' => {
+                    self.select_prompt(1);
+                }
+                _ => {
+                    self.ctrl_key(c, fx);
+                }
+            }
+            return;
+        }
+        match key.code {
+            KeyCode::Up if shift => return self.chat.scroll_up(1),
+            KeyCode::Down if shift => return self.chat.scroll_down(1),
+            _ => {}
+        }
+        let targets = self.form_targets(r);
+        let out = self.forms.key(r, &targets, key, self.now_ms);
+        if !out.taken {
+            match key.code {
+                KeyCode::PageUp => self.chat.page_up(),
+                KeyCode::PageDown => self.chat.page_down(),
+                KeyCode::Home => self.chat.to_top(),
+                KeyCode::End => self.chat.follow(),
+                _ => {}
+            }
+            return;
+        }
+        self.chat.reveal_focus(r);
+        self.apply_outcome(r, out, fx);
+        self.send_due(fx);
+    }
+
+    fn apply_outcome(&mut self, r: &str, out: Outcome, fx: &mut Vec<Effect>) {
+        if let Some(url) = out.url {
+            self.open_url(url, fx);
+        }
+        if let Some(text) = out.copy {
+            fx.push(Effect::Copy(text));
+            self.notify("copied", false);
+        }
+        if let Some((doc, key)) = out.press {
+            // What was typed goes first, so the press finds it.
+            for p in self.forms.flush(r) {
+                fx.push(self.input_effect(p));
+            }
+            fx.push(Effect::Action {
+                session: self.session.clone(),
+                item: r.to_string(),
+                action: "openui.press".into(),
+                args: Some(serde_json::json!({"doc": doc, "key": key})),
+            });
+        }
+        if out.leave {
+            self.esc(fx);
+        }
+    }
+
+    /// A link in the browser, for the schemes that make sense there; anything else is shown.
+    fn open_url(&mut self, url: String, fx: &mut Vec<Effect>) {
+        let scheme = url.split(':').next().unwrap_or("").to_ascii_lowercase();
+        if matches!(scheme.as_str(), "http" | "https" | "mailto") {
+            self.notify(format!("opening {url}"), false);
+            fx.push(Effect::OpenUrl(url));
+        } else {
+            self.notify(format!("link: {url}"), false);
+        }
+    }
+
+    /// One line under a form: what the focused target does with the keys.
+    fn form_hint(&self, r: &str, width: u16) -> Line<'static> {
+        let targets = self.form_targets(r);
+        let focused = self.forms.focused(r, &targets);
+        let mut parts: Vec<String> = Vec::new();
+        match focused {
+            Some(t) => {
+                if !t.label.is_empty() {
+                    parts.push(t.label.clone());
+                }
+                parts.push(
+                    match &t.kind {
+                        UiKind::Input { .. } | UiKind::Date => "type · enter submits",
+                        UiKind::TextArea => "type · enter newline",
+                        UiKind::Select { .. } if self.forms.is_open(r, t) => {
+                            "↑/↓ choose · enter picks"
+                        }
+                        UiKind::Select { .. } => "enter opens · ←/→ choose",
+                        UiKind::Radio { .. } => "←/→ choose",
+                        UiKind::CheckBox | UiKind::Switch => "space toggles",
+                        UiKind::Slider { .. } => "←/→ adjust",
+                        UiKind::Button { .. } => "enter presses",
+                        UiKind::Tabs { .. } => "←/→ switch tab",
+                        UiKind::Accordion => "enter opens / closes",
+                    }
+                    .to_string(),
+                );
+                if !self.forms.is_open(r, t) {
+                    parts.push("tab next".to_string());
+                }
+            }
+            None => parts.push("tab to start".to_string()),
+        }
+        parts.push(
+            if focused.is_some_and(|t| self.forms.is_open(r, t)) {
+                "esc closes"
+            } else {
+                "esc input"
+            }
+            .to_string(),
+        );
+        let text = parts.join(" · ");
+        let w = usize::from(width);
+        chat::barred(
+            Line::from(Span::styled(
+                truncate(&text, w.saturating_sub(2)),
+                self.styles.muted,
+            )),
+            self.styles.accent,
+        )
+    }
+
     // ---- keys ----
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Vec<Effect> {
@@ -1145,6 +1347,13 @@ impl App {
             Overlay::None if self.note.is_some() => {
                 if let Some(note) = self.note.as_mut() {
                     note.text.extend(text.chars().filter(|c| !c.is_control()));
+                }
+            }
+            Overlay::None if self.prompt.engaged && self.active_form().is_some() => {
+                if let Some(r) = self.active_form().map(str::to_string) {
+                    let targets = self.form_targets(&r);
+                    self.forms.paste(&r, &targets, text, self.now_ms);
+                    self.chat.reveal_focus(&r);
                 }
             }
             Overlay::None => {
@@ -1437,6 +1646,9 @@ impl App {
     /// Keys while a prompt has taken the editor's place: they answer it, and nothing else
     /// reaches the editor (and its draft).
     fn prompt_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
+        if let Some(r) = self.active_form().map(str::to_string) {
+            return self.form_key(&r, key, fx);
+        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         match key.code {
@@ -1978,6 +2190,7 @@ impl App {
                 active: None,
                 in_panel: false,
                 marker: self.styles.accent,
+                ui: Default::default(),
             };
             if let Some(t) = self.transcript.as_mut() {
                 t.draw(frame, areas.chat, &opts, &self.styles);
@@ -2012,7 +2225,11 @@ impl App {
             );
         }
         if areas.hint.height > 0 {
-            let hint = "permission needed — waiting until you stop typing";
+            let hint = if self.active_form().is_some() {
+                "form open — it takes the keys when you stop typing"
+            } else {
+                "permission needed — waiting until you stop typing"
+            };
             frame.render_widget(
                 Paragraph::new(Span::styled(
                     truncate(hint, usize::from(areas.hint.width)),
@@ -2069,8 +2286,9 @@ impl App {
             active: self
                 .active_ref()
                 .map(|r| (r.to_string(), self.prompt.button)),
-            in_panel: self.prompt.engaged,
+            in_panel: self.prompt.engaged && self.active_form().is_none(),
             marker: self.styles.accent,
+            ui: self.forms.all().clone(),
         }
     }
 
@@ -2228,6 +2446,9 @@ impl App {
         let Some(item) = self.chat.item(r) else {
             return Vec::new();
         };
+        if self.chat.has_targets(r) {
+            return vec![self.form_hint(r, width)];
+        }
         let buttons = self.chat.buttons_of(r);
         let filtering = choice::is_long(buttons);
         // A long choice shows only the options that match, numbered from its own first line.
@@ -2474,7 +2695,7 @@ impl App {
             ),
             key(
                 "1-9, arrows, enter",
-                "answer a prompt (it takes the input's place)",
+                "answer a prompt or fill in a form: tab, type, space; esc: input",
             ),
             key("ctrl-p / ctrl-n", "pick an older prompt"),
             Line::default(),
@@ -2592,3 +2813,7 @@ mod agents_app_tests;
 #[cfg(test)]
 #[path = "secret_app_tests.rs"]
 mod secret_app_tests;
+
+#[cfg(test)]
+#[path = "openui_app_tests.rs"]
+mod openui_app_tests;

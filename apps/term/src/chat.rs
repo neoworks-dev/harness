@@ -9,8 +9,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use suite_protocol::{ItemKind, ItemState, ViewItem, ViewPatch, ViewSnapshot};
 use suite_renderer_ratatui::{
-    ButtonRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, buttons, image_sources,
-    render_item_images,
+    ButtonRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiDocInfo, UiState, buttons,
+    image_sources, openui_docs, render_item_images,
 };
 use suite_sdk::ViewState;
 
@@ -58,6 +58,8 @@ pub struct ChatOpts {
     /// (the whole card when expanded).
     pub in_panel: bool,
     pub marker: Style,
+    /// The visual state of OpenUI docs (focus, tabs, edit buffers), per item and doc.
+    pub ui: HashMap<String, HashMap<String, UiState>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,12 +73,15 @@ struct CacheKey {
     marker: Style,
     /// Only for items that hold images: they redraw when an image's state changes.
     images: Option<ChatImages>,
+    /// Only for items that hold OpenUI docs.
+    ui: Option<HashMap<String, UiState>>,
 }
 
 struct Cached {
     key: CacheKey,
     lines: Rc<Vec<Line<'static>>>,
     slots: Rc<Vec<ImageSlot>>,
+    focus: Option<usize>,
 }
 
 struct Entry {
@@ -85,6 +90,8 @@ struct Entry {
     thinking: bool,
     lines: Rc<Vec<Line<'static>>>,
     slots: Rc<Vec<ImageSlot>>,
+    /// The line of an OpenUI target that has focus.
+    focus: Option<usize>,
     offset: usize,
 }
 
@@ -106,6 +113,10 @@ pub struct Chat {
     generation: u64,
     cache: HashMap<String, Cached>,
     buttons: HashMap<String, Vec<ButtonRef>>,
+    /// The OpenUI docs of the items that have any with something to focus.
+    docs: HashMap<String, Vec<UiDocInfo>>,
+    /// Scroll to the focused OpenUI target of this item at the next layout.
+    reveal: Option<String>,
     /// Sources of the images of the items that have any.
     sources: HashMap<String, Vec<String>>,
     images: Option<ChatImages>,
@@ -141,6 +152,7 @@ impl Chat {
         self.loaded = true;
         self.revs.clear();
         self.buttons.clear();
+        self.docs.clear();
         self.sources.clear();
         for item in &self.state.items {
             self.next_rev += 1;
@@ -148,6 +160,10 @@ impl Chat {
             let b = buttons(item);
             if !b.is_empty() {
                 self.buttons.insert(item.r#ref.clone(), b);
+            }
+            let d = focusable_docs(item);
+            if !d.is_empty() {
+                self.docs.insert(item.r#ref.clone(), d);
             }
             let srcs = image_sources(item);
             if !srcs.is_empty() {
@@ -175,6 +191,12 @@ impl Chat {
                 } else {
                     self.buttons.insert(r.to_string(), b);
                 }
+                let d = focusable_docs(item);
+                if d.is_empty() {
+                    self.docs.remove(r);
+                } else {
+                    self.docs.insert(r.to_string(), d);
+                }
                 let srcs = image_sources(item);
                 if srcs.is_empty() {
                     self.sources.remove(r);
@@ -185,6 +207,7 @@ impl Chat {
             None => {
                 self.revs.remove(r);
                 self.buttons.remove(r);
+                self.docs.remove(r);
                 self.sources.remove(r);
                 self.cache.remove(r);
             }
@@ -199,24 +222,86 @@ impl Chat {
         self.buttons.get(r).map_or(&[], Vec::as_slice)
     }
 
-    /// Refs of items that have buttons, oldest first.
+    /// Whether the item has an OpenUI doc with fields or buttons that can be used now.
+    pub fn is_form(&self, r: &str) -> bool {
+        self.docs
+            .get(r)
+            .is_some_and(|d| d.iter().any(|d| d.interactive && !d.streaming))
+    }
+
+    /// Whether the item has OpenUI targets that can take focus now (fields, buttons, tabs,
+    /// accordion items).
+    pub fn has_targets(&self, r: &str) -> bool {
+        self.docs
+            .get(r)
+            .is_some_and(|d| d.iter().any(|d| d.focusable && !d.streaming))
+    }
+
+    /// Whether keys can answer the item: it has buttons or OpenUI targets.
+    pub fn is_prompt(&self, r: &str) -> bool {
+        self.buttons.contains_key(r) || self.has_targets(r)
+    }
+
+    /// Refs of items that have buttons or OpenUI targets, oldest first.
     pub fn prompt_refs(&self) -> Vec<&str> {
         self.state
             .items
             .iter()
-            .filter(|i| self.buttons.contains_key(&i.r#ref))
+            .filter(|i| self.is_prompt(&i.r#ref))
             .map(|i| i.r#ref.as_str())
             .collect()
     }
 
-    /// The items with buttons still waiting for an answer, oldest first.
+    /// The items with buttons still waiting for an answer, and the OpenUI forms the user has
+    /// not spoken after, oldest first.
     pub fn pending_prompts(&self) -> Vec<&str> {
+        let last_user = self
+            .state
+            .items
+            .iter()
+            .rposition(|i| i.kind == ItemKind::User);
         self.state
             .items
             .iter()
-            .filter(|i| self.buttons.contains_key(&i.r#ref) && i.state == Some(ItemState::Pending))
-            .map(|i| i.r#ref.as_str())
+            .enumerate()
+            .filter(|(at, i)| {
+                let asking =
+                    self.buttons.contains_key(&i.r#ref) && i.state == Some(ItemState::Pending);
+                asking || (self.is_form(&i.r#ref) && last_user.is_none_or(|u| *at > u))
+            })
+            .map(|(_, i)| i.r#ref.as_str())
             .collect()
+    }
+
+    /// Scroll to the item's focused OpenUI target once the next layout knows where it is.
+    pub fn reveal_focus(&mut self, r: &str) {
+        self.reveal = Some(r.to_string());
+    }
+
+    /// Brings the line of the focused OpenUI target (and the one under it) into view.
+    fn apply_reveal(&mut self) {
+        let Some(r) = self.reveal.take() else {
+            return;
+        };
+        let Some(line) = self
+            .entries
+            .iter()
+            .find(|e| e.r#ref == r)
+            .and_then(|e| e.focus.map(|l| e.offset + l))
+        else {
+            return;
+        };
+        let (top, height) = (self.top(), self.height.max(1));
+        if line < top {
+            self.top = Some(line.min(self.max_top()));
+        } else if line + 2 > top + height {
+            self.top = Some((line + 2 - height).min(self.max_top()));
+        } else {
+            return;
+        }
+        if self.top == Some(self.max_top()) {
+            self.follow();
+        }
     }
 
     // ---- images ----
@@ -273,6 +358,7 @@ impl Chat {
             images: self.images.clone(),
         };
         if self.layout_key.as_ref() == Some(&key) {
+            self.apply_reveal();
             return;
         }
         let was_total = self.total;
@@ -301,11 +387,12 @@ impl Chat {
             let (index, thinking) = shown[k];
             let item = &items[index];
             let r = &item.r#ref;
-            let tool_row = item.kind == ItemKind::Tool && !self.buttons.contains_key(r);
+            let tool_row =
+                item.kind == ItemKind::Tool && !self.buttons.contains_key(r) && !self.is_form(r);
             // A run of finished calls that something came after is folded to one line.
-            if !opts.expanded && foldable(item, &self.buttons) {
+            if !opts.expanded && foldable(item, &self.buttons, &self.docs) {
                 let end = (k..shown.len())
-                    .find(|&j| !foldable(&items[shown[j].0], &self.buttons))
+                    .find(|&j| !foldable(&items[shown[j].0], &self.buttons, &self.docs))
                     .unwrap_or(shown.len());
                 if end - k >= FOLD_MIN && end < shown.len() {
                     let run: Vec<&ViewItem> =
@@ -318,6 +405,7 @@ impl Chat {
                         thinking: false,
                         lines: Rc::new(vec![folded_line(&run, usize::from(width), &opts.palette)]),
                         slots: Rc::new(Vec::new()),
+                        focus: None,
                         offset,
                     });
                     offset += 1;
@@ -346,15 +434,27 @@ impl Chat {
                     .contains_key(r)
                     .then(|| self.images.clone())
                     .flatten(),
+                ui: self
+                    .docs
+                    .contains_key(r)
+                    .then(|| opts.ui.get(r).cloned().unwrap_or_default()),
             };
-            let (lines, slots) = match self.cache.get(r) {
+            let (lines, slots, focus) = match self.cache.get(r) {
                 // Ctrl-O (everything in full) keeps the whole card, e.g. a long diff.
-                _ if opts.in_panel && active.is_some() && !opts.expanded => {
-                    (Rc::new(vec![panel_stub(item, opts)]), Rc::new(Vec::new()))
+                _ if opts.in_panel
+                    && active.is_some()
+                    && !opts.expanded
+                    && !self.docs.contains_key(r) =>
+                {
+                    (
+                        Rc::new(vec![panel_stub(item, opts)]),
+                        Rc::new(Vec::new()),
+                        None,
+                    )
                 }
-                Some(c) if c.key == ckey => (c.lines.clone(), c.slots.clone()),
+                Some(c) if c.key == ckey => (c.lines.clone(), c.slots.clone(), c.focus),
                 _ => {
-                    let (lines, slots) = render(item, width, &ckey);
+                    let (lines, slots, focus) = render(item, width, &ckey);
                     let (lines, slots) = (Rc::new(lines), Rc::new(slots));
                     self.cache.insert(
                         r.clone(),
@@ -362,9 +462,10 @@ impl Chat {
                             key: ckey,
                             lines: lines.clone(),
                             slots: slots.clone(),
+                            focus,
                         },
                     );
-                    (lines, slots)
+                    (lines, slots, focus)
                 }
             };
             if lines.is_empty() {
@@ -380,6 +481,7 @@ impl Chat {
                 thinking,
                 lines,
                 slots,
+                focus,
                 offset,
             });
             offset += len;
@@ -400,6 +502,7 @@ impl Chat {
         if let Some(top) = self.top {
             self.top = Some(top.min(self.max_top()));
         }
+        self.apply_reveal();
     }
 
     pub fn total_lines(&self) -> usize {
@@ -532,10 +635,17 @@ impl Chat {
 
 /// A tool call that can fold into a run: finished, not a question (`p-`/`q-`, which say what was
 /// answered).
-fn foldable(item: &ViewItem, buttons: &HashMap<String, Vec<ButtonRef>>) -> bool {
+fn foldable(
+    item: &ViewItem,
+    buttons: &HashMap<String, Vec<ButtonRef>>,
+    docs: &HashMap<String, Vec<UiDocInfo>>,
+) -> bool {
     item.kind == ItemKind::Tool
         && matches!(item.state, Some(ItemState::Done | ItemState::Failed))
         && !buttons.contains_key(&item.r#ref)
+        && !docs
+            .get(&item.r#ref)
+            .is_some_and(|d| d.iter().any(|d| d.interactive))
         && !item.r#ref.starts_with("p-")
         && !item.r#ref.starts_with("q-")
 }
@@ -631,7 +741,19 @@ fn mix(
     Some(Color::Rgb(m(r0, r1), m(g0, g1), m(b0, b1)))
 }
 
-fn render(item: &ViewItem, width: u16, key: &CacheKey) -> (Vec<Line<'static>>, Vec<ImageSlot>) {
+/// The docs of an item that have anything to focus.
+fn focusable_docs(item: &ViewItem) -> Vec<UiDocInfo> {
+    openui_docs(item)
+        .into_iter()
+        .filter(|d| d.focusable)
+        .collect()
+}
+
+fn render(
+    item: &ViewItem,
+    width: u16,
+    key: &CacheKey,
+) -> (Vec<Line<'static>>, Vec<ImageSlot>, Option<usize>) {
     let opts = Options {
         expanded: key.expanded,
         show_thoughts: key.thoughts,
@@ -649,10 +771,11 @@ fn render(item: &ViewItem, width: u16, key: &CacheKey) -> (Vec<Line<'static>>, V
             cell: i.cell,
             status: i.status.clone(),
         }),
+        openui: key.ui.clone().unwrap_or_default(),
     };
     if key.focused.is_none() {
         let out = render_item_images(item, width, &opts);
-        return (out.lines, out.images);
+        return (out.lines, out.images, out.focus_line);
     }
     // The prompt being answered gets a bar in the margin.
     let inner = width.saturating_sub(2).max(1);
@@ -666,7 +789,7 @@ fn render(item: &ViewItem, width: u16, key: &CacheKey) -> (Vec<Line<'static>>, V
     for slot in &mut slots {
         slot.x += 2;
     }
-    (lines, slots)
+    (lines, slots, out.focus_line)
 }
 
 /// A line of the prompt being answered: the bar in the margin first.
@@ -697,6 +820,7 @@ pub fn panel_lines(
         preview_lines: Some(preview),
         theme: palette,
         images: None,
+        openui: HashMap::new(),
     };
     suite_renderer_ratatui::render_item(item, width.saturating_sub(2).max(1), &opts)
         .into_iter()
@@ -804,6 +928,7 @@ mod tests {
             active: None,
             in_panel: false,
             marker: Style::new(),
+            ui: Default::default(),
         }
     }
 

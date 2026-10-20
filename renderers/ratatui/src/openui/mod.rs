@@ -13,6 +13,8 @@ mod content;
 mod forms;
 mod layout;
 
+pub use forms::is_date;
+
 use std::collections::HashMap;
 
 use ratatui::style::{Modifier, Style};

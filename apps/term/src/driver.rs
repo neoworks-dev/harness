@@ -311,7 +311,29 @@ fn work(client: &Client, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sen
                     fail("answering the question failed", err);
                 }
             }
+            Effect::OpenUrl(url) => open_url(&url, msgs),
             Effect::Copy(_) | Effect::Quit => {}
+        }
+    }
+}
+
+/// Hands a link to the desktop; says so when there is nothing to hand it to.
+fn open_url(url: &str, msgs: &mpsc::Sender<Msg>) {
+    let child = std::process::Command::new("xdg-open")
+        .arg(url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    match child {
+        // Reaped on a thread of its own: some openers stay until the browser is up.
+        Ok(mut child) => {
+            thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
+        Err(_) => {
+            let _ = msgs.send(Msg::Notice(format!("no xdg-open to open {url}")));
         }
     }
 }
