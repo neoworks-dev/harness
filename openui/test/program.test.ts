@@ -315,6 +315,21 @@ describe("tools", () => {
     expect(calls).toEqual([["app.rows", { limit: 2 }, "query"]]);
   });
 
+  test("a failed query is not asked again until what it asks changes", async () => {
+    let calls = 0;
+    const p = program('data = Query("nope", {}, {})\nroot = Stack([])', {
+      callTool: () => {
+        calls++;
+        return Promise.reject(new Error("Unknown tool"));
+      },
+    });
+    p.onChange = () => p.doc();
+    p.doc();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls).toBe(1);
+    expect(p.doc().errors?.[0]?.code).toBe("tool-error");
+  });
+
   test("a query in a streaming program waits", () => {
     let called = false;
     program(

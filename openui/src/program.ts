@@ -107,6 +107,8 @@ export class Program {
   private scheduled = false;
   private disposed = false;
   private mutating = false;
+  /** The queries and mutations last handed to lang-core, as JSON. */
+  private asked: string | undefined;
   /** Called when the doc changes without the host asking: a query answered, a mutation is running. */
   onChange: (() => void) | undefined;
 
@@ -415,22 +417,28 @@ export class Program {
     return "";
   }
 
+  /**
+   * Hands the queries to lang-core only when what they ask changed. lang-core fetches a query
+   * without data on every evaluateQueries, and a fetch's answer rebuilds the doc, so a failing
+   * query asked on every build would be asked again forever.
+   */
   private startQueries(parsed: ParseResult): void {
-    this.queries.evaluateQueries(
-      parsed.queryStatements.map((query) => ({
-        statementId: query.statementId,
-        toolName: this.toolName(query.toolAST),
-        args: query.argsAST ? evaluate(query.argsAST, this.context) : null,
-        defaults: query.defaultsAST ? evaluate(query.defaultsAST, this.context) : null,
-        deps: Object.fromEntries((query.deps ?? []).map((name) => [name, this.store.get(name)])),
-        complete: query.complete,
-      })),
-    );
-    this.queries.registerMutations(
-      parsed.mutationStatements.map((mutation) => ({
-        statementId: mutation.statementId,
-        toolName: this.toolName(mutation.toolAST),
-      })),
-    );
+    const queries = parsed.queryStatements.map((query) => ({
+      statementId: query.statementId,
+      toolName: this.toolName(query.toolAST),
+      args: query.argsAST ? evaluate(query.argsAST, this.context) : null,
+      defaults: query.defaultsAST ? evaluate(query.defaultsAST, this.context) : null,
+      deps: Object.fromEntries((query.deps ?? []).map((name) => [name, this.store.get(name)])),
+      complete: query.complete,
+    }));
+    const mutations = parsed.mutationStatements.map((mutation) => ({
+      statementId: mutation.statementId,
+      toolName: this.toolName(mutation.toolAST),
+    }));
+    const asked = JSON.stringify([queries, mutations]);
+    if (asked === this.asked) return;
+    this.asked = asked;
+    this.queries.evaluateQueries(queries);
+    this.queries.registerMutations(mutations);
   }
 }
