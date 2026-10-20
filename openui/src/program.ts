@@ -268,28 +268,41 @@ export class Program {
 
   // ─── Fields ───────────────────────────────────────────────────────────────
 
+  /** What a field holds: its $variable's value, else what was typed, else the program's. */
+  private currentRaw(field: Field): unknown {
+    if (field.bound !== undefined) return this.store.get(field.bound);
+    return this.values.get(field.id) ?? field.literal;
+  }
+
+  /** The names a CheckBoxGroup has checked, in the items' order; the items' own start values until it holds a list. */
+  private checkedNames(field: Field, raw: unknown): string[] {
+    let picked: unknown[] = [];
+    if (Array.isArray(raw)) picked = raw;
+    else if (raw === null || raw === undefined) picked = field.checked ?? [];
+    return (field.options ?? []).filter((name) => picked.includes(name));
+  }
+
+  /** Every switch of a SwitchGroup on or off; the items' own start values for those it doesn't hold. */
+  private switchStates(field: Field, raw: unknown): Record<string, boolean> {
+    const held = isRecord(raw) ? raw : undefined;
+    const states: Record<string, boolean> = {};
+    for (const name of field.options ?? []) {
+      const state = held?.[name];
+      states[name] = typeof state === "boolean" ? state : (field.checked ?? []).includes(name);
+    }
+    return states;
+  }
+
   private valueOf(field: Field): unknown {
-    const raw =
-      field.bound !== undefined
-        ? this.store.get(field.bound)
-        : (this.values.get(field.id) ?? field.literal);
+    const raw = this.currentRaw(field);
     switch (field.component) {
       case "CheckBox":
       case "Switch":
         return raw === true;
-      case "CheckBoxGroup": {
-        const picked = Array.isArray(raw) ? raw : raw == null ? (field.checked ?? []) : [];
-        return (field.options ?? []).filter((name) => picked.includes(name));
-      }
-      case "SwitchGroup": {
-        const set = isRecord(raw) ? raw : {};
-        return Object.fromEntries(
-          (field.options ?? []).map((name) => [
-            name,
-            typeof set[name] === "boolean" ? set[name] : (field.checked ?? []).includes(name),
-          ]),
-        );
-      }
+      case "CheckBoxGroup":
+        return this.checkedNames(field, raw);
+      case "SwitchGroup":
+        return this.switchStates(field, raw);
       case "Slider": {
         const n = typeof raw === "string" && raw.trim() !== "" ? Number(raw) : raw;
         return typeof n === "number" && Number.isFinite(n) ? n : undefined;
@@ -311,15 +324,17 @@ export class Program {
         return Math.min(field.max ?? value, Math.max(field.min ?? value, value));
       case "CheckBoxGroup": {
         const names = field.options ?? [];
-        const ok = Array.isArray(value) && value.every((v) => names.includes(v as string));
-        return ok ? names.filter((name) => (value as unknown[]).includes(name)) : undefined;
+        if (!Array.isArray(value) || !value.every((v) => names.includes(String(v))))
+          return undefined;
+        return names.filter((name) => value.includes(name));
       }
       case "SwitchGroup": {
         const names = field.options ?? [];
-        const ok =
-          isRecord(value) &&
-          Object.entries(value).every(([k, v]) => names.includes(k) && typeof v === "boolean");
-        return ok ? { ...(this.valueOf(field) as object), ...value } : undefined;
+        if (!isRecord(value)) return undefined;
+        const changes = Object.entries(value);
+        if (!changes.every(([k, v]) => names.includes(k) && typeof v === "boolean"))
+          return undefined;
+        return { ...this.switchStates(field, this.currentRaw(field)), ...value };
       }
       case "Select":
       case "RadioGroup":
