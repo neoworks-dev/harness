@@ -43,6 +43,24 @@ Lay a dashboard out the way a page is, not as one long column:
 - Several small cards beat one tall one. Cut long tables to the rows that matter (top 5–8,
   then "other").
 
+## Picking components
+
+- End a reply with `FollowUpBlock` when there are obvious next questions: two to four short
+  ones. Choosing one sends its text to you as the user's next message.
+- Use `EntityList` with `ListItem`s for things that have a name, a detail and a status or
+  value (people, files, services, tickets). Prefer it to a Table with one real column.
+- Use `OptionCards` instead of RadioGroup when the user picks one of two to five options that
+  each need a sentence of explanation (plans, strategies, environments).
+- Use `CheckBoxGroup` to pick any number from a list (its value is the list of checked
+  names) and `SwitchGroup` for a few settings that are on or off (its value is an object).
+  Several single CheckBoxes or Switches are fine for one or two; use a group beyond that.
+- Use `MetricIndicator` for a number with its change inline in a card, list or table cell
+  (`MetricIndicator("$1.2M", "8%", "up")`); use `Metric` for the headline numbers of a page.
+- Use `Carousel` for more cards than fit side by side (five or more options or items, each
+  small); the user scrolls through them. For two to four cards a `Grid` is better.
+- Use `ImageGallery` for several pictures of one thing (photos, screenshots, a before and
+  after); `Image` for a single one.
+
 ## Forms and buttons
 
 - A form answers you with `@ToAssistant("message", context?)`: when the user presses the
@@ -95,6 +113,7 @@ Props marked `$binding<type>` accept a `$variable` reference for two-way binding
 ### Layout
 Stack(children: Component[], direction?: "column" | "row", gap?: "none" | "s" | "m" | "l", wrap?: boolean, align?: "start" | "center" | "end" | "stretch", justify?: "start" | "center" | "end" | "between") — Lays children out top to bottom, or side by side with direction "row"
 Grid(children: Component[], columns?: number) — Lays children out in columns, left to right then down; columns is a maximum, a narrow screen uses fewer (default: as many as fit)
+Carousel(children: Component[], visible?: number) — Children side by side, as many as fit, with the rest reached by scrolling; visible is a maximum. Use it for more cards or items than a screen holds
 Card(children: Component[], title?: string, tone?: "accent" | "muted" | "success" | "danger", variant?: "card" | "sunk" | "clear") — A framed group with an optional title; tone colors the frame, variant sunk fills it, clear has no frame
 Header(title: string, subtitle?: string) — A heading with an optional subtitle
 Separator() — A horizontal rule
@@ -113,10 +132,14 @@ List(items: string | number | boolean | Component[], ordered?: boolean) — A bu
 KeyValue(pairs: KV[]) — Aligned key and value lines
 KV(key: string, value: string | number, tone?: "accent" | "muted" | "success" | "danger") — One pair of KeyValue
 Tag(label: string, tone?: "accent" | "muted" | "success" | "danger") — A small label chip
+EntityList(items: ListItem[]) — Rows of things with a title, a muted subtitle and a trailing value or Tag: people, files, services, tickets
+ListItem(title: string, subtitle?: string, trailing?: string | number | Tag) — One row of EntityList; trailing is a value or a Tag
 Callout(text: string, tone?: "accent" | "muted" | "success" | "danger", title?: string) — A highlighted note; text is markdown
 Metric(label: string, value: string | number, delta?: string, tone?: "accent" | "muted" | "success" | "danger") — A headline number with an optional change
+MetricIndicator(value: string | number, delta?: string, direction?: "up" | "down", tone?: "accent" | "muted" | "success" | "danger", subtext?: string) — A compact inline metric: a value with an optional change, an up or down arrow in the change's tone (default: up success, down danger) and a note; use it in cards, tables and lists where Metric is too big
 Progress(value: number, label?: string) — A progress bar; value is 0 to 1
 Image(src: string, alt?: string) — An image from a URL or asset handle
+ImageGallery(images: Image[]) — Several images of one subject: the first large, the others small beside it
 Link(text: string, url: string) — A link
 
 ### Charts
@@ -130,18 +153,26 @@ Slice(label: string, value: number) — One slice of PieChart
 
 ### Forms
 Form(name: string, children: Component[], buttons?: Buttons) — Inputs submitted together; a button inside checks their rules first and a message carries their values
-FormControl(label: string, input: Input | TextArea | Select | RadioGroup | CheckBox | Switch | Slider | DatePicker, hint?: string) — A field of a form: a label over an input, with an optional hint
+FormControl(label: string, input: Input | TextArea | Select | RadioGroup | OptionCards | CheckBox | Switch | CheckBoxGroup | SwitchGroup | Slider | DatePicker, hint?: string) — A field of a form: a label over an input, with an optional hint
 Input(name: string, placeholder?: string, type?: "text" | "email" | "url" | "number" | "password", rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — A single-line text field
 TextArea(name: string, placeholder?: string, rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — A multi-line text field
 Select(name: string, options: Option[], placeholder?: string, rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — A dropdown of options
 Option(value: string, label?: string) — A choice of Select or RadioGroup; label defaults to the value
 RadioGroup(name: string, options: Option[], rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — One choice out of a few options
+OptionCards(name: string, options: OptionCard[], rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — One choice out of a few options, each a card with a title and a description; use it over RadioGroup when the options need explaining
+OptionCard(value: string, title: string, description?: string) — A choice of OptionCards: a title and what it means
 CheckBox(name: string, label: string, rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<boolean>) — A checkbox with a label
 Switch(name: string, label: string, value?: $binding<boolean>) — An on/off switch with a label
+CheckBoxGroup(name: string, items: CheckBoxItem[], rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string[]>) — Several checkboxes under one name, to pick any number of them; the value is the list of the checked names
+CheckBoxItem(name: string, label: string, description?: string, checked?: boolean) — One checkbox of CheckBoxGroup; name is what the group's list holds when it is checked, checked starts it on
+SwitchGroup(name: string, items: SwitchItem[], value?: $binding<Record<string, boolean>>) — Several on/off switches under one name, for settings; the value is an object with each name on or off
+SwitchItem(name: string, label: string, description?: string, checked?: boolean) — One switch of SwitchGroup; checked starts it on
 Slider(name: string, min: number, max: number, step?: number, value?: $binding<number>) — A number between min and max
 DatePicker(name: string, rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>) — A date, YYYY-MM-DD
 Button(label: string, action?: ActionExpression, variant?: "primary" | "secondary" | "danger") — A button. Without an action it sends its label to the assistant
 Buttons(buttons: Button[]) — A row of buttons
+FollowUpBlock(items: FollowUpItem[]) — Suggested next questions as pills at the end of a reply; choosing one sends its text to the assistant
+FollowUpItem(text: string) — One suggestion of FollowUpBlock
 
 ## Built-in Functions
 

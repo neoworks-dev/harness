@@ -5,6 +5,7 @@ import { library } from "../src/library.ts";
 // props are only ever added at the end.
 const ORDER: Record<string, string[]> = {
   Stack: ["children", "direction", "gap", "wrap", "align", "justify"],
+  Carousel: ["children", "visible"],
   Card: ["children", "title", "tone", "variant"],
   Header: ["title", "subtitle"],
   Separator: [],
@@ -21,10 +22,14 @@ const ORDER: Record<string, string[]> = {
   KeyValue: ["pairs"],
   KV: ["key", "value", "tone"],
   Tag: ["label", "tone"],
+  EntityList: ["items"],
+  ListItem: ["title", "subtitle", "trailing"],
   Callout: ["text", "tone", "title"],
   Metric: ["label", "value", "delta", "tone"],
+  MetricIndicator: ["value", "delta", "direction", "tone", "subtext"],
   Progress: ["value", "label"],
   Image: ["src", "alt"],
+  ImageGallery: ["images"],
   Link: ["text", "url"],
   BarChart: ["labels", "series", "horizontal", "stacked"],
   LineChart: ["labels", "series"],
@@ -40,12 +45,20 @@ const ORDER: Record<string, string[]> = {
   Select: ["name", "options", "placeholder", "rules", "value"],
   Option: ["value", "label"],
   RadioGroup: ["name", "options", "rules", "value"],
+  OptionCards: ["name", "options", "rules", "value"],
+  OptionCard: ["value", "title", "description"],
   CheckBox: ["name", "label", "rules", "value"],
   Switch: ["name", "label", "value"],
+  CheckBoxGroup: ["name", "items", "rules", "value"],
+  CheckBoxItem: ["name", "label", "description", "checked"],
+  SwitchGroup: ["name", "items", "value"],
+  SwitchItem: ["name", "label", "description", "checked"],
   Slider: ["name", "min", "max", "step", "value"],
   DatePicker: ["name", "rules", "value"],
   Button: ["label", "action", "variant"],
   Buttons: ["buttons"],
+  FollowUpBlock: ["items"],
+  FollowUpItem: ["text"],
 };
 
 test("every component takes its arguments in the order docs/openui.md lists", () => {

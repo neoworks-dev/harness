@@ -80,6 +80,12 @@ const Grid = define(
   }),
 );
 
+const Carousel = define(
+  "Carousel",
+  "Children side by side, as many as fit, with the rest reached by scrolling; visible is a maximum. Use it for more cards or items than a screen holds",
+  z.object({ children: z.array(node), visible: z.number().optional() }),
+);
+
 const Card = define(
   "Card",
   "A framed group with an optional title; tone colors the frame, variant sunk fills it, clear has no frame",
@@ -183,6 +189,21 @@ const Tag = define(
   z.object({ label: z.string(), tone: tone.optional() }),
 );
 
+const ListItem = define(
+  "ListItem",
+  "One row of EntityList; trailing is a value or a Tag",
+  z.object({
+    title: z.string(),
+    subtitle: z.string().optional(),
+    trailing: z.union([z.string(), z.number(), Tag.ref]).optional(),
+  }),
+);
+const EntityList = define(
+  "EntityList",
+  "Rows of things with a title, a muted subtitle and a trailing value or Tag: people, files, services, tickets",
+  z.object({ items: z.array(ListItem.ref) }),
+);
+
 const Callout = define(
   "Callout",
   "A highlighted note; text is markdown",
@@ -200,6 +221,18 @@ const Metric = define(
   }),
 );
 
+const MetricIndicator = define(
+  "MetricIndicator",
+  "A compact inline metric: a value with an optional change, an up or down arrow in the change's tone (default: up success, down danger) and a note; use it in cards, tables and lists where Metric is too big",
+  z.object({
+    value: z.union([z.string(), z.number()]),
+    delta: z.string().optional(),
+    direction: z.enum(["up", "down"]).optional(),
+    tone: tone.optional(),
+    subtext: z.string().optional(),
+  }),
+);
+
 const Progress = define(
   "Progress",
   "A progress bar; value is 0 to 1",
@@ -210,6 +243,12 @@ const Image = define(
   "Image",
   "An image from a URL or asset handle",
   z.object({ src: z.string(), alt: z.string().optional() }),
+);
+
+const ImageGallery = define(
+  "ImageGallery",
+  "Several images of one subject: the first large, the others small beside it",
+  z.object({ images: z.array(Image.ref) }),
 );
 
 const Link = define("Link", "A link", z.object({ text: z.string(), url: z.string() }));
@@ -308,6 +347,21 @@ const RadioGroup = define(
     value: reactive(z.string().optional()),
   }),
 );
+const OptionCard = define(
+  "OptionCard",
+  "A choice of OptionCards: a title and what it means",
+  z.object({ value: z.string(), title: z.string(), description: z.string().optional() }),
+);
+const OptionCards = define(
+  "OptionCards",
+  "One choice out of a few options, each a card with a title and a description; use it over RadioGroup when the options need explaining",
+  z.object({
+    name: z.string(),
+    options: z.array(OptionCard.ref),
+    rules,
+    value: reactive(z.string().optional()),
+  }),
+);
 const CheckBox = define(
   "CheckBox",
   "A checkbox with a label",
@@ -322,6 +376,45 @@ const Switch = define(
   "Switch",
   "An on/off switch with a label",
   z.object({ name: z.string(), label: z.string(), value: reactive(z.boolean().optional()) }),
+);
+const CheckBoxItem = define(
+  "CheckBoxItem",
+  "One checkbox of CheckBoxGroup; name is what the group's list holds when it is checked, checked starts it on",
+  z.object({
+    name: z.string(),
+    label: z.string(),
+    description: z.string().optional(),
+    checked: z.boolean().optional(),
+  }),
+);
+const CheckBoxGroup = define(
+  "CheckBoxGroup",
+  "Several checkboxes under one name, to pick any number of them; the value is the list of the checked names",
+  z.object({
+    name: z.string(),
+    items: z.array(CheckBoxItem.ref),
+    rules,
+    value: reactive(z.array(z.string()).optional()),
+  }),
+);
+const SwitchItem = define(
+  "SwitchItem",
+  "One switch of SwitchGroup; checked starts it on",
+  z.object({
+    name: z.string(),
+    label: z.string(),
+    description: z.string().optional(),
+    checked: z.boolean().optional(),
+  }),
+);
+const SwitchGroup = define(
+  "SwitchGroup",
+  "Several on/off switches under one name, for settings; the value is an object with each name on or off",
+  z.object({
+    name: z.string(),
+    items: z.array(SwitchItem.ref),
+    value: reactive(z.record(z.string(), z.boolean()).optional()),
+  }),
 );
 const Slider = define(
   "Slider",
@@ -350,8 +443,11 @@ const FormControl = define(
       TextArea.ref,
       Select.ref,
       RadioGroup.ref,
+      OptionCards.ref,
       CheckBox.ref,
       Switch.ref,
+      CheckBoxGroup.ref,
+      SwitchGroup.ref,
       Slider.ref,
       DatePicker.ref,
     ]),
@@ -369,6 +465,17 @@ const Button = define(
   }),
 );
 const Buttons = define("Buttons", "A row of buttons", z.object({ buttons: z.array(Button.ref) }));
+
+const FollowUpItem = define(
+  "FollowUpItem",
+  "One suggestion of FollowUpBlock",
+  z.object({ text: z.string() }),
+);
+const FollowUpBlock = define(
+  "FollowUpBlock",
+  "Suggested next questions as pills at the end of a reply; choosing one sends its text to the assistant",
+  z.object({ items: z.array(FollowUpItem.ref) }),
+);
 
 const Form = define(
   "Form",
@@ -394,6 +501,7 @@ export const library = createLibrary({
   components: [
     Stack,
     Grid,
+    Carousel,
     Card,
     Header,
     Separator,
@@ -410,10 +518,14 @@ export const library = createLibrary({
     KeyValue,
     KV,
     Tag,
+    EntityList,
+    ListItem,
     Callout,
     Metric,
+    MetricIndicator,
     Progress,
     Image,
+    ImageGallery,
     Link,
     BarChart,
     LineChart,
@@ -429,12 +541,20 @@ export const library = createLibrary({
     Select,
     Option,
     RadioGroup,
+    OptionCards,
+    OptionCard,
     CheckBox,
     Switch,
+    CheckBoxGroup,
+    CheckBoxItem,
+    SwitchGroup,
+    SwitchItem,
     Slider,
     DatePicker,
     Button,
     Buttons,
+    FollowUpBlock,
+    FollowUpItem,
   ],
   actions: [Copy],
   componentGroups: [
@@ -443,6 +563,7 @@ export const library = createLibrary({
       components: [
         "Stack",
         "Grid",
+        "Carousel",
         "Card",
         "Header",
         "Separator",
@@ -464,10 +585,14 @@ export const library = createLibrary({
         "KeyValue",
         "KV",
         "Tag",
+        "EntityList",
+        "ListItem",
         "Callout",
         "Metric",
+        "MetricIndicator",
         "Progress",
         "Image",
+        "ImageGallery",
         "Link",
       ],
     },
@@ -493,12 +618,20 @@ export const library = createLibrary({
         "Select",
         "Option",
         "RadioGroup",
+        "OptionCards",
+        "OptionCard",
         "CheckBox",
         "Switch",
+        "CheckBoxGroup",
+        "CheckBoxItem",
+        "SwitchGroup",
+        "SwitchItem",
         "Slider",
         "DatePicker",
         "Button",
         "Buttons",
+        "FollowUpBlock",
+        "FollowUpItem",
       ],
     },
   ],
@@ -510,8 +643,11 @@ export const INPUTS: ReadonlySet<string> = new Set([
   "TextArea",
   "Select",
   "RadioGroup",
+  "OptionCards",
   "CheckBox",
   "Switch",
+  "CheckBoxGroup",
+  "SwitchGroup",
   "Slider",
   "DatePicker",
 ]);

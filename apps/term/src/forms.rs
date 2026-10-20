@@ -66,6 +66,33 @@ fn same(a: &Value, b: &Value) -> bool {
     }
 }
 
+/// A group's value with the item at `at` flipped: a list keeps the items' order, an object
+/// gets every item.
+fn flip(value: &Value, items: &[UiOption], at: usize, switch: bool) -> Value {
+    let on = |name: &str| match value {
+        Value::Array(list) => list.iter().any(|v| v.as_str() == Some(name)),
+        Value::Object(map) => map.get(name).and_then(Value::as_bool).unwrap_or(false),
+        _ => false,
+    };
+    let flipped = |i: &UiOption| on(&i.value) != (i.value == items[at].value);
+    if switch {
+        Value::Object(
+            items
+                .iter()
+                .map(|i| (i.value.clone(), Value::Bool(flipped(i))))
+                .collect(),
+        )
+    } else {
+        Value::Array(
+            items
+                .iter()
+                .filter(|i| flipped(i))
+                .map(|i| json!(i.value))
+                .collect(),
+        )
+    }
+}
+
 fn number(v: f64) -> Value {
     if v.fract() == 0.0 && v.abs() < 1e15 {
         json!(v as i64)
@@ -220,6 +247,7 @@ impl Forms {
             for (doc, st) in docs.iter_mut() {
                 st.focus = None;
                 st.select = None;
+                st.cursors.clear();
                 for (key, edit) in std::mem::take(&mut st.edits) {
                     st.values.insert(key.clone(), Value::String(edit.text));
                     self.held.insert((r.to_string(), doc.clone(), key), now);
@@ -232,6 +260,7 @@ impl Forms {
     }
 
     fn move_focus(&mut self, r: &str, targets: &[UiTarget], to: usize, now: i64) {
+        let from = self.focus_index(r, targets);
         self.blur(r, now);
         let Some(t) = targets.get(to) else {
             return;
@@ -239,6 +268,13 @@ impl Forms {
         let text = t.kind.is_text().then(|| text_of(&self.value_of(r, t)));
         let st = self.state(r, &t.doc);
         st.focus = Some(t.id.clone());
+        // Coming up from below, a group's cursor starts on its last item.
+        if let UiKind::CheckBoxGroup { items } | UiKind::SwitchGroup { items } = &t.kind
+            && from.is_some_and(|from| to < from)
+        {
+            st.cursors
+                .insert(t.id.clone(), items.len().saturating_sub(1));
+        }
         if let Some(text) = text {
             let cursor = len(&text);
             st.edits.insert(t.id.clone(), UiEdit { text, cursor });
@@ -525,6 +561,32 @@ impl Forms {
                 }
                 out
             }
+            UiKind::CheckBoxGroup { items } | UiKind::SwitchGroup { items } => {
+                out.taken = true;
+                let switch = matches!(t.kind, UiKind::SwitchGroup { .. });
+                let cur = self
+                    .st(r, &t.doc)
+                    .and_then(|s| s.cursors.get(&t.id).copied())
+                    .unwrap_or(0)
+                    .min(items.len().saturating_sub(1));
+                match key.code {
+                    KeyCode::Char(' ') if !ctrl && !items.is_empty() => {
+                        let value = flip(&self.value_of(r, t), items, cur, switch);
+                        self.set_value(r, t, value, now);
+                    }
+                    KeyCode::Up if cur > 0 => {
+                        self.state(r, &t.doc).cursors.insert(t.id.clone(), cur - 1);
+                    }
+                    KeyCode::Down if cur + 1 < items.len() => {
+                        self.state(r, &t.doc).cursors.insert(t.id.clone(), cur + 1);
+                    }
+                    KeyCode::Up => self.move_focus(r, targets, next(-1), now),
+                    KeyCode::Down => self.move_focus(r, targets, next(1), now),
+                    KeyCode::Enter => return self.submit_out(targets, t),
+                    _ => out.taken = false,
+                }
+                out
+            }
             UiKind::Slider { min, max, step } => {
                 out.taken = true;
                 let v = self.value_of(r, t).as_f64().unwrap_or(*min);
@@ -582,6 +644,38 @@ impl Forms {
                 };
                 if let Some(to) = to {
                     self.state(r, &t.doc).tabs.insert(t.id.clone(), to);
+                }
+                out
+            }
+            UiKind::Carousel { count } => {
+                out.taken = true;
+                let last = count.saturating_sub(1);
+                let cur = self
+                    .st(r, &t.doc)
+                    .and_then(|s| s.slides.get(&t.id).copied())
+                    .unwrap_or(0)
+                    .min(last);
+                let to = match key.code {
+                    KeyCode::Left => Some(cur.saturating_sub(1)),
+                    KeyCode::Right => Some((cur + 1).min(last)),
+                    KeyCode::Home => Some(0),
+                    KeyCode::End => Some(last),
+                    KeyCode::Enter | KeyCode::Char(' ') => Some((cur + 1) % (*count).max(1)),
+                    KeyCode::Up => {
+                        self.move_focus(r, targets, next(-1), now);
+                        None
+                    }
+                    KeyCode::Down => {
+                        self.move_focus(r, targets, next(1), now);
+                        None
+                    }
+                    _ => {
+                        out.taken = false;
+                        None
+                    }
+                };
+                if let Some(to) = to {
+                    self.state(r, &t.doc).slides.insert(t.id.clone(), to);
                 }
                 out
             }

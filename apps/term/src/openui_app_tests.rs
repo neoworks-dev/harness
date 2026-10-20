@@ -335,6 +335,161 @@ fn left_and_right_pick_radio_options_and_move_sliders() {
 }
 
 #[test]
+fn left_and_right_choose_option_cards() {
+    let form = node(
+        "Form",
+        json!({"name": "plan", "children": [
+            control("Plan", keyed("OptionCards", "plan", json!({"name": "plan", "options": [
+                node("OptionCard", json!({"value": "free", "title": "Free", "description": "Three users"})),
+                node("OptionCard", json!({"value": "pro", "title": "Pro"})),
+            ]}))),
+        ], "buttons": node("Buttons", json!({"buttons": [keyed("Button", "go", json!({"label": "Go"}))]}))}),
+    );
+    let item: ViewItem = serde_json::from_value(json!({
+        "ref": "f1", "kind": "agent",
+        "component": {"type": "openui", "ui": {"id": "0", "root": form}}
+    }))
+    .unwrap();
+    let mut app = app();
+    show(&mut app, vec![user("u1", "pick"), item]);
+    assert_eq!(focused(&app).as_deref(), Some("plan"));
+    let screen = text(&mut app);
+    assert!(
+        screen.contains("( ) Free") && screen.contains("( ) Pro"),
+        "{screen}"
+    );
+    assert!(screen.contains("Plan · ←/→ choose"), "{screen}");
+    // Nothing is chosen yet: Right picks the first card, then the next.
+    assert_eq!(
+        press(&mut app, key(KeyCode::Right)),
+        [input("0", "plan", json!("free"))]
+    );
+    assert_eq!(
+        press(&mut app, key(KeyCode::Right)),
+        [input("0", "plan", json!("pro"))]
+    );
+    assert!(text(&mut app).contains("(•) Pro"));
+    assert!(press(&mut app, key(KeyCode::Right)).is_empty());
+    // Enter sends the form.
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), [pressed("0", "go")]);
+}
+
+/// A form with a checkbox group, a switch group and a field after them.
+fn groups_item() -> ViewItem {
+    let group = |component: &str, key: &str, items: Value| {
+        keyed(component, key, json!({"name": key, "items": items}))
+    };
+    let toppings = group(
+        "CheckBoxGroup",
+        "toppings",
+        json!([
+            node("CheckBoxItem", json!({"name": "cheese", "label": "Cheese"})),
+            node("CheckBoxItem", json!({"name": "olives", "label": "Olives"})),
+            node("CheckBoxItem", json!({"name": "basil", "label": "Basil"})),
+        ]),
+    );
+    let alerts = group(
+        "SwitchGroup",
+        "alerts",
+        json!([
+            node("SwitchItem", json!({"name": "mail", "label": "Email"})),
+            node(
+                "SwitchItem",
+                json!({"name": "sms", "label": "Text message"})
+            ),
+        ]),
+    );
+    let form = node(
+        "Form",
+        json!({"name": "order", "children": [
+            control("Toppings", toppings),
+            control("Alerts", alerts),
+            control("Note", keyed("Input", "note", json!({"name": "note"}))),
+        ], "buttons": node("Buttons", json!({"buttons": [keyed("Button", "go", json!({"label": "Order"}))]}))}),
+    );
+    serde_json::from_value(json!({
+        "ref": "f1", "kind": "agent",
+        "component": {"type": "openui", "ui": {"id": "0", "root": form}}
+    }))
+    .unwrap()
+}
+
+#[test]
+fn up_down_and_space_work_the_items_of_a_group() {
+    let mut app = app();
+    show(&mut app, vec![user("u1", "order"), groups_item()]);
+    assert_eq!(focused(&app).as_deref(), Some("toppings"));
+    let screen = text(&mut app);
+    assert!(
+        screen.contains("[ ] Cheese") && screen.contains("[ ] Basil"),
+        "{screen}"
+    );
+    assert!(
+        screen.contains("Toppings · ↑/↓ move · space toggles"),
+        "{screen}"
+    );
+    // The cursor starts on the first item; Space checks it.
+    assert_eq!(
+        press(&mut app, ch(' ')),
+        [input("0", "toppings", json!(["cheese"]))]
+    );
+    // Down moves inside the group, Space adds the next item; the list keeps the items' order.
+    press(&mut app, key(KeyCode::Down));
+    press(&mut app, key(KeyCode::Down));
+    assert_eq!(
+        press(&mut app, ch(' ')),
+        [input("0", "toppings", json!(["cheese", "basil"]))]
+    );
+    assert_eq!(focused(&app).as_deref(), Some("toppings"));
+    let screen = text(&mut app);
+    assert!(
+        screen.contains("[x] Cheese") && screen.contains("[x] Basil"),
+        "{screen}"
+    );
+    // Space again unchecks it.
+    assert_eq!(
+        press(&mut app, ch(' ')),
+        [input("0", "toppings", json!(["cheese"]))]
+    );
+    // Past the last item Down goes on to the next field, Up from there back onto the last item.
+    press(&mut app, key(KeyCode::Down));
+    assert_eq!(focused(&app).as_deref(), Some("alerts"));
+    press(&mut app, key(KeyCode::Up));
+    assert_eq!(focused(&app).as_deref(), Some("toppings"));
+    assert_eq!(
+        press(&mut app, ch(' ')),
+        [input("0", "toppings", json!(["cheese", "basil"]))]
+    );
+    // Tab goes to the next field whatever the cursor; enter sends the form.
+    tabs(&mut app, 3);
+    assert_eq!(focused(&app).as_deref(), Some("go"));
+}
+
+#[test]
+fn a_switch_group_sends_the_whole_object() {
+    let mut app = app();
+    show(&mut app, vec![user("u1", "order"), groups_item()]);
+    tabs(&mut app, 1);
+    assert_eq!(focused(&app).as_deref(), Some("alerts"));
+    assert_eq!(
+        press(&mut app, ch(' ')),
+        [input("0", "alerts", json!({"mail": true, "sms": false}))]
+    );
+    press(&mut app, key(KeyCode::Down));
+    assert_eq!(
+        press(&mut app, ch(' ')),
+        [input("0", "alerts", json!({"mail": true, "sms": true}))]
+    );
+    let screen = text(&mut app);
+    assert!(
+        screen.contains("● on  Email") && screen.contains("● on  Text message"),
+        "{screen}"
+    );
+    // Enter in a group presses the form's first button.
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), [pressed("0", "go")]);
+}
+
+#[test]
 fn enter_opens_a_select_and_chooses_from_its_list() {
     let mut app = with_form();
     assert!(press(&mut app, key(KeyCode::Enter)).is_empty());
@@ -534,6 +689,78 @@ fn tabs_and_accordions_are_reached_with_ctrl_p_and_switch_with_the_arrows() {
     press(&mut app, key(KeyCode::Esc));
     assert!(!app.prompt.engaged);
     assert!(!text(&mut app).contains("mix body"));
+}
+
+#[test]
+fn follow_ups_wait_for_ctrl_p_and_send_their_text_with_enter() {
+    let reply: ViewItem = serde_json::from_value(json!({
+        "ref": "f1", "kind": "agent",
+        "component": {"type": "openui", "ui": {"id": "0", "root": node("FollowUpBlock", json!({"items": [
+            keyed("FollowUpItem", "f.0", json!({"text": "Why is it slow?"})),
+            keyed("FollowUpItem", "f.1", json!({"text": "Show the queries"})),
+        ]}))}}
+    }))
+    .unwrap();
+    let mut app = app();
+    show(&mut app, vec![user("u1", "check the db"), reply]);
+    // Suggestions don't take the editor's place.
+    assert!(!app.prompt.engaged);
+    assert!(text(&mut app).contains("( Why is it slow? )  ( Show the queries )"));
+    press(&mut app, ctrl('p'));
+    assert!(app.prompt.engaged);
+    assert_eq!(focused(&app).as_deref(), Some("f.0"));
+    // Right goes on to the next pill, Enter sends it.
+    press(&mut app, key(KeyCode::Right));
+    assert_eq!(focused(&app).as_deref(), Some("f.1"));
+    assert_eq!(press(&mut app, key(KeyCode::Enter)), [pressed("0", "f.1")]);
+    press(&mut app, key(KeyCode::Left));
+    assert_eq!(press(&mut app, ch(' ')), [pressed("0", "f.0")]);
+}
+
+#[test]
+fn a_carousel_scrolls_with_the_arrows() {
+    let slide = |i: usize| {
+        node(
+            "Card",
+            json!({"title": format!("Slide {i}"), "children": [
+                node("Text", json!({"text": "x", "blocks": [{"type":"paragraph","spans":[{"text": format!("body {i}")}]}]})),
+            ]}),
+        )
+    };
+    let item: ViewItem = serde_json::from_value(json!({
+        "ref": "c1", "kind": "tool", "label": "tickets", "state": "done",
+        "component": {"type": "openui", "ui": {"id": "0", "root": node("Carousel", json!({
+            "children": [slide(1), slide(2), slide(3)], "visible": 1,
+        }))}}
+    }))
+    .unwrap();
+    let mut app = app();
+    show(&mut app, vec![user("u1", "show me"), item]);
+    assert!(!app.prompt.engaged);
+    press(&mut app, ctrl('p'));
+    assert!(app.prompt.engaged);
+    let screen = text(&mut app);
+    assert!(
+        screen.contains("body 1") && screen.contains("‹ 1/3 ›"),
+        "{screen}"
+    );
+    assert!(screen.contains("←/→ scroll"), "{screen}");
+    assert!(press(&mut app, key(KeyCode::Right)).is_empty());
+    let screen = text(&mut app);
+    assert!(
+        screen.contains("body 2") && !screen.contains("body 1"),
+        "{screen}"
+    );
+    assert!(screen.contains("‹ 2/3 ›"), "{screen}");
+    press(&mut app, key(KeyCode::End));
+    assert!(text(&mut app).contains("‹ 3/3 ›"));
+    // The ends hold; Enter goes on round to the first.
+    press(&mut app, key(KeyCode::Right));
+    assert!(text(&mut app).contains("‹ 3/3 ›"));
+    press(&mut app, key(KeyCode::Enter));
+    assert!(text(&mut app).contains("‹ 1/3 ›"));
+    press(&mut app, key(KeyCode::Left));
+    assert!(text(&mut app).contains("‹ 1/3 ›"));
 }
 
 #[test]

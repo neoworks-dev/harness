@@ -268,15 +268,41 @@ export class Program {
 
   // ─── Fields ───────────────────────────────────────────────────────────────
 
+  /** What a field holds: its $variable's value, else what was typed, else the program's. */
+  private currentRaw(field: Field): unknown {
+    if (field.bound !== undefined) return this.store.get(field.bound);
+    return this.values.get(field.id) ?? field.literal;
+  }
+
+  /** The names a CheckBoxGroup has checked, in the items' order; the items' own start values until it holds a list. */
+  private checkedNames(field: Field, raw: unknown): string[] {
+    let picked: unknown[] = [];
+    if (Array.isArray(raw)) picked = raw;
+    else if (raw === null || raw === undefined) picked = field.checked ?? [];
+    return (field.options ?? []).filter((name) => picked.includes(name));
+  }
+
+  /** Every switch of a SwitchGroup on or off; the items' own start values for those it doesn't hold. */
+  private switchStates(field: Field, raw: unknown): Record<string, boolean> {
+    const held = isRecord(raw) ? raw : undefined;
+    const states: Record<string, boolean> = {};
+    for (const name of field.options ?? []) {
+      const state = held?.[name];
+      states[name] = typeof state === "boolean" ? state : (field.checked ?? []).includes(name);
+    }
+    return states;
+  }
+
   private valueOf(field: Field): unknown {
-    const raw =
-      field.bound !== undefined
-        ? this.store.get(field.bound)
-        : (this.values.get(field.id) ?? field.literal);
+    const raw = this.currentRaw(field);
     switch (field.component) {
       case "CheckBox":
       case "Switch":
         return raw === true;
+      case "CheckBoxGroup":
+        return this.checkedNames(field, raw);
+      case "SwitchGroup":
+        return this.switchStates(field, raw);
       case "Slider": {
         const n = typeof raw === "string" && raw.trim() !== "" ? Number(raw) : raw;
         return typeof n === "number" && Number.isFinite(n) ? n : undefined;
@@ -296,8 +322,23 @@ export class Program {
       case "Slider":
         if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
         return Math.min(field.max ?? value, Math.max(field.min ?? value, value));
+      case "CheckBoxGroup": {
+        const names = field.options ?? [];
+        if (!Array.isArray(value) || !value.every((v) => names.includes(String(v))))
+          return undefined;
+        return names.filter((name) => value.includes(name));
+      }
+      case "SwitchGroup": {
+        const names = field.options ?? [];
+        if (!isRecord(value)) return undefined;
+        const changes = Object.entries(value);
+        if (!changes.every(([k, v]) => names.includes(k) && typeof v === "boolean"))
+          return undefined;
+        return { ...this.switchStates(field, this.currentRaw(field)), ...value };
+      }
       case "Select":
       case "RadioGroup":
+      case "OptionCards":
         if (typeof value !== "string") return undefined;
         return value === "" || field.options?.includes(value) === true ? value : undefined;
       default:

@@ -4,14 +4,15 @@
 mod common;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use common::*;
 use ratatui::style::{Color, Modifier};
 use serde_json::{Value, json};
 use suite_protocol::ViewItem;
 use suite_renderer_ratatui::{
-    Options, Palette, UiEdit, UiKind, UiState, openui_docs, openui_targets, plain_text,
-    render_item, render_item_images,
+    ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiEdit, UiKind, UiState, openui_docs,
+    openui_targets, plain_text, render_item, render_item_images,
 };
 
 fn pal() -> Palette {
@@ -977,6 +978,833 @@ fn buttons_have_variants_and_a_focused_one_is_reversed() {
     assert_eq!(by("Wait").fg, Some(pal().muted));
     // Wraps when they do not fit.
     assert_eq!(lines(&it, 30).len(), 3);
+}
+
+fn follow_ups() -> Value {
+    node(
+        "FollowUpBlock",
+        json!({"items": [
+            keyed("FollowUpItem", "f.0", json!({"text": "Why is it slow?"})),
+            keyed("FollowUpItem", "f.1", json!({"text": "Show the queries"})),
+            keyed("FollowUpItem", "f.2", json!({"text": "Fix it"})),
+        ]}),
+    )
+}
+
+#[test]
+fn follow_ups_are_pills_in_a_row_that_wraps() {
+    let it = doc(follow_ups());
+    assert_eq!(
+        lines(&it, 80),
+        ["( Why is it slow? )  ( Show the queries )  ( Fix it )"]
+    );
+    assert_eq!(
+        lines(&it, 40),
+        ["( Why is it slow? )", "( Show the queries )  ( Fix it )"]
+    );
+    // A pill that is wider than the view is cut.
+    assert_eq!(lines(&it, 10)[0], "( Why is …");
+    assert_fits(&it, &focused("f.1"));
+}
+
+#[test]
+fn a_focused_follow_up_is_reversed_and_a_target_like_a_button() {
+    let it = doc(follow_ups());
+    let rendered = render_item(&it, 80, &focused("f.1"));
+    let reversed: Vec<&str> = rendered[0]
+        .spans
+        .iter()
+        .filter(|s| s.style.add_modifier.contains(Modifier::REVERSED))
+        .map(|s| s.content.as_ref())
+        .collect();
+    assert_eq!(reversed, ["( Show the queries )"]);
+    let targets = openui_targets(&it, &Options::default());
+    let got: Vec<(&str, &str)> = targets
+        .iter()
+        .map(|t| (t.id.as_str(), t.label.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("f.0", "Why is it slow?"),
+            ("f.1", "Show the queries"),
+            ("f.2", "Fix it")
+        ]
+    );
+    assert!(targets.iter().all(|t| matches!(
+        t.kind,
+        UiKind::Button {
+            disabled: false,
+            url: None,
+            copy: None
+        }
+    )));
+    // The first line of the focused pill is reported, wherever it wrapped to.
+    let rendered = render_item_images(&it, 40, &focused("f.2"));
+    assert_eq!(rendered.focus_line, Some(1));
+}
+
+#[test]
+fn follow_ups_can_be_focused_but_do_not_ask_for_the_keyboard() {
+    let it = doc(follow_ups());
+    let docs = openui_docs(&it);
+    assert!(docs[0].focusable && !docs[0].interactive);
+    // Next to a form's field they are part of the form.
+    let both = doc(column(vec![
+        follow_ups(),
+        keyed("Input", "name", json!({"name": "name"})),
+    ]));
+    assert!(openui_docs(&both)[0].interactive);
+}
+
+// ---- image galleries ----
+
+fn picture(src: &str, alt: &str) -> Value {
+    node("Image", json!({"src": src, "alt": alt}))
+}
+
+fn gallery(n: usize) -> Value {
+    let names = [
+        "Harbour",
+        "Market",
+        "Lighthouse",
+        "Dunes",
+        "Cliffs",
+        "Bridge",
+    ];
+    let images: Vec<Value> = (0..n)
+        .map(|i| picture(&format!("/p/{i}.png"), names[i % names.len()]))
+        .collect();
+    node("ImageGallery", json!({"images": images}))
+}
+
+/// Pictures of 400x300 pixels in 10x20 pixel cells, `ready` of them known.
+fn pictures(ready: &[usize], rows: u16) -> Options {
+    let status: HashMap<String, ImageStatus> = ready
+        .iter()
+        .map(|i| {
+            (
+                format!("/p/{i}.png"),
+                ImageStatus::Ready {
+                    width: 400,
+                    height: 300,
+                },
+            )
+        })
+        .collect();
+    Options {
+        images: Some(ImageOptions {
+            max_rows: rows,
+            cell: (10, 20),
+            status: Arc::new(status),
+        }),
+        ..Options::default()
+    }
+}
+
+fn slot(line: usize, x: u16, cols: u16, rows: u16, src: &str) -> ImageSlot {
+    ImageSlot {
+        line,
+        x,
+        cols,
+        rows,
+        src: src.into(),
+    }
+}
+
+#[test]
+fn a_gallery_is_one_large_picture_with_small_ones_stacked_beside_it() {
+    let it = doc(gallery(4));
+    let out = render_item_images(&it, 80, &pictures(&[0, 1, 2, 3], 12));
+    assert_eq!(
+        out.images,
+        [
+            slot(0, 0, 32, 12, "/p/0.png"),
+            slot(0, 34, 8, 3, "/p/1.png"),
+            slot(4, 34, 8, 3, "/p/2.png"),
+            slot(8, 34, 8, 3, "/p/3.png"),
+        ]
+    );
+    let text = plain_text(&out.lines);
+    assert_eq!(text.len(), 12 + 1);
+    assert_eq!(text[12], "Harbour · 400×300");
+    assert!(text[..12].iter().all(String::is_empty));
+    // Nothing is left of the marks and nothing is wider than the view.
+    assert!(out.lines.iter().all(|l| l.width() <= 80));
+    assert!(
+        out.lines
+            .iter()
+            .flat_map(|l| &l.spans)
+            .all(|s| s.content != "\u{2060}")
+    );
+}
+
+#[test]
+fn a_gallery_shows_four_pictures_and_counts_the_rest() {
+    let it = doc(gallery(6));
+    let out = render_item_images(&it, 80, &pictures(&[0, 1, 2, 3, 4, 5], 12));
+    assert_eq!(out.images.len(), 4);
+    assert_eq!(
+        plain_text(&out.lines).last().unwrap(),
+        "Harbour · 400×300  +2 more"
+    );
+    // Two pictures: the large one and one beside it.
+    let out = render_item_images(&doc(gallery(2)), 80, &pictures(&[0, 1], 12));
+    assert_eq!(out.images.len(), 2);
+    assert_eq!((out.images[1].x, out.images[1].line), (34, 0));
+    assert_eq!((out.images[1].cols, out.images[1].rows), (16, 6));
+}
+
+#[test]
+fn a_narrow_gallery_keeps_the_large_picture_and_says_how_many_more() {
+    let out = render_item_images(&doc(gallery(4)), 30, &pictures(&[0, 1, 2, 3], 12));
+    assert_eq!(out.images.len(), 1);
+    assert_eq!(out.images[0].cols, 30);
+    assert_eq!(
+        plain_text(&out.lines).last().unwrap(),
+        "Harbour · 400×300  +3 more"
+    );
+}
+
+#[test]
+fn pictures_that_are_not_there_yet_keep_their_text() {
+    let it = doc(gallery(3));
+    // One is ready: the images one after the other, as `Image` draws them.
+    let out = render_item_images(&it, 80, &pictures(&[1], 12));
+    let text = plain_text(&out.lines);
+    assert_eq!(out.images, [slot(1, 0, 32, 12, "/p/1.png")]);
+    assert_eq!(text[0], "[image Harbour] loading image…");
+    assert!(text.contains(&"[image Lighthouse] loading image…".to_string()));
+    // Two ready, one still loading: the gallery, then the text of the third.
+    let out = render_item_images(&it, 80, &pictures(&[0, 2], 12));
+    assert_eq!(out.images.len(), 2);
+    assert_eq!(
+        plain_text(&out.lines).last().unwrap(),
+        "[image Market] loading image…"
+    );
+    // Without room for pictures they are placeholders.
+    assert_eq!(
+        lines(&it, 80),
+        ["[image Harbour]", "[image Market]", "[image Lighthouse]"]
+    );
+}
+
+#[test]
+fn a_picture_in_a_row_or_grid_keeps_its_room() {
+    // Measuring the row draws its children once without keeping them.
+    let it = doc(row(
+        vec![picture("/p/0.png", "Harbour"), tag("new")],
+        json!({}),
+    ));
+    let out = render_item_images(&it, 80, &pictures(&[0], 12));
+    assert_eq!(out.images.len(), 1);
+    assert_eq!((out.images[0].line, out.images[0].x), (0, 0));
+    let it = doc(node(
+        "Grid",
+        json!({"children": [
+            card("A", vec![picture("/p/0.png", "Harbour")]),
+            card("B", vec![picture("/p/1.png", "Market")]),
+        ]}),
+    ));
+    let out = render_item_images(&it, 100, &pictures(&[0, 1], 12));
+    assert_eq!(out.images.len(), 2);
+    assert!(out.images[0].x < out.images[1].x);
+}
+
+#[test]
+fn galleries_fit_at_every_width() {
+    for n in [2, 4, 6] {
+        let ready: Vec<usize> = (0..n).collect();
+        let opts = pictures(&ready, 12);
+        let it = doc(card("Trip", vec![gallery(n)]));
+        for width in 1..=120u16 {
+            let out = render_item_images(&it, width, &opts);
+            for (i, line) in out.lines.iter().enumerate() {
+                assert!(line.width() <= usize::from(width), "{width} line {i}");
+            }
+            for s in &out.images {
+                assert!(
+                    usize::from(s.x + s.cols) <= usize::from(width),
+                    "{width}: {s:?}"
+                );
+                assert!(
+                    s.line + usize::from(s.rows) <= out.lines.len(),
+                    "{width}: {s:?}"
+                );
+            }
+        }
+    }
+}
+
+// ---- carousels ----
+
+fn slides(n: usize, extra: Value) -> Value {
+    let kids: Vec<Value> = (1..=n)
+        .map(|i| card(&format!("Slide {i}"), vec![text(&format!("body {i}"))]))
+        .collect();
+    let mut props = json!({"children": kids});
+    if let (Some(p), Some(e)) = (props.as_object_mut(), extra.as_object()) {
+        p.extend(e.clone());
+    }
+    node("Carousel", props)
+}
+
+#[test]
+fn a_carousel_shows_as_many_slides_as_fit_with_where_you_are_under_them() {
+    let it = doc(slides(5, json!({})));
+    let out = lines(&it, 80);
+    assert!(out[0].matches('╭').count() == 2, "{out:?}");
+    assert!(
+        out[0].contains("Slide 1") && out[0].contains("Slide 2"),
+        "{out:?}"
+    );
+    assert!(!out.join("\n").contains("Slide 3"), "{out:?}");
+    assert_eq!(out.last().unwrap().trim(), "‹ 1–2/5 ›");
+    // Centered under the slides.
+    assert_eq!(out.last().unwrap().find('‹'), Some((80 - 9) / 2));
+    // One slide on a narrow view, and the indicator says so.
+    let narrow = lines(&it, 40);
+    assert!(
+        narrow[0].contains("Slide 1") && !narrow[0].contains("Slide 2"),
+        "{narrow:?}"
+    );
+    assert_eq!(narrow.last().unwrap().trim(), "‹ 1/5 ›");
+    // `visible` is a maximum.
+    let one = lines(&doc(slides(5, json!({"visible": 1}))), 80);
+    assert!(!one.join("\n").contains("Slide 2"), "{one:?}");
+}
+
+#[test]
+fn scrolling_moves_the_first_slide_and_lights_the_arrows() {
+    let it = doc(slides(5, json!({})));
+    let at = |first: usize| {
+        state(|s| {
+            s.slides.insert("/".into(), first);
+        })
+    };
+    let out = lines_of(&it, 80, &at(2));
+    assert!(
+        out[0].contains("Slide 3") && out[0].contains("Slide 4"),
+        "{out:?}"
+    );
+    assert_eq!(out.last().unwrap().trim(), "‹ 3–4/5 ›");
+    // The last slide can lead; a number past the end stays on it.
+    for first in [4, 9] {
+        let out = lines_of(&it, 80, &at(first));
+        assert!(out[0].contains("Slide 5"), "{out:?}");
+        assert_eq!(out.last().unwrap().trim(), "‹ 5/5 ›");
+    }
+    let lit = |first: usize| -> (bool, bool) {
+        let rendered = render_item(&it, 80, &at(first));
+        let bar = rendered.last().unwrap();
+        let fg = |glyph: &str| {
+            bar.spans
+                .iter()
+                .find(|s| s.content == glyph)
+                .unwrap()
+                .style
+                .fg
+        };
+        (fg("‹") == Some(pal().accent), fg("›") == Some(pal().accent))
+    };
+    assert_eq!(lit(0), (false, true));
+    assert_eq!(lit(2), (true, true));
+    assert_eq!(lit(4), (true, false));
+}
+
+#[test]
+fn a_carousel_is_a_target_and_its_slides_keep_their_own() {
+    let buttoned = node(
+        "Carousel",
+        json!({"children": [
+            card("A", vec![keyed("Button", "a", json!({"label": "Open A"}))]),
+            card("B", vec![keyed("Button", "b", json!({"label": "Open B"}))]),
+            card("C", vec![keyed("Button", "c", json!({"label": "Open C"}))]),
+        ]}),
+    );
+    let it = doc(buttoned);
+    let targets = openui_targets(&it, &Options::default());
+    let ids: Vec<&str> = targets.iter().map(|t| t.id.as_str()).collect();
+    // The strip first, then the buttons of the slides in view; the third is not drawn.
+    assert_eq!(ids, ["/", "a", "b"]);
+    assert!(matches!(targets[0].kind, UiKind::Carousel { count: 3 }));
+    assert_eq!(targets[0].value, json!(0));
+    let scrolled = state(|s| {
+        s.slides.insert("/".into(), 1);
+    });
+    let ids: Vec<String> = openui_targets(&it, &scrolled)
+        .into_iter()
+        .map(|t| t.id)
+        .collect();
+    assert_eq!(ids, ["/", "b", "c"]);
+    // The strip is reversed while it has focus, and a lone slide has no strip.
+    let rendered = render_item(&it, 80, &focused("/"));
+    assert!(
+        rendered
+            .last()
+            .unwrap()
+            .spans
+            .iter()
+            .any(|s| s.style.add_modifier.contains(Modifier::REVERSED))
+    );
+    assert!(openui_targets(&doc(slides(1, json!({}))), &Options::default()).is_empty());
+    assert!(openui_docs(&it)[0].focusable);
+    assert_eq!(
+        render_item_images(&it, 80, &focused("/")).focus_line,
+        Some(rendered.len() - 1)
+    );
+}
+
+#[test]
+fn carousels_fit_at_every_width() {
+    let it = doc(slides(4, json!({})));
+    assert_fits(&it, &Options::default());
+    assert_fits(&it, &focused("/"));
+    assert_fits(
+        &doc(card("In a card", vec![slides(3, json!({}))])),
+        &Options::default(),
+    );
+}
+
+// ---- metric indicators ----
+
+fn indicator(props: Value) -> Value {
+    node("MetricIndicator", props)
+}
+
+#[test]
+fn a_metric_indicator_is_the_value_an_arrow_with_the_change_and_a_note() {
+    let it = doc(column(vec![
+        indicator(
+            json!({"value": 1284, "delta": "12%", "direction": "up", "subtext": "vs last week"}),
+        ),
+        indicator(json!({"value": "3.2s", "delta": "0.4s", "direction": "down"})),
+        indicator(json!({"value": "99.9%", "delta": "stable"})),
+        indicator(json!({"value": "17", "direction": "up"})),
+        indicator(json!({"value": "42"})),
+    ]));
+    assert_eq!(
+        lines(&it, 80),
+        [
+            "1284 ▲ 12% vs last week",
+            "3.2s ▼ 0.4s",
+            "99.9% stable",
+            "17 ▲",
+            "42",
+        ]
+    );
+}
+
+#[test]
+fn a_metric_indicator_colors_its_change_by_direction_unless_told_otherwise() {
+    let color = |props: Value| {
+        let rendered = render_item(&doc(indicator(props)), 80, &Options::default());
+        let span = rendered[0]
+            .spans
+            .iter()
+            .find(|s| s.content.contains("5%"))
+            .unwrap();
+        span.style.fg
+    };
+    let p = pal();
+    assert_eq!(
+        color(json!({"value": 1, "delta": "5%", "direction": "up"})),
+        Some(p.success)
+    );
+    assert_eq!(
+        color(json!({"value": 1, "delta": "5%", "direction": "down"})),
+        Some(p.danger)
+    );
+    // Costs going down are good news.
+    assert_eq!(
+        color(json!({"value": 1, "delta": "5%", "direction": "down", "tone": "success"})),
+        Some(p.success)
+    );
+    assert_eq!(color(json!({"value": 1, "delta": "5%"})), Some(p.muted));
+    let rendered = render_item(
+        &doc(indicator(json!({"value": 7}))),
+        80,
+        &Options::default(),
+    );
+    assert!(
+        rendered[0].spans[0]
+            .style
+            .add_modifier
+            .contains(Modifier::BOLD)
+    );
+}
+
+#[test]
+fn metric_indicators_sit_in_rows_and_table_cells_and_never_overflow() {
+    let up = || indicator(json!({"value": "812", "delta": "3%", "direction": "up"}));
+    let it = doc(row(vec![up(), tag("live"), up()], json!({})));
+    assert_eq!(lines(&it, 80), ["812 ▲ 3%   [live]   812 ▲ 3%"]);
+    let table = doc(node(
+        "Table",
+        json!({"columns": ["Region", "Orders"], "rows": [["EU", up()], ["US", up()]]}),
+    ));
+    assert_eq!(lines(&table, 80)[2], "EU     │ 812 ▲ 3%");
+    assert_fits(&it, &Options::default());
+    assert_fits(&doc(up()), &Options::default());
+}
+
+// ---- option cards ----
+
+fn plans(value: Option<&str>) -> Value {
+    let mut props = json!({"name": "plan", "options": [
+        node("OptionCard", json!({"value": "free", "title": "Free", "description": "Up to three users, community support"})),
+        node("OptionCard", json!({"value": "pro", "title": "Pro", "description": "Unlimited users"})),
+        node("OptionCard", json!({"value": "team", "title": "Team"})),
+    ]});
+    if let Some(v) = value {
+        props["value"] = json!(v);
+    }
+    keyed("OptionCards", "plan", props)
+}
+
+#[test]
+fn option_cards_sit_side_by_side_as_framed_cards() {
+    let it = doc(plans(Some("pro")));
+    assert_eq!(
+        lines(&it, 80),
+        [
+            "╭────────────────────────╮ ╭────────────────────────╮ ╭────────────────────────╮",
+            "│ ( ) Free               │ │ (•) Pro                │ │ ( ) Team               │",
+            "│     Up to three users, │ │     Unlimited users    │ │                        │",
+            "│     community support  │ │                        │ │                        │",
+            "╰────────────────────────╯ ╰────────────────────────╯ ╰────────────────────────╯",
+        ]
+    );
+    // Fewer fit on a narrower view, the rest wrap to a second row of cards.
+    let out = lines(&it, 50);
+    assert_eq!(out.len(), 9, "{out:?}");
+    assert!(
+        out[1].contains("( ) Free") && out[1].contains("(•) Pro"),
+        "{out:?}"
+    );
+    assert!(out[7].contains("( ) Team"), "{out:?}");
+    // One column on a small screen, cards no wider than they need to be.
+    let out = lines(&it, 30);
+    assert!(out.iter().all(|l| l.chars().count() <= 30), "{out:?}");
+    assert_eq!(out[0].chars().count(), 30);
+}
+
+#[test]
+fn the_chosen_card_has_an_accent_frame_and_a_focused_one_a_reversed_title() {
+    let it = doc(plans(Some("pro")));
+    let rendered = render_item(&it, 80, &Options::default());
+    let edge = |col: usize| {
+        let mut x = 0;
+        for s in &rendered[0].spans {
+            let w = s.content.chars().count();
+            if col < x + w {
+                return s.style.fg;
+            }
+            x += w;
+        }
+        None
+    };
+    // The first card keeps the border color, the chosen one the accent.
+    assert_eq!(edge(0), Some(pal().border));
+    assert_eq!(edge(27), Some(pal().accent));
+    let rendered = render_item(&it, 80, &focused("plan"));
+    let title = rendered[1]
+        .spans
+        .iter()
+        .find(|s| s.content.contains("Pro"))
+        .unwrap();
+    assert!(title.style.add_modifier.contains(Modifier::REVERSED));
+    assert!(
+        !rendered[1].spans.iter().any(
+            |s| s.content.contains("Free") && s.style.add_modifier.contains(Modifier::REVERSED)
+        )
+    );
+}
+
+#[test]
+fn option_cards_are_a_radio_target_with_the_titles_as_labels() {
+    let it = doc(plans(None));
+    let targets = openui_targets(&it, &Options::default());
+    assert_eq!(targets.len(), 1);
+    let UiKind::Radio { options } = &targets[0].kind else {
+        panic!("{:?}", targets[0].kind);
+    };
+    let got: Vec<(&str, &str)> = options
+        .iter()
+        .map(|o| (o.value.as_str(), o.label.as_str()))
+        .collect();
+    assert_eq!(got, [("free", "Free"), ("pro", "Pro"), ("team", "Team")]);
+    // A value chosen here and not echoed yet wins; the daemon's value shows otherwise.
+    let local = state(|s| {
+        s.values.insert("plan".into(), json!("team"));
+    });
+    assert!(lines_of(&it, 80, &local)[1].contains("(•) Team"));
+    // Nothing chosen and focused: the first card lights up, and the focus line is its title.
+    let rendered = render_item_images(&it, 80, &focused("plan"));
+    assert_eq!(rendered.focus_line, Some(1));
+}
+
+#[test]
+fn option_cards_in_a_form_control_have_their_label_error_and_fit_everywhere() {
+    let mut cards = plans(Some("free"));
+    cards["props"]["error"] = json!("Pick a plan");
+    cards["props"]["required"] = json!(true);
+    let it = doc(field("Plan", cards));
+    let out = lines(&it, 80);
+    assert_eq!(out[0], "Plan *");
+    assert_eq!(out.last().unwrap(), "Pick a plan");
+    assert_fits(&it, &focused("plan"));
+    assert_fits(&it, &Options::default());
+}
+
+// ---- checkbox and switch groups ----
+
+fn item_of_group(component: &str, name: &str, label: &str, description: Option<&str>) -> Value {
+    let mut props = json!({"name": name, "label": label});
+    if let Some(d) = description {
+        props["description"] = json!(d);
+    }
+    node(component, props)
+}
+
+fn toppings(value: Value) -> Value {
+    keyed(
+        "CheckBoxGroup",
+        "toppings",
+        json!({"name": "toppings", "value": value, "items": [
+            item_of_group("CheckBoxItem", "cheese", "Cheese", Some("Extra mozzarella")),
+            item_of_group("CheckBoxItem", "olives", "Olives", None),
+            item_of_group("CheckBoxItem", "basil", "Basil", Some("Fresh, added after baking")),
+        ]}),
+    )
+}
+
+fn alerts(value: Value) -> Value {
+    keyed(
+        "SwitchGroup",
+        "alerts",
+        json!({"name": "alerts", "value": value, "items": [
+            item_of_group("SwitchItem", "mail", "Email", Some("A message on every failure")),
+            item_of_group("SwitchItem", "sms", "Text message", None),
+        ]}),
+    )
+}
+
+#[test]
+fn a_checkbox_group_lists_its_boxes_with_the_checked_ones_on() {
+    let it = doc(toppings(json!(["cheese", "basil"])));
+    assert_eq!(
+        lines(&it, 80),
+        [
+            "[x] Cheese",
+            "    Extra mozzarella",
+            "[ ] Olives",
+            "[x] Basil",
+            "    Fresh, added after baking",
+        ]
+    );
+    // A description wraps under its label.
+    let out = lines(&it, 20);
+    assert_eq!(out[4..], ["    Fresh, added", "    after baking"]);
+}
+
+#[test]
+fn a_switch_group_reads_its_object() {
+    let it = doc(alerts(json!({"mail": true, "sms": false})));
+    assert_eq!(
+        lines(&it, 80),
+        [
+            "● on  Email",
+            "      A message on every failure",
+            "○ off Text message",
+        ]
+    );
+    // A switch the object does not mention is off.
+    assert_eq!(lines(&doc(alerts(json!({}))), 80)[0], "○ off Email");
+}
+
+#[test]
+fn the_group_cursor_item_is_highlighted_while_the_group_has_focus() {
+    let it = doc(toppings(json!(["cheese"])));
+    let reversed = |opts: &Options| -> Vec<String> {
+        render_item(&it, 80, opts)
+            .iter()
+            .flat_map(|l| &l.spans)
+            .filter(|s| s.style.add_modifier.contains(Modifier::REVERSED))
+            .map(|s| s.content.to_string())
+            .collect()
+    };
+    assert!(reversed(&Options::default()).is_empty());
+    assert_eq!(reversed(&focused("toppings")), ["[x]"]);
+    let on_basil = state(|s| {
+        s.focus = Some("toppings".into());
+        s.cursors.insert("toppings".into(), 2);
+    });
+    assert_eq!(reversed(&on_basil), ["[ ]"]);
+    let rendered = render_item(&it, 80, &on_basil);
+    let label = rendered[3]
+        .spans
+        .iter()
+        .find(|s| s.content.contains("Basil"))
+        .unwrap();
+    assert_eq!(label.style.fg, Some(pal().accent));
+    // The focus line is the cursor item's, and a cursor past the end stays on the last item.
+    assert_eq!(render_item_images(&it, 80, &on_basil).focus_line, Some(3));
+    let past = state(|s| {
+        s.focus = Some("toppings".into());
+        s.cursors.insert("toppings".into(), 9);
+    });
+    assert_eq!(render_item_images(&it, 80, &past).focus_line, Some(3));
+}
+
+#[test]
+fn a_group_is_one_target_with_its_items_and_a_local_value_wins() {
+    let it = doc(column(vec![
+        toppings(json!(["cheese"])),
+        alerts(json!({"mail": true})),
+    ]));
+    let targets = openui_targets(&it, &Options::default());
+    assert_eq!(targets.len(), 2);
+    let UiKind::CheckBoxGroup { items } = &targets[0].kind else {
+        panic!("{:?}", targets[0].kind);
+    };
+    let got: Vec<(&str, &str)> = items
+        .iter()
+        .map(|i| (i.value.as_str(), i.label.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("cheese", "Cheese"),
+            ("olives", "Olives"),
+            ("basil", "Basil")
+        ]
+    );
+    assert_eq!(targets[0].value, json!(["cheese"]));
+    assert!(matches!(&targets[1].kind, UiKind::SwitchGroup { items } if items.len() == 2));
+    assert_eq!(targets[1].value, json!({"mail": true}));
+    let local = state(|s| {
+        s.values.insert("toppings".into(), json!(["olives"]));
+        s.values
+            .insert("alerts".into(), json!({"mail": false, "sms": true}));
+    });
+    let out = lines_of(&it, 80, &local);
+    assert!(out.contains(&"[x] Olives".to_string()), "{out:?}");
+    assert!(out.contains(&"[ ] Cheese".to_string()), "{out:?}");
+    assert!(out.contains(&"● on  Text message".to_string()), "{out:?}");
+}
+
+#[test]
+fn a_group_in_a_form_control_has_a_label_a_marker_and_an_error() {
+    let mut group = toppings(json!([]));
+    group["props"]["required"] = json!(true);
+    group["props"]["error"] = json!("This field is required");
+    let it = doc(field("Toppings", group));
+    let out = lines(&it, 80);
+    assert_eq!(out[0], "Toppings *");
+    assert_eq!(out.last().unwrap(), "This field is required");
+    for focus in ["toppings", "alerts"] {
+        assert_fits(&it, &focused(focus));
+    }
+    assert_fits(&doc(alerts(json!({"mail": true}))), &focused("alerts"));
+}
+
+// ---- entity lists ----
+
+fn entity(title: &str, subtitle: Option<&str>, trailing: Option<Value>) -> Value {
+    let mut props = json!({"title": title});
+    if let Some(s) = subtitle {
+        props["subtitle"] = json!(s);
+    }
+    if let Some(t) = trailing {
+        props["trailing"] = t;
+    }
+    node("ListItem", props)
+}
+
+fn people() -> Value {
+    node(
+        "EntityList",
+        json!({"items": [
+            entity("Ada Lovelace", Some("analyst"), Some(tag("admin"))),
+            entity("Grace Hopper", Some("rear admiral, compiler pioneer"), Some(tag("owner"))),
+            entity("Linus", None, None),
+        ]}),
+    )
+}
+
+#[test]
+fn an_entity_list_is_columns_of_title_subtitle_and_trailing() {
+    let it = doc(people());
+    assert_eq!(
+        lines(&it, 80),
+        [
+            "Ada Lovelace  analyst                         [admin]",
+            "Grace Hopper  rear admiral, compiler pioneer  [owner]",
+            "Linus",
+        ]
+    );
+    let rendered = render_item(&it, 80, &Options::default());
+    let span = |line: usize, text: &str| {
+        rendered[line]
+            .spans
+            .iter()
+            .find(|s| s.content.contains(text))
+            .unwrap()
+            .style
+    };
+    assert!(span(0, "Ada").add_modifier.contains(Modifier::BOLD));
+    assert_eq!(span(0, "analyst").fg, Some(pal().muted));
+}
+
+#[test]
+fn a_long_subtitle_is_cut_before_the_list_stacks() {
+    let it = doc(people());
+    let out = lines(&it, 40);
+    assert_eq!(out.len(), 3, "{out:?}");
+    assert_eq!(out[1], "Grace Hopper  rear admiral, co…  [owner]");
+}
+
+#[test]
+fn a_narrow_entity_list_puts_the_subtitle_under_the_title() {
+    let it = doc(people());
+    assert_eq!(
+        lines(&it, 24),
+        [
+            "Ada Lovelace  [admin]",
+            "  analyst",
+            "Grace Hopper  [owner]",
+            "  rear admiral, compiler",
+            "  pioneer",
+            "Linus",
+        ]
+    );
+}
+
+#[test]
+fn entity_values_are_aligned_right_and_may_be_numbers() {
+    let it = doc(node(
+        "EntityList",
+        json!({"items": [
+            entity("api", Some("12 pods"), Some(json!(1204))),
+            entity("web", None, Some(json!("37"))),
+            entity("db", Some("primary"), Some(json!(5))),
+        ]}),
+    ));
+    assert_eq!(
+        lines(&it, 80),
+        [
+            "api  12 pods  1204",
+            "web             37",
+            "db   primary     5"
+        ]
+    );
+}
+
+#[test]
+fn entity_lists_fit_at_every_width() {
+    assert_fits(&doc(people()), &Options::default());
+    assert_fits(&doc(card("People", vec![people()])), &Options::default());
 }
 
 // ---- focus targets ----

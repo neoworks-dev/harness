@@ -52,6 +52,24 @@ Lay a dashboard out the way a page is, not as one long column:
 - Several small cards beat one tall one. Cut long tables to the rows that matter (top 5–8,
   then "other").
 
+## Picking components
+
+- End a reply with \`FollowUpBlock\` when there are obvious next questions: two to four short
+  ones. Choosing one sends its text to you as the user's next message.
+- Use \`EntityList\` with \`ListItem\`s for things that have a name, a detail and a status or
+  value (people, files, services, tickets). Prefer it to a Table with one real column.
+- Use \`OptionCards\` instead of RadioGroup when the user picks one of two to five options that
+  each need a sentence of explanation (plans, strategies, environments).
+- Use \`CheckBoxGroup\` to pick any number from a list (its value is the list of checked
+  names) and \`SwitchGroup\` for a few settings that are on or off (its value is an object).
+  Several single CheckBoxes or Switches are fine for one or two; use a group beyond that.
+- Use \`MetricIndicator\` for a number with its change inline in a card, list or table cell
+  (\`MetricIndicator("$1.2M", "8%", "up")\`); use \`Metric\` for the headline numbers of a page.
+- Use \`Carousel\` for more cards than fit side by side (five or more options or items, each
+  small); the user scrolls through them. For two to four cards a \`Grid\` is better.
+- Use \`ImageGallery\` for several pictures of one thing (photos, screenshots, a before and
+  after); \`Image\` for a single one.
+
 ## Forms and buttons
 
 - A form answers you with \`@ToAssistant("message", context?)\`: when the user presses the

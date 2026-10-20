@@ -813,18 +813,35 @@ impl<'a> Cx<'a> {
         &mut self,
         images: &ImageOptions,
         src: &str,
-        (iw, ih): (u32, u32),
+        size: (u32, u32),
         name: &str,
         w: usize,
     ) -> Lines {
         let max_cols = u16::try_from(w).unwrap_or(u16::MAX);
-        let (cols, rows) = image_cells(iw, ih, images.cell, max_cols, images.max_rows);
-        self.rooms.push((cols, rows, src.to_string()));
-        let mut out = vec![Line::from(Span::raw(SLOT_MARK))];
-        out.resize(usize::from(rows), Line::default());
-        let caption = format!("{name} · {iw}×{ih}");
+        let (mut out, _) = self.reserve(images, src, size, max_cols, images.max_rows);
+        let caption = format!("{name} · {}×{}", size.0, size.1);
         out.extend(wrap(&[Span::styled(caption, self.p.muted_style())], w));
         out
+    }
+
+    /// Room for a picture of `size` pixels in at most `max_cols` x `max_rows` cells: the marked
+    /// first line and the empty lines under it, and the cells taken. Measuring (a quiet draw)
+    /// reserves nothing, since its lines are thrown away.
+    pub(crate) fn reserve(
+        &mut self,
+        images: &ImageOptions,
+        src: &str,
+        (iw, ih): (u32, u32),
+        max_cols: u16,
+        max_rows: u16,
+    ) -> (Lines, (u16, u16)) {
+        let (cols, rows) = image_cells(iw, ih, images.cell, max_cols, max_rows);
+        if !self.ui.drawing_to_measure() {
+            self.rooms.push((cols, rows, src.to_string()));
+        }
+        let mut out = vec![Line::from(Span::raw(SLOT_MARK))];
+        out.resize(usize::from(rows), Line::default());
+        (out, (cols, rows))
     }
 
     fn file(&self, v: &pb::FileComponent, w: usize) -> Lines {
@@ -1037,7 +1054,7 @@ pub(crate) fn card_inner(w: usize) -> usize {
 }
 
 /// The last part of a path (the whole of anything else).
-fn file_name(src: &str) -> String {
+pub(crate) fn file_name(src: &str) -> String {
     match src.rsplit_once('/') {
         Some((_, name)) if !name.is_empty() && !src.contains("://") => one_line(name),
         _ => one_line(src),

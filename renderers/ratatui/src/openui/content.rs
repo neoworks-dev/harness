@@ -6,9 +6,18 @@ use ratatui::text::{Line, Span};
 use serde_json::Value;
 use suite_protocol as pb;
 
+use super::layout::columns;
 use super::{N, join, scalar};
-use crate::render::{Cx, Lines, fit_columns, link, prefixed, tint};
+use crate::render::{Cx, Lines, file_name, fit_columns, link, prefixed, tint};
 use crate::text::{clean, line_width, push_text, sline, truncate, truncate_spans, width, wrap};
+use crate::{ImageStatus, Options};
+
+/// A row of an `EntityList`.
+struct Entity {
+    title: String,
+    subtitle: Option<String>,
+    trailing: Vec<Span<'static>>,
+}
 
 impl<'a> Cx<'a> {
     fn ui_blocks(&self, n: N<'_>) -> Option<Vec<pb::Block>> {
@@ -259,6 +268,95 @@ impl<'a> Cx<'a> {
         out
     }
 
+    /// A value or a node as the spans of a trailing cell.
+    fn trailing_spans(&mut self, v: &Value, path: &str) -> Vec<Span<'static>> {
+        match N::new(v) {
+            Some(node) => self.inline_spans(node, path),
+            None => match scalar(v) {
+                t if t.is_empty() => Vec::new(),
+                t => vec![Span::raw(t)],
+            },
+        }
+    }
+
+    /// Rows of a bold title, a muted subtitle and a trailing value or tag, in columns:
+    /// `Ada Lovelace  analyst        [admin]`. When the columns do not fit, the subtitle goes
+    /// under its title.
+    pub(super) fn ui_entity_list(&mut self, n: N<'_>, path: &str, w: usize) -> Lines {
+        let mut rows: Vec<Entity> = Vec::new();
+        for (i, item) in n.nodes("items").into_iter().enumerate() {
+            let trailing = match item.prop("trailing") {
+                Some(v) => self.trailing_spans(v, &join(path, &format!("items.{i}.trailing"))),
+                None => Vec::new(),
+            };
+            rows.push(Entity {
+                title: item.line("title").unwrap_or_default(),
+                subtitle: item.line("subtitle"),
+                trailing,
+            });
+        }
+        let title_w = rows.iter().map(|r| width(&r.title)).max().unwrap_or(0);
+        let sub_w = rows
+            .iter()
+            .filter_map(|r| r.subtitle.as_deref())
+            .map(width)
+            .max()
+            .unwrap_or(0);
+        let tail_w = rows
+            .iter()
+            .map(|r| line_width(&r.trailing))
+            .max()
+            .unwrap_or(0);
+        // The trailing column with the gap before it.
+        let tail = if tail_w > 0 { tail_w + 2 } else { 0 };
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        let muted = self.p.muted_style();
+        let gap = if sub_w > 0 { 2 } else { 0 };
+        let sub_room = w.saturating_sub(title_w + gap + tail);
+        let columns = title_w + tail <= w && (sub_w == 0 || sub_room >= sub_w.min(12));
+        let mut out: Lines = Vec::new();
+        for row in rows {
+            let right = |trailing: Vec<Span<'static>>| {
+                let mut spans = vec![Span::raw(" ".repeat(tail_w - line_width(&trailing)))];
+                spans.extend(trailing);
+                spans
+            };
+            if columns {
+                let sub = row.subtitle.as_deref().map(|s| truncate(s, sub_room));
+                let sub_col = sub_w.min(sub_room);
+                let mut spans = vec![Span::styled(row.title.clone(), bold)];
+                spans.push(Span::raw(" ".repeat(title_w - width(&row.title))));
+                if sub_w > 0 {
+                    let used = sub.as_deref().map_or(0, width);
+                    spans.push(Span::raw("  "));
+                    spans.push(Span::styled(sub.unwrap_or_default(), muted));
+                    spans.push(Span::raw(" ".repeat(sub_col - used)));
+                }
+                if tail_w > 0 {
+                    spans.push(Span::raw("  "));
+                    spans.extend(right(row.trailing));
+                }
+                out.push(Line::from(spans));
+                continue;
+            }
+            // Stacked: the title and the trailing value on one line, the subtitle under.
+            let head_w = w.min(title_w + tail);
+            let title = truncate(&row.title, head_w.saturating_sub(tail).max(1));
+            let pad = head_w.saturating_sub(width(&title) + tail);
+            let mut spans = vec![Span::styled(title, bold), Span::raw(" ".repeat(pad))];
+            if tail_w > 0 && head_w >= tail {
+                spans.push(Span::raw("  "));
+                spans.extend(right(row.trailing));
+            }
+            out.push(Line::from(spans));
+            if let Some(sub) = row.subtitle {
+                let body = wrap(&[Span::styled(sub, muted)], w.saturating_sub(2).max(1));
+                out.extend(prefixed(body, vec![Span::raw("  ")], vec![Span::raw("  ")]));
+            }
+        }
+        out
+    }
+
     pub(super) fn ui_key_value(&mut self, n: N<'_>, w: usize) -> Lines {
         let items = n
             .nodes("pairs")
@@ -287,6 +385,37 @@ impl<'a> Cx<'a> {
             spans.push(Span::styled(format!(" {delta}"), style));
         }
         (spans, n.line("label"))
+    }
+
+    /// `1,284 ▲ 12% vs last week`: the value bold, the change with its arrow in the tone's color
+    /// (up is success and down danger unless the node says otherwise), the note muted.
+    pub(super) fn ui_metric_indicator(&mut self, n: N<'_>, w: usize) -> Lines {
+        let (arrow, by_direction) = match n.str("direction") {
+            Some("up") => ("▲", Some(pb::Tone::Success)),
+            Some("down") => ("▼", Some(pb::Tone::Danger)),
+            _ => ("", None),
+        };
+        let change = match (arrow, n.line("delta")) {
+            ("", None) => None,
+            ("", Some(d)) => Some(d),
+            (a, None) => Some(a.to_string()),
+            (a, Some(d)) => Some(format!("{a} {d}")),
+        };
+        let mut spans = vec![Span::styled(
+            n.prop("value").map(scalar).unwrap_or_default(),
+            Style::new().add_modifier(Modifier::BOLD),
+        )];
+        if let Some(change) = change {
+            let style = match n.tone().or(by_direction) {
+                Some(t) => Style::new().fg(self.p.tone(t)),
+                None => self.p.muted_style(),
+            };
+            spans.push(Span::styled(format!(" {change}"), style));
+        }
+        if let Some(note) = n.line("subtext") {
+            spans.push(Span::styled(format!(" {note}"), self.p.muted_style()));
+        }
+        wrap(&spans, w)
     }
 
     /// The value in bold with the delta in the tone's color, the label muted under them.
@@ -410,6 +539,85 @@ impl<'a> Cx<'a> {
             height: None,
         };
         self.image(&c, w)
+    }
+
+    /// The first picture large with up to three small ones stacked beside it, under them the
+    /// large one's name and size. Pictures that are not loaded yet (or failed) keep the text
+    /// `Image` shows, under the rest. Without room for pictures, or with fewer than two to
+    /// show, it is just the images one after the other.
+    pub(super) fn ui_gallery(&mut self, n: N<'_>, w: usize) -> Lines {
+        let images = n.nodes("images");
+        let o: &Options = self.o;
+        let Some(options) = o.images.as_ref() else {
+            return self.gallery_stack(&images, w);
+        };
+        // (node index, src, name, size) of the pictures that can be drawn.
+        let mut ready: Vec<(usize, String, String, (u32, u32))> = Vec::new();
+        for (i, image) in images.iter().enumerate() {
+            let src = image.str("src").unwrap_or("").to_string();
+            if let Some(ImageStatus::Ready { width, height }) = options.status.get(&src) {
+                let name = image.line("alt").unwrap_or_else(|| file_name(&src));
+                ready.push((i, src, name, (*width, *height)));
+            }
+        }
+        if ready.len() < 2 {
+            return self.gallery_stack(&images, w);
+        }
+        let side = w.saturating_sub(w * 3 / 5 + 2);
+        let wide = w >= 36 && side >= 8;
+        let big_cols = if wide { w * 3 / 5 } else { w };
+        let to_u16 = |v: usize| u16::try_from(v).unwrap_or(u16::MAX);
+        let (big, name, size) = (&ready[0].1, &ready[0].2, ready[0].3);
+        let (big_lines, (cols, rows)) =
+            self.reserve(options, big, size, to_u16(big_cols), options.max_rows);
+        let hidden;
+        let mut out: Lines = if wide {
+            let side_w = w - usize::from(cols) - 2;
+            let thumbs = (ready.len() - 1)
+                .min(3)
+                .min((usize::from(rows) + 1) / 3)
+                .max(1);
+            hidden = ready.len() - 1 - thumbs;
+            // Each small picture is at most half as tall as the large one.
+            let each = to_u16(((usize::from(rows) + 1) / thumbs - 1).min(usize::from(rows) / 2));
+            let mut column: Lines = Vec::new();
+            for (t, (_, src, _, size)) in ready[1..=thumbs].iter().enumerate() {
+                if t > 0 {
+                    column.push(Line::default());
+                }
+                let (lines, _) = self.reserve(options, src, *size, to_u16(side_w), each.max(1));
+                column.extend(lines);
+            }
+            columns(
+                vec![(big_lines, usize::from(cols)), (column, side_w)],
+                &[2],
+                "start",
+            )
+        } else {
+            hidden = ready.len() - 1;
+            big_lines
+        };
+        let mut caption = format!("{name} · {}×{}", size.0, size.1);
+        if hidden > 0 {
+            caption.push_str(&format!("  +{hidden} more"));
+        }
+        out.extend(wrap(&[Span::styled(caption, self.p.muted_style())], w));
+        // The pictures that are still on their way, or failed, say so.
+        for (i, image) in images.iter().enumerate() {
+            if !ready.iter().any(|r| r.0 == i) {
+                out.extend(self.ui_image(*image, w));
+            }
+        }
+        out
+    }
+
+    /// Every image of a gallery in turn.
+    fn gallery_stack(&mut self, images: &[N<'_>], w: usize) -> Lines {
+        let mut out = Lines::new();
+        for image in images {
+            out.extend(self.ui_image(*image, w));
+        }
+        out
     }
 
     pub(super) fn ui_link(&mut self, n: N<'_>, w: usize) -> Lines {

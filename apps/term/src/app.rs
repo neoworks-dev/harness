@@ -1210,10 +1210,14 @@ impl App {
                         UiKind::Select { .. } => "enter opens · ←/→ choose",
                         UiKind::Radio { .. } => "←/→ choose",
                         UiKind::CheckBox | UiKind::Switch => "space toggles",
+                        UiKind::CheckBoxGroup { .. } | UiKind::SwitchGroup { .. } => {
+                            "↑/↓ move · space toggles"
+                        }
                         UiKind::Slider { .. } => "←/→ adjust",
                         UiKind::Button { .. } => "enter presses",
                         UiKind::Tabs { .. } => "←/→ switch tab",
                         UiKind::Accordion => "enter opens / closes",
+                        UiKind::Carousel { .. } => "←/→ scroll",
                     }
                     .to_string(),
                 );

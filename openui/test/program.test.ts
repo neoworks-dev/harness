@@ -78,6 +78,47 @@ describe("evaluating", () => {
     expect(text?.props.text).toBe("large");
   });
 
+  test("list items take a value or a Tag as their trailing part", () => {
+    const p = program(
+      [
+        "root = EntityList([a, b])",
+        'a = ListItem("Ada", "analyst", Tag("admin", "accent"))',
+        'b = ListItem("Grace", null, 12)',
+      ].join("\n"),
+    );
+    const [a, b] = nodes(p.doc().root).filter((n) => n.component === "ListItem");
+    expect(a?.props).toEqual({
+      title: "Ada",
+      subtitle: "analyst",
+      trailing: { component: "Tag", props: { label: "admin", tone: "accent" } },
+    });
+    expect(b?.props).toEqual({ title: "Grace", trailing: 12 });
+    expect(p.doc().errors).toBeUndefined();
+  });
+
+  test("a gallery holds its images as Image nodes", () => {
+    const p = program('root = ImageGallery([Image("a.png", "A"), Image("b.png")])');
+    expect(p.doc().root).toEqual({
+      component: "ImageGallery",
+      props: {
+        images: [
+          { component: "Image", props: { src: "a.png", alt: "A" } },
+          { component: "Image", props: { src: "b.png" } },
+        ],
+      },
+    });
+    expect(p.doc().errors).toBeUndefined();
+  });
+
+  test("a metric indicator keeps its value, change, direction and note", () => {
+    const p = program('root = MetricIndicator(1284, "12%", "up", null, "vs last week")');
+    expect(p.doc().root).toEqual({
+      component: "MetricIndicator",
+      props: { value: 1284, delta: "12%", direction: "up", subtext: "vs last week" },
+    });
+    expect(p.doc().errors).toBeUndefined();
+  });
+
   test("Text and Callout carry the parsed markdown beside their text", () => {
     const p = program('root = Callout("**hi**", "danger")');
     expect(p.doc().root?.props).toEqual({
@@ -191,6 +232,68 @@ describe("inputs", () => {
     expect(byKey(p, "pick")?.props.value).toBeUndefined();
   });
 
+  test("option cards hold one of their options, like a radio group", async () => {
+    const p = program(
+      [
+        'root = Form("f", [plan], Buttons([go]))',
+        'plan = FormControl("Plan", OptionCards("plan", [OptionCard("free", "Free", "Up to 3 users"), OptionCard("pro", "Pro")], { required: true }))',
+        'go = Button("Go")',
+      ].join("\n"),
+    );
+    const cards = nodes(p.doc().root).find((n) => n.key === "plan");
+    expect(cards?.component).toBe("OptionCards");
+    expect(cards?.props.required).toBe(true);
+    expect(p.input("plan", "gold")).toBe(false);
+    expect((await p.press("go")).refused).toBe("invalid");
+    expect(p.input("plan", "pro")).toBe(true);
+    expect(byKey(p, "plan")?.props.value).toBe("pro");
+    expect((await p.press("go")).assistant[0]?.values).toEqual({ plan: "pro" });
+  });
+
+  test("a checkbox group holds the list of checked names, a switch group an object", async () => {
+    const p = program(
+      [
+        '$tags = ["b"]',
+        'root = Form("f", [tags, flags], Buttons([go]))',
+        'tags = CheckBoxGroup("tags", [CheckBoxItem("a", "Alpha", "First"), CheckBoxItem("b", "Beta"), CheckBoxItem("c", "Gamma")], { required: true }, $tags)',
+        'flags = SwitchGroup("flags", [SwitchItem("mail", "Mail", null, true), SwitchItem("sms", "SMS")])',
+        'go = Button("Go")',
+      ].join("\n"),
+    );
+    expect(byKey(p, "tags")?.props.value).toEqual(["b"]);
+    expect(byKey(p, "tags")?.props.required).toBe(true);
+    expect(byKey(p, "flags")?.props.value).toEqual({ mail: true, sms: false });
+    // The list keeps the items' order, whatever order it was sent in.
+    expect(p.input("tags", ["c", "a"])).toBe(true);
+    expect(byKey(p, "tags")?.props.value).toEqual(["a", "c"]);
+    expect(p.input("flags", { sms: true })).toBe(true);
+    expect(byKey(p, "flags")?.props.value).toEqual({ mail: true, sms: true });
+    // Names the group doesn't have, and values of the wrong kind, are refused.
+    expect(p.input("tags", ["zzz"])).toBe(false);
+    expect(p.input("tags", "a")).toBe(false);
+    expect(p.input("flags", { mail: "on" })).toBe(false);
+    expect(p.input("flags", { other: true })).toBe(false);
+    expect((await p.press("go")).assistant[0]?.values).toEqual({
+      tags: ["a", "c"],
+      flags: { mail: true, sms: true },
+    });
+  });
+
+  test("a required checkbox group needs one box checked", async () => {
+    const p = program(
+      [
+        'root = Form("f", [tags], Buttons([go]))',
+        'tags = CheckBoxGroup("tags", [CheckBoxItem("a", "Alpha")], { required: true })',
+        'go = Button("Go")',
+      ].join("\n"),
+    );
+    expect((await p.press("go")).refused).toBe("invalid");
+    expect(byKey(p, "tags")?.props.error).toBe("This field is required");
+    p.input("tags", ["a"]);
+    expect(byKey(p, "tags")?.props.error).toBeUndefined();
+    expect((await p.press("go")).refused).toBeUndefined();
+  });
+
   test("required fields are marked", () => {
     const p = program(source);
     expect(byKey(p, "pick")?.props.required).toBe(true);
@@ -246,6 +349,15 @@ describe("actions", () => {
     const p = program('root = Button("Tell me more")');
     expect((await p.press("root")).assistant).toEqual([
       { message: "Tell me more", label: "Tell me more" },
+    ]);
+  });
+
+  test("a follow-up suggestion is pressed like a button and sends its text", async () => {
+    const p = program('root = FollowUpBlock([FollowUpItem("Why?"), FollowUpItem("Show costs")])');
+    expect(keysOf(p)).toEqual(["root.items.0", "root.items.1"]);
+    expect(byKey(p, "root.items.1")?.props).toEqual({ text: "Show costs" });
+    expect((await p.press("root.items.1")).assistant).toEqual([
+      { message: "Show costs", label: "Show costs" },
     ]);
   });
 

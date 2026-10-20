@@ -66,7 +66,7 @@ fn pad_to(line: &mut Line<'static>, w: usize) {
 
 /// One row of items, each already drawn at its width, side by side. `valign` places items
 /// that are shorter than the tallest.
-fn columns(parts: Vec<(Lines, usize)>, gaps: &[usize], valign: &str) -> Lines {
+pub(super) fn columns(parts: Vec<(Lines, usize)>, gaps: &[usize], valign: &str) -> Lines {
     let height = parts.iter().map(|(l, _)| l.len()).max().unwrap_or(0);
     let mut cols: Vec<(Lines, usize)> = Vec::new();
     for (mut lines, w) in parts {
@@ -107,6 +107,7 @@ impl<'a> Cx<'a> {
             "Stack" => self.ui_stack(n, path, w),
             "Card" => self.ui_card_h(n, path, w, 0),
             "Grid" => self.ui_grid(n, path, w),
+            "Carousel" => self.ui_carousel(n, path, w),
             "Header" => self.ui_header(n, w),
             "Separator" => vec![sline("─".repeat(w), Style::new().fg(self.p.border))],
             "Tabs" => self.ui_tabs(n, path, w),
@@ -119,9 +120,12 @@ impl<'a> Cx<'a> {
             "List" => self.ui_list(n, path, w),
             "KeyValue" => self.ui_key_value(n, w),
             "Tag" => self.ui_tag(n, w),
+            "EntityList" => self.ui_entity_list(n, path, w),
             "Metric" => self.ui_metric(n, w),
+            "MetricIndicator" => self.ui_metric_indicator(n, w),
             "Progress" => self.ui_progress(n, w),
             "Image" => self.ui_image(n, w),
+            "ImageGallery" => self.ui_gallery(n, w),
             "Link" => self.ui_link(n, w),
             "BarChart" => self.ui_bar_chart(n, w),
             "LineChart" => self.ui_line_chart(n, false, w),
@@ -133,10 +137,22 @@ impl<'a> Cx<'a> {
             "Input" | "TextArea" | "DatePicker" => self.ui_text_field(n, w),
             "Select" => self.ui_select(n, w),
             "RadioGroup" => self.ui_radio(n, w),
+            "OptionCards" => self.ui_option_cards(n, w),
+            "CheckBoxGroup" => self.ui_toggle_group(n, w, false),
+            "SwitchGroup" => self.ui_toggle_group(n, w, true),
             "CheckBox" | "Switch" => self.ui_toggle(n, w),
             "Slider" => self.ui_slider(n, w),
             "Button" => self.ui_button_line(n, w),
             "Buttons" => self.ui_buttons(n, w),
+            "FollowUpBlock" => self.ui_follow_ups(n, w),
+            "FollowUpItem" => {
+                let (spans, focused) = self.follow_up_spans(n, w);
+                let mut line = Line::from(spans);
+                if focused {
+                    self.mark_focus(&mut line);
+                }
+                vec![line]
+            }
             other => vec![self.placeholder(
                 &format!("[unsupported: {}]", crate::text::one_line(other)),
                 w,
@@ -228,6 +244,11 @@ impl<'a> Cx<'a> {
         }
         let fit = (w + 1) / (GRID_MIN + 1);
         let cols = fit.max(1).min(max.unwrap_or(usize::MAX)).min(kids.len());
+        self.grid_cols(kids, cols, w)
+    }
+
+    /// `kids` in rows of `cols` cells (see [`Cx::grid_of`]).
+    fn grid_cols(&mut self, kids: &[Kid<'_>], cols: usize, w: usize) -> Lines {
         let room = w.saturating_sub(cols - 1);
         let widths: Vec<usize> = (0..cols)
             .map(|c| (room / cols + usize::from(c < room % cols)).max(1))
@@ -255,6 +276,80 @@ impl<'a> Cx<'a> {
         out
     }
 
+    /// The children side by side as many as fit (at most `visible`), from the first one the
+    /// state names; `‹ 2/5 ›` under them says where, and Left/Right scroll while it has focus.
+    fn ui_carousel(&mut self, n: N<'_>, path: &str, w: usize) -> Lines {
+        let kids = kids_of(n, "children", path);
+        let count = kids.len();
+        if count == 0 {
+            return Vec::new();
+        }
+        let max = n.num("visible").filter(|v| *v >= 1.0).map(|v| v as usize);
+        let cols = ((w + 1) / (GRID_MIN + 1))
+            .max(1)
+            .min(max.unwrap_or(usize::MAX))
+            .min(count);
+        let id = path_id(path);
+        let first = self
+            .ui_state()
+            .and_then(|s| s.slides.get(&id))
+            .copied()
+            .unwrap_or(0)
+            .min(count - 1);
+        let shown = &kids[first..(first + cols).min(count)];
+        let multiple = count > 1;
+        if multiple {
+            self.ui_target(
+                &id,
+                UiKind::Carousel { count },
+                format!("{}/{count}", first + 1),
+                Value::from(first),
+            );
+        }
+        let mut out = self.grid_cols(shown, cols, w);
+        if multiple {
+            let focused = self.ui_focused(&id);
+            let mut bar = self.carousel_bar(first, shown.len(), count, focused, w);
+            if focused {
+                self.mark_focus(&mut bar);
+            }
+            out.push(bar);
+        }
+        out
+    }
+
+    /// `‹ 2/5 ›`, or `‹ 2–3/5 ›` with several slides shown, centered; an arrow is lit when there
+    /// is more on that side. Reversed while the carousel has focus.
+    fn carousel_bar(
+        &self,
+        first: usize,
+        shown: usize,
+        count: usize,
+        focused: bool,
+        w: usize,
+    ) -> Line<'static> {
+        let at = if shown > 1 {
+            format!("{}–{}", first + 1, first + shown)
+        } else {
+            format!("{}", first + 1)
+        };
+        let lit = Style::new().fg(self.p.accent).add_modifier(Modifier::BOLD);
+        let arrow = |on: bool| if on { lit } else { self.p.muted_style() };
+        let middle = if focused {
+            lit.add_modifier(Modifier::REVERSED)
+        } else {
+            self.p.muted_style()
+        };
+        let text = format!(" {at}/{count} ");
+        let pad = w.saturating_sub(width(&text) + 2) / 2;
+        Line::from(vec![
+            Span::raw(" ".repeat(pad)),
+            Span::styled("‹", arrow(first > 0)),
+            Span::styled(text, middle),
+            Span::styled("›", arrow(first + shown < count)),
+        ])
+    }
+
     fn grid_cell(&mut self, k: &Kid<'_>, w: usize, height: usize) -> Lines {
         if k.0.name() == "Card" {
             self.ui_card_h(k.0, &k.1, w, height)
@@ -268,7 +363,7 @@ impl<'a> Cx<'a> {
     fn ui_min(&mut self, n: N<'_>, pref: usize) -> usize {
         let word = |s: &str| s.split_whitespace().map(width).max().unwrap_or(0);
         let min = match n.name() {
-            "Metric" | "Tag" | "Link" | "Button" => pref,
+            "Metric" | "MetricIndicator" | "Tag" | "Link" | "Button" | "FollowUpItem" => pref,
             "Header" => word(n.str("title").unwrap_or("")),
             "Text" | "Callout" => {
                 let blocks = n

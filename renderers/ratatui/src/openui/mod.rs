@@ -48,6 +48,11 @@ pub struct UiState {
     pub values: HashMap<String, Value>,
     /// The `Select` whose list is open (its key), and the highlighted option.
     pub select: Option<(String, usize)>,
+    /// The first slide shown of each `Carousel`, by the target's id. Absent: the first.
+    pub slides: HashMap<String, usize>,
+    /// The item a focused `CheckBoxGroup` or `SwitchGroup` has its cursor on, by key. Absent: the
+    /// first.
+    pub cursors: HashMap<String, usize>,
 }
 
 /// A text field's edit buffer.
@@ -76,6 +81,15 @@ pub enum UiKind {
     },
     CheckBox,
     Switch,
+    /// Checkboxes under one name; the value is the list of the checked items' values. Up/Down
+    /// move between the items, Space toggles one.
+    CheckBoxGroup {
+        items: Vec<UiOption>,
+    },
+    /// Switches under one name; the value is an object of item value to on/off.
+    SwitchGroup {
+        items: Vec<UiOption>,
+    },
     Slider {
         min: f64,
         max: f64,
@@ -92,6 +106,10 @@ pub enum UiKind {
     },
     /// One accordion item.
     Accordion,
+    /// A carousel of `count` slides: Left/Right scroll.
+    Carousel {
+        count: usize,
+    },
 }
 
 impl UiKind {
@@ -149,6 +167,13 @@ pub(crate) struct Run {
     pub(crate) targets: Vec<UiTarget>,
     marked: bool,
     pub(crate) focus_line: Option<usize>,
+}
+
+impl Run {
+    /// Drawing only to measure: the lines will be thrown away.
+    pub(crate) fn drawing_to_measure(&self) -> bool {
+        self.quiet > 0
+    }
 }
 
 /// A node of the doc: an object with `component`, optionally `key` and `partial`, and `props`.
@@ -403,19 +428,17 @@ fn docs_of_blocks<'a>(blocks: &'a [pb::Block], out: &mut Vec<&'a pb::UiDoc>) {
 fn scan(v: &Value, interactive: &mut bool, focusable: &mut bool) {
     match v {
         Value::Object(map) => {
-            if map.get("component").is_some_and(Value::is_string) {
+            if let Some(name) = map.get("component").and_then(Value::as_str) {
                 if map
                     .get("key")
                     .and_then(Value::as_str)
                     .is_some_and(|k| !k.is_empty())
                 {
-                    *interactive = true;
+                    // Suggestions are reached with Ctrl-P / Ctrl-N; they don't ask for the keyboard.
+                    *interactive |= name != "FollowUpItem";
                     *focusable = true;
                 }
-                if matches!(
-                    map.get("component").and_then(Value::as_str),
-                    Some("Tabs" | "Accordion")
-                ) {
+                if matches!(name, "Tabs" | "Accordion" | "Carousel") {
                     *focusable = true;
                 }
             }
