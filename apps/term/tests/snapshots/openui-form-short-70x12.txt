@@ -1,0 +1,12 @@
+▎   [                                          ]
+▎   Canary
+▎   ━━━━━━●─────────────────────── 10  (0–50)
+▎   ○ off Post to #deploys
+▎   [ ] I checked                                                    │
+▎                                                                    │
+▎   [ Deploy ]  [ Runbook ↗ ]  [ Copy id ⧉ ]                         │
+──────────────────────────────────────────────────────────────────────
+▎ Deploy · enter presses · tab next · esc input
+~/site · neo
+
+? ask before acting (shift+tab to cycle)

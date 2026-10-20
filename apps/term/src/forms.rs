@@ -38,10 +38,15 @@ pub struct Outcome {
     pub copy: Option<String>,
 }
 
+/// How long a value chosen here is held for the daemon to echo it.
+const HOLD_MS: i64 = 2000;
+
 #[derive(Debug, Default)]
 pub struct Forms {
     items: HashMap<String, HashMap<String, UiState>>,
     pending: Vec<Pending>,
+    /// When each held value (item, doc, key) was set.
+    held: HashMap<(String, String, String), i64>,
 }
 
 /// The text of a value as a field shows it.
@@ -208,15 +213,17 @@ impl Forms {
         self.focus_index(r, targets).map(|i| &targets[i])
     }
 
-    /// Gives up the focus: what was typed stays queued and goes out; values the daemon has not
-    /// echoed are dropped, the daemon's say again. Tabs and accordions keep their state.
+    /// Gives up the focus: what was typed stays queued and goes out, and is held like any
+    /// value chosen here until the daemon echoes it. Tabs and accordions keep their state.
     pub fn blur(&mut self, r: &str, now: i64) {
         if let Some(docs) = self.items.get_mut(r) {
-            for st in docs.values_mut() {
+            for (doc, st) in docs.iter_mut() {
                 st.focus = None;
-                st.edits.clear();
-                st.values.clear();
                 st.select = None;
+                for (key, edit) in std::mem::take(&mut st.edits) {
+                    st.values.insert(key.clone(), Value::String(edit.text));
+                    self.held.insert((r.to_string(), doc.clone(), key), now);
+                }
             }
         }
         for p in self.pending.iter_mut().filter(|p| p.item == r) {
@@ -229,7 +236,7 @@ impl Forms {
         let Some(t) = targets.get(to) else {
             return;
         };
-        let text = t.kind.is_text().then(|| text_of(&t.value));
+        let text = t.kind.is_text().then(|| text_of(&self.value_of(r, t)));
         let st = self.state(r, &t.doc);
         st.focus = Some(t.id.clone());
         if let Some(text) = text {
@@ -255,8 +262,9 @@ impl Forms {
         self.st(r, &t.doc)?.edits.get(&t.id)
     }
 
-    /// The daemon sent the item again: values it has caught up with are not ours any more, and a
-    /// focus on something that is gone moves to the first target. The text being typed stays.
+    /// The daemon sent the item again: values it has caught up with (or that it has had long
+    /// enough to) are not held here any more, and a focus on something that is gone moves to the
+    /// first target. The text being typed stays.
     pub fn refresh(&mut self, r: &str, targets: &[UiTarget], now: i64) {
         if !self.items.contains_key(r) {
             return;
@@ -270,10 +278,17 @@ impl Forms {
         }
         if let Some(docs) = self.items.get_mut(r) {
             for (doc, st) in docs.iter_mut() {
+                let held = &mut self.held;
                 st.values.retain(|key, v| {
-                    !targets
+                    let id = (r.to_string(), doc.clone(), key.clone());
+                    let echoed = targets
                         .iter()
-                        .any(|t| t.doc == *doc && t.id == *key && t.value == *v)
+                        .any(|t| t.doc == *doc && t.id == *key && same(&t.value, v));
+                    let old = held.get(&id).is_none_or(|at| now - at > HOLD_MS);
+                    if echoed || old {
+                        held.remove(&id);
+                    }
+                    !(echoed || old)
                 });
             }
         }
@@ -332,6 +347,8 @@ impl Forms {
         self.state(r, &t.doc)
             .values
             .insert(t.id.clone(), value.clone());
+        self.held
+            .insert((r.to_string(), t.doc.clone(), t.id.clone()), now);
         self.schedule(r, t, value, now);
     }
 

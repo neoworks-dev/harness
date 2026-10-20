@@ -5,6 +5,7 @@ use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyEventState, KeyModifiers};
 use serde_json::{Value, json};
 use suite_protocol::{ViewItem, ViewOp, ViewPatch, ViewSnapshot};
+use suite_renderer_ratatui::{UiKind, UiTarget};
 
 use super::*;
 
@@ -358,11 +359,11 @@ fn enter_opens_a_select_and_chooses_from_its_list() {
     assert!(text(&mut app).contains("[ Worker"));
     press(&mut app, key(KeyCode::Esc));
     assert!(!app.prompt.engaged);
-    // Left and right pick without opening it (the daemon's value is the one shown again).
+    // Left and right pick without opening it (the choice is held until the daemon echoes it).
     press(&mut app, ctrl('p'));
     assert!(app.prompt.engaged);
     assert_eq!(
-        press(&mut app, key(KeyCode::Right)),
+        press(&mut app, key(KeyCode::Left)),
         [input("0", "service", json!("web"))]
     );
 }
@@ -570,5 +571,101 @@ fn the_form_is_drawn_into_the_chat_on_a_wide_screen() {
     assert!(
         screen.contains("▎ Email · type · enter submits · tab next · esc input"),
         "{screen}"
+    );
+}
+
+fn target(id: &str, kind: UiKind, value: Value) -> UiTarget {
+    UiTarget {
+        doc: "0".into(),
+        id: id.into(),
+        kind,
+        label: id.into(),
+        value,
+        form: None,
+    }
+}
+
+#[test]
+fn a_value_the_daemon_has_echoed_is_not_held_here_any_more() {
+    let mut forms = Forms::default();
+    let off = [target("n", UiKind::Switch, json!(false))];
+    forms.enter("r", &off, 0);
+    forms.key("r", &off, ch(' '), 0);
+    assert_eq!(forms.doc_states("r")["0"].values["n"], json!(true));
+    // Not echoed yet, or something else: held.
+    forms.refresh("r", &off, 10);
+    assert_eq!(forms.doc_states("r")["0"].values["n"], json!(true));
+    let on = [target("n", UiKind::Switch, json!(true))];
+    forms.refresh("r", &on, 20);
+    assert!(forms.doc_states("r")["0"].values.is_empty());
+    // A slider at 10 is 10.0 to the daemon.
+    let slider = |v: Value| {
+        target(
+            "s",
+            UiKind::Slider {
+                min: 0.0,
+                max: 50.0,
+                step: 5.0,
+            },
+            v,
+        )
+    };
+    let mut forms = Forms::default();
+    let both = [slider(json!(5))];
+    forms.enter("r", &both, 0);
+    forms.key("r", &both, key(KeyCode::Right), 0);
+    forms.refresh("r", &[slider(json!(10.0))], 5);
+    assert!(forms.doc_states("r")["0"].values.is_empty());
+}
+
+#[test]
+fn focus_moves_on_when_the_daemon_takes_the_focused_field_away() {
+    let mut app = with_form();
+    tabs(&mut app, 1);
+    assert_eq!(focused(&app).as_deref(), Some("email"));
+    // The form comes back without the email field.
+    let mut gone = form_item("f1", false, "");
+    if let suite_protocol::Component::TextComponent(t) = &mut gone.component
+        && let suite_protocol::Block::OpenUiBlock(b) = &mut t.blocks[1]
+        && let Some(root) = b.ui.root.as_mut()
+        && let Some(children) = root.props.get_mut("children").and_then(Value::as_array_mut)
+    {
+        children.remove(1);
+    }
+    patch(&mut app, gone);
+    assert_eq!(focused(&app).as_deref(), Some("service"));
+}
+
+fn snapshot(name: &str, actual: &str) {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/snapshots")
+        .join(format!("{name}.txt"));
+    if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
+        std::fs::write(&path, format!("{actual}\n")).unwrap();
+        return;
+    }
+    let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| {
+        panic!("missing snapshot {name} (UPDATE_SNAPSHOTS=1 to write)\n{actual}")
+    });
+    assert_eq!(actual, expected.trim_end_matches('\n'), "snapshot {name}");
+}
+
+#[test]
+fn screens() {
+    let mut app = with_form();
+    snapshot("openui-form-70x30", &screen(&mut app, 70, 30).join("\n"));
+    tabs(&mut app, 1);
+    typed(&mut app, "ops@x.io");
+    press(&mut app, key(KeyCode::Tab));
+    press(&mut app, key(KeyCode::Right));
+    snapshot(
+        "openui-form-typed-70x30",
+        &screen(&mut app, 70, 30).join("\n"),
+    );
+    // A pane too short for the form shows the focused field.
+    tabs(&mut app, 5);
+    snapshot(
+        "openui-form-short-70x12",
+        &screen(&mut app, 70, 12).join("\n"),
     );
 }
