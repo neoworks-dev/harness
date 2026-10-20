@@ -6,11 +6,11 @@ import {
   type AppComponents,
   appLibrary,
   type AppLibrary,
+  callNames,
   checkComponents,
 } from "@suite/openui/components";
 import type { AppPresence, ConnectorInfo, ConnectorKind, McpEndpoint } from "@suite/protocol/types";
 import type { Logger } from "../log.ts";
-import { BadRequestError } from "../sessions.ts";
 import type { SessionStore, StoredConnector, StoredTool } from "../store.ts";
 import type { ConnectUpstream, Upstream } from "./upstream.ts";
 
@@ -80,18 +80,19 @@ export class ConnectorRegistry {
    * Registers, updates or (open: false) unregisters a connector. Resolves once its tools are
    * listed, or listing failed (then the connector is open with an error).
    */
-  async presence(owner: object, presence: AppPresence): Promise<void> {
-    const { app } = presence;
+  async presence(owner: object, sent: AppPresence): Promise<void> {
+    const { app } = sent;
     const existing = this.live.get(app);
-    if (!presence.open) {
+    if (!sent.open) {
       if (existing?.owner === owner) await this.drop(app, existing);
       return;
     }
-    if (presence.components !== undefined) {
-      const problems = checkComponents(app, presence.components, this.componentsOf());
-      if (problems.length > 0) {
-        throw new BadRequestError(`${app}: can't register its components: ${problems.join("; ")}`);
-      }
+    // A component that can't be used is left out; the app and its other components register.
+    let presence = sent;
+    if (sent.components !== undefined) {
+      const { usable, problems } = checkComponents(sent.components);
+      for (const problem of problems) this.log.warn(`${app}: ${problem}`);
+      presence = { ...sent, components: usable };
     }
     this.remember(presence);
     if (existing?.owner === owner && sameEndpoint(existing.presence.mcp, presence.mcp)) {
@@ -145,18 +146,26 @@ export class ConnectorRegistry {
   }
 
   /**
-   * The OpenUI components of the apps we know, by app: those of closed apps too, so docs that use
-   * them still draw. With `open`, only the connected ones, the ones to tell an agent about.
+   * The OpenUI components of the apps we know, by app, in the order the apps first registered (an
+   * earlier app keeps a plain name a later one also uses, `appLibrary`): those of closed apps too,
+   * so docs that use them still draw.
    */
-  componentsOf(open = false): AppComponents {
+  componentsOf(): AppComponents {
     const out: AppComponents = {};
-    for (const [app, connector] of this.stored) {
-      if (open && !this.live.has(app)) continue;
+    const known = [...this.stored.values()].sort(
+      (a, b) => (a.registered ?? 0) - (b.registered ?? 0) || a.app.localeCompare(b.app),
+    );
+    for (const connector of known) {
       if (connector.components && Object.keys(connector.components).length > 0) {
-        out[app] = connector.components;
+        out[connector.app] = connector.components;
       }
     }
     return out;
+  }
+
+  /** The apps that are connected now, the ones whose components an agent is told about. */
+  openApps(): Set<string> {
+    return new Set(this.live.keys());
   }
 
   /** The suite library with every known app's components (see `componentsOf`). */
@@ -217,7 +226,7 @@ export class ConnectorRegistry {
       if (!open) continue;
       const { app, kind, v, tools, instructions } = connector;
       const snapshot: ConnectorSnapshot = { app, kind, v, tools: tools.map((t) => t.name) };
-      const components = Object.keys(connector.components ?? {});
+      const components = callNames(this.library())[app] ?? [];
       if (components.length > 0) snapshot.components = components;
       const described = this.live.get(app)?.presence.description;
       if (described !== undefined && described !== "") snapshot.description = described;
@@ -266,6 +275,7 @@ export class ConnectorRegistry {
       v: 0,
       schemaHash: "",
       tools: [],
+      registered: Date.now(),
     };
     record.kind = presence.kind;
     if (presence.title !== undefined) record.title = presence.title;

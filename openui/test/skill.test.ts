@@ -1,17 +1,16 @@
 import { expect, test } from "bun:test";
-import { type AppComponents } from "../src/components.ts";
+import type { AppComponent } from "@suite/protocol/types";
+import { appLibrary, type AppComponents } from "../src/components.ts";
 import { library } from "../src/library.ts";
 import { appComponentsText, skillText, uiLibraryText } from "../src/skill.ts";
 
-const apps: AppComponents = {
-  "photo-editor": {
-    BrightnessCard: {
-      description: "An image with a brightness slider and live preview. ",
-      params: { asset: "string", name: "string?" },
-      openui: "root = Card([])",
-    },
-  },
+const BRIGHTNESS: AppComponent = {
+  description: "An image with a brightness slider and live preview. ",
+  params: { asset: "string", name: "string?" },
+  openui: "root = Card([])",
 };
+
+const apps: AppComponents = { "photo-editor": { BrightnessCard: BRIGHTNESS } };
 
 test("the text lists every component of the library with its arguments in order, as the library is now", () => {
   const text = skillText();
@@ -38,12 +37,21 @@ test("it says when to use UI, how to lay it out and what a Box and a Shape are f
 });
 
 test("the components of connected apps follow, each with its signature and what it is for", () => {
-  expect(appComponentsText(apps)).toBe(
+  const lib = appLibrary(apps);
+  const open = new Set(["photo-editor"]);
+  expect(appComponentsText(lib, open)).toBe(
     "## photo-editor\nBrightnessCard(asset: string, name?: string) — An image with a brightness slider and live preview.",
   );
-  const text = uiLibraryText(apps);
+  const text = uiLibraryText(lib, open);
   expect(text.startsWith(skillText())).toBe(true);
   expect(text.endsWith("preview.\n")).toBe(true);
   expect(text).toContain("# App components");
-  expect(uiLibraryText({})).toContain("No connected app adds components right now.");
+  expect(uiLibraryText(lib, new Set())).toContain("No connected app adds components right now.");
+});
+
+test("a component whose plain name is taken is listed by its qualified name", () => {
+  const lib = appLibrary({ ...apps, notes: { BrightnessCard: BRIGHTNESS } });
+  expect(appComponentsText(lib, new Set(["notes"]))).toStartWith(
+    "## notes\nNotesBrightnessCard(asset: string, name?: string)",
+  );
 });

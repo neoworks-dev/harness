@@ -686,7 +686,7 @@ describe("ui_library", () => {
     const result = await gateway.call("ui_library", {});
     expect(result.isError).toBeUndefined();
     const text = resultText(result);
-    expect(text).toBe(uiLibraryText(registry.componentsOf(true)));
+    expect(text).toBe(uiLibraryText(registry.library(), registry.openApps()));
     // The language and every component of the library as it is now: nothing to regenerate.
     for (const { signature } of Object.values(library.toSpec().components)) {
       expect(text).toContain(signature);
@@ -745,7 +745,10 @@ describe("ui_library", () => {
       },
     );
     const second = setup(store);
-    expect([...second.registry.library().components.keys()]).toEqual(["BrightnessCard"]);
-    expect(Object.keys(second.registry.componentsOf(true))).toEqual([]);
+    expect([...second.registry.library().components.keys()]).toEqual([
+      "PhotoEditorBrightnessCard",
+      "BrightnessCard",
+    ]);
+    expect([...second.registry.openApps()]).toEqual([]);
   });
 });

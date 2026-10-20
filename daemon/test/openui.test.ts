@@ -525,34 +525,54 @@ describe("app components", () => {
     ]);
   });
 
-  test("the components stay known after the app closes, and a clash is refused at registration", async () => {
+  test("the components stay known after the app closes", async () => {
     const { daemon, session, owner } = await setup();
     await daemon.connectors.presence(owner, { app: "photo-editor", kind: "app", open: false });
     expect(daemon.connectors.isOpen("photo-editor")).toBe(false);
-    expect([...daemon.connectors.library().components.keys()]).toEqual(["BrightnessCard", "Chip"]);
-    expect(Object.keys(daemon.connectors.componentsOf(true))).toEqual([]);
+    expect([...daemon.connectors.library().components.keys()]).toEqual([
+      "PhotoEditorBrightnessCard",
+      "PhotoEditorChip",
+      "BrightnessCard",
+      "Chip",
+    ]);
+    expect([...daemon.connectors.openApps()]).toEqual([]);
     daemon.store.append(session, chunk(fence('root = Stack([Chip("new")])')));
     daemon.store.append(session, { type: "turn_ended", stopReason: "end_turn" });
     expect(doc(daemon, session)?.errors).toBeUndefined();
     expect(doc(daemon, session)?.root?.props.children).toMatchObject([
       { component: "Tag", props: { label: "new", tone: "accent" } },
     ]);
+  });
 
-    const mine = { description: "x", params: {}, openui: 'root = Text("x")' };
-    const refused = (components: Record<string, typeof mine>): Promise<unknown> =>
-      daemon.connectors.presence({}, { app: "notes", kind: "app", open: true, components });
-    expect(refused({ Card: mine })).rejects.toThrow("the library already has that name");
-    expect(refused({ BrightnessCard: mine })).rejects.toThrow(
-      "photo-editor already registered that name",
-    );
-    expect(refused({ "notes.Card": mine })).rejects.toThrow("PascalCase");
-    // A refused registration leaves nothing of the app behind.
-    expect(daemon.connectors.isOpen("notes")).toBe(false);
-    expect(daemon.connectors.connector("notes")).toBeUndefined();
+  test("a registration is never refused: a clash is called by its qualified name, a bad one left out", async () => {
+    const { daemon, session } = await setup();
+    const mine = { description: "x", params: {}, openui: 'root = Text("notes")' };
     await daemon.connectors.presence(
       {},
-      { app: "notes", kind: "app", open: true, components: { NoteCard: mine } },
+      {
+        app: "notes",
+        kind: "app",
+        open: true,
+        components: { Card: mine, BrightnessCard: mine, "notes.Bad": mine, NoteCard: mine },
+      },
     );
-    expect(Object.keys(daemon.connectors.componentsOf(true))).toEqual(["notes"]);
+    expect(daemon.connectors.isOpen("notes")).toBe(true);
+    expect(Object.keys(daemon.connectors.connector("notes")?.components ?? {})).toEqual([
+      "Card",
+      "BrightnessCard",
+      "NoteCard",
+    ]);
+    const snapshot = daemon.connectors.snapshot().find((c) => c.app === "notes");
+    expect(snapshot?.components).toEqual(["NotesCard", "NotesBrightnessCard", "NoteCard"]);
+    // The plain name still draws the photo editor's, which registered it first.
+    const calls =
+      'root = Stack([a, b])\na = BrightnessCard("asset://x")\nb = NotesBrightnessCard()';
+    daemon.store.append(session, chunk(fence(calls)));
+    daemon.store.append(session, { type: "turn_ended", stopReason: "end_turn" });
+    expect(doc(daemon, session)?.errors).toBeUndefined();
+    expect(doc(daemon, session)?.root?.props.children).toMatchObject([
+      { component: "Card" },
+      { component: "Text", props: { text: "notes" } },
+    ]);
   });
 });

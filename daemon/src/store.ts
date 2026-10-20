@@ -58,6 +58,8 @@ export interface StoredConnector {
   templates?: Record<string, unknown>;
   /** The OpenUI components it offers, by name. */
   components?: Record<string, AppComponent>;
+  /** When it first registered (ms): of two apps with a component of one name, the earlier keeps it. */
+  registered?: number;
 }
 
 export interface StoredTool {

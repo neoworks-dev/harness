@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 import type { AppComponent, Block, UiNode } from "@suite/protocol/types";
 import {
   appLibrary,
+  callNames,
   checkComponents,
   instanceProgram,
   paramList,
+  qualifiedName,
   type AppComponents,
 } from "../src/components.ts";
 import { Program, type CallTool, type ProgramEnv } from "../src/program.ts";
@@ -38,9 +40,24 @@ const ok = (name: string, component: Partial<AppComponent> = {}): Record<string,
 });
 
 describe("registering components", () => {
-  test("a component of a name, a description, typed params and a program is accepted", () => {
-    expect(checkComponents("photo-editor", apps["photo-editor"] ?? {}, {})).toEqual([]);
-    expect(checkComponents("notes", ok("NoteCard"), apps)).toEqual([]);
+  /** The names of the usable components and the problems of the others. */
+  const check = (components: Record<string, AppComponent>): [string[], string[]] => {
+    const { usable, problems } = checkComponents(components);
+    return [Object.keys(usable), problems];
+  };
+
+  test("a component of a name, a description, typed params and a program is usable", () => {
+    expect(check(apps["photo-editor"] ?? {})).toEqual([["BrightnessCard"], []]);
+    expect(check(ok("NoteCard"))).toEqual([["NoteCard"], []]);
+  });
+
+  test("one bad component is left out, the others stay", () => {
+    expect(check({ ...ok("NoteCard"), ...ok("bad") })).toEqual([
+      ["NoteCard"],
+      [
+        "component bad: a name is letters and digits starting with a capital (PascalCase), as lang-core reads it as a call",
+      ],
+    ]);
   });
 
   test("a name is a PascalCase identifier: lang-core reads app.Name as a subtraction and a member", () => {
@@ -52,26 +69,16 @@ describe("registering components", () => {
       "1Card",
       "",
     ]) {
-      expect(checkComponents("a", ok(name), {})[0]).toContain("PascalCase");
+      expect(check(ok(name))[1][0]).toContain("PascalCase");
     }
   });
 
-  test("a clash is an error: with the library, with the language, with another app", () => {
-    expect(checkComponents("a", ok("Card"), {})).toEqual([
-      "component Card: the library already has that name",
-    ]);
-    expect(checkComponents("a", ok("Box"), {})[0]).toContain("already has");
-    expect(checkComponents("a", ok("Query"), {})[0]).toContain("already has");
-    expect(checkComponents("a", ok("BrightnessCard"), apps)).toEqual([
-      "component BrightnessCard: photo-editor already registered that name",
-    ]);
-    // An app registering its own again is an update.
-    expect(checkComponents("photo-editor", ok("BrightnessCard"), apps)).toEqual([]);
+  test("a name the library, the language or another app has is no problem at registration", () => {
+    expect(check({ ...ok("Card"), ...ok("Query"), ...ok("BrightnessCard") })[1]).toEqual([]);
   });
 
   test("params are named, typed, and the optional ones come last", () => {
-    const bad = (params: Record<string, string>): string[] =>
-      checkComponents("a", ok("X", { params }), {});
+    const bad = (params: Record<string, string>): string[] => check(ok("X", { params }))[1];
     expect(bad({ Asset: "string" })[0]).toContain("camelCase");
     expect(bad({ asset: "image" })[0]).toContain("not string, number, boolean or any");
     expect(bad({ asset: "string[]?", n: "number" })).toEqual([
@@ -84,27 +91,59 @@ describe("registering components", () => {
   });
 
   test("the program has to parse, have a root and define what it uses", () => {
-    const why = (openui: string): string[] => checkComponents("a", ok("X", { openui }), {});
+    const why = (openui: string): string[] => check(ok("X", { openui }))[1];
     expect(why('root = Nope("x")')[0]).toContain("Unknown component");
     expect(why('title = Text("no root")')[0]).toContain("No root");
     expect(why('root = Card([Text("a"], "b")')[0]).toContain("defining");
     expect(why("root = Stack([missing])")[0]).toContain("without defining");
     // App components are made of the library, not of each other.
-    expect(
-      checkComponents("b", ok("Outer", { openui: 'root = NoteCard("x")' }), {
-        a: ok("NoteCard"),
-      })[0],
-    ).toContain("Unknown component");
-    expect(checkComponents("a", ok("X", { description: " " }), {})).toEqual([
+    expect(why('root = NoteCard("x")')[0]).toContain("Unknown component");
+    expect(check(ok("X", { description: " " }))[1]).toEqual([
       "component X: it needs a description for the agent",
     ]);
+  });
+});
+
+describe("names", () => {
+  test("the qualified name is the app in PascalCase, then the component's", () => {
+    expect(qualifiedName("photo-editor", "BrightnessCard")).toBe("PhotoEditorBrightnessCard");
+    expect(qualifiedName("terminal-2", "Chip")).toBe("Terminal2Chip");
+    expect(qualifiedName("notes", "Card")).toBe("NotesCard");
+  });
+
+  test("every component has its qualified name, and its plain one when nothing earlier has it", () => {
+    const lib = appLibrary({
+      first: ok("NoteCard"),
+      second: { ...ok("NoteCard"), ...ok("Card"), ...ok("Own") },
+    });
+    expect(
+      [...lib.components.entries()].map(([call, r]) => `${call} → ${r.app}.${r.name}`),
+    ).toEqual([
+      "FirstNoteCard → first.NoteCard",
+      "SecondNoteCard → second.NoteCard",
+      "SecondCard → second.Card",
+      "SecondOwn → second.Own",
+      "NoteCard → first.NoteCard",
+      "Own → second.Own",
+    ]);
+    // What the agent is told to call each by.
+    expect(callNames(lib)).toEqual({
+      first: ["NoteCard"],
+      second: ["SecondNoteCard", "SecondCard", "Own"],
+    });
+  });
+
+  test("the earlier app keeps the plain name whatever the app names are", () => {
+    const lib = appLibrary({ zebra: ok("NoteCard"), aardvark: ok("NoteCard") });
+    expect(lib.components.get("NoteCard")?.app).toBe("zebra");
+    expect(lib.components.get("AardvarkNoteCard")?.app).toBe("aardvark");
   });
 });
 
 describe("the library with app components", () => {
   test("lang-core checks the calls: params by position, a name an app registered, none other", () => {
     const lib = appLibrary(apps);
-    expect([...lib.components.keys()]).toEqual(["BrightnessCard"]);
+    expect([...lib.components.keys()]).toEqual(["PhotoEditorBrightnessCard", "BrightnessCard"]);
     expect(lib.components.get("BrightnessCard")).toMatchObject({
       app: "photo-editor",
       params: ["asset", "name"],
@@ -120,9 +159,9 @@ describe("the library with app components", () => {
     );
   });
 
-  test("a name the library grew into since is left out, not thrown", () => {
+  test("a name the library has is only the qualified one", () => {
     const lib = appLibrary({ a: ok("Card"), b: { ...ok("Mine"), ...ok("Theirs") } });
-    expect([...lib.components.keys()]).toEqual(["Mine", "Theirs"]);
+    expect([...lib.components.keys()]).toEqual(["ACard", "BMine", "BTheirs", "Mine", "Theirs"]);
   });
 
   test("the program of a use has its arguments as its last statement", () => {

@@ -232,7 +232,7 @@ export class Gateway {
         }
         return this.options.messages.send(session, guest, args as unknown as SendMessageArgs);
       case "ui_library":
-        return text(uiLibraryText(this.registry.componentsOf(true)));
+        return text(uiLibraryText(this.registry.library(), this.registry.openApps()));
       case "wait": {
         const names: unknown = args.for;
         if (

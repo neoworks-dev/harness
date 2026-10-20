@@ -3,7 +3,7 @@
 // the components the connected apps add. Generated from the library and the apps' registrations
 // when asked, so it never goes stale.
 import { generateSystemPrompt } from "@openuidev/lang-core";
-import { type AppComponents, paramList } from "./components.ts";
+import { type AppLibrary, paramList } from "./components.ts";
 import { library } from "./library.ts";
 
 const GUIDANCE = `# OpenUI
@@ -143,21 +143,25 @@ export function skillText(): string {
   return `${GUIDANCE}${reference}`;
 }
 
-/** The components of the apps, one list per app: `Name(arg: type, other?: type) — what it is`. */
-export function appComponentsText(apps: AppComponents): string {
-  const names = Object.keys(apps).sort();
-  if (names.length === 0) return "No connected app adds components right now.";
-  const parts = names.map((app) => {
-    const lines = Object.entries(apps[app] ?? {}).map(
-      ([name, component]) =>
-        `${name}(${paramList(component.params)}) — ${component.description.trim()}`,
-    );
-    return `## ${app}\n${lines.join("\n")}`;
-  });
-  return `${parts.join("\n\n")}`;
+/**
+ * The components of the `open` apps, one list per app, by the name to call them:
+ * `Name(arg: type, other?: type) — what it is`.
+ */
+export function appComponentsText(lib: AppLibrary, open: ReadonlySet<string>): string {
+  const byApp = new Map<string, string[]>();
+  for (const [call, { app, component }] of lib.components) {
+    if (!open.has(app) || call !== lib.components.get(call)?.call) continue;
+    const line = `${call}(${paramList(component.params)}) — ${component.description.trim()}`;
+    byApp.set(app, [...(byApp.get(app) ?? []), line]);
+  }
+  if (byApp.size === 0) return "No connected app adds components right now.";
+  return [...byApp.keys()]
+    .sort()
+    .map((app) => `## ${app}\n${(byApp.get(app) ?? []).join("\n")}`)
+    .join("\n\n");
 }
 
 /** What `ui_library` returns: the skill, then the components the connected apps add. */
-export function uiLibraryText(apps: AppComponents): string {
-  return `${skillText()}\n# App components\n\nCalled like the components above; each use has a state of its own.\n\n${appComponentsText(apps)}\n`;
+export function uiLibraryText(lib: AppLibrary, open: ReadonlySet<string>): string {
+  return `${skillText()}\n# App components\n\nCalled like the components above; each use has a state of its own.\n\n${appComponentsText(lib, open)}\n`;
 }

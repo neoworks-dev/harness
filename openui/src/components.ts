@@ -19,7 +19,12 @@ export type AppComponents = Record<string, Record<string, AppComponent>>;
 /** An app's component as the library has it. */
 export interface Registered {
   app: string;
+  /** The name the app registered it under. */
   name: string;
+  /** The name to call it by: `name` when the app has it, else `qualified`. */
+  call: string;
+  /** The app's name in PascalCase, then `name`: always this component's. */
+  qualified: string;
   component: AppComponent;
   /** The parameter names, in the order the arguments come. */
   params: string[];
@@ -34,7 +39,8 @@ export interface AppLibrary {
 
 /**
  * A component's name is an identifier lang-core reads as a call: lang-core takes `photo-editor.X`
- * for a subtraction and a member access, so the app is not part of the name.
+ * for a subtraction and a member access, so the app goes in front of the name instead
+ * (`PhotoEditorBrightnessCard`, see `qualifiedName`).
  */
 const NAME = /^[A-Z][A-Za-z0-9]*$/;
 const PARAM = /^[a-z][A-Za-z0-9]*$/;
@@ -81,23 +87,30 @@ export function instanceProgram(source: string, args: unknown): string {
   return `${source.replace(/\n+$/, "")}\nargs = ${JSON.stringify(args)}`;
 }
 
+/** `photo-editor` + `BrightnessCard` → `PhotoEditorBrightnessCard`: a component's own name. */
+export function qualifiedName(app: string, name: string): string {
+  const prefix = app
+    .split(/[^A-Za-z0-9]+/)
+    .filter((part) => part !== "")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
+  return `${prefix}${name}`;
+}
+
 /**
- * What is wrong with the components `app` registers, empty when nothing: a name that is not a
- * name, one the library, the language or another app (in `others`) already has, a param that is
- * not typed or follows an optional one, a program that does not parse.
+ * The components `app` registers that can be used, and what is wrong with the others: a name that
+ * is not a name, a param that is not typed or follows an optional one, a program that does not
+ * parse. One bad component never costs the app the rest. A name the library, the language or
+ * another app already has is fine: the component is then called by its qualified name.
  */
-export function checkComponents(
-  app: string,
-  components: Record<string, AppComponent>,
-  others: AppComponents,
-): string[] {
+export function checkComponents(components: Record<string, AppComponent>): {
+  usable: Record<string, AppComponent>;
+  problems: string[];
+} {
+  const usable: Record<string, AppComponent> = {};
   const problems: string[] = [];
-  const owners = new Map<string, string>();
-  for (const [other, theirs] of Object.entries(others)) {
-    if (other === app) continue;
-    for (const name of Object.keys(theirs)) owners.set(name, other);
-  }
   for (const [name, component] of Object.entries(components)) {
+    const before = problems.length;
     const wrong = (why: string): void => {
       problems.push(`component ${name}: ${why}`);
     };
@@ -105,10 +118,6 @@ export function checkComponents(
       wrong(
         "a name is letters and digits starting with a capital (PascalCase), as lang-core reads it as a call",
       );
-    } else if (name in suite.components || RESERVED.has(name)) {
-      wrong("the library already has that name");
-    } else if (owners.has(name)) {
-      wrong(`${owners.get(name)} already registered that name`);
     }
     if (component.description.trim() === "") wrong("it needs a description for the agent");
     let optional = false;
@@ -126,37 +135,71 @@ export function checkComponents(
     else if (parsed.meta.unresolved.length > 0) {
       wrong(`its program uses ${parsed.meta.unresolved.join(", ")} without defining it`);
     }
+    if (problems.length === before) usable[name] = component;
   }
-  return problems;
+  return { usable, problems };
 }
+
+const taken = (name: string): boolean => name in suite.components || RESERVED.has(name);
 
 /**
  * The suite library with these apps' components, each a call lang-core checks against its
- * params. A name that clashes with the library or an earlier component is left out: registration
- * refuses those, so this only meets one that the library grew into since.
+ * params, under its qualified name and, when nothing else has it, its plain one. `apps` comes in
+ * the order the apps first registered: an app keeps a plain name a later one also registers, so
+ * what a name draws never changes under an old reply.
  */
 export function appLibrary(apps: AppComponents): AppLibrary {
   const components = new Map<string, Registered>();
   const defined: DefinedComponent[] = [];
-  for (const app of Object.keys(apps).sort()) {
-    for (const [name, component] of Object.entries(apps[app] ?? {})) {
-      if (name in suite.components || components.has(name)) continue;
-      const shape = Object.fromEntries(
-        Object.entries(component.params).map(([param, spec]) => [param, paramType(spec)]),
-      );
-      defined.push(
-        defineComponent({
-          name,
-          props: z.object(shape),
-          description: component.description,
-          component: null,
-        }),
-      );
-      components.set(name, { app, name, component, params: Object.keys(component.params) });
+  const define = (call: string, registered: Registered): void => {
+    const { component } = registered;
+    const shape = Object.fromEntries(
+      Object.entries(component.params).map(([param, spec]) => [param, paramType(spec)]),
+    );
+    defined.push(
+      defineComponent({
+        name: call,
+        props: z.object(shape),
+        description: component.description,
+        component: null,
+      }),
+    );
+    components.set(call, registered);
+  };
+  // Qualified names first, so no plain name can take one.
+  const all: Registered[] = [];
+  for (const [app, theirs] of Object.entries(apps)) {
+    for (const [name, component] of Object.entries(theirs)) {
+      const qualified = qualifiedName(app, name);
+      if (taken(qualified) || components.has(qualified)) continue;
+      const registered: Registered = {
+        app,
+        name,
+        call: qualified,
+        qualified,
+        component,
+        params: Object.keys(component.params),
+      };
+      define(qualified, registered);
+      all.push(registered);
     }
+  }
+  for (const registered of all) {
+    if (taken(registered.name) || components.has(registered.name)) continue;
+    registered.call = registered.name;
+    define(registered.name, registered);
   }
   const library = createSuiteLibrary(defined);
   return { library, schema: library.toJSONSchema(), components };
+}
+
+/** Each app's components as the agent calls them, by app: `{ "photo-editor": ["BrightnessCard"] }`. */
+export function callNames(lib: AppLibrary): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const [call, registered] of lib.components) {
+    if (call === registered.call) (out[registered.app] ??= []).push(call);
+  }
+  return out;
 }
 
 /** The suite library alone. */
