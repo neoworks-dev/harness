@@ -60,6 +60,11 @@ Lay a dashboard out the way a page is, not as one long column:
   small); the user scrolls through them. For two to four cards a `Grid` is better.
 - Use `ImageGallery` for several pictures of one thing (photos, screenshots, a before and
   after); `Image` for a single one.
+- A card about one thing (a place, a product, a page, a person) starts with its `Image` when
+  you have one, which the app draws as the card's cover, and ends with what can be done with
+  it: `Buttons([Button("Website", @OpenUrl("https://…"), "secondary"), Button("Tell me
+  more", @ToAssistant("Tell me more about …"), "secondary")])`. A card of things to choose
+  between without buttons leaves the user nothing to press.
 
 ## Forms and buttons
 
