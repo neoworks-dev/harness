@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type {
   Block,
   SessionEvent,
@@ -328,4 +330,57 @@ describe("using a doc", () => {
       { tool: "notes.add", rawInput: { text: "bread" } },
     ]);
   });
+});
+
+describe("streaming a whole message", () => {
+  /** What a renderer does with the ops: set an item, replace a text item's tail of blocks. */
+  function replay(ops: ViewOp[][]): ViewItem[] {
+    const items: ViewItem[] = [];
+    for (const op of ops.flat()) {
+      if (op.op === "set") {
+        const at = items.findIndex((i) => i.ref === op.item.ref);
+        if (at === -1) items.push(structuredClone(op.item));
+        else items[at] = structuredClone(op.item);
+      } else if (op.op === "blocks") {
+        const item = items.find((i) => i.ref === op.ref);
+        if (item?.component.type === "text") {
+          item.component.blocks = [...item.component.blocks.slice(0, op.from), ...op.blocks];
+        }
+      }
+    }
+    return items;
+  }
+
+  for (const name of ["openui-chat", "openui-form", "openui-streaming"]) {
+    for (const size of [1, 3, 11]) {
+      test(`${name} in pieces of ${size} characters ends as it would arrive whole`, () => {
+        const fixture = JSON.parse(
+          readFileSync(join(import.meta.dir, "..", "..", "fixtures", name, "fixture.json"), "utf8"),
+        );
+        const text: string = fixture.events[0].text;
+        const pieces = text.match(new RegExp(`[\\s\\S]{1,${size}}`, "g")) ?? [];
+        const events: SessionEvent[] = [
+          ...pieces.map((piece): SessionEvent => chunk(piece, "m1")),
+          { type: "turn_ended", stopReason: "end_turn" },
+        ];
+        const { view: streamed, ops } = view(events);
+        const { view: whole } = view([
+          chunk(text, "m1"),
+          { type: "turn_ended", stopReason: "end_turn" },
+        ]);
+        expect(replay(ops)).toEqual(streamed.snapshot().items);
+        expect(streamed.snapshot().items).toEqual(whole.snapshot().items);
+      });
+    }
+  }
+});
+
+test("a message that starts finishes the one before it", () => {
+  const { view: v, ops } = view([
+    chunk('```openui\nroot = Header("a")\n', "m1"),
+    chunk("Next.", "m2"),
+  ]);
+  expect(ops[1]).toMatchObject([{ op: "blocks", ref: "m-m1", from: 0 }, { op: "set" }]);
+  const first = v.snapshot().items[0];
+  expect(docs(blocksOf(first))[0]?.streaming).toBeUndefined();
 });

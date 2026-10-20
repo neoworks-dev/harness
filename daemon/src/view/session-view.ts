@@ -554,6 +554,9 @@ export class SessionView {
     agent: string | undefined,
   ): ViewOp[] {
     const existing = this.streams.get(ref);
+    // A message that starts means the one before it is complete.
+    const finished: ViewOp[] = [];
+    if (!existing && kind === "agent") finished.push(...this.finishStreams());
     const stream: Stream = existing ?? { ref, kind, raw: "", blocks: [], ended: false };
     stream.raw += chunk;
     const blocks = this.blocksOf(stream);
@@ -564,7 +567,7 @@ export class SessionView {
       const component = kind === "thought" ? text(blocks, { tone: "muted" }) : text(blocks);
       const item: ViewItem = { ref, kind, component };
       if (agent !== undefined) item.label = agent;
-      return [{ op: "set", item }];
+      return [...finished, { op: "set", item }];
     }
     return [{ op: "blocks", ref, path: [], from, blocks: blocks.slice(from) }];
   }

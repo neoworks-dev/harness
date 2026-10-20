@@ -51,8 +51,14 @@ export class OpenUiDocs {
       program.onChange = () => this.changed(ref);
       this.programs.set(id, program);
     }
-    program.set(source, streaming);
-    return program.doc();
+    // The view must survive whatever a program does to the evaluator.
+    try {
+      program.set(source, streaming);
+      return program.doc();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { id: doc, errors: [{ code: "render-error", message }] };
+    }
   }
 
   program(ref: string, doc: string): Program | undefined {
