@@ -26,7 +26,7 @@ fn space(gap: Option<&str>) -> Option<pb::Space> {
 type Kid<'n> = (N<'n>, String);
 
 /// The fewest cells a grid column gets before the grid takes one column less.
-const GRID_MIN: usize = 36;
+const GRID_MIN: usize = 30;
 
 fn kids_of<'n>(n: N<'n>, prop: &str, path: &str) -> Vec<Kid<'n>> {
     n.nodes(prop)
