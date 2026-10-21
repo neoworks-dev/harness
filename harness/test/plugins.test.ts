@@ -37,7 +37,8 @@ test("enabled plugins come from installed.json, broken and disabled ones left ou
     },
   ]);
   const [plugin] = enabledPlugins(dir);
-  expect(expandPluginRoot("${CLAUDE_PLUGIN_ROOT}/hooks/run.sh", plugin!)).toBe(
+  if (!plugin) throw new Error("no plugin");
+  expect(expandPluginRoot("${CLAUDE_PLUGIN_ROOT}/hooks/run.sh", plugin)).toBe(
     "/p/lsp/hooks/run.sh",
   );
 });

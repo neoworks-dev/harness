@@ -51,10 +51,12 @@ export function readInstalled(dir: string): InstalledFile {
       if (!isRecord(value) || typeof value.root !== "string" || !isAbsolute(value.root)) continue;
       const plugin: InstalledPlugin = {
         root: value.root,
-        version: typeof value.version === "string" ? value.version : "",
+        version: "",
         enabled: value.enabled !== false,
-        installedAt: typeof value.installedAt === "string" ? value.installedAt : "",
+        installedAt: "",
       };
+      if (typeof value.version === "string") plugin.version = value.version;
+      if (typeof value.installedAt === "string") plugin.installedAt = value.installedAt;
       if (isRecord(value.entry)) plugin.entry = value.entry;
       plugins[id] = plugin;
     }
