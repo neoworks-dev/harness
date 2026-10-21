@@ -37,6 +37,8 @@ export interface HarnessConfig {
   web: WebConfig;
   /** Where skills are found besides the session's own; none without. */
   skills?: SkillDirs;
+  /** Where the harness installs Claude Code plugins (plugins.ts); none without. */
+  plugins?: string;
 }
 
 /** The web tools' settings: the user's to choose, never the agent's. */
@@ -176,6 +178,7 @@ export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): Harness
       bundled: join(import.meta.dir, "..", "skills"),
       user: join(configHome, "suite", "skills"),
     },
+    plugins: join(configHome, "suite", "plugins"),
   };
   if (env.SUITE_IMAGES) config.images = parseImages(env.SUITE_IMAGES, "SUITE_IMAGES");
   else if (file && typeof file.images === "boolean") config.images = file.images;

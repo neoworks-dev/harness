@@ -42,6 +42,7 @@ test("defaults without a config file", async () => {
       bundled: join(import.meta.dir, "..", "skills"),
       user: join(home, ".config", "suite", "skills"),
     },
+    plugins: join(home, ".config", "suite", "plugins"),
   });
 });
 
