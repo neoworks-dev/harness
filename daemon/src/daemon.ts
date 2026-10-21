@@ -12,10 +12,12 @@ import { FocusManager } from "./focus.ts";
 import { ViewManager } from "./view/views.ts";
 import { Gateway } from "./gateway/gateway.ts";
 import { mcpHandler } from "./gateway/mcp-server.ts";
+import { McpServers, type McpServersOptions } from "./gateway/mcp-servers.ts";
 import { ConnectorRegistry } from "./gateway/registry.ts";
 import { createGuestAccounts } from "./guests/accounts.ts";
 import { createDelegate } from "./guests/delegate.ts";
 import { type GatewayRole, type GuestConfig, GuestManager } from "./guests/guests.ts";
+import { loadMcpServers, projectMcpAllowed } from "@suite/harness/mcp-config";
 import { Asker } from "./asker.ts";
 import { Commands } from "./commands.ts";
 import { Login } from "./login.ts";
@@ -63,6 +65,16 @@ export interface DaemonOptions {
    * only). Default: auth.json in the data dir and no pi file; main.ts passes the harness's paths.
    */
   accounts?: { authPath?: string; piAuthPath?: string };
+  /**
+   * The MCP servers the daemon runs (see harness/src/mcp-config.ts): config.json, the enabled
+   * plugins' `.mcp.json`, and the sessions' directories when config.json allows. None without.
+   */
+  mcp?: {
+    configFile?: string;
+    plugins?: string;
+    env?: Record<string, string | undefined>;
+    servers?: McpServersOptions;
+  };
 }
 
 export interface Daemon {
@@ -80,6 +92,8 @@ export interface Daemon {
   commands: Commands;
   settings: Settings;
   titles: Titles;
+  /** The MCP servers it runs; `reload` reads their configuration again (plugins changed). */
+  mcp: { servers: McpServers; reload(): Promise<void> };
   /** Cancels running turns (waiting up to timeoutMs), closes listeners and the database. */
   stop(timeoutMs?: number): Promise<void>;
 }
@@ -89,7 +103,30 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   mkdirSync(paths.dataDir, { recursive: true, mode: 0o700 });
   const store = new SessionStore(paths.db);
   const assets = new AssetStore(join(paths.dataDir, "assets"));
-  const connectors = new ConnectorRegistry(store, options.connectUpstream ?? connectMcp, log);
+  const connectors = new ConnectorRegistry(
+    store,
+    (endpoint) => stdioServers.connect(options.connectUpstream ?? connectMcp)(endpoint),
+    log,
+  );
+  const stdioServers = new McpServers(connectors, log, options.mcp?.servers);
+  /** Reads the MCP configuration and makes it the servers that run; one read at a time. */
+  let mcpLoading: Promise<void> = Promise.resolve();
+  const reloadMcp = (): Promise<void> => {
+    if (!options.mcp) return Promise.resolve();
+    const { configFile, plugins, env } = options.mcp;
+    const run = async (): Promise<void> => {
+      const projects: string[] = [];
+      if (projectMcpAllowed(configFile)) {
+        projects.push(options.defaultCwd, ...store.listSessions().map((row) => row.cwd));
+      }
+      const loaded = loadMcpServers({ configFile, plugins, projects, env });
+      for (const problem of loaded.problems) log.warn(`mcp: ${problem}`);
+      await stdioServers.set(loaded.servers);
+    };
+    mcpLoading = mcpLoading.then(run, run);
+    return mcpLoading;
+  };
+  void reloadMcp();
   let focus: FocusManager | undefined;
   let server: BusServer | undefined;
   /**
@@ -171,8 +208,11 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     settings: (sessionId, harness) => settings.get(sessionId, harness),
     requestPermission: (sessionId) => permissions.hook(sessionId, agent.name),
     safeSearch: () => settings.safeSearch(),
-    created: (sessionId) =>
-      settings.inheritHarness(sessionId, (name) => name === agent.name || guests.has(name)),
+    created: (sessionId) => {
+      settings.inheritHarness(sessionId, (name) => name === agent.name || guests.has(name));
+      // A new directory may bring its own .mcp.json.
+      if (projectMcpAllowed(options.mcp?.configFile)) void reloadMcp();
+    },
     takeMessages: (sessionId) => messenger.take(sessionId, undefined),
   });
   // After the summaries, so the start of a first message names the session before a model does.
@@ -334,12 +374,15 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     commands,
     settings,
     titles,
+    mcp: { servers: stdioServers, reload: reloadMcp },
     async stop(timeoutMs = 2000) {
       await started.stop();
       await sessions.shutdown(timeoutMs);
       await delegate.shutdown(timeoutMs);
       asker.dropAll();
       guests.shutdown();
+      await mcpLoading.catch(() => undefined);
+      await stdioServers.close();
       await connectors.close();
       hub.close();
       store.close();
