@@ -64,7 +64,7 @@ defer srv.Close()
 err = c.SetPresence(ctx, protocol.AppPresence{App: "photo-editor", Kind: protocol.ConnectorKindApp, Open: true, Mcp: srv.Endpoint()})
 ```
 
-`Result.Structured` becomes `structuredContent` (the data view templates get); without `Text` its JSON is the text content. The tool list is fixed once the server started (there is no server-to-client stream, so no `list_changed`); a changed list needs a new server and a new `SetPresence`. Tests can use `sdktest.StartReal(t)`, which runs the real TypeScript daemon (`SUITE_AGENT=echo`, temp socket and data dir; skips without `bun`) and calls tools through its `/mcp` with `CallTool("app.tool", args)`.
+`Tool.Annotations` tell the daemon whether to ask the user before the agent's call: `ReadOnlyHint: true` never asks, `DestructiveHint` pointing to `false` (an edit your app can undo) asks only in `ask` mode, and a tool without them asks in every mode but `auto`. `Result.Structured` becomes `structuredContent` (the data view templates get); without `Text` its JSON is the text content. The tool list is fixed once the server started (there is no server-to-client stream, so no `list_changed`); a changed list needs a new server and a new `SetPresence`. Tests can use `sdktest.StartReal(t)`, which runs the real TypeScript daemon (`SUITE_AGENT=echo`, temp socket and data dir; skips without `bun`) and calls tools through its `/mcp` with `CallTool("app.tool", args)`.
 
 ## Assets and file changes
 

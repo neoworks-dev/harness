@@ -14,6 +14,18 @@ export interface ToolResult {
   isError?: boolean;
 }
 
+/**
+ * MCP's hints about a tool. The daemon decides from them whether the agent's call asks the user
+ * first: a read never asks, an edit the app can undo asks only in ask mode, and any other tool
+ * asks in every mode but auto.
+ */
+export interface ToolAnnotations {
+  /** The tool changes nothing. */
+  readOnlyHint?: boolean;
+  /** `false`: the tool's changes can be taken back in the app (its own undo). Default `true`. */
+  destructiveHint?: boolean;
+}
+
 /** One tool the app offers to the agent. */
 export interface ToolSpec {
   /** The tool's name; the daemon prefixes it with the app name (`notes.append`). */
@@ -24,6 +36,7 @@ export interface ToolSpec {
   inputSchema: Record<string, unknown>;
   /** JSON Schema of `structuredContent`, if the tool returns one. */
   outputSchema?: Record<string, unknown>;
+  annotations?: ToolAnnotations;
   /**
    * Runs the tool. A returned string becomes one text block. A thrown error becomes a result
    * with `isError` set and the error's message as its text, so the agent sees what went wrong.

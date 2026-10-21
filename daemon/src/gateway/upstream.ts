@@ -141,6 +141,7 @@ function upstreamOf(client: Client, closing?: () => void): Upstream {
             inputSchema: tool.inputSchema,
           };
           if (tool.outputSchema) stored.outputSchema = tool.outputSchema;
+          if (tool.annotations) stored.annotations = tool.annotations;
           tools.push(stored);
         }
         cursor = page.nextCursor;

@@ -8,6 +8,7 @@ export * from "./browser.ts";
 export { daemonJsonAddress, daemonJsonPath } from "./node.ts";
 export { createToolServer } from "./tools/tool-server.ts";
 export type {
+  ToolAnnotations,
   ToolContent,
   ToolResult,
   ToolServer,

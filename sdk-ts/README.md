@@ -61,7 +61,7 @@ await client.close();
 await tools.close();
 ```
 
-The daemon lists the tools next to the app's name (`notes.append`) and forwards the agent's calls to your handler. A handler returns a string, or `{ content, structuredContent, isError }`; if it throws, the agent sees the message as an error result. A complete app with result templates and buttons is in [`examples/notes-app.ts`](examples/notes-app.ts).
+The daemon lists the tools next to the app's name (`notes.append`) and forwards the agent's calls to your handler. A handler returns a string, or `{ content, structuredContent, isError }`; if it throws, the agent sees the message as an error result. `annotations` tell the daemon whether to ask the user before the agent's call: `{ readOnlyHint: true }` never asks, `{ destructiveHint: false }` (an edit your app can undo) asks only in `ask` mode, and a tool without them asks in every mode but `auto`. A complete app with result templates and buttons is in [`examples/notes-app.ts`](examples/notes-app.ts).
 
 ## Following and driving a session
 

@@ -15,6 +15,7 @@ const tools = await createToolServer({
     {
       name: "add_note",
       description: "Add a note",
+      annotations: { destructiveHint: false },
       inputSchema: {
         type: "object",
         properties: { text: { type: "string", description: "The note" } },
@@ -32,6 +33,7 @@ const tools = await createToolServer({
     {
       name: "list_notes",
       description: "List all notes",
+      annotations: { readOnlyHint: true },
       inputSchema: { type: "object", properties: {} },
       outputSchema: {
         type: "object",

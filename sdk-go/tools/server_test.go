@@ -20,6 +20,7 @@ func testServer(t *testing.T) *Server {
 			{
 				Name:        "add",
 				Description: "Adds a and b.",
+				Annotations: &Annotations{DestructiveHint: new(bool)},
 				InputSchema: map[string]any{"properties": map[string]any{"a": map[string]any{"type": "number"}}},
 				OutputSchema: map[string]any{
 					"properties": map[string]any{"sum": map[string]any{"type": "number"}},
@@ -30,7 +31,7 @@ func testServer(t *testing.T) *Server {
 					return Result{Text: "sum computed", Structured: map[string]any{"sum": a + b}}, nil
 				},
 			},
-			{Name: "fail", Handler: func(context.Context, map[string]any) (Result, error) {
+			{Name: "fail", Annotations: &Annotations{ReadOnlyHint: true}, Handler: func(context.Context, map[string]any) (Result, error) {
 				return Result{}, errors.New("it broke")
 			}},
 			{Name: "boom", Handler: func(context.Context, map[string]any) (Result, error) { panic("kaboom") }},
@@ -190,6 +191,16 @@ func TestListTools(t *testing.T) {
 	fail := list[1].(map[string]any)
 	if fail["inputSchema"].(map[string]any)["type"] != "object" || fail["outputSchema"] != nil {
 		t.Errorf("fail: %v", fail)
+	}
+	// The hints the daemon's approvals read; a tool without them sends none.
+	if hints := add["annotations"].(map[string]any); hints["destructiveHint"] != false || len(hints) != 1 {
+		t.Errorf("add annotations %v", hints)
+	}
+	if hints := fail["annotations"].(map[string]any); hints["readOnlyHint"] != true || len(hints) != 1 {
+		t.Errorf("fail annotations %v", hints)
+	}
+	if boom := list[2].(map[string]any); boom["annotations"] != nil {
+		t.Errorf("boom: %v", boom)
 	}
 }
 

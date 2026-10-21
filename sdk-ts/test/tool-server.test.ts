@@ -84,6 +84,17 @@ test("lists tools and calls them", async () => {
   expect(text.content).toEqual([{ type: "text", text: "hi" }]);
 });
 
+test("annotations reach tools/list, and a tool without them sends none", async () => {
+  const read = { ...echo, name: "read", annotations: { readOnlyHint: true } };
+  const undoable = { ...echo, name: "undoable", annotations: { destructiveHint: false } };
+  const { tools } = await (await mcpClient(await serve([read, undoable, echo]))).listTools();
+  expect(tools.map((t) => t.annotations)).toEqual([
+    { readOnlyHint: true },
+    { destructiveHint: false },
+    undefined,
+  ]);
+});
+
 test("a thrown error becomes an isError result", async () => {
   const client = await mcpClient(await serve([boom]));
   const result = await client.callTool({ name: "boom", arguments: {} });

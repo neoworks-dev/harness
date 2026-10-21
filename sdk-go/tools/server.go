@@ -39,6 +39,18 @@ const (
 // message; return a Result with IsError for failures that carry data.
 type Handler func(ctx context.Context, args map[string]any) (Result, error)
 
+// Annotations are MCP's hints about a tool. The daemon decides from them
+// whether the agent's call asks the user first: a read never asks, an edit
+// the app can undo asks only in ask mode, and any other tool asks in every
+// mode but auto.
+type Annotations struct {
+	// ReadOnlyHint marks a tool that changes nothing.
+	ReadOnlyHint bool `json:"readOnlyHint,omitempty"`
+	// DestructiveHint set to false marks a tool whose changes can be taken
+	// back in the app (its own undo). Nil means MCP's default, true.
+	DestructiveHint *bool `json:"destructiveHint,omitempty"`
+}
+
 // Tool is one tool of the server.
 type Tool struct {
 	// Name is the tool's name; the gateway prefixes it with the app's name.
@@ -49,7 +61,9 @@ type Tool struct {
 	InputSchema map[string]any
 	// OutputSchema describes Result.Structured; optional.
 	OutputSchema map[string]any
-	Handler      Handler
+	// Annotations is sent with the tool in tools/list; nil sends none.
+	Annotations *Annotations
+	Handler     Handler
 }
 
 // Content is one block of a result's content. Only text is produced by
@@ -323,6 +337,9 @@ func (s *Server) list() []map[string]any {
 				outSchema["type"] = "object"
 			}
 			entry["outputSchema"] = outSchema
+		}
+		if t.Annotations != nil {
+			entry["annotations"] = t.Annotations
 		}
 		out = append(out, entry)
 	}

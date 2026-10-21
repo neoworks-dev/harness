@@ -44,6 +44,8 @@ let server = ToolServer::start("code-editor", None, vec![open])?;
 presence.mcp = Some(server.endpoint()); // keep `server` alive as long as the app runs
 ```
 
+`.read_only()` and `.undoable()` on a `Tool` tell the daemon whether to ask the user before the agent's call: a read never asks, an edit your app can undo asks only in `ask` mode, and a tool with neither asks in every mode but `auto`.
+
 ## Tests
 
 `cargo test -p suite-sdk`: `tests/fake_daemon.rs` runs against a scripted daemon (framing, routing, reconnect); `tests/daemon.rs` starts the real daemon (`bun run daemon/src/main.ts`, echo agent) and is skipped with a message if `bun` is missing.

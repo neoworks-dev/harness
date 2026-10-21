@@ -4,6 +4,9 @@
 //   edits   edits go ahead (the review card offers to undo them after the turn), the rest asks
 //   review  edits go ahead and are then kept or reverted one by one, the rest asks
 //   ask     everything asks; an edit's diff is shown before anything is written
+// An app's tool (see gateway/app-tools.ts) is a read, an edit the app can undo, or one it may not
+// be able to. Reads go ahead in every mode; undoable edits ask in ask mode only (the user takes
+// them back with the app's own undo, there is no review card); the rest ask in every mode but auto.
 // Reads are allowed in every mode. Sensitive files (.env, keys, see sensitive.ts) are the
 // exception: reading one, or running a command that mentions one, asks in every mode.
 // The question is a permission_request with the content to preview. "Allow for this session"
@@ -11,6 +14,7 @@
 import type { PermissionAnswer, PermissionAsk, RequestPermission } from "@neoworks-dev/neo/agent";
 import type { DiffContent, PermissionOption, ToolKind } from "@neoworks-dev/neo-protocol/types";
 import type { Answer, Asker } from "./asker.ts";
+import type { AppCall, AppToolKind } from "./gateway/app-tools.ts";
 import { editedTitle, KEEP_OR_REVERT, restore } from "./review.ts";
 import { displayPath, sensitiveInCommand, sensitivePath } from "./sensitive.ts";
 import type { Approvals } from "./settings.ts";
@@ -137,6 +141,31 @@ export class Permissions {
       if (answer.option === "always") this.allowed.add(key);
       return answerOf(answer);
     };
+  }
+
+  /**
+   * An agent's call to an app's tool that isn't a read, before it runs. "Allow for this session"
+   * holds per tool.
+   */
+  async app(call: AppCall, kind: AppToolKind, signal?: AbortSignal): Promise<PermissionAnswer> {
+    const mode = this.options.approvals(call.session);
+    if (kind === "read" || mode === "auto") return { allowed: true };
+    if (kind === "undoable" && mode !== "ask") return { allowed: true };
+    const key = `${call.session}\0tool\0${call.app}.${call.tool}`;
+    if (this.allowed.has(key)) return { allowed: true };
+    const question: Parameters<Asker["askWithNote"]>[1] = {
+      type: "permission_request",
+      agent: call.agent,
+      title: `Call ${call.app}.${call.tool}?`,
+      kind: kind === "undoable" ? "edit" : "other",
+      options: OPTIONS,
+    };
+    if (Object.keys(call.args).length > 0) {
+      question.content = [{ type: "text", text: JSON.stringify(call.args, null, 2) }];
+    }
+    const answer = await this.options.asker.askWithNote(call.session, question, signal);
+    if (answer.option === "always") this.allowed.add(key);
+    return answerOf(answer);
   }
 
   private pathKey(session: string, path: string): string {

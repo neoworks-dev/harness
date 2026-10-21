@@ -15,6 +15,7 @@ export interface AppTool {
   description: string;
   inputSchema: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
+  annotations?: Tool["annotations"];
   handler: (args: Record<string, unknown>) => CallToolResult | Promise<CallToolResult>;
 }
 
@@ -40,9 +41,10 @@ export function startMcpApp(options: { tools: AppTool[]; instructions?: string }
       { capabilities: { tools: { listChanged: true } }, instructions: options.instructions },
     );
     server.setRequestHandler(ListToolsRequestSchema, () => ({
-      tools: tools.map(({ name, description, inputSchema, outputSchema }) => {
+      tools: tools.map(({ name, description, inputSchema, outputSchema, annotations }) => {
         const listed: Tool = { name, description, inputSchema: { type: "object", ...inputSchema } };
         if (outputSchema) listed.outputSchema = { type: "object", ...outputSchema };
+        if (annotations) listed.annotations = annotations;
         return listed;
       }),
     }));

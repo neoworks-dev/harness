@@ -294,6 +294,8 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   });
   const gateway = new Gateway(connectors, {
     log,
+    agent: (session, guest) => guest ?? harnessOf(session),
+    approveApp: (call, kind, signal) => permissions.app(call, kind, signal),
     resolveAsset: (handle) => assets.resolve(handle),
     recordResult: (session, result) => {
       store.append(session, result);

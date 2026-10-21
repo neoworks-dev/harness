@@ -65,6 +65,10 @@ pub struct Tool {
     pub description: String,
     /// JSON Schema of the arguments (an object schema).
     pub input_schema: Value,
+    /// MCP's hints about the tool (`readOnlyHint`, `destructiveHint`), sent in `tools/list`. The
+    /// daemon decides from them whether the agent's call asks the user first: a read never asks, an
+    /// edit the app can undo asks only in ask mode, and any other tool asks in every mode but auto.
+    pub annotations: Option<Value>,
     pub handler: Handler,
 }
 
@@ -79,8 +83,21 @@ impl Tool {
             name: name.into(),
             description: description.into(),
             input_schema,
+            annotations: None,
             handler: Arc::new(handler),
         }
+    }
+
+    /// Marks the tool as changing nothing.
+    pub fn read_only(mut self) -> Self {
+        self.annotations = Some(json!({ "readOnlyHint": true }));
+        self
+    }
+
+    /// Marks the tool's changes as ones the app can undo.
+    pub fn undoable(mut self) -> Self {
+        self.annotations = Some(json!({ "destructiveHint": false }));
+        self
     }
 }
 
@@ -311,7 +328,11 @@ fn handle(shared: &Shared, message: &Value) -> Option<Value> {
             let listed: Vec<Value> = tools
                 .iter()
                 .map(|t| {
-                    json!({"name": t.name, "description": t.description, "inputSchema": t.input_schema})
+                    let mut listed = json!({"name": t.name, "description": t.description, "inputSchema": t.input_schema});
+                    if let Some(annotations) = &t.annotations {
+                        listed["annotations"] = annotations.clone();
+                    }
+                    listed
                 })
                 .collect();
             json!({ "tools": listed })
@@ -438,6 +459,31 @@ mod tests {
         assert_eq!(ok["result"]["structuredContent"]["text"], "hi");
         assert_eq!(ok["result"]["isError"], false);
         assert_eq!(call(json!({}))["result"]["isError"], true);
+    }
+
+    #[test]
+    fn annotations_reach_the_list() {
+        let tool = |name: &str| {
+            Tool::new(name, "", json!({"type": "object"}), |_| {
+                ToolResult::text("ok")
+            })
+        };
+        let tools = vec![
+            tool("read").read_only(),
+            tool("undoable").undoable(),
+            tool("plain"),
+        ];
+        let server = ToolServer::start("test", None, tools).expect("start");
+        let token = token(&server);
+        let (_, reply) = post(
+            &server,
+            Some(token.as_str()),
+            &json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+        );
+        let listed = &reply.expect("json")["result"]["tools"];
+        assert_eq!(listed[0]["annotations"], json!({"readOnlyHint": true}));
+        assert_eq!(listed[1]["annotations"], json!({"destructiveHint": false}));
+        assert!(listed[2].get("annotations").is_none());
     }
 
     #[test]

@@ -18,6 +18,7 @@ import Ajv2020, { type ValidateFunction } from "ajv/dist/2020.js";
 import type { Logger } from "../log.ts";
 import type { MessageTools } from "../messages.ts";
 import type { StoredConnector, StoredTool } from "../store.ts";
+import { type AppCall, type AppToolKind, appToolKind } from "./app-tools.ts";
 import type { ConnectorRegistry } from "./registry.ts";
 import { type SearchHit, searchTools } from "./search.ts";
 import { uiLibraryText } from "./ui-library.ts";
@@ -39,6 +40,17 @@ export interface GatewayOptions {
   recordResult?: (session: string, result: ToolResult) => void;
   /** The file behind an asset:// handle, named in results for guests. */
   resolveAsset?: (handle: string) => string | undefined;
+  /**
+   * Whether an agent's call to an app's tool that isn't a read goes ahead (the approvals mode,
+   * permissions.ts), and what the user added. Absent: they just run.
+   */
+  approveApp?: (
+    call: AppCall,
+    kind: AppToolKind,
+    signal?: AbortSignal,
+  ) => Promise<{ allowed: boolean; note?: string }>;
+  /** Who is calling, for the cards: the guest's name, else the session's harness. */
+  agent?: (session: string, guest: string | undefined) => string;
 }
 
 const ASSET_HANDLES = /asset:\/\/[a-z]+-[0-9a-f]+/g;
@@ -62,6 +74,10 @@ function text(value: string, isError = false): CallToolResult {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function withNote(message: string, note: string | undefined): string {
+  return note === undefined ? message : `${message}\n\nThe user added: ${note}`;
 }
 
 function displayName(connector: StoredConnector): string {
@@ -180,10 +196,12 @@ export class Gateway {
         const toolArgs = toolsCallArgs(args);
         if (typeof toolArgs === "string") return text(toolArgs, true);
         const call = { name: args.name, args: toolArgs };
+        const who = { session, guest };
         if (wantsText === true && session !== undefined) {
-          return textOnly(this.withRef(session, args.name, await this.callTool(call, signal)));
+          const result = await this.callTool(call, signal, who);
+          return textOnly(this.withRef(session, args.name, result));
         }
-        return this.callTool(call, signal);
+        return this.callTool(call, signal, who);
       }
       case "apps_launch":
         if (typeof args.app !== "string") return text("apps_launch: app is required", true);
@@ -305,7 +323,8 @@ export class Gateway {
 
   private async callTool(
     { name, args = {} }: ToolsCallArgs,
-    signal?: AbortSignal,
+    signal: AbortSignal | undefined,
+    { session, guest }: Pick<Caller, "session" | "guest">,
   ): Promise<CallToolResult> {
     const dot = name.indexOf(".");
     const app = dot > 0 ? name.slice(0, dot) : name;
@@ -334,6 +353,17 @@ export class Gateway {
     }
     const problem = this.validate(connector, tool, args);
     if (problem !== undefined) return text(problem, true);
+    // Agents' edits in apps go by the approvals mode; a user's action in a pane has no session.
+    const { approveApp } = this.options;
+    const kind = appToolKind(tool);
+    if (approveApp && session !== undefined && connector.kind === "app" && kind !== "read") {
+      const agent = this.options.agent?.(session, guest) ?? "agent";
+      const call = { session, agent, app, tool: toolName, args };
+      const answer = await approveApp(call, kind, signal);
+      if (!answer.allowed) {
+        return text(withNote("The user declined this call.", answer.note), true);
+      }
+    }
     try {
       return await live.upstream.call(toolName, args, signal);
     } catch (err) {

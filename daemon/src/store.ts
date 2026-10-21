@@ -66,6 +66,8 @@ export interface StoredTool {
   description: string;
   inputSchema: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
+  /** The app's hints (readOnlyHint, destructiveHint), which decide whether the agent's call asks. */
+  annotations?: Record<string, unknown>;
 }
 
 export type AppendListener = (record: SessionEventRecord) => void;

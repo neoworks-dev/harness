@@ -8,9 +8,10 @@ import type { ToolServerOptions, ToolSpec } from "./types.ts";
 
 /** What `tools/list` says about a tool: the spec without its handler. */
 function describe(spec: ToolSpec): Record<string, unknown> {
-  const { name, description, inputSchema, outputSchema } = spec;
+  const { name, description, inputSchema, outputSchema, annotations } = spec;
   const listed: Record<string, unknown> = { name, description, inputSchema };
   if (outputSchema) listed.outputSchema = outputSchema;
+  if (annotations) listed.annotations = annotations;
   return listed;
 }
 

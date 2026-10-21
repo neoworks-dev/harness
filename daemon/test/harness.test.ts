@@ -32,6 +32,7 @@ const greet: AppTool = {
   name: "greet",
   description: "Say hello to someone",
   inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+  annotations: { readOnlyHint: true },
   handler: (args) => ({
     content: [{ type: "text", text: `Hello, ${String(args.name)}!` }],
     structuredContent: { greeted: args.name },
