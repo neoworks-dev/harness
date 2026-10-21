@@ -6,8 +6,10 @@
 // guests (Claude Code, Codex) are configured in guests/config.ts (SUITE_GUESTS=none: none);
 // model and API key settings are read by the harness (see harness/src/config.ts).
 import { homedir } from "node:os";
+import { join } from "node:path";
 import type { Agent } from "@suite/harness/agent";
 import { authPaths } from "@suite/harness/config";
+import { suiteConfigDir } from "@suite/harness/mcp-config";
 import { createDaemon } from "./daemon.ts";
 import { createEchoAgent } from "./echo-agent.ts";
 import { loadGuestConfigs } from "./guests/config.ts";
@@ -39,6 +41,8 @@ async function main(): Promise<void> {
     guests: loadGuestConfigs(),
     titles: process.env.SUITE_TITLES !== "off",
     accounts: authPaths(),
+    plugins: join(suiteConfigDir(), "plugins"),
+    mcp: { configFile: join(suiteConfigDir(), "config.json") },
   });
   log.info(`listening on ${paths.socket} and ${daemon.info.url}, data in ${paths.dataDir}`);
   const commands: string[][] = [];

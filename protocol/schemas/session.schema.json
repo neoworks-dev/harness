@@ -106,6 +106,9 @@
         },
         {
           "$ref": "#/$defs/AgentMessage"
+        },
+        {
+          "$ref": "#/$defs/CommandsAvailable"
         }
       ],
       "discriminator": {
@@ -663,6 +666,46 @@
         }
       },
       "required": ["type", "text"],
+      "additionalProperties": false
+    },
+    "CommandsAvailable": {
+      "description": "The slash commands a harness offers beyond the daemon's own, as it last listed them: Claude Code's and Codex's from their ACP adapters (available_commands_update), neo's from the enabled plugins. The latest event of a harness replaces the earlier ones; an empty list clears it. Views show them in the / menu while the session runs on that harness, after the daemon's own commands, which win on a name clash. /name args is sent as the user's text; the harness runs the command. Not a context event: the agent doesn't see it.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "commands_available"
+        },
+        "harness": {
+          "type": "string",
+          "description": "Which harness offers them, e.g. claude, codex or neo."
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SlashCommand"
+          }
+        }
+      },
+      "required": ["type", "harness", "commands"],
+      "additionalProperties": false
+    },
+    "SlashCommand": {
+      "description": "A command in the / menu.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "What follows the slash, e.g. review."
+        },
+        "description": {
+          "type": "string"
+        },
+        "hint": {
+          "type": "string",
+          "description": "What the arguments are, e.g. branch or PR."
+        }
+      },
+      "required": ["name"],
       "additionalProperties": false
     },
     "NoticeTone": {

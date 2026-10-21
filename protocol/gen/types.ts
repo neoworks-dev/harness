@@ -588,7 +588,8 @@ export type SessionEvent =
   | Notice
   | SubagentStarted
   | SubagentEnded
-  | AgentMessage;
+  | AgentMessage
+  | CommandsAvailable;
 
 export type SessionEventTag = SessionEvent["type"];
 
@@ -824,6 +825,23 @@ export interface Notice {
   type: "notice";
   text: string;
   tone?: NoticeTone;
+}
+
+/** The slash commands a harness offers beyond the daemon's own, as it last listed them: Claude Code's and Codex's from their ACP adapters (available_commands_update), neo's from the enabled plugins. The latest event of a harness replaces the earlier ones; an empty list clears it. Views show them in the / menu while the session runs on that harness, after the daemon's own commands, which win on a name clash. /name args is sent as the user's text; the harness runs the command. Not a context event: the agent doesn't see it. */
+export interface CommandsAvailable {
+  type: "commands_available";
+  /** Which harness offers them, e.g. claude, codex or neo. */
+  harness: string;
+  commands: SlashCommand[];
+}
+
+/** A command in the / menu. */
+export interface SlashCommand {
+  /** What follows the slash, e.g. review. */
+  name: string;
+  description?: string;
+  /** What the arguments are, e.g. branch or PR. */
+  hint?: string;
 }
 
 /** muted unless set. */

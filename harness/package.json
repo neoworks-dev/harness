@@ -7,7 +7,10 @@
     "./auth": "./src/auth.ts",
     "./config": "./src/config.ts",
     "./context-events": "./src/context-events.ts",
+    "./mcp-config": "./src/mcp-config.ts",
     "./neo": "./src/neo-agent.ts",
+    "./plugin-commands": "./src/plugin-commands.ts",
+    "./plugin-install": "./src/plugin-install.ts",
     "./plugins": "./src/plugins.ts"
   },
   "dependencies": {

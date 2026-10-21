@@ -27,6 +27,7 @@ import type {
   PlanEntryPriority,
   PlanEntryStatus,
   SessionEvent,
+  SlashCommand,
   StopReason,
   ToolCall,
   ToolCallContent,
@@ -132,6 +133,31 @@ interface Run {
   titles: Map<string, string>;
 }
 
+/** Where a connection's notifications go: its guest, once there is one. */
+interface GuestTarget {
+  guest?: Guest;
+  /** Listed before the guest existed. */
+  commands?: SlashCommand[];
+}
+
+/** An adapter's availableCommands as menu entries; one without a usable name is dropped. */
+export function slashCommands(value: unknown): SlashCommand[] {
+  const out: SlashCommand[] = [];
+  if (!Array.isArray(value)) return out;
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const name = str(item.name)?.replace(/^\/+/, "");
+    if (name === undefined || name === "" || /\s/.test(name)) continue;
+    const command: SlashCommand = { name };
+    const description = str(item.description)?.replace(/\s+/g, " ").trim();
+    if (description) command.description = description;
+    const hint = isRecord(item.input) ? str(item.input.hint) : undefined;
+    if (hint) command.hint = hint;
+    if (!out.some((other) => other.name === name)) out.push(command);
+  }
+  return out;
+}
+
 interface Guest {
   name: string;
   session: string;
@@ -149,6 +175,8 @@ interface Guest {
   config: Map<string, ConfigOption>;
   /** The API key it runs on, when the user picked one; else it uses its own login. */
   route?: Route;
+  /** The slash commands the adapter last listed (available_commands_update). */
+  commands?: SlashCommand[];
 }
 
 const KINDS = new Set<string>([
@@ -420,6 +448,8 @@ export class GuestManager {
   /** Every running adapter (guests and sessions' own agents), to stop them with the daemon. */
   private readonly live = new Set<Guest>();
   private readonly subagents?: NeoSubagents;
+  /** The commands each session's guest last listed, as JSON, so an unchanged list isn't logged again. */
+  private readonly commandLists = new Map<string, string>();
 
   constructor(private readonly options: GuestManagerOptions) {
     const { neo, requestPermission } = options;
@@ -825,21 +855,38 @@ export class GuestManager {
     return guest;
   }
 
-  /** `target` gets the guest once it exists: the connection's updates and requests are its. */
-  private spawn(
-    name: string,
-    cwd: string,
-    target: { guest?: Guest },
-    route?: Route,
-  ): AcpConnection {
+  /**
+   * `target` gets the guest once it exists: the connection's updates and requests are its. What
+   * the adapter lists before that (its commands) is kept in `target` for the guest.
+   */
+  private spawn(name: string, cwd: string, target: GuestTarget, route?: Route): AcpConnection {
     const config = this.options.configs[name];
     if (!config) throw new NotFoundError(`no guest ${name}`);
     return AcpConnection.spawn({
       command: config.command,
       cwd,
       env: route ? { ...config.env, ...route.env } : config.env,
-      onNotification: (method, params) => this.onNotification(target.guest, method, params),
+      onNotification: (method, params) => this.onNotification(target, method, params),
       onRequest: (method, params) => this.onRequest(target.guest, method, params),
+    });
+  }
+
+  /**
+   * Remembers the commands the adapter lists and puts them in the session's log, for views to
+   * offer in their / menu. Only for the session's own agent (a subagent's aren't the user's), and
+   * only when they changed.
+   */
+  private setCommands(guest: Guest, commands: SlashCommand[]): void {
+    guest.commands = commands;
+    if (!guest.main) return;
+    const key = `${guest.session}\0${guest.name}`;
+    const json = JSON.stringify(commands);
+    if (this.commandLists.get(key) === json) return;
+    this.commandLists.set(key, json);
+    this.options.append(guest.session, {
+      type: "commands_available",
+      harness: guest.name,
+      commands,
     });
   }
 
@@ -916,7 +963,7 @@ export class GuestManager {
   ): Promise<Guest> {
     const { log } = this.options;
     const cwd = this.options.cwd(session);
-    const target: { guest?: Guest } = {};
+    const target: GuestTarget = {};
     const route = chosen === undefined ? await this.routeFromSettings(session, name) : chosen;
     const conn = this.spawn(name, cwd, target, route ?? undefined);
     void conn.exited.then((code) => {
@@ -966,6 +1013,7 @@ export class GuestManager {
       if (route) guest.route = route;
       target.guest = guest;
       this.live.add(guest);
+      if (target.commands) this.setCommands(guest, target.commands);
       // Only what the user chose: everything else stays the guest's own default.
       for (const [category, value] of Object.entries(this.options.settings(session, name))) {
         // The model of a key was given at launch.
@@ -1073,8 +1121,16 @@ export class GuestManager {
     }
   }
 
-  private onNotification(guest: Guest | undefined, method: string, params: unknown): void {
+  private onNotification(target: GuestTarget, method: string, params: unknown): void {
     if (method !== "session/update" || !isRecord(params) || !isRecord(params.update)) return;
+    const { guest } = target;
+    // Outside any turn, and perhaps before session/new has answered.
+    if (params.update.sessionUpdate === "available_commands_update") {
+      const commands = slashCommands(params.update.availableCommands);
+      if (guest) this.setCommands(guest, commands);
+      else target.commands = commands;
+      return;
+    }
     const run = guest?.run;
     if (!guest || !run) return;
     // The session's own agent is unlabelled; ids are prefixed so they stay unique in the log.

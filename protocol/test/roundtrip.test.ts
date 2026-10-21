@@ -59,6 +59,7 @@ describe("protocol examples", () => {
       subagent_started: true,
       subagent_ended: true,
       agent_message: true,
+      commands_available: true,
     };
     expect([...seen].sort()).toEqual(Object.keys(all).sort());
   });

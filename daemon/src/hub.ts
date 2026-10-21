@@ -42,6 +42,12 @@ export interface HubParts {
    * context is bound to the client that typed it.
    */
   command?: (session: string, text: string, context: CommandContext) => Promise<void> | undefined;
+  /**
+   * Input that is not a command, before it is queued: the text the agent gets in its place (a
+   * plugin's /command expanded) and what the chat shows (what was typed), or undefined to leave
+   * it. Also the moment to bring the session up to date on what it can do.
+   */
+  expand?: (session: string, text: string) => { text: string; shown: string } | undefined;
   /** The harnesses a session can switch to with their options (session.settings). */
   settings?: (session: string, known?: boolean) => Promise<HarnessSettings[]>;
 }
@@ -397,7 +403,9 @@ export class Hub {
         } else {
           // Before queueing, so the turn already sees the new focus.
           focus?.followInput(session, app);
-          this.sessions.input(session, app, text, images);
+          const expanded = this.parts.expand?.(session, text);
+          if (expanded) this.sessions.input(session, app, expanded.text, images, expanded.shown);
+          else this.sessions.input(session, app, text, images);
         }
         if (msg.id !== undefined) this.send(client, { topic: "bus.ack", id: msg.id });
         return;

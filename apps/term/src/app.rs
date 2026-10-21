@@ -4,6 +4,7 @@
 //! [`Effect`]s for the runtime to carry out against the daemon; [`App::draw`] paints it.
 
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use ratatui::Frame;
@@ -16,7 +17,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 use suite_protocol::{
     AgentFocus, SecretRequest, SessionEvent, SessionEventRecord, SessionInfo, SessionState,
-    SettingName,
+    SettingName, SlashCommand,
 };
 use suite_renderer_ratatui::{ButtonRef, Options, Palette, UiKind, UiTarget, openui_targets};
 use suite_sdk::Event;
@@ -29,7 +30,7 @@ use crate::forms::{Forms, Outcome, Pending};
 use crate::github::{Github, Outgoing};
 use crate::history::{Histories, HistoryStore};
 use crate::images::Images;
-use crate::menu::{self, Command, Entry, Switcher};
+use crate::menu::{self, Entry, Item, Switcher};
 use crate::secret::{self, Secret, SecretValue};
 use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction};
 use crate::status::{Approvals, HarnessSettings, Status, record_setting};
@@ -280,6 +281,8 @@ pub struct App {
     settings: Vec<HarnessSettings>,
     /// The session's agent, from `/harness`.
     harness: String,
+    /// The slash commands each harness listed in this session (`commands_available`).
+    offered: HashMap<String, Vec<SlashCommand>>,
     approvals: Approvals,
     connected: bool,
     /// Where the agent is (the last `agent.focus`).
@@ -353,6 +356,7 @@ impl App {
             queued: 0,
             settings: Vec::new(),
             harness: DEFAULT_HARNESS.to_string(),
+            offered: HashMap::new(),
             approvals: Approvals::Ask,
             connected: true,
             agent_app: None,
@@ -703,6 +707,10 @@ impl App {
                 self.queued = self.queued.saturating_sub(1);
             }
             SessionEvent::TurnEnded(_) => self.running = false,
+            SessionEvent::CommandsAvailable(offer) => {
+                self.offered
+                    .insert(offer.harness.clone(), offer.commands.clone());
+            }
             SessionEvent::SettingChanged(change) => {
                 let option = match change.option {
                     SettingName::Model => "model",
@@ -792,6 +800,7 @@ impl App {
         self.queued = 0;
         self.settings.clear();
         self.harness = DEFAULT_HARNESS.to_string();
+        self.offered.clear();
         self.approvals = Approvals::Ask;
         self.editor.clear();
         self.prompt = PromptState::default();
@@ -1918,7 +1927,16 @@ impl App {
 
     // ---- sending and commands ----
 
-    fn menu_matches(&self) -> Vec<&'static Command> {
+    /// The slash menu's commands: ours, and those of the harness the session runs on.
+    fn commands(&self) -> Vec<Item> {
+        let listed = self
+            .offered
+            .get(&self.harness)
+            .map_or(&[][..], Vec::as_slice);
+        menu::items_for(&self.harness, listed)
+    }
+
+    fn menu_matches(&self) -> Vec<Item> {
         let text = self.editor.text();
         if self.focus.is_some()
             || self.prompt.engaged
@@ -1928,7 +1946,7 @@ impl App {
         {
             return Vec::new();
         }
-        menu::matching(text)
+        menu::matching(text, &self.commands())
     }
 
     fn menu_visible(&self) -> bool {
@@ -1954,7 +1972,7 @@ impl App {
     fn enter(&mut self, fx: &mut Vec<Effect>) -> bool {
         let matches = self.menu_matches();
         if !matches.is_empty() {
-            let cmd = matches[self.menu_sel.min(matches.len() - 1)];
+            let cmd = &matches[self.menu_sel.min(matches.len() - 1)];
             if cmd.needs_args {
                 self.editor.set_text(&format!("/{} ", cmd.name));
                 self.menu_sel = 0;
@@ -1962,7 +1980,7 @@ impl App {
             }
             self.editor.clear();
             self.menu_sel = 0;
-            self.run_command(cmd.name, &format!("/{}", cmd.name), fx);
+            self.run_command(&cmd.name, &format!("/{}", cmd.name), fx);
             return true;
         }
         let text = self.editor.text().trim().to_string();
@@ -2396,7 +2414,7 @@ impl App {
         let start = (self.menu_sel + 1).saturating_sub(rows);
         let name_w = matches
             .iter()
-            .map(|c| width(c.name) + 1 + width(c.args) + usize::from(!c.args.is_empty()))
+            .map(|c| width(&c.name) + 1 + width(&c.args) + usize::from(!c.args.is_empty()))
             .max()
             .unwrap_or(0)
             .min(32);
@@ -2424,7 +2442,7 @@ impl App {
                         Span::styled(marker, self.styles.accent),
                         Span::styled(label, name_style),
                         Span::raw(format!("{pad}  ")),
-                        Span::styled(c.desc, self.styles.muted),
+                        Span::styled(c.desc.clone(), self.styles.muted),
                     ]),
                     w,
                 )
@@ -2715,7 +2733,7 @@ impl App {
             Line::default(),
             head("commands"),
         ];
-        for c in menu::COMMANDS {
+        for c in self.commands() {
             let label = if c.args.is_empty() {
                 format!("/{}", c.name)
             } else {
@@ -2723,7 +2741,7 @@ impl App {
             };
             lines.push(Line::from(vec![
                 Span::styled(format!("  {label:<36}"), self.styles.accent),
-                Span::styled(c.desc, self.styles.muted),
+                Span::styled(c.desc.clone(), self.styles.muted),
             ]));
         }
         frame.render_widget(Clear, area);

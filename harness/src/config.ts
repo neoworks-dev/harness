@@ -177,6 +177,7 @@ export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): Harness
     skills: {
       bundled: join(import.meta.dir, "..", "skills"),
       user: join(configHome, "suite", "skills"),
+      plugins: join(configHome, "suite", "plugins"),
     },
     plugins: join(configHome, "suite", "plugins"),
   };

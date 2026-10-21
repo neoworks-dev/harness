@@ -9,6 +9,7 @@
 //   /safesearch [strict|moderate|off]         what neo's web search may return, for every session
 //   /login [provider | key [provider]]        add an API key or an account (login.ts)
 //   /logout [provider], /accounts             remove a login; list what is logged in
+//   /plugin …                                 marketplaces and plugins (plugins.ts)
 // The harness defaults to the one the session runs on. Nothing is chosen for the user.
 import type { ConfigOption, SafeSearch } from "@suite/harness/agent";
 import type { HarnessSettings } from "@suite/protocol/types";
@@ -19,6 +20,7 @@ import type { GuestManager, StoredConversation } from "./guests/guests.ts";
 import type { CommandContext } from "./hub.ts";
 import type { Logger } from "./log.ts";
 import type { Login } from "./login.ts";
+import type { PluginCommands } from "./plugins.ts";
 import type { SessionManager } from "./sessions.ts";
 import {
   APPROVALS,
@@ -35,6 +37,25 @@ import {
 } from "./settings.ts";
 import type { Titles } from "./titles.ts";
 
+/**
+ * The commands the daemon answers itself (and /clear, which the hub answers): a harness's or a
+ * plugin's command of the same name is reached some other way, see plugin-commands.ts.
+ */
+export const DAEMON_COMMANDS: readonly string[] = [
+  ...Object.keys(CATEGORIES),
+  "clear",
+  "resume",
+  "approvals",
+  "safesearch",
+  "harness",
+  "title",
+  "title-model",
+  "login",
+  "logout",
+  "accounts",
+  "plugin",
+];
+
 /** How long a harness gets to tell its options before the picker shows it without them. */
 export const SETTINGS_TIMEOUT_MS = 5000;
 
@@ -48,6 +69,8 @@ export interface CommandParts {
   titles: Titles;
   asker: Asker;
   login: Login;
+  /** /plugin; absent: the command doesn't exist. */
+  plugins?: PluginCommands | undefined;
   log: Logger;
   /** Tells the user something in the session's log. */
   notice: (session: string, text: string, tone?: "muted" | "danger") => void;
@@ -87,6 +110,7 @@ export class Commands {
       return this.needsClient(context, (c) => this.parts.login.login(session, args, c));
     if (name === "logout") return this.parts.login.logout(session, args);
     if (name === "accounts") return this.parts.login.accounts(session);
+    if (name === "plugin" && this.parts.plugins) return this.parts.plugins.run(session, args);
     return undefined;
   }
 

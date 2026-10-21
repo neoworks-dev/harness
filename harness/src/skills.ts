@@ -3,8 +3,10 @@
 // the text. They come from the harness itself (harness/skills), the user's
 // ~/.config/suite/skills and the session's <cwd>/.suite/skills; a later one replaces an earlier
 // one of the same name.
-import { readdirSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { declaredPaths } from "./plugin-parts.ts";
+import { enabledPlugins, expandPluginRoot, type Plugin } from "./plugins.ts";
 
 export interface Skill {
   name: string;
@@ -20,6 +22,8 @@ export interface Skill {
 export interface SkillDirs {
   bundled: string;
   user: string;
+  /** The plugins directory (plugins.ts): the skills of the enabled plugins, under the others. */
+  plugins?: string;
 }
 
 /** A description longer than this is cut: the prompt carries one for every skill. */
@@ -57,13 +61,14 @@ export function parseSkill(text: string, fallbackName: string): Omit<Skill, "pat
 }
 
 /** The skills under one directory: `<dir>/<skill>/SKILL.md`. A missing directory has none. */
-function readSkills(dir: string): Skill[] {
+function readSkills(dir: string, only?: string): Skill[] {
   let entries: string[];
   try {
     entries = readdirSync(dir).sort();
   } catch {
     return [];
   }
+  if (only !== undefined) entries = entries.filter((entry) => entry === only);
   const skills: Skill[] = [];
   for (const entry of entries) {
     const path = join(dir, entry, "SKILL.md");
@@ -79,10 +84,46 @@ function readSkills(dir: string): Skill[] {
   return skills;
 }
 
-/** The skills a session has: bundled, then the user's, then the project's, by name. */
+/** The skills of one enabled plugin: `skills/`, and the paths its manifest or marketplace entry names. */
+export function readPluginSkills(plugin: Plugin): Skill[] {
+  const skills: Skill[] = [];
+  for (const dir of [join(plugin.root, "skills"), ...declaredPaths(plugin, "skills")]) {
+    // A path is a directory of skills, or one skill's own directory.
+    const found = existsSync(join(dir, "SKILL.md"))
+      ? readSkills(dirname(dir), basename(dir))
+      : readSkills(dir);
+    for (const skill of found) {
+      const note = `Base directory for this skill: ${dirname(skill.path)}`;
+      const body = `${expandPluginRoot(skill.body, plugin)}\n\n${note}`;
+      if (!skills.some((other) => other.path === skill.path)) skills.push({ ...skill, body });
+    }
+  }
+  return skills;
+}
+
+/**
+ * The enabled plugins' skills. A name two plugins both use is written `plugin:name` for each, so
+ * neither hides the other.
+ */
+function pluginSkills(dir: string): Skill[] {
+  const all = enabledPlugins(dir).flatMap((plugin) =>
+    readPluginSkills(plugin).map((skill) => ({ plugin, skill })),
+  );
+  const counts = new Map<string, number>();
+  for (const { skill } of all) counts.set(skill.name, (counts.get(skill.name) ?? 0) + 1);
+  return all.map(({ plugin, skill }) =>
+    (counts.get(skill.name) ?? 0) > 1 ? { ...skill, name: `${plugin.name}:${skill.name}` } : skill,
+  );
+}
+
+/**
+ * The skills a session has: the enabled plugins', then bundled, the user's and the project's, by
+ * name (a later one replaces an earlier one).
+ */
 export function loadSkills(cwd: string, dirs: SkillDirs | undefined): Skill[] {
   if (!dirs) return [];
   const byName = new Map<string, Skill>();
+  if (dirs.plugins) for (const skill of pluginSkills(dirs.plugins)) byName.set(skill.name, skill);
   for (const dir of [dirs.bundled, dirs.user, join(cwd, ".suite", "skills")]) {
     for (const skill of readSkills(dir)) byName.set(skill.name, skill);
   }

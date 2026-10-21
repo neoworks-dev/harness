@@ -1194,7 +1194,7 @@ type SessionEventRecord struct {
 }
 
 // SessionEvent: Everything that happens in a session. Views must ignore types they don't know.
-// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, Notice, SubagentStarted, SubagentEnded, AgentMessage, UnknownSessionEvent.
+// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, Notice, SubagentStarted, SubagentEnded, AgentMessage, CommandsAvailable, UnknownSessionEvent.
 type SessionEvent struct {
 	Value SessionEventVariant
 }
@@ -1383,6 +1383,12 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "agent_message":
 		var v AgentMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "commands_available":
+		var v CommandsAvailable
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -1905,6 +1911,33 @@ func (v Notice) MarshalJSON() ([]byte, error) {
 		Tag string `json:"type"`
 		plain
 	}{"notice", plain(v)})
+}
+
+// CommandsAvailable: The slash commands a harness offers beyond the daemon's own, as it last listed them: Claude Code's and Codex's from their ACP adapters (available_commands_update), neo's from the enabled plugins. The latest event of a harness replaces the earlier ones; an empty list clears it. Views show them in the / menu while the session runs on that harness, after the daemon's own commands, which win on a name clash. /name args is sent as the user's text; the harness runs the command. Not a context event: the agent doesn't see it.
+type CommandsAvailable struct {
+	// Which harness offers them, e.g. claude, codex or neo.
+	Harness  string         `json:"harness"`
+	Commands []SlashCommand `json:"commands"`
+}
+
+func (CommandsAvailable) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v CommandsAvailable) MarshalJSON() ([]byte, error) {
+	type plain CommandsAvailable
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"commands_available", plain(v)})
+}
+
+// SlashCommand: A command in the / menu.
+type SlashCommand struct {
+	// What follows the slash, e.g. review.
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
+	// What the arguments are, e.g. branch or PR.
+	Hint *string `json:"hint,omitempty"`
 }
 
 // NoticeTone: muted unless set.

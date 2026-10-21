@@ -28,6 +28,9 @@
 //   spam <to>     sends 25 messages to <to> and reports how many were taken and the last answer
 //   listen        calls the suite's wait (5 s) and reports "heard: …"
 //   poll          calls tools_search until a message rides on a result, and reports it
+//   commands      replaces its slash commands with one (review) and says so
+// It lists slash commands (available_commands_update) when a conversation starts or resumes: after
+// the answer to session/new, or before it with FAKE_ACP_COMMANDS_FIRST in the environment.
 // It offers a model option (small, large) and an effort option (low, high), and one stored
 // conversation, "old-1", for session/list and session/resume.
 //   anything else sends a plan (one entry with an unknown status), a usage_update, and replies
@@ -72,6 +75,17 @@ function configOptions(): unknown[] {
   }));
 }
 let cancel: (() => void) | undefined;
+
+function listCommands(sessionId: string, commands: Record<string, unknown>[]): void {
+  update(sessionId, { sessionUpdate: "available_commands_update", availableCommands: commands });
+}
+
+const START_COMMANDS = [
+  { name: "review", description: "Review the current changes", input: { hint: "branch or PR" } },
+  { name: "/compact", description: "Summarise the conversation" },
+  { name: "model", description: "Claude's own model picker" },
+  { name: "", description: "nameless" },
+];
 
 function send(message: Record<string, unknown>): void {
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
@@ -206,6 +220,10 @@ async function prompt(params: {
     say(sessionId, "\n\n");
     update(sessionId, { sessionUpdate: "plan", entries: [] });
     say(sessionId, `answer: ${answer.outcome.optionId ?? answer.outcome.outcome}`);
+    return { stopReason: "end_turn" };
+  } else if (task === "commands") {
+    listCommands(sessionId, [{ name: "review", description: "Review again" }]);
+    say(sessionId, "listed");
     return { stopReason: "end_turn" };
   } else if (task.startsWith("send ")) {
     const [to = "", ...rest] = task.slice(5).split(" ");
@@ -400,6 +418,8 @@ async function handle(message: Record<string, unknown>): Promise<void> {
       disallowed = meta.claudeCode?.options?.disallowedTools;
       sessionId = "acp-1";
       result = { sessionId, configOptions: configOptions() };
+      if (process.env.FAKE_ACP_COMMANDS_FIRST !== undefined)
+        listCommands(sessionId, START_COMMANDS);
     } else if (method === "session/resume") {
       if ((params.sessionId as string).startsWith("gone")) throw new Error("no such session");
       gateway = (params.mcpServers as HttpServer[])[0];
@@ -435,6 +455,12 @@ async function handle(message: Record<string, unknown>): Promise<void> {
       return;
     }
     if (id !== undefined) send({ id, result });
+    if (
+      (method === "session/new" || method === "session/resume") &&
+      process.env.FAKE_ACP_COMMANDS_FIRST === undefined
+    ) {
+      listCommands(sessionId, START_COMMANDS);
+    }
   } catch (err) {
     send({ id, error: { code: -32603, message: String(err) } });
   }

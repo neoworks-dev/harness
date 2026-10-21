@@ -43,9 +43,12 @@ export const LANGUAGES: Language[] = [
   },
 ];
 
-export function languageOf(path: string): { language: Language; languageId: string } | undefined {
+export function languageOf(
+  path: string,
+  languages: Language[] = LANGUAGES,
+): { language: Language; languageId: string } | undefined {
   const ext = extname(path).toLowerCase();
-  for (const language of LANGUAGES) {
+  for (const language of languages) {
     const languageId = language.extensions[ext];
     if (languageId !== undefined) return { language, languageId };
   }
@@ -220,11 +223,15 @@ export class LanguageServer {
 export class ServerPool {
   private readonly servers = new Map<string, LanguageServer>();
 
-  constructor(private readonly log: (line: string) => void = () => {}) {}
+  /** `more` lists languages beyond the fixed ones (a plugin's); asked on every file. */
+  constructor(
+    private readonly log: (line: string) => void = () => {},
+    private readonly more: () => Language[] = () => [],
+  ) {}
 
   /** The server for a file (started on first use), plus the file's languageId. */
   get(path: string): { server: LanguageServer; languageId: string } {
-    const lang = languageOf(path);
+    const lang = languageOf(path, [...LANGUAGES, ...this.more()]);
     if (!lang) throw new Error(`No language server for ${extname(path) || "this file type"}.`);
     const { language, languageId } = lang;
     const root = findRoot(path, language.rootMarkers);

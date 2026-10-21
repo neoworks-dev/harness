@@ -1,0 +1,16 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 3,
+    "ts": 1760565600500,
+    "event": {
+      "type": "commands_available",
+      "harness": "claude",
+      "commands": [
+        { "name": "review", "description": "Review the current changes", "hint": "branch or PR" },
+        { "name": "compact" }
+      ]
+    }
+  }
+}

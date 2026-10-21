@@ -4,7 +4,7 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Agent } from "@suite/harness/agent";
-import { createDaemon, type Daemon } from "./daemon.ts";
+import { createDaemon, type Daemon, type DaemonOptions } from "./daemon.ts";
 import type { GuestConfig } from "./guests/guests.ts";
 import { createEchoAgent } from "./echo-agent.ts";
 import { type Logger, silentLogger } from "./log.ts";
@@ -50,6 +50,10 @@ export async function startTestDaemon(
     /** A model writes titles after a first message: off unless a test is about them. */
     titles?: boolean;
     settingsTimeoutMs?: number;
+    /** The MCP servers the daemon runs (DaemonOptions.mcp). */
+    mcp?: DaemonOptions["mcp"];
+    /** Where plugins are installed (DaemonOptions.plugins). */
+    plugins?: string;
   } = {},
 ): Promise<TestDaemon> {
   const dir = options.dir ?? mkdtempSync(join(tmpdir(), `${PREFIX}${process.pid}-`));
@@ -65,6 +69,8 @@ export async function startTestDaemon(
     accounts: options.accounts,
     titles: options.titles ?? false,
     settingsTimeoutMs: options.settingsTimeoutMs,
+    mcp: options.mcp,
+    plugins: options.plugins,
   });
   return { ...daemon, env, dir };
 }

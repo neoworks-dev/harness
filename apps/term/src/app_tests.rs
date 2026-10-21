@@ -3,8 +3,8 @@ use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use serde_json::json;
 use suite_protocol::{
-    FocusReason, SessionEvent, SettingChanged, SettingName, StopReason, TurnEnded, UserMessage,
-    ViewItem, ViewOp, ViewPatch, ViewSnapshot,
+    CommandsAvailable, FocusReason, SessionEvent, SettingChanged, SettingName, SlashCommand,
+    StopReason, TurnEnded, UserMessage, ViewItem, ViewOp, ViewPatch, ViewSnapshot,
 };
 
 use super::*;
@@ -114,6 +114,7 @@ fn user_message(ts: i64) -> Event {
             app: "terminal".into(),
             text: "hi".into(),
             images: None,
+            shown: None,
         }),
     )
 }
@@ -325,7 +326,11 @@ fn the_slash_menu_filters_completes_and_runs() {
     type_str(&mut app, "/");
     assert_eq!(app.menu_matches().len(), menu::COMMANDS.len());
     type_str(&mut app, "mo");
-    let names: Vec<_> = app.menu_matches().iter().map(|c| c.name).collect();
+    let names: Vec<_> = app
+        .menu_matches()
+        .iter()
+        .map(|c| c.name.to_string())
+        .collect();
     assert_eq!(names, ["model", "mode"]);
     // Down selects the second; Tab completes it with a trailing space.
     app.handle_key(key(KeyCode::Down));
@@ -338,6 +343,77 @@ fn the_slash_menu_filters_completes_and_runs() {
     let fx = app.handle_key(key(KeyCode::Enter));
     assert_eq!(fx, [input("/model")]);
     assert_eq!(app.editor_text(), "");
+}
+
+fn offered(harness: &str, commands: &[(&str, &str, Option<&str>)]) -> Event {
+    record(
+        "s1",
+        4,
+        NOW,
+        SessionEvent::CommandsAvailable(CommandsAvailable {
+            harness: harness.into(),
+            commands: commands
+                .iter()
+                .map(|(name, description, hint)| SlashCommand {
+                    name: (*name).into(),
+                    description: Some((*description).into()),
+                    hint: hint.map(Into::into),
+                })
+                .collect(),
+        }),
+    )
+}
+
+#[test]
+fn the_slash_menu_lists_the_commands_of_the_harness_the_session_runs_on() {
+    let mut app = app();
+    app.handle_event(offered(
+        "claude",
+        &[
+            ("review", "Review the changes", Some("branch or PR")),
+            ("model", "Claude's own model picker", None),
+        ],
+    ));
+    app.handle_event(offered("neo", &[("commit", "Create a git commit", None)]));
+    // The session runs on neo: its list, not claude's.
+    type_str(&mut app, "/rev");
+    assert!(app.menu_matches().is_empty());
+    app.handle_key(ctrl('u'));
+    type_str(&mut app, "/com");
+    let names: Vec<_> = app.menu_matches().iter().map(|c| c.name.clone()).collect();
+    assert_eq!(names, ["commit"]);
+    app.handle_key(ctrl('u'));
+
+    // After /harness claude the menu is claude's, after ours; ours win a name.
+    app.handle_event(setting("suite", SettingName::Harness, "claude"));
+    type_str(&mut app, "/rev");
+    let found = app.menu_matches();
+    assert_eq!(found.len(), 1);
+    assert_eq!(
+        (found[0].name.as_str(), found[0].args.as_str()),
+        ("review", "branch or PR")
+    );
+    app.handle_key(ctrl('u'));
+    type_str(&mut app, "/model");
+    let found = app.menu_matches();
+    assert_eq!(found.len(), 1);
+    assert!(
+        found[0].desc.contains("replaces claude's /model"),
+        "{}",
+        found[0].desc
+    );
+    app.handle_key(ctrl('u'));
+
+    // Enter runs the harness's command as text; with arguments typed it is sent as typed.
+    type_str(&mut app, "/revi");
+    assert_eq!(app.handle_key(key(KeyCode::Enter)), [input("/review")]);
+    type_str(&mut app, "/review main");
+    assert_eq!(app.handle_key(key(KeyCode::Enter)), [input("/review main")]);
+
+    // A later list replaces the earlier one.
+    app.handle_event(offered("claude", &[("compact", "Summarise", None)]));
+    type_str(&mut app, "/rev");
+    assert!(app.menu_matches().is_empty());
 }
 
 #[test]
@@ -969,6 +1045,7 @@ fn events_of_other_sessions_are_ignored() {
             app: "x".into(),
             text: "t".into(),
             images: None,
+            shown: None,
         }),
     ));
     assert!(!app.running());

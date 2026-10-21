@@ -14,4 +14,6 @@ Paths are absolute, lines 1-based; `symbol` (the identifier on that line) saves 
 
 Servers start on first use, one per language and project root (`go.work`/`go.mod`, `tsconfig.json`/`package.json`, `Cargo.toml`), and keep running: `gopls`, `typescript-language-server --stdio`, `rust-analyzer` — whichever are on `PATH`. Files are re-read from disk before every request, so edits from anywhere are seen without bookkeeping.
 
+Installed plugins add servers (`lspServers` in the marketplace entry or the manifest, or `.lsp.json`): `{ command, args, extensionToLanguage }`, project root by `.git`. They come after the three above, are read on every file (a plugin installed now is used at once), and need their program on `PATH`.
+
 Rough edges: no workspace-wide diagnostics (one file at a time), no code actions or formatting, the servers' settings are their defaults.

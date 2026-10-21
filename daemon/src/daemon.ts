@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { findEnvKeys, getProviders } from "@mariozechner/pi-ai";
 import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import type { Agent, McpServer } from "@suite/harness/agent";
-import type { Theme } from "@suite/protocol/types";
+import type { SlashCommand, Theme } from "@suite/protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
 import { ActionRunner, openUiTools } from "./actions.ts";
 import { AssetStore } from "./assets.ts";
@@ -12,12 +12,20 @@ import { FocusManager } from "./focus.ts";
 import { ViewManager } from "./view/views.ts";
 import { Gateway } from "./gateway/gateway.ts";
 import { mcpHandler } from "./gateway/mcp-server.ts";
+import { McpServers, type McpServersOptions } from "./gateway/mcp-servers.ts";
 import { ConnectorRegistry } from "./gateway/registry.ts";
 import { createGuestAccounts } from "./guests/accounts.ts";
 import { createDelegate } from "./guests/delegate.ts";
 import { type GatewayRole, type GuestConfig, GuestManager } from "./guests/guests.ts";
+import { loadMcpServers, projectMcpAllowed } from "@suite/harness/mcp-config";
+import {
+  loadPluginCommands,
+  type PluginCommand,
+  pluginPrompt,
+} from "@suite/harness/plugin-commands";
 import { Asker } from "./asker.ts";
-import { Commands } from "./commands.ts";
+import { Commands, DAEMON_COMMANDS } from "./commands.ts";
+import { PluginCommands } from "./plugins.ts";
 import { Login } from "./login.ts";
 import { MESSAGES_APP, Messenger } from "./messages.ts";
 import { handoffSummary } from "./handoff.ts";
@@ -63,6 +71,20 @@ export interface DaemonOptions {
    * only). Default: auth.json in the data dir and no pi file; main.ts passes the harness's paths.
    */
   accounts?: { authPath?: string; piAuthPath?: string };
+  /**
+   * Where plugins are installed (harness/src/plugins.ts): /plugin works on it, and the enabled
+   * plugins' commands, MCP servers and language servers are used. No plugins without.
+   */
+  plugins?: string;
+  /**
+   * The MCP servers the daemon runs (see harness/src/mcp-config.ts): config.json, the enabled
+   * plugins' `.mcp.json`, and the sessions' directories when config.json allows. None without.
+   */
+  mcp?: {
+    configFile?: string;
+    env?: Record<string, string | undefined>;
+    servers?: McpServersOptions;
+  };
 }
 
 export interface Daemon {
@@ -80,6 +102,8 @@ export interface Daemon {
   commands: Commands;
   settings: Settings;
   titles: Titles;
+  /** The MCP servers it runs; `reload` reads their configuration again (plugins changed). */
+  mcp: { servers: McpServers; reload(): Promise<void> };
   /** Cancels running turns (waiting up to timeoutMs), closes listeners and the database. */
   stop(timeoutMs?: number): Promise<void>;
 }
@@ -89,7 +113,31 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   mkdirSync(paths.dataDir, { recursive: true, mode: 0o700 });
   const store = new SessionStore(paths.db);
   const assets = new AssetStore(join(paths.dataDir, "assets"));
-  const connectors = new ConnectorRegistry(store, options.connectUpstream ?? connectMcp, log);
+  const connectors = new ConnectorRegistry(
+    store,
+    (endpoint) => stdioServers.connect(options.connectUpstream ?? connectMcp)(endpoint),
+    log,
+  );
+  const stdioServers = new McpServers(connectors, log, options.mcp?.servers);
+  /** Reads the MCP configuration and makes it the servers that run; one read at a time. */
+  let mcpLoading: Promise<void> = Promise.resolve();
+  const reloadMcp = (): Promise<void> => {
+    if (!options.mcp && !options.plugins) return Promise.resolve();
+    const { configFile, env } = options.mcp ?? {};
+    const { plugins } = options;
+    const run = async (): Promise<void> => {
+      const projects: string[] = [];
+      if (projectMcpAllowed(configFile)) {
+        projects.push(options.defaultCwd, ...store.listSessions().map((row) => row.cwd));
+      }
+      const loaded = loadMcpServers({ configFile, plugins, projects, env });
+      for (const problem of loaded.problems) log.warn(`mcp: ${problem}`);
+      await stdioServers.set(loaded.servers);
+    };
+    mcpLoading = mcpLoading.then(run, run);
+    return mcpLoading;
+  };
+  void reloadMcp();
   let focus: FocusManager | undefined;
   let server: BusServer | undefined;
   /**
@@ -145,6 +193,36 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     resolveAsset: (handle) => assets.resolve(handle),
     requestPermission: (session, name) => permissions.hook(session, name),
   });
+  /** The names a plugin's command may not take: what the daemon answers itself, and the guests'. */
+  const reservedCommands = (): Set<string> => new Set([...DAEMON_COMMANDS, ...guests.names()]);
+  const pluginCommands = (): PluginCommand[] =>
+    loadPluginCommands(options.plugins, reservedCommands());
+  /** What each session was last told neo's commands are, as JSON. */
+  const toldCommands = new Map<string, string>();
+  /** Puts neo's commands (the enabled plugins') in the session's log when they have changed. */
+  const announceCommands = (session: string): void => {
+    if (!options.plugins || harnessOf(session) !== agent.name) return;
+    const commands = pluginCommands().map((command): SlashCommand => {
+      const out: SlashCommand = { name: command.name, description: command.description };
+      if (command.hint !== undefined) out.hint = command.hint;
+      return out;
+    });
+    const now = JSON.stringify(commands);
+    let told = toldCommands.get(session);
+    if (told === undefined) {
+      told = "[]";
+      for (const record of store.read(session, 1)) {
+        const { event } = record;
+        if (event.type === "commands_available" && event.harness === agent.name) {
+          told = JSON.stringify(event.commands);
+        }
+      }
+    }
+    toldCommands.set(session, now);
+    if (told !== now) {
+      store.append(session, { type: "commands_available", harness: agent.name, commands });
+    }
+  };
   const summaries = new SessionSummaries(store);
   const messenger = new Messenger({
     append: (session, event) => {
@@ -171,8 +249,12 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     settings: (sessionId, harness) => settings.get(sessionId, harness),
     requestPermission: (sessionId) => permissions.hook(sessionId, agent.name),
     safeSearch: () => settings.safeSearch(),
-    created: (sessionId) =>
-      settings.inheritHarness(sessionId, (name) => name === agent.name || guests.has(name)),
+    created: (sessionId) => {
+      settings.inheritHarness(sessionId, (name) => name === agent.name || guests.has(name));
+      // A new directory may bring its own .mcp.json.
+      if (projectMcpAllowed(options.mcp?.configFile)) void reloadMcp();
+      announceCommands(sessionId);
+    },
     takeMessages: (sessionId) => messenger.take(sessionId, undefined),
   });
   // After the summaries, so the start of a first message names the session before a model does.
@@ -261,7 +343,21 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     apiProviders: getProviders,
     envKeys: (provider) => findEnvKeys(provider) ?? [],
   });
+  const plugins = options.plugins;
+  const pluginCommand =
+    plugins === undefined
+      ? undefined
+      : new PluginCommands({
+          dir: plugins,
+          notice,
+          changed: async (session) => {
+            await reloadMcp();
+            announceCommands(session);
+          },
+          cwd: (session) => store.getSession(session)?.cwd ?? options.defaultCwd,
+        });
   const commands = new Commands({
+    plugins: pluginCommand,
     sessions,
     guests,
     settings,
@@ -288,6 +384,11 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       assets,
       action: (action, from) => actions.run(action, from),
       command: (session, text, context) => commands.run(session, text, context),
+      expand: (session, text) => {
+        announceCommands(session);
+        if (!options.plugins || harnessOf(session) !== agent.name) return undefined;
+        return pluginPrompt(pluginCommands(), text);
+      },
       settings: (session, known) => commands.settings(session, known),
     },
   );
@@ -334,12 +435,15 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     commands,
     settings,
     titles,
+    mcp: { servers: stdioServers, reload: reloadMcp },
     async stop(timeoutMs = 2000) {
       await started.stop();
       await sessions.shutdown(timeoutMs);
       await delegate.shutdown(timeoutMs);
       asker.dropAll();
       guests.shutdown();
+      await mcpLoading.catch(() => undefined);
+      await stdioServers.close();
       await connectors.close();
       hub.close();
       store.close();
