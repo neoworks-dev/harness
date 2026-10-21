@@ -14,6 +14,8 @@ export interface AgentRow {
   id: string;
   /** Harness name: neo, claude, codex… */
   harness: string;
+  /** The agent definition it runs as, shown instead of the harness. */
+  name?: string;
   model?: string;
   task: string;
   /** The directory it works in, when that isn't the session's. */
@@ -78,6 +80,7 @@ export function applyAgentEvent(
         startedMs: record.ts,
         activity: "starting…",
       };
+      if (event.name !== undefined) row.name = event.name;
       if (event.model !== undefined) row.model = event.model;
       if (event.cwd !== undefined) row.cwd = event.cwd;
       if (event.child !== undefined) row.child = event.child;

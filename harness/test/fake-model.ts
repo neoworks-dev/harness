@@ -90,6 +90,10 @@ export interface FakeModel {
   streamFn: StreamFn;
   /** The messages sent to the model on each request. */
   requests: Message[][];
+  /** The system prompt of each request. */
+  systems: string[];
+  /** The names of the tools each request offered. */
+  tools: string[][];
   /** The model each request was made with. */
   models: { provider: string; id: string }[];
   /** The thinking level (reasoning option) of each request. */
@@ -101,8 +105,12 @@ export function fakeModel(steps: Step[]): FakeModel {
   const requests: Message[][] = [];
   const models: FakeModel["models"] = [];
   const reasoning: FakeModel["reasoning"] = [];
+  const systems: string[] = [];
+  const tools: string[][] = [];
   const streamFn: StreamFn = (model, context, options) => {
     requests.push(structuredClone(context.messages));
+    systems.push(context.systemPrompt ?? "");
+    tools.push((context.tools ?? []).map((tool) => tool.name));
     models.push({ provider: model.provider, id: model.id });
     reasoning.push(options?.reasoning);
     const step = steps[requests.length - 1];
@@ -110,7 +118,7 @@ export function fakeModel(steps: Step[]): FakeModel {
     const message = typeof step === "function" ? step(context, options?.signal) : step;
     return streamMessage(message);
   };
-  return { streamFn, requests, models, reasoning };
+  return { streamFn, requests, systems, tools, models, reasoning };
 }
 
 /** A model that never answers until the request is aborted. */
@@ -125,5 +133,5 @@ export function hangingModel(): FakeModel {
     });
     return stream;
   };
-  return { streamFn, requests, models: [], reasoning: [] };
+  return { streamFn, requests, systems: [], tools: [], models: [], reasoning: [] };
 }

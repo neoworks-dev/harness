@@ -75,6 +75,16 @@ In `attach`: Ctrl-C cancels the running turn (exits when idle), Ctrl-D exits, `/
 
 `model`, `thinkingLevel` and `web` (`{"safeSearch": "strict", "searxng": "http://…"}`) can also be set in `~/.config/suite/config.json`; env wins.
 
+neo runs Claude Code's hooks and agent definitions as they are, so plugins written for Claude Code work: hooks come from `hooks` in `config.json`, a project's `.suite/settings.json` and plugins; agents are markdown files in `~/.config/suite/agents/`, a project's `.suite/agents/` or a plugin, which `delegate` reaches by name ([docs/design.md](docs/design.md#hooks)).
+
+To send neo's model requests through a proxy such as headroom (`headroom proxy`), name it per provider in `config.json`; a proxy forwards to one upstream, so each provider that goes through one needs its own:
+
+```json
+{ "proxy": { "openrouter": "http://localhost:8787/v1" } }
+```
+
+Run the proxy with its upstream set (`OPENAI_TARGET_API_URL=https://openrouter.ai/api/v1`). The model's own settings still apply: an OpenRouter model pinned to a host stays pinned, and DeepSeek's API still gets the request it understands.
+
 neo searches the web itself: `web_search` asks several engines at once (web, news or images; no key needed) and lists what they found, and `web_fetch` saves a page as markdown in a file that the agent greps and reads in parts. You're asked before each fetch unless approvals is `auto`. Safe search is your setting, not the agent's: `/safesearch strict|moderate|off` sets it for every session (no value: a card to pick from). TinyFish's free search API is asked too once you add its key with `/login tinyfish`. The search engines are in [websearch](websearch/README.md).
 
 Skills are instructions neo loads when the work calls for them: a folder with a `SKILL.md` (frontmatter `name` and `description`, then the text) in `~/.config/suite/skills/` or in a project's `.suite/skills/`. neo sees each skill's description and loads the text with its `skill` tool.

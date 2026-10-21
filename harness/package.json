@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     "./agent": "./src/agent.ts",
+    "./agents": "./src/agents.ts",
     "./auth": "./src/auth.ts",
     "./config": "./src/config.ts",
     "./context-events": "./src/context-events.ts",

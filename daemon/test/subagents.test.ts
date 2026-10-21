@@ -130,6 +130,134 @@ async function guestTurn(daemon: TestDaemon, session: string, task: string): Pro
   return turn.result;
 }
 
+describe("agent definitions", () => {
+  const REVIEWER = `---
+name: reviewer
+description: Reviews a diff for correctness.
+tools: Read, Grep
+model: deepseek/deepseek-v4-pro
+---
+You review diffs.`;
+
+  /** A neo daemon whose project has the agent files; the subagent gate is answered with `gate`. */
+  async function withAgents(
+    files: Record<string, string>,
+    steps = [reply("Looks fine.")],
+    gate = "allow",
+  ): Promise<{
+    daemon: TestDaemon;
+    session: string;
+    cwd: string;
+    model: ReturnType<typeof fakeModel>;
+  }> {
+    const cwd = realpathSync(mkdtempSync(join(tmpdir(), "suite-agents-")));
+    cleanups.push(() => rmSync(cwd, { recursive: true, force: true }));
+    mkdirSync(join(cwd, ".suite", "agents"), { recursive: true });
+    for (const [name, text] of Object.entries(files)) {
+      await Bun.write(join(cwd, ".suite", "agents", name), text);
+    }
+    const model = fakeModel(steps);
+    const neo = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+    const daemon = await startTestDaemon({ agent: neo });
+    cleanups.push(() => daemon.stop());
+    daemon.store.onAppend(({ session, event }) => {
+      if (event.type !== "permission_request" || event.title !== "Start a subagent?") return;
+      void Promise.resolve().then(() =>
+        daemon.actions.run(
+          { session, ref: "p", action: "suite.permit", args: { id: event.id, option: gate } },
+          "test",
+        ),
+      );
+    });
+    return { daemon, session: daemon.sessions.create({ cwd }).id, cwd, model };
+  }
+
+  const call = (
+    daemon: TestDaemon,
+    session: string,
+    args: Record<string, unknown>,
+  ): Promise<CallToolResult> =>
+    daemon.gateway.call("delegate", { task: "look at the diff", ...args }, undefined, {
+      session,
+      text: true,
+    });
+
+  test("delegate {agent: reviewer} runs neo with its prompt, tools and model", async () => {
+    const { daemon, session, model } = await withAgents({ "reviewer.md": REVIEWER });
+    const result = await call(daemon, session, { agent: "reviewer" });
+    expect(resultOf(result)).toContain("Looks fine.");
+    expect(model.systems[0]).toContain("You review diffs.");
+    expect(model.tools[0]).toEqual(["bash", "read"]);
+    // Its model is the definition's; the claude aliases would have left the session's.
+    expect(model.models[0]).toMatchObject({ provider: "deepseek", id: "deepseek-v4-pro" });
+    const started = events(daemon, session).find((e) => e.type === "subagent_started");
+    expect(started).toMatchObject({
+      agent: "neo",
+      name: "reviewer",
+      model: "deepseek/deepseek-v4-pro",
+    });
+    const asked = events(daemon, session).find((e) => e.type === "permission_request");
+    expect(asked).toMatchObject({
+      details: expect.arrayContaining([
+        { key: "Agent", value: "reviewer" },
+        { key: "Model", value: "deepseek/deepseek-v4-pro" },
+      ]),
+    });
+  });
+
+  test("the call's own model beats the definition's; a Claude alias keeps the session's", async () => {
+    const { daemon, session, model } = await withAgents(
+      {
+        "reviewer.md": REVIEWER,
+        "quick.md": "---\nname: quick\ndescription: Fast.\nmodel: haiku\n---\nBe quick.",
+      },
+      [reply("a"), reply("b")],
+    );
+    await call(daemon, session, { agent: "reviewer", model: "deepseek/deepseek-flash" });
+    expect(model.models[0]).toMatchObject({ provider: "deepseek", id: "deepseek-flash" });
+    await call(daemon, session, { agent: "quick" });
+    // TEST_CONFIG's own model.
+    expect(model.models[1]).toMatchObject({ provider: "deepseek", id: "deepseek-v4-flash" });
+    const started = events(daemon, session).filter((e) => e.type === "subagent_started");
+    expect(started[1]).toMatchObject({ name: "quick" });
+    expect(started[1]).not.toHaveProperty("model");
+  });
+
+  test("each definition keeps a conversation of its own, next to the plain neo's", async () => {
+    const { daemon, session, model } = await withAgents({ "reviewer.md": REVIEWER }, [
+      reply("one"),
+      reply("two"),
+      reply("three"),
+    ]);
+    await call(daemon, session, { agent: "reviewer", task: "first" });
+    await call(daemon, session, { agent: "neo", task: "plain" });
+    await call(daemon, session, { agent: "reviewer", task: "again" });
+    expect(model.systems[0]).toContain("You review diffs.");
+    expect(model.systems[1]).not.toContain("You review diffs.");
+    expect(JSON.stringify(model.requests[2])).toContain("first");
+    expect(JSON.stringify(model.requests[2])).not.toContain("plain");
+  });
+
+  test("an unknown name lists what there is; a definition can't take a cwd", async () => {
+    const { daemon, session } = await withAgents({ "reviewer.md": REVIEWER });
+    const unknown = await call(daemon, session, { agent: "nobody" });
+    expect(unknown.isError).toBe(true);
+    expect(resultOf(unknown)).toBe("No guest named nobody (neo, reviewer).");
+    const withCwd = await call(daemon, session, { agent: "reviewer", cwd: "/" });
+    expect(withCwd.isError).toBe(true);
+    expect(resultOf(withCwd)).toContain("agent definition");
+    expect(events(daemon, session).some((e) => e.type === "permission_request")).toBe(false);
+  });
+
+  test("a harness named like a definition is the harness", async () => {
+    const { daemon, session, model } = await withAgents({
+      "neo.md": "---\nname: neo\ndescription: Impostor.\n---\nI am not neo.",
+    });
+    await call(daemon, session, { agent: "neo" });
+    expect(model.systems[0]).not.toContain("I am not neo.");
+  });
+});
+
 describe("the suite's own MCP tools", () => {
   test("are allowed without a question in every mode, whatever the adapter calls them", async () => {
     const { daemon, session } = await setup();

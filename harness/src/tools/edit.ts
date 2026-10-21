@@ -43,7 +43,7 @@ const parameters = Type.Object({
   ),
 });
 
-type Edit = { start?: string; end?: string; after?: string; newText: string };
+export type Edit = { start?: string; end?: string; after?: string; newText: string };
 
 const BOM = "\uFEFF";
 
@@ -53,7 +53,7 @@ const RESULT_CONTEXT = 2;
 const RESULT_LINES = 80;
 
 /** One edit as a splice of the original lines: replace `count` lines at `index`. */
-interface Splice {
+export interface Splice {
   i: number;
   index: number;
   count: number;
@@ -68,7 +68,7 @@ function newLines(text: string): string[] {
 }
 
 /** Where an edit goes in the original lines, and the notes on lines that had moved. */
-function spliceOf(edit: Edit, i: number, lines: readonly string[], moves: string[]): Splice {
+export function spliceOf(edit: Edit, i: number, lines: readonly string[], moves: string[]): Splice {
   const label = `edits[${i}]`;
   const replacing = edit.start !== undefined;
   if (replacing === (edit.after !== undefined)) {

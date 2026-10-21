@@ -58,6 +58,33 @@ const MAIN: MainRow<'static> = MainRow {
 };
 
 #[test]
+fn a_row_shows_the_agent_definition_it_runs_as() {
+    let mut a = Agents::default();
+    a.on_record(&started(
+        "d1",
+        "neo",
+        1_000,
+        json!({"name": "reviewer", "model": "deepseek/deepseek-v4-flash"}),
+    ));
+    // Its events are still labelled with the harness.
+    a.on_record(&rec(
+        "s1",
+        2,
+        2_000,
+        json!({"type": "agent_thought_chunk", "messageId": "neo-1", "text": "hm", "agent": "neo"}),
+    ));
+    assert_eq!(a.get("d1").unwrap().activity, "thinking…");
+    let got = text(&a.lines(80, 3_000, &MAIN, false, &styles()));
+    assert_eq!(
+        got,
+        [
+            "● main · claude".to_string(),
+            flush("○ reviewer · deepseek-v4-flash  thinking…", "2s", 80)
+        ]
+    );
+}
+
+#[test]
 fn a_row_says_what_the_subagent_does_how_long_and_its_tokens() {
     let mut a = Agents::default();
     a.on_record(&started(

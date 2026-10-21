@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import type {
   Agent,
+  AgentInfo,
   AgentSession,
   AgentUpdate,
   ConfigCategory,
@@ -484,6 +485,20 @@ export class GuestManager {
 
   title(name: string): string {
     return this.options.configs[name]?.title ?? name;
+  }
+
+  /**
+   * The agent definitions (neo's, see harness agents.ts) the session can delegate to by name: the
+   * project's, the user's and the plugins'.
+   */
+  agentDefinitions(session: string): AgentInfo[] {
+    if (!this.subagents) return [];
+    try {
+      return this.options.neo?.agents?.(this.options.cwd(session)) ?? [];
+    } catch (err) {
+      this.options.log.warn(`reading the agent definitions failed: ${errorText(err)}`);
+      return [];
+    }
   }
 
   /**

@@ -113,8 +113,8 @@ fn user_message(ts: i64) -> Event {
         SessionEvent::UserMessage(UserMessage {
             app: "terminal".into(),
             text: "hi".into(),
-            images: None,
             shown: None,
+            images: None,
         }),
     )
 }
@@ -1044,8 +1044,8 @@ fn events_of_other_sessions_are_ignored() {
         SessionEvent::UserMessage(UserMessage {
             app: "x".into(),
             text: "t".into(),
-            images: None,
             shown: None,
+            images: None,
         }),
     ));
     assert!(!app.running());

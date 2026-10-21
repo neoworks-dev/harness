@@ -853,6 +853,8 @@ export interface SubagentStarted {
   id: string;
   /** Harness name: neo, claude, codex… */
   agent: string;
+  /** The agent definition it runs as (neo with a reviewer's instructions and tools), when it is not the harness itself; what lists show instead of `agent`. */
+  name?: string;
   task: string;
   /** The model it runs with, when one was chosen for this task or by the user. */
   model?: string;

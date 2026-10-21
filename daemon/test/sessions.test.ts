@@ -20,6 +20,19 @@ function setup(store = new SessionStore(":memory:")): Setup {
 const types = (store: SessionStore, id: string): string[] =>
   store.read(id).map((r) => r.event.type);
 
+describe("shutdown", () => {
+  test("closes the agent's sessions, so their SessionEnd hooks run", async () => {
+    const { agent, sessions } = setup();
+    const { id } = sessions.create({});
+    sessions.input(id, "cli", "hi");
+    await agent.started(1);
+    agent.release();
+    await sessions.idle(id);
+    await sessions.shutdown(1000);
+    expect(agent.closed).toEqual(["other"]);
+  });
+});
+
 describe("turn queue", () => {
   test("runs one turn at a time, in input order", async () => {
     const { store, agent, sessions } = setup();

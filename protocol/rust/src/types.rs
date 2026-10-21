@@ -2253,6 +2253,9 @@ pub struct SubagentStarted {
     /// Harness name: neo, claude, codex…
     #[serde(rename = "agent")]
     pub agent: String,
+    /// The agent definition it runs as (neo with a reviewer's instructions and tools), when it is not the harness itself; what lists show instead of `agent`.
+    #[serde(rename = "name", default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     #[serde(rename = "task")]
     pub task: String,
     /// The model it runs with, when one was chosen for this task or by the user.

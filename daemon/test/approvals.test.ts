@@ -157,6 +157,48 @@ describe("the agent's own tools by approvals mode", () => {
   });
 });
 
+describe("a PreToolUse hook's decision", () => {
+  test("allow replaces the question the mode asks; ask asks where the mode would not", async () => {
+    const { daemon, session, agent } = await setup();
+    const ask = await hookOf(daemon, session, agent);
+    // ask mode: a command asks. A hook that allowed it spares the question.
+    expect(await ask({ title: "ls", kind: "execute", hook: "allow" })).toEqual({ allowed: true });
+    expect(requests(daemon, session)).toEqual([]);
+
+    await daemon.commands.run(session, "/approvals auto");
+    expect(await ask({ title: "ls", kind: "execute" })).toEqual({ allowed: true });
+    expect(requests(daemon, session)).toEqual([]);
+    // auto: a hook that wants to be asked is asked, and the hook field is not in the card.
+    const pending = ask({ title: "ls", kind: "execute", hook: "ask", toolCallId: "tc" });
+    const request = await nextRequest(daemon, session, 0);
+    expect(request).not.toHaveProperty("hook");
+    expect(request).toMatchObject({ kind: "execute", toolCallId: "tc" });
+    await press(daemon, session, request.id, "allow");
+    expect(await pending).toEqual({ allowed: true });
+  });
+
+  test("a hook can't allow what asks in every mode, and review mode still reviews", async () => {
+    const { daemon, session, agent } = await setup();
+    const ask = await hookOf(daemon, session, agent);
+    const home = process.env.HOME ?? "/root";
+    const pending = ask({
+      title: "read key",
+      kind: "read",
+      path: `${home}/.ssh/id_rsa`,
+      hook: "allow",
+    });
+    const request = await nextRequest(daemon, session, 0);
+    await press(daemon, session, request.id, "reject");
+    expect(await pending).toEqual({ allowed: false });
+
+    await daemon.commands.run(session, "/approvals review");
+    expect(await ask({ title: "edit a", kind: "edit", content: [diff], hook: "allow" })).toEqual({
+      allowed: true,
+      review: true,
+    });
+  });
+});
+
 /** The permission_request that is open: waits for the next one after `seen` requests. */
 async function nextRequest(
   daemon: TestDaemon,

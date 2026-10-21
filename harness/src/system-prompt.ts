@@ -62,10 +62,11 @@ ran while you weren't running this conversation: tool calls are left out.`;
  * The prompt a session runs on: the static text, then the skills it found. That list changes only
  * when the skills do (new files), never with what happens in a session.
  */
-export function systemPrompt(skills: Skill[]): string {
-  if (skills.length === 0) return SYSTEM_PROMPT;
+export function systemPrompt(skills: Skill[], agents = ""): string {
+  const base = agents === "" ? SYSTEM_PROMPT : `${SYSTEM_PROMPT}\n\n${agents}`;
+  if (skills.length === 0) return base;
   const lines = skills.map((skill) => `- ${skill.name}: ${skill.description}`);
-  return `${SYSTEM_PROMPT}
+  return `${base}
 
 Skills are instructions for particular kinds of work and are not in this prompt. Before you
 start work one of them covers, load it with the skill tool: skill {name}. Go by what the

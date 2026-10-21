@@ -288,6 +288,19 @@ export class SessionManager {
       waits.push(rt.drained);
     }
     await Promise.race([Promise.all(waits), Bun.sleep(timeoutMs)]);
+    // The sessions the agent has loaded are over: its SessionEnd hooks run.
+    const closes: Promise<void>[] = [];
+    for (const rt of this.runtimes.values()) {
+      for (const loading of rt.agentSessions.values()) {
+        closes.push(
+          loading.then(
+            (session) => session.close?.("other"),
+            () => undefined,
+          ),
+        );
+      }
+    }
+    await Promise.race([Promise.all(closes), Bun.sleep(timeoutMs)]);
   }
 
   /**

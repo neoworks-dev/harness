@@ -77,8 +77,7 @@
         "properties": {
           "agent": {
             "type": "string",
-            "enum": ["neo", "claude", "codex"],
-            "description": "Which harness."
+            "description": "Which harness (neo, claude, codex), or the name of an agent definition the system prompt lists: that runs neo with the definition's instructions, tools and model."
           },
           "task": {
             "type": "string",
