@@ -114,6 +114,7 @@ fn user_message(ts: i64) -> Event {
             app: "terminal".into(),
             text: "hi".into(),
             images: None,
+            shown: None,
         }),
     )
 }
@@ -969,6 +970,7 @@ fn events_of_other_sessions_are_ignored() {
             app: "x".into(),
             text: "t".into(),
             images: None,
+            shown: None,
         }),
     ));
     assert!(!app.running());
