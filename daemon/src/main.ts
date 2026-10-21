@@ -41,10 +41,8 @@ async function main(): Promise<void> {
     guests: loadGuestConfigs(),
     titles: process.env.SUITE_TITLES !== "off",
     accounts: authPaths(),
-    mcp: {
-      configFile: join(suiteConfigDir(), "config.json"),
-      plugins: join(suiteConfigDir(), "plugins"),
-    },
+    plugins: join(suiteConfigDir(), "plugins"),
+    mcp: { configFile: join(suiteConfigDir(), "config.json") },
   });
   log.info(`listening on ${paths.socket} and ${daemon.info.url}, data in ${paths.dataDir}`);
   const commands: string[][] = [];

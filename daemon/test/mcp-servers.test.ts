@@ -35,7 +35,8 @@ async function daemonWith(
   backoffMs = 20,
 ): Promise<TestDaemon> {
   const daemon = await startTestDaemon({
-    mcp: { ...mcp, servers: { backoffMs, stableMs: 60_000 } },
+    plugins: mcp.plugins,
+    mcp: { configFile: mcp.configFile, servers: { backoffMs, stableMs: 60_000 } },
   });
   cleanups.push(() => daemon.stop());
   await daemon.mcp.reload();
@@ -116,7 +117,11 @@ describe("stdio MCP servers", () => {
   test("a program that does not exist is retried, then left alone", async () => {
     const config = configDir({ mcpServers: { missing: { command: "/no/such/program" } } });
     const daemon = await startTestDaemon({
-      mcp: { ...config, servers: { backoffMs: 5, maxBackoffMs: 5, maxFailures: 2 } },
+      plugins: config.plugins,
+      mcp: {
+        configFile: config.configFile,
+        servers: { backoffMs: 5, maxBackoffMs: 5, maxFailures: 2 },
+      },
     });
     cleanups.push(() => daemon.stop());
     await daemon.mcp.reload();
@@ -179,14 +184,20 @@ describe("stdio MCP servers", () => {
     );
 
     const off = configDir({});
-    const daemon = await startTestDaemon({ mcp: { ...off, servers: { backoffMs: 20 } } });
+    const daemon = await startTestDaemon({
+      plugins: off.plugins,
+      mcp: { configFile: off.configFile, servers: { backoffMs: 20 } },
+    });
     cleanups.push(() => daemon.stop());
     daemon.sessions.create({ cwd: project });
     await daemon.mcp.reload();
     expect(daemon.mcp.servers.status()).toEqual([]);
 
     const on = configDir({ projectMcp: true });
-    const allowed = await startTestDaemon({ mcp: { ...on, servers: { backoffMs: 20 } } });
+    const allowed = await startTestDaemon({
+      plugins: on.plugins,
+      mcp: { configFile: on.configFile, servers: { backoffMs: 20 } },
+    });
     cleanups.push(() => allowed.stop());
     allowed.sessions.create({ cwd: project });
     await allowed.mcp.reload();
@@ -219,7 +230,10 @@ describe("stdio MCP servers", () => {
 
   test("the servers stop with the daemon", async () => {
     const config = configDir({ mcpServers: { fixture: fixtureServer() } });
-    const daemon = await startTestDaemon({ mcp: { ...config, servers: { backoffMs: 20 } } });
+    const daemon = await startTestDaemon({
+      plugins: config.plugins,
+      mcp: { configFile: config.configFile, servers: { backoffMs: 20 } },
+    });
     await daemon.mcp.reload();
     const pid = Number(
       text(await daemon.gateway.call("tools_call", { name: "mcp-fixture.pid", args: {} })),

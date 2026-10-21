@@ -389,6 +389,22 @@ export const examples: Record<string, Envelope> = {
       event: { type: "notice", text: "Logged in to deepseek (API key)." },
     },
   },
+  "event-commands-available": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 3,
+      ts: 1760565600500,
+      event: {
+        type: "commands_available",
+        harness: "claude",
+        commands: [
+          { name: "review", description: "Review the current changes", hint: "branch or PR" },
+          { name: "compact" },
+        ],
+      },
+    },
+  },
   "event-subagent-started": {
     topic: "session.events",
     payload: {

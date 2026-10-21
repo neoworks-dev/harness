@@ -1395,6 +1395,7 @@ pub enum SessionEvent {
     SubagentStarted(SubagentStarted),
     SubagentEnded(SubagentEnded),
     AgentMessage(AgentMessage),
+    CommandsAvailable(CommandsAvailable),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -1494,6 +1495,10 @@ impl Serialize for SessionEvent {
                 "agent_message",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            SessionEvent::CommandsAvailable(v) => (
+                "commands_available",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             SessionEvent::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -1582,6 +1587,9 @@ impl<'de> Deserialize<'de> for SessionEvent {
                 .map_err(D::Error::custom),
             "agent_message" => serde_json::from_value(value)
                 .map(SessionEvent::AgentMessage)
+                .map_err(D::Error::custom),
+            "commands_available" => serde_json::from_value(value)
+                .map(SessionEvent::CommandsAvailable)
                 .map_err(D::Error::custom),
             _ => Ok(SessionEvent::Unknown(value)),
         }
@@ -1735,6 +1743,12 @@ impl From<SubagentEnded> for SessionEvent {
 impl From<AgentMessage> for SessionEvent {
     fn from(v: AgentMessage) -> Self {
         SessionEvent::AgentMessage(v)
+    }
+}
+
+impl From<CommandsAvailable> for SessionEvent {
+    fn from(v: CommandsAvailable) -> Self {
+        SessionEvent::CommandsAvailable(v)
     }
 }
 
@@ -2191,6 +2205,34 @@ pub struct Notice {
     pub text: String,
     #[serde(rename = "tone", default, skip_serializing_if = "Option::is_none")]
     pub tone: Option<NoticeTone>,
+}
+
+/// The slash commands a harness offers beyond the daemon's own, as it last listed them: Claude Code's and Codex's from their ACP adapters (available_commands_update), neo's from the enabled plugins. The latest event of a harness replaces the earlier ones; an empty list clears it. Views show them in the / menu while the session runs on that harness, after the daemon's own commands, which win on a name clash. /name args is sent as the user's text; the harness runs the command. Not a context event: the agent doesn't see it.
+/// Tagged `type: "commands_available"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CommandsAvailable {
+    /// Which harness offers them, e.g. claude, codex or neo.
+    #[serde(rename = "harness")]
+    pub harness: String,
+    #[serde(rename = "commands")]
+    pub commands: Vec<SlashCommand>,
+}
+
+/// A command in the / menu.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SlashCommand {
+    /// What follows the slash, e.g. review.
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(
+        rename = "description",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub description: Option<String>,
+    /// What the arguments are, e.g. branch or PR.
+    #[serde(rename = "hint", default, skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
 }
 
 /// muted unless set.

@@ -52,6 +52,8 @@ export async function startTestDaemon(
     settingsTimeoutMs?: number;
     /** The MCP servers the daemon runs (DaemonOptions.mcp). */
     mcp?: DaemonOptions["mcp"];
+    /** Where plugins are installed (DaemonOptions.plugins). */
+    plugins?: string;
   } = {},
 ): Promise<TestDaemon> {
   const dir = options.dir ?? mkdtempSync(join(tmpdir(), `${PREFIX}${process.pid}-`));
@@ -68,6 +70,7 @@ export async function startTestDaemon(
     titles: options.titles ?? false,
     settingsTimeoutMs: options.settingsTimeoutMs,
     mcp: options.mcp,
+    plugins: options.plugins,
   });
   return { ...daemon, env, dir };
 }

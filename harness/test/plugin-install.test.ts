@@ -22,6 +22,16 @@ import { enabledLspServers } from "../src/plugin-lsp.ts";
 import { loadSkills } from "../src/skills.ts";
 import { tempDir } from "./helpers.ts";
 
+/** The message a promise rejects with; fails the test when it resolves. */
+async function failure(promise: Promise<unknown>): Promise<string> {
+  try {
+    await promise;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  throw new Error("expected a rejection");
+}
+
 const FIXTURE = join(import.meta.dir, "fixtures", "marketplace");
 
 function git(cwd: string, ...args: string[]): string {
@@ -78,9 +88,9 @@ test("a marketplace is copied from a path or cloned from a URL, and recorded", a
   expect(cloned.record.commit).toBe(git(repo, "rev-parse", "HEAD"));
   expect(JSON.parse(await readFile(join(other, "marketplaces.json"), "utf8")).version).toBe(1);
 
-  await expect(addMarketplace(dir, join(dir, "nothing-here"))).rejects.toThrow("doesn't exist");
+  expect(await failure(addMarketplace(dir, join(dir, "nothing-here")))).toContain("doesn't exist");
   await mkdir(join(dir, "empty"));
-  await expect(addMarketplace(dir, join(dir, "empty"))).rejects.toThrow("marketplace.json");
+  expect(await failure(addMarketplace(dir, join(dir, "empty")))).toContain("marketplace.json");
   // The failed ones left nothing behind.
   expect(Object.keys(readMarketplaces(dir).marketplaces)).toEqual(["mini-official"]);
 });
@@ -111,8 +121,8 @@ test("installing copies the plugin into the cache and writes installed.json the 
   // The marketplace may be left out when only one has the plugin; renames are followed.
   const serena = await installPlugin(dir, "old-serena");
   expect(serena.id).toBe("serena@mini-official");
-  await expect(installPlugin(dir, "nope")).rejects.toThrow("no plugin nope");
-  await expect(installPlugin(dir, "x@unknown")).rejects.toThrow("no marketplace named unknown");
+  expect(await failure(installPlugin(dir, "nope"))).toContain("no plugin nope");
+  expect(await failure(installPlugin(dir, "x@unknown"))).toContain("no marketplace named unknown");
 });
 
 test("the skills, commands, MCP servers and language servers of installed plugins load", async () => {
@@ -263,8 +273,8 @@ test("url and git-subdir sources are cloned at the pinned commit", async () => {
 
   const whole = await installPlugin(dir, "whole@ext");
   expect(whole.version).toBe(git(external, "rev-parse", "HEAD").slice(0, 12));
-  await expect(installPlugin(dir, "sneaky@ext")).rejects.toThrow("isn't in");
-  await expect(installPlugin(dir, "packed@ext")).rejects.toThrow("aren't supported");
+  expect(await failure(installPlugin(dir, "sneaky@ext"))).toContain("isn't in");
+  expect(await failure(installPlugin(dir, "packed@ext"))).toContain("aren't supported");
   // Failed installs leave nothing in installed.json.
   expect(Object.keys(readInstalled(dir).plugins).sort()).toEqual(["sub@ext", "whole@ext"]);
 });
@@ -299,7 +309,7 @@ test("disable, enable, uninstall and remove keep installed.json and the cache in
   await uninstallPlugin(dir, "frontend-design@mini-official");
   expect(existsSync(first.root)).toBe(false);
   expect(Object.keys(readInstalled(dir).plugins)).toEqual(["serena@mini-official"]);
-  await expect(uninstallPlugin(dir, "frontend-design@mini-official")).rejects.toThrow(
+  expect(await failure(uninstallPlugin(dir, "frontend-design@mini-official"))).toContain(
     "isn't installed",
   );
 
@@ -310,5 +320,5 @@ test("disable, enable, uninstall and remove keep installed.json and the cache in
   expect(readInstalled(dir).plugins).toEqual({});
   expect(existsSync(join(dir, "marketplaces", "mini-official"))).toBe(false);
   expect(readMarketplaces(dir).marketplaces).toEqual({});
-  await expect(removeMarketplace(dir, "mini-official")).rejects.toThrow("no marketplace");
+  expect(await failure(removeMarketplace(dir, "mini-official"))).toContain("no marketplace");
 });
