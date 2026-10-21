@@ -39,6 +39,8 @@ export interface HarnessConfig {
   skills?: SkillDirs;
   /** Where the harness installs Claude Code plugins (plugins.ts); none without. */
   plugins?: string;
+  /** The user's agent definitions (agents.ts); none without. */
+  agents?: string;
   /** Claude Code hooks (`hooks` in config.json), in Claude Code's settings shape; see hooks.ts. */
   hooks?: Record<string, unknown>;
 }
@@ -181,6 +183,7 @@ export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): Harness
       user: join(configHome, "suite", "skills"),
     },
     plugins: join(configHome, "suite", "plugins"),
+    agents: join(configHome, "suite", "agents"),
   };
   if (env.SUITE_IMAGES) config.images = parseImages(env.SUITE_IMAGES, "SUITE_IMAGES");
   else if (file && typeof file.images === "boolean") config.images = file.images;

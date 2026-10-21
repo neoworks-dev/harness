@@ -43,7 +43,17 @@ test("defaults without a config file", async () => {
       user: join(home, ".config", "suite", "skills"),
     },
     plugins: join(home, ".config", "suite", "plugins"),
+    agents: join(home, ".config", "suite", "agents"),
   });
+});
+
+test("hooks come from config.json as they are; they must be an object", async () => {
+  const home = await tempDir();
+  const hooks = { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "x" }] }] };
+  await writeConfig(home, { hooks });
+  expect(loadHarnessConfig({ HOME: home }).hooks).toEqual(hooks);
+  await writeConfig(home, { hooks: "nope" });
+  expect(() => loadHarnessConfig({ HOME: home })).toThrow("hooks must be an object");
 });
 
 test("the config file overrides the defaults; ids may contain slashes", async () => {

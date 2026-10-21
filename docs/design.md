@@ -163,6 +163,14 @@ Matchers and `tool_input` use Claude Code's names (`harness/src/tool-names.ts`);
 | `tools_call`                                           | `mcp__<app>__<tool>`                           | the connector tool's own arguments                                                                        |
 | the rest (`tools_search`, `models`, `send_message`, …) | neo's name                                     | neo's arguments                                                                                           |
 
+### Agent definitions
+
+`delegate` also reaches agents a user, a project or a plugin defines, in Claude Code's format (`harness/src/agents.ts`): a markdown file whose frontmatter has `name`, `description`, `tools` and `model`, and whose body is the system prompt. They are read from `<cwd>/.suite/agents/*.md`, `~/.config/suite/agents/*.md` and `agents/*.md` of each enabled plugin; when a name is defined twice the project's wins over the user's, which wins over a plugin's (a plugin's agent is also `plugin:name`). neo lists them in its system prompt, like skills, as `- name: description`. `delegate {agent: "reviewer", task}` runs neo as a subagent with the body under neo's own instructions, only the tools the list allows, and the model; the "Start a subagent?" question names the agent and the model, and `subagent_started` carries `name` for the lists (the terminal's and the GUI's) to show. A name that is also a harness (`neo`, `claude`, `codex`) is the harness.
+
+- **Tools** are Claude Code's names, mapped as for hooks (§ Hooks): `Read`, `Write`, `Bash`, `TodoWrite`, `WebFetch`, `WebSearch`, `Skill` have a counterpart, `Edit` and `MultiEdit` bring `read` along (edit works on read's tags), `Grep`, `Glob` and `LS` mean `bash` (neo searches in the shell; an agent with only those is told to look and not change), `mcp__…` means `tools_search` and `tools_call`. Names neo has nothing for (`NotebookRead`, `KillShell`, `Agent(…)`) allow nothing. No `tools:` means all of them.
+- **Model** is a neo model setting (`provider/id`, optionally `@host`). `sonnet`, `opus`, `haiku`, `inherit` and `claude-*` name Claude models, which neo has no account for: they stand for the session's model, i.e. the user's choice for neo's subagents, else the configured default. A `model` in the delegate call wins over the definition's. The approvals mode is the user's and applies to the subagent as to neo.
+- Each agent keeps a conversation of its own per session (follow-up delegations continue it), next to the plain neo subagent's. Only one neo subagent, definition or not, runs at a time in a directory. An agent definition works in the session's directory (no `cwd` or `worktree` yet). Not read: `color`, `effort`, `maxTurns`, `skills`, `hooks` and the other fields Claude Code's agents can carry.
+
 ### System prompt (static, identical for every session)
 
 ````

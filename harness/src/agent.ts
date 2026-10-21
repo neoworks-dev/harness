@@ -25,8 +25,10 @@ import type {
   UserNote,
 } from "@suite/protocol/types";
 import type { SafeSearch } from "@neoworks/websearch";
+import type { AgentInfo } from "./agents.ts";
 
 export type { SafeSearch };
+export type { AgentInfo } from "./agents.ts";
 
 /**
  * What an agent may emit during a prompt (ACP session/update plus harness_message and usage, and
@@ -229,4 +231,10 @@ export interface Agent {
    * Absent when the harness can't do it.
    */
   generateText?(params: GenerateTextParams): Promise<string>;
+  /**
+   * Every agent definition (agents.ts) a session in `cwd` has, the winner of a name first:
+   * delegate can hand a task to one by name, and the harness runs it as a subagent (NewSessionParams.subagent.definition). Absent
+   * when the harness has none.
+   */
+  agents?(cwd: string): AgentInfo[];
 }

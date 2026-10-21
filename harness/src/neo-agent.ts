@@ -29,6 +29,14 @@ import type {
   RequestPermission,
 } from "./agent.ts";
 import { resolveAccount } from "./auth.ts";
+import {
+  agentInfo,
+  agentPrompt,
+  agentsPrompt,
+  findAgent,
+  loadAgents,
+  toolFilter,
+} from "./agents.ts";
 import { formatPrompt } from "./context-events.ts";
 import { Hooks, loadHooks } from "./hooks.ts";
 import {
@@ -151,6 +159,15 @@ interface ModelSetting {
 function gatewayOf(servers: McpServer[]): GatewayConnection | undefined {
   const server = servers.find((s) => s.name === "suite") ?? servers[0];
   return server && connectGateway(server);
+}
+
+/** A promise of what `make` returns; its throw is a rejection. */
+function settle<T>(make: () => T): Promise<T> {
+  try {
+    return Promise.resolve(make());
+  } catch (error) {
+    return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+  }
 }
 
 /** The harness built on our loop: one Agent per session, the session log owns history. */
@@ -281,6 +298,15 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
     const messages = restoreMessages(history, logger);
     const initial = initialSettings(params);
     const skills = loadSkills(params.cwd, config.skills);
+    // A subagent runs as the definition it was delegated as; the main agent is told which there are.
+    const definitions = loadAgents(params.cwd, { user: config.agents, plugins: config.plugins });
+    const wanted = params.subagent?.definition;
+    const definition = wanted === undefined ? undefined : findAgent(definitions, wanted);
+    if (wanted !== undefined && !definition)
+      throw new Error(`There is no agent named "${wanted}".`);
+    // A subagent can't delegate, so it isn't told of the agents.
+    let basePrompt = systemPrompt(skills);
+    if (!params.subagent) basePrompt = systemPrompt(skills, agentsPrompt(definitions));
     // Told once per session, in its first prompt (older logs: the first prompt after loading).
     let cwdTold = JSON.stringify(messages).includes("<session cwd=");
     // How the account a request just resolved changes the model (Copilot's base URL).
@@ -337,7 +363,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       });
     const agent = new Agent({
       initialState: {
-        systemPrompt: systemPrompt(skills),
+        systemPrompt: definition ? agentPrompt(basePrompt, definition) : basePrompt,
         model: initial.model,
         tools: createCoreTools(
           params.cwd,
@@ -346,7 +372,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
           requestPermission,
           webToolsFor(params),
           skills,
-        ),
+        ).filter((tool) => !definition || toolFilter(definition)(tool.name)),
         messages,
         thinkingLevel: initial.thinkingLevel,
       },
@@ -627,8 +653,10 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
 
   return {
     name: HARNESS_NAME,
-    newSession: (params) => Promise.resolve(createSession(params, [])),
-    loadSession: (params) => Promise.resolve(createSession(params, params.history)),
+    newSession: (params) => settle(() => createSession(params, [])),
+    loadSession: (params) => settle(() => createSession(params, params.history)),
     generateText,
+    agents: (cwd) =>
+      loadAgents(cwd, { user: config.agents, plugins: config.plugins }).map(agentInfo),
   };
 }
