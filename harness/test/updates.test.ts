@@ -37,3 +37,36 @@ test("a search shows how many it found first", () => {
     'No results for "x".',
   );
 });
+
+function ended(content: unknown[], details?: unknown): AgentUpdate | undefined {
+  const updates: AgentUpdate[] = [];
+  const map = createUpdateMapper((update) => updates.push(update));
+  map({
+    type: "tool_execution_end",
+    toolCallId: "t1",
+    toolName: "tools_call",
+    result: { content, details },
+    isError: false,
+  } as AgentEvent);
+  return updates[0];
+}
+
+test("images an app's tool returned show as the assets the daemon stored them in", () => {
+  const png = {
+    type: "image",
+    data: "AAAA",
+    mimeType: "image/png",
+    src: "asset://img-0123456789ab",
+  };
+  expect(ended([{ type: "text", text: "Rendered." }, png], { n: 1 })).toMatchObject({
+    content: [
+      { type: "text", text: "Rendered." },
+      { type: "image", src: "asset://img-0123456789ab", mimeType: "image/png" },
+    ],
+    rawOutput: { n: 1 },
+  });
+  // Without a handle the picture can't be shown; the text says it is there.
+  expect(ended([{ type: "image", data: "AAAA", mimeType: "image/png" }])).toMatchObject({
+    content: [{ type: "text", text: "[image]" }],
+  });
+});

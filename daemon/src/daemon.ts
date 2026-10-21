@@ -296,6 +296,8 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     log,
     agent: (session, guest) => guest ?? harnessOf(session),
     approveApp: (call, kind, signal) => permissions.app(call, kind, signal),
+    storeImage: (data, mimeType, app) =>
+      assets.put({ bytes: Buffer.from(data, "base64"), mime: mimeType, app }).handle,
     resolveAsset: (handle) => assets.resolve(handle),
     recordResult: (session, result) => {
       store.append(session, result);

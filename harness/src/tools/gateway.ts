@@ -74,13 +74,19 @@ function asRecord(value: unknown): Record<string, unknown> {
   return record;
 }
 
-function toContent(result: CallToolResult): (TextContent | ImageContent)[] {
-  const out: (TextContent | ImageContent)[] = [];
+/** An image for the model, with the asset handle the daemon stored it under (for the views). */
+type StoredImage = ImageContent & { src?: string };
+
+function toContent(result: CallToolResult): (TextContent | StoredImage)[] {
+  const out: (TextContent | StoredImage)[] = [];
   for (const block of result.content) {
     if (block.type === "text") out.push({ type: "text", text: block.text });
-    else if (block.type === "image")
-      out.push({ type: "image", data: block.data, mimeType: block.mimeType });
-    else out.push({ type: "text", text: `[${block.type} content omitted]` });
+    else if (block.type === "image") {
+      const image: StoredImage = { type: "image", data: block.data, mimeType: block.mimeType };
+      const asset = block._meta?.asset;
+      if (typeof asset === "string") image.src = asset;
+      out.push(image);
+    } else out.push({ type: "text", text: `[${block.type} content omitted]` });
   }
   return out;
 }

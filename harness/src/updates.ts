@@ -96,14 +96,23 @@ function contentText(content: unknown, imagesShown = false): string {
   return parts.join("\n");
 }
 
-/** An image result as a picture for the view: the file it was read from (read's details.path). */
+/**
+ * Image results as pictures for the view: the file `read` read (details.path), and the assets
+ * the daemon stored for the images an app's tool returned (src on the block).
+ */
 function imagesOf(content: unknown, details: unknown): ToolCallContent[] {
-  if (!Array.isArray(content) || !isRecord(details) || typeof details.path !== "string") return [];
-  const image = content.find((part) => isRecord(part) && part.type === "image");
-  if (!isRecord(image)) return [];
-  const out: ToolCallContent = { type: "image", src: details.path };
-  if (typeof image.mimeType === "string") out.mimeType = image.mimeType;
-  return [out];
+  if (!Array.isArray(content)) return [];
+  const path = isRecord(details) ? text(details.path) : undefined;
+  const out: ToolCallContent[] = [];
+  for (const part of content) {
+    if (!isRecord(part) || part.type !== "image") continue;
+    const src = text(part.src) ?? path;
+    if (src === undefined) continue;
+    const image: ToolCallContent = { type: "image", src };
+    if (typeof part.mimeType === "string") image.mimeType = part.mimeType;
+    out.push(image);
+  }
+  return out;
 }
 
 /**

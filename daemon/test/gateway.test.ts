@@ -599,6 +599,60 @@ describe("over real MCP", () => {
     expect(app.calls).toEqual([{ name: "greet", args: { name: "Ada" } }]);
   });
 
+  test("an image an app's tool returns is stored, shown in the call, and still sent to the model", async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+    const render: AppTool = {
+      name: "render",
+      description: "Render a preview",
+      inputSchema: { type: "object", properties: {} },
+      annotations: { readOnlyHint: true },
+      handler: () => ({
+        content: [
+          { type: "text", text: "Rendered." },
+          { type: "image", data: png.toString("base64"), mimeType: "image/png" },
+        ],
+      }),
+    };
+    const model = fakeModel([
+      reply([fauxToolCall("tools_call", { name: "greeter.render" }, { id: "c1" })], "toolUse"),
+      reply("Done."),
+    ]);
+    const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+    const daemon = await startTestDaemon({ agent });
+    cleanups.push(() => daemon.stop());
+    const app = startMcpApp({ tools: [render] });
+    cleanups.push(() => app.close());
+    await daemon.connectors.presence(
+      {},
+      { app: "greeter", kind: "app", open: true, mcp: app.endpoint },
+    );
+
+    const { id } = daemon.sessions.create({});
+    daemon.sessions.input(id, "cli", "render it");
+    await daemon.sessions.idle(id);
+
+    const done = daemon.store
+      .read(id)
+      .map((r) => r.event)
+      .find((e) => e.type === "tool_call_update" && e.status === "completed");
+    if (done?.type !== "tool_call_update") throw new Error("the call did not complete");
+    expect(done.content).toEqual([
+      { type: "text", text: "Rendered." },
+      {
+        type: "image",
+        src: expect.stringMatching(/^asset:\/\/img-[0-9a-f]{12}$/),
+        mimeType: "image/png",
+      },
+    ]);
+    const image = done.content?.find((c) => c.type === "image");
+    if (image?.type !== "image") throw new Error("no image");
+    const stored = daemon.assets.require(image.src);
+    expect(stored).toMatchObject({ mime: "image/png", app: "greeter" });
+    expect(new Uint8Array(await Bun.file(stored.path).arrayBuffer())).toEqual(new Uint8Array(png));
+    // The model still got the picture itself.
+    expect(JSON.stringify(model.requests[1])).toContain(png.toString("base64"));
+  });
+
   test("apps_focus from the neo harness moves the agent mid-turn; the next turn carries <focus>", async () => {
     const model = fakeModel([
       reply([fauxToolCall("apps_focus", { app: "pad" }, { id: "f1" })], "toolUse"),

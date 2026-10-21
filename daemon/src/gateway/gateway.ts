@@ -38,6 +38,8 @@ export interface GatewayOptions {
   messages?: MessageTools;
   /** Stores a result a guest gets as text with [result:ref], so views can draw it. */
   recordResult?: (session: string, result: ToolResult) => void;
+  /** Stores an image a tool returned (base64) from `app`, and returns its asset handle. */
+  storeImage?: (data: string, mimeType: string, app: string) => string;
   /** The file behind an asset:// handle, named in results for guests. */
   resolveAsset?: (handle: string) => string | undefined;
   /**
@@ -365,11 +367,30 @@ export class Gateway {
       }
     }
     try {
-      return await live.upstream.call(toolName, args, signal);
+      return this.withImageHandles(app, await live.upstream.call(toolName, args, signal));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return text(`${name} failed: ${message}`, true);
     }
+  }
+
+  /**
+   * An image block carries its bytes, which a session's events never do: each is stored, and its
+   * handle goes in the block's _meta.asset for whoever draws the call. The block keeps its data
+   * for the model.
+   */
+  private withImageHandles(app: string, result: CallToolResult): CallToolResult {
+    const { storeImage } = this.options;
+    if (!storeImage || result.isError) return result;
+    const content = result.content.map((block) =>
+      block.type === "image"
+        ? {
+            ...block,
+            _meta: { ...block._meta, asset: storeImage(block.data, block.mimeType, app) },
+          }
+        : block,
+    );
+    return { ...result, content };
   }
 
   private validate(
