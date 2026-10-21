@@ -6,3 +6,5 @@ bin/
 target/
 apps/gui/dist/
 .worktrees/
+sdk-ts/dist/
+protocol/dist/
