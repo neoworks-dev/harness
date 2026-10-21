@@ -60,16 +60,26 @@ export function partsText(parts: PluginParts): string {
 export class PluginCommands {
   constructor(private readonly parts: PluginCommandParts) {}
 
+  /** One command at a time: they all write installed.json. */
+  private queue: Promise<unknown> = Promise.resolve();
+
   /** Runs `/plugin <args>`. Failures the user can act on are rejected as bad requests. */
-  async run(session: string, args: string[]): Promise<void> {
+  run(session: string, args: string[]): Promise<void> {
     const { dir } = this.parts;
-    if (dir === undefined) throw new BadRequestError("this daemon has no plugins directory");
-    try {
-      await this.dispatch(session, dir, args);
-    } catch (err) {
-      if (err instanceof PluginError) throw new BadRequestError(err.message);
-      throw err;
+    if (dir === undefined) {
+      return Promise.reject(new BadRequestError("this daemon has no plugins directory"));
     }
+    const work = async (): Promise<void> => {
+      try {
+        await this.dispatch(session, dir, args);
+      } catch (err) {
+        if (err instanceof PluginError) throw new BadRequestError(err.message);
+        throw err;
+      }
+    };
+    const result = this.queue.then(work, work);
+    this.queue = result.catch(() => undefined);
+    return result;
   }
 
   private async dispatch(session: string, dir: string, args: string[]): Promise<void> {

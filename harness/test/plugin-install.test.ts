@@ -256,6 +256,9 @@ test("url and git-subdir sources are cloned at the pinned commit", async () => {
           source: { source: "git-subdir", url: `file://${external}`, path: "../..", sha: pinned },
         },
         { name: "packed", source: { source: "npm", package: "x" } },
+        { name: "dashy", source: { source: "url", url: "--upload-pack=touch /tmp/pwned" } },
+        { name: "badsha", source: { source: "url", url: `file://${external}`, sha: "--foo" } },
+        { name: "badref", source: { source: "url", url: `file://${external}`, ref: "--foo" } },
       ],
     }),
   );
@@ -275,6 +278,9 @@ test("url and git-subdir sources are cloned at the pinned commit", async () => {
   expect(whole.version).toBe(git(external, "rev-parse", "HEAD").slice(0, 12));
   expect(await failure(installPlugin(dir, "sneaky@ext"))).toContain("isn't in");
   expect(await failure(installPlugin(dir, "packed@ext"))).toContain("aren't supported");
+  expect(await failure(installPlugin(dir, "dashy@ext"))).toContain("isn't a repository URL");
+  expect(await failure(installPlugin(dir, "badsha@ext"))).toContain("isn't a commit");
+  expect(await failure(installPlugin(dir, "badref@ext"))).toContain("isn't a branch or tag");
   // Failed installs leave nothing in installed.json.
   expect(Object.keys(readInstalled(dir).plugins).sort()).toEqual(["sub@ext", "whole@ext"]);
 });

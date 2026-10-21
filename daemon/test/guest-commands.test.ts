@@ -110,7 +110,7 @@ test("/name args goes to the guest as text, and the daemon's own commands stay t
 
   // /model is answered by the daemon even though the guest lists one: it never reaches the guest.
   const before = events(daemon, session).filter((event) => event.type === "user_message").length;
-  await daemon.commands.run(session, "/model fake large").catch(() => undefined);
+  await daemon.commands.run(session, "/model fake large");
   expect(events(daemon, session).filter((event) => event.type === "user_message")).toHaveLength(
     before,
   );

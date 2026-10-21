@@ -11,6 +11,7 @@
 // {source: "url", url}, {source: "git-subdir", url, path}; each may pin `ref` and `sha`. npm
 // sources are not supported.
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   cp,
   mkdir,
@@ -161,7 +162,7 @@ export function parseSource(input: string, cwd = process.cwd()): MarketplaceSour
   if (/^(https?:\/\/|ssh:\/\/|git:\/\/|file:\/\/|git@)/.test(text))
     return { source: "git", url: text };
   const asPath = text.startsWith("~/") ? join(homedir(), text.slice(2)) : resolve(cwd, text);
-  if (/^[\w.-]+\/[\w.-]+$/.test(text) && !text.startsWith(".")) {
+  if (/^[\w.-]+\/[\w.-]+$/.test(text) && !text.startsWith(".") && !existsSync(asPath)) {
     return { source: "github", repo: text.replace(/\.git$/, "") };
   }
   return { source: "path", path: asPath };
@@ -187,11 +188,19 @@ interface Fetch {
 
 /** Clones `url` into `dest` (an empty or missing directory), at `ref`, pinned to `sha` if given. */
 async function clone(url: string, dest: string, { ref, sha }: Fetch): Promise<void> {
+  // These come from a marketplace's file: none may pass for an option of the program.
+  if (url.startsWith("-")) throw new PluginError(`${url} isn't a repository URL`);
+  if (ref !== undefined && !/^[\w][\w./-]*$/.test(ref)) {
+    throw new PluginError(`${ref} isn't a branch or tag`);
+  }
+  if (sha !== undefined && !/^[0-9a-f]{7,64}$/i.test(sha)) {
+    throw new PluginError(`${sha} isn't a commit`);
+  }
   if (sha) {
     try {
       await mkdir(dest, { recursive: true });
       await git(["init", "-q"], dest);
-      await git(["remote", "add", "origin", url], dest);
+      await git(["remote", "add", "origin", "--", url], dest);
       await git(["fetch", "-q", "--depth", "1", "origin", sha], dest);
       await git(["checkout", "-q", "--detach", "FETCH_HEAD"], dest);
       return;
@@ -199,13 +208,13 @@ async function clone(url: string, dest: string, { ref, sha }: Fetch): Promise<vo
       // A server may not hand out a commit that is not a tip: clone it all and check it out.
       await rm(dest, { recursive: true, force: true });
     }
-    await git(["clone", "-q", url, dest]);
+    await git(["clone", "-q", "--", url, dest]);
     await git(["checkout", "-q", "--detach", sha], dest);
     return;
   }
   const args = ["clone", "-q", "--depth", "1"];
   if (ref) args.push("--branch", ref);
-  await git([...args, url, dest]);
+  await git([...args, "--", url, dest]);
 }
 
 async function readMarketplaceFile(location: string): Promise<Record<string, unknown>> {
