@@ -2642,6 +2642,12 @@ impl App {
             connected: self.connected,
             approvals: self.approvals,
             notice,
+            ui_hint: self.active_ref().is_none()
+                && self
+                    .chat
+                    .prompt_refs()
+                    .iter()
+                    .any(|r| self.chat.has_targets(r)),
             styles: &self.styles,
         }
         .lines(width)
@@ -2702,7 +2708,10 @@ impl App {
                 "1-9, arrows, enter",
                 "answer a prompt or fill in a form: tab, type, space; esc: input",
             ),
-            key("ctrl-p / ctrl-n", "pick an older prompt"),
+            key(
+                "ctrl-p / ctrl-n",
+                "use the buttons and forms above, older first",
+            ),
             Line::default(),
             head("commands"),
         ];

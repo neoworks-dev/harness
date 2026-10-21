@@ -682,7 +682,8 @@ impl<'a> Cx<'a> {
         out
     }
 
-    /// `[ Label ]`: primary in the accent color, danger in red; reversed while it has focus.
+    /// ` Label ` on a background, so it doesn't read as a field's `[ ]`: primary on the accent
+    /// color, danger on red, the rest on the band; the text color while it has focus.
     fn button_spans(&mut self, n: N<'_>) -> Vec<Span<'static>> {
         let label = n.line("label").unwrap_or_default();
         let url = n.str("url").filter(|u| !u.is_empty()).map(str::to_string);
@@ -702,17 +703,26 @@ impl<'a> Cx<'a> {
             );
             focused = self.ui_focused(key);
         }
-        let mut style = match n.str("variant") {
-            Some("primary") => Style::new().fg(self.p.accent).add_modifier(Modifier::BOLD),
-            Some("danger") => Style::new().fg(self.p.danger),
-            _ => Style::new(),
+        let style = if focused {
+            Style::new()
+                .fg(self.p.bg)
+                .bg(self.p.fg)
+                .add_modifier(Modifier::BOLD)
+        } else if disabled {
+            Style::new()
+                .fg(self.p.muted)
+                .bg(self.p.band())
+                .add_modifier(Modifier::DIM)
+        } else {
+            match n.str("variant") {
+                Some("primary") => Style::new()
+                    .fg(self.p.bg)
+                    .bg(self.p.accent)
+                    .add_modifier(Modifier::BOLD),
+                Some("danger") => Style::new().fg(self.p.bg).bg(self.p.danger),
+                _ => Style::new().fg(self.p.fg).bg(self.p.band()),
+            }
         };
-        if disabled {
-            style = self.p.muted_style().add_modifier(Modifier::DIM);
-        }
-        if focused {
-            style = style.add_modifier(Modifier::REVERSED);
-        }
         let tail = if url.is_some() {
             " ↗"
         } else if copy.is_some() {
@@ -720,7 +730,7 @@ impl<'a> Cx<'a> {
         } else {
             ""
         };
-        vec![Span::styled(format!("[ {label}{tail} ]"), style)]
+        vec![Span::styled(format!(" {label}{tail} "), style)]
     }
 
     pub(super) fn ui_button_line(&mut self, n: N<'_>, w: usize) -> Lines {

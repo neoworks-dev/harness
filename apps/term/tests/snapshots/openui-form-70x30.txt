@@ -17,7 +17,7 @@
 ▎   ○ off Post to #deploys
 ▎   [ ] I checked
 ▎
-▎   [ Deploy ]  [ Runbook ↗ ]  [ Copy id ⧉ ]
+▎    Deploy    Runbook ↗    Copy id ⧉
 
 
 

@@ -947,7 +947,7 @@ fn radio_check_switch_and_slider() {
 }
 
 #[test]
-fn buttons_have_variants_and_a_focused_one_is_reversed() {
+fn buttons_sit_on_a_background_by_variant_and_a_focused_one_on_the_text_color() {
     let it = doc(node(
         "Buttons",
         json!({"buttons": [
@@ -960,7 +960,7 @@ fn buttons_have_variants_and_a_focused_one_is_reversed() {
     ));
     assert_eq!(
         lines(&it, 80),
-        ["[ Deploy ]  [ Delete ]  [ Docs ↗ ]  [ Copy ⧉ ]  [ Wait ]"]
+        [" Deploy    Delete    Docs ↗    Copy ⧉    Wait"]
     );
     let rendered = render_item(&it, 80, &focused("x"));
     let by = |text: &str| {
@@ -971,13 +971,25 @@ fn buttons_have_variants_and_a_focused_one_is_reversed() {
             .unwrap()
             .style
     };
-    assert_eq!(by("Deploy").fg, Some(pal().accent));
-    assert_eq!(by("Delete").fg, Some(pal().danger));
-    assert!(by("Delete").add_modifier.contains(Modifier::REVERSED));
-    assert!(!by("Deploy").add_modifier.contains(Modifier::REVERSED));
+    // No brackets, so a button doesn't read as a field: each has a background of its own.
+    assert_eq!(by("Deploy").bg, Some(pal().accent));
+    assert_eq!(by("Deploy").fg, Some(pal().bg));
+    assert_eq!(by("Docs").bg, Some(pal().band()));
     assert_eq!(by("Wait").fg, Some(pal().muted));
+    assert_eq!(by("Wait").bg, Some(pal().band()));
+    // The focused one (Delete, danger) is on the text color, the others keep theirs.
+    assert_eq!(by("Delete").bg, Some(pal().fg));
+    assert_eq!(by("Delete").fg, Some(pal().bg));
+    let unfocused = render_item(&it, 80, &Options::default());
+    let delete = unfocused[0]
+        .spans
+        .iter()
+        .find(|s| s.content.contains("Delete"))
+        .unwrap()
+        .style;
+    assert_eq!(delete.bg, Some(pal().danger));
     // Wraps when they do not fit.
-    assert_eq!(lines(&it, 30).len(), 3);
+    assert_eq!(lines(&it, 30).len(), 2);
 }
 
 fn follow_ups() -> Value {

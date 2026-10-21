@@ -21,7 +21,7 @@ keys (any key closes this)
   ctrl-x, down              subagents under the prompt: enter opens, x stops (down: empty input)
   diff view                 n/p hunk · h/l/0 sideways · s split/unified · f whole file · q close
   1-9, arrows, enter        answer a prompt or fill in a form: tab, type, space; esc: input
-  ctrl-p / ctrl-n           pick an older prompt
+  ctrl-p / ctrl-n           use the buttons and forms above, older first
 
 commands
   /clear                              start a new conversation in this directory

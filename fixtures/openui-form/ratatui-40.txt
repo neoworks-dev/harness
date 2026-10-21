@@ -18,4 +18,4 @@
   [ ] I checked the migration *
   This field is required
 
-  [ Deploy ]  [ Runbook ↗ ]
+   Deploy    Runbook ↗

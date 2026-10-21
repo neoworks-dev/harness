@@ -563,8 +563,8 @@ fn a_button_presses_with_enter_opens_its_link_or_copies() {
     tabs(&mut app, 7);
     assert_eq!(focused(&app).as_deref(), Some("deploy"));
     let screen = text(&mut app);
-    assert!(screen.contains("[ Deploy ]"), "{screen}");
-    assert!(screen.contains("[ Runbook ↗ ]"), "{screen}");
+    assert!(screen.contains(" Deploy "), "{screen}");
+    assert!(screen.contains(" Runbook ↗ "), "{screen}");
     assert_eq!(
         press(&mut app, key(KeyCode::Enter)),
         [pressed("0", "deploy")]
@@ -645,10 +645,29 @@ fn a_form_the_user_has_spoken_after_waits_to_be_picked() {
         vec![form_item("f1", false, ""), user("u1", "never mind")],
     );
     assert!(!app.prompt.engaged);
-    // It can still be picked by hand.
+    // The status line says how: it can still be picked by hand.
+    let hint = |app: &mut App| {
+        screen(app, 80, 30)
+            .join("\n")
+            .contains("ctrl-p use the buttons above")
+    };
+    assert!(hint(&mut app));
     press(&mut app, ctrl('p'));
     assert!(app.prompt.engaged);
     assert_eq!(focused(&app).as_deref(), Some("service"));
+    // While the form has the keys, the hint is gone.
+    assert!(!hint(&mut app));
+}
+
+#[test]
+fn no_hint_without_a_doc_to_use() {
+    let mut app = app();
+    show(&mut app, vec![user("u1", "hi")]);
+    assert!(
+        !screen(&mut app, 80, 30)
+            .join("\n")
+            .contains("ctrl-p use the buttons above")
+    );
 }
 
 #[test]
@@ -777,7 +796,7 @@ fn the_chat_scrolls_to_the_focused_field() {
     assert!(first.contains("Service"), "{first}");
     tabs(&mut app, 7);
     let on_button = rows(&mut app);
-    assert!(on_button.contains("[ Deploy ]"), "{on_button}");
+    assert!(on_button.contains(" Deploy "), "{on_button}");
     assert_eq!(focused(&app).as_deref(), Some("deploy"));
     press(&mut app, key(KeyCode::BackTab));
     press(&mut app, key(KeyCode::BackTab));

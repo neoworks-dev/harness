@@ -18,4 +18,4 @@
   ⟦muted|[ ]⟧ I checked the migration⟦danger| *⟧
   ⟦danger|This field is required⟧
 
-  ⟦accent bold|[ Deploy ]⟧  [ Runbook ↗ ]
+  ⟦bg bg:accent bold| Deploy ⟧  ⟦fg bg:#333439| Runbook ↗ ⟧

@@ -93,6 +93,8 @@ pub struct Status<'a> {
     pub approvals: Approvals,
     /// A transient message and whether it is an error.
     pub notice: Option<(&'a str, bool)>,
+    /// The chat has a doc with buttons or fields that no key reaches now: say how to get there.
+    pub ui_hint: bool,
     pub styles: &'a Styles,
 }
 
@@ -164,7 +166,8 @@ impl Status<'_> {
     }
 
     /// `⏵ review each edit (shift+tab to cycle)`, `⏵⏵ accept edits on …`, `⏵⏵ auto mode on …` or
-    /// `? ask before acting …`, a notice on the right (the hint in parentheses goes first when they don't both fit).
+    /// `? ask before acting …`, a notice on the right, else `ctrl-p use the buttons above` when
+    /// there is a doc to use (the hint in parentheses goes first when they don't both fit).
     fn line3(&self, width: usize) -> Line<'static> {
         let s = self.styles;
         let (text, style) = match self.approvals {
@@ -173,12 +176,17 @@ impl Status<'_> {
             Approvals::Edits => ("⏵⏵ accept edits on", s.accent),
             Approvals::Ask => ("? ask before acting", s.muted),
         };
-        let right = self.notice.map(|(text, error)| {
-            Line::from(Span::styled(
+        let right = match self.notice {
+            Some((text, error)) => Some(Line::from(Span::styled(
                 text.to_string(),
                 if error { s.danger } else { s.muted },
-            ))
-        });
+            ))),
+            None if self.ui_hint => Some(Line::from(vec![
+                Span::styled("ctrl-p", s.accent),
+                Span::styled(" use the buttons above", s.muted),
+            ])),
+            None => None,
+        };
         let hint = " (shift+tab to cycle)";
         let long = text.chars().count() + hint.chars().count();
         let room = right.as_ref().map_or(0, |r| r.width() + 2);
@@ -218,6 +226,7 @@ mod tests {
             connected: true,
             approvals: Approvals::Ask,
             notice: None,
+            ui_hint: false,
             styles,
         }
     }
@@ -315,6 +324,26 @@ mod tests {
             l.to_string(),
             "⏵⏵ auto mode on       press ctrl-c again to quit"
         );
+    }
+
+    #[test]
+    fn line_three_says_how_to_reach_the_buttons_above_unless_a_notice_is_up() {
+        let styles = Styles::new(&Palette::default(), false);
+        let none: [HarnessSettings; 0] = [];
+        let mut s = status(&styles, &none);
+        s.ui_hint = true;
+        let l = &s.lines(70)[2];
+        assert!(l.to_string().starts_with("? ask before acting (shift+tab"));
+        assert!(l.to_string().ends_with("ctrl-p use the buttons above"));
+        assert!(
+            l.spans
+                .iter()
+                .any(|sp| sp.content == "ctrl-p" && sp.style == styles.accent)
+        );
+        s.notice = Some(("copied", false));
+        let l = &s.lines(70)[2];
+        assert!(l.to_string().ends_with("copied"));
+        assert!(!l.to_string().contains("ctrl-p"));
     }
 
     #[test]
