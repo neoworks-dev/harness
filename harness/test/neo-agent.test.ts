@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fauxToolCall } from "@mariozechner/pi-ai";
@@ -293,6 +294,50 @@ test("a failing tool is reported as failed and the turn continues", async () => 
   const last = ofType(updates, "tool_call_update").at(-1);
   expect(last?.status).toBe("failed");
   expect(JSON.stringify(last?.content)).toContain("exited with code 2");
+});
+
+test("declining a command with no note stops the turn: the model doesn't answer it", async () => {
+  const model = fakeModel([
+    reply(
+      [fauxToolCall("bash", { command: "touch x", description: "Create x" }, { id: "b1" })],
+      "toolUse",
+    ),
+    reply("I see you declined."),
+  ]);
+  const cwd = await tempDir();
+  const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const session = await agent.newSession({
+    sessionId: "s1",
+    cwd,
+    mcpServers: [],
+    requestPermission: async () => ({ allowed: false }),
+  });
+  const { result } = await run(session, "make x");
+  expect(result.stopReason).toBe("cancelled");
+  expect(model.requests).toHaveLength(1);
+  expect(existsSync(join(cwd, "x"))).toBe(false);
+});
+
+test("declining with a note goes on: the model gets the note", async () => {
+  const model = fakeModel([
+    reply(
+      [fauxToolCall("bash", { command: "touch x", description: "Create x" }, { id: "b1" })],
+      "toolUse",
+    ),
+    reply("Making y instead."),
+  ]);
+  const cwd = await tempDir();
+  const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const session = await agent.newSession({
+    sessionId: "s1",
+    cwd,
+    mcpServers: [],
+    requestPermission: async () => ({ allowed: false, note: "make y instead" }),
+  });
+  const { result } = await run(session, "make x");
+  expect(result.stopReason).toBe("end_turn");
+  expect(model.requests).toHaveLength(2);
+  expect(JSON.stringify(model.requests[1])).toContain("make y instead");
 });
 
 test("every neo message is logged as a harness_message", async () => {

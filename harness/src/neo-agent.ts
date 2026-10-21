@@ -2,11 +2,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agent, type StreamFn, type ThinkingLevel } from "./loop/index.ts";
 import {
+  createAssistantMessageEventStream,
+  fauxAssistantMessage,
   getModels,
   getProviders,
   streamSimple,
   type Api,
   type AssistantMessage,
+  type AssistantMessageEventStream,
   type KnownProvider,
   type Model,
 } from "@mariozechner/pi-ai";
@@ -22,6 +25,7 @@ import type {
   NewSessionParams,
   PromptParams,
   PromptResult,
+  RequestPermission,
 } from "./agent.ts";
 import { resolveAccount } from "./auth.ts";
 import { formatPrompt } from "./context-events.ts";
@@ -60,6 +64,19 @@ export interface NeoAgentOptions {
   streamFn?: StreamFn;
   /** Replaces the network for OpenRouter's model and host lists; for tests. */
   fetch?: FetchFn;
+}
+
+/** A request that is not made: the turn was stopped before it. */
+function abortedReply(model: Model<Api>): AssistantMessageEventStream {
+  const stream = createAssistantMessageEventStream();
+  const message: AssistantMessage = {
+    ...fauxAssistantMessage("", { stopReason: "aborted", errorMessage: "The turn was stopped." }),
+    api: model.api,
+    provider: model.provider,
+    model: model.id,
+  };
+  queueMicrotask(() => stream.push({ type: "error", reason: "aborted", error: message }));
+  return stream;
 }
 
 function toResult(final: AssistantMessage | undefined, cancelled: boolean): PromptResult {
@@ -249,6 +266,20 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
     let cwdTold = JSON.stringify(messages).includes("<session cwd=");
     // How the account a request just resolved changes the model (Copilot's base URL).
     const adjustModels = new Map<string, ((model: Model<Api>) => Model<Api>) | undefined>();
+    // Set when the user declines without a note: the turn stops once that tool call is done.
+    let declined = false;
+    const ask = params.requestPermission;
+    const requestPermission: RequestPermission | undefined =
+      ask &&
+      (async (request, signal) => {
+        const answer = await ask(request, signal);
+        // A note says what to do instead, so the agent goes on with it. No note: just stop, the
+        // agent doesn't get to answer the refusal.
+        if (!answer.allowed && answer.note === undefined && request.phase !== "after") {
+          declined = true;
+        }
+        return answer;
+      });
     const agent = new Agent({
       initialState: {
         systemPrompt: systemPrompt(skills),
@@ -257,7 +288,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
           params.cwd,
           gatewayOf(params.mcpServers),
           params.resolveAsset,
-          params.requestPermission,
+          requestPermission,
           webToolsFor(params),
           skills,
         ),
@@ -272,11 +303,14 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       sessionId: params.sessionId,
       toolExecution: "sequential",
       streamFn: (model, context, options) =>
-        (streamFn ?? streamSimple)(
-          adjustModels.get(model.provider)?.(model) ?? model,
-          context,
-          options,
-        ),
+        // Stopped after a tool (a declined command): the model isn't asked again.
+        options?.signal?.aborted
+          ? abortedReply(model)
+          : (streamFn ?? streamSimple)(
+              adjustModels.get(model.provider)?.(model) ?? model,
+              context,
+              options,
+            ),
     });
     // Counts every message ever logged, including failed ones the context no longer holds.
     const usage = createUsageTracker(
@@ -308,10 +342,16 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       }
       running = true;
       cancelRequested = false;
+      declined = false;
       const mapEvent = createUpdateMapper(onUpdate, usage);
       let final: AssistantMessage | undefined;
       const unsubscribe = agent.subscribe((event) => {
         mapEvent(event);
+        if (event.type === "tool_execution_end" && declined) {
+          declined = false;
+          cancelRequested = true;
+          agent.abort();
+        }
         if (event.type !== "agent_end") return;
         for (const message of event.messages) if (message.role === "assistant") final = message;
       });
