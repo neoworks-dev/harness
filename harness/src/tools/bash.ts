@@ -16,6 +16,12 @@ const PIPE_GRACE_MS = 100;
 
 const parameters = Type.Object({
   command: Type.String({ description: "The bash command to run." }),
+  description: Type.String({
+    description:
+      'What the command does, in plain words, 5–10 of them, active voice: "List the files this ' +
+      'branch changed", "Run the daemon\'s tests". The user reads this, not the command, to decide ' +
+      "whether to run it, so say what it does and what it touches, not how.",
+  }),
   timeout: Type.Optional(
     Type.Number({
       description: "Kill the command after this many seconds. Default: no timeout.",
@@ -99,11 +105,17 @@ export function createBashTool(
       "reported as an error together with the output. Commands cannot read from stdin, so " +
       "don't run interactive programs.",
     parameters,
-    async execute(toolCallId, { command, timeout }, signal, onUpdate) {
+    async execute(toolCallId, { command, description, timeout }, signal, onUpdate) {
       if (signal?.aborted) throw new Error("Command aborted before it started.");
+      // The user decides by the description; the command is under it.
       const { note } = await askToProceed(
         ask,
-        { title: command, kind: "execute", toolCallId },
+        {
+          title: description.trim() || command,
+          kind: "execute",
+          toolCallId,
+          content: [{ type: "text", text: command }],
+        },
         "The user declined to run this command.",
         signal,
       );

@@ -32,7 +32,10 @@ test("bash and read accept handles; write refuses them", async () => {
   writeFileSync(stored, "logo bytes", { mode: 0o400 });
   const assets = (h: string): string | undefined => (h === HANDLE ? stored : undefined);
 
-  await createBashTool(cwd, assets).execute("t", { command: `cp ${HANDLE} copy.txt` });
+  await createBashTool(cwd, assets).execute("t", {
+    command: `cp ${HANDLE} copy.txt`,
+    description: "test",
+  });
   expect(readFileSync(join(cwd, "copy.txt"), "utf8")).toBe("logo bytes");
   expect(resultText(await createReadTool(cwd, assets).execute("t", { path: HANDLE }))).toContain(
     "logo bytes",

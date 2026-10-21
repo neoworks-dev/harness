@@ -93,16 +93,29 @@ test("an edit that fails to match never asks", async () => {
   expect(asked).toEqual([]);
 });
 
-test("bash asks with the command as the title and no content", async () => {
+test("bash asks with the description as the title and the command under it", async () => {
   const cwd = await tempDir();
   const allow = hook(true);
-  await createBashTool(cwd, undefined, allow.ask).execute("t9", { command: "touch made" });
-  expect(allow.asked).toEqual([{ title: "touch made", kind: "execute", toolCallId: "t9" }]);
+  await createBashTool(cwd, undefined, allow.ask).execute("t9", {
+    command: "touch made",
+    description: "Create the file made",
+  });
+  expect(allow.asked).toEqual([
+    {
+      title: "Create the file made",
+      kind: "execute",
+      toolCallId: "t9",
+      content: [{ type: "text", text: "touch made" }],
+    },
+  ]);
   expect(existsSync(join(cwd, "made"))).toBe(true);
 
   const refuse = hook(false);
   const message = await errorMessage(
-    createBashTool(cwd, undefined, refuse.ask).execute("t", { command: "touch nope" }),
+    createBashTool(cwd, undefined, refuse.ask).execute("t", {
+      command: "touch nope",
+      description: "test",
+    }),
   );
   expect(message).toBe("The user declined to run this command.");
   expect(existsSync(join(cwd, "nope"))).toBe(false);
@@ -118,7 +131,11 @@ test("the signal reaches the hook, and a cancelled turn does not run the tool", 
     return Promise.resolve({ allowed: true });
   };
   const message = await errorMessage(
-    createBashTool(cwd, undefined, ask).execute("t", { command: "touch late" }, controller.signal),
+    createBashTool(cwd, undefined, ask).execute(
+      "t",
+      { command: "touch late", description: "test" },
+      controller.signal,
+    ),
   );
   expect(received).toBe(controller.signal);
   expect(message).toContain("Cancelled");
@@ -128,7 +145,7 @@ test("the signal reaches the hook, and a cancelled turn does not run the tool", 
 test("without a hook nothing asks", async () => {
   const cwd = await tempDir();
   await createWriteTool(cwd).execute("t", { path: "a.txt", content: "a" });
-  await createBashTool(cwd).execute("t", { command: "touch b" });
+  await createBashTool(cwd).execute("t", { command: "touch b", description: "test" });
   expect(await readFile(join(cwd, "a.txt"), "utf8")).toBe("a");
   expect(existsSync(join(cwd, "b"))).toBe(true);
 });
@@ -185,7 +202,10 @@ test("a note goes to the model: with the result when allowed, with the refusal w
   expect(resultText(written)).toBe("Created n.txt (1 bytes).\n\nThe user added: use tabs");
 
   const bash = script([{ allowed: true, note: "careful" }]);
-  const ran = await createBashTool(cwd, undefined, bash.ask).execute("t", { command: "echo hi" });
+  const ran = await createBashTool(cwd, undefined, bash.ask).execute("t", {
+    command: "echo hi",
+    description: "test",
+  });
   expect(resultText(ran)).toBe("hi\n\nThe user added: careful");
 
   const read = script([{ allowed: true, note: "only the top" }]);

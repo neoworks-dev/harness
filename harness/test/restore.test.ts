@@ -23,7 +23,7 @@ function toolResult(id: string, name = "bash", text = "ok"): Message {
 }
 
 function call(id: string): ReturnType<typeof fauxToolCall> {
-  return fauxToolCall("bash", { command: `echo ${id}` }, { id });
+  return fauxToolCall("bash", { command: `echo ${id}`, description: "test" }, { id });
 }
 
 function logged(messages: Message[]): SessionEvent[] {

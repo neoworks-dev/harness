@@ -23,6 +23,9 @@ function stringArg(args: unknown, key: string): string {
 function describeToolCall(name: string, args: unknown): { title: string; kind: ToolKind } {
   switch (name) {
     case "bash": {
+      // The model's description says what it does; the command shows in the call's output.
+      const description = stringArg(args, "description").trim();
+      if (description) return { title: description, kind: "execute" };
       const firstLine = stringArg(args, "command").split("\n")[0] ?? "";
       return { title: `bash: ${firstLine.slice(0, TITLE_COMMAND_CHARS)}`, kind: "execute" };
     }

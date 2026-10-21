@@ -272,7 +272,13 @@ test("a todo_write call with a malformed list emits no plan", async () => {
 test("a failing tool is reported as failed and the turn continues", async () => {
   const model = fakeModel([
     reply(
-      [fauxToolCall("bash", { command: "echo oops; exit 2\nsecond line" }, { id: "b1" })],
+      [
+        fauxToolCall(
+          "bash",
+          { command: "echo oops; exit 2\nsecond line", description: "Fail on purpose" },
+          { id: "b1" },
+        ),
+      ],
       "toolUse",
     ),
     reply("It failed."),
@@ -281,7 +287,7 @@ test("a failing tool is reported as failed and the turn continues", async () => 
   const { updates, result } = await run(session, "run it");
   expect(result.stopReason).toBe("end_turn");
   expect(updates.find((u) => u.type === "tool_call")).toMatchObject({
-    title: "bash: echo oops; exit 2",
+    title: "Fail on purpose",
     kind: "execute",
   });
   const last = ofType(updates, "tool_call_update").at(-1);
@@ -291,7 +297,10 @@ test("a failing tool is reported as failed and the turn continues", async () => 
 
 test("every neo message is logged as a harness_message", async () => {
   const model = fakeModel([
-    reply([fauxToolCall("bash", { command: "echo hi" }, { id: "b1" })], "toolUse"),
+    reply(
+      [fauxToolCall("bash", { command: "echo hi", description: "test" }, { id: "b1" })],
+      "toolUse",
+    ),
     reply("done"),
   ]);
   const { session } = await newSession(model);
@@ -392,7 +401,10 @@ test("a session lists its skills in the system prompt, and the skill tool loads 
 test("usage follows each assistant message with running totals", async () => {
   const model = fakeModel([
     withUsage(
-      reply([fauxToolCall("bash", { command: "true" }, { id: "b1" })], "toolUse"),
+      reply(
+        [fauxToolCall("bash", { command: "true", description: "test" }, { id: "b1" })],
+        "toolUse",
+      ),
       { input: 100, output: 20, cacheRead: 50 },
       0.01,
     ),
@@ -516,7 +528,10 @@ test("cancel aborts the running prompt and it resolves cancelled", async () => {
 
 test("cancel during a bash command stops it and ends the turn cancelled", async () => {
   const model = fakeModel([
-    reply([fauxToolCall("bash", { command: "sleep 30" }, { id: "b1" })], "toolUse"),
+    reply(
+      [fauxToolCall("bash", { command: "sleep 30", description: "test" }, { id: "b1" })],
+      "toolUse",
+    ),
     (_context, signal) => reply("", signal?.aborted ? "aborted" : "stop", "aborted"),
   ]);
   const { session } = await newSession(model);

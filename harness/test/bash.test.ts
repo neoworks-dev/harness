@@ -5,7 +5,9 @@ import { createBashTool } from "../src/tools/bash.ts";
 import { errorMessage, resultText, tempDir } from "./helpers.ts";
 
 async function run(cwd: string, command: string, timeout?: number): Promise<string> {
-  return resultText(await createBashTool(cwd).execute("t", { command, timeout }));
+  return resultText(
+    await createBashTool(cwd).execute("t", { command, description: "test", timeout }),
+  );
 }
 
 function alive(pid: number): boolean {
@@ -34,7 +36,10 @@ test("a non-zero exit is an error that keeps the output and the exit code", asyn
 
 test("keeps the tail of large output and saves the full output to a file", async () => {
   const cwd = await tempDir();
-  const result = await createBashTool(cwd).execute("t", { command: "seq 1 5000" });
+  const result = await createBashTool(cwd).execute("t", {
+    command: "seq 1 5000",
+    description: "test",
+  });
   const text = resultText(result);
   const path = result.details.fullOutputPath;
   expect(path).toBeDefined();
@@ -65,7 +70,7 @@ test("abort kills the whole process group", async () => {
   const pidFile = join(cwd, "pid");
   const running = tool.execute(
     "t",
-    { command: `sleep 30 & echo $! > ${pidFile}; wait` },
+    { command: `sleep 30 & echo $! > ${pidFile}; wait`, description: "test" },
     controller.signal,
   );
   for (let i = 0; i < 100 && !existsSync(pidFile); i++) await Bun.sleep(20);
@@ -83,7 +88,9 @@ test("an already aborted signal never starts the command", async () => {
   const controller = new AbortController();
   controller.abort();
   const tool = createBashTool(cwd);
-  await errorMessage(tool.execute("t", { command: "touch ran" }, controller.signal));
+  await errorMessage(
+    tool.execute("t", { command: "touch ran", description: "test" }, controller.signal),
+  );
   expect(existsSync(join(cwd, "ran"))).toBe(false);
 });
 
@@ -92,7 +99,7 @@ test("streams throttled partial output", async () => {
   const tool = createBashTool(await tempDir());
   await tool.execute(
     "t",
-    { command: "for i in 1 2 3 4; do echo line$i; sleep 0.15; done" },
+    { command: "for i in 1 2 3 4; do echo line$i; sleep 0.15; done", description: "test" },
     undefined,
     (partial) => updates.push(resultText(partial)),
   );
