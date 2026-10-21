@@ -39,6 +39,8 @@ export interface HarnessConfig {
   skills?: SkillDirs;
   /** Where the harness installs Claude Code plugins (plugins.ts); none without. */
   plugins?: string;
+  /** Claude Code hooks (`hooks` in config.json), in Claude Code's settings shape; see hooks.ts. */
+  hooks?: Record<string, unknown>;
 }
 
 /** The web tools' settings: the user's to choose, never the agent's. */
@@ -137,7 +139,7 @@ export function authPaths(env: NodeJS.ProcessEnv = process.env): {
 
 /**
  * Reads `$XDG_CONFIG_HOME/suite/config.json` (optional; keys `model` = "provider/id",
- * `thinkingLevel`, `images` and `web`), overridden by SUITE_MODEL, SUITE_THINKING, SUITE_IMAGES,
+ * `thinkingLevel`, `images`, `web` and `hooks`), overridden by SUITE_MODEL, SUITE_THINKING, SUITE_IMAGES,
  * SUITE_SAFE_SEARCH and SUITE_SEARXNG_URL.
  */
 export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): HarnessConfig {
@@ -182,6 +184,10 @@ export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): Harness
   };
   if (env.SUITE_IMAGES) config.images = parseImages(env.SUITE_IMAGES, "SUITE_IMAGES");
   else if (file && typeof file.images === "boolean") config.images = file.images;
+  if (file?.hooks !== undefined) {
+    if (!isRecord(file.hooks)) throw new Error(`${path}: hooks must be an object`);
+    config.hooks = file.hooks;
+  }
   return config;
 }
 
