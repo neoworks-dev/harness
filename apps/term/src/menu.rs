@@ -81,6 +81,11 @@ pub const COMMANDS: &[Command] = &[
     ),
     daemon("logout", "[provider]", "remove a stored API key or account"),
     daemon("accounts", "", "list the API keys and accounts in use"),
+    daemon(
+        "plugin",
+        "[install|enable|…]",
+        "plugins for neo: list, search, install, uninstall, enable, disable, marketplace add",
+    ),
     local("sessions", "switch to another session (ctrl-s)"),
     local(
         "sidebar",
