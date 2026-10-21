@@ -39,6 +39,11 @@ export interface HarnessConfig {
   skills?: SkillDirs;
   /** Where the harness installs Claude Code plugins (plugins.ts); none without. */
   plugins?: string;
+  /**
+   * Base URLs that replace the models' own, by provider (`proxy` in config.json): requests of a
+   * provider's models go to a proxy that forwards them. See proxy.ts.
+   */
+  proxy?: Record<string, string>;
   /** The user's agent definitions (agents.ts); none without. */
   agents?: string;
   /** Claude Code hooks (`hooks` in config.json), in Claude Code's settings shape; see hooks.ts. */
@@ -85,6 +90,30 @@ function parseWeb(
     web.searxngUrl = section.searxng;
   }
   return web;
+}
+
+/** The `proxy` object of config.json: provider → http(s) URL. */
+function parseProxy(value: unknown, path: string): Record<string, string> {
+  if (!isRecord(value)) throw new Error(`${path}: proxy must be an object of provider: URL`);
+  const proxy: Record<string, string> = {};
+  for (const [provider, url] of Object.entries(value)) {
+    if (!getProviders().some((known) => known === provider)) {
+      throw new Error(`${path}: proxy: unknown provider "${provider}"`);
+    }
+    let parsed: URL | undefined;
+    if (typeof url === "string") {
+      try {
+        parsed = new URL(url);
+      } catch {
+        // reported below
+      }
+    }
+    if (typeof url !== "string" || parsed === undefined || !/^https?:$/.test(parsed.protocol)) {
+      throw new Error(`${path}: proxy.${provider} must be an http(s) URL`);
+    }
+    proxy[provider] = url;
+  }
+  return proxy;
 }
 
 /** Parses a JSON file; undefined if it doesn't exist. Throws on invalid JSON. */
@@ -141,7 +170,7 @@ export function authPaths(env: NodeJS.ProcessEnv = process.env): {
 
 /**
  * Reads `$XDG_CONFIG_HOME/suite/config.json` (optional; keys `model` = "provider/id",
- * `thinkingLevel`, `images`, `web` and `hooks`), overridden by SUITE_MODEL, SUITE_THINKING, SUITE_IMAGES,
+ * `thinkingLevel`, `images`, `web`, `proxy` and `hooks`), overridden by SUITE_MODEL, SUITE_THINKING, SUITE_IMAGES,
  * SUITE_SAFE_SEARCH and SUITE_SEARXNG_URL.
  */
 export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): HarnessConfig {
@@ -187,6 +216,7 @@ export function loadHarnessConfig(env: NodeJS.ProcessEnv = process.env): Harness
   };
   if (env.SUITE_IMAGES) config.images = parseImages(env.SUITE_IMAGES, "SUITE_IMAGES");
   else if (file && typeof file.images === "boolean") config.images = file.images;
+  if (file?.proxy !== undefined) config.proxy = parseProxy(file.proxy, path);
   if (file?.hooks !== undefined) {
     if (!isRecord(file.hooks)) throw new Error(`${path}: hooks must be an object`);
     config.hooks = file.hooks;

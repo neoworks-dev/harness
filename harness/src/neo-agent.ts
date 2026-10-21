@@ -57,6 +57,7 @@ import {
   type FetchFn,
   type OpenRouterEndpoint,
 } from "./openrouter.ts";
+import { throughProxy } from "./proxy.ts";
 import { createUpdateMapper } from "./updates.ts";
 import { HARNESS_NAME, loggedMessages, restoreMessages } from "./restore.ts";
 import {
@@ -385,15 +386,13 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       },
       sessionId: params.sessionId,
       toolExecution: "sequential",
-      streamFn: (model, context, options) =>
+      streamFn: (model, context, options) => {
         // Stopped after a tool (a declined command): the model isn't asked again.
-        options?.signal?.aborted
-          ? abortedReply(model)
-          : (streamFn ?? streamSimple)(
-              adjustModels.get(model.provider)?.(model) ?? model,
-              context,
-              options,
-            ),
+        if (options?.signal?.aborted) return abortedReply(model);
+        const adjusted = adjustModels.get(model.provider)?.(model) ?? model;
+        const [via, withOptions] = throughProxy(adjusted, options, config.proxy);
+        return (streamFn ?? streamSimple)(via, context, withOptions);
+      },
     });
     // Counts every message ever logged, including failed ones the context no longer holds.
     const usage = createUsageTracker(
@@ -633,13 +632,18 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
     const model = setting === undefined ? defaultModel : modelFromSetting(setting);
     const account = await resolveAuth(config, model.provider);
     if (!account) throw new Error(missingApiKeyMessage(config, model.provider));
-    const stream = await (streamFn ?? streamSimple)(
+    const [via, options] = throughProxy(
       account.adjustModel?.(model) ?? model,
+      { apiKey: account.apiKey, signal },
+      config.proxy,
+    );
+    const stream = await (streamFn ?? streamSimple)(
+      via,
       {
         systemPrompt: system,
         messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
       },
-      { apiKey: account.apiKey, signal },
+      options,
     );
     const reply = await stream.result();
     if (reply.stopReason === "error" || reply.stopReason === "aborted") {
