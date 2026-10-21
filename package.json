@@ -11,7 +11,6 @@
     "websearch",
     "renderers/web",
     "services/lsp",
-    "apps/browser",
     "apps/gui"
   ],
   "scripts": {

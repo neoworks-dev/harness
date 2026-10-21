@@ -6085,18 +6085,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "suite-pad"
-version = "0.3.0"
-dependencies = [
- "async-channel 2.5.0",
- "gpui",
- "serde_json",
- "suite-protocol",
- "suite-renderer-gpui",
- "suite-sdk",
-]
-
-[[package]]
 name = "suite-protocol"
 version = "0.3.0"
 dependencies = [

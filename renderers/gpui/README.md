@@ -1,6 +1,6 @@
 # renderers/gpui
 
-Rust renderer (`suite-renderer-gpui`) that draws the resolved view format with GPUI. A reusable crate: Pad (the code editor stand-in) hosts it today, Grove will. Conventions shared by all renderers are in `../README.md`.
+Rust renderer (`suite-renderer-gpui`) that draws the resolved view format with GPUI. A reusable crate for GPUI apps; Grove will host it. Conventions shared by all renderers are in `../README.md`.
 
 ```rust
 let chat = cx.new(ChatView::new);

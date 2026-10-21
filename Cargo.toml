@@ -1,9 +1,17 @@
 # Rust pieces: generated protocol types, the Rust bus client, and GPUI apps.
 [workspace]
 resolver = "3"
-members = ["protocol/rust", "crates/github", "sdk-rs", "renderers/gpui", "renderers/ratatui", "apps/pad", "apps/term", "apps/gui"]
+members = [
+  "protocol/rust",
+  "crates/github",
+  "sdk-rs",
+  "renderers/gpui",
+  "renderers/ratatui",
+  "apps/term",
+  "apps/gui",
+]
 # Vendored crates are patched below, not part of the workspace (no fmt/clippy on them).
-exclude = ["apps/pad/vendor"]
+exclude = ["vendor"]
 
 [workspace.package]
 edition = "2024"
@@ -13,4 +21,4 @@ publish = false
 # gpui_http_client -> zed-async-tar -> xattr 0.2.3 doesn't build against current libc, which no
 # longer exports ENOATTR on Linux (it is ENODATA). Drop this when gpui moves to a fixed xattr.
 [patch.crates-io]
-xattr = { path = "apps/pad/vendor/xattr" }
+xattr = { path = "vendor/xattr" }

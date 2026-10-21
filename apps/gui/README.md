@@ -2,7 +2,7 @@
 
 `suite-gui`, the suite's desktop app: the shared conversation in a native window, with the sessions of every project at its left, the agents working for you under the input, and the plan and changed files at its right. It is the terminal app ([apps/term](../term/README.md)) with a mouse, a real window and pictures.
 
-It is only a client. The conversation lives in the daemon, so closing the window never stops work, and the terminal app, Pad, the browser and other windows show the same session.
+It is only a client. The conversation lives in the daemon, so closing the window never stops work, and the terminal app and other windows show the same session.
 
 ## Running it
 

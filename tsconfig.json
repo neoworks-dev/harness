@@ -24,7 +24,6 @@
     "sdk-ts",
     "renderers/web",
     "services",
-    "apps/browser",
     "apps/gui/test",
     "tools",
     "websearch"

@@ -2,7 +2,7 @@
 
 `suite-term`, the suite's full-screen terminal app: the shared conversation in a pane that scrolls on its own, an input editor, status lines under the prompt, and the plan / changed-files / usage panels. `suite` with no arguments starts the daemon if needed and opens it in the current directory.
 
-It is only a client. The conversation lives in the daemon, so closing the app never stops work, and the overlay, Pad, the browser, the photo editor and other terminals show the same session. It registers as the app `terminal` (a second one as `terminal-2`, …; kind app, not home, context `{cwd}`), and the agent moves into it when you start it or type in it.
+It is only a client. The conversation lives in the daemon, so closing the app never stops work, and the overlay, the desktop app and other terminals show the same session. It registers as the app `terminal` (a second one as `terminal-2`, …; kind app, not home, context `{cwd}`), and the agent moves into it when you start it or type in it.
 
 ```sh
 make build                      # bin/suite-term (next to bin/suite)
