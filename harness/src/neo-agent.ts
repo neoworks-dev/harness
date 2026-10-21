@@ -16,6 +16,7 @@ import {
 import type {
   Agent as HarnessAgent,
   AgentSession,
+  AgentUpdate,
   ConfigCategory,
   ConfigOption,
   FollowUp,
@@ -29,6 +30,7 @@ import type {
 } from "./agent.ts";
 import { resolveAccount } from "./auth.ts";
 import { formatPrompt } from "./context-events.ts";
+import { Hooks, loadHooks } from "./hooks.ts";
 import {
   missingApiKeyMessage,
   providersWithCredential,
@@ -49,6 +51,13 @@ import {
 } from "./openrouter.ts";
 import { createUpdateMapper } from "./updates.ts";
 import { HARNESS_NAME, loggedMessages, restoreMessages } from "./restore.ts";
+import {
+  because,
+  createSessionHooks,
+  transcriptOf,
+  transcriptPathFor,
+  writeTranscript,
+} from "./session-hooks.ts";
 import { loadSkills } from "./skills.ts";
 import { systemPrompt } from "./system-prompt.ts";
 import { createCoreTools } from "./tools/core.ts";
@@ -93,6 +102,16 @@ function parseThinkingLevel(value: string): ThinkingLevel {
   const level = THINKING_LEVELS.find((candidate) => candidate === value);
   if (level) return level;
   throw new Error(`Unknown thinking level "${value}"; use one of ${THINKING_LEVELS.join(", ")}.`);
+}
+
+/** How many times Stop hooks may send the agent back to work in one turn. */
+const MAX_STOP_CONTINUES = 20;
+
+function textOfReply(message: AssistantMessage | undefined): string {
+  return (message?.content ?? [])
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("");
 }
 
 const baseValue = (model: Model<Api>): string => `${model.provider}/${model.id}`;
@@ -266,13 +285,49 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
     let cwdTold = JSON.stringify(messages).includes("<session cwd=");
     // How the account a request just resolved changes the model (Copilot's base URL).
     const adjustModels = new Map<string, ((model: Model<Api>) => Model<Api>) | undefined>();
-    // Set when the user declines without a note: the turn stops once that tool call is done.
+    // Set when the turn is to end once the current tool call is done: the user declined it
+    // without a note, or a hook said `continue: false`.
     let declined = false;
+    // The running turn's: where notices go, and what stops a hook that is still running.
+    let emitNow: ((update: AgentUpdate) => void) | undefined;
+    let turnAbort: AbortController | undefined;
+    let started = false;
+    const loadedHooks = loadHooks(config, params.cwd);
+    for (const problem of loadedHooks.problems) logger?.warn(`hooks: ${problem}`);
+    const transcriptPath = transcriptPathFor(params.sessionId);
+    const hooks = new Hooks(
+      loadedHooks.table,
+      { sessionId: params.sessionId, cwd: params.cwd, transcriptPath },
+      (event) => {
+        // Tool hooks are many and rarely read it; the rest get the conversation as it is.
+        if (event === "PreToolUse" || event === "PostToolUse" || event === "PostToolUseFailure") {
+          return;
+        }
+        writeTranscript(transcriptPath, transcriptOf(agent.state.messages, params.sessionId));
+      },
+      logger,
+    );
+    const sessionHooks = createSessionHooks({
+      hooks,
+      cwd: params.cwd,
+      sessionId: params.sessionId,
+      subagent: params.subagent !== undefined,
+      messages: () => agent.state.messages,
+      emit: () => emitNow,
+      log: (message) => logger?.warn(`hooks: ${message}`),
+      halt: () => {
+        declined = true;
+      },
+      signal: () => turnAbort?.signal,
+    });
     const ask = params.requestPermission;
     const requestPermission: RequestPermission | undefined =
       ask &&
       (async (request, signal) => {
-        const answer = await ask(request, signal);
+        // What a PreToolUse hook decided goes with the question; the approvals mode weighs it.
+        const hook =
+          request.phase === "after" ? undefined : sessionHooks.decision(request.toolCallId);
+        const answer = await ask(hook ? { ...request, hook } : request, signal);
         // A note says what to do instead, so the agent goes on with it. No note: just stop, the
         // agent doesn't get to answer the refusal.
         if (!answer.allowed && answer.note === undefined && request.phase !== "after") {
@@ -295,6 +350,8 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
         messages,
         thinkingLevel: initial.thinkingLevel,
       },
+      beforeToolCall: sessionHooks.beforeToolCall,
+      afterToolCall: sessionHooks.afterToolCall,
       getApiKey: async (provider) => {
         const account = await resolveAuth(config, provider);
         adjustModels.set(provider, account?.adjustModel);
@@ -343,8 +400,11 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       running = true;
       cancelRequested = false;
       declined = false;
+      turnAbort = new AbortController();
+      emitNow = onUpdate;
       const mapEvent = createUpdateMapper(onUpdate, usage);
       let final: AssistantMessage | undefined;
+      const lastReply = (): AssistantMessage | undefined => final;
       const unsubscribe = agent.subscribe((event) => {
         mapEvent(event);
         if (event.type === "tool_execution_end" && declined) {
@@ -363,13 +423,51 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
           timestamp: Date.now(),
         }));
       try {
+        // SessionStart hooks run before the session's first prompt, UserPromptSubmit before each.
+        const context: string[] = [];
+        if (!started) {
+          started = true;
+          const source = messages.length > 0 ? "resume" : "startup";
+          context.push(...(await sessionHooks.sessionStart(source)));
+        }
+        const verdict = await sessionHooks.userPrompt(text);
+        if (verdict.blocked !== undefined) {
+          const dropped = `A hook dropped this prompt: ${verdict.blocked}`;
+          onUpdate({ type: "notice", text: dropped, tone: "danger" });
+          return { stopReason: "end_turn" };
+        }
+        context.push(...verdict.context);
+        if (turnAbort.signal.aborted) return { stopReason: "cancelled" };
         const cwd = cwdTold ? undefined : params.cwd;
         cwdTold = true;
-        await agent.prompt(
-          formatPrompt(text, pendingEvents, cwd, summary),
-          await loadImages(images ?? []),
-        );
-        return toResult(final, cancelRequested);
+        let prompt = formatPrompt(text, pendingEvents, cwd, summary);
+        if (context.length > 0) {
+          prompt = `<hook-context>\n${context.join("\n")}\n</hook-context>\n${prompt}`;
+        }
+        await agent.prompt(prompt, await loadImages(images ?? []));
+        let result = toResult(final, cancelRequested);
+        // Stop hooks can send the agent back to work. The hook is told when this is a second
+        // time (stop_hook_active), and after MAX_STOP_CONTINUES the turn ends whatever it says.
+        for (let again = 0; result.stopReason === "end_turn"; again++) {
+          const stop = await sessionHooks.stop(again > 0, textOfReply(lastReply()));
+          if (stop.halted !== undefined) {
+            const ended = `A hook ended the turn${because(stop.halted)}`;
+            onUpdate({ type: "notice", text: ended, tone: "danger" });
+            break;
+          }
+          if (stop.continueWith === undefined || turnAbort.signal.aborted) break;
+          if (again >= MAX_STOP_CONTINUES) {
+            const limit = `Stop hooks sent the agent back ${MAX_STOP_CONTINUES} times; ending the turn.`;
+            onUpdate({ type: "notice", text: limit, tone: "danger" });
+            break;
+          }
+          const back = `A Stop hook sent the agent back to work: ${stop.continueWith}`;
+          onUpdate({ type: "notice", text: back });
+          final = undefined;
+          await agent.prompt(`A Stop hook asks you to continue:\n\n${stop.continueWith}`);
+          result = toResult(final, cancelRequested);
+        }
+        return result;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         logger?.error(`neo agent failed: ${message}`);
@@ -377,6 +475,8 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       } finally {
         agent.incoming = undefined;
         unsubscribe();
+        emitNow = undefined;
+        turnAbort = undefined;
         running = false;
       }
     }
@@ -487,8 +587,10 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       cancel() {
         if (!running) return;
         cancelRequested = true;
+        turnAbort?.abort();
         agent.abort();
       },
+      close: (reason) => sessionHooks.end(reason),
       configOptions,
       setConfigOption,
       followUp,

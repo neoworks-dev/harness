@@ -108,18 +108,25 @@ export class Permissions {
       const mode = this.options.approvals(session);
       const open = this.guard.open(session, touchesOf(request));
       if (open.length > 0) return this.askSensitive(session, agent, request, open, signal);
-      if (request.kind === "read") return { allowed: true };
+      // A PreToolUse hook (the user's, or a plugin's they installed) said ask: it asks in every
+      // mode, the sensitive-file check above aside. It said allow: the mode's question is not
+      // asked, but review mode still lets the user take an edit back.
+      const forced = request.hook === "ask";
+      if (request.kind === "read" && !forced) return { allowed: true };
       if (request.kind === "edit") {
         if (mode === "review") return { allowed: true, review: true };
-        if (mode === "edits" || mode === "auto") return { allowed: true };
+        if ((mode === "edits" || mode === "auto") && !forced) return { allowed: true };
       }
-      if (mode === "auto") return { allowed: true };
+      if (request.hook === "allow") return { allowed: true };
+      if (mode === "auto" && !forced) return { allowed: true };
       const key = `${session}\0${request.kind}`;
-      if (this.allowed.has(key)) return { allowed: true };
+      if (this.allowed.has(key) && !forced) return { allowed: true };
+      const asked = { ...request };
+      delete asked.hook;
       const question: Parameters<Asker["askWithNote"]>[1] = {
         type: "permission_request",
         agent,
-        ...request,
+        ...asked,
         options: OPTIONS,
       };
       if (request.kind === "execute" && !request.content?.length) {

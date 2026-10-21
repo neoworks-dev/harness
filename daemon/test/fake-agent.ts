@@ -19,6 +19,8 @@ export class FakeAgent implements Agent {
   readonly created: NewSessionParams[] = [];
   readonly loaded: LoadSessionParams[] = [];
   readonly prompts: PromptParams[] = [];
+  /** The reasons its sessions were closed with. */
+  readonly closed: string[] = [];
   active = 0;
   maxActive = 0;
   private waiting: Pending[] = [];
@@ -70,6 +72,10 @@ export class FakeAgent implements Agent {
         });
       },
       cancel: () => current?.resolve({ stopReason: "cancelled" }),
+      close: (reason) => {
+        this.closed.push(reason);
+        return Promise.resolve();
+      },
     };
   }
 }

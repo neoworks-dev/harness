@@ -13,6 +13,7 @@ import type {
   FocusChanged,
   GuestTurn,
   HarnessMessage,
+  Notice,
   Plan,
   SessionEvent,
   StopReason,
@@ -27,9 +28,19 @@ import type { SafeSearch } from "@neoworks/websearch";
 
 export type { SafeSearch };
 
-/** What an agent may emit during a prompt (ACP session/update plus harness_message and usage). */
+/**
+ * What an agent may emit during a prompt (ACP session/update plus harness_message and usage, and
+ * a notice: a line for the user that the agent does not see, e.g. a hook that failed).
+ */
 export type AgentUpdate =
-  AgentMessageChunk | AgentThoughtChunk | ToolCall | ToolCallUpdate | Plan | Usage | HarnessMessage;
+  | AgentMessageChunk
+  | AgentThoughtChunk
+  | ToolCall
+  | ToolCallUpdate
+  | Plan
+  | Usage
+  | HarnessMessage
+  | Notice;
 
 /** Connector events (and what guests did on their own) that get prepended to the next user message. */
 export type ContextEvent =
@@ -81,6 +92,12 @@ export interface PermissionAsk {
    * its diff, and a refusal reverts it.
    */
   phase?: "before" | "after";
+  /**
+   * What a PreToolUse hook (hooks.ts) decided: "allow" replaces the question the approvals mode
+   * would ask (a sensitive file still asks), "ask" asks even where the mode would not. Absent: the
+   * approvals mode decides.
+   */
+  hook?: "allow" | "ask";
 }
 
 /** The user's answer to a PermissionAsk. */
@@ -123,6 +140,11 @@ export interface NewSessionParams {
    * harness's configured default.
    */
   safeSearch?: () => SafeSearch | undefined;
+  /**
+   * Set when this session is a subagent of another (delegate): its hooks run as SubagentStop, not
+   * Stop. `definition` names the agent definition (agents.ts) it runs as, if any.
+   */
+  subagent?: { definition?: string };
 }
 
 export interface LoadSessionParams extends NewSessionParams {
@@ -183,6 +205,8 @@ export interface AgentSession {
    * Never rejects; undefined: nothing more to ask.
    */
   followUp?(category: ConfigCategory, value: string): Promise<FollowUp | undefined>;
+  /** The session is over (the daemon stops): runs the SessionEnd hooks. Never rejects. */
+  close?(reason: string): Promise<void>;
 }
 
 /** What generateText takes. */

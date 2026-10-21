@@ -57,6 +57,8 @@ function labelled(update: AgentUpdate): AgentUpdate | undefined {
     case "plan":
     case "usage":
       return { ...update, agent: NEO };
+    case "notice":
+      return update;
   }
 }
 
