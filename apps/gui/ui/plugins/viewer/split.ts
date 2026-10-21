@@ -1,5 +1,5 @@
 // The folded lines laid out for two columns: the old text on the left, the new on the right.
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 import type { Block } from "./fold.ts";
 
 /** One side of a row: a line and where it is in the file's lines. */

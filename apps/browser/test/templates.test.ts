@@ -1,7 +1,7 @@
 // The templates against sample tool results, resolved by the daemon's own resolver (which also
 // validates the result against the view schema and throws if it is not valid).
 import { describe, expect, test } from "bun:test";
-import type { Component } from "@suite/protocol/types";
+import type { Component } from "@neoworks-dev/neo-protocol/types";
 import { resolveTemplate } from "../../../daemon/src/view/template.ts";
 import { browserTemplates } from "../src/tools.ts";
 

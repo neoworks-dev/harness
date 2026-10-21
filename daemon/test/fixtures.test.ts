@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ViewItem } from "@suite/protocol/types";
+import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { COMPONENTS } from "@neoworks/neoui";
-import { validateDef } from "@suite/protocol/validate";
+import { validateDef } from "@neoworks-dev/neo-protocol/validate";
 import { resolveFixture, type Fixture } from "../src/view/fixtures.ts";
 
 const dir = join(import.meta.dir, "..", "..", "fixtures");

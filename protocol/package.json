@@ -1,5 +1,8 @@
 {
-  "name": "@suite/protocol",
+  "name": "@neoworks-dev/neo-protocol",
+  "version": "0.1.0",
+  "description": "The neo harness's protocol: message types, JSON schemas and the core tools.",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "exports": {

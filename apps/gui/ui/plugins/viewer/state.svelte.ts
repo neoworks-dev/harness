@@ -7,7 +7,7 @@ import { untrack } from "svelte";
 import { Folded } from "../../kernel/folded.svelte.ts";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
 import type { GitService } from "../../kernel/services/git.ts";
-import type { DiffComponent } from "@suite/protocol/types";
+import type { DiffComponent } from "@neoworks-dev/neo-protocol/types";
 import { diffStats, gutterWidth } from "../../lib/diff.ts";
 import { parseStatus, relFromPrefix, relativize } from "../../lib/git-status.ts";
 import { parseUnified, type FileDiff } from "../../lib/unified.ts";

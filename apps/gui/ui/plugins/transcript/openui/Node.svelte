@@ -1,6 +1,6 @@
 <script lang="ts" module>
   import type { Component as SvelteComponent } from "svelte";
-  import type { UiNode } from "@suite/protocol/types";
+  import type { UiNode } from "@neoworks-dev/neo-protocol/types";
   import AccordionNode from "./AccordionNode.svelte";
   import BarChartNode from "./BarChartNode.svelte";
   import BoxNode from "./BoxNode.svelte";

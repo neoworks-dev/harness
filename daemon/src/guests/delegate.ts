@@ -21,7 +21,7 @@
 import { homedir } from "node:os";
 import type { AgentInfo, AgentUpdate, ConfigCategory, ConfigOption } from "@neoworks-dev/neo/agent";
 import { findAgent, listAgents } from "@neoworks-dev/neo/agents";
-import type { DelegateArgs, ModelsArgs } from "@suite/protocol/core-tools";
+import type { DelegateArgs, ModelsArgs } from "@neoworks-dev/neo-protocol/core-tools";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type {
   PermissionDetail,
@@ -29,7 +29,7 @@ import type {
   SessionEvent,
   SessionEventRecord,
   StopReason,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 import type { Asker } from "../asker.ts";
 import { MESSAGES_APP, type Member, type Messenger } from "../messages.ts";
 import type { SessionManager } from "../sessions.ts";

@@ -1,5 +1,6 @@
 {
   "name": "suite",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -7,7 +8,6 @@
     "daemon",
     "harness",
     "sdk-ts",
-    "sdk-ts-tools",
     "websearch",
     "renderers/web",
     "services/lsp",

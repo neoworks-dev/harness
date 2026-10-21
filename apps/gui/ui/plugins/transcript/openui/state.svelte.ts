@@ -2,7 +2,7 @@
 // starts at, the value just chosen here), kept for the window's lifetime: the chat's list builds
 // a row anew each time it scrolls into view, and the state must outlive that. The daemon holds
 // the rest (docs/openui.md): a doc here only draws, and sends what the user does.
-import type { UiNode } from "@suite/protocol/types";
+import type { UiNode } from "@neoworks-dev/neo-protocol/types";
 import { neighbour, focusOrder } from "./focus.ts";
 import { HOLD_MS, same } from "./form.ts";
 

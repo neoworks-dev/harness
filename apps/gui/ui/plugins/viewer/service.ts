@@ -1,6 +1,6 @@
 // The `viewer` service: how another pane shows a diff or a file in the panel beside the chat.
 import { Service, type Context } from "@neoworks/extension-system";
-import type { DiffComponent } from "@suite/protocol/types";
+import type { DiffComponent } from "@neoworks-dev/neo-protocol/types";
 import type { FileDiff } from "../../lib/unified.ts";
 import { viewer } from "./state.svelte.ts";
 

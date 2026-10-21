@@ -1,7 +1,7 @@
 // The agents under the prompt, folded from the session's events: `subagent_started` and
 // `subagent_ended` mark a delegation, and events labelled with the agent's harness name say what
 // it does (apps/term/src/agents.rs does the same). Plain functions on immutable rows.
-import type { SessionEventRecord, SessionInfo, StopReason } from "@suite/protocol/types";
+import type { SessionEventRecord, SessionInfo, StopReason } from "@neoworks-dev/neo-protocol/types";
 
 /** How long a finished agent stays in the list. */
 export const LINGER_MS = 5000;

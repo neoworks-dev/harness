@@ -1,6 +1,6 @@
 // Sizes the viewer's lines share: a line of code is 13px mono, 20px high, and its numbers take the
 // room of the longest one.
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 import type { ViewerColors } from "../../lib/diff-colors.ts";
 
 /** The width of one monospace character at 13px. */

@@ -2,13 +2,13 @@
 //   bun run sdk-ts/examples/notes-app.ts
 // Then ask the agent (e.g. `suite attach --new`) to use the notes app. Its results are drawn with
 // the templates below (buttons included) in every pane.
-import { connect } from "@suite/sdk";
-import { daemonJsonAddress } from "@suite/sdk/node";
-import { createToolServer } from "@suite/sdk-tools";
+import { connect } from "@neoworks-dev/neo-sdk";
+import { daemonJsonAddress } from "@neoworks-dev/neo-sdk";
+import { createToolServer } from "@neoworks-dev/neo-sdk";
 
 const notes: string[] = [];
 
-const tools = createToolServer({
+const tools = await createToolServer({
   name: "notes",
   instructions: "Notes are short lines of text, newest last.",
   tools: [

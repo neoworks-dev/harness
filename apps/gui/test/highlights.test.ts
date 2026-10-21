@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 import { forDiff, forFile } from "../ui/plugins/viewer/highlights.ts";
 import { wrappable } from "../ui/plugins/viewer/look.ts";
 

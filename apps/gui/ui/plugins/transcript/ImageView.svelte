@@ -2,7 +2,7 @@
   // A picture from a path, a data: URL, a URL or the daemon's asset store, in a box of a fixed
   // size (see Component.svelte for why it is fixed). When it can't be loaded the box says so.
   import { Image, Text, View } from "@neoworks/svelte-gpui/ui";
-  import type { ImageComponent } from "@suite/protocol/types";
+  import type { ImageComponent } from "@neoworks-dev/neo-protocol/types";
   import { baseName, oneLine } from "./components.ts";
   import { useCtx } from "../../kernel/slots/context.ts";
 

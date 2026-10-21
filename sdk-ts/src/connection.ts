@@ -1,7 +1,7 @@
 // The WebSocket to the daemon: dialing, the hello handshake, request and reply, and getting the
 // connection back after it drops. What the frames mean is the client's business; this file only
 // moves them.
-import type { Envelope, ErrorCode } from "@suite/protocol/types";
+import type { Envelope, ErrorCode } from "@neoworks-dev/neo-protocol/types";
 import { busUrl, type AddressSource } from "./address.ts";
 import { asError, DisconnectedError, SuiteError, TimeoutError } from "./errors.ts";
 import {

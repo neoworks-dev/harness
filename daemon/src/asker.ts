@@ -2,7 +2,7 @@
 // to run a tool, the agent wants to start a guest) and choices (a model, a conversation to
 // resume). The question goes into the session log; the answer (action suite.permit or
 // suite.choose, with an optional note for the agent) settles it and is logged too.
-import type { SessionEvent } from "@suite/protocol/types";
+import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import { BadRequestError } from "./focus.ts";
 
 export type PermissionRequest = Extract<SessionEvent, { type: "permission_request" }>;

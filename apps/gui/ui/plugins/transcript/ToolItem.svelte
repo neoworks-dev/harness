@@ -1,7 +1,7 @@
 <script lang="ts">
   // A tool call on its own, where nothing groups it (another agent's chat): the same row of work
   // the transcript draws in a group.
-  import type { ViewItem } from "@suite/protocol/types";
+  import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Entry from "./Entry.svelte";
   import ItemFrame from "./ItemFrame.svelte";

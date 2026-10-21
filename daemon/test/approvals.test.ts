@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { RequestPermission } from "@neoworks-dev/neo/agent";
-import type { DiffContent, SessionEvent, ViewItem } from "@suite/protocol/types";
+import type { DiffContent, SessionEvent, ViewItem } from "@neoworks-dev/neo-protocol/types";
 
 type Choice = Extract<SessionEvent, { type: "choice" }>;
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";

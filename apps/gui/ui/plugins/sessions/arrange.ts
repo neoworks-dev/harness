@@ -1,7 +1,7 @@
 // What the sidebar draws, top to bottom: the pinned sessions, the rest grouped as `groupSessions`
 // does, then the settled ones in a section of their own; or the results of a search. Plus the
 // projects the sessions belong to, for the filter. Plain functions.
-import type { SessionInfo } from "@suite/protocol/types";
+import type { SessionInfo } from "@neoworks-dev/neo-protocol/types";
 import { isPinned, isSettled, type Marks } from "./marks.ts";
 import type { Match } from "./search.ts";
 import { groupSessions, lastSegment, placeOf, type Place } from "./sessions.ts";

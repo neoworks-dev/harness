@@ -1,7 +1,7 @@
 // What the client may ask the daemon, and what comes back. Each request is paired with the topic
 // of its reply, and the payload types are read off the protocol's `Envelope`, so a call site gets
 // the reply's payload with no checking of its own.
-import type { Envelope } from "@suite/protocol/types";
+import type { Envelope } from "@neoworks-dev/neo-protocol/types";
 
 type Topic = Envelope["topic"];
 

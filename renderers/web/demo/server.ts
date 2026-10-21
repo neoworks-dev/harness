@@ -1,7 +1,7 @@
 // The demo's HTTP side: serves the page with the daemon's address filled in (read from
 // daemon.json here, since a browser can't read files), and the bundled browser code.
-import type { DaemonAddress } from "@suite/sdk";
-import { daemonJsonAddress } from "@suite/sdk/node";
+import type { DaemonAddress } from "@neoworks-dev/neo-sdk";
+import { daemonJsonAddress } from "@neoworks-dev/neo-sdk";
 
 export interface DemoServerOptions {
   /** Port on 127.0.0.1; 0 picks a free one. */

@@ -6,7 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { COMPONENTS, signature } from "@neoworks/neoui";
-import type { AppPresence, SessionEvent } from "@suite/protocol/types";
+import type { AppPresence, SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import { Gateway, type GatewayOptions } from "../src/gateway/gateway.ts";
 import { ConnectorRegistry } from "../src/gateway/registry.ts";
 import { GUIDANCE, uiLibraryText } from "../src/gateway/ui-library.ts";

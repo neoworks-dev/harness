@@ -8,7 +8,7 @@ import {
   ListToolsRequestSchema,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { McpEndpoint } from "@suite/protocol/types";
+import type { McpEndpoint } from "@neoworks-dev/neo-protocol/types";
 
 export interface AppTool {
   name: string;

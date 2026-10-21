@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { startTestDaemon, type TestDaemon } from "../../../daemon/src/testing.ts";
-import { connect, fixedAddress } from "@suite/sdk";
+import { connect, fixedAddress } from "@neoworks-dev/neo-sdk";
 import { startDemo, type Demo } from "../demo/app.ts";
 import { startDemoServer, type DemoServer } from "../demo/server.ts";
 import { newPage } from "./dom.ts";

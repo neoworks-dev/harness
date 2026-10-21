@@ -3,8 +3,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { Theme } from "@suite/protocol/types";
-import { validateDef } from "@suite/protocol/validate";
+import type { Theme } from "@neoworks-dev/neo-protocol/types";
+import { validateDef } from "@neoworks-dev/neo-protocol/validate";
 import defaultTheme from "../../protocol/themes/default.json";
 import type { Logger } from "./log.ts";
 

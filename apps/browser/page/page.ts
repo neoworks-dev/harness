@@ -1,6 +1,6 @@
 // Browser entry of the page (bundled by server.ts): reads the config the server put in the page,
 // connects to the daemon and hands over to startBrowserPage.
-import { assetUrl, connect, type DaemonAddress } from "@suite/sdk";
+import { assetUrl, connect, type DaemonAddress } from "@neoworks-dev/neo-sdk";
 import { createApi } from "./api.ts";
 import { startBrowserPage } from "./app.ts";
 

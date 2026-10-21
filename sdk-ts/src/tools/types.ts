@@ -1,5 +1,5 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { McpEndpoint } from "@suite/protocol/types";
+import type { McpEndpoint } from "@neoworks-dev/neo-protocol/types";
 
 /** The content blocks of a tool result: text, images and so on, as MCP defines them. */
 export type ToolContent = CallToolResult["content"];

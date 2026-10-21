@@ -1,7 +1,7 @@
 // The files the agent edited in the latest turn, from the diffs its tool calls carried (the old and
 // the new text of a file), as the viewer's "Latest turn" scope. Plain functions over the session's
 // events, so tests reach them.
-import type { SessionEventRecord } from "@suite/protocol/types";
+import type { SessionEventRecord } from "@neoworks-dev/neo-protocol/types";
 import { relativize } from "../../lib/git-status.ts";
 import type { FileDiff } from "../../lib/unified.ts";
 import { lineDiff } from "./linediff.ts";

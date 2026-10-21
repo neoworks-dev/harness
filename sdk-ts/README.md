@@ -1,6 +1,6 @@
-# sdk-ts
+# @neoworks-dev/neo-sdk
 
-The TypeScript client for the suite daemon (`@suite/sdk`). With it an app can:
+Connect an app to the neo harness. With it an app can:
 
 - offer tools to the agent, and tell the agent what it is showing;
 - create sessions, send them input, and follow what the agent does;
@@ -8,34 +8,30 @@ The TypeScript client for the suite daemon (`@suite/sdk`). With it an app can:
 - follow where the agent is, which sessions exist, and which apps are connected;
 - survive a daemon restart without losing its place.
 
-The core runs anywhere with a global `WebSocket`: Bun, Node, browsers.
+It runs in Node, Bun and browsers.
 
 ## Install and import
 
-In this monorepo, depend on the workspace packages:
-
-```json
-{ "dependencies": { "@suite/sdk": "workspace:*", "@suite/sdk-tools": "workspace:*" } }
+```sh
+npm install @neoworks-dev/neo-sdk
 ```
 
 ```ts
-import { connect, ViewState } from "@suite/sdk"; // the client, for any runtime
-import { daemonJsonAddress } from "@suite/sdk/node"; // finds a daemon on this machine
-import { createToolServer } from "@suite/sdk-tools"; // hosts an app's tools (Bun)
+import { connect, createToolServer, ViewState } from "@neoworks-dev/neo-sdk";
 ```
 
-`@suite/sdk-tools` is a separate package so that the client does not depend on the MCP SDK.
+Everything comes from the root. In Node and Bun, `connect` finds the daemon on this machine by itself, and `createToolServer` hosts your tools. A browser gets the same package without those two (the `browser` export condition), so it doesn't load Node modules or the MCP SDK.
+
+In this repo, depend on it with `"@neoworks-dev/neo-sdk": "workspace:*"`. To publish: `bun run tools/npm-package.ts sdk-ts`, then `npm publish sdk-ts/dist --access public`.
 
 ## An app that offers tools to the agent
 
 ```ts
-import { connect } from "@suite/sdk";
-import { daemonJsonAddress } from "@suite/sdk/node";
-import { createToolServer } from "@suite/sdk-tools";
+import { connect, createToolServer } from "@neoworks-dev/neo-sdk";
 
 const notes: string[] = [];
 
-const tools = createToolServer({
+const tools = await createToolServer({
   name: "notes",
   instructions: "Notes are plain text; list before you append.",
   tools: [
@@ -53,7 +49,6 @@ const tools = createToolServer({
 
 const client = await connect({
   client: "notes",
-  address: daemonJsonAddress,
   waitForDaemon: true, // keep trying if the daemon is not up yet
   presence: { app: "notes", kind: "app", title: "Notes", open: true, mcp: tools.endpoint },
 });
@@ -71,10 +66,9 @@ The daemon lists the tools next to the app's name (`notes.append`) and forwards 
 ## Following and driving a session
 
 ```ts
-import { connect } from "@suite/sdk";
-import { daemonJsonAddress } from "@suite/sdk/node";
+import { connect } from "@neoworks-dev/neo-sdk";
 
-const client = await connect({ client: "my-script", address: daemonJsonAddress });
+const client = await connect({ client: "my-script" });
 
 const session = await client.createSession({ title: "Demo" });
 const stopFollowing = client.subscribe(session.id, {
@@ -104,7 +98,7 @@ await client.moveAgent({ app: "editor" }); // or { session } to switch the curre
 The daemon resolves a session into view items (messages, tool calls, diffs, buttons). `ViewState` keeps the latest snapshot with patches applied and tells you what changed, so a renderer can update its output instead of redrawing it.
 
 ```ts
-import { ViewState } from "@suite/sdk";
+import { ViewState } from "@neoworks-dev/neo-sdk";
 
 const view = new ViewState();
 const stop = client.subscribeView(session.id, {
@@ -125,10 +119,10 @@ To follow what one agent did inside a session (a subagent, or a guest the user a
 
 ## Connecting from a browser, or another runtime
 
-`daemonJsonAddress` reads a file, so it only works next to the daemon. Anywhere else, give `connect` the address yourself: the daemon's loopback URL and its token, for example served to the page by a small local server that reads `daemon.json`.
+On the daemon's machine `connect` reads the address from `daemon.json` (`daemonJsonAddress`). A browser can't read that file, so there, give `connect` the address yourself: the daemon's loopback URL and its token, for example served to the page by a small local server that reads `daemon.json`.
 
 ```ts
-import { assetUrl, connect, fixedAddress } from "@suite/sdk";
+import { assetUrl, connect, fixedAddress } from "@neoworks-dev/neo-sdk";
 
 const address = { url: "http://127.0.0.1:41234", token };
 const client = await connect({ client: "web", address: fixedAddress(address) });
@@ -151,15 +145,15 @@ The address carries the daemon token: keep it inside your own page or process.
 
 ### `connect(options): Promise<Client>`
 
-| Option              | Meaning                                                                                |
-| ------------------- | -------------------------------------------------------------------------------------- |
-| `client`            | Your client's name.                                                                    |
-| `address`           | `() => Promise<DaemonAddress>`, called on every (re)connect.                           |
-| `presence?`         | The app's registration (`AppPresence`), sent on connect and after every reconnect.     |
-| `reconnect?`        | Reconnect after a drop, with backoff (default `true`).                                 |
-| `waitForDaemon?`    | Keep trying while the daemon is not running, instead of rejecting (default `false`).   |
-| `requestTimeoutMs?` | How long to wait for an answer before rejecting with `TimeoutError` (default 10000).   |
-| `onError?`          | Failures nobody is waiting for: a refused subscription, an error thrown by a callback. |
+| Option              | Meaning                                                                                                                    |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `client`            | Your client's name.                                                                                                        |
+| `address?`          | `() => Promise<DaemonAddress>`, called on every (re)connect. Default (Node, Bun): the local daemon. Required in a browser. |
+| `presence?`         | The app's registration (`AppPresence`), sent on connect and after every reconnect.                                         |
+| `reconnect?`        | Reconnect after a drop, with backoff (default `true`).                                                                     |
+| `waitForDaemon?`    | Keep trying while the daemon is not running, instead of rejecting (default `false`).                                       |
+| `requestTimeoutMs?` | How long to wait for an answer before rejecting with `TimeoutError` (default 10000).                                       |
+| `onError?`          | Failures nobody is waiting for: a refused subscription, an error thrown by a callback.                                     |
 
 Rejects with `DisconnectedError` if the daemon cannot be reached, `SuiteError` if it refuses the client or the presence.
 
@@ -215,7 +209,7 @@ These properties are `Watched<T>`: `.value` is the latest, `.on(callback)` retur
 
 ### Addresses
 
-`DaemonAddress { url, token }`, `fixedAddress(address)`, `busUrl(address)`, `assetUrl(address, handle)`; from `@suite/sdk/node`: `daemonJsonAddress(env?)`, `daemonJsonPath(env?)`.
+`DaemonAddress { url, token }`, `fixedAddress(address)`, `busUrl(address)`, `assetUrl(address, handle)`; in Node and Bun also `daemonJsonAddress(env?)`, `daemonJsonPath(env?)`.
 
 ### Errors
 
@@ -223,6 +217,6 @@ These properties are `Watched<T>`: `.value` is the latest, `.on(callback)` retur
 - `DisconnectedError`: there is no connection. Requests waiting when it drops reject with it too.
 - `TimeoutError`: no answer in time, or a `waitFor` ran out of time.
 
-### `createToolServer(options)` (`@suite/sdk-tools`)
+### `await createToolServer(options)` (Node and Bun)
 
 `{ name, version?, instructions?, tools }` where a tool is `{ name, description, inputSchema, outputSchema?, handler(args) }`. Returns `{ url, headers, endpoint, setTools(tools), close() }`: pass `endpoint` as `presence.mcp`; `setTools` swaps the list and tells the daemon.

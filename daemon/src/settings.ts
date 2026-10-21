@@ -6,7 +6,7 @@
 // Safe search (/safesearch) is the user's, not a session's: one value for every session.
 // Nothing is set that the user didn't choose: each harness keeps its own defaults.
 import type { ConfigCategory, SafeSearch } from "@neoworks-dev/neo/agent";
-import type { SettingName } from "@suite/protocol/types";
+import type { SettingName } from "@neoworks-dev/neo-protocol/types";
 import type { SessionStore } from "./store.ts";
 
 /** The settings that belong to a harness (approvals and harness are the suite's own). */

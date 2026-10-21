@@ -3,7 +3,7 @@
 // finally answered, no tool calls). A harness that keeps its own history is told only about the
 // turns since its last one; a new conversation (first time on this harness, or its stored one
 // is gone) gets all of them.
-import type { SessionEventRecord } from "@suite/protocol/types";
+import type { SessionEventRecord } from "@neoworks-dev/neo-protocol/types";
 import type { SessionStore } from "./store.ts";
 
 /** Longest summary, in characters; older turns are dropped first. */

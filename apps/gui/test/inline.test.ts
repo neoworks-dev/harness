@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 import { changedSpan, markSpan, partners, withMarks } from "../ui/plugins/viewer/inline.ts";
 
 test("what changed is what is left once the shared start and end are off, as whole words", () => {

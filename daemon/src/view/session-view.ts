@@ -15,7 +15,7 @@ import type {
   ViewItem,
   ViewOp,
   ViewSnapshot,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 import type { Logger } from "../log.ts";
 import { MAIN, MESSAGES_APP } from "../messages.ts";
 import { diffLines } from "./diff.ts";

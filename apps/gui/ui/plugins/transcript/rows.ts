@@ -4,7 +4,7 @@
 // "Worked for 3m 43s" row, closed unless opened; a turn that failed or was stopped never folds,
 // and the last reply comes with the files the turn changed. Plain functions, tested without a
 // window.
-import type { Block, ViewItem } from "@suite/protocol/types";
+import type { Block, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { duration } from "./format.ts";
 import type { Timeline } from "./timeline.ts";
 import { changedFiles, classify, isPlanCall, type FileChange, type WorkEntry } from "./work.ts";

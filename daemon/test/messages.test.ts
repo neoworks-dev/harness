@@ -2,7 +2,7 @@
 // how wait blocks. (daemon/test/messaging.test.ts runs it through real subagents.)
 import { describe, expect, test } from "bun:test";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { SessionEvent } from "@suite/protocol/types";
+import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import { INBOX_LIMIT, Messenger, PAIR_LIMIT, TEXT_LIMIT } from "../src/messages.ts";
 
 function setup(): { messenger: Messenger; log: SessionEvent[]; woken: string[] } {

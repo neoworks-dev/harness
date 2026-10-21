@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import type { SessionEvent } from "@suite/protocol/types";
+import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { FakeAgent } from "./fake-agent.ts";
 

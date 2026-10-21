@@ -23,7 +23,7 @@ import type {
   ToolKind,
   Usage,
   UserNote,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 import type { SafeSearch } from "@neoworks/websearch";
 import type { AgentInfo } from "./agents.ts";
 

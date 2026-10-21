@@ -11,7 +11,7 @@ import type {
   ViewOp,
   ViewPatch,
   ViewSnapshot,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 
 /** What one op did to the state, for renderers that update their output incrementally. */
 export type ViewChange =

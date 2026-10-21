@@ -1,7 +1,7 @@
 // What changed inside a line that was rewritten: the stretch of a removed line that its added
 // counterpart no longer has, or the other way round, so the eye goes to the words that differ. Plain
 // functions, so tests reach them.
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 import type { Token } from "./syntax-runs.ts";
 
 /** A part of a line: characters `from` up to `to`. */

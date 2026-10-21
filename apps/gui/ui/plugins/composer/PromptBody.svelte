@@ -2,7 +2,7 @@
   // What a question is about, compact: details, a few lines of a diff or code, text. A diff opens
   // in the viewer beside the chat.
   import { Button, Text, View } from "@neoworks/svelte-gpui/ui";
-  import type { Component } from "@suite/protocol/types";
+  import type { Component } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../kernel/slots/context.ts";
   import { plainText, previewLines } from "./prompt.ts";
 

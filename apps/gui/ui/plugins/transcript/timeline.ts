@@ -2,7 +2,12 @@
 // each happened, which turn it belongs to and how that ended, and the tool calls' kind and input.
 // Items carry none of it, so the transcript folds the events (timeline.svelte.ts) and looks the
 // rest up by the item's `ref`. Plain functions, tested without a window.
-import type { SessionEvent, SessionEventRecord, StopReason, ToolKind } from "@suite/protocol/types";
+import type {
+  SessionEvent,
+  SessionEventRecord,
+  StopReason,
+  ToolKind,
+} from "@neoworks-dev/neo-protocol/types";
 
 /** When an item first and last had something to say, in Unix milliseconds. */
 export interface Stamp {

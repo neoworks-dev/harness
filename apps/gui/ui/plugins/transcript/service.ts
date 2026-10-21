@@ -1,6 +1,6 @@
 // The `transcript` service: what another pane that draws chat items, or answers one, needs of it.
 import { Service, type Context } from "@neoworks/extension-system";
-import type { ViewItem } from "@suite/protocol/types";
+import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { transcript } from "./state.svelte.ts";
 
 declare module "@neoworks/extension-system" {

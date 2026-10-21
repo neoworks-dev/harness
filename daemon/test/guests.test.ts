@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { SessionEvent, ViewItem } from "@suite/protocol/types";
+import type { SessionEvent, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { SYSTEM_PROMPT } from "../../harness/src/system-prompt.ts";
 import { loadGuestConfigs } from "../src/guests/config.ts";
 import { describeCall, type GuestConfig, mcpResultText } from "../src/guests/guests.ts";

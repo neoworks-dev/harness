@@ -1,7 +1,7 @@
 // How messages between agents are drawn: compact rows in the chat, hidden background work, and
 // the per-agent transcripts.
 import { describe, expect, test } from "bun:test";
-import type { SessionEvent } from "@suite/protocol/types";
+import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import { silentLogger } from "../src/log.ts";
 import { SessionView } from "../src/view/session-view.ts";
 

@@ -4,7 +4,7 @@
   // a run of Shapes is one canvas. A Box takes the width it asks for: a share of the column, what
   // its content needs, or all of it.
   import { View } from "@neoworks/svelte-gpui/ui";
-  import type { UiNode } from "@suite/protocol/types";
+  import type { UiNode } from "@neoworks-dev/neo-protocol/types";
   import Canvas from "./Canvas.svelte";
   import Cells from "./Cells.svelte";
   import { childPath } from "./focus.ts";

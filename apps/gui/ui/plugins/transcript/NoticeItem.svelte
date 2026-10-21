@@ -3,7 +3,7 @@
   // its message in the prose's colour.
   import { Icon, View } from "@neoworks/svelte-gpui/ui";
   import warning from "@phosphor-icons/core/regular/warning-circle.svg";
-  import type { ViewItem } from "@suite/protocol/types";
+  import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Component from "./Component.svelte";
   import ItemFrame from "./ItemFrame.svelte";

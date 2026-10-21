@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { SecretRequest } from "@suite/protocol/types";
+import type { SecretRequest } from "@neoworks-dev/neo-protocol/types";
 import { incoming, stale, submitted, type Ask } from "../ui/plugins/secret/ask.ts";
 
 function request(id: string, session = "s1", placeholder?: string): SecretRequest {

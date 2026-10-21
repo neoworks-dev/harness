@@ -5,7 +5,7 @@
 // The page carries secrets (the daemon token), so every request must be addressed to this
 // server's own 127.0.0.1:PORT / localhost:PORT (DNS rebinding) and the endpoints need the token.
 import { timingSafeEqual } from "node:crypto";
-import { daemonJsonAddress } from "@suite/sdk/node";
+import { daemonJsonAddress } from "@neoworks-dev/neo-sdk";
 import { viewOf, type Browser } from "./browser.ts";
 import type { ServerEvent } from "./types.ts";
 

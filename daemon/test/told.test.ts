@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { AppConnected } from "@suite/protocol/types";
+import type { AppConnected } from "@neoworks-dev/neo-protocol/types";
 import type { ConnectorSnapshot } from "../src/gateway/registry.ts";
 import { ToldState } from "../src/told.ts";
 

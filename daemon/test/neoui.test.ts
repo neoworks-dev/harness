@@ -8,7 +8,7 @@ import type {
   ViewItem,
   ViewOp,
   ViewPatch,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 import { silentLogger } from "../src/log.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { parseMarkdown } from "../src/view/markdown.ts";

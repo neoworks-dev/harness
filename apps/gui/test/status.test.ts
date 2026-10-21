@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { HarnessSettings, SessionEvent } from "@suite/protocol/types";
+import type { HarnessSettings, SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import {
   applyEvent,
   currentSettings,

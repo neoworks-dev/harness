@@ -1,6 +1,6 @@
 // The Browser core and its tool handlers against the fixture web server, with a fake asset store.
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Asset, AssetPut } from "@suite/protocol/types";
+import type { Asset, AssetPut } from "@neoworks-dev/neo-protocol/types";
 import { Browser } from "../src/browser.ts";
 import { MAX_PAGE_BYTES } from "../src/fetch.ts";
 import { browserTools } from "../src/tools.ts";

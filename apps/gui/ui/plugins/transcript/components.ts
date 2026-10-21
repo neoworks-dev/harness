@@ -1,6 +1,6 @@
 // Small questions about view components that the chat's drawing code asks over and over. Plain
 // TypeScript so they can be tested without a window.
-import type { Block, Component, Space, Tone } from "@suite/protocol/types";
+import type { Block, Component, Space, Tone } from "@neoworks-dev/neo-protocol/types";
 import type { Palette } from "../../lib/palette.ts";
 import { isInteractive } from "./openui/focus.ts";
 

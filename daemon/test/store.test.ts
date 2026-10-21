@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentMessageChunk, SessionEventRecord } from "@suite/protocol/types";
+import type { AgentMessageChunk, SessionEventRecord } from "@neoworks-dev/neo-protocol/types";
 import { SessionStore } from "../src/store.ts";
 
 const chunk = (text: string): AgentMessageChunk => ({

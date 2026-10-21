@@ -9,7 +9,7 @@ import { createDaemon } from "../../../daemon/src/daemon.ts";
 import { createEchoAgent } from "../../../daemon/src/echo-agent.ts";
 import { silentLogger } from "../../../daemon/src/log.ts";
 import { resolvePaths } from "../../../daemon/src/paths.ts";
-import type { ToolCallContent, ToolKind } from "@suite/protocol/types";
+import type { ToolCallContent, ToolKind } from "@neoworks-dev/neo-protocol/types";
 
 const cwd = process.env.SCENE_CWD;
 if (cwd === undefined) throw new Error("SCENE_CWD is not set");

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Plan } from "@suite/protocol/types";
+import type { Plan } from "@neoworks-dev/neo-protocol/types";
 import { applyPlan, glyphOf, ownFirst, progress, type PlanList } from "../ui/plugins/plan/plan.ts";
 
 function plan(

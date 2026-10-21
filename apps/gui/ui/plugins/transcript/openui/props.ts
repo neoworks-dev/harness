@@ -1,6 +1,6 @@
 // Reading the props of an evaluated OpenUI node (docs/openui.md). Props are concrete JSON of any
 // shape the model produced, so every read checks the type and falls back to nothing.
-import type { Block, Tone, UiNode } from "@suite/protocol/types";
+import type { Block, Tone, UiNode } from "@neoworks-dev/neo-protocol/types";
 
 const TONES: readonly string[] = ["accent", "muted", "success", "danger"];
 

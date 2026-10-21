@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { Block, Component, Theme, ViewItem, ViewPatch } from "@suite/protocol/types";
+import type {
+  Block,
+  Component,
+  Theme,
+  ViewItem,
+  ViewPatch,
+} from "@neoworks-dev/neo-protocol/types";
 import theme from "../../../protocol/themes/default.json";
 import { mountChat, type Chat, type ChatOptions } from "../src/render.ts";
 import { chatStyles, themeVariables } from "../src/styles.ts";

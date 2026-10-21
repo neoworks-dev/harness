@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Component, DiffLine, ViewItem } from "@suite/protocol/types";
+import type { Component, DiffLine, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { blocksText, componentText } from "../ui/plugins/transcript/components.ts";
 import { clockTime, count, duration, tailLines } from "../ui/plugins/transcript/format.ts";
 import {

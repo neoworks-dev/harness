@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { ConnectorInfo, SessionInfo } from "@suite/protocol/types";
+import type { ConnectorInfo, SessionInfo } from "@neoworks-dev/neo-protocol/types";
 import { chooseSession, pickAppId } from "../ui/lib/startup.ts";
 
 function session(id: string, cwd: string, lastActivity: number): SessionInfo {

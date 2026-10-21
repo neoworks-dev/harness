@@ -7,8 +7,8 @@
     "./styles": "./src/styles.ts"
   },
   "dependencies": {
-    "@suite/protocol": "workspace:*",
-    "@suite/sdk": "workspace:*"
+    "@neoworks-dev/neo-protocol": "workspace:*",
+    "@neoworks-dev/neo-sdk": "workspace:*"
   },
   "devDependencies": {
     "happy-dom": "^21.0.2"

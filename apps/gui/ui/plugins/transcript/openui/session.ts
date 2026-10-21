@@ -1,7 +1,7 @@
 // One doc as its parts reach it: the daemon's values, what was chosen here, what is sent. Plain
 // TypeScript over a view that holds the visual state (state.svelte.ts), so it can be tested without
 // a window.
-import type { UiDoc, UiNode } from "@suite/protocol/types";
+import type { UiDoc, UiNode } from "@neoworks-dev/neo-protocol/types";
 import { firstButton } from "./focus.ts";
 import { DEBOUNCE_MS, outbox, type Send } from "./form.ts";
 

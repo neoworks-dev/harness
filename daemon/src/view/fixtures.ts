@@ -3,7 +3,13 @@
 // the way the daemon resolves a live session, templates by tool name). neoui docs in either can
 // then be used: `inputs` are openui.input calls applied in order, `presses` openui.press calls
 // after them.
-import type { Component, ItemKind, ItemState, SessionEvent, ViewItem } from "@suite/protocol/types";
+import type {
+  Component,
+  ItemKind,
+  ItemState,
+  SessionEvent,
+  ViewItem,
+} from "@neoworks-dev/neo-protocol/types";
 import { silentLogger } from "../log.ts";
 import { isNeoUiTemplate, NeoUiDocs, templateData } from "./neoui.ts";
 import { SessionView } from "./session-view.ts";

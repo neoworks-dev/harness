@@ -1,8 +1,8 @@
 // The demo page's behavior, kept apart from the page shell so tests can run it under happy-dom:
 // follow the daemon's current session (agent.focus), draw its view, send typed input and button
 // presses back.
-import type { AgentFocus, Theme } from "@suite/protocol/types";
-import type { Client, ConnectionState, Unsubscribe } from "@suite/sdk";
+import type { AgentFocus, Theme } from "@neoworks-dev/neo-protocol/types";
+import type { Client, ConnectionState, Unsubscribe } from "@neoworks-dev/neo-sdk";
 import { mountChat, type Chat } from "../src/render.ts";
 
 export interface DemoElements {

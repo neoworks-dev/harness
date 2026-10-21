@@ -1,6 +1,6 @@
 // Old/new text → numbered diff lines with hunk headers, so renderers never diff.
 import { structuredPatch } from "diff";
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 
 const CONTEXT = 3;
 

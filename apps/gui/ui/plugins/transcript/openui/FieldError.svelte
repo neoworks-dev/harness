@@ -1,7 +1,7 @@
 <script lang="ts">
   // The message a failed field shows when no FormControl is there to show it.
   import { Text } from "@neoworks/svelte-gpui/ui";
-  import type { UiNode } from "@suite/protocol/types";
+  import type { UiNode } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../../kernel/slots/context.ts";
   import { inControl } from "./formcontext.ts";
   import { str } from "./props.ts";

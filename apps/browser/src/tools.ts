@@ -1,5 +1,5 @@
 // The browser's MCP tools and the templates its results are drawn with.
-import type { ToolResult, ToolSpec } from "@suite/sdk-tools";
+import type { ToolResult, ToolSpec } from "@neoworks-dev/neo-sdk";
 import { NO_PAGE, type Browser, type LoadedPage } from "./browser.ts";
 import { truncate } from "./extract.ts";
 

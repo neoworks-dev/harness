@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { Block, Component, UiDoc, UiNode, ViewItem } from "@suite/protocol/types";
+import type { Block, Component, UiDoc, UiNode, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { COMPONENTS } from "@neoworks/neoui";
 import { isForm } from "../ui/plugins/transcript/components.ts";
 import { blocksText } from "../ui/plugins/transcript/components.ts";

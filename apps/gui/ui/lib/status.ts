@@ -6,7 +6,7 @@ import type {
   HarnessSettings as Offered,
   SessionEventRecord,
   Usage,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 
 export type Approvals = "ask" | "review" | "edits" | "auto";
 

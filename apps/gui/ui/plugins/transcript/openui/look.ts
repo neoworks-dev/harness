@@ -1,5 +1,5 @@
 // Colours of an OpenUI doc, from the window's palette.
-import type { Tone } from "@suite/protocol/types";
+import type { Tone } from "@neoworks-dev/neo-protocol/types";
 import { blend, type Palette } from "../../../lib/palette.ts";
 
 /** The colour a tone stands for; the text colour for none. */

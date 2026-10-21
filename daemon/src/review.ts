@@ -12,7 +12,7 @@ import type {
   SessionEvent,
   SessionEventRecord,
   ToolCallContent,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 import type { Asker } from "./asker.ts";
 import type { Logger } from "./log.ts";
 import type { Approvals } from "./settings.ts";

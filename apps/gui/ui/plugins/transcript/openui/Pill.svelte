@@ -2,7 +2,7 @@
   // One suggestion of a FollowUpBlock: a pill that sends its text to the assistant when pressed.
   import { Button, Text } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent } from "@neoworks/svelte-gpui/ui";
-  import type { UiNode } from "@suite/protocol/types";
+  import type { UiNode } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../../kernel/slots/context.ts";
   import { useDoc } from "./context.ts";
   import { str } from "./props.ts";

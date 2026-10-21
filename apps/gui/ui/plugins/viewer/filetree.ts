@@ -1,7 +1,7 @@
 // The changed files as a tree of folders, for the viewer's file column: the rows to draw for the
 // folders that are open, with a chain of folders that hold nothing else joined into one row
 // (`src/lib/util`), and what each file did. Plain data, so tests reach it.
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 import { diffStats } from "../../lib/diff.ts";
 import type { FileDiff } from "../../lib/unified.ts";
 

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Window } from "happy-dom";
-import { assetUrl, connect, fixedAddress, type Client } from "@suite/sdk";
+import { assetUrl, connect, fixedAddress, type Client } from "@neoworks-dev/neo-sdk";
 import { startTestDaemon, type TestDaemon } from "../../../daemon/src/testing.ts";
 import { startBrowserApp, type BrowserApp } from "../src/app.ts";
 import { TOKEN_HEADER } from "../src/server.ts";

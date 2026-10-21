@@ -1,7 +1,7 @@
 // What an agent has been told about connectors and focus, and the events that bring it up to date.
 // The session's own agent learns it from the session log; each guest keeps its own copy.
 import type { ContextEvent } from "@neoworks-dev/neo/agent";
-import type { AppConnected, SessionEvent } from "@suite/protocol/types";
+import type { AppConnected, SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import type { ConnectorSnapshot } from "./gateway/registry.ts";
 
 export interface FocusTarget {

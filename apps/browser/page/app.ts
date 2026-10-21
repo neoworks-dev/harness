@@ -2,8 +2,8 @@
 // the address bar, the page's text and images (with a Download button each), and the agent's chat
 // pane, which always shows the daemon's current session and lights up when the agent is here.
 import { mountChat, type Chat } from "@suite/renderer-web";
-import type { AgentFocus, Theme } from "@suite/protocol/types";
-import type { Client, ConnectionState, Unsubscribe } from "@suite/sdk";
+import type { AgentFocus, Theme } from "@neoworks-dev/neo-protocol/types";
+import type { Client, ConnectionState, Unsubscribe } from "@neoworks-dev/neo-sdk";
 import type { DownloadView, PageView } from "../src/types.ts";
 import type { PageApi } from "./api.ts";
 

@@ -5,7 +5,7 @@
 // from the session's events) come first and the title and the result are read when they are
 // missing. An unknown tool is a wrench with its own title. Plain functions, tested without a
 // window.
-import type { Component, DiffComponent, ViewItem } from "@suite/protocol/types";
+import type { Component, DiffComponent, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { diffStats } from "../../lib/diff.ts";
 import { blocksText, componentText, hasButtons, oneLine } from "./components.ts";
 import { count } from "./format.ts";

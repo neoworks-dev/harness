@@ -12,8 +12,8 @@ import type {
   ToolsCallArgs,
   ToolsSearchArgs,
   WaitArgs,
-} from "@suite/protocol/core-tools";
-import type { ToolResult } from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/core-tools";
+import type { ToolResult } from "@neoworks-dev/neo-protocol/types";
 import Ajv2020, { type ValidateFunction } from "ajv/dist/2020.js";
 import type { Logger } from "../log.ts";
 import type { MessageTools } from "../messages.ts";

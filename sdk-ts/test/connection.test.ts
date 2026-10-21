@@ -1,6 +1,6 @@
 // Connecting and reconnecting, against a fake daemon that tests can drop, replace and make refuse.
 import { describe, expect, test } from "bun:test";
-import type { ViewSnapshot } from "@suite/protocol/types";
+import type { ViewSnapshot } from "@neoworks-dev/neo-protocol/types";
 import { connect, fixedAddress, SuiteError, type DaemonAddress } from "../src/index.ts";
 import { cleanupAfterEach } from "./support/cleanup.ts";
 import { FakeDaemon } from "./support/fake-daemon.ts";

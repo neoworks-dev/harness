@@ -1,7 +1,7 @@
 // Theme → CSS custom properties, and the stylesheet that uses only those. The daemon's Theme
 // (protocol/themes/default.json) is the single source of colors, spacing and type sizes: nothing
 // in the stylesheet below hard-codes them, so a new theme restyles the chat without new CSS.
-import type { TextStyle, Theme } from "@suite/protocol/types";
+import type { TextStyle, Theme } from "@neoworks-dev/neo-protocol/types";
 
 /** Font stacks for a TextStyle's `mono` flag (the theme only says mono or not). */
 const FONT_SANS = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';

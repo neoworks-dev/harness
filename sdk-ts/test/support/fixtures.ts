@@ -1,4 +1,4 @@
-import type { SessionInfo, ViewItem } from "@suite/protocol/types";
+import type { SessionInfo, ViewItem } from "@neoworks-dev/neo-protocol/types";
 
 /** A view item holding one paragraph. */
 export function viewItem(ref: string, text: string): ViewItem {

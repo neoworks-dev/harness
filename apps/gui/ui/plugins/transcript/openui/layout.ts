@@ -2,7 +2,7 @@
 // the window draws as a grid or a strip of metrics, when a row of children stacks, which slides a
 // carousel shows. The widths are in pixels, so this is the terminal's cells (30 for a grid
 // column) turned into what a window can fit. Plain functions, tested without a window.
-import type { UiNode } from "@suite/protocol/types";
+import type { UiNode } from "@neoworks-dev/neo-protocol/types";
 import { cellText, num, nodes, str, type Cell } from "./props.ts";
 
 /** The narrowest a grid column or carousel slide gets: 30 cells in a terminal. */

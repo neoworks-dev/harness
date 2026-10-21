@@ -3,7 +3,7 @@
   // frame in a tone and a wash of a tone. Its own width is the parent's business (a share, fill or
   // fit: Kids and StackNode); this draws at the width it is given.
   import { View } from "@neoworks/svelte-gpui/ui";
-  import type { UiNode } from "@suite/protocol/types";
+  import type { UiNode } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../../kernel/slots/context.ts";
   import { tint, toneColor } from "./look.ts";
   import { bool, list, str, tone as toneOf } from "./props.ts";

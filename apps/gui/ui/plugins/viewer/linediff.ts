@@ -1,6 +1,6 @@
 // The difference between two texts as the whole file with its changes marked, for the edits an
 // agent made (the tool call carries the old and the new text, not a diff).
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 
 /** The most cells of the table that finds the longest common lines; past it the middle is replaced whole. */
 const MAX_CELLS = 4_000_000;

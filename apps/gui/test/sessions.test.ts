@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { SessionInfo } from "@suite/protocol/types";
+import type { SessionInfo } from "@neoworks-dev/neo-protocol/types";
 import {
   arrange,
   inProject,

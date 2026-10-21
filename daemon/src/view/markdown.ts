@@ -8,7 +8,7 @@ import type {
   TableBlock,
   TableCell,
   UiDoc,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 
 type Style = Omit<Span, "text">;
 

@@ -1,6 +1,6 @@
 // What a field needs of the form or control around it.
 import { getContext, setContext } from "svelte";
-import type { UiNode } from "@suite/protocol/types";
+import type { UiNode } from "@neoworks-dev/neo-protocol/types";
 
 const FORM = Symbol("openui form");
 const CONTROL = Symbol("openui control");

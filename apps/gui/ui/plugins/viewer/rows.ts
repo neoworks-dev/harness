@@ -1,7 +1,7 @@
 // The diff tab's list as rows: for each file a header, then its lines (one per row, or a pair in the
 // split layout) with the unchanged runs folded, and the comment's editor under the selection. Plain
 // data, so tests reach it; the components draw a row by its kind.
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 import { diffStats } from "../../lib/diff.ts";
 import type { FileDiff } from "../../lib/unified.ts";
 import { fileStatus, type Status } from "./filetree.ts";

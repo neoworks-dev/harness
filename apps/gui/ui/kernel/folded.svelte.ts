@@ -2,7 +2,7 @@
 // (the agents working, the plan, the files touched) keeps one. The daemon replays a session's
 // history when it is opened, so a fold begins again when the events are of another session or
 // start over; and it reads as `initial` while the session shown is another one.
-import type { SessionEventRecord } from "@suite/protocol/types";
+import type { SessionEventRecord } from "@neoworks-dev/neo-protocol/types";
 import type { DaemonService } from "./services/daemon.ts";
 
 type Reduce<S> = (state: S, record: SessionEventRecord, daemon: DaemonService) => S;

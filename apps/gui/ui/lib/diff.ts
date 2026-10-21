@@ -1,6 +1,6 @@
 // A diff component's lines as the chat draws them: counted, cut to a preview, and measured for
 // the width of their line numbers.
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 
 export interface DiffStats {
   added: number;

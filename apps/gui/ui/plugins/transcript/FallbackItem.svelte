@@ -1,7 +1,7 @@
 <script lang="ts">
   // An item of a kind no plugin draws: its component as it is.
   import { View } from "@neoworks/svelte-gpui/ui";
-  import type { ViewItem } from "@suite/protocol/types";
+  import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Component from "./Component.svelte";
   import ItemFrame from "./ItemFrame.svelte";

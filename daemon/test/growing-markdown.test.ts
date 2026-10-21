@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { UiDoc } from "@suite/protocol/types";
+import type { UiDoc } from "@neoworks-dev/neo-protocol/types";
 import { GrowingMarkdown, parseMarkdown } from "../src/view/markdown.ts";
 
 const MESSAGE = [

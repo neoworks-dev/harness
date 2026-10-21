@@ -1,6 +1,6 @@
 // Where the agent lives: the current session (the one every app follows) and the app whose pane
 // hosts it. The daemon owns this; apps only ask to move it (agent.move) and follow agent.focus.
-import type { AgentFocus, FocusReason } from "@suite/protocol/types";
+import type { AgentFocus, FocusReason } from "@neoworks-dev/neo-protocol/types";
 import type { ConnectorRegistry } from "./gateway/registry.ts";
 import type { Logger } from "./log.ts";
 import { BadRequestError, NotFoundError, type SessionManager } from "./sessions.ts";

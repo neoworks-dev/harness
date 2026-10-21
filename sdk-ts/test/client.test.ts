@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { AppPresence } from "@suite/protocol/types";
-import { createToolServer } from "@suite/sdk-tools";
+import type { AppPresence } from "@neoworks-dev/neo-protocol/types";
+import { createToolServer } from "@neoworks-dev/neo-sdk";
 import {
   connect,
   DisconnectedError,
@@ -203,7 +203,7 @@ describe("presence (needs the gateway)", () => {
   });
 
   test("registered tools show up in listConnectors, and survive a restart", async () => {
-    const tools = createToolServer({
+    const tools = await createToolServer({
       name: "demo",
       tools: [
         {

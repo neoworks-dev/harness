@@ -1,6 +1,6 @@
 // The open secret question and what is typed for it. The text lives here and nowhere else: it is
 // not in the composer's draft or history, it is not stored, and it is cleared when it is sent.
-import type { SecretRequest } from "@suite/protocol/types";
+import type { SecretRequest } from "@neoworks-dev/neo-protocol/types";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
 import { incoming, stale, submitted, type Ask } from "./ask.ts";
 

@@ -1,7 +1,7 @@
 // Where each part of a doc sits and which parts take the keyboard, in drawing order. A node's
 // path is its place in the tree (`/children.2/tabs.0/children.1`), which names what has no `key`:
 // a tab strip, an accordion item, a carousel.
-import type { UiNode } from "@suite/protocol/types";
+import type { UiNode } from "@neoworks-dev/neo-protocol/types";
 import { isNode, nodes } from "./props.ts";
 
 /** The id of a date picker's calendar button. */

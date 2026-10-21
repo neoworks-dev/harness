@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { SessionEvent, SessionEventRecord } from "@suite/protocol/types";
+import type { SessionEvent, SessionEventRecord } from "@neoworks-dev/neo-protocol/types";
 import { lineDiff, splitLines } from "../ui/plugins/viewer/linediff.ts";
 import { NO_TURN, applyTurn, turnDiffs, turnEdits, type Turn } from "../ui/plugins/viewer/turn.ts";
 

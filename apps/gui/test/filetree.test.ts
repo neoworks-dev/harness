@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 import type { FileDiff } from "../ui/lib/unified.ts";
 import { fileStatus, folderPaths, treeRows } from "../ui/plugins/viewer/filetree.ts";
 import { statBar } from "../ui/plugins/viewer/look.ts";

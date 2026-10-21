@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Envelope } from "@suite/protocol/types";
-import { validateEnvelope } from "@suite/protocol/validate";
+import type { Envelope } from "@neoworks-dev/neo-protocol/types";
+import { validateEnvelope } from "@neoworks-dev/neo-protocol/validate";
 import { AssetStore, isPrivateAddress } from "../src/assets.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 

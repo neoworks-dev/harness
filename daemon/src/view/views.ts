@@ -1,7 +1,7 @@
 // One live SessionView per session (and per agent, for a per-agent view) that someone has looked
 // at, kept current from the event log.
 import type { AppLibrary, CallTool, Program } from "@neoworks/neoui";
-import type { ViewPatch } from "@suite/protocol/types";
+import type { ViewPatch } from "@neoworks-dev/neo-protocol/types";
 import type { Logger } from "../log.ts";
 import type { SessionStore } from "../store.ts";
 import { SessionView, type TemplateLookup } from "./session-view.ts";

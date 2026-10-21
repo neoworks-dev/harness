@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { Envelope, SessionEvent, ViewItem, ViewOp, ViewPatch } from "@suite/protocol/types";
-import { validateEnvelope } from "@suite/protocol/validate";
+import type {
+  Envelope,
+  SessionEvent,
+  ViewItem,
+  ViewOp,
+  ViewPatch,
+} from "@neoworks-dev/neo-protocol/types";
+import { validateEnvelope } from "@neoworks-dev/neo-protocol/validate";
 import { silentLogger } from "../src/log.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { SessionView } from "../src/view/session-view.ts";

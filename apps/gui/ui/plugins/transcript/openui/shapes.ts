@@ -1,7 +1,7 @@
 // The generic Shape: a rect, line, path or arc in a box of 0 to 1 on both sides (left top corner
 // 0,0) that the parent sizes. The window draws each as an SVG of the box's pixels that the `Icon`
 // tints with the shape's tone. Plain functions, tested without a window.
-import type { UiNode } from "@suite/protocol/types";
+import type { UiNode } from "@neoworks-dev/neo-protocol/types";
 import { linePath, onCircle, svgDocument, type Point } from "./charts.ts";
 import { bool, num, numbers, str } from "./props.ts";
 

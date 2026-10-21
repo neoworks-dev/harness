@@ -2,7 +2,7 @@
   // The runs of one paragraph: nested `Text`s, so the paragraph still wraps as a whole. No
   // white space between the tags: it would show as a space between two runs.
   import { Text } from "@neoworks/svelte-gpui/ui";
-  import type { Span } from "@suite/protocol/types";
+  import type { Span } from "@neoworks-dev/neo-protocol/types";
   import { linkHint, spanStyle } from "./runs.ts";
   import { useCtx } from "../../kernel/slots/context.ts";
 

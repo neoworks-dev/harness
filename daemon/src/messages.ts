@@ -18,8 +18,8 @@
 // until the user writes again (newRound), INBOX_LIMIT unread messages per agent, TEXT_LIMIT
 // characters per message.
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { SendMessageArgs, WaitArgs } from "@suite/protocol/core-tools";
-import type { SessionEvent } from "@suite/protocol/types";
+import type { SendMessageArgs, WaitArgs } from "@neoworks-dev/neo-protocol/core-tools";
+import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
 
 /** The session's own agent. */
 export const MAIN = "main";

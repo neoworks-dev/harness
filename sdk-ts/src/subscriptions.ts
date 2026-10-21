@@ -9,7 +9,7 @@ import type {
   ViewPatch,
   ViewRef,
   ViewSnapshot,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 import type { Connection } from "./connection.ts";
 import { callGuarded, reportUnlessDisconnected } from "./errors.ts";
 import type { Unsubscribe } from "./watched.ts";

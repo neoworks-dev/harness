@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentFocus, AppPresence, Envelope, SessionEvent } from "@suite/protocol/types";
+import type {
+  AgentFocus,
+  AppPresence,
+  Envelope,
+  SessionEvent,
+} from "@neoworks-dev/neo-protocol/types";
 import { BadRequestError, FocusManager } from "../src/focus.ts";
 import { Gateway } from "../src/gateway/gateway.ts";
 import { ConnectorRegistry } from "../src/gateway/registry.ts";

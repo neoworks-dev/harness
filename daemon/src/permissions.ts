@@ -9,7 +9,7 @@
 // The question is a permission_request with the content to preview. "Allow for this session"
 // holds per session and kind (per file for sensitive ones), in memory only.
 import type { PermissionAnswer, PermissionAsk, RequestPermission } from "@neoworks-dev/neo/agent";
-import type { DiffContent, PermissionOption, ToolKind } from "@suite/protocol/types";
+import type { DiffContent, PermissionOption, ToolKind } from "@neoworks-dev/neo-protocol/types";
 import type { Answer, Asker } from "./asker.ts";
 import { editedTitle, KEEP_OR_REVERT, restore } from "./review.ts";
 import { displayPath, sensitiveInCommand, sensitivePath } from "./sensitive.ts";

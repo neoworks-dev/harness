@@ -1,4 +1,4 @@
-import type { SessionEvent, SessionEventRecord } from "@suite/protocol/types";
+import type { SessionEvent, SessionEventRecord } from "@neoworks-dev/neo-protocol/types";
 
 /** Pass it to `subscribe` as the options; it keeps what the subscriber saw, in order. */
 export class Recorder {

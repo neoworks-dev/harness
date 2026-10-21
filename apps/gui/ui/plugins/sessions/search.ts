@@ -1,7 +1,7 @@
 // Searching the sessions in the sidebar: which ones match what was typed, in what order, and
 // where in the text the match is, for the row to show. Plain functions. Only what the daemon lists
 // is searched (title, last message, project); searching the whole conversation needs the daemon.
-import type { SessionInfo } from "@suite/protocol/types";
+import type { SessionInfo } from "@neoworks-dev/neo-protocol/types";
 import { previewOf, sessionTitle } from "./sessions.ts";
 
 /** Where a result matched, which is what its row shows. */

@@ -4,7 +4,7 @@
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import type { PointerEvent } from "@neoworks/svelte-gpui/ui";
   import undo from "@phosphor-icons/core/regular/arrow-counter-clockwise.svg";
-  import type { SessionInfo } from "@suite/protocol/types";
+  import type { SessionInfo } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../kernel/slots/context.ts";
   import ProjectIcon from "./ProjectIcon.svelte";
   import RowAction from "./RowAction.svelte";

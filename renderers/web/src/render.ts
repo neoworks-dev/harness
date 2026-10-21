@@ -7,8 +7,8 @@ import type {
   ViewItem,
   ViewPatch,
   ViewSnapshot,
-} from "@suite/protocol/types";
-import { componentAtPath, ViewState, type ViewChange } from "@suite/sdk";
+} from "@neoworks-dev/neo-protocol/types";
+import { componentAtPath, ViewState, type ViewChange } from "@neoworks-dev/neo-sdk";
 import { buttonKey, renderBlocks, renderItem } from "./components.ts";
 import { CHAT_CLASS, chatStyles, themeVariables } from "./styles.ts";
 

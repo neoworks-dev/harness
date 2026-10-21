@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { SessionEvent, ToolCallContent } from "@suite/protocol/types";
+import type { SessionEvent, ToolCallContent } from "@neoworks-dev/neo-protocol/types";
 import { branchLabel, parseStatus, relFromPrefix, relativize } from "../ui/lib/git-status.ts";
 import {
   NO_TOUCHES,

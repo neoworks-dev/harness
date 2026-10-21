@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createNeoAgent } from "@neoworks-dev/neo/neo";
 import { fauxToolCall } from "@mariozechner/pi-ai";
-import type { SessionEvent } from "@suite/protocol/types";
+import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { GuestConfig } from "../src/guests/guests.ts";

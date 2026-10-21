@@ -8,7 +8,7 @@ import {
   registerOAuthProvider,
   unregisterOAuthProvider,
 } from "@mariozechner/pi-ai/oauth";
-import type { PlanEntry, SessionEvent } from "@suite/protocol/types";
+import type { PlanEntry, SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import type {
   AgentSession,
   AgentUpdate,

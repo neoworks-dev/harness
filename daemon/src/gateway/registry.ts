@@ -9,7 +9,12 @@ import {
   callNames,
   checkComponents,
 } from "@neoworks/neoui";
-import type { AppPresence, ConnectorInfo, ConnectorKind, McpEndpoint } from "@suite/protocol/types";
+import type {
+  AppPresence,
+  ConnectorInfo,
+  ConnectorKind,
+  McpEndpoint,
+} from "@neoworks-dev/neo-protocol/types";
 import type { Logger } from "../log.ts";
 import type { SessionStore, StoredConnector, StoredTool } from "../store.ts";
 import type { ConnectUpstream, Upstream } from "./upstream.ts";

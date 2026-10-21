@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { UiDoc, UiNode } from "@suite/protocol/types";
+import type { UiDoc, UiNode } from "@neoworks-dev/neo-protocol/types";
 import { DocSession, type Held, type HeldView } from "../ui/plugins/transcript/openui/session.ts";
 import { outbox } from "../ui/plugins/transcript/openui/form.ts";
 

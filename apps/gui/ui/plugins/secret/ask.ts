@@ -1,6 +1,6 @@
 // The logic of a secret question, apart from the window: which request is shown, which are
 // answered as cancelled, and what is sent. Pure, so tests reach it (see the README on runes).
-import type { SecretRequest } from "@suite/protocol/types";
+import type { SecretRequest } from "@neoworks-dev/neo-protocol/types";
 
 /** The question on screen. It holds no answer: the typed text lives in the field only. */
 export interface Ask {

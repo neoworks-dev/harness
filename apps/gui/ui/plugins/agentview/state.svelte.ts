@@ -1,6 +1,6 @@
 // The one agent whose own chat is shown in place of the session's (Enter in the agents list). The
 // view has the keyboard while it is open, so the input does not take it back until it is closed.
-import type { ViewItem } from "@suite/protocol/types";
+import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { untrack } from "svelte";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
 

@@ -1,7 +1,7 @@
 // A file's diff lines with the runs of unchanged lines folded away: what the viewer draws, and
 // what pressing "N unmodified lines" brings back. The lines are the whole file with its changes
 // marked (`git diff -U<large>`), or hunks (a pull request), which have nothing to fold.
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 
 /** Unchanged lines kept around a change. */
 export const CONTEXT = 3;

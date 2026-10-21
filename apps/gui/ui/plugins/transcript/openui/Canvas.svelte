@@ -2,7 +2,7 @@
   // Shapes drawn over each other in one box of the width the parent gives, as tall as the first
   // shape's aspect says. Each is an SVG the Icon tints with its tone, so the lines are smooth.
   import { Icon, View } from "@neoworks/svelte-gpui/ui";
-  import type { UiNode } from "@suite/protocol/types";
+  import type { UiNode } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../../kernel/slots/context.ts";
   import { toneColor } from "./look.ts";
   import { tone as toneOf } from "./props.ts";

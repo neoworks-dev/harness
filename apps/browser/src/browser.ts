@@ -1,6 +1,6 @@
 // The browser's brain, without any UI or bus: navigate, read, list images, download. The tools,
 // the page's HTTP endpoints and the address bar all call these.
-import type { Asset, AssetPut } from "@suite/protocol/types";
+import type { Asset, AssetPut } from "@neoworks-dev/neo-protocol/types";
 import { extractPage, truncate, type PageLink } from "./extract.ts";
 import {
   addressToUrl,

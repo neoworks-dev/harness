@@ -10,7 +10,7 @@
   import check from "@phosphor-icons/core/regular/check.svg";
   import checkCircle from "@phosphor-icons/core/regular/check-circle.svg";
   import pinned from "@phosphor-icons/core/fill/push-pin-fill.svg";
-  import type { SessionInfo } from "@suite/protocol/types";
+  import type { SessionInfo } from "@neoworks-dev/neo-protocol/types";
   import HarnessIcon from "../../widgets/HarnessIcon.svelte";
   import Spinner from "../../widgets/Spinner.svelte";
   import { useCtx } from "../../kernel/slots/context.ts";

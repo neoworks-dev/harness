@@ -4,7 +4,7 @@
   import { untrack } from "svelte";
   import { Button, List, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent } from "@neoworks/svelte-gpui/ui";
-  import type { ViewItem } from "@suite/protocol/types";
+  import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
   import { agentView } from "./state.svelte.ts";

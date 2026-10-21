@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SessionEvent } from "@suite/protocol/types";
+import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import { silentLogger } from "../src/log.ts";
 import { NotFoundError, SessionManager } from "../src/sessions.ts";
 import { SessionStore } from "../src/store.ts";

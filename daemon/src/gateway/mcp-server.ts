@@ -7,7 +7,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { CORE_TOOLS, isCoreToolName } from "@suite/protocol/core-tools";
+import { CORE_TOOLS, isCoreToolName } from "@neoworks-dev/neo-protocol/core-tools";
 import { VERSION } from "../version.ts";
 import type { Caller, Gateway } from "./gateway.ts";
 

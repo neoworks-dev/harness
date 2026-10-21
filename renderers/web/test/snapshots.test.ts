@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { Theme, ViewItem } from "@suite/protocol/types";
+import type { Theme, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { mountChat } from "../src/render.ts";
 import { newPage, prettyHtml } from "./dom.ts";
 

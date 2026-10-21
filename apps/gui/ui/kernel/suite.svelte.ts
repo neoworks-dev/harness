@@ -11,7 +11,7 @@ import type {
   SessionSettingsPayload,
   Theme,
   ViewItem,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 import {
   assetUrl,
   connect,
@@ -20,7 +20,7 @@ import {
   type ConnectionState,
   type DaemonAddress,
   type Unsubscribe,
-} from "@suite/sdk";
+} from "@neoworks-dev/neo-sdk";
 import * as host from "./host/git.ts";
 import { paletteOf } from "../lib/palette.ts";
 import { chooseSession, pickAppId } from "../lib/startup.ts";

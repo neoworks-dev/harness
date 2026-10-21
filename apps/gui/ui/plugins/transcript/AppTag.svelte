@@ -2,7 +2,7 @@
   // The app a user message came from ("photo-editor", "browser"), small and muted under it. Messages
   // typed in this window need no label.
   import { Text } from "@neoworks/svelte-gpui/ui";
-  import type { ViewItem } from "@suite/protocol/types";
+  import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../kernel/slots/context.ts";
 
   let { item }: { item: ViewItem } = $props();

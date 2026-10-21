@@ -1,7 +1,7 @@
 // The sessions sidebar, as plain functions: where a session works, how the list is grouped and
 // ordered, how old a session is and which ones finished while another was shown. Ported from the
 // terminal app (apps/term/src/sessions.rs).
-import type { SessionInfo } from "@suite/protocol/types";
+import type { SessionInfo } from "@neoworks-dev/neo-protocol/types";
 
 /** Where a session works: a repository (or, outside one, the directory itself) and the worktree. */
 export interface Place {

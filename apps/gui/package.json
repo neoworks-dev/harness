@@ -7,8 +7,8 @@
     "typecheck": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
-    "@suite/protocol": "workspace:*",
-    "@suite/sdk": "workspace:*"
+    "@neoworks-dev/neo-protocol": "workspace:*",
+    "@neoworks-dev/neo-sdk": "workspace:*"
   },
   "devDependencies": {
     "@neoworks/neoui": "link:@neoworks/neoui",

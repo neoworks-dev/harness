@@ -2,7 +2,7 @@
   // A diff in the chat: unified, with the added and removed colouring and line numbers. Cut to a
   // few lines unless expanded. Pressing it opens the viewer beside the chat.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
-  import type { DiffComponent } from "@suite/protocol/types";
+  import type { DiffComponent } from "@neoworks-dev/neo-protocol/types";
   import { lineHeightOf } from "./components.ts";
   import { clip, diffStats, gutterWidth } from "../../lib/diff.ts";
   import { useCtx } from "../../kernel/slots/context.ts";

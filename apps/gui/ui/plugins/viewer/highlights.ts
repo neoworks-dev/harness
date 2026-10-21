@@ -1,7 +1,7 @@
 // The syntax highlighting of what the viewer shows, per file and kept for as long as the file's
 // lines are: a diff's lines are two texts woven together (the old one with its removed lines, the
 // new one with its added lines, the unchanged ones in both), and each is scanned as the code it is.
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 import { Highlighter, languageOf, type Token } from "./syntax.ts";
 
 /** What highlights the lines of one diff or file. */

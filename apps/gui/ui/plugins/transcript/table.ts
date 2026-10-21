@@ -1,5 +1,5 @@
 // Column shares for a table component: wide content gets more room, but no column takes over.
-import type { TableComponent } from "@suite/protocol/types";
+import type { TableComponent } from "@neoworks-dev/neo-protocol/types";
 
 const NARROWEST = 4;
 const WIDEST = 40;

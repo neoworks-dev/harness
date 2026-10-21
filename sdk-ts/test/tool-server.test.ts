@@ -60,14 +60,14 @@ async function mcpClient(server: ToolServer, onChanged?: () => void): Promise<Cl
   return client;
 }
 
-function serve(tools: ToolSpec[], instructions?: string): ToolServer {
-  const server = createToolServer({ name: "demo", instructions, tools });
+async function serve(tools: ToolSpec[], instructions?: string): Promise<ToolServer> {
+  const server = await createToolServer({ name: "demo", instructions, tools });
   cleanups.push(() => server.close());
   return server;
 }
 
 test("lists tools and calls them", async () => {
-  const server = serve([add, boom, echo], "Use add for sums.");
+  const server = await serve([add, boom, echo], "Use add for sums.");
   expect(server.endpoint).toEqual({ url: server.url, headers: server.headers });
   const client = await mcpClient(server);
   expect(client.getInstructions()).toBe("Use add for sums.");
@@ -85,14 +85,14 @@ test("lists tools and calls them", async () => {
 });
 
 test("a thrown error becomes an isError result", async () => {
-  const client = await mcpClient(serve([boom]));
+  const client = await mcpClient(await serve([boom]));
   const result = await client.callTool({ name: "boom", arguments: {} });
   expect(result.isError).toBe(true);
   expect(result.content).toEqual([{ type: "text", text: "kaboom" }]);
 });
 
 test("a wrong or missing token gets 401", async () => {
-  const server = serve([echo]);
+  const server = await serve([echo]);
   const init = { method: "POST", body: "{}", headers: { "content-type": "application/json" } };
   expect((await fetch(server.url, init)).status).toBe(401);
   const wrong = { ...init, headers: { ...init.headers, authorization: "Bearer nope" } };
@@ -102,7 +102,7 @@ test("a wrong or missing token gets 401", async () => {
 });
 
 test("setTools changes the list and sends list_changed", async () => {
-  const server = serve([echo]);
+  const server = await serve([echo]);
   let changes = 0;
   const client = await mcpClient(server, () => {
     changes += 1;

@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { Block, Component, ViewItem, ViewOp, ViewPatch } from "@suite/protocol/types";
+import type {
+  Block,
+  Component,
+  ViewItem,
+  ViewOp,
+  ViewPatch,
+} from "@neoworks-dev/neo-protocol/types";
 import { componentAtPath, hasChildren, ViewState } from "../src/view.ts";
 
 function para(text: string): Block {

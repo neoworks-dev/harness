@@ -1,5 +1,5 @@
 // How a run of inline markdown (a Span) looks: the style of one nested `Text`.
-import type { Span } from "@suite/protocol/types";
+import type { Span } from "@neoworks-dev/neo-protocol/types";
 import type { Palette } from "../../lib/palette.ts";
 
 /** The part of svelte-gpui's `Style` a run uses (this file is also checked without the library). */

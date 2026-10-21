@@ -1,6 +1,6 @@
 // Which lines the user selected to comment on, and the comment's quote of them. Lines count in the
 // file's diff lines (or, in a file, its lines), so unified and split views agree.
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 import type { CodeComment } from "../../lib/comments.ts";
 
 /** A range of lines of one view (a file's diff, or a file tab), between where it began and now. */

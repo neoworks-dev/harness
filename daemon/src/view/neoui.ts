@@ -3,7 +3,7 @@
 // (docs/neoui.md). A Program parses, evaluates and handles input; this keeps them and renders
 // templates written in neoui.
 import { type AppLibrary, type CallTool, Program } from "@neoworks/neoui";
-import type { UiDoc } from "@suite/protocol/types";
+import type { UiDoc } from "@neoworks-dev/neo-protocol/types";
 import { parseMarkdown } from "./markdown.ts";
 
 /** A template that is a program: `{"neoui": "<markup>"}`, in place of component JSON. */

@@ -5,7 +5,7 @@
   import { clipboard, invoke } from "@neoworks/svelte-gpui";
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent } from "@neoworks/svelte-gpui/ui";
-  import type { UiDoc } from "@suite/protocol/types";
+  import type { UiDoc } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../../kernel/slots/context.ts";
   import { useColumn } from "../../../widgets/column.ts";
   import { provideDoc } from "./context.ts";

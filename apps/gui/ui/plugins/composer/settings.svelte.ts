@@ -1,6 +1,6 @@
 // What the session's harnesses offer (models, reasoning levels), asked for when a picker opens.
 // Asking may start a guest harness's adapter, so it is not asked before the user wants to pick.
-import type { ConfigOption, HarnessSettings } from "@suite/protocol/types";
+import type { ConfigOption, HarnessSettings } from "@neoworks-dev/neo-protocol/types";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
 
 class Settings {

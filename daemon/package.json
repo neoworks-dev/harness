@@ -7,7 +7,7 @@
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@neoworks/neoui": "link:@neoworks/neoui",
     "@neoworks-dev/neo": "workspace:*",
-    "@suite/protocol": "workspace:*",
+    "@neoworks-dev/neo-protocol": "workspace:*",
     "ajv": "^8.20.0",
     "diff": "^9.0.0",
     "marked": "^18.1.1"

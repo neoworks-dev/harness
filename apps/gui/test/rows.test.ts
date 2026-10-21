@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Component, SessionEvent, ViewItem } from "@suite/protocol/types";
+import type { Component, SessionEvent, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import {
   buildRows,
   splitMessages,

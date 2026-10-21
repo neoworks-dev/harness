@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ViewPatch, ViewRef, ViewSnapshot } from "@suite/protocol/types";
+import type { ViewPatch, ViewRef, ViewSnapshot } from "@neoworks-dev/neo-protocol/types";
 import { connect, DisconnectedError, fixedAddress, SuiteError } from "../src/index.ts";
 import type { Client } from "../src/index.ts";
 import { cleanupAfterEach } from "./support/cleanup.ts";

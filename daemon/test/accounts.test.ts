@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { setAccount } from "@neoworks-dev/neo/auth";
-import type { ChoiceOption, SessionEvent } from "@suite/protocol/types";
+import type { ChoiceOption, SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import { codexRoute } from "../src/guests/accounts.ts";
 import type { GuestConfig } from "../src/guests/guests.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";

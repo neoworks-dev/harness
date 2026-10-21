@@ -1,9 +1,9 @@
 // The lsp service: language servers as a background connector, so diagnostics and definitions
 // work whether or not an editor is open. Editors use the same servers through the gateway.
 //   bun run services/lsp/main.ts
-import { connect } from "@suite/sdk";
-import { daemonJsonAddress } from "@suite/sdk/node";
-import { createToolServer } from "@suite/sdk-tools";
+import { connect } from "@neoworks-dev/neo-sdk";
+import { daemonJsonAddress } from "@neoworks-dev/neo-sdk";
+import { createToolServer } from "@neoworks-dev/neo-sdk";
 import { pluginLanguages } from "./src/plugins.ts";
 import { ServerPool } from "./src/servers.ts";
 import { createTools, templates } from "./src/tools.ts";
@@ -12,7 +12,7 @@ const log = (line: string): void => {
   process.stderr.write(`lsp: ${line}\n`);
 };
 const pool = new ServerPool(log, () => pluginLanguages());
-const tools = createToolServer({
+const tools = await createToolServer({
   name: "lsp",
   instructions:
     "Language servers (gopls, typescript-language-server, rust-analyzer when installed, and those of installed plugins). Paths are absolute; lines are 1-based; pass the identifier as `symbol` instead of counting columns.",

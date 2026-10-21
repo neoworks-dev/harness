@@ -1,6 +1,6 @@
 // The slots the transcript declares: how one row of the chat is drawn, and how one item is, so
 // another plugin can draw a kind of its own or add to the user's message.
-import type { ItemKind, ViewItem } from "@suite/protocol/types";
+import type { ItemKind, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import type { Keyed, List } from "../../kernel/slots/types.ts";
 import type { Row, RowKind } from "./rows.ts";
 

@@ -1,9 +1,9 @@
 // Wires the browser together: the Browser core, its MCP tools, the page's server, and the bus
 // connection that registers it as the "browser" app (and keeps its context current).
-import type { Asset, AssetPut, AppPresence } from "@suite/protocol/types";
-import { connect, type Client } from "@suite/sdk";
-import { daemonJsonAddress } from "@suite/sdk/node";
-import { createToolServer, type ToolServer } from "@suite/sdk-tools";
+import type { Asset, AssetPut, AppPresence } from "@neoworks-dev/neo-protocol/types";
+import { connect, type Client } from "@neoworks-dev/neo-sdk";
+import { daemonJsonAddress } from "@neoworks-dev/neo-sdk";
+import { createToolServer, type ToolServer } from "@neoworks-dev/neo-sdk";
 import { Browser } from "./browser.ts";
 import { startBrowserServer, type BrowserServer } from "./server.ts";
 import { browserTemplates, browserTools } from "./tools.ts";
@@ -60,7 +60,7 @@ export async function startBrowserApp(options: BrowserAppOptions = {}): Promise<
       return suite.putAsset(asset);
     },
   });
-  const tools = createToolServer({
+  const tools = await createToolServer({
     name: "browser",
     instructions: INSTRUCTIONS,
     tools: browserTools(browser),

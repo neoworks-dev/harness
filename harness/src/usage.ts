@@ -1,5 +1,5 @@
 import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
-import type { Usage } from "@suite/protocol/types";
+import type { Usage } from "@neoworks-dev/neo-protocol/types";
 
 /** Tokens a request used: everything it sent (cached or not) plus what it generated. */
 function tokensOf({ usage }: AssistantMessage): number {

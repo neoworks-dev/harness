@@ -1,4 +1,4 @@
-import type { ErrorCode } from "@suite/protocol/types";
+import type { ErrorCode } from "@neoworks-dev/neo-protocol/types";
 
 /** The daemon answered a request with an error. `code` says why (for example `not_found`). */
 export class SuiteError extends Error {

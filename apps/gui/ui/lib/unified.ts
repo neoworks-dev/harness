@@ -1,6 +1,6 @@
 // A unified diff (`git diff`, `gh pr diff`) as the `DiffLine`s the diff view draws. Several files
 // become several parts, each with its path.
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 
 export interface FileDiff {
   /** The new path (the old one for a deletion). */

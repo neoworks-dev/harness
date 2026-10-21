@@ -4,7 +4,7 @@
   // children with this same component.
   import { clipboard } from "@neoworks/svelte-gpui";
   import { Button, Text, View } from "@neoworks/svelte-gpui/ui";
-  import type { Component, Tone } from "@suite/protocol/types";
+  import type { Component, Tone } from "@neoworks-dev/neo-protocol/types";
   import { baseName, gapOf, lineHeightOf, toneColor } from "./components.ts";
   import { fitImage } from "./image.ts";
   import { columnWeights } from "./table.ts";

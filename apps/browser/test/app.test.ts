@@ -3,9 +3,9 @@
 // land in the daemon's store with the right bytes.
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import type { Asset, Component, ConnectorInfo, ViewItem } from "@suite/protocol/types";
-import { connect, type Client } from "@suite/sdk";
-import { daemonJsonAddress } from "@suite/sdk/node";
+import type { Asset, Component, ConnectorInfo, ViewItem } from "@neoworks-dev/neo-protocol/types";
+import { connect, type Client } from "@neoworks-dev/neo-sdk";
+import { daemonJsonAddress } from "@neoworks-dev/neo-sdk";
 import { startTestDaemon, type TestDaemon } from "../../../daemon/src/testing.ts";
 import { startBrowserApp, type BrowserApp } from "../src/app.ts";
 import { PNG, startFixture, type Fixture } from "./fixture.ts";

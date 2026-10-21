@@ -9,8 +9,8 @@ import {
   resetOAuthProviders,
 } from "@mariozechner/pi-ai/oauth";
 import { readAccounts, setAccount } from "@neoworks-dev/neo/auth";
-import type { Envelope, SessionEvent } from "@suite/protocol/types";
-import { validateEnvelope } from "@suite/protocol/validate";
+import type { Envelope, SessionEvent } from "@neoworks-dev/neo-protocol/types";
+import { validateEnvelope } from "@neoworks-dev/neo-protocol/validate";
 import type { ClientHandle } from "../src/hub.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 

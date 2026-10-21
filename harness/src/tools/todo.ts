@@ -1,5 +1,5 @@
 import type { AgentTool } from "../loop/index.ts";
-import type { PlanEntry, PlanEntryStatus } from "@suite/protocol/types";
+import type { PlanEntry, PlanEntryStatus } from "@neoworks-dev/neo-protocol/types";
 import { Type } from "typebox";
 import { isRecord } from "../util.ts";
 

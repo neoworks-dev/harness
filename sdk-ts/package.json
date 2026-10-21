@@ -1,16 +1,21 @@
 {
-  "name": "@suite/sdk",
+  "name": "@neoworks-dev/neo-sdk",
+  "version": "0.1.0",
+  "description": "Connect an app to the neo harness: offer tools and UI to the agent, drive sessions, draw the chat.",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./node": "./src/node.ts"
+    ".": {
+      "browser": "./src/browser.ts",
+      "default": "./src/index.ts"
+    }
   },
   "dependencies": {
-    "@suite/protocol": "workspace:*"
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@neoworks-dev/neo-protocol": "workspace:*"
   },
   "devDependencies": {
-    "@suite/daemon": "workspace:*",
-    "@suite/sdk-tools": "workspace:*"
+    "@suite/daemon": "workspace:*"
   }
 }

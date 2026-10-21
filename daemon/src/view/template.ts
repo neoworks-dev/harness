@@ -6,8 +6,8 @@
 // element, at most n times; default name `item`, and `index` is the 1-based position as text, for
 // labels and keys). Paths are
 // dotted: data.size.w, item.name, data.rows.0.
-import type { Component } from "@suite/protocol/types";
-import { validateDef } from "@suite/protocol/validate";
+import type { Component } from "@neoworks-dev/neo-protocol/types";
+import { validateDef } from "@neoworks-dev/neo-protocol/validate";
 import { diffLines } from "./diff.ts";
 import { parseMarkdown } from "./markdown.ts";
 

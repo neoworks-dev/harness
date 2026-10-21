@@ -1,7 +1,7 @@
 // What the user marks sessions with in the sidebar: pinned ones, and settled ones (put away until
 // they do something). The daemon knows neither, so the window keeps them (marks-store.ts writes
 // them to disk). Plain functions on immutable data.
-import type { SessionInfo } from "@suite/protocol/types";
+import type { SessionInfo } from "@neoworks-dev/neo-protocol/types";
 
 export interface Marks {
   /** Pinned sessions by id, with when each was pinned (Unix ms). */

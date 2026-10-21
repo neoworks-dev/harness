@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { DiffLine } from "@suite/protocol/types";
+import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
 import { clip, diffStats, gutterWidth } from "../ui/lib/diff.ts";
 
 const lines: DiffLine[] = [

@@ -1,6 +1,6 @@
 // Which session the window opens and the name it registers under. Plain functions, so they are
 // tested without a window (apps/gui/test).
-import type { AgentFocus, ConnectorInfo, SessionInfo } from "@suite/protocol/types";
+import type { AgentFocus, ConnectorInfo, SessionInfo } from "@neoworks-dev/neo-protocol/types";
 
 export interface StartupArgs {
   /** An exact session id or a unique prefix. */

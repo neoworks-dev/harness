@@ -2,7 +2,7 @@
 // log as commands_available, and `/name args` goes to the guest as the user's text.
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
-import type { SessionEvent } from "@suite/protocol/types";
+import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import { slashCommands, type GuestConfig } from "../src/guests/guests.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { FakeAgent } from "./fake-agent.ts";

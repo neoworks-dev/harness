@@ -16,7 +16,7 @@ import type {
   RequestPermission,
   SafeSearch,
 } from "@neoworks-dev/neo/agent";
-import type { SessionEvent, SessionInfo, TurnEnded } from "@suite/protocol/types";
+import type { SessionEvent, SessionInfo, TurnEnded } from "@neoworks-dev/neo-protocol/types";
 import type { ConnectorSnapshot } from "./gateway/registry.ts";
 import { handoffSummary } from "./handoff.ts";
 import type { Logger } from "./log.ts";

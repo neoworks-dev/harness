@@ -2,7 +2,7 @@
 // `suite` store (kernel/suite.svelte.ts). Everything it reads is reactive. No `$state` of its own:
 // the store has it (see the README).
 import { Service, type Context } from "@neoworks/extension-system";
-import type { SecretRequest, ViewItem } from "@suite/protocol/types";
+import type { SecretRequest, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { suite } from "../suite.svelte.ts";
 
 declare module "@neoworks/extension-system" {

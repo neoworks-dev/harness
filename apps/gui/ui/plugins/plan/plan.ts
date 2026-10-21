@@ -1,7 +1,7 @@
 // The agent's plan, as the lists its events leave: every `plan` event replaces that agent's list
 // (no `agent` is the session's own; an empty one clears it). Ported from the terminal app's
 // plan widget.
-import type { Plan, PlanEntryStatus } from "@suite/protocol/types";
+import type { Plan, PlanEntryStatus } from "@neoworks-dev/neo-protocol/types";
 
 export interface PlanItem {
   text: string;

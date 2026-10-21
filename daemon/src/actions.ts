@@ -3,7 +3,7 @@
 // app's template). openui.input and openui.press belong to a neoui doc (docs/neoui.md).
 // Otherwise the agent gets it as input, so it can act on it or explain.
 import type { AssistantMessage, CallTool } from "@neoworks/neoui";
-import type { Component, UiAction } from "@suite/protocol/types";
+import type { Component, UiAction } from "@neoworks-dev/neo-protocol/types";
 import { BadRequestError } from "./focus.ts";
 import type { Gateway } from "./gateway/gateway.ts";
 import type { ConnectorRegistry } from "./gateway/registry.ts";

@@ -7,7 +7,7 @@ import type {
   SecretRequest,
   SessionInfo,
   Theme,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 import { Callbacks, WatchedValue } from "./watched.ts";
 
 export class Broadcasts {

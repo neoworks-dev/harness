@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { UiNode } from "@suite/protocol/types";
+import type { UiNode } from "@neoworks-dev/neo-protocol/types";
 import {
   cardsPerRow,
   cellWidth,

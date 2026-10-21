@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createNeoAgent } from "@neoworks-dev/neo/neo";
-import type { Envelope, SessionEvent, ViewItem, ViewPatch } from "@suite/protocol/types";
+import type { Envelope, SessionEvent, ViewItem, ViewPatch } from "@neoworks-dev/neo-protocol/types";
 import type { GuestConfig } from "../src/guests/guests.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { fakeModel, reply, TEST_CONFIG } from "../../harness/test/fake-model.ts";

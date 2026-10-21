@@ -3,11 +3,10 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@suite/sdk": "workspace:*",
-    "@suite/sdk-tools": "workspace:*"
+    "@neoworks-dev/neo-sdk": "workspace:*"
   },
   "devDependencies": {
     "@suite/daemon": "workspace:*",
-    "@suite/protocol": "workspace:*"
+    "@neoworks-dev/neo-protocol": "workspace:*"
   }
 }

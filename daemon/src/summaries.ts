@@ -2,7 +2,7 @@
 // lines its edits added and removed. Built from the log on first use, then kept current from
 // appends. Also names untitled sessions after their first message, until a model writes a better
 // title (titles.ts).
-import type { SessionEvent } from "@suite/protocol/types";
+import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import { MESSAGES_APP } from "./messages.ts";
 import type { SessionStore } from "./store.ts";
 import { diffLines } from "./view/diff.ts";

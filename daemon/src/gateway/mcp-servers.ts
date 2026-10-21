@@ -4,7 +4,7 @@
 // agents through tools_search and tools_call like any connector's. A server that dies is started
 // again after a growing pause; they all stop with the daemon.
 import type { McpServerSpec } from "@neoworks-dev/neo/mcp-config";
-import type { McpEndpoint } from "@suite/protocol/types";
+import type { McpEndpoint } from "@neoworks-dev/neo-protocol/types";
 import type { Logger } from "../log.ts";
 import type { ConnectorRegistry } from "./registry.ts";
 import {

@@ -5,7 +5,7 @@
 // restored from history. "[tool]" in the text adds a tool call; "wait:<ms>" delays the reply
 // (cancellable).
 import type { Agent, AgentSession, PromptParams, PromptResult } from "@neoworks-dev/neo/agent";
-import type { SessionEvent } from "@suite/protocol/types";
+import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
 
 function sleep(ms: number, signal: AbortSignal): Promise<boolean> {
   return new Promise((resolve) => {

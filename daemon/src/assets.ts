@@ -8,7 +8,7 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
-import type { Asset } from "@suite/protocol/types";
+import type { Asset } from "@neoworks-dev/neo-protocol/types";
 import { BadRequestError } from "./focus.ts";
 import { NotFoundError } from "./sessions.ts";
 

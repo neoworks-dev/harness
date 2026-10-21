@@ -1,7 +1,13 @@
 // A stand-in for the daemon that tests steer by hand: welcome + theme on hello, the session list,
 // a snapshot per view.subscribe (the session's own, or an agent's), an ack for the rest. Tests
 // push patches and broadcasts, drop connections, and make it stay silent about chosen topics.
-import type { Envelope, SessionInfo, Theme, ViewItem, ViewSnapshot } from "@suite/protocol/types";
+import type {
+  Envelope,
+  SessionInfo,
+  Theme,
+  ViewItem,
+  ViewSnapshot,
+} from "@neoworks-dev/neo-protocol/types";
 import type { Server, ServerWebSocket } from "bun";
 
 export const THEME: Theme = {

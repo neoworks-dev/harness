@@ -1,7 +1,7 @@
 // The files panel: what git says changed, plus what the agent and its guests touched this
 // session (from the diffs of their tool calls). Ported from apps/term/src/widgets/files.rs and
 // git.rs; the host only runs git (`git_status`), the parsing is in lib/git-status.ts.
-import type { SessionEventRecord } from "@suite/protocol/types";
+import type { SessionEventRecord } from "@neoworks-dev/neo-protocol/types";
 import { relFromPrefix, relativize, type Change, type GitStatus } from "../../lib/git-status.ts";
 
 /** What a file shows: git's change, or `clean` for one an agent touched that git sees no difference in. */

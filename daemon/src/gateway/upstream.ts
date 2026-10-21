@@ -12,7 +12,7 @@ import {
   CallToolResultSchema,
   ToolListChangedNotificationSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { McpEndpoint } from "@suite/protocol/types";
+import type { McpEndpoint } from "@neoworks-dev/neo-protocol/types";
 import type { StoredTool } from "../store.ts";
 
 export interface Upstream {

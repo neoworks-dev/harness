@@ -8,7 +8,7 @@
 // daemon's own agent on the model it is configured with. When a model can't be reached the session
 // keeps the start of its first message.
 import type { GenerateTextParams } from "@neoworks-dev/neo/agent";
-import type { SessionEventRecord } from "@suite/protocol/types";
+import type { SessionEventRecord } from "@neoworks-dev/neo-protocol/types";
 import { BadRequestError } from "./focus.ts";
 import type { Logger } from "./log.ts";
 import type { Settings, TitleModel } from "./settings.ts";

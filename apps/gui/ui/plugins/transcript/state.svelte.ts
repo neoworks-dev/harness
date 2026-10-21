@@ -1,7 +1,7 @@
 // What the transcript shows beyond the items: whether results and thoughts are shown in full,
 // and which item another pane is answering. What the user opened by pressing a row is in
 // opened.svelte.ts.
-import type { ViewItem } from "@suite/protocol/types";
+import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
 
 class Transcript {
   /** Ctrl-O: tool results and cards in full. */

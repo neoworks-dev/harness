@@ -1,5 +1,5 @@
 import type { Message, ToolCall, ToolResultMessage } from "@mariozechner/pi-ai";
-import type { SessionEvent } from "@suite/protocol/types";
+import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import type { Logger } from "./logger.ts";
 import { isRecord } from "./util.ts";
 

@@ -11,7 +11,7 @@ import type {
   KvItem,
   Span,
   Tone,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 import { oneLine } from "./components.ts";
 import { diffStats } from "../../lib/diff.ts";
 

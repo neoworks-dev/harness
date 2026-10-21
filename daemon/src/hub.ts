@@ -8,8 +8,8 @@ import type {
   SessionEventRecord,
   Theme,
   UiAction,
-} from "@suite/protocol/types";
-import { validateEnvelope } from "@suite/protocol/validate";
+} from "@neoworks-dev/neo-protocol/types";
+import { validateEnvelope } from "@neoworks-dev/neo-protocol/validate";
 import type { AssetStore } from "./assets.ts";
 import type { Logger } from "./log.ts";
 import { NotFoundError, type SessionManager } from "./sessions.ts";

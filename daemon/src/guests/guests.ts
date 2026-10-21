@@ -21,7 +21,7 @@ import type {
   RequestPermission,
 } from "@neoworks-dev/neo/agent";
 import { formatPrompt } from "@neoworks-dev/neo/context-events";
-import { isCoreToolName } from "@suite/protocol/core-tools";
+import { isCoreToolName } from "@neoworks-dev/neo-protocol/core-tools";
 import type {
   PermissionOption,
   PlanEntry,
@@ -36,7 +36,7 @@ import type {
   ToolCallUpdate,
   ToolKind,
   Usage,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 import type { Asker, PermissionRequest } from "../asker.ts";
 import { BadRequestError } from "../focus.ts";
 import type { ConnectorSnapshot } from "../gateway/registry.ts";

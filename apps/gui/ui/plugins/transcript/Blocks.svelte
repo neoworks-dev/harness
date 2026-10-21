@@ -3,7 +3,7 @@
   // (lib/markdown.ts flattens the nesting). Inline styles are nested `Text` runs inside the
   // paragraph's `Text`.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
-  import type { Block } from "@suite/protocol/types";
+  import type { Block } from "@neoworks-dev/neo-protocol/types";
   import { proseLineHeight } from "./layout.ts";
   import { indentCells, markdownRows, type RowGap } from "./markdown.ts";
   import { useCtx } from "../../kernel/slots/context.ts";

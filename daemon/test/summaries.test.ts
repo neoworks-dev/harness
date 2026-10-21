@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import type { SessionInfo } from "@suite/protocol/types";
-import { validateEnvelope } from "@suite/protocol/validate";
+import type { SessionInfo } from "@neoworks-dev/neo-protocol/types";
+import { validateEnvelope } from "@neoworks-dev/neo-protocol/validate";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { resolvePaths } from "../src/paths.ts";
 import { SessionStore } from "../src/store.ts";

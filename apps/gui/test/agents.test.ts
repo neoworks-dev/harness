@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { SessionEvent, SessionInfo } from "@suite/protocol/types";
+import type { SessionEvent, SessionInfo } from "@neoworks-dev/neo-protocol/types";
 import {
   LINGER_MS,
   activityOf,

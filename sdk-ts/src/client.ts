@@ -16,7 +16,7 @@ import type {
   SessionSettingsPayload,
   Theme,
   UiAction,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 import type { AddressSource } from "./address.ts";
 import { Broadcasts } from "./broadcasts.ts";
 import { Connection, type ConnectionState } from "./connection.ts";
@@ -35,8 +35,8 @@ export interface ConnectOptions {
   client: string;
   /**
    * Where the daemon is. Called on every (re)connect, because a restarted daemon has a new port
-   * and token. Use `daemonJsonAddress` (from `@suite/sdk/node`) on the daemon's machine, or
-   * `fixedAddress` when you were told the address.
+   * and token. Outside a browser it defaults to the daemon on this machine (`daemonJsonAddress`);
+   * `fixedAddress` is for when you were told the address.
    */
   address: AddressSource;
   /** Registered on connect and again after every reconnect. Change it with `setPresence`. */

@@ -2,7 +2,7 @@
   // One line of a diff, unified: the old and the new line number in a gutter (pressing it selects
   // the line for a comment), the mark and the text, on the green or red of a change.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
-  import type { DiffLine } from "@suite/protocol/types";
+  import type { DiffLine } from "@neoworks-dev/neo-protocol/types";
   import type { Token } from "./syntax.ts";
   import { viewerColors } from "../../lib/diff-colors.ts";
   import { useCtx } from "../../kernel/slots/context.ts";

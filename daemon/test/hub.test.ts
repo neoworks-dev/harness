@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { Envelope, SessionEventRecord } from "@suite/protocol/types";
-import { validateEnvelope } from "@suite/protocol/validate";
+import type { Envelope, SessionEventRecord } from "@neoworks-dev/neo-protocol/types";
+import { validateEnvelope } from "@neoworks-dev/neo-protocol/validate";
 import { type ClientHandle, Hub } from "../src/hub.ts";
 import { silentLogger } from "../src/log.ts";
 import { SessionManager } from "../src/sessions.ts";

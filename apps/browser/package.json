@@ -3,10 +3,9 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@suite/protocol": "workspace:*",
+    "@neoworks-dev/neo-protocol": "workspace:*",
     "@suite/renderer-web": "workspace:*",
-    "@suite/sdk": "workspace:*",
-    "@suite/sdk-tools": "workspace:*"
+    "@neoworks-dev/neo-sdk": "workspace:*"
   },
   "devDependencies": {
     "@suite/daemon": "workspace:*",

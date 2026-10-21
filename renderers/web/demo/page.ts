@@ -1,6 +1,6 @@
 // Browser entry of the demo (bundled by serve.ts): connects to the daemon with the address the
 // server put in the page, then hands over to startDemo.
-import { assetUrl, connect, type DaemonAddress } from "@suite/sdk";
+import { assetUrl, connect, type DaemonAddress } from "@neoworks-dev/neo-sdk";
 import { startDemo } from "./app.ts";
 
 function byId<T extends HTMLElement>(id: string, kind: new () => T): T {

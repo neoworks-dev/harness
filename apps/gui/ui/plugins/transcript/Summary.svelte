@@ -1,7 +1,7 @@
 <script lang="ts">
   // A tool result collapsed to a few lines (see lib/summary.ts for which).
   import { Text, View } from "@neoworks/svelte-gpui/ui";
-  import type { Component } from "@suite/protocol/types";
+  import type { Component } from "@neoworks-dev/neo-protocol/types";
   import { summarize } from "./summary.ts";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Self from "./Component.svelte";

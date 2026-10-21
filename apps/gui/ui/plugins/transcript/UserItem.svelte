@@ -15,7 +15,7 @@
   import { untrack } from "svelte";
   import { Button, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { Layout } from "@neoworks/svelte-gpui/ui";
-  import type { ViewItem } from "@suite/protocol/types";
+  import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
   import Component from "./Component.svelte";

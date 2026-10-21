@@ -1,7 +1,7 @@
 // Parsed markdown as a flat list of rows. Nesting (a list in a list item, a quote around a
 // list) becomes numbers on each row, so the chat draws it without nested components: the host
 // runs the app on a small JavaScript stack, and every level of component nesting spends a lot of it.
-import type { Block, ListBlock, Span, TableBlock, UiDoc } from "@suite/protocol/types";
+import type { Block, ListBlock, Span, TableBlock, UiDoc } from "@neoworks-dev/neo-protocol/types";
 
 /** How far a row sits below the previous one. */
 export type RowGap = "none" | "tight" | "loose";

@@ -1,9 +1,14 @@
 // What the daemon announces to every client: where the agent lives (agent.focus, agent.move),
 // connectors, sessions, the theme and file changes.
 import { describe, expect, test } from "bun:test";
-import type { AgentFocus, ConnectorInfo, FileChanged, SecretRequest } from "@suite/protocol/types";
+import type {
+  AgentFocus,
+  ConnectorInfo,
+  FileChanged,
+  SecretRequest,
+} from "@neoworks-dev/neo-protocol/types";
 import type { TestDaemon } from "@suite/daemon/testing";
-import { createToolServer } from "@suite/sdk-tools";
+import { createToolServer } from "@neoworks-dev/neo-sdk";
 import { connect, fixedAddress, SuiteError, TimeoutError, type Client } from "../src/index.ts";
 import { cleanupAfterEach } from "./support/cleanup.ts";
 import { FakeDaemon, THEME } from "./support/fake-daemon.ts";
@@ -18,7 +23,7 @@ async function connectApp(
   app: string,
   extra: { home?: boolean; pid?: number; context?: Record<string, string> } = {},
 ): Promise<Client> {
-  const tools = createToolServer({ name: app, tools: [] });
+  const tools = await createToolServer({ name: app, tools: [] });
   later(() => tools.close());
   return connectTo(later, daemon, {
     client: app,

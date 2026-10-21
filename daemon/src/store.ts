@@ -6,7 +6,7 @@ import type {
   LaunchSpec,
   SessionEvent,
   SessionEventRecord,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 
 /**
  * Where a session's title came from, when the suite made it: the start of the first message

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Block } from "@suite/protocol/types";
+import type { Block } from "@neoworks-dev/neo-protocol/types";
 import { paletteOf } from "../ui/lib/palette.ts";
 import { baseName, lineHeightOf } from "../ui/plugins/transcript/components.ts";
 import { fitImage } from "../ui/plugins/transcript/image.ts";

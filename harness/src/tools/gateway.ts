@@ -7,7 +7,7 @@ import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { type CallToolResult, CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
-import { CORE_TOOLS, type CoreToolName } from "@suite/protocol/core-tools";
+import { CORE_TOOLS, type CoreToolName } from "@neoworks-dev/neo-protocol/core-tools";
 import type { McpServer } from "../agent.ts";
 
 export interface GatewayConnection {

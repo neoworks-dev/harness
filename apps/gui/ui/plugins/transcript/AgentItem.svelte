@@ -2,7 +2,7 @@
   // The agent's reply as plain prose, without a bubble, under the name of the guest it is from,
   // if any.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
-  import type { ViewItem } from "@suite/protocol/types";
+  import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Component from "./Component.svelte";
   import ItemFrame from "./ItemFrame.svelte";

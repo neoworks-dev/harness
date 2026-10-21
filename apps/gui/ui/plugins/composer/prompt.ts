@@ -1,7 +1,7 @@
 // The questions the agent asks (a permission or a choice) arrive as chat items with buttons. The
 // window answers them in a panel in place of the input: which item that is, what it shows, and
 // when it takes over. Plain functions, so they are tested without a window.
-import type { Block, Component, Span, ViewItem } from "@suite/protocol/types";
+import type { Block, Component, Span, ViewItem } from "@neoworks-dev/neo-protocol/types";
 
 /** How long the user must not have typed before a question takes the input's place. */
 export const TYPING_PAUSE_MS = 800;

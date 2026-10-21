@@ -3,7 +3,7 @@
 // plugin's keys call it, so they agree on what is open.
 import type { Context } from "@neoworks/extension-system";
 import { clipboard, files, invoke, window } from "@neoworks/svelte-gpui";
-import type { ViewItem } from "@suite/protocol/types";
+import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
 import type { CommandsService } from "../../kernel/services/commands.ts";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
 import {

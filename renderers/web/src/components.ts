@@ -18,7 +18,7 @@ import type {
   TableBlock,
   TableComponent,
   ViewItem,
-} from "@suite/protocol/types";
+} from "@neoworks-dev/neo-protocol/types";
 
 export const STATE_ICONS: Record<ItemState, string> = {
   pending: "○",

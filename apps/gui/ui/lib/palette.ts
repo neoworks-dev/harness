@@ -1,6 +1,6 @@
 // The colours and text sizes the window draws with, from the daemon's theme (protocol/themes).
 // Until the daemon sends one, the default theme's values are used.
-import type { Theme } from "@suite/protocol/types";
+import type { Theme } from "@neoworks-dev/neo-protocol/types";
 
 export interface Palette {
   fg: string;

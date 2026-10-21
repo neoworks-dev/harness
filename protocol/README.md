@@ -2,12 +2,12 @@
 
 Source of truth for everything on the bus. `schemas/*.schema.json` are JSON Schema 2020-12; `make codegen` generates:
 
-- `gen/types.ts` (TS, import as `@suite/protocol/types`)
+- `gen/types.ts` (TS, import as `@neoworks-dev/neo-protocol/types`)
 - `go/types.gen.go` (Go, package `neoworks.dev/suite/protocol/go`)
 - `rust/src/types.rs` (Rust, crate `suite-protocol`)
 - `examples/*.json` from the typed `examples/examples.ts`
 
-Generated files are checked in; `make check` fails if they are stale. Runtime validation: `@suite/protocol/validate` (ajv).
+Generated files are checked in; `make check` fails if they are stale. Runtime validation: `@neoworks-dev/neo-protocol/validate` (ajv).
 
 ## Why a custom generator
 

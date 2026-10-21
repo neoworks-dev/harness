@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Component, ViewItem } from "@suite/protocol/types";
+import type { Component, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import {
   activePrompt,
   argsWithNote,

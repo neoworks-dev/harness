@@ -1,7 +1,7 @@
 // What the sessions sidebar holds beyond what the daemon says: whether it is shown and has the
 // keyboard, which sessions finished unseen, where each session's directory belongs, what was
 // searched for and which project is shown, and the user's pins and settled sessions.
-import type { SessionInfo } from "@suite/protocol/types";
+import type { SessionInfo } from "@neoworks-dev/neo-protocol/types";
 import { untrack } from "svelte";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
 import * as host from "../../kernel/host/git.ts";

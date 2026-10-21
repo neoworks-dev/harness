@@ -12,7 +12,7 @@
 //   /plugin …                                 marketplaces and plugins (plugins.ts)
 // The harness defaults to the one the session runs on. Nothing is chosen for the user.
 import type { ConfigOption, SafeSearch } from "@neoworks-dev/neo/agent";
-import type { HarnessSettings } from "@suite/protocol/types";
+import type { HarnessSettings } from "@neoworks-dev/neo-protocol/types";
 
 import type { Asker, Choice } from "./asker.ts";
 import { BadRequestError } from "./focus.ts";

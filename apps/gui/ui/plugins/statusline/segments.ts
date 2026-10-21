@@ -1,7 +1,7 @@
 // The text of the status line under the input, as segments with a meaning (the window maps the
 // tone to a colour). Plain functions, so they are tested without a window.
-import type { ConnectionState } from "@suite/sdk";
-import type { Usage } from "@suite/protocol/types";
+import type { ConnectionState } from "@neoworks-dev/neo-sdk";
+import type { Usage } from "@neoworks-dev/neo-protocol/types";
 import { currentSettings, type Approvals, type SessionStatus } from "../../lib/status.ts";
 
 export type Tone = "fg" | "muted" | "accent" | "danger" | "success";
