@@ -43,6 +43,11 @@ export const COMMANDS: readonly Command[] = [
   daemon("login", "[provider]", "add an API key or an account (ChatGPT, Copilot, Claude Pro/Max)"),
   daemon("logout", "[provider]", "remove a stored API key or account"),
   daemon("accounts", "", "list the API keys and accounts in use"),
+  daemon(
+    "plugin",
+    "[install|enable|…]",
+    "plugins for neo: list, search, install, uninstall, enable, disable, marketplace add",
+  ),
 ];
 
 /** Whether the text is a command being typed: a slash, and no space or newline yet. */
