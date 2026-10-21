@@ -1,4 +1,4 @@
-// Language servers that installed plugins bring (grove#495), as `Language`s next to the fixed ones.
+// Language servers that installed plugins bring (#25), as `Language`s next to the fixed ones.
 import { join } from "node:path";
 import { suiteConfigDir } from "../../../harness/src/mcp-config.ts";
 import { enabledLspServers } from "../../../harness/src/plugin-lsp.ts";

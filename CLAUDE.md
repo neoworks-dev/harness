@@ -6,7 +6,7 @@ No trailers, ever: no `Co-Authored-By` on a commit, no "Generated with Claude Co
 
 ## Issues
 
-Issues on `neoworks-dev/grove` carry goals across sessions. A session ends and its context goes with it; an issue is the only thing that carries a goal to the next one. So:
+Issues on `neoworks-dev/harness`, this repo's remote, carry goals across sessions. A session ends and its context goes with it; an issue is the only thing that carries a goal to the next one. So:
 
 - Work that finishes in this session, with me here, needs no issue.
 - Work that won't finish in one session gets one, however loosely defined it still is.
@@ -22,18 +22,18 @@ Every issue gets a type, a priority, an effort and an area. Type, priority and e
 - **Priority** — `Urgent` drop everything, `High` next up, `Medium` normal, `Low` nice to have.
 - **Effort** — `Low` an hour or two, `Medium` about a day, `High` several days or needs splitting.
 
-`gh bot` sets all three at once, by name: `gh bot issue create --type Bug --priority High --effort Low --label area:editor …`, and `gh bot issue edit 12 --priority Urgent` to change them later.
+`gh bot` sets all three at once, by name: `gh bot issue create --type Bug --priority High --effort Low --label area:neo …`, and `gh bot issue edit 12 --priority Urgent` to change them later.
 
 Area is a label, exactly one of:
 
-- `area:editor` — nvim surface: buffers, rendering, bundled config
-- `area:agents` — agent runtime, chat pane, composer, review flow
-- `area:panes` — layout, splits, dividers, pane chrome
-- `area:sidebar` — the rail and its views
-- `area:git` — git changes, worktrees, checkpoints
-- `area:terminal` — terminal pane
-- `area:plugins` — plugin host, extensions view, and the panes built as plugins (GitHub, dashboard)
-- `area:ui` — app shell: top bar, menus, theming
+- `area:daemon` — sessions, views, permissions, commands, the gateway
+- `area:neo` — the neo agent: loop, tools, skills, hooks, models, accounts
+- `area:guests` — Claude Code, Codex and other harnesses over ACP, delegate
+- `area:ui` — neoui, the view protocol, the renderers
+- `area:term` — the terminal app (`apps/term`)
+- `area:gui` — the desktop app (`apps/gui`)
+- `area:plugins` — plugins, marketplaces, MCP servers, language servers
+- `area:apps` — the SDKs and the stand-in apps
 
 Two areas is fine when an issue genuinely spans them; three means split it.
 

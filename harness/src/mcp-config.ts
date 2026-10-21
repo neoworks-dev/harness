@@ -1,4 +1,4 @@
-// MCP servers the daemon runs for neo (grove#492), in Claude Code's `mcpServers` shape:
+// MCP servers the daemon runs for neo (#22), in Claude Code's `mcpServers` shape:
 //
 //   { "mcpServers": { "headroom": { "command": "headroom", "args": ["mcp", "serve"], "env": {} },
 //                     "docs": { "type": "http", "url": "https://…", "headers": {} } } }

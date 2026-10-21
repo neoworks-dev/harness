@@ -1,4 +1,4 @@
-// Claude Code plugins, as the harness installs them (grove#495). The daemon's installer writes
+// Claude Code plugins, as the harness installs them (#25). The daemon's installer writes
 // `<dir>/installed.json`; everything that uses a plugin's parts (skills, commands, agents, hooks,
 // MCP servers, language servers) reads the enabled ones from here.
 //

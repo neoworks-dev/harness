@@ -1,4 +1,4 @@
-// A model proxy for neo's requests (grove#497): `proxy: { "openrouter": "http://localhost:8787/v1" }`
+// A model proxy for neo's requests (#1): `proxy: { "openrouter": "http://localhost:8787/v1" }`
 // in config.json puts that URL in place of the base URL of every model of the provider, so the
 // request goes to the proxy (headroom, LiteLLM…), which forwards it to the one upstream it is set
 // up for. The setting is keyed by provider because a proxy has a single upstream.

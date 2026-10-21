@@ -1,4 +1,4 @@
-// Language servers a plugin brings (grove#495): `lspServers` in its marketplace entry or manifest,
+// Language servers a plugin brings (#25): `lspServers` in its marketplace entry or manifest,
 // or a `.lsp.json` in its folder:
 //   { "clangd": { "command": "clangd", "args": ["--background-index"],
 //                 "extensionToLanguage": { ".c": "c", ".cpp": "cpp" } } }

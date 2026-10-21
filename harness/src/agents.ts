@@ -1,4 +1,4 @@
-// Agent definitions (grove#494): named subagents written as Claude Code writes them, a markdown file
+// Agent definitions (#24): named subagents written as Claude Code writes them, a markdown file
 // with frontmatter and the system prompt as its body.
 //
 //   ---

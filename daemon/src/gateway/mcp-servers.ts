@@ -1,4 +1,4 @@
-// MCP servers the daemon runs itself (grove#492): programs it starts over stdio (and remote ones
+// MCP servers the daemon runs itself (#22): programs it starts over stdio (and remote ones
 // over HTTP) from the user's configuration and plugins (harness/src/mcp-config.ts). Each is
 // registered with the connector registry as a service named `mcp-<name>`, so its tools reach
 // agents through tools_search and tools_call like any connector's. A server that dies is started

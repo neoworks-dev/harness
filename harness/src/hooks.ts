@@ -1,4 +1,4 @@
-// Claude Code hooks, as neo runs them (grove#493): commands that get an event as JSON on stdin and
+// Claude Code hooks, as neo runs them (#23): commands that get an event as JSON on stdin and
 // answer with an exit code and, optionally, JSON on stdout. The configuration is Claude Code's:
 //
 //   { "hooks": { "PreToolUse": [ { "matcher": "Bash|Edit",

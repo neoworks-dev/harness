@@ -1,4 +1,4 @@
-// Marketplaces and the installer (grove#495). A marketplace is a git repository (or a folder)
+// Marketplaces and the installer (#25). A marketplace is a git repository (or a folder)
 // with `.claude-plugin/marketplace.json`; the harness keeps its own copy of each and installs
 // plugins from them itself, so it doesn't depend on Claude Code being installed.
 //

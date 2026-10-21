@@ -1,4 +1,4 @@
-// A neo session's hooks (grove#493): where in its turn each Claude Code event runs, and what the
+// A neo session's hooks (#23): where in its turn each Claude Code event runs, and what the
 // session does with the answer. The hooks themselves (loading, running, reading their answers)
 // are hooks.ts.
 //

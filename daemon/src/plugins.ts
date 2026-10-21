@@ -1,4 +1,4 @@
-// /plugin: marketplaces and the plugins installed from them (grove#495). The work is the
+// /plugin: marketplaces and the plugins installed from them (#25). The work is the
 // harness's (harness/src/plugin-install.ts); this reads the command line and tells the user, in
 // the session's log, what happened and what needs a new session.
 //

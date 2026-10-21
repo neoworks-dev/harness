@@ -1,4 +1,4 @@
-// Plugin commands (grove#495): `commands/<name>.md` in an enabled plugin is `/name`, a prompt
+// Plugin commands (#25): `commands/<name>.md` in an enabled plugin is `/name`, a prompt
 // template. The user types `/name args`; the agent gets the template with the arguments in it, the
 // chat shows what was typed. `$ARGUMENTS` is all the arguments, `$1`…`$9` the words (quotes group
 // words). Not done: `!`command`` output and `@file` includes in the body, `allowed-tools`.
