@@ -28,8 +28,7 @@
     "apps/browser",
     "apps/gui/test",
     "tools",
-    "websearch",
-    "openui"
+    "websearch"
   ],
   "exclude": ["**/node_modules"]
 }

@@ -109,7 +109,7 @@ A general-purpose agent with a minimal core. Its own package, running in-process
 | `web_fetch(url)`                                                       | Save a page as markdown in a file; returns its path and outline (short pages whole)                                                           |
 | `tools_search(query, app?)`                                            | Find connector tools; returns full JSON schemas                                                                                               |
 | `tools_call(name, args)`                                               | Run a connector tool (validated by the gateway)                                                                                               |
-| `ui_library()`                                                         | How to show UI: the OpenUI guidance, language and library, and the components the connected apps add (`docs/openui.md`)                       |
+| `ui_library()`                                                         | How to show UI: the neoui guidance, language and library, and the components the connected apps add (`docs/neoui.md`)                         |
 | `apps_focus(app)`                                                      | Move the agent into an app                                                                                                                    |
 | `delegate(agent, task, model?, effort?, cwd?, worktree?, background?)` | Hand a task to a subagent: neo, Claude Code or Codex, optionally in another directory or git worktree, optionally without waiting for it (§9) |
 | `send_message(to, text)`                                               | Write to a running subagent, a peer, or `main`, the session's agent (§9)                                                                      |
@@ -143,7 +143,7 @@ Connectors (apps and services) announce themselves with <app connected=…/>
 and <app disconnected=…/> events. Each event lists tool names only; use
 tools_search to get a connector's tool schemas and tools_call to run them.
 
-You can show UI by writing a ```openui block. Call ui_library before your first one.
+You can show UI by writing a ```neoui block. Call ui_library before your first one.
 
 The most recent <focus> event says where the user is now.
 
@@ -362,7 +362,7 @@ Results with no template fall back to a generic card built from ACP's base data 
 - **Wire format.** `view.subscribe {session, agent?}` → `view.snapshot {seq, items}`, then `view.patch {seq, ops}` with ops `set` (replace or append an item by `ref`), `blocks` (replace the tail of a text component's blocks — streaming) and `remove`. Items have a `kind` (user, agent, thought, tool, notice), an optional `label` and tool `state`, and one component. `session.events` stays for raw consumers. With `agent`, the subscription is a per-agent view (§9): only that agent's work, and its snapshot and patches carry `agent` so a client following both tells them apart. A `kv` item may have a `tone` that highlights its value.
 - **The daemon resolves more than templates.** Markdown is parsed into blocks and spans, and diffs into numbered lines, before anything is sent, so no renderer parses markdown or diffs text. Streaming text is re-parsed per chunk; only blocks from the first changed one are sent.
 - **Templates** are registered in `app.presence.templates`, keyed by tool name, and kept after the app closes. A result's data is the tool's `structuredContent`. Template language: `{{path}}` in strings, whole-value substitution when the string is just `{{path}}`, `if`, and `each`/`as` (protocol/README.md). A template that doesn't resolve to valid components falls back to the generic card instead of failing the view.
-- **OpenUI.** Beyond the fixed components, the model and apps can write UI as OpenUI Lang programs (a fenced `openui` block in a message, or `{"openui": …}` as a template). The daemon parses and evaluates them with lang-core into `openui` components and blocks; renderers draw the evaluated tree, send `openui.input` / `openui.press` actions, and keep no program state. [docs/openui.md](openui.md) has the format, the library and how the terminal draws it.
+- **neoui.** Beyond the fixed components, the model and apps can write UI as neoui programs (HTML-style markup: a fenced `neoui` block in a message, or `{"neoui": …}` as a template). The daemon parses and evaluates them into `openui` components and blocks (the wire names are unchanged); renderers draw the evaluated tree, send `openui.input` / `openui.press` actions, and keep no program state. [docs/neoui.md](neoui.md) has the format, the library and how the terminal draws it; the language is in neoui's own DESIGN.md.
 - **Actions.** An `app.tool` action runs that tool through the gateway when the app is open; the result appears in the chat as a tool call rendered with the app's template. Otherwise the agent gets it as input ("The user pressed …"). `copy:` stays in the client.
 - **Theme** comes from `~/.config/suite/theme.json` (or `SUITE_THEME`), else `protocol/themes/default.json`, and is sent after `bus.welcome`.
 - Renderer conventions (item headers, tool state icons, per-component rules, keys) are in `renderers/README.md`; every fixture in `fixtures/` is snapshot-tested by every renderer.

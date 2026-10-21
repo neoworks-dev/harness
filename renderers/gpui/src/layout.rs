@@ -598,7 +598,7 @@ impl Layout<'_> {
             Component::ProgressComponent(progress) => self.progress(progress, ctx),
             Component::ButtonComponent(button) => self.button(button, ctx),
             Component::LinkComponent(link) => self.link(link, ctx),
-            // Drawn by the terminal renderer only (docs/openui.md); the others say so.
+            // Drawn by the terminal renderer only (docs/neoui.md); the others say so.
             Component::OpenUiComponent(_) => self.unsupported("openui", ctx),
             Component::Unknown(value) => {
                 let kind = value.get("type").and_then(|t| t.as_str()).unwrap_or("?");

@@ -25,6 +25,8 @@ One agent session shared across every app in the suite. The design is in [docs/d
 
 Bun ≥ 1.3, Go ≥ 1.27, Rust ≥ 1.85 (edition 2024; Pad needs GPUI's Linux build deps: Wayland/X11, xkbcommon, Vulkan).
 
+The UI language, [neoui](docs/neoui.md), is a package next to this repo: a fresh clone needs `cd ../neoui && bun link` before `bun install`.
+
 ## Running it
 
 ```sh
@@ -77,7 +79,7 @@ neo searches the web itself: `web_search` asks several engines at once (web, new
 
 Skills are instructions neo loads when the work calls for them: a folder with a `SKILL.md` (frontmatter `name` and `description`, then the text) in `~/.config/suite/skills/` or in a project's `.suite/skills/`. neo sees each skill's description and loads the text with its `skill` tool.
 
-UI in the chat is not a skill: every agent (neo, Claude Code, Codex) is told it can write a ```openui block, and the gateway's `ui_library` tool teaches the language, the library and the components the connected apps add.
+UI in the chat is not a skill: every agent (neo, Claude Code, Codex) is told it can write a ```neoui block, and the gateway's `ui_library` tool teaches the language, the library and the components the connected apps add.
 
 Keys and accounts: `/login` adds an API key or an account (ChatGPT, GitHub Copilot, Claude Pro/Max, which neo only may use), `/logout` removes one, `/accounts` lists them. Keys are typed into a hidden field, never into the chat.
 

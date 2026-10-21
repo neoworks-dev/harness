@@ -44,7 +44,7 @@ func (r *renderer) component(c protocol.Component, w int) []line {
 }
 
 // unsupported is the line for a component this renderer knows of and
-// doesn't draw (OpenUI is the terminal app's; docs/openui.md).
+// doesn't draw (neoui is the terminal app's; docs/neoui.md).
 func unsupported(kind string, w int) []line {
 	return wrapRuns([]run{{"[unsupported component: " + kind + "]", style{fg: rMuted}}}, w)
 }
