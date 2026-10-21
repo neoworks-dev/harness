@@ -223,7 +223,7 @@ export class SessionView {
       case "user_message": {
         // The turn that messages from other agents start: their rows are what the chat shows.
         if (event.app === MESSAGES_APP) return [];
-        const children: Component[] = [text(plain(event.text))];
+        const children: Component[] = [text(plain(event.shown ?? event.text))];
         for (const src of event.images ?? []) children.push({ type: "image", src });
         const component: Component =
           children.length === 1 && children[0]

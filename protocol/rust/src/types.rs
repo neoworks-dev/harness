@@ -1747,6 +1747,9 @@ pub struct UserMessage {
     pub app: String,
     #[serde(rename = "text")]
     pub text: String,
+    /// What the chat shows in place of text, when text is written for the agent: a button pressed in a neoui doc shows its message, the agent gets what was pressed and the form's values.
+    #[serde(rename = "shown", default, skip_serializing_if = "Option::is_none")]
+    pub shown: Option<String>,
     /// Absolute paths of attached images (PNG, JPEG, GIF, WebP).
     #[serde(rename = "images", default, skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,

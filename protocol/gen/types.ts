@@ -598,6 +598,8 @@ export interface UserMessage {
   /** App the input came from. */
   app: string;
   text: string;
+  /** What the chat shows in place of text, when text is written for the agent: a button pressed in a neoui doc shows its message, the agent gets what was pressed and the form's values. */
+  shown?: string;
   /** Absolute paths of attached images (PNG, JPEG, GIF, WebP). */
   images?: string[];
 }

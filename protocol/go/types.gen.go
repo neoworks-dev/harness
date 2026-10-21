@@ -1398,6 +1398,8 @@ type UserMessage struct {
 	// App the input came from.
 	App  string `json:"app"`
 	Text string `json:"text"`
+	// What the chat shows in place of text, when text is written for the agent: a button pressed in a neoui doc shows its message, the agent gets what was pressed and the form's values.
+	Shown *string `json:"shown,omitempty"`
 	// Absolute paths of attached images (PNG, JPEG, GIF, WebP).
 	Images []string `json:"images,omitempty"`
 }

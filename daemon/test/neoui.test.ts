@@ -280,8 +280,29 @@ describe("using a doc", () => {
     const sent = daemon.store.readTypes(session, ["user_message"]).at(-1)?.event;
     expect(sent).toMatchObject({
       type: "user_message",
-      text: '[ui action] The user pressed "Send" in a neoui doc: Here you go\nform ask: {"name":"Ada"}\ncontext: {"id":3}',
+      text: '[ui action] The user pressed "Send": Here you go\nform ask: {"name":"Ada"}\ncontext: {"id":3}',
+      shown: "Here you go",
     });
+  });
+
+  test("a button with no ui-ask sends its label once, and the chat shows only the label", async () => {
+    const { daemon, session } = await setup();
+    reply(daemon, session, '<Stack><Button id="go">Run cargo clean</Button></Stack>');
+    await daemon.actions.run(
+      { session, ref: "m-m1", action: "openui.press", args: { doc: "0", key: "go" } },
+      "test",
+    );
+    await daemon.sessions.idle(session);
+    expect(daemon.store.readTypes(session, ["user_message"]).at(-1)?.event).toMatchObject({
+      text: '[ui action] The user pressed "Run cargo clean".',
+      shown: "Run cargo clean",
+    });
+    const user = daemon.views
+      .get(session)
+      .snapshot()
+      .items.find((i) => i.kind === "user");
+    expect(JSON.stringify(user?.component)).toContain("Run cargo clean");
+    expect(JSON.stringify(user?.component)).not.toContain("[ui action]");
   });
 
   test("outside a form the agent is told the variables by name", async () => {
@@ -302,7 +323,7 @@ describe("using a doc", () => {
     );
     await daemon.sessions.idle(session);
     expect(daemon.store.readTypes(session, ["user_message"]).at(-1)?.event).toMatchObject({
-      text: '[ui action] The user pressed "Deploy" in a neoui doc: Deploy now\nstate: {"env":"staging"}',
+      text: '[ui action] The user pressed "Deploy": Deploy now\nstate: {"env":"staging"}',
     });
   });
 

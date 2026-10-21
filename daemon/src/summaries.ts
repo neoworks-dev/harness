@@ -45,7 +45,7 @@ export class SessionSummaries {
       const state = this.states.get(session);
       if (state) apply(state, event);
       if (event.type === "user_message" && event.app !== MESSAGES_APP) {
-        this.nameAfter(session, event.text);
+        this.nameAfter(session, event.shown ?? event.text);
       }
     });
   }
@@ -58,7 +58,7 @@ export class SessionSummaries {
       let first: string | undefined;
       for (const { event } of this.store.read(session)) {
         if (first === undefined && event.type === "user_message" && event.app !== MESSAGES_APP) {
-          first = event.text;
+          first = event.shown ?? event.text;
         }
         apply(state, event);
       }
@@ -93,7 +93,7 @@ function apply(state: State, event: SessionEvent): void {
     case "user_message":
       // The turn that agents' messages start isn't something the user said.
       if (event.app === MESSAGES_APP) return;
-      state.user = event.text;
+      state.user = event.shown ?? event.text;
       state.agent = undefined;
       return;
     case "agent_message_chunk":

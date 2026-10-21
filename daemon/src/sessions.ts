@@ -35,6 +35,8 @@ interface QueuedInput {
   app: string;
   text: string;
   images?: string[];
+  /** What the chat shows in place of `text` (user_message `shown`). */
+  shown?: string;
 }
 
 /** In-memory state of a session that has been used since the daemon started. */
@@ -71,6 +73,7 @@ function isContextEvent(event: SessionEvent): event is ContextEvent {
 function userMessage(input: QueuedInput): SessionEvent {
   const event: SessionEvent = { type: "user_message", app: input.app, text: input.text };
   if (input.images) event.images = input.images;
+  if (input.shown !== undefined) event.shown = input.shown;
   return event;
 }
 
@@ -166,10 +169,15 @@ export class SessionManager {
     return this.store.listSessions().map((row) => this.toInfo(row));
   }
 
-  /** Queues input. When this returns, info() already shows the session running or queued. */
-  input(sessionId: string, app: string, text: string, images?: string[]): void {
+  /**
+   * Queues input. When this returns, info() already shows the session running or queued. `shown`
+   * is what the chat shows when `text` is written for the agent.
+   */
+  input(sessionId: string, app: string, text: string, images?: string[], shown?: string): void {
     const rt = this.runtime(sessionId);
-    rt.queue.push(images?.length ? { app, text, images } : { app, text });
+    const input: QueuedInput = images?.length ? { app, text, images } : { app, text };
+    if (shown !== undefined) input.shown = shown;
+    rt.queue.push(input);
     if (!rt.running) {
       rt.running = true;
       rt.drained = this.drain(sessionId, rt);

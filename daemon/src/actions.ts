@@ -94,15 +94,20 @@ export function openUiTools(parts: Pick<Parts, "store" | "gateway">, session: st
   };
 }
 
-/** The line that tells the agent what a button of a neoui doc sends. */
-function openUiInput(sent: AssistantMessage): string {
-  const lines = [`[ui action] The user pressed "${sent.label}" in a neoui doc: ${sent.message}`];
+/**
+ * What a button of a neoui doc sends: for the agent, what was pressed with the form's values; for
+ * the chat, only the message, as if the user had written it.
+ */
+function openUiInput(sent: AssistantMessage): { text: string; shown: string } {
+  const pressed = `[ui action] The user pressed "${sent.label}"`;
+  // A button with no ui-ask sends its label: don't say it twice.
+  const lines = [sent.message === sent.label ? `${pressed}.` : `${pressed}: ${sent.message}`];
   if (sent.values) {
     const where = sent.form === undefined ? "state" : `form ${sent.form}`;
     lines.push(`${where}: ${JSON.stringify(sent.values)}`);
   }
   if (sent.context !== undefined) lines.push(`context: ${JSON.stringify(sent.context)}`);
-  return lines.join("\n");
+  return { text: lines.join("\n"), shown: sent.message };
 }
 
 function findLabel(component: Component, action: string): string | undefined {
@@ -208,7 +213,8 @@ export class ActionRunner {
     const result = await program.press(key);
     view.changed(ref);
     for (const sent of result.assistant) {
-      this.parts.sessions.input(session, from, openUiInput(sent));
+      const { text, shown } = openUiInput(sent);
+      this.parts.sessions.input(session, from, text, undefined, shown);
     }
   }
 }
