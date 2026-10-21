@@ -18,7 +18,8 @@ export function isNeoUiTemplate(template: unknown): template is { neoui: string 
 
 /** What a template reads the tool's result as: `data`, absent when the tool returned nothing. */
 export function templateData(data: unknown): Record<string, unknown> {
-  return data === undefined ? {} : { data };
+  if (data === undefined) return {};
+  return { data };
 }
 
 export class NeoUiDocs {

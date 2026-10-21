@@ -711,7 +711,10 @@ describe("ui_library", () => {
       ...photoPresence(),
       components: { BrightnessCard: card("One.") },
     });
-    expect(registry.snapshot()[0]).toMatchObject({ v: 1, components: ["photo-editor.BrightnessCard"] });
+    expect(registry.snapshot()[0]).toMatchObject({
+      v: 1,
+      components: ["photo-editor.BrightnessCard"],
+    });
     // Same components again (a title change, say): the same version.
     await registry.presence(owner, {
       ...photoPresence(),

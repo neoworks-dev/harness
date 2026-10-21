@@ -75,7 +75,9 @@ describe("neoui fences in markdown", () => {
     expect(parseMarkdown(fence("x", "js"), host)[0]?.type).toBe("code_block");
     // OpenUI programs are not read any more.
     expect(parseMarkdown(fence("root = Card([])", "openui"), host)[0]?.type).toBe("code_block");
-    expect(parseMarkdown(fence("root = Card([])", "openui-lang"), host)[0]?.type).toBe("code_block");
+    expect(parseMarkdown(fence("root = Card([])", "openui-lang"), host)[0]?.type).toBe(
+      "code_block",
+    );
     expect(parseMarkdown(fence(PROGRAM))[0]?.type).toBe("code_block");
     const nested = parseMarkdown(`- item\n\n  ${fence("x").replaceAll("\n", "\n  ")}`, host);
     expect(JSON.stringify(nested)).not.toContain('"type":"openui"');
@@ -311,9 +313,7 @@ describe("using a doc", () => {
       daemon.actions.run({ session, ref, action, args }, "test");
     await run("openui.input", { doc: "0", key: "f", value: "x" });
     expect(JSON.stringify(doc(daemon, session))).not.toContain('"value"');
-    expect(run("openui.input", { doc: "7", key: "f", value: "x" })).rejects.toThrow(
-      "no neoui doc",
-    );
+    expect(run("openui.input", { doc: "7", key: "f", value: "x" })).rejects.toThrow("no neoui doc");
     expect(run("openui.press", { key: "f" })).rejects.toThrow("needs args");
     expect(run("openui.press", { doc: "0", key: "f" }, "nope")).rejects.toThrow("no neoui doc");
   });
@@ -576,7 +576,7 @@ describe("app components", () => {
 
   test("a registration is never refused: nothing clashes, a bad component is left out", async () => {
     const { daemon, session } = await setup();
-    const mine = { description: "x", params: {}, neoui: '<Text>notes</Text>' };
+    const mine = { description: "x", params: {}, neoui: "<Text>notes</Text>" };
     const old = { description: "x", params: {}, openui: 'root = Text("old")' };
     await daemon.connectors.presence(
       {},

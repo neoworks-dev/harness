@@ -139,7 +139,7 @@ export const DOCS: Record<string, SceneDoc> = {
       ].map((word) => `    <Tag>${word}</Tag>`),
       "  </Stack>",
       '  <Stack direction="row" gap="m" align="center" justify="between">',
-      "    <Text>left</Text><Text tone=\"muted\">right</Text>",
+      '    <Text>left</Text><Text tone="muted">right</Text>',
       "  </Stack>",
       '  <Stack direction="row">',
       '    <Card title="card"><Text>A card</Text></Card>',
