@@ -310,7 +310,7 @@ test("declining a command with no note stops the turn: the model doesn't answer 
     sessionId: "s1",
     cwd,
     mcpServers: [],
-    requestPermission: async () => ({ allowed: false }),
+    requestPermission: () => Promise.resolve({ allowed: false }),
   });
   const { result } = await run(session, "make x");
   expect(result.stopReason).toBe("cancelled");
@@ -332,7 +332,7 @@ test("declining with a note goes on: the model gets the note", async () => {
     sessionId: "s1",
     cwd,
     mcpServers: [],
-    requestPermission: async () => ({ allowed: false, note: "make y instead" }),
+    requestPermission: () => Promise.resolve({ allowed: false, note: "make y instead" }),
   });
   const { result } = await run(session, "make x");
   expect(result.stopReason).toBe("end_turn");

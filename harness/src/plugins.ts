@@ -48,12 +48,21 @@ export function readInstalled(dir: string): InstalledFile {
   const plugins: Record<string, InstalledPlugin> = {};
   if (isRecord(parsed) && isRecord(parsed.plugins)) {
     for (const [id, value] of Object.entries(parsed.plugins)) {
-      if (!isRecord(value) || typeof value.root !== "string" || !isAbsolute(value.root)) continue;
+      // The installer always writes these; an entry without them is broken.
+      if (
+        !isRecord(value) ||
+        typeof value.root !== "string" ||
+        !isAbsolute(value.root) ||
+        typeof value.version !== "string" ||
+        typeof value.installedAt !== "string"
+      ) {
+        continue;
+      }
       const plugin: InstalledPlugin = {
         root: value.root,
-        version: typeof value.version === "string" ? value.version : "",
+        version: value.version,
         enabled: value.enabled !== false,
-        installedAt: typeof value.installedAt === "string" ? value.installedAt : "",
+        installedAt: value.installedAt,
       };
       if (isRecord(value.entry)) plugin.entry = value.entry;
       plugins[id] = plugin;
@@ -62,7 +71,7 @@ export function readInstalled(dir: string): InstalledFile {
   return { version: 1, plugins };
 }
 
-/** The enabled plugins, by id. A broken entry is skipped. */
+/** The enabled plugins, by id. A broken entry (no absolute root, version or install time) is skipped. */
 export function enabledPlugins(dir: string | undefined): Plugin[] {
   if (!dir) return [];
   const out: Plugin[] = [];
