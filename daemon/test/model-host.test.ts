@@ -3,7 +3,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createNeoAgent } from "@suite/harness/neo";
+import { createNeoAgent } from "@neoworks-dev/neo/neo";
 import type { SessionEvent } from "@suite/protocol/types";
 import { fakeModel, TEST_CONFIG } from "../../harness/test/fake-model.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";

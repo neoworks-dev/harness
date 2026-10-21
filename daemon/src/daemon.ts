@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { findEnvKeys, getProviders } from "@mariozechner/pi-ai";
 import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
-import type { Agent, McpServer } from "@suite/harness/agent";
+import type { Agent, McpServer } from "@neoworks-dev/neo/agent";
 import type { SlashCommand, Theme } from "@suite/protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
 import { ActionRunner, openUiTools } from "./actions.ts";
@@ -17,12 +17,12 @@ import { ConnectorRegistry } from "./gateway/registry.ts";
 import { createGuestAccounts } from "./guests/accounts.ts";
 import { createDelegate } from "./guests/delegate.ts";
 import { type GatewayRole, type GuestConfig, GuestManager } from "./guests/guests.ts";
-import { loadMcpServers, projectMcpAllowed } from "@suite/harness/mcp-config";
+import { loadMcpServers, projectMcpAllowed } from "@neoworks-dev/neo/mcp-config";
 import {
   loadPluginCommands,
   type PluginCommand,
   pluginPrompt,
-} from "@suite/harness/plugin-commands";
+} from "@neoworks-dev/neo/plugin-commands";
 import { Asker } from "./asker.ts";
 import { Commands, DAEMON_COMMANDS } from "./commands.ts";
 import { PluginCommands } from "./plugins.ts";

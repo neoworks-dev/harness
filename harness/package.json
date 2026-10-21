@@ -1,5 +1,5 @@
 {
-  "name": "@suite/harness",
+  "name": "@neoworks-dev/neo",
   "private": true,
   "type": "module",
   "exports": {

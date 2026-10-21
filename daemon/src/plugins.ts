@@ -20,8 +20,8 @@ import {
   setPluginEnabled,
   uninstallPlugin,
   updateMarketplaces,
-} from "@suite/harness/plugin-install";
-import { enabledPlugins, readInstalled } from "@suite/harness/plugins";
+} from "@neoworks-dev/neo/plugin-install";
+import { enabledPlugins, readInstalled } from "@neoworks-dev/neo/plugins";
 import { BadRequestError } from "./focus.ts";
 
 const USAGE =

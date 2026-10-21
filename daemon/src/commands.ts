@@ -11,7 +11,7 @@
 //   /logout [provider], /accounts             remove a login; list what is logged in
 //   /plugin …                                 marketplaces and plugins (plugins.ts)
 // The harness defaults to the one the session runs on. Nothing is chosen for the user.
-import type { ConfigOption, SafeSearch } from "@suite/harness/agent";
+import type { ConfigOption, SafeSearch } from "@neoworks-dev/neo/agent";
 import type { HarnessSettings } from "@suite/protocol/types";
 
 import type { Asker, Choice } from "./asker.ts";

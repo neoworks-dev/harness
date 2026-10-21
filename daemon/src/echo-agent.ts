@@ -4,7 +4,7 @@
 // Each turn replies "echo #<n>: <text>" in a few chunks, where n counts turns including those
 // restored from history. "[tool]" in the text adds a tool call; "wait:<ms>" delays the reply
 // (cancellable).
-import type { Agent, AgentSession, PromptParams, PromptResult } from "@suite/harness/agent";
+import type { Agent, AgentSession, PromptParams, PromptResult } from "@neoworks-dev/neo/agent";
 import type { SessionEvent } from "@suite/protocol/types";
 
 function sleep(ms: number, signal: AbortSignal): Promise<boolean> {

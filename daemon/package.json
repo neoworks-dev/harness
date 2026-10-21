@@ -6,7 +6,7 @@
     "@mariozechner/pi-ai": "0.73.1",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@neoworks/neoui": "link:@neoworks/neoui",
-    "@suite/harness": "workspace:*",
+    "@neoworks-dev/neo": "workspace:*",
     "@suite/protocol": "workspace:*",
     "ajv": "^8.20.0",
     "diff": "^9.0.0",

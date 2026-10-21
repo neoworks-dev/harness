@@ -7,7 +7,7 @@
 // they choose it is the suite's: DEFAULT_TITLE_MODEL when that harness exists here, else the
 // daemon's own agent on the model it is configured with. When a model can't be reached the session
 // keeps the start of its first message.
-import type { GenerateTextParams } from "@suite/harness/agent";
+import type { GenerateTextParams } from "@neoworks-dev/neo/agent";
 import type { SessionEventRecord } from "@suite/protocol/types";
 import { BadRequestError } from "./focus.ts";
 import type { Logger } from "./log.ts";

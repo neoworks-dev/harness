@@ -3,7 +3,7 @@
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Agent } from "@suite/harness/agent";
+import type { Agent } from "@neoworks-dev/neo/agent";
 import { createDaemon, type Daemon, type DaemonOptions } from "./daemon.ts";
 import type { GuestConfig } from "./guests/guests.ts";
 import { createEchoAgent } from "./echo-agent.ts";

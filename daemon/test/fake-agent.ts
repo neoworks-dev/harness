@@ -6,7 +6,7 @@ import type {
   NewSessionParams,
   PromptParams,
   PromptResult,
-} from "@suite/harness/agent";
+} from "@neoworks-dev/neo/agent";
 
 interface Pending {
   params: PromptParams;

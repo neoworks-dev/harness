@@ -1,5 +1,5 @@
 // What running a task on a subagent takes and gives back (ACP guests and neo alike).
-import type { AgentUpdate, ContextEvent, PromptResult } from "@suite/harness/agent";
+import type { AgentUpdate, ContextEvent, PromptResult } from "@neoworks-dev/neo/agent";
 import type { HarnessSettings } from "../settings.ts";
 
 export interface GuestRunResult extends PromptResult {

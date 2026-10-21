@@ -5,7 +5,7 @@
 // model that writes session titles (/title-model) is the user's last choice, for every session.
 // Safe search (/safesearch) is the user's, not a session's: one value for every session.
 // Nothing is set that the user didn't choose: each harness keeps its own defaults.
-import type { ConfigCategory, SafeSearch } from "@suite/harness/agent";
+import type { ConfigCategory, SafeSearch } from "@neoworks-dev/neo/agent";
 import type { SettingName } from "@suite/protocol/types";
 import type { SessionStore } from "./store.ts";
 

@@ -2,7 +2,7 @@
 // the user chose with /title-model.
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import type { GenerateTextParams } from "@suite/harness/agent";
+import type { GenerateTextParams } from "@neoworks-dev/neo/agent";
 import type { SessionInfo } from "@suite/protocol/types";
 import type { GuestConfig } from "../src/guests/guests.ts";
 import { cleanTitle, DEFAULT_TITLE_MODEL, parseTitle, TITLE_ATTEMPTS } from "../src/titles.ts";

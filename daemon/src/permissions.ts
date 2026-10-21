@@ -8,7 +8,7 @@
 // exception: reading one, or running a command that mentions one, asks in every mode.
 // The question is a permission_request with the content to preview. "Allow for this session"
 // holds per session and kind (per file for sensitive ones), in memory only.
-import type { PermissionAnswer, PermissionAsk, RequestPermission } from "@suite/harness/agent";
+import type { PermissionAnswer, PermissionAsk, RequestPermission } from "@neoworks-dev/neo/agent";
 import type { DiffContent, PermissionOption, ToolKind } from "@suite/protocol/types";
 import type { Answer, Asker } from "./asker.ts";
 import { editedTitle, KEEP_OR_REVERT, restore } from "./review.ts";

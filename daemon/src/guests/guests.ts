@@ -19,8 +19,8 @@ import type {
   McpServer,
   PromptResult,
   RequestPermission,
-} from "@suite/harness/agent";
-import { formatPrompt } from "@suite/harness/context-events";
+} from "@neoworks-dev/neo/agent";
+import { formatPrompt } from "@neoworks-dev/neo/context-events";
 import { isCoreToolName } from "@suite/protocol/core-tools";
 import type {
   PermissionOption,

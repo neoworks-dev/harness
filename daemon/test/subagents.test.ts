@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { createNeoAgent } from "@suite/harness/neo";
+import { createNeoAgent } from "@neoworks-dev/neo/neo";
 import type { Envelope, SessionEvent, ViewItem, ViewPatch } from "@suite/protocol/types";
 import type { GuestConfig } from "../src/guests/guests.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";

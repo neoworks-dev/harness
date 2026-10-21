@@ -7,7 +7,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { fauxToolCall } from "@mariozechner/pi-ai";
-import { createNeoAgent } from "@suite/harness/neo";
+import { createNeoAgent } from "@neoworks-dev/neo/neo";
 import type { Envelope, HarnessSettings, SessionEvent } from "@suite/protocol/types";
 import { validateEnvelope } from "@suite/protocol/validate";
 import { fakeModel, reply, TEST_CONFIG, withUsage } from "../../harness/test/fake-model.ts";

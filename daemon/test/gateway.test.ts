@@ -16,7 +16,7 @@ import { SessionManager } from "../src/sessions.ts";
 import { SessionStore, type StoredTool } from "../src/store.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { fauxToolCall } from "@mariozechner/pi-ai";
-import { createNeoAgent } from "@suite/harness/neo";
+import { createNeoAgent } from "@neoworks-dev/neo/neo";
 import { fakeModel, reply, TEST_CONFIG } from "../../harness/test/fake-model.ts";
 import { FakeAgent } from "./fake-agent.ts";
 import { type AppTool, type McpApp, startMcpApp } from "./mcp-app.ts";

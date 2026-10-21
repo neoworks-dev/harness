@@ -1,5 +1,5 @@
 // Session manager: one turn at a time per session, inputs queued behind it. Talks to the agent only
-// through the ACP-style interface in @suite/harness/agent. A session runs on one harness at a time
+// through the ACP-style interface in @neoworks-dev/neo/agent. A session runs on one harness at a time
 // (neo, or an ACP harness like Claude Code the user picked with /harness); each has its own agent
 // session here, made on first use.
 import type {
@@ -15,7 +15,7 @@ import type {
   PromptParams,
   RequestPermission,
   SafeSearch,
-} from "@suite/harness/agent";
+} from "@neoworks-dev/neo/agent";
 import type { SessionEvent, SessionInfo, TurnEnded } from "@suite/protocol/types";
 import type { ConnectorSnapshot } from "./gateway/registry.ts";
 import { handoffSummary } from "./handoff.ts";

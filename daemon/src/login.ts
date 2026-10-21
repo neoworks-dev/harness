@@ -5,7 +5,7 @@
 // A login can take minutes (a browser, a device code), so the command returns once it has
 // started; what happens next is told with notices and cards in the session.
 import type { OAuthProviderInterface } from "@mariozechner/pi-ai/oauth";
-import { type Accounts, readAccounts, removeAccount, setAccount } from "@suite/harness/auth";
+import { type Accounts, readAccounts, removeAccount, setAccount } from "@neoworks-dev/neo/auth";
 import type { Asker } from "./asker.ts";
 import { BadRequestError } from "./focus.ts";
 import type { CommandContext } from "./hub.ts";

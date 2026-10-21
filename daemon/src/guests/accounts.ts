@@ -8,7 +8,7 @@
 // Only API keys are handed out, never an account: a Claude Pro/Max login may be used by neo only,
 // and Codex keeps its own ChatGPT login.
 import { findEnvKeys, getModels, type KnownProvider } from "@mariozechner/pi-ai";
-import { type Accounts, readAccounts } from "@suite/harness/auth";
+import { type Accounts, readAccounts } from "@neoworks-dev/neo/auth";
 import { BadRequestError } from "../focus.ts";
 import { codexConfig } from "./config.ts";
 

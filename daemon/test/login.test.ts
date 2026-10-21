@@ -8,7 +8,7 @@ import {
   registerOAuthProvider,
   resetOAuthProviders,
 } from "@mariozechner/pi-ai/oauth";
-import { readAccounts, setAccount } from "@suite/harness/auth";
+import { readAccounts, setAccount } from "@neoworks-dev/neo/auth";
 import type { Envelope, SessionEvent } from "@suite/protocol/types";
 import { validateEnvelope } from "@suite/protocol/validate";
 import type { ClientHandle } from "../src/hub.ts";

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { RequestPermission } from "@suite/harness/agent";
+import type { RequestPermission } from "@neoworks-dev/neo/agent";
 import type { DiffContent, SessionEvent, ViewItem } from "@suite/protocol/types";
 
 type Choice = Extract<SessionEvent, { type: "choice" }>;

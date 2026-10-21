@@ -19,8 +19,8 @@
 // goes on with them before the subagent is over. One subagent per harness and directory runs at
 // a time, which is how a message finds its recipient.
 import { homedir } from "node:os";
-import type { AgentInfo, AgentUpdate, ConfigCategory, ConfigOption } from "@suite/harness/agent";
-import { findAgent, listAgents } from "@suite/harness/agents";
+import type { AgentInfo, AgentUpdate, ConfigCategory, ConfigOption } from "@neoworks-dev/neo/agent";
+import { findAgent, listAgents } from "@neoworks-dev/neo/agents";
 import type { DelegateArgs, ModelsArgs } from "@suite/protocol/core-tools";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type {

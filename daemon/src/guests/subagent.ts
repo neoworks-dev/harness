@@ -12,7 +12,7 @@ import type {
   NewSessionParams,
   PromptParams,
   RequestPermission,
-} from "@suite/harness/agent";
+} from "@neoworks-dev/neo/agent";
 import type { ConnectorSnapshot } from "../gateway/registry.ts";
 import type { Logger } from "../log.ts";
 import type { HarnessSettings } from "../settings.ts";

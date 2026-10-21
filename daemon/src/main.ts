@@ -7,9 +7,9 @@
 // model and API key settings are read by the harness (see harness/src/config.ts).
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { Agent } from "@suite/harness/agent";
-import { authPaths } from "@suite/harness/config";
-import { suiteConfigDir } from "@suite/harness/mcp-config";
+import type { Agent } from "@neoworks-dev/neo/agent";
+import { authPaths } from "@neoworks-dev/neo/config";
+import { suiteConfigDir } from "@neoworks-dev/neo/mcp-config";
 import { createDaemon } from "./daemon.ts";
 import { createEchoAgent } from "./echo-agent.ts";
 import { loadGuestConfigs } from "./guests/config.ts";
@@ -21,8 +21,8 @@ import { loadTheme } from "./theme.ts";
 async function createAgent(name: string, log: Logger): Promise<Agent> {
   if (name === "echo") return createEchoAgent();
   if (name !== "neo") throw new Error(`unknown SUITE_AGENT ${name} (expected neo or echo)`);
-  const { createNeoAgent } = await import("@suite/harness/neo");
-  const { loadHarnessConfig } = await import("@suite/harness/config");
+  const { createNeoAgent } = await import("@neoworks-dev/neo/neo");
+  const { loadHarnessConfig } = await import("@neoworks-dev/neo/config");
   const config = loadHarnessConfig();
   log.info(`agent: neo, model ${config.provider}/${config.modelId}`);
   return createNeoAgent({ config, logger: log });

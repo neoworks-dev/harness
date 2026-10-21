@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { setAccount } from "@suite/harness/auth";
+import { setAccount } from "@neoworks-dev/neo/auth";
 import type { ChoiceOption, SessionEvent } from "@suite/protocol/types";
 import { codexRoute } from "../src/guests/accounts.ts";
 import type { GuestConfig } from "../src/guests/guests.ts";
@@ -296,7 +296,7 @@ describe("Codex on the suite's API keys", () => {
     const s = await setup();
     await setAccount(s.authPath, "openrouter", { type: "api_key", key: KEY });
     await s.daemon.commands.run(s.session, "/model codex openrouter/openai/gpt-5-mini");
-    const { removeAccount } = await import("@suite/harness/auth");
+    const { removeAccount } = await import("@neoworks-dev/neo/auth");
     await removeAccount(s.authPath, "openrouter");
     const next = s.daemon.sessions.create({}).id;
     const report = await routeReport({ ...s, session: next });

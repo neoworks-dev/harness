@@ -3,7 +3,7 @@
 // agent with its tool results, neo as user messages), and what happens when a turn is cancelled.
 import { afterEach, describe, expect, test } from "bun:test";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { createNeoAgent } from "@suite/harness/neo";
+import { createNeoAgent } from "@neoworks-dev/neo/neo";
 import { fauxToolCall } from "@mariozechner/pi-ai";
 import type { SessionEvent } from "@suite/protocol/types";
 import { mkdirSync } from "node:fs";
