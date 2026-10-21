@@ -47,3 +47,21 @@ export function declaredPaths(plugin: Plugin, key: string): string[] {
   }
   return out;
 }
+
+/** A markdown file's `---` frontmatter as `key: value` lines (values unquoted), and the rest. */
+export function frontmatter(text: string): { fields: Map<string, string>; body: string } {
+  const fields = new Map<string, string>();
+  const match = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
+  if (!match?.[1]) return { fields, body: text.trim() };
+  for (const line of match[1].split(/\r?\n/)) {
+    const colon = line.indexOf(":");
+    if (colon <= 0 || /^\s/.test(line)) continue;
+    let value = line.slice(colon + 1).trim();
+    const quote = value[0];
+    if ((quote === '"' || quote === "'") && value.length >= 2 && value.endsWith(quote)) {
+      value = value.slice(1, -1);
+    }
+    fields.set(line.slice(0, colon).trim(), value);
+  }
+  return { fields, body: text.slice(match[0].length).trim() };
+}
