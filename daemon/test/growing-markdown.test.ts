@@ -7,8 +7,8 @@ const MESSAGE = [
   " over two lines.\n\nSetext heading\n---\n\n- one\n- two\n  continued\n\n  still two\n- three\n",
   "\n1. first\n2. second\n\n> a quote\nlazy line\n\n```ts\nconst a = 1;\n\n",
   "const b = 2;\n```\n\n| a | b |\n| - | -: |\n| 1 | 2 |\n| 3 | 4 |\n\n***\n\n",
-  '```openui\nroot = Stack([t])\nt = Text("hi")\n```\n\nAfter the program.\n\n',
-  '```openui\nroot = Text("open")\n',
+  "```neoui\n<Stack><Text>hi</Text></Stack>\n```\n\nAfter the program.\n\n",
+  "```neoui\n<Text>open</Text>\n",
 ].join("");
 
 const docs = (index: number, program: string, closed: boolean): UiDoc => ({

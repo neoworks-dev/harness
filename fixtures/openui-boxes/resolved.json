@@ -35,10 +35,20 @@
                   {
                     "component": "Box",
                     "props": {
+                      "dir": "row",
+                      "gap": "s",
+                      "pad": "none",
+                      "width": "fill",
                       "children": [
                         {
                           "component": "Box",
                           "props": {
+                            "dir": "column",
+                            "pad": "s",
+                            "width": 0.25,
+                            "fill": "accent",
+                            "border": "accent",
+                            "rounded": true,
                             "children": [
                               {
                                 "component": "Text",
@@ -49,18 +59,17 @@
                                   ]
                                 }
                               }
-                            ],
-                            "dir": "column",
-                            "pad": "s",
-                            "width": 0.25,
-                            "fill": "accent",
-                            "border": "accent",
-                            "rounded": true
+                            ]
                           }
                         },
                         {
                           "component": "Box",
                           "props": {
+                            "dir": "column",
+                            "pad": "s",
+                            "width": 0.25,
+                            "fill": "muted",
+                            "border": "muted",
                             "children": [
                               {
                                 "component": "Text",
@@ -71,17 +80,16 @@
                                   ]
                                 }
                               }
-                            ],
-                            "dir": "column",
-                            "pad": "s",
-                            "width": 0.25,
-                            "fill": "muted",
-                            "border": "muted"
+                            ]
                           }
                         },
                         {
                           "component": "Box",
                           "props": {
+                            "dir": "column",
+                            "pad": "s",
+                            "width": 0.25,
+                            "fill": "success",
                             "children": [
                               {
                                 "component": "Text",
@@ -92,16 +100,16 @@
                                   ]
                                 }
                               }
-                            ],
-                            "dir": "column",
-                            "pad": "s",
-                            "width": 0.25,
-                            "fill": "success"
+                            ]
                           }
                         },
                         {
                           "component": "Box",
                           "props": {
+                            "dir": "column",
+                            "pad": "s",
+                            "width": 0.25,
+                            "border": "danger",
                             "children": [
                               {
                                 "component": "Text",
@@ -112,31 +120,32 @@
                                   ]
                                 }
                               }
-                            ],
-                            "dir": "column",
-                            "pad": "s",
-                            "width": 0.25,
-                            "border": "danger"
+                            ]
                           }
                         }
-                      ],
-                      "dir": "row",
-                      "gap": "s",
-                      "pad": "none",
-                      "width": "fill"
+                      ]
                     }
                   },
                   {
                     "component": "Box",
                     "props": {
+                      "dir": "column",
+                      "gap": "none",
+                      "pad": "s",
+                      "width": "fill",
+                      "border": "muted",
+                      "rounded": true,
                       "children": [
                         {
                           "component": "Box",
                           "props": {
+                            "dir": "row",
                             "children": [
                               {
                                 "component": "Box",
                                 "props": {
+                                  "dir": "column",
+                                  "width": 0.2,
                                   "children": [
                                     {
                                       "component": "Text",
@@ -147,14 +156,14 @@
                                         ]
                                       }
                                     }
-                                  ],
-                                  "dir": "column",
-                                  "width": 0.2
+                                  ]
                                 }
                               },
                               {
                                 "component": "Box",
                                 "props": {
+                                  "dir": "column",
+                                  "width": 0.8,
                                   "children": [
                                     {
                                       "component": "Shape",
@@ -166,22 +175,22 @@
                                         "aspect": 16
                                       }
                                     }
-                                  ],
-                                  "dir": "column",
-                                  "width": 0.8
+                                  ]
                                 }
                               }
-                            ],
-                            "dir": "row"
+                            ]
                           }
                         },
                         {
                           "component": "Box",
                           "props": {
+                            "dir": "row",
                             "children": [
                               {
                                 "component": "Box",
                                 "props": {
+                                  "dir": "column",
+                                  "width": 0.2,
                                   "children": [
                                     {
                                       "component": "Text",
@@ -192,14 +201,14 @@
                                         ]
                                       }
                                     }
-                                  ],
-                                  "dir": "column",
-                                  "width": 0.2
+                                  ]
                                 }
                               },
                               {
                                 "component": "Box",
                                 "props": {
+                                  "dir": "column",
+                                  "width": 0.8,
                                   "children": [
                                     {
                                       "component": "Shape",
@@ -211,22 +220,22 @@
                                         "aspect": 16
                                       }
                                     }
-                                  ],
-                                  "dir": "column",
-                                  "width": 0.8
+                                  ]
                                 }
                               }
-                            ],
-                            "dir": "row"
+                            ]
                           }
                         },
                         {
                           "component": "Box",
                           "props": {
+                            "dir": "row",
                             "children": [
                               {
                                 "component": "Box",
                                 "props": {
+                                  "dir": "column",
+                                  "width": 0.2,
                                   "children": [
                                     {
                                       "component": "Text",
@@ -237,14 +246,14 @@
                                         ]
                                       }
                                     }
-                                  ],
-                                  "dir": "column",
-                                  "width": 0.2
+                                  ]
                                 }
                               },
                               {
                                 "component": "Box",
                                 "props": {
+                                  "dir": "column",
+                                  "width": 0.8,
                                   "children": [
                                     {
                                       "component": "Shape",
@@ -266,31 +275,26 @@
                                         "aspect": 16
                                       }
                                     }
-                                  ],
-                                  "dir": "column",
-                                  "width": 0.8
+                                  ]
                                 }
                               }
-                            ],
-                            "dir": "row"
+                            ]
                           }
                         }
-                      ],
-                      "dir": "column",
-                      "gap": "none",
-                      "pad": "s",
-                      "width": "fill",
-                      "border": "muted",
-                      "rounded": true
+                      ]
                     }
                   },
                   {
                     "component": "Box",
                     "props": {
+                      "dir": "row",
+                      "gap": "m",
                       "children": [
                         {
                           "component": "Box",
                           "props": {
+                            "dir": "column",
+                            "width": 0.25,
                             "children": [
                               {
                                 "component": "Shape",
@@ -312,14 +316,14 @@
                                   "aspect": 1
                                 }
                               }
-                            ],
-                            "dir": "column",
-                            "width": 0.25
+                            ]
                           }
                         },
                         {
                           "component": "Box",
                           "props": {
+                            "dir": "column",
+                            "width": 0.25,
                             "children": [
                               {
                                 "component": "Shape",
@@ -331,14 +335,14 @@
                                   "aspect": 1
                                 }
                               }
-                            ],
-                            "dir": "column",
-                            "width": 0.25
+                            ]
                           }
                         },
                         {
                           "component": "Box",
                           "props": {
+                            "dir": "column",
+                            "width": 0.4,
                             "children": [
                               {
                                 "component": "Shape",
@@ -352,14 +356,10 @@
                                   "aspect": 1
                                 }
                               }
-                            ],
-                            "dir": "column",
-                            "width": 0.4
+                            ]
                           }
                         }
-                      ],
-                      "dir": "row",
-                      "gap": "m"
+                      ]
                     }
                   }
                 ]

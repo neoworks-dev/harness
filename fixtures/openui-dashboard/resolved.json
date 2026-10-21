@@ -9,6 +9,7 @@
         "root": {
           "component": "Card",
           "props": {
+            "title": "Revenue",
             "children": [
               {
                 "component": "Header",
@@ -17,6 +18,7 @@
               {
                 "component": "Stack",
                 "props": {
+                  "direction": "row",
                   "children": [
                     {
                       "component": "Metric",
@@ -45,8 +47,7 @@
                         "tone": "danger"
                       }
                     }
-                  ],
-                  "direction": "row"
+                  ]
                 }
               },
               {
@@ -89,12 +90,12 @@
                           {
                             "component": "PieChart",
                             "props": {
+                              "donut": true,
                               "slices": [
                                 { "component": "Slice", "props": { "label": "Pro", "value": 62 } },
                                 { "component": "Slice", "props": { "label": "Team", "value": 28 } },
                                 { "component": "Slice", "props": { "label": "Free", "value": 10 } }
-                              ],
-                              "donut": true
+                              ]
                             }
                           }
                         ]
@@ -114,7 +115,7 @@
                                   "Acme",
                                   {
                                     "component": "Tag",
-                                    "props": { "label": "Pro", "tone": "accent" }
+                                    "props": { "tone": "accent", "label": "Pro" }
                                   },
                                   1200
                                 ],
@@ -127,7 +128,7 @@
                                   "Initech",
                                   {
                                     "component": "Tag",
-                                    "props": { "label": "Free", "tone": "muted" }
+                                    "props": { "tone": "muted", "label": "Free" }
                                   },
                                   0
                                 ]
@@ -140,8 +141,7 @@
                   ]
                 }
               }
-            ],
-            "title": "Revenue"
+            ]
           }
         }
       }

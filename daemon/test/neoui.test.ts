@@ -20,8 +20,8 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-const PROGRAM = 'root = Card([h], "T")\nh = Header("Hello")';
-const fence = (program: string, lang = "openui"): string => `\`\`\`${lang}\n${program}\n\`\`\``;
+const PROGRAM = '<Card title="T"><Header title="Hello"/></Card>';
+const fence = (program: string, lang = "neoui"): string => `\`\`\`${lang}\n${program}\n\`\`\``;
 
 const docs = (blocks: Block[]): UiDoc[] =>
   blocks.filter((b) => b.type === "openui").map((b) => b.ui);
@@ -32,7 +32,7 @@ function blocksOf(item: ViewItem | undefined): Block[] {
   return [];
 }
 
-describe("openui fences in markdown", () => {
+describe("neoui fences in markdown", () => {
   const host = (index: number, program: string, closed: boolean): UiDoc => ({
     id: String(index),
     root: { component: "Header", props: { title: `${program.length}${closed ? "c" : "o"}` } },
@@ -40,7 +40,7 @@ describe("openui fences in markdown", () => {
 
   test("a top-level fence becomes an openui block among the others; they are numbered in order", () => {
     const blocks = parseMarkdown(
-      `Before.\n\n${fence("a = 1")}\n\nBetween.\n\n${fence("bb = 2", "openui-lang")}\n\nAfter.`,
+      `Before.\n\n${fence("<A/>")}\n\nBetween.\n\n${fence("<B/>", "neoui title")}\n\nAfter.`,
       host,
     );
     expect(blocks.map((b) => b.type)).toEqual([
@@ -59,20 +59,25 @@ describe("openui fences in markdown", () => {
       seen.push([program, closed]);
       return { id: "0" };
     };
-    parseMarkdown("```openui\nroot = A(1)\n", record);
-    parseMarkdown("```openui\nroot = A(1)\n``", record);
-    parseMarkdown("```openui\nroot = A(1)\n```", record);
-    parseMarkdown('```openui\nroot = A("``")\n```\n\nand', record);
+    parseMarkdown("```neoui\n<A b={1}/>\n", record);
+    parseMarkdown("```neoui\n<A b={1}/>\n``", record);
+    parseMarkdown("```neoui\n<A b={1}/>\n```", record);
+    parseMarkdown('```neoui\n<A b="``"/>\n```\n\nand', record);
     expect(seen).toEqual([
-      ["root = A(1)", false],
-      ["root = A(1)", false],
-      ["root = A(1)", true],
-      ['root = A("``")', true],
+      ["<A b={1}/>", false],
+      ["<A b={1}/>", false],
+      ["<A b={1}/>", true],
+      ['<A b="``"/>', true],
     ]);
   });
 
   test("other fences, fences without a host and fences inside lists stay code", () => {
     expect(parseMarkdown(fence("x", "js"), host)[0]?.type).toBe("code_block");
+    // OpenUI programs are not read any more.
+    expect(parseMarkdown(fence("root = Card([])", "openui"), host)[0]?.type).toBe("code_block");
+    expect(parseMarkdown(fence("root = Card([])", "openui-lang"), host)[0]?.type).toBe(
+      "code_block",
+    );
     expect(parseMarkdown(fence(PROGRAM))[0]?.type).toBe("code_block");
     const nested = parseMarkdown(`- item\n\n  ${fence("x").replaceAll("\n", "\n  ")}`, host);
     expect(JSON.stringify(nested)).not.toContain('"type":"openui"');
@@ -91,7 +96,7 @@ const chunk = (text: string, messageId = "m1"): SessionEvent => ({
   text,
 });
 
-describe("a streamed message with openui", () => {
+describe("a streamed message with neoui", () => {
   const text = `Here:\n\n${fence(PROGRAM)}\n\nDone.`;
 
   test("the doc streams until its fence closes, and only blocks from the first change are sent", () => {
@@ -109,7 +114,7 @@ describe("a streamed message with openui", () => {
   });
 
   test("a doc whose fence is still open is streaming; the turn ending finishes it", () => {
-    const open = `Here:\n\n\`\`\`openui\n${PROGRAM}\n`;
+    const open = `Here:\n\n\`\`\`neoui\n${PROGRAM}\n`;
     const { view: v, ops } = view([chunk(open)]);
     const blocks = (): Block[] => blocksOf(v.snapshot().items[0]);
     expect(docs(blocks())[0]?.streaming).toBe(true);
@@ -133,7 +138,7 @@ describe("a streamed message with openui", () => {
 
   test("a doc with a broken program draws nothing and says why", () => {
     const { view: v } = view([
-      chunk(fence("root = Nope(1)")),
+      chunk(fence("<Nope/>")),
       { type: "turn_ended", stopReason: "end_turn" },
     ]);
     const ui = docs(blocksOf(v.snapshot().items[0]))[0];
@@ -142,7 +147,7 @@ describe("a streamed message with openui", () => {
   });
 });
 
-describe("app templates in OpenUI Lang", () => {
+describe("app templates in neoui", () => {
   const toolEvents = (rawOutput: unknown): SessionEvent[] => [
     {
       type: "tool_call",
@@ -155,10 +160,10 @@ describe("app templates in OpenUI Lang", () => {
     { type: "tool_call_update", toolCallId: "t", status: "completed", rawOutput },
   ];
 
-  test("the tool's data is the program's last statement", () => {
+  test("the tool's data is read as `data`", () => {
     const templates = {
       "stats.show": {
-        openui: 'root = Card([Metric("Total", data.total), Text(data.note)])\ndata = {total: 0}',
+        neoui: '<Card><Metric label="Total" value={data.total}/><Text>{data.note}</Text></Card>',
       },
     };
     const v = new SessionView(
@@ -179,7 +184,11 @@ describe("app templates in OpenUI Lang", () => {
   });
 
   test("a template that draws nothing falls back to the generic card", () => {
-    const v = new SessionView("s", () => ({ openui: 'title = Header("no root")' }), silentLogger);
+    const v = new SessionView(
+      "s",
+      () => ({ neoui: '<Query id="q" hx-get="stats.total"/>' }),
+      silentLogger,
+    );
     toolEvents({ total: 7 }).forEach((event, i) =>
       v.apply({ session: "s", seq: i + 1, ts: 0, event }),
     );
@@ -246,9 +255,10 @@ describe("using a doc", () => {
       daemon,
       session,
       [
-        'root = Form("ask", [name], Buttons([go]))',
-        'name = FormControl("Name", Input("name", null, null, { required: true }))',
-        'go = Button("Send", @ToAssistant("Here you go", { id: 3 }))',
+        '<Form name="ask">',
+        '  <FormControl label="Name"><Input name="name" required/></FormControl>',
+        '  <Buttons><Button id="go" ui-ask="Here you go" ui-context={{ id: 3 }}>Send</Button></Buttons>',
+        "</Form>",
       ].join("\n"),
     );
     const act = (action: string, args: unknown): Promise<void> =>
@@ -270,25 +280,45 @@ describe("using a doc", () => {
     const sent = daemon.store.readTypes(session, ["user_message"]).at(-1)?.event;
     expect(sent).toMatchObject({
       type: "user_message",
-      text: '[ui action] The user pressed "Send" in an OpenUI doc: Here you go\nform ask: {"name":"Ada"}\ncontext: {"id":3}',
+      text: '[ui action] The user pressed "Send" in a neoui doc: Here you go\nform ask: {"name":"Ada"}\ncontext: {"id":3}',
+    });
+  });
+
+  test("outside a form the agent is told the variables by name", async () => {
+    const { daemon, session } = await setup();
+    reply(
+      daemon,
+      session,
+      [
+        "<Stack>",
+        '  <Select name="env" value="staging"><Option value="staging">Staging</Option></Select>',
+        '  <Button id="go" ui-ask="Deploy now">Deploy</Button>',
+        "</Stack>",
+      ].join("\n"),
+    );
+    await daemon.actions.run(
+      { session, ref: "m-m1", action: "openui.press", args: { doc: "0", key: "go" } },
+      "test",
+    );
+    await daemon.sessions.idle(session);
+    expect(daemon.store.readTypes(session, ["user_message"]).at(-1)?.event).toMatchObject({
+      text: '[ui action] The user pressed "Deploy" in a neoui doc: Deploy now\nstate: {"env":"staging"}',
     });
   });
 
   test("actions on a doc that is still streaming are ignored; bad ones are rejected", async () => {
     const { daemon, session } = await setup();
-    daemon.store.append(session, chunk('```openui\nroot = Stack([f])\nf = Input("f")\n'));
+    daemon.store.append(session, chunk('```neoui\n<Stack><Input name="f"/>\n'));
     const run = (action: string, args: unknown, ref = "m-m1"): Promise<void> =>
       daemon.actions.run({ session, ref, action, args }, "test");
     await run("openui.input", { doc: "0", key: "f", value: "x" });
     expect(JSON.stringify(doc(daemon, session))).not.toContain('"value"');
-    expect(run("openui.input", { doc: "7", key: "f", value: "x" })).rejects.toThrow(
-      "no OpenUI doc",
-    );
+    expect(run("openui.input", { doc: "7", key: "f", value: "x" })).rejects.toThrow("no neoui doc");
     expect(run("openui.press", { key: "f" })).rejects.toThrow("needs args");
-    expect(run("openui.press", { doc: "0", key: "f" }, "nope")).rejects.toThrow("no OpenUI doc");
+    expect(run("openui.press", { doc: "0", key: "f" }, "nope")).rejects.toThrow("no neoui doc");
   });
 
-  test("Query reads through the gateway; a Mutation is recorded like a tool call and refreshes", async () => {
+  test("a Query reads through the gateway; a post is recorded like a tool call and the query asks again", async () => {
     const { daemon, session, app } = await setup();
     const patches: ViewPatch[] = [];
     daemon.views.get(session);
@@ -297,11 +327,12 @@ describe("using a doc", () => {
       daemon,
       session,
       [
-        "root = Stack([list, go])",
-        'data = Query("notes.list", {}, { notes: [] })',
-        'list = List(@Each(data.notes, "n", n.text))',
-        'save = Mutation("notes.add", { text: "bread" })',
-        'go = Button("Add", Action([@Run(save), @Run(data)]))',
+        "<Stack>",
+        '  <State name="round" value={0}/>',
+        '  <Query id="data" hx-get="notes.list" hx-vals={{ round: $round }} default={{ notes: [] }}/>',
+        '  <List items={pluck(data.notes, "text")}/>',
+        '  <Button id="go" hx-post="notes.add" hx-vals={{ text: "bread" }} ui-set={{ round: $round + 1 }}>Add</Button>',
+        "</Stack>",
       ].join("\n"),
     );
     for (let i = 0; i < 100 && !JSON.stringify(doc(daemon, session)).includes("milk"); i++) {
@@ -318,7 +349,7 @@ describe("using a doc", () => {
       { session, ref: "m-m1", action: "openui.press", args: { doc: "0", key: "go" } },
       "test",
     );
-    // @Run(data) fetched the list again.
+    // Setting `round` made the query ask again.
     for (let i = 0; i < 100 && app.calls.filter((c) => c.name === "list").length < 2; i++) {
       await Bun.sleep(10);
     }
@@ -377,7 +408,7 @@ describe("streaming a whole message", () => {
 
 test("a message that starts finishes the one before it", () => {
   const { view: v, ops } = view([
-    chunk('```openui\nroot = Header("a")\n', "m1"),
+    chunk('```neoui\n<Header title="a"/>\n', "m1"),
     chunk("Next.", "m2"),
   ]);
   expect(ops[1]).toMatchObject([{ op: "blocks", ref: "m-m1", from: 0 }, { op: "set" }]);
@@ -389,15 +420,15 @@ describe("app components", () => {
   const BRIGHTNESS = {
     description: "An image with a brightness slider and live preview",
     params: { asset: "string", name: "string?" },
-    openui: `
-      $level  = 0
-      root    = Card([pic, slider, apply], args.name)
-      pic     = Image(preview.asset, args.name)
-      slider  = Slider("level", -100, 100, 5, $level)
-      preview = Query("photo-editor.preview", { asset: args.asset, brightness: $level }, { asset: args.asset })
-      save    = Mutation("photo-editor.brightness", { asset: args.asset, amount: $level })
-      apply   = Button("Apply", @Run(save), "primary")
-    `,
+    neoui: `
+      <Card title={name}>
+        <Query id="preview" hx-get="photo-editor.preview"
+               hx-vals={{ asset: asset, brightness: $level }} default={{ asset: asset }}/>
+        <Image src={preview.asset} alt={name}/>
+        <Slider name="level" min={-100} max={100} step={5} value={0}/>
+        <Button id="apply" variant="primary" hx-post="photo-editor.brightness"
+                hx-vals={{ asset: asset, amount: $level }}>Apply</Button>
+      </Card>`,
   };
 
   async function setup(): Promise<{
@@ -448,7 +479,7 @@ describe("app components", () => {
         Chip: {
           description: "A small label",
           params: { text: "string" },
-          openui: 'root = Tag(args.text, "accent")',
+          neoui: '<Tag label={text} tone="accent"/>',
         },
       },
     });
@@ -480,9 +511,10 @@ describe("app components", () => {
       chunk(
         `Two photos:\n\n${fence(
           [
-            "root = Stack([a, b])",
-            'a = BrightnessCard("asset://one", "Sunset")',
-            'b = BrightnessCard("asset://two")',
+            "<Stack>",
+            '  <photo-editor.BrightnessCard id="a" asset="asset://one" name="Sunset"/>',
+            '  <photo-editor.BrightnessCard id="b" asset="asset://two"/>',
+            "</Stack>",
           ].join("\n"),
         )}`,
       ),
@@ -500,7 +532,7 @@ describe("app components", () => {
     );
 
     // Moving the first slider asks for the first photo's preview only.
-    await act(daemon, session, "openui.input", { doc: "0", key: "a/slider", value: 40 });
+    await act(daemon, session, "openui.input", { doc: "0", key: "a/level", value: 40 });
     await until(() => JSON.stringify(doc(daemon, session)).includes("asset://one@40"));
     const sliders = JSON.stringify(doc(daemon, session)).match(
       /"component":"Slider"[^}]*"value":(-?\d+)/g,
@@ -530,13 +562,11 @@ describe("app components", () => {
     await daemon.connectors.presence(owner, { app: "photo-editor", kind: "app", open: false });
     expect(daemon.connectors.isOpen("photo-editor")).toBe(false);
     expect([...daemon.connectors.library().components.keys()]).toEqual([
-      "PhotoEditorBrightnessCard",
-      "PhotoEditorChip",
-      "BrightnessCard",
-      "Chip",
+      "photo-editor.BrightnessCard",
+      "photo-editor.Chip",
     ]);
     expect([...daemon.connectors.openApps()]).toEqual([]);
-    daemon.store.append(session, chunk(fence('root = Stack([Chip("new")])')));
+    daemon.store.append(session, chunk(fence('<Stack><photo-editor.Chip text="new"/></Stack>')));
     daemon.store.append(session, { type: "turn_ended", stopReason: "end_turn" });
     expect(doc(daemon, session)?.errors).toBeUndefined();
     expect(doc(daemon, session)?.root?.props.children).toMatchObject([
@@ -544,35 +574,65 @@ describe("app components", () => {
     ]);
   });
 
-  test("a registration is never refused: a clash is called by its qualified name, a bad one left out", async () => {
+  test("a registration is never refused: nothing clashes, a bad component is left out", async () => {
     const { daemon, session } = await setup();
-    const mine = { description: "x", params: {}, openui: 'root = Text("notes")' };
+    const mine = { description: "x", params: {}, neoui: "<Text>notes</Text>" };
+    const old = { description: "x", params: {}, openui: 'root = Text("old")' };
     await daemon.connectors.presence(
       {},
       {
         app: "notes",
         kind: "app",
         open: true,
-        components: { Card: mine, BrightnessCard: mine, "notes.Bad": mine, NoteCard: mine },
+        components: {
+          Card: mine,
+          BrightnessCard: mine,
+          "notes.Bad": mine,
+          NoteCard: mine,
+          Old: old,
+        } as never,
       },
     );
     expect(daemon.connectors.isOpen("notes")).toBe(true);
+    // The same names as the library's and the photo editor's register; the others are left out.
     expect(Object.keys(daemon.connectors.connector("notes")?.components ?? {})).toEqual([
       "Card",
       "BrightnessCard",
       "NoteCard",
     ]);
     const snapshot = daemon.connectors.snapshot().find((c) => c.app === "notes");
-    expect(snapshot?.components).toEqual(["NotesCard", "NotesBrightnessCard", "NoteCard"]);
-    // The plain name still draws the photo editor's, which registered it first.
-    const calls =
-      'root = Stack([a, b])\na = BrightnessCard("asset://x")\nb = NotesBrightnessCard()';
+    expect(snapshot?.components).toEqual(["notes.Card", "notes.BrightnessCard", "notes.NoteCard"]);
+    // Both BrightnessCards draw, and notes.Card sits beside the library's Card.
+    const calls = [
+      "<Stack>",
+      '  <photo-editor.BrightnessCard asset="asset://x"/>',
+      "  <notes.BrightnessCard/>",
+      '  <Card title="mine"><notes.Card/></Card>',
+      "</Stack>",
+    ].join("\n");
     daemon.store.append(session, chunk(fence(calls)));
     daemon.store.append(session, { type: "turn_ended", stopReason: "end_turn" });
     expect(doc(daemon, session)?.errors).toBeUndefined();
     expect(doc(daemon, session)?.root?.props.children).toMatchObject([
       { component: "Card" },
       { component: "Text", props: { text: "notes" } },
+      { component: "Card", props: { title: "mine", children: [{ component: "Text" }] } },
     ]);
+  });
+
+  test("a plain name is an error that names the apps that have it", async () => {
+    const { daemon, session } = await setup();
+    const mine = { description: "x", params: {}, neoui: "<Text>notes</Text>" };
+    await daemon.connectors.presence(
+      {},
+      { app: "notes", kind: "app", open: true, components: { BrightnessCard: mine } },
+    );
+    daemon.store.append(session, chunk(fence('<Stack><BrightnessCard asset="x"/></Stack>')));
+    daemon.store.append(session, { type: "turn_ended", stopReason: "end_turn" });
+    expect(doc(daemon, session)?.errors?.[0]).toMatchObject({
+      code: "unknown-component",
+      message:
+        "Unknown component BrightnessCard; did you mean notes.BrightnessCard or photo-editor.BrightnessCard?",
+    });
   });
 });

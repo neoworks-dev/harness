@@ -45,20 +45,20 @@ test("skills come from the bundled, the user's and the project's directories; la
   const root = await tempDir();
   const dirs: SkillDirs = { bundled: join(root, "bundled"), user: join(root, "user") };
   const cwd = join(root, "project");
-  await skill(dirs.bundled, "openui", doc("openui", "bundled openui", "one"));
+  await skill(dirs.bundled, "neoui", doc("neoui", "bundled neoui", "one"));
   await skill(dirs.bundled, "other", doc("other", "bundled other", "two"));
-  await skill(dirs.user, "openui", doc("openui", "user openui", "three"));
+  await skill(dirs.user, "neoui", doc("neoui", "user neoui", "three"));
   await skill(join(cwd, ".suite", "skills"), "mine", doc("mine", "project only", "four"));
   await skill(join(cwd, ".suite", "skills"), "other", doc("other", "project other", "five"));
   await skill(dirs.user, "broken", "no frontmatter");
 
   const skills = loadSkills(cwd, dirs);
   expect(skills.map((s) => [s.name, s.description, s.body])).toEqual([
-    ["openui", "user openui", "three"],
+    ["neoui", "user neoui", "three"],
     ["other", "project other", "five"],
     ["mine", "project only", "four"],
   ]);
-  expect(skills[0]?.path).toBe(join(dirs.user, "openui", "SKILL.md"));
+  expect(skills[0]?.path).toBe(join(dirs.user, "neoui", "SKILL.md"));
 });
 
 test("missing directories are no skills, and without directories there are none", async () => {
@@ -69,26 +69,26 @@ test("missing directories are no skills, and without directories there are none"
 
 test("the system prompt lists each skill's name and description and says how to load one", () => {
   const prompt = systemPrompt([
-    { name: "openui", description: "Show UI", body: "", path: "" },
+    { name: "neoui", description: "Show UI", body: "", path: "" },
     { name: "x", description: "Other", body: "", path: "" },
   ]);
   expect(prompt.startsWith(SYSTEM_PROMPT)).toBe(true);
   expect(prompt).toContain("skill {name}");
-  expect(prompt).toContain("- openui: Show UI\n- x: Other");
+  expect(prompt).toContain("- neoui: Show UI\n- x: Other");
   expect(systemPrompt([])).toBe(SYSTEM_PROMPT);
 });
 
 test("the skill tool returns the body; an unknown name is an error that lists the names", async () => {
   const tool = createSkillTool([
-    { name: "openui", description: "d", body: "line 1\nline 2", path: "" },
+    { name: "neoui", description: "d", body: "line 1\nline 2", path: "" },
     { name: "other", description: "d", body: "x", path: "" },
   ]);
-  const result = await tool.execute("t", { name: "openui" });
+  const result = await tool.execute("t", { name: "neoui" });
   expect(resultText(result)).toBe("line 1\nline 2");
-  expect(result.details).toEqual({ name: "openui", lines: 2 });
-  expect(resultText(await tool.execute("t", { name: " OpenUI " }))).toBe("line 1\nline 2");
+  expect(result.details).toEqual({ name: "neoui", lines: 2 });
+  expect(resultText(await tool.execute("t", { name: " NeoUI " }))).toBe("line 1\nline 2");
   expect(await errorMessage(tool.execute("t", { name: "nope" }))).toBe(
-    'No skill named "nope". Skills: openui, other.',
+    'No skill named "nope". Skills: neoui, other.',
   );
   expect(await errorMessage(createSkillTool([]).execute("t", { name: "x" }))).toContain(
     "There are no skills.",

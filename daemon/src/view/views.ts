@@ -1,7 +1,6 @@
 // One live SessionView per session (and per agent, for a per-agent view) that someone has looked
 // at, kept current from the event log.
-import type { AppLibrary } from "@suite/openui/components";
-import type { CallTool, Program } from "@suite/openui/program";
+import type { AppLibrary, CallTool, Program } from "@neoworks/neoui";
 import type { ViewPatch } from "@suite/protocol/types";
 import type { Logger } from "../log.ts";
 import type { SessionStore } from "../store.ts";
@@ -15,7 +14,7 @@ export class ViewManager {
     private readonly store: SessionStore,
     private readonly templates: TemplateLookup,
     private readonly log: Logger,
-    /** Runs the tools an OpenUI program's Query and Mutation name, for a session. */
+    /** Runs the tools a neoui program's Query and Mutation name, for a session. */
     private readonly tools?: (session: string) => CallTool,
     /** The library with the components of the apps, for the programs of every view. */
     private readonly apps?: () => AppLibrary,
@@ -47,7 +46,7 @@ export class ViewManager {
       this.apps,
     );
     view.replay(this.store.read(session));
-    // Changes outside the event log (an OpenUI doc answering) go out as patches of their own.
+    // Changes outside the event log (a neoui doc answering) go out as patches of their own.
     view.onOps = (ops) => {
       const patch: ViewPatch = { session, seq: view.lastSeq, ops };
       if (agent !== undefined) patch.agent = agent;
@@ -58,7 +57,7 @@ export class ViewManager {
   }
 
   /**
-   * The running OpenUI doc `doc` of item `ref` in the session, and the view that has it (an
+   * The running neoui doc `doc` of item `ref` in the session, and the view that has it (an
    * item of the session's own agent is in the session's view, a guest's in its own).
    */
   openUi(

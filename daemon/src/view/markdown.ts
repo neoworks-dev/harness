@@ -89,13 +89,13 @@ function table(token: Tokens.Table): TableBlock {
 }
 
 /**
- * What turns the program of an ```openui fence into a doc: its position among the message's
- * openui fences, the program, and whether the fence has been closed (the program is complete).
+ * What turns the program of a ```neoui fence into a doc: its position among the message's
+ * neoui fences, the program, and whether the fence has been closed (the program is complete).
  */
-export type OpenUiHost = (index: number, program: string, closed: boolean) => UiDoc;
+export type NeoUiHost = (index: number, program: string, closed: boolean) => UiDoc;
 
-/** An openui fence's language, with or without the info string after it. */
-const OPENUI_LANG = /^openui(-lang)?(\s|$)/;
+/** A neoui fence's language, with or without the info string after it. */
+const NEOUI_LANG = /^neoui(\s|$)/;
 
 /** A closing fence at the end of a code token's source: the token was not cut off. */
 function fenceClosed(raw: string): boolean {
@@ -110,7 +110,7 @@ function programOf(token: Tokens.Code, closed: boolean): string {
 }
 
 interface Fences {
-  host: OpenUiHost;
+  host: NeoUiHost;
   count: number;
 }
 
@@ -147,7 +147,7 @@ function blocks(tokens: Token[], fences?: Fences): Block[] {
         break;
       }
       case "code": {
-        if (fences && token.lang !== undefined && OPENUI_LANG.test(token.lang)) {
+        if (fences && token.lang !== undefined && NEOUI_LANG.test(token.lang)) {
           const closed = fenceClosed(token.raw);
           const ui = fences.host(fences.count++, programOf(token as Tokens.Code, closed), closed);
           out.push({ type: "openui", ui });
@@ -176,12 +176,12 @@ function blocks(tokens: Token[], fences?: Fences): Block[] {
 }
 
 /**
- * With `openui`, the message's top-level openui fences become openui blocks (the daemon's
+ * With `neoui`, the message's top-level neoui fences become `openui` blocks (the daemon's
  * messages); without it they stay code, as everywhere else (templates, messages between agents).
  */
-export function parseMarkdown(source: string, openui?: OpenUiHost): Block[] {
+export function parseMarkdown(source: string, neoui?: NeoUiHost): Block[] {
   const tokens = Lexer.lex(source, { gfm: true });
-  return blocks(tokens, openui && { host: openui, count: 0 });
+  return blocks(tokens, neoui && { host: neoui, count: 0 });
 }
 
 /** A link reference definition, which can change how text above it reads. */
@@ -197,20 +197,20 @@ export class GrowingMarkdown {
   /** How much of the source the settled blocks come from. */
   private chars = 0;
   private settled: Block[] = [];
-  /** openui fences among the settled blocks. */
+  /** neoui fences among the settled blocks. */
   private fences = 0;
 
   /** The blocks of `source`, which extends what the previous call was given. */
-  parse(source: string, openui?: OpenUiHost): Block[] {
+  parse(source: string, neoui?: NeoUiHost): Block[] {
     if (source.length < this.chars || source.includes("\r") || LINK_DEFINITION.test(source)) {
       this.reset();
-      return parseMarkdown(source, openui);
+      return parseMarkdown(source, neoui);
     }
     const tokens = Lexer.lex(source.slice(this.chars), { gfm: true });
     let last = tokens.length - 1;
     while (last > 0 && tokens[last]?.type === "space") last--;
     const done = tokens.slice(0, Math.max(last, 0));
-    const fences = openui && { host: openui, count: this.fences };
+    const fences = neoui && { host: neoui, count: this.fences };
     this.settled.push(...blocks(done, fences));
     for (const token of done) this.chars += token.raw.length;
     if (fences) this.fences = fences.count;

@@ -13,6 +13,7 @@
             "root": {
               "component": "Card",
               "props": {
+                "title": "Disk usage",
                 "children": [
                   {
                     "component": "Header",
@@ -27,8 +28,7 @@
                       "rows": [["/home", "310 GB"], ["/var"]]
                     }
                   }
-                ],
-                "title": "Disk usage"
+                ]
               }
             },
             "streaming": true

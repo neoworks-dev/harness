@@ -170,7 +170,7 @@
     },
     {
       "name": "ui_library",
-      "description": "How to show UI: write a ```openui block in your reply. Returns what you need to write one: when UI beats prose, the OpenUI language, every library component with its arguments, and the components the connected apps add (their signatures and what each is for). Call it before your first openui block in a conversation, and again when an app announces components= you haven't read.",
+      "description": "How to show UI: write a ```neoui block in your reply. Returns what you need to write one: when UI beats prose, the neoui language, every library component with its attributes, and the components the connected apps add (their signatures and what each is for). Call it before your first neoui block in a conversation, and again when an app announces components= you haven't read.",
       "inputSchema": {
         "type": "object",
         "properties": {},

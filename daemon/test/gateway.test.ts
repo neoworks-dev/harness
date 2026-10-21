@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { library } from "@suite/openui/library";
-import { uiLibraryText } from "@suite/openui/skill";
+import { COMPONENTS, signature } from "@neoworks/neoui";
 import type { AppPresence, SessionEvent } from "@suite/protocol/types";
 import { Gateway, type GatewayOptions } from "../src/gateway/gateway.ts";
 import { ConnectorRegistry } from "../src/gateway/registry.ts";
+import { GUIDANCE, uiLibraryText } from "../src/gateway/ui-library.ts";
 import { connectMcp, type Upstream } from "../src/gateway/upstream.ts";
 import { silentLogger } from "../src/log.ts";
 import { SessionManager } from "../src/sessions.ts";
@@ -660,7 +660,7 @@ describe("ui_library", () => {
   const card = (description: string): NonNullable<AppPresence["components"]>[string] => ({
     description,
     params: { asset: "string", name: "string?" },
-    openui: "root = Card([Text(args.name)], args.name)",
+    neoui: "<Card title={name}><Text>{asset}</Text></Card>",
   });
 
   test("returns the skill and the components of the connected apps with signatures and descriptions", async () => {
@@ -686,15 +686,16 @@ describe("ui_library", () => {
     const result = await gateway.call("ui_library", {});
     expect(result.isError).toBeUndefined();
     const text = resultText(result);
-    expect(text).toBe(uiLibraryText(registry.library(), registry.openApps()));
-    // The language and every component of the library as it is now: nothing to regenerate.
-    for (const { signature } of Object.values(library.toSpec().components)) {
-      expect(text).toContain(signature);
-    }
+    expect(text).toBe(uiLibraryText(registry.componentsOf(), registry.openApps()));
+    // The harness's guidance, then the language and every component of the library as it is now:
+    // nothing to regenerate.
+    expect(text.startsWith(GUIDANCE)).toBe(true);
+    for (const component of COMPONENTS) expect(text).toContain(signature(component));
     expect(text).toContain(
-      "## photo-editor\nBrightnessCard(asset: string, name?: string) — An image with a brightness slider.",
+      '## photo-editor\n<photo-editor.BrightnessCard asset="string" name?="string"/> — An image with a brightness slider',
     );
     expect(text).not.toContain("NoteCard");
+    expect(text).not.toContain("```openui");
     // Nothing connected adds nothing.
     await registry.presence(photo, { app: "photo-editor", kind: "app", open: false });
     expect(resultText(await gateway.call("ui_library", {}))).toContain(
@@ -710,7 +711,10 @@ describe("ui_library", () => {
       ...photoPresence(),
       components: { BrightnessCard: card("One.") },
     });
-    expect(registry.snapshot()[0]).toMatchObject({ v: 1, components: ["BrightnessCard"] });
+    expect(registry.snapshot()[0]).toMatchObject({
+      v: 1,
+      components: ["photo-editor.BrightnessCard"],
+    });
     // Same components again (a title change, say): the same version.
     await registry.presence(owner, {
       ...photoPresence(),
@@ -723,7 +727,7 @@ describe("ui_library", () => {
     });
     expect(registry.snapshot()[0]).toMatchObject({
       v: 2,
-      components: ["BrightnessCard", "PhotoCard"],
+      components: ["photo-editor.BrightnessCard", "photo-editor.PhotoCard"],
     });
     // A presence that does not mention components keeps them; an empty one takes them away.
     await registry.presence(owner, photoPresence());
@@ -746,8 +750,7 @@ describe("ui_library", () => {
     );
     const second = setup(store);
     expect([...second.registry.library().components.keys()]).toEqual([
-      "PhotoEditorBrightnessCard",
-      "BrightnessCard",
+      "photo-editor.BrightnessCard",
     ]);
     expect([...second.registry.openApps()]).toEqual([]);
   });

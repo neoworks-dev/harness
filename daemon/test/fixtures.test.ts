@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ViewItem } from "@suite/protocol/types";
-import { library } from "@suite/openui/library";
+import { COMPONENTS } from "@neoworks/neoui";
 import { validateDef } from "@suite/protocol/validate";
 import { resolveFixture, type Fixture } from "../src/view/fixtures.ts";
 
@@ -26,7 +26,7 @@ describe("fixtures", () => {
     });
   }
 
-  test("the OpenUI fixtures are there: a template, a chat, a model's dashboard, a form with inputs and a press, a grid, boxes and shapes, the rest of the library, a stream", () => {
+  test("the neoui fixtures are there: a template, a chat, a model's dashboard, a form with inputs and a press, a grid, boxes and shapes, the rest of the library, a stream", () => {
     expect(names.filter((n) => n.startsWith("openui-"))).toEqual([
       "openui-boxes",
       "openui-chat",
@@ -41,7 +41,7 @@ describe("fixtures", () => {
 
   // Renderers draw the fixtures and compare them with snapshots, so a component that no fixture
   // uses is one a renderer could leave out without a test failing.
-  test("the OpenUI fixtures use every component of the library", () => {
+  test("the neoui fixtures use every component of the library", () => {
     const used = new Set<string>();
     const visit = (value: unknown): void => {
       if (Array.isArray(value)) value.forEach(visit);
@@ -53,6 +53,9 @@ describe("fixtures", () => {
     for (const name of names.filter((n) => n.startsWith("openui-"))) {
       visit(read(name, "resolved.json"));
     }
-    expect(Object.keys(library.components).filter((name) => !used.has(name))).toEqual([]);
+    // The control elements are never drawn.
+    const control = new Set(["Query", "State", "For", "If", "Row"]);
+    const drawn = COMPONENTS.map((c) => c.name).filter((name) => !control.has(name));
+    expect(drawn.filter((name) => !used.has(name))).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 //! OpenUI docs in the chat: which target has focus, what is typed into a field, and the keys
-//! that move between targets and change their values (`docs/openui.md`, "Focus").
+//! that move between targets and change their values (`docs/neoui.md`, "Focus").
 //!
 //! The renderer draws from a [`UiState`] per doc; this keeps those states per item and turns
 //! keys into changes of them. Values the user changes are queued to be sent as

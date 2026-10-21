@@ -8,7 +8,7 @@ import {
   type AppLibrary,
   callNames,
   checkComponents,
-} from "@suite/openui/components";
+} from "@neoworks/neoui";
 import type { AppPresence, ConnectorInfo, ConnectorKind, McpEndpoint } from "@suite/protocol/types";
 import type { Logger } from "../log.ts";
 import type { SessionStore, StoredConnector, StoredTool } from "../store.ts";
@@ -21,7 +21,7 @@ export interface ConnectorSnapshot {
   v: number;
   /** Tool names without the app prefix. */
   tools: string[];
-  /** The OpenUI components it offers, by name. */
+  /** What to write to use the components it offers: `photo-editor.BrightnessCard`. */
   components?: string[];
   /** One line for the agent: the presence's description, else the instructions' first sentence. */
   description?: string;
@@ -146,15 +146,13 @@ export class ConnectorRegistry {
   }
 
   /**
-   * The OpenUI components of the apps we know, by app, in the order the apps first registered (an
-   * earlier app keeps a plain name a later one also uses, `appLibrary`): those of closed apps too,
-   * so docs that use them still draw.
+   * The neoui components of the apps we know, by app: those of closed apps too, so docs that use
+   * them still draw. Each is written with its app (`photo-editor.BrightnessCard`), so apps never
+   * compete for a name and the order does not matter.
    */
   componentsOf(): AppComponents {
     const out: AppComponents = {};
-    const known = [...this.stored.values()].sort(
-      (a, b) => (a.registered ?? 0) - (b.registered ?? 0) || a.app.localeCompare(b.app),
-    );
+    const known = [...this.stored.values()].sort((a, b) => a.app.localeCompare(b.app));
     for (const connector of known) {
       if (connector.components && Object.keys(connector.components).length > 0) {
         out[connector.app] = connector.components;
@@ -275,7 +273,6 @@ export class ConnectorRegistry {
       v: 0,
       schemaHash: "",
       tools: [],
-      registered: Date.now(),
     };
     record.kind = presence.kind;
     if (presence.title !== undefined) record.title = presence.title;

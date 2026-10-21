@@ -19,7 +19,7 @@ let actions = buttons(&item);   // label, action, args, key; in drawing order, f
 
 ## OpenUI
 
-`openui` components and `openui` blocks in text (`docs/openui.md`) are drawn from the evaluated `UiDoc`: the renderer never parses OpenUI Lang or holds `$state`. Everything purely visual comes in through `Options::openui`, a `UiState` per doc id (it is pure, the app owns the state): `focus` (the focused target), `tabs` (selected tab per `Tabs`), `open` (accordion items opened or closed by hand), `edits` (a text field's `UiEdit {text, cursor}`, drawn instead of the node's `value` with the cursor as a reversed cell), `values` (what was chosen here and the daemon has not echoed yet), `select` (the open `Select` list and its highlighted option) and `cursors` (the item a focused checkbox or switch group has its cursor on).
+`openui` components and `openui` blocks in text (`docs/neoui.md`) are drawn from the evaluated `UiDoc`: the renderer never parses neoui or holds the program's state. Everything purely visual comes in through `Options::openui`, a `UiState` per doc id (it is pure, the app owns the state): `focus` (the focused target), `tabs` (selected tab per `Tabs`), `open` (accordion items opened or closed by hand), `edits` (a text field's `UiEdit {text, cursor}`, drawn instead of the node's `value` with the cursor as a reversed cell), `values` (what was chosen here and the daemon has not echoed yet), `select` (the open `Select` list and its highlighted option) and `cursors` (the item a focused checkbox or switch group has its cursor on).
 
 ```rust
 let targets = openui_targets(&item, &opts);   // fields and buttons by key, tabs and accordion items by path

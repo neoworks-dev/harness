@@ -1,4 +1,4 @@
-//! OpenUI docs (`docs/openui.md`): layout, charts, forms, focus and the visual state, one case
+//! OpenUI docs (`docs/neoui.md`): layout, charts, forms, focus and the visual state, one case
 //! at a time (the snapshots cover the fixtures).
 
 mod common;

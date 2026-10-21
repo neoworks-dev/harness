@@ -29,34 +29,42 @@ function told(
 
 test("the first announcement of an app names its components; a session that has them is not told again", () => {
   const state = new ToldState();
-  const first = told(state, [photo({ components: ["BrightnessCard", "PhotoCard"] })]);
+  const first = told(state, [
+    photo({ components: ["photo-editor.BrightnessCard", "photo-editor.PhotoCard"] }),
+  ]);
   expect(first).toEqual([
     {
       app: "photo-editor",
       kind: "app",
       v: 1,
       tools: ["crop"],
-      components: ["BrightnessCard", "PhotoCard"],
+      components: ["photo-editor.BrightnessCard", "photo-editor.PhotoCard"],
       description: "Edits images.",
     },
   ]);
-  expect(told(state, [photo({ components: ["BrightnessCard", "PhotoCard"] })])).toEqual([]);
+  expect(
+    told(state, [photo({ components: ["photo-editor.BrightnessCard", "photo-editor.PhotoCard"] })]),
+  ).toEqual([]);
 });
 
 test("an app that closes and comes back unchanged says nothing of its components", () => {
   const state = new ToldState();
-  told(state, [photo({ components: ["BrightnessCard"] })]);
+  told(state, [photo({ components: ["photo-editor.BrightnessCard"] })]);
   state.apply({ type: "app_disconnected", app: "photo-editor" });
-  expect(told(state, [photo({ components: ["BrightnessCard"] })])).toEqual([
+  expect(told(state, [photo({ components: ["photo-editor.BrightnessCard"] })])).toEqual([
     { app: "photo-editor", kind: "app", v: 1, tools: ["crop"], reconnect: true },
   ]);
 });
 
 test("a new version lists the components again when they changed, and empty when none are left", () => {
   const state = new ToldState();
-  told(state, [photo({ components: ["BrightnessCard"] })]);
+  told(state, [photo({ components: ["photo-editor.BrightnessCard"] })]);
   expect(
-    told(state, [photo({ v: 2, components: ["BrightnessCard", "PhotoCard"] })], false),
+    told(
+      state,
+      [photo({ v: 2, components: ["photo-editor.BrightnessCard", "photo-editor.PhotoCard"] })],
+      false,
+    ),
   ).toEqual([
     {
       app: "photo-editor",
@@ -64,13 +72,17 @@ test("a new version lists the components again when they changed, and empty when
       v: 2,
       tools: ["crop"],
       previous: 1,
-      components: ["BrightnessCard", "PhotoCard"],
+      components: ["photo-editor.BrightnessCard", "photo-editor.PhotoCard"],
     },
   ]);
   // The tools changed, the components did not: not repeated.
   expect(
     told(state, [
-      photo({ v: 3, tools: ["crop", "resize"], components: ["BrightnessCard", "PhotoCard"] }),
+      photo({
+        v: 3,
+        tools: ["crop", "resize"],
+        components: ["photo-editor.BrightnessCard", "photo-editor.PhotoCard"],
+      }),
     ]),
   ).toEqual([
     {

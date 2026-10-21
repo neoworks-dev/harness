@@ -136,7 +136,7 @@ function renderTableBlock(doc: Document, table: TableBlock): HTMLElement {
   return el(doc, "div", "suite-table-wrap", {}, grid);
 }
 
-/** What a renderer without the component draws in its place (docs/openui.md: web doesn't yet). */
+/** What a renderer without the component draws in its place (docs/neoui.md: web doesn't yet). */
 function renderUnsupported(doc: Document, kind: string): HTMLElement {
   return el(doc, "div", "suite-unsupported", {}, `[unsupported component: ${kind}]`);
 }

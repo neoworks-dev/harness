@@ -17,7 +17,7 @@
     size: number;
     /** The blocks follow others of the same text, drawn apart (a long reply's rows). */
     continued?: boolean;
-    /** The chat item the blocks are in: what a UI block (```openui) sends its input to. */
+    /** The chat item the blocks are in: what a UI block (```neoui) sends its input to. */
     ref?: string;
   }
 

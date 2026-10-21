@@ -32,6 +32,7 @@
         "@suite/sdk": "workspace:*",
       },
       "devDependencies": {
+        "@neoworks/neoui": "link:@neoworks/neoui",
         "@phosphor-icons/core": "^2.1.1",
         "material-icon-theme": "^5.39.0",
         "svelte": "^5.57.0",
@@ -44,8 +45,8 @@
       "dependencies": {
         "@mariozechner/pi-ai": "0.73.1",
         "@modelcontextprotocol/sdk": "^1.32.1",
+        "@neoworks/neoui": "link:@neoworks/neoui",
         "@suite/harness": "workspace:*",
-        "@suite/openui": "workspace:*",
         "@suite/protocol": "workspace:*",
         "ajv": "^8.20.0",
         "diff": "^9.0.0",
@@ -64,14 +65,6 @@
       },
       "devDependencies": {
         "@types/proper-lockfile": "^4.1.4",
-      },
-    },
-    "openui": {
-      "name": "@suite/openui",
-      "dependencies": {
-        "@openuidev/lang-core": "^1.0.1",
-        "@suite/protocol": "workspace:*",
-        "zod": "^4.0.0",
       },
     },
     "protocol": {
@@ -186,11 +179,11 @@
 
     "@modelcontextprotocol/sdk": ["@modelcontextprotocol/sdk@1.32.1", "", { "dependencies": { "@hono/node-server": "^1.19.9 || ^2.0.5", "ajv": "^8.17.1", "ajv-formats": "^3.0.1", "content-type": "^1.0.5", "cors": "^2.8.5", "cross-spawn": "^7.0.5", "eventsource": "^3.0.2", "eventsource-parser": "^3.0.0", "express": "^5.2.1", "express-rate-limit": "^8.2.1", "hono": "^4.11.4", "jose": "^6.1.3", "json-schema-typed": "^8.0.2", "pkce-challenge": "^5.0.0", "raw-body": "^3.0.0", "zod": "^3.25 || ^4.0", "zod-to-json-schema": "^3.25.1" }, "peerDependencies": { "@cfworker/json-schema": "^4.1.1" }, "optionalPeers": ["@cfworker/json-schema"] }, "sha512-2DdE+SJDtzLEEWzY1ZjY7Q+VcPhcV1KisD3zI4u0XZyktsjHum1mwbMI+JaulUBi2OZk+KJAi2uPXzxichPkdw=="],
 
+    "@neoworks/neoui": ["@neoworks/neoui@link:@neoworks/neoui", {}],
+
     "@neoworks/websearch": ["@neoworks/websearch@workspace:websearch"],
 
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.43.0", "", {}, "sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg=="],
-
-    "@openuidev/lang-core": ["@openuidev/lang-core@1.0.1", "", { "dependencies": { "ci-info": "^4.4.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": ">=1.0.0", "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["@modelcontextprotocol/sdk"] }, "sha512-4vBa7FRM6C4v4aCvBAmAtTgFWiEQiNTazG9h4Xy9fC6P/p6+9kZu4RdTyLToBEvdxrYn/gDy/PakEH8PU3lUcw=="],
 
     "@oxlint-tsgolint/darwin-arm64": ["@oxlint-tsgolint/darwin-arm64@7.0.2004", "", { "os": "darwin", "cpu": "arm64" }, "sha512-uJk3ttju7Lz+Nv8WG4CsLyewoL1qf/Ny8S8OksJ7Bm/F14Tc9gMfW6arM1PCc57IzH/X/I79YsCWTgxX1FKibQ=="],
 
@@ -283,8 +276,6 @@
     "@suite/harness": ["@suite/harness@workspace:harness"],
 
     "@suite/lsp": ["@suite/lsp@workspace:services/lsp"],
-
-    "@suite/openui": ["@suite/openui@workspace:openui"],
 
     "@suite/protocol": ["@suite/protocol@workspace:protocol"],
 
@@ -397,8 +388,6 @@
     "chokidar": ["chokidar@4.0.3", "", { "dependencies": { "readdirp": "^4.0.1" } }, "sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA=="],
 
     "chroma-js": ["chroma-js@3.2.0", "", {}, "sha512-os/OippSlX1RlWWr+QDPcGUZs0uoqr32urfxESG9U93lhUfbnlyckte84Q8P1UQY/qth983AS1JONKmLS4T0nw=="],
-
-    "ci-info": ["ci-info@4.4.0", "", {}, "sha512-77PSwercCZU2Fc4sX94eF8k8Pxte6JAwL4/ICZLFjJLqegs7kCuAsqqj/70NQF6TvDpgFjkubQB2FW2ZZddvQg=="],
 
     "clsx": ["clsx@2.1.1", "", {}, "sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA=="],
 

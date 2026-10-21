@@ -1,8 +1,8 @@
 // ui.action: a button in a view was pressed. An action naming an open app's tool (app.tool) runs
 // that tool directly, and its result shows in the chat like any tool call (rendered with the
-// app's template). openui.input and openui.press belong to an OpenUI doc (docs/openui.md).
+// app's template). openui.input and openui.press belong to a neoui doc (docs/neoui.md).
 // Otherwise the agent gets it as input, so it can act on it or explain.
-import type { AssistantMessage, CallTool } from "@suite/openui/program";
+import type { AssistantMessage, CallTool } from "@neoworks/neoui";
 import type { Component, UiAction } from "@suite/protocol/types";
 import { BadRequestError } from "./focus.ts";
 import type { Gateway } from "./gateway/gateway.ts";
@@ -75,7 +75,7 @@ function toolData(result: { text: string; structured?: unknown }): unknown {
 }
 
 /**
- * The tools an OpenUI program's Query and Mutation call, for a session. A mutation is something
+ * The tools a neoui program's Query and Mutation call, for a session. A mutation is something
  * the user did, so it is recorded like a button that runs a tool; a query is a read and is not.
  */
 export function openUiTools(parts: Pick<Parts, "store" | "gateway">, session: string): CallTool {
@@ -94,9 +94,9 @@ export function openUiTools(parts: Pick<Parts, "store" | "gateway">, session: st
   };
 }
 
-/** The line that tells the agent what a button of an OpenUI doc sends. */
+/** The line that tells the agent what a button of a neoui doc sends. */
 function openUiInput(sent: AssistantMessage): string {
-  const lines = [`[ui action] The user pressed "${sent.label}" in an OpenUI doc: ${sent.message}`];
+  const lines = [`[ui action] The user pressed "${sent.label}" in a neoui doc: ${sent.message}`];
   if (sent.values) {
     const where = sent.form === undefined ? "state" : `form ${sent.form}`;
     lines.push(`${where}: ${JSON.stringify(sent.values)}`);
@@ -199,7 +199,7 @@ export class ActionRunner {
       throw new BadRequestError(`${action} needs args {doc, key}`);
     }
     const found = this.parts.views.openUi(session, ref, doc);
-    if (!found) throw new BadRequestError(`${ref} has no OpenUI doc ${doc}`);
+    if (!found) throw new BadRequestError(`${ref} has no neoui doc ${doc}`);
     const { program, view } = found;
     if (action === "openui.input") {
       if (program.input(key, value)) view.changed(ref);

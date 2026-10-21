@@ -11,6 +11,7 @@
     "@suite/sdk": "workspace:*"
   },
   "devDependencies": {
+    "@neoworks/neoui": "link:@neoworks/neoui",
     "@phosphor-icons/core": "^2.1.1",
     "material-icon-theme": "^5.39.0",
     "svelte": "^5.57.0",

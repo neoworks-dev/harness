@@ -1,28 +1,30 @@
-# OpenUI in the suite
+# neoui in the suite
 
-[OpenUI](https://github.com/thesysdev/openui) (spec 1.0, `@openuidev/lang-core`) is how the model and apps describe UI beyond the fixed component set: a compact, streamable program, one statement per line, with reactive state, forms and tool queries. The suite uses it as the **authoring** format. The daemon parses and evaluates every program with `lang-core`, and renderers draw the evaluated tree. A renderer never parses OpenUI Lang, evaluates an expression or holds `$state`; it draws `UiNode`s, keeps purely visual state (selected tab, open accordion, cursor, scroll) and sends what the user does back.
+[neoui](../../neoui/DESIGN.md) (`@neoworks/neoui`, its own repository next to this one) is how the model and apps describe UI beyond the fixed component set: HTML-style markup whose elements are library components, with named form fields, tool queries (`hx-get`) and buttons that act (`hx-post`, `ui-ask`). The suite uses it as the **authoring** format. The daemon parses and evaluates every program with neoui, and renderers draw the evaluated tree. A renderer never parses neoui, evaluates an expression or holds a variable; it draws `UiNode`s, keeps purely visual state (selected tab, open accordion, cursor, scroll) and sends what the user does back. The language itself (syntax, fields and rules, queries, actions, expressions, streaming, the whole library) is in neoui's [DESIGN.md](../../neoui/DESIGN.md) and not repeated here; this page is what the suite does with it.
 
 The terminal renderer (`renderers/ratatui`, used by `apps/term`) is the first to draw it, and the desktop window (`apps/gui`, in Svelte) draws it too. web, the Rust GPUI renderer and the Go TUI show a placeholder until they follow.
 
 ````
-model (```openui fence) ─┐
-app template (OpenUI Lang)┴─► daemon: lang-core parse → evaluate ($state store, queries) → UiDoc
-                                         ▲                                                 │
-                 ui.action openui.input / openui.press                       view.snapshot / view.patch
-                                         └──────────────── renderer ◄──────────────────────┘
+model (```neoui fence) ─┐
+app template (neoui) ───┴─► daemon: neoui parse → evaluate (fields, query results) → UiDoc
+                                         ▲                                               │
+                 ui.action openui.input / openui.press                     view.snapshot / view.patch
+                                         └──────────────── renderer ◄─────────────────────┘
 ````
+
+The wire keeps its names from before neoui: the block and component type is `openui`, the actions are `openui.input` and `openui.press`. Only the language behind them changed.
 
 ## Three layers
 
 What the agent writes is made of three kinds of components, and only the first is a renderer's business:
 
 1. **The library (`suite@1`)** is what renderers draw: the specific components (`Card`, `Table`, the charts, the inputs…) and the generic ones (`Box`, `Shape`) that the specific ones cannot cover. Every renderer draws all of them, natively (the tables below). There are no library versions and no runtime checks for what a renderer supports: a component is in the library when every renderer draws it, and the fixtures (`fixtures/openui-*`) use every component, so a renderer that misses one fails its snapshots.
-2. **App components** are what an app adds to the library for the agent: a name, a description, typed parameters and a program over the library (`app.presence.components`, [protocol/README.md](../protocol/README.md#components)). `BrightnessCard("asset://a", "Sunset")` in the agent's program is a call lang-core checks against the params like any other.
-3. **The daemon** sits between them. It parses programs with the library plus the components of the apps it knows, and replaces each use of an app component with what its program draws, evaluated with the call's arguments as `args`, before the tree goes to a renderer. A use is a program of its own, with its own `$state`, queries and keys, so two `BrightnessCard`s do not share `$level`. Renderers see library components only.
+2. **App components** are what an app adds to the library for the agent: a name, a description, typed parameters and a neoui body over the library (`app.presence.components`, [protocol/README.md](../protocol/README.md#components)). They are written with their app, `<photo-editor.BrightnessCard asset="asset://a" name="Sunset"/>` in the agent's program: the app id, a dot and the name, so nothing clashes with the library or with another app.
+3. **The daemon** sits between them. It parses programs with the library plus the components of the apps it knows, and replaces each use of an app component with what its body draws, evaluated with the use's attributes as its params, before the tree goes to a renderer. A use is a program of its own, with its own fields, queries and keys, so two `photo-editor.BrightnessCard`s do not share `level`. Renderers see library components only.
 
 ```
 agent / app program ─► daemon: parse with library + app components
-                               │  each BrightnessCard(…) ──► its program, run with args ──► library components
+                               │  each <photo-editor.BrightnessCard …/> ──► its body, run with its params ──► library components
                                ▼
                          UiDoc of library components ──► renderers
 ```
@@ -31,24 +33,24 @@ agent / app program ─► daemon: parse with library + app components
 
 Every harness has the same channel, the gateway, so none has its own copy of the language:
 
-- **The prompt.** neo's system prompt, `GUEST_PROMPT` and `MAIN_PROMPT` (`daemon/src/guests/prompt.ts`, for Claude Code and Codex) each say: _You can show UI by writing a ```openui block. Call ui_library before your first one._ A test keeps the three the same.
-- **`ui_library()`**, a core tool of the gateway, returns the guidance (when UI beats prose, how to lay a page out, which component for what), lang-core's reference for the language and the `suite@1` library, and the components of the **connected** apps: under each app, `Name(arg: type, other?: type) — what it is for`. The text is generated when asked (`openui/src/skill.ts`), from the library and the registrations, so nothing on disk can go stale: a gateway test checks that every signature of the library is in it. The chat shows `N lines`, not the text.
-- **The announcement.** `<app connected="photo-editor" kind="app" v="1" tools="…" components="BrightnessCard, PhotoCard" about="…"/>` names the components of an app when it first connects in a session; `<app updated … components="…"/>` lists them again when they changed (a change of components is a new version of the app), empty for none left. The agent calls `ui_library` again to read them. Apps connect while a session runs, so this is how an agent finds out, not the prompt.
+- **The prompt.** neo's system prompt, `GUEST_PROMPT` and `MAIN_PROMPT` (`daemon/src/guests/prompt.ts`, for Claude Code and Codex) each say: _You can show UI by writing a ```neoui block. Call ui_library before your first one._ A test keeps the three the same.
+- **`ui_library()`**, a core tool of the gateway, returns the guidance (when UI beats prose, how to lay a page out, which component for what), neoui's reference for the language and the `suite@1` library, and the components of the **connected** apps: under each app, `<app.Name arg="type" other?="type"/> — what it is for`. The guidance is the harness's own (`daemon/src/gateway/ui-library.ts`); the rest is neoui's `libraryText`, generated when asked from the library and the registrations, so nothing on disk can go stale: a gateway test checks that every signature of the library is in it. The chat shows `N lines`, not the text.
+- **The announcement.** `<app connected="photo-editor" kind="app" v="1" tools="…" components="photo-editor.BrightnessCard, photo-editor.PhotoCard" about="…"/>` names the components of an app, as they are written, when it first connects in a session; `<app updated … components="…"/>` lists them again when they changed (a change of components is a new version of the app), empty for none left. The agent calls `ui_library` again to read them. Apps connect while a session runs, so this is how an agent finds out, not the prompt.
 
 ## Where programs come from
 
-- **The model** writes a fenced block with the language `openui` in a normal message. The daemon's markdown parser turns that fence into an `OpenUiBlock` (`{type: "openui", ui: UiDoc}`) among the message's other blocks, so it streams like text: every chunk re-parses the program and the block is replaced by the `blocks` op from the first changed block on. `ui.streaming` is true until the message is complete. Every harness learns the language and the library from the gateway's **`ui_library`** tool (see **How the agent learns it** below), which its prompt tells it to call before its first block.
-- **Apps** may register a template that is OpenUI Lang instead of component JSON: `templates: {"<tool>": {"openui": "<program>"}}` in `app.presence`. The tool's `structuredContent` is appended to the program as a last statement `data = <value>` (a later statement wins, so a template can't shadow it), and the result is an `OpenUiComponent` (`{type: "openui", ui: UiDoc}`). A template that fails to produce a root falls back to the generic card, as JSON templates do.
-- **App components** are programs too: `components: {"<Name>": {description, params, openui}}` in `app.presence`. The agent writes `Name(args…)` in its own program (or an app in a template), and the daemon runs the component's program in its place (see **App components** below).
+- **The model** writes a fenced block with the language `neoui` in a normal message. The daemon's markdown parser turns that fence into an `OpenUiBlock` (`{type: "openui", ui: UiDoc}`) among the message's other blocks, so it streams like text: every chunk re-parses the program and the block is replaced by the `blocks` op from the first changed block on. `ui.streaming` is true until the message is complete. Every harness learns the language and the library from the gateway's **`ui_library`** tool (see **How the agent learns it** above), which its prompt tells it to call before its first block. A ```openui fence (the language before neoui) is code like any other: old programs are not read.
+- **Apps** may register a template that is neoui instead of component JSON: `templates: {"<tool>": {"neoui": "<markup>"}}` in `app.presence`. The tool's `structuredContent` is given to the program as the value `data` (`program.provide({ data })`), so the template reads `{data.total}` and `<For each={data.rows} …>`; it is not text appended to the program. The result is an `OpenUiComponent` (`{type: "openui", ui: UiDoc}`). A template that fails to produce a root falls back to the generic card, as JSON templates do.
+- **App components** are programs too: `components: {"<Name>": {description, params, neoui}}` in `app.presence`. The agent writes `<app.Name …/>` in its own program (or an app in a template), and the daemon runs the component's body in its place (see **App components** below).
 
 ## The wire format
 
 ```jsonc
 // UiDoc: one evaluated program
-{ "id": "0",              // unique within the item: the n-th OpenUI doc in the item, in document order
+{ "id": "0",              // unique within the item: the n-th neoui doc in the item, in document order
   "root": UiNode,         // absent until there is something to draw
   "streaming": true,      // still arriving: draw it, but no field or button can be used yet
-  "errors": [ { "code": "unknown-component", "message": "…", "statementId": "chart" } ] }
+  "errors": [ { "code": "unknown-component", "message": "…", "statementId": "0.2" } ] }
 
 // UiNode: one evaluated component
 { "component": "Input",   // library name (the tables below)
@@ -57,28 +59,28 @@ Every harness has the same channel, the gateway, so none has its own copy of the
   "props": { … } }        // concrete JSON by prop name; an object with "component" is a child node
 ```
 
-Props are what the library declares (tables below), already evaluated: expressions, `@Each`, ternaries and references are resolved, and markdown is parsed. The daemon adds to the props:
+Props are what the library declares (tables below), already evaluated: expressions, `<For>`, `<If>` and `{…}` in text are resolved, and markdown is parsed. The daemon adds to the props:
 
 | Node                                                                                                                                              | Added props                                                                                                                                                                                                                                   |
 | ------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Text`, `Callout`                                                                                                                                 | `blocks`: the text as parsed markdown (`Block[]` of the view format, never another `openui` block). Draw these, not `text`.                                                                                                                   |
 | inputs (`Input`, `TextArea`, `Select`, `RadioGroup`, `OptionCards`, `CheckBox`, `Switch`, `CheckBoxGroup`, `SwitchGroup`, `Slider`, `DatePicker`) | `value`: the current value (string, bool or number, see below; absent = empty). `error`: the validation message to show, set after a submit attempt fails or a field is left invalid. `required`: true when the rules say so (draw a marker). |
-| `Button`                                                                                                                                          | `url` when its only action is `@OpenUrl` (the client opens or shows it), `copy` when its only action is `@Copy` (the client copies). Otherwise pressing sends `openui.press`. `disabled` when it can't be pressed now.                        |
+| `Button`                                                                                                                                          | `url` when its only behaviour is `href` (the client opens or shows it), `copy` when it is `ui-copy` (the client copies). Otherwise pressing sends `openui.press`. `disabled` when it can't be pressed now.                                    |
 
-The `key` of an interactive node is its statement id, or the statement id plus a path when the node is inline or produced by `@Each` (`row.2.done`). It stays the same while the program re-evaluates.
+The `key` of an interactive node (the eleven inputs, `Button`, `FollowUpItem`) is its element's `id` when it has one, else for an input its field `name`, else its path (the child indices from the root, `0.3.1`; `2.1.0` is the first child of the second iteration of a `For` at `2`). A repeated key gets `#2`. Inside an app component it is `<where the use sits>/<key inside it>` (`a/level`, `0.1/level`). It stays the same while the program text before the element does not change.
 
 ## What the user does
 
 Both go over the existing `ui.action {session, ref, action, args}`:
 
-- `openui.input {doc, key, value}` is a field's new value: a string for `Input`, `TextArea`, `DatePicker`, `Select`, `RadioGroup`, `OptionCards`; a bool for `CheckBox`, `Switch`; a list of item names for `CheckBoxGroup`; an object of item name to bool for `SwitchGroup` (a partial one changes only the items it names); a number for `Slider`. The daemon writes it to the bound `$variable` or form field, re-evaluates and patches the item (`set`). Clients send it as the value changes, debounced (about 150 ms) for typing, and always right before an `openui.press`. While a field has focus the client keeps its own text and cursor and ignores the `value` coming back for that field.
-- `openui.press {doc, key}` presses a button. The daemon runs its action plan: `@Set`, `@Reset`, `@Run` (queries and mutations call app tools through the gateway, as `app.tool` actions do), and `@ToAssistant(message, context?)`, which sends the agent an input like a button press does today, with the form's values and the context attached. A button inside a `Form` first validates the form's fields: if any fails, the daemon sets their `error` props and runs nothing.
+- `openui.input {doc, key, value}` is a field's new value: a string for `Input`, `TextArea`, `DatePicker`, `Select`, `RadioGroup`, `OptionCards`; a bool for `CheckBox`, `Switch`; a list of item names for `CheckBoxGroup`; an object of item name to bool for `SwitchGroup` (a partial one changes only the items it names); a number for `Slider`. The daemon holds it as the field's variable (`$name`), re-evaluates and patches the item (`set`). Clients send it as the value changes, debounced (about 150 ms) for typing, and always right before an `openui.press`. While a field has focus the client keeps its own text and cursor and ignores the `value` coming back for that field.
+- `openui.press {doc, key}` presses a button. The daemon runs its steps in neoui's fixed order: `ui-set`, then the request (`hx-post` and `hx-get` call app tools through the gateway, as `app.tool` actions do), `ui-reset`, and `ui-ask="message"` (with `ui-context`), which sends the agent an input like a button press does today, with the form's values and the context attached. A button inside a `Form` first validates the form's fields: if any fails, the daemon sets their `error` props and runs nothing. A failing request halts the rest.
 
 Nothing is sent while `streaming` is true. State lives in the daemon, per session, item and doc, in memory: a restart keeps the program but forgets typed values.
 
 ## The library (`suite@1`)
 
-Arguments are positional in the order listed. Optional ones are marked `?`, and `Node` means a component call. **The order is part of the format**: stored programs carry no prop names, so props are only ever added at the end (spec §3). `Tone` = `accent | muted | success | danger`.
+The props of the evaluated nodes, by name; in a neoui program they are the attributes of the element (neoui's `src/library.ts` is the definition and its `ui_library` text the signatures a model reads; children go where the element is nested, and `Table`/`List` text may be written between the tags). Optional ones are marked `?`, and `Node` means a component. `Tone` = `accent | muted | success | danger`.
 
 ### Layout
 
@@ -134,36 +136,36 @@ Arguments are positional in the order listed. Optional ones are marked `?`, and 
 
 ### Forms
 
-| Component       | Props                                                                                                                                  |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `Form`          | `name: string`, `children: Node[]`, `buttons?: Buttons`                                                                                |
-| `FormControl`   | `label: string`, `input: Node`, `hint?: string`                                                                                        |
-| `Input`         | `name: string`, `placeholder?: string`, `type?: "text" \| "email" \| "url" \| "number" \| "password"`, `rules?: Rules`, `value?: $var` |
-| `TextArea`      | `name: string`, `placeholder?: string`, `rules?: Rules`, `value?: $var`                                                                |
-| `Select`        | `name: string`, `options: Option[]`, `placeholder?: string`, `rules?: Rules`, `value?: $var`                                           |
-| `Option`        | `value: string`, `label?: string`                                                                                                      |
-| `RadioGroup`    | `name: string`, `options: Option[]`, `rules?: Rules`, `value?: $var`                                                                   |
-| `OptionCards`   | `name: string`, `options: OptionCard[]`, `rules?: Rules`, `value?: $var`                                                               |
-| `OptionCard`    | `value: string`, `title: string`, `description?: string`                                                                               |
-| `CheckBox`      | `name: string`, `label: string`, `rules?: Rules`, `value?: $var`                                                                       |
-| `Switch`        | `name: string`, `label: string`, `value?: $var`                                                                                        |
-| `CheckBoxGroup` | `name: string`, `items: CheckBoxItem[]`, `rules?: Rules`, `value?: $var` (the list of checked names)                                   |
-| `CheckBoxItem`  | `name: string`, `label: string`, `description?: string`, `checked?: bool` (starts checked)                                             |
-| `SwitchGroup`   | `name: string`, `items: SwitchItem[]`, `value?: $var` (an object, name to on/off)                                                      |
-| `SwitchItem`    | `name: string`, `label: string`, `description?: string`, `checked?: bool` (starts on)                                                  |
-| `Slider`        | `name: string`, `min: number`, `max: number`, `step?: number`, `value?: $var`                                                          |
-| `DatePicker`    | `name: string`, `rules?: Rules`, `value?: $var` (`YYYY-MM-DD`)                                                                         |
-| `Button`        | `label: string`, `action?: Action`, `variant?: "primary" \| "secondary" \| "danger"`                                                   |
-| `Buttons`       | `buttons: Button[]`                                                                                                                    |
-| `FollowUpBlock` | `items: FollowUpItem[]` (suggested next questions)                                                                                     |
-| `FollowUpItem`  | `text: string` (choosing it sends the text to the assistant)                                                                           |
+| Component       | Props                                                                                                                            |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `Form`          | `name: string`, `children: Node[]`, `buttons?: Buttons`                                                                          |
+| `FormControl`   | `label: string`, `input: Node`, `hint?: string`                                                                                  |
+| `Input`         | `name: string`, `placeholder?: string`, `type?: "text" \| "email" \| "url" \| "number" \| "password"`, `rules?: Rules`, `value?` |
+| `TextArea`      | `name: string`, `placeholder?: string`, `rules?: Rules`, `value?`                                                                |
+| `Select`        | `name: string`, `options: Option[]`, `placeholder?: string`, `rules?: Rules`, `value?`                                           |
+| `Option`        | `value: string`, `label?: string`                                                                                                |
+| `RadioGroup`    | `name: string`, `options: Option[]`, `rules?: Rules`, `value?`                                                                   |
+| `OptionCards`   | `name: string`, `options: OptionCard[]`, `rules?: Rules`, `value?`                                                               |
+| `OptionCard`    | `value: string`, `title: string`, `description?: string`                                                                         |
+| `CheckBox`      | `name: string`, `label: string`, `rules?: Rules`, `value?`                                                                       |
+| `Switch`        | `name: string`, `label: string`, `value?`                                                                                        |
+| `CheckBoxGroup` | `name: string`, `items: CheckBoxItem[]`, `rules?: Rules`, `value?` (the list of checked names)                                   |
+| `CheckBoxItem`  | `name: string`, `label: string`, `description?: string`, `checked?: bool` (starts checked)                                       |
+| `SwitchGroup`   | `name: string`, `items: SwitchItem[]`, `value?` (an object, name to on/off)                                                      |
+| `SwitchItem`    | `name: string`, `label: string`, `description?: string`, `checked?: bool` (starts on)                                            |
+| `Slider`        | `name: string`, `min: number`, `max: number`, `step?: number`, `value?`                                                          |
+| `DatePicker`    | `name: string`, `rules?: Rules`, `value?` (`YYYY-MM-DD`)                                                                         |
+| `Button`        | `label: string`, `variant?: "primary" \| "secondary" \| "danger"`                                                                |
+| `Buttons`       | `buttons: Button[]`                                                                                                              |
+| `FollowUpBlock` | `items: FollowUpItem[]` (suggested next questions)                                                                               |
+| `FollowUpItem`  | `text: string` (choosing it sends the text to the assistant)                                                                     |
 
 `Box` and `Shape` are the generic components: what no specific one above is (a swatch, a timeline, a bar of parts, a gauge) is built from them, within what a terminal can draw. **Sizes are shares and colours are tones**: never pixels, cells, hex colours or fonts.
 
 - **`Box`** is a `Stack` with a look. `width` is how much of its parent's width it takes: `fill` (what the siblings leave; the default in a column), `fit` (its content's; the default in a row) or a number from 0 to 1, a share of the parent's width (in a row, of what the gaps leave, so `0.5, 0.5` fills it exactly). `fill` is a wash of a tone behind the children, `border` a frame in a tone, `rounded` rounds the frame's corners, `pad` the room between frame and children. A box with none of them is just its children.
 - **`Shape`** draws one `rect`, `line`, `path` or `arc` in a box of 0 to 1 on both sides, the top left corner `0,0`, which the parent sizes to its width and `aspect` (width over height, default 2) to a height. `points` are flat numbers, all 0 to 1 (outside is held to the edge): `rect` is `x, y, w, h`; `line` is `x1, y1, x2, y2` and any further points to connect; `path` is the corners of a closed shape; `arc` is `cx, cy, r, from, to`, `r` a share of the box's shorter side so a circle stays round, `from` and `to` turns clockwise from the top (`0.25` is 3 o'clock; the way round that passes the top counts, a whole turn is a circle). `fill` fills a rect, a path or, for an arc, the wedge to its center; the stroke is in `tone` (the text color without one). **Shapes that follow each other as siblings share one box and are drawn over each other in order**: a timeline row is its bars as Shapes, side by side in one Box.
 
-`Rules` is the spec's validation object (`required`, `email`, `url`, `numeric`, `minLength`, `maxLength`, `min`, `max`, `pattern`). Actions are the spec's built-ins (`@ToAssistant`, `@OpenUrl`, `@Set`, `@Reset`, `@Run`) plus the library's `@Copy(text)`.
+The inputs' `rules` are the HTML-named rules neoui reads off the attributes (`required`, `type="email"`, `minLength`, `pattern`…; [DESIGN.md](../../neoui/DESIGN.md#rules)); the node keeps them as an object, with `required: true` and the `error` to show.
 
 ## Drawing it in a terminal
 
@@ -191,7 +193,7 @@ The ratatui renderer's rules (the README there is the full reference):
 
 The desktop window (`apps/gui`, `ui/plugins/transcript/openui/`) draws the same tree as real cards, charts and controls instead of character art, and keeps the terminal's meaning: what a prop does, how layout adapts to the width, what is sent when. The README there has what the user sees and the keys.
 
-- **Where.** A ` ```openui ` block is drawn in its place among the agent's prose, a UI result of a tool (an app's template) under its row, which stays open while the doc has a field or a button. Layout works from the width the column gives (never measured after the fact), so a doc is laid out in the first frame.
+- **Where.** A ` ```neoui ` block is drawn in its place among the agent's prose, a UI result of a tool (an app's template) under its row, which stays open while the doc has a field or a button. Layout works from the width the column gives (never measured after the fact), so a doc is laid out in the first frame.
 - **Layout.** Pixels where the terminal has cells: a `Grid` or a run of sibling Cards has as many columns as fit at 240 px (at most `columns`), every card in a row as tall as the tallest; a run of two or more Metrics, and a row of only Metrics, is one band divided by thin rules; a row Stack stacks when its children do not fit at their narrowest and wraps with `wrap`; a Carousel shows as many slides as fit (at most `visible`) with `‹ 2–3/5 ›` under them. `EntityList` puts each subtitle under its title when the row does not fit.
 - **Content.** Cards are rounded on the surface colour (`tone` colours the outline and title, `sunk` is the fill alone, `clear` neither), `Tag` is a pill on a wash of its tone, `Callout` has a bar in its tone, tables right-align number columns, `Code` is the chat's code block. A `MetricIndicator` is one inline line with a caret for the direction.
 - **Box and Shape.** A `Box` is a view with the share of the parent's width it asks for in pixels (`pad` `s`, `m`, `l` is 8, 14 or 20 px), its tone fill as a wash of the surface and its border a 1 px frame; `rounded` rounds it. A `Shape` is an SVG per shape over one box, `aspect` times wider than tall, tinted by its tone; strokes are 2 px and an outline sits inside the box. Shapes that follow each other in a column are one box.
@@ -203,15 +205,13 @@ The desktop window (`apps/gui`, `ui/plugins/transcript/openui/`) draws the same 
 
 ## How the daemon does it
 
-The code is `openui/` (the `suite@1` library, `components.ts` for the apps' components, `Program`: lang-core parse, evaluate and state, `skill.ts` for the text `ui_library` returns) and `daemon/src/view/` (`openui.ts`, `markdown.ts`, `session-view.ts`).
+The language is `@neoworks/neoui` (a sibling repository: a fresh clone runs `cd ../neoui && bun link` once, see the README) and the daemon's part is `daemon/src/view/` (`neoui.ts`: a running `Program` for each doc, `markdown.ts`, `session-view.ts`) and `daemon/src/gateway/` (`registry.ts` for the apps' components, `ui-library.ts` for the text `ui_library` returns).
 
-- **Fences.** A top-level code block whose language is `openui` (or `openui-lang`) becomes an `openui` block; in lists and quotes, in thoughts and in messages between agents it stays code. A fence still open is `streaming` until it closes; a message that ends (`turn_ended`) with a fence left open finishes it, with the usual errors. A half-written closing fence (`` ` `` or ` `` `) is not part of the program.
-- **While streaming** only the statement being written is `partial`, and `errors` stay out: what looks broken may be unfinished. Queries do not start, and `openui.input` and `openui.press` do nothing.
-- **Keys.** An interactive node's `key` is the id of the statement it is in, when that statement has only that one (`service = FormControl("Service", Select("service", …))`: `service`). Otherwise the statement id and the path to the node: `c.buttons.1`, `root.children.2` (a node made by `@Each`).
-- **Fields.** An input bound to a `$variable` writes it; any other keeps its value in the doc, per form and name. Select, RadioGroup and OptionCards only take one of their options, a CheckBoxGroup a list of its items' names (kept in the items' order) and a SwitchGroup an object of them (an item not mentioned keeps its state; an item's `checked` is where it starts, unless a `$variable` already holds a value), a Slider is held to `min`..`max`, a CheckBox and a Switch take a bool, and the rest a string; anything else is ignored. A required CheckBox or Switch has to be on. A DatePicker has to be `YYYY-MM-DD`. A field that failed is checked again whenever it changes. Messages are lang-core's ("Please enter a valid email").
-- **Buttons.** A button with no action sends its label to the agent; a `FollowUpItem` is such a button whose label is its text. `url` is only set for `http:`, `https:` and `mailto:` addresses. `@OpenUrl` and `@Copy` inside a plan of several steps do nothing. `disabled` is set while a mutation the button runs is in flight.
-- **What the agent hears** is one input per `@ToAssistant`: `[ui action] The user pressed "Deploy" in an OpenUI doc: Deploy with these settings`, then `form deploy: {…}` (the form's values; outside a form `state: {…}` with the `$variables`), then `context: {…}`.
-- **Tools.** A `Query` runs when its doc is finished and draws, and after a `@Run` of it, through the gateway (`app.tool`), and is not recorded. A `Mutation` runs on press and is recorded in the session like a button that runs a tool (so its result shows in the chat with the app's template). A failing tool is an entry in `errors`; the doc keeps the query's defaults.
-- **App components.** The library the daemon parses with is the suite's plus the components of every connector it knows (also closed ones, which are kept like templates, so an old reply still draws), built when a component changes and shared by all sessions; a program asks for it whenever it is set, so an app that connects while a reply streams is used by the next chunk. Registration (`app.presence`) leaves out, with a warning in the log, a component whose name is not a PascalCase identifier, whose params are not typed or put an optional before a required one, or whose program does not parse, has no `root` or uses what it does not define; the app connects with the rest. Each component is in the library under its qualified name (`PhotoEditorBrightnessCard`: lang-core reads `photo-editor.X` as a subtraction and a member access) and under its plain name when neither the library, the language nor an app that registered earlier (`registered` on the stored connector) has it. A use is expanded where it sits: the node a call evaluates to is replaced by the root of a program of its own, `<component's program>` then `args = <the call's arguments as JSON>`, made once per place in the doc (`root.children.0`, `a`) and kept for as long as the place holds a use of that component, with its own `$state`, queries and keys. Its keys are the use's place and the key inside it (`a/slider`), which is what `openui.input` and `openui.press` carry; they are routed to that program. A query or mutation in it goes through the gateway like any other; a query answering patches the item. The component's program is made of the library alone (an app component cannot call another), which keeps expansion finite. A use whose component is gone, or whose program draws nothing, is a `Callout` saying so, with the error on the doc.
-- **Plain statements in a query.** A `Query` or `Mutation` argument that names a plain statement (`args.asset`, `limit`) reads its value, as it does in a prop; lang-core leaves those as references and only resolves queries.
-- **State** is kept per view, item and doc, in memory, and a doc is told apart by its item `ref` (`m-<messageId>` for a message) and `id`.
+- **Fences.** A top-level code block whose language is `neoui` becomes an `openui` block; in lists and quotes, in thoughts and in messages between agents it stays code, and so does ```openui. A fence still open is `streaming` until it closes; a message that ends (`turn_ended`) with a fence left open finishes it, with the usual errors. A half-written closing fence (`` ` `` or ` `` `) is not part of the program.
+- **While streaming** only the element being written is `partial`, and `errors` stay out: what looks broken may be unfinished. Queries do not start, and `openui.input` and `openui.press` do nothing.
+- **Keys.** See **The wire format**: the element's `id`, else the field's name, else its path.
+- **Fields.** A field's `name` is its variable; two fields of one name are one variable. Select, RadioGroup and OptionCards only take one of their options, a CheckBoxGroup a list of its items' names (kept in the items' order) and a SwitchGroup an object of them (an item not mentioned keeps its state; an item's `checked` is where it starts), a Slider is held to `min`..`max`, a CheckBox and a Switch take a bool, and the rest a string; anything else is ignored. A required CheckBox or Switch has to be on. A DatePicker has to be `YYYY-MM-DD`. A field that failed is checked again whenever it changes. Messages are lang-core's carried over ("Please enter a valid email").
+- **Buttons.** A button with no behaviour sends its label to the agent; a `FollowUpItem` is such a button whose label is its text. `url` is only set for `http:`, `https:` and `mailto:` addresses. `href` and `ui-copy` on a button that does more do nothing. `disabled` is set while a request the button made is in flight.
+- **What the agent hears** is one input per `ui-ask`: `[ui action] The user pressed "Deploy" in a neoui doc: Deploy with these settings`, then `form deploy: {…}` (the form's values; outside a form `state: {…}` with the variables, by name), then `context: {…}`.
+- **Tools.** A `<Query>` runs when its doc is finished and draws, and again when what it reads changes, through the gateway (`app.tool`), and is not recorded. An `hx-post` request runs on press and is recorded in the session like a button that runs a tool (so its result shows in the chat with the app's template); `hx-get` on a button is a read and is not recorded. A failing tool is an entry in `errors`; the doc keeps the query's default.
+- **App components.** The library the daemon parses with is the suite's plus the components of every connector it knows (also closed ones, which are kept like templates, so an old reply still draws), built when a component changes and shared by all sessions; a program asks for it whenever it is set, so an app that connects while a reply streams is used by the next chunk. Every component is in it under `app.Name`, so apps never compete for a name and the order of registration does not matter. Registration (`app.presence`) checks each component on its own (`checkComponents`) and leaves out, with a warning in the log, one whose name is not a PascalCase identifier, whose description is empty, whose params are not typed or put an optional before a required one, which has an `openui` body instead of `neoui`, or whose body has repairs, does not draw or uses what it does not define; the app connects with the rest. A plain `<BrightnessCard>` that only an app has is an `unknown-component` that says `did you mean photo-editor.BrightnessCard?`; it is never guessed. A use is expanded where it sits: the element is replaced by the root of the body drawn in a program of its own, with the use's attributes as the params, made once per place in the doc (its `id`, or its path) and kept for as long as the place holds a use of that component, with its own fields, queries and keys. Its keys are the use's place and the key inside it (`a/level`), which is what `openui.input` and `openui.press` carry; they are routed to that program. A query or request in it goes through the gateway like any other; a query answering patches the item. The body is made of the library alone (an app component cannot call another), which keeps expansion finite. A use whose component is gone, or whose body draws nothing, is a `Callout` saying so, with the error on the doc.
