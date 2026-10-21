@@ -74,17 +74,18 @@ export class NeoSubagents {
     private readonly options: SubagentOptions,
   ) {}
 
-  /** The session's neo subagent, made on first use. */
-  private subagent(session: string): Subagent {
-    const existing = this.agents.get(session);
+  /** The session's neo subagent (one per agent definition too), made on first use. */
+  private subagent(session: string, definition?: string): Subagent {
+    const key = definition === undefined ? session : `${session}\0${definition}`;
+    const existing = this.agents.get(key);
     if (existing) return existing;
     const created: Subagent = {
-      session: this.create(session),
+      session: this.create(session, definition),
       told: new ToldState(),
       queue: Promise.resolve(),
     };
-    created.session.catch(() => this.agents.delete(session));
-    this.agents.set(session, created);
+    created.session.catch(() => this.agents.delete(key));
+    this.agents.set(key, created);
     return created;
   }
 
@@ -99,7 +100,7 @@ export class NeoSubagents {
 
   /** Runs one task on the session's neo subagent (made on first use; follow-ups continue it). */
   async run(session: string, task: string, opts: RunOptions): Promise<GuestRunResult> {
-    const current = this.subagent(session);
+    const current = this.subagent(session, opts.definition);
     let agentSession: AgentSession;
     try {
       agentSession = await current.session;
@@ -111,12 +112,13 @@ export class NeoSubagents {
     return turn;
   }
 
-  private create(session: string): Promise<AgentSession> {
+  private create(session: string, definition?: string): Promise<AgentSession> {
     const { options } = this;
     const params: NewSessionParams = {
-      sessionId: `${session}-neo`,
+      sessionId: definition === undefined ? `${session}-neo` : `${session}-neo-${definition}`,
       cwd: options.cwd(session),
       mcpServers: options.mcpServers(session),
+      subagent: { ...(definition !== undefined && { definition }) },
     };
     if (options.resolveAsset) params.resolveAsset = options.resolveAsset;
     const settings = options.settings(session);

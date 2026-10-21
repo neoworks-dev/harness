@@ -19,7 +19,8 @@
 // goes on with them before the subagent is over. One subagent per harness and directory runs at
 // a time, which is how a message finds its recipient.
 import { homedir } from "node:os";
-import type { AgentUpdate, ConfigCategory, ConfigOption } from "@suite/harness/agent";
+import type { AgentInfo, AgentUpdate, ConfigCategory, ConfigOption } from "@suite/harness/agent";
+import { findAgent, listAgents } from "@suite/harness/agents";
 import type { DelegateArgs, ModelsArgs } from "@suite/protocol/core-tools";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type {
@@ -35,6 +36,7 @@ import type { SessionManager } from "../sessions.ts";
 import { type Approvals, CATEGORIES, type HarnessSettings } from "../settings.ts";
 import type { SessionStore } from "../store.ts";
 import type { GuestManager } from "./guests.ts";
+import type { RunOptions } from "./run.ts";
 import { NEO } from "./subagent.ts";
 import { createWorktree, resolveTarget, type Target } from "./worktree.ts";
 
@@ -195,12 +197,13 @@ export function createDelegate(parts: DelegateParts): Delegate {
     explicit: HarnessSettings,
     target: Target | undefined,
     background: boolean,
+    definition: AgentInfo | undefined,
     signal?: AbortSignal,
   ): Promise<Decision | { refusal: CallToolResult }> {
     // What will run: the call's own choices win over the user's.
     const effective = { ...parts.settings(session, agent), ...explicit };
     const where = target?.dir ?? "";
-    const key = `${session}\0${agent}\0${where}\0${JSON.stringify(effective)}`;
+    const key = `${session}\0${agent}\0${definition?.name ?? ""}\0${where}\0${JSON.stringify(effective)}`;
     if (allowed.has(key) || parts.autoApprove?.(session) === true) {
       return { agent, settings: explicit };
     }
@@ -213,11 +216,12 @@ export function createDelegate(parts: DelegateParts): Delegate {
       options.push({ id: `use:${other}`, name: `Use ${guests.title(other)}`, kind: "allow_once" });
     }
     options.push({ id: "reject", name: "Reject", kind: "reject_once" });
-    const details: PermissionDetail[] = [
-      { key: "Harness", value: title },
+    const details: PermissionDetail[] = [{ key: "Harness", value: title }];
+    if (definition) details.push({ key: "Agent", value: definition.name });
+    details.push(
       { key: "Model", value: effective.model ?? "default" },
       { key: "Effort", value: effective.thought_level ?? "default" },
-    ];
+    );
     if (effective.mode !== undefined) details.push({ key: "Mode", value: effective.mode });
     details.push({ key: "Directory", value: describeDirectory(session, target) });
     if (background) details.push({ key: "Runs", value: "in the background" });
@@ -266,6 +270,7 @@ export function createDelegate(parts: DelegateParts): Delegate {
     task: string,
     settings: HarnessSettings,
     signal: AbortSignal,
+    definition?: string,
   ): Promise<Result> {
     const emit = (update: AgentUpdate): void => {
       parts.append(session, update);
@@ -273,12 +278,9 @@ export function createDelegate(parts: DelegateParts): Delegate {
     const takeMessages = (): string[] => messenger.takeOf(session, member.id);
     let prompt = task;
     for (;;) {
-      const result = await guests.run(session, member.agent, prompt, {
-        emit,
-        signal,
-        settings,
-        takeMessages,
-      });
+      const runOptions: RunOptions = { emit, signal, settings, takeMessages };
+      if (definition !== undefined) runOptions.definition = definition;
+      const result = await guests.run(session, member.agent, prompt, runOptions);
       const out: Result = { text: result.text, stopReason: result.stopReason };
       if (result.error !== undefined) out.error = result.error;
       if (result.stopReason !== "end_turn") return out;
@@ -443,11 +445,26 @@ export function createDelegate(parts: DelegateParts): Delegate {
   };
 
   const run: Delegate["run"] = async (session, args, signal) => {
-    const { agent, task } = args;
+    const { task } = args;
+    let { agent } = args;
     const harnesses = guests.harnesses();
+    // A name that is not a harness may be an agent definition: it runs on neo.
+    const definitions = guests.agentDefinitions(session);
+    let definition: AgentInfo | undefined;
     if (!harnesses.includes(agent)) {
-      const known = harnesses.length > 0 ? harnesses.join(", ") : "none are configured";
-      return text(`No guest named ${agent} (${known}).`, true);
+      definition = findAgent(definitions, agent);
+      if (definition) agent = NEO;
+    }
+    if (!harnesses.includes(agent)) {
+      const names = [...harnesses, ...listAgents(definitions).map((d) => d.name)];
+      const known = names.length > 0 ? names.join(", ") : "none are configured";
+      return text(`No guest named ${args.agent} (${known}).`, true);
+    }
+    if (definition && (args.cwd !== undefined || args.worktree !== undefined)) {
+      return text(
+        `${definition.name} is an agent definition: it works in the session's directory, not in a cwd or worktree of its own.`,
+        true,
+      );
     }
     if (sessions.info(session)?.parent !== undefined) {
       return text("Subagents can't delegate.", true);
@@ -457,7 +474,10 @@ export function createDelegate(parts: DelegateParts): Delegate {
     const target = resolved;
 
     // Before asking for something that would fail: the harness's own list of names.
-    const explicit = explicitSettings(args);
+    // The definition's model is a person's choice, the call's own still wins over it.
+    const explicit: HarnessSettings = {};
+    if (definition?.model !== undefined) explicit.model = definition.model;
+    Object.assign(explicit, explicitSettings(args));
     const options = await guests.knownOptions(session, agent);
     for (const category of ["model", "thought_level"] as const) {
       const wanted = explicit[category];
@@ -470,8 +490,19 @@ export function createDelegate(parts: DelegateParts): Delegate {
     const background = args.background === true;
     const busy = busyWith(session, agent, target);
     if (busy !== undefined) return text(busy, true);
-    const decision = await decide(session, agent, task, explicit, target, background, signal);
+    const decision = await decide(
+      session,
+      agent,
+      task,
+      explicit,
+      target,
+      background,
+      definition,
+      signal,
+    );
     if ("refusal" in decision) return decision.refusal;
+    // Another harness knows nothing of the definition.
+    if (decision.agent !== agent) definition = undefined;
     if (decision.agent !== agent) {
       const other = busyWith(session, decision.agent, target);
       if (other !== undefined) return text(other, true);
@@ -492,6 +523,7 @@ export function createDelegate(parts: DelegateParts): Delegate {
       agent: decision.agent,
       task,
     };
+    if (definition) started.name = definition.name;
     if (effective.model !== undefined) started.model = effective.model;
     if (effective.thought_level !== undefined) started.effort = effective.thought_level;
     if (target) started.cwd = target.dir;
@@ -501,7 +533,15 @@ export function createDelegate(parts: DelegateParts): Delegate {
     const stop = new AbortController();
     messenger.join(session, member, background);
     parts.append(session, started);
-    const done = work(session, member, task, decision.settings, child, stop.signal);
+    const done = work(
+      session,
+      member,
+      task,
+      decision.settings,
+      child,
+      stop.signal,
+      definition?.name,
+    );
     running.set(id, { session, stop, background, done });
     const where: string[] = [];
     if (decision.agent !== agent) {
@@ -578,12 +618,13 @@ export function createDelegate(parts: DelegateParts): Delegate {
     settings: HarnessSettings,
     child: string | undefined,
     signal: AbortSignal,
+    definition?: string,
   ): Promise<Result> {
     let result: Result;
     try {
       result =
         child === undefined
-          ? await inSession(session, member, task, settings, signal)
+          ? await inSession(session, member, task, settings, signal, definition)
           : await inDirectory(session, child, member, task, settings, signal);
     } catch (err) {
       result = {

@@ -42,6 +42,8 @@ pub struct Agent {
     pub id: String,
     /// Harness name: neo, claude, codex…
     pub harness: String,
+    /// The agent definition it runs as (a reviewer on neo), shown instead of the harness.
+    pub name: Option<String>,
     pub model: Option<String>,
     pub task: String,
     /// The directory it works in, when that isn't the session's.
@@ -56,6 +58,13 @@ pub struct Agent {
     /// Its latest tool call, or what it does between them.
     pub activity: String,
     pub tokens: Option<i64>,
+}
+
+impl Agent {
+    /// What the list calls it: the agent definition it runs as, else its harness.
+    pub fn label(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.harness)
+    }
 }
 
 /// What a key in the focused list asks the app to do.
@@ -151,6 +160,7 @@ impl Agents {
                 self.rows.push(Agent {
                     id: e.id.clone(),
                     harness: e.agent.clone(),
+                    name: e.name.clone(),
                     model: e.model.clone(),
                     task: e.task.clone(),
                     cwd: e.cwd.clone(),
@@ -390,7 +400,7 @@ fn row(agent: &Agent, w: usize, now_ms: i64, styles: &Styles) -> Line<'static> {
         AgentState::Failed => ("✗", styles.danger),
         AgentState::Stopped => ("✗", styles.muted),
     };
-    let mut name = agent.harness.clone();
+    let mut name = agent.label().to_string();
     if let Some(model) = &agent.model {
         // `provider/model-id` reads as the id.
         name.push_str(&format!(" · {}", model.rsplit('/').next().unwrap_or(model)));
@@ -508,7 +518,7 @@ impl Transcript {
         let mut title = vec![
             Span::styled("◂ ", styles.accent),
             Span::styled(
-                a.harness.clone(),
+                a.label().to_string(),
                 styles.accent.add_modifier(Modifier::BOLD),
             ),
         ];

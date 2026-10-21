@@ -26,4 +26,9 @@ export interface RunOptions {
    * goes, an adapter when the turn starts (the gateway adds later ones to its tool results).
    */
   takeMessages?: () => string[];
+  /**
+   * neo only: run as this agent definition (harness agents.ts), a conversation of its own next to
+   * the plain neo subagent's.
+   */
+  definition?: string;
 }

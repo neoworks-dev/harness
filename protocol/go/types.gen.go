@@ -1920,7 +1920,9 @@ type SubagentStarted struct {
 	ID string `json:"id"`
 	// Harness name: neo, claude, codex…
 	Agent string `json:"agent"`
-	Task  string `json:"task"`
+	// The agent definition it runs as (neo with a reviewer's instructions and tools), when it is not the harness itself; what lists show instead of `agent`.
+	Name *string `json:"name,omitempty"`
+	Task string  `json:"task"`
 	// The model it runs with, when one was chosen for this task or by the user.
 	Model  *string `json:"model,omitempty"`
 	Effort *string `json:"effort,omitempty"`
