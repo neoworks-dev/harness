@@ -16,6 +16,7 @@
                   {
                     "component": "Stack",
                     "props": {
+                      "direction": "row",
                       "children": [
                         {
                           "component": "Metric",
@@ -39,38 +40,39 @@
                           "component": "Metric",
                           "props": { "label": "Largest", "value": "Documents", "delta": "355 GB" }
                         }
-                      ],
-                      "direction": "row"
+                      ]
                     }
                   },
                   {
                     "component": "Grid",
                     "props": {
+                      "columns": 2,
                       "children": [
                         {
                           "component": "Card",
                           "props": {
+                            "title": "Where the space goes",
                             "children": [
                               {
                                 "component": "BarChart",
                                 "props": {
                                   "labels": ["Documents", ".cache", "Games", "Other"],
+                                  "horizontal": true,
                                   "series": [
                                     {
                                       "component": "Series",
                                       "props": { "name": "GB", "values": [355, 65, 48, 103] }
                                     }
-                                  ],
-                                  "horizontal": true
+                                  ]
                                 }
                               }
-                            ],
-                            "title": "Where the space goes"
+                            ]
                           }
                         },
                         {
                           "component": "Card",
                           "props": {
+                            "title": "Documents",
                             "children": [
                               {
                                 "component": "Table",
@@ -83,13 +85,14 @@
                                   ]
                                 }
                               }
-                            ],
-                            "title": "Documents"
+                            ]
                           }
                         },
                         {
                           "component": "Card",
                           "props": {
+                            "title": "Last 6 months",
+                            "tone": "accent",
                             "children": [
                               {
                                 "component": "Sparkline",
@@ -98,13 +101,10 @@
                                   "label": "Used, GB"
                                 }
                               }
-                            ],
-                            "title": "Last 6 months",
-                            "tone": "accent"
+                            ]
                           }
                         }
-                      ],
-                      "columns": 2
+                      ]
                     }
                   }
                 ]

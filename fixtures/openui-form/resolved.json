@@ -23,6 +23,7 @@
                         "key": "service",
                         "props": {
                           "name": "service",
+                          "placeholder": "Pick a service",
                           "options": [
                             { "component": "Option", "props": { "value": "api", "label": "API" } },
                             {
@@ -34,7 +35,6 @@
                               "props": { "value": "worker", "label": "Worker" }
                             }
                           ],
-                          "placeholder": "Pick a service",
                           "rules": { "required": true },
                           "required": true,
                           "value": "api"
@@ -46,6 +46,7 @@
                     "component": "FormControl",
                     "props": {
                       "label": "Notify email",
+                      "hint": "We send the report here",
                       "input": {
                         "component": "Input",
                         "key": "email",
@@ -58,8 +59,7 @@
                           "value": "ops@",
                           "error": "Please enter a valid email"
                         }
-                      },
-                      "hint": "We send the report here"
+                      }
                     }
                   },
                   {
@@ -147,7 +147,7 @@
                       {
                         "component": "Button",
                         "key": "deploy",
-                        "props": { "label": "Deploy", "variant": "primary" }
+                        "props": { "variant": "primary", "label": "Deploy" }
                       },
                       {
                         "component": "Button",

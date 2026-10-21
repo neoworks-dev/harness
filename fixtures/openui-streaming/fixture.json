@@ -1,10 +1,10 @@
 {
-  "description": "An openui fence still streaming: the table's last row is cut off mid-string, so it's partial and the doc takes no input yet.",
+  "description": "An neoui fence still streaming: the table's last row is cut off mid-string, so it's partial and the doc takes no input yet.",
   "events": [
     {
       "type": "agent_message_chunk",
       "messageId": "m1",
-      "text": "Checking:\n\n```openui\nroot = Card([title, progress, rows], \"Disk usage\")\ntitle = Header(\"Disk usage\", \"/dev/nvme0n1\")\nprogress = Progress(0.72, \"72% used\")\nrows = Table([\"Path\", \"Size\"], [[\"/home\", \"310 GB\"], [\"/var"
+      "text": "Checking:\n\n```neoui\n<Card title=\"Disk usage\">\n  <Header title=\"Disk usage\" subtitle=\"/dev/nvme0n1\"/>\n  <Progress value={0.72} label=\"72% used\"/>\n  <Table columns={[\"Path\", \"Size\"]} rows={[[\"/home\", \"310 GB\"], [\"/var"
     }
   ]
 }

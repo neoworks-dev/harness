@@ -17,6 +17,7 @@
                   {
                     "component": "Card",
                     "props": {
+                      "title": "Disk /",
                       "children": [
                         {
                           "component": "Header",
@@ -45,8 +46,8 @@
                         {
                           "component": "Text",
                           "props": {
-                            "text": "`/home/moritz` alone holds 756 GB of that.",
                             "tone": "muted",
+                            "text": "`/home/moritz` alone holds 756 GB of that.",
                             "blocks": [
                               {
                                 "type": "paragraph",
@@ -58,13 +59,13 @@
                             ]
                           }
                         }
-                      ],
-                      "title": "Disk /"
+                      ]
                     }
                   },
                   {
                     "component": "Card",
                     "props": {
+                      "title": "Where the space goes (home)",
                       "children": [
                         {
                           "component": "Header",
@@ -84,6 +85,7 @@
                               "Downloads",
                               "Other"
                             ],
+                            "horizontal": true,
                             "series": [
                               {
                                 "component": "Series",
@@ -92,17 +94,16 @@
                                   "values": [355, 65, 62, 60, 48, 25, 21, 17, 103]
                                 }
                               }
-                            ],
-                            "horizontal": true
+                            ]
                           }
                         }
-                      ],
-                      "title": "Where the space goes (home)"
+                      ]
                     }
                   },
                   {
                     "component": "Card",
                     "props": {
+                      "title": "Documents breakdown",
                       "children": [
                         {
                           "component": "Table",
@@ -118,13 +119,13 @@
                             ]
                           }
                         }
-                      ],
-                      "title": "Documents breakdown"
+                      ]
                     }
                   },
                   {
                     "component": "Card",
                     "props": {
+                      "title": "Cache — the cheap reclaim",
                       "children": [
                         {
                           "component": "Header",
@@ -155,9 +156,9 @@
                         {
                           "component": "Callout",
                           "props": {
-                            "text": "Deleting `.cache` content is safe — it's rebuilt on demand. Startup and first builds will be slower once.",
                             "tone": "muted",
                             "title": "Note",
+                            "text": "Deleting `.cache` content is safe — it's rebuilt on demand. Startup and first builds will be slower once.",
                             "blocks": [
                               {
                                 "type": "paragraph",
@@ -172,8 +173,7 @@
                             ]
                           }
                         }
-                      ],
-                      "title": "Cache — the cheap reclaim"
+                      ]
                     }
                   }
                 ]

@@ -70,13 +70,14 @@
                           "component": "AccordionItem",
                           "props": {
                             "title": "Warnings",
+                            "open": true,
                             "children": [
                               {
                                 "component": "Callout",
                                 "props": {
-                                  "text": "p99 rose **18%** during the canary.",
                                   "tone": "danger",
                                   "title": "Latency",
+                                  "text": "p99 rose **18%** during the canary.",
                                   "blocks": [
                                     {
                                       "type": "paragraph",
@@ -89,8 +90,7 @@
                                   ]
                                 }
                               }
-                            ],
-                            "open": true
+                            ]
                           }
                         }
                       ]

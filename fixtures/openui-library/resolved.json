@@ -16,10 +16,12 @@
                   {
                     "component": "Carousel",
                     "props": {
+                      "visible": 2,
                       "children": [
                         {
                           "component": "Card",
                           "props": {
+                            "title": "One",
                             "children": [
                               {
                                 "component": "Text",
@@ -30,13 +32,14 @@
                                   ]
                                 }
                               }
-                            ],
-                            "title": "One"
+                            ]
                           }
                         },
                         {
                           "component": "Card",
                           "props": {
+                            "title": "Two",
+                            "tone": "accent",
                             "children": [
                               {
                                 "component": "Text",
@@ -47,14 +50,14 @@
                                   ]
                                 }
                               }
-                            ],
-                            "title": "Two",
-                            "tone": "accent"
+                            ]
                           }
                         },
                         {
                           "component": "Card",
                           "props": {
+                            "title": "Three",
+                            "tone": "success",
                             "children": [
                               {
                                 "component": "Text",
@@ -65,19 +68,16 @@
                                   ]
                                 }
                               }
-                            ],
-                            "title": "Three",
-                            "tone": "success"
+                            ]
                           }
                         }
-                      ],
-                      "visible": 2
+                      ]
                     }
                   },
                   { "component": "Separator", "props": {} },
                   {
                     "component": "Code",
-                    "props": { "code": "fn main() {\n    println!(\"hi\");\n}", "language": "rust" }
+                    "props": { "language": "rust", "code": "fn main() {\n    println!(\"hi\");\n}" }
                   },
                   {
                     "component": "KeyValue",
@@ -102,7 +102,7 @@
                             "subtitle": "analyst",
                             "trailing": {
                               "component": "Tag",
-                              "props": { "label": "admin", "tone": "accent" }
+                              "props": { "tone": "accent", "label": "admin" }
                             }
                           }
                         },
@@ -143,7 +143,7 @@
                   },
                   {
                     "component": "Link",
-                    "props": { "text": "Docs", "url": "https://example.com/docs" }
+                    "props": { "url": "https://example.com/docs", "text": "Docs" }
                   },
                   {
                     "component": "AreaChart",
@@ -237,12 +237,12 @@
                       "items": [
                         {
                           "component": "FollowUpItem",
-                          "key": "follow.items.0",
+                          "key": "0.10.0",
                           "props": { "text": "Why is it slow?" }
                         },
                         {
                           "component": "FollowUpItem",
-                          "key": "follow.items.1",
+                          "key": "0.10.1",
                           "props": { "text": "Show the queries" }
                         }
                       ]

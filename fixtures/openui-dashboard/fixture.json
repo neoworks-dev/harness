@@ -1,12 +1,12 @@
 {
-  "description": "An app's OpenUI template: a card with metrics in a row, tabs over a bar chart and sparkline, a donut chart and a table with tags; data from the tool's structuredContent.",
+  "description": "An app's neoui template: a card with metrics in a row, tabs over a bar chart and sparkline, a donut chart and a table with tags; data from the tool's structuredContent.",
   "item": {
     "kind": "tool",
     "label": "analytics.revenue",
     "state": "done"
   },
   "template": {
-    "openui": "root = Card([header, kpis, tabs], \"Revenue\")\nheader = Header(\"Monthly revenue\", \"Last 6 months\")\nkpis = Stack([m1, m2, m3], \"row\")\nm1 = Metric(\"Revenue\", \"$25k\", \"+19%\", \"success\")\nm2 = Metric(\"Customers\", 412, \"+12\", \"success\")\nm3 = Metric(\"Churn\", \"2.1%\", \"+0.4pt\", \"danger\")\ntabs = Tabs([Tab(\"Trend\", [chart, spark]), Tab(\"Mix\", [pie]), Tab(\"Accounts\", [table])])\nchart = BarChart(data.months, [Series(\"Revenue\", data.revenue), Series(\"Costs\", data.costs)])\nspark = Sparkline(data.revenue, \"Revenue\")\npie = PieChart([Slice(\"Pro\", 62), Slice(\"Team\", 28), Slice(\"Free\", 10)], true)\ntable = Table([\"Account\", \"Plan\", \"MRR\"], [[\"Acme\", Tag(\"Pro\", \"accent\"), 1200], [\"Globex\", Tag(\"Team\"), 480], [\"Initech\", Tag(\"Free\", \"muted\"), 0]])"
+    "neoui": "<Card title=\"Revenue\">\n  <Header title=\"Monthly revenue\" subtitle=\"Last 6 months\"/>\n  <Stack direction=\"row\">\n    <Metric label=\"Revenue\" value=\"$25k\" delta=\"+19%\" tone=\"success\"/>\n    <Metric label=\"Customers\" value={412} delta=\"+12\" tone=\"success\"/>\n    <Metric label=\"Churn\" value=\"2.1%\" delta=\"+0.4pt\" tone=\"danger\"/>\n  </Stack>\n  <Tabs>\n    <Tab label=\"Trend\">\n      <BarChart labels={data.months}>\n        <Series name=\"Revenue\" values={data.revenue}/>\n        <Series name=\"Costs\" values={data.costs}/>\n      </BarChart>\n      <Sparkline values={data.revenue} label=\"Revenue\"/>\n    </Tab>\n    <Tab label=\"Mix\">\n      <PieChart donut>\n        <Slice label=\"Pro\" value={62}/><Slice label=\"Team\" value={28}/><Slice label=\"Free\" value={10}/>\n      </PieChart>\n    </Tab>\n    <Tab label=\"Accounts\">\n      <Table columns={[\"Account\", \"Plan\", \"MRR\"]}>\n        <Row>Acme<Tag tone=\"accent\">Pro</Tag>{1200}</Row>\n        <Row>Globex<Tag>Team</Tag>{480}</Row>\n        <Row>Initech<Tag tone=\"muted\">Free</Tag>{0}</Row>\n      </Table>\n    </Tab>\n  </Tabs>\n</Card>"
   },
   "data": {
     "months": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
