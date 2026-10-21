@@ -1,6 +1,6 @@
 //! The slash-command list and the session switcher's state.
 
-use suite_protocol::{SessionInfo, SessionState};
+use suite_protocol::{SessionInfo, SessionState, SlashCommand};
 
 use crate::util::{relative_time, shorten_home};
 
@@ -105,7 +105,7 @@ pub const COMMANDS: &[Command] = &[
     local("quit", "leave; the session keeps running"),
 ];
 
-/// The command named by the first word of `text` ("/model sonnet" → model), if any.
+/// The command of ours named by the first word of `text` ("/model sonnet" → model), if any.
 pub fn lookup(text: &str) -> Option<&'static Command> {
     let word = text
         .trim_start()
@@ -115,15 +115,69 @@ pub fn lookup(text: &str) -> Option<&'static Command> {
     COMMANDS.iter().find(|c| c.name == word)
 }
 
-/// Commands matching what is typed after the slash: names starting with it first, then ones
-/// containing it.
-pub fn matching(typed: &str) -> Vec<&'static Command> {
-    let q = typed.strip_prefix('/').unwrap_or(typed).to_lowercase();
-    let mut out: Vec<&Command> = COMMANDS.iter().filter(|c| c.name.starts_with(&q)).collect();
-    if out.is_empty() {
-        out = COMMANDS.iter().filter(|c| c.name.contains(&q)).collect();
+/// A row of the menu as shown: one of ours, or one the session's harness lists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Item {
+    pub name: String,
+    /// Argument hint shown after the name.
+    pub args: String,
+    pub desc: String,
+    /// Handled by this app instead of being sent to the daemon.
+    pub local: bool,
+    /// Pointless without arguments (Enter completes it instead of running it).
+    pub needs_args: bool,
+}
+
+impl From<&Command> for Item {
+    fn from(c: &Command) -> Item {
+        Item {
+            name: c.name.to_string(),
+            args: c.args.to_string(),
+            desc: c.desc.to_string(),
+            local: c.local,
+            needs_args: c.needs_args,
+        }
+    }
+}
+
+/// The whole menu while the session runs on `harness`, which lists `listed`: our commands, then
+/// the harness's. A harness command named like one of ours is left out, and ours says so: ours
+/// win (the daemon answers them, the harness never sees them).
+pub fn items_for(harness: &str, listed: &[SlashCommand]) -> Vec<Item> {
+    let mut out: Vec<Item> = COMMANDS.iter().map(Item::from).collect();
+    for command in listed {
+        if let Some(ours) = out.iter_mut().find(|c| c.name == command.name) {
+            ours.desc = format!("{} (replaces {harness}'s /{})", ours.desc, command.name);
+        } else {
+            out.push(Item {
+                name: command.name.clone(),
+                args: command.hint.clone().unwrap_or_default(),
+                desc: command.description.clone().unwrap_or_default(),
+                local: false,
+                needs_args: false,
+            });
+        }
     }
     out
+}
+
+/// Items matching what is typed after the slash: names starting with it first, then ones
+/// containing it.
+pub fn matching(typed: &str, items: &[Item]) -> Vec<Item> {
+    let q = typed.strip_prefix('/').unwrap_or(typed).to_lowercase();
+    let starts: Vec<Item> = items
+        .iter()
+        .filter(|c| c.name.to_lowercase().starts_with(&q))
+        .cloned()
+        .collect();
+    if !starts.is_empty() {
+        return starts;
+    }
+    items
+        .iter()
+        .filter(|c| c.name.to_lowercase().contains(&q))
+        .cloned()
+        .collect()
 }
 
 /// Whether the editor text is a command being typed: a slash, no space or newline yet.
@@ -270,7 +324,13 @@ mod tests {
 
     #[test]
     fn slash_matching() {
-        let names = |q: &str| matching(q).iter().map(|c| c.name).collect::<Vec<_>>();
+        let all = items_for("neo", &[]);
+        let names = |q: &str| {
+            matching(q, &all)
+                .iter()
+                .map(|c| c.name.to_string())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(names("/").len(), COMMANDS.len());
         assert_eq!(names("/c"), ["clear", "claude", "codex"]);
         assert_eq!(names("/mod"), ["model", "mode"]);
@@ -279,6 +339,49 @@ mod tests {
         // No prefix match falls back to containing.
         assert_eq!(names("/ssion"), ["sessions"]);
         assert!(names("/zzz").is_empty());
+    }
+
+    fn listed(name: &str, description: &str, hint: Option<&str>) -> SlashCommand {
+        SlashCommand {
+            name: name.into(),
+            description: Some(description.into()),
+            hint: hint.map(Into::into),
+        }
+    }
+
+    #[test]
+    fn a_harness_adds_its_commands_after_ours_and_ours_win_a_name() {
+        let listed = [
+            listed("review", "Review the changes", Some("branch or PR")),
+            listed("model", "Claude's model picker", None),
+            listed("compact", "Summarise", None),
+        ];
+        let all = items_for("claude", &listed);
+        let names: Vec<_> = all.iter().map(|c| c.name.to_string()).collect();
+        assert_eq!(names.len(), COMMANDS.len() + 2, "model is not added twice");
+        assert_eq!(&names[COMMANDS.len()..], ["review", "compact"]);
+        let review = &all[COMMANDS.len()];
+        assert_eq!(
+            (&*review.args, &*review.desc),
+            ("branch or PR", "Review the changes")
+        );
+        assert!(!review.local && !review.needs_args);
+        let model = all.iter().find(|c| c.name == "model").unwrap();
+        assert!(
+            model.desc.contains("replaces claude's /model"),
+            "{}",
+            model.desc
+        );
+        // Ours stay as they were for a harness that lists nothing.
+        let plain = items_for("claude", &[]);
+        assert_eq!(plain.len(), COMMANDS.len());
+        assert!(!plain.iter().any(|c| c.desc.contains("replaces")));
+        // The menu filters over both.
+        let typed: Vec<_> = matching("/re", &all)
+            .iter()
+            .map(|c| c.name.to_string())
+            .collect();
+        assert_eq!(typed, ["resume", "review"]);
     }
 
     #[test]

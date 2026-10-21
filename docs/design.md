@@ -132,7 +132,37 @@ A skill is a directory with a `SKILL.md`: frontmatter `name` (default: the direc
 2. `$XDG_CONFIG_HOME/suite/skills/*/SKILL.md` (`~/.config/suite/skills/…`), the user's;
 3. `<session cwd>/.suite/skills/*/SKILL.md`, the project's.
 
-The system prompt lists each skill as `- name: description`, with a line telling the model to load one before work it covers. The `skill {name}` core tool returns the text (the chat shows `N lines`, not the text); an unknown name is a tool error that lists the names. It reads only what the session found, so it never asks permission; it is in the tool list of every session, with skills or without. The list is read once per session, so a new skill shows from the next session on, and the prompt (and its cache) changes only when the skills do. `HarnessConfig.skills` holds the two fixed directories (none in tests that don't set it).
+The skills of enabled plugins (below) come first, so these three replace them by name; two plugins with the same skill name are both written `plugin:name`. The system prompt lists each skill as `- name: description`, with a line telling the model to load one before work it covers. The `skill {name}` core tool returns the text (the chat shows `N lines`, not the text); an unknown name is a tool error that lists the names. It reads only what the session found, so it never asks permission; it is in the tool list of every session, with skills or without. The list is read once per session, so a new skill shows from the next session on, and the prompt (and its cache) changes only when the skills do. `HarnessConfig.skills` holds the two fixed directories (none in tests that don't set it).
+
+### Plugins
+
+neo loads Claude Code plugins, installed by the harness itself so it doesn't depend on Claude Code (it never reads `~/.claude/plugins`). Guests (Claude Code, Codex) load their own.
+
+```
+~/.config/suite/plugins/
+  installed.json         { version: 1, plugins: { "name@marketplace": { root, version, enabled, installedAt, entry? } } }
+  marketplaces.json      the marketplaces added, and where from
+  marketplaces/<name>/   a marketplace's repository (or the copy of a folder)
+  cache/<marketplace>/<name>/<version>/   an installed plugin
+```
+
+A marketplace is a git repo or folder with `.claude-plugin/marketplace.json`; `/plugin marketplace add anthropics/claude-plugins-official` (also a git URL or a path) copies it. An entry's `source` is a path in the marketplace (`./plugins/x`) or `{source: "github" | "url" | "git-subdir", …}` with an optional `ref` and a pinned `sha`; npm sources are refused. `/plugin install name@marketplace` copies the plugin into the cache and records it in `installed.json` with its marketplace `entry` (that is where `lspServers` lives). `/plugin` lists, `search [text]` browses the marketplaces, `uninstall`, `enable`, `disable`, `marketplace remove|update`. Removing a marketplace uninstalls its plugins. The reply says what the plugin brings and what takes a new session.
+
+What a plugin brings, for sessions on neo:
+
+| In the plugin                                             | Becomes                                                                                                                                                                                         |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `skills/<name>/SKILL.md` (and `skills` paths in manifest) | neo's skills, read when a session starts; the skill's text ends with its base directory                                                                                                         |
+| `commands/<name>.md`                                      | `/name` in the menu (`/plugin:name` when the name is taken by a daemon command or another plugin; always valid). `$ARGUMENTS`, `$1`…`$9` are filled in; the chat shows what was typed (`shown`) |
+| `.mcp.json`, `mcpServers`                                 | MCP servers the daemon runs (below), with `${CLAUDE_PLUGIN_ROOT}` expanded                                                                                                                      |
+| `lspServers` in the entry or manifest, `.lsp.json`        | language servers of services/lsp, after the fixed ones; read on every file                                                                                                                      |
+| `agents/`, `hooks/`                                       | not used by neo yet                                                                                                                                                                             |
+
+Not done for commands: `` !`cmd` `` output and `@file` includes in the body (the text goes to neo as it is), and `allowed-tools`.
+
+### MCP servers the daemon runs
+
+Most MCP servers are stdio programs, which the gateway's Streamable HTTP client can't reach. The daemon starts them from `mcpServers` in Claude Code's shape: `{ command, args, env }`, or `{ type: "http", url, headers }`. They come from `mcpServers` in `~/.config/suite/config.json`, from enabled plugins' `.mcp.json`, and, if config.json has `"projectMcp": true`, from the `.mcp.json` of the session directories (off by default: a repository's file starts programs). `${VAR}`, `${VAR:-default}` and `${CLAUDE_PLUGIN_ROOT}` are expanded. Each server is a `service` connector named `mcp-<name>` (`mcp-<plugin>-<name>` for a plugin's, unless the server has the plugin's name): `tools_search` finds its tools, `tools_call` runs them, sessions are told with `<app connected=…/>`. A server that dies is started again after 1 s, 2 s, 4 s … up to 60 s (the pauses start over once one ran for a minute; after 8 failures in a row it is left alone until the configuration changes). Its stored tools stay searchable while it is down. They stop with the daemon. A server starts with the SDK's small default environment plus its `env`, not the daemon's.
 
 ### System prompt (static, identical for every session)
 
@@ -390,6 +420,7 @@ This keeps all three renderers thin without a shared library across three langua
 - **Asset store.** Content-addressed files under `<data>/assets` (`asset://img-<12 hex>`, `file-…` for non-images), so the same bytes always get the same handle; a JSON sidecar keeps the name, type and producing app. Bus: `asset.put {path|data}` / `asset.get {handle}` / `asset.fetch {url}` → `asset.info`; `asset.fetch` downloads a web image so clients only ever read files (http(s) to public addresses only, redirects checked too, png / jpeg / gif / webp up to 20 MB, 8 s, each URL once while the daemon runs); HTTP `/assets` for browsers. The agent's bash and read take handles as paths (bash commands get them substituted); write and edit refuse them.
 - **`file.changed`** is derived from the diffs of the agent's write/edit results and passed on when an app sends it after saving (not echoed to the sender).
 - **The lsp service** is a separate process the daemon starts (`kind: service`), driving gopls / typescript-language-server / rust-analyzer per project root; files are re-read before each request. Editors call it through the gateway like the agent does.
+- **Slash commands** a harness offers beyond the daemon's own are a `commands_available {harness, commands: [{name, description?, hint?}]}` event in the session log; the latest of a harness replaces the earlier ones. For Claude Code and Codex the daemon takes them from the adapter's `available_commands_update` (also outside a turn, and before `session/new` answers) and logs them when they change; for neo they are the enabled plugins' commands, logged when a session starts, when plugins change and on the next input. A client shows the latest list of the harness the session runs on after its own commands, which win a name clash (the menu says so). `/name args` is sent as the user's text; a guest runs its command, neo's plugin commands are expanded by the daemon.
 - **The working directory** is told to the model once per session (`<session cwd=…/>` in the first prompt), since the system prompt carries no session state.
 - **Stand-ins**: browser (TS/web), photo editor (Go/terminal), code editor (Pad, GPUI). Go and Rust apps serve their tools with small hand-written MCP servers (`sdk-go/tools`, `sdk_rs::tools`), the TS one with the MCP SDK.
 
