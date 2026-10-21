@@ -497,20 +497,20 @@ export interface AppPresence {
   pid?: number;
   /** View templates for this app's tool results, keyed by tool name (without the app prefix). Format: protocol/README.md#templates. Kept by the daemon so results still render after the app closes. */
   templates?: Record<string, unknown>;
-  /** OpenUI components this app offers the agent, built from the library, keyed by name. Format: protocol/README.md#components. Kept by the daemon so docs that use them still draw after the app closes. */
+  /** neoui components this app offers the agent, built from the library, keyed by name. The agent writes each as `<app.Name …/>`, the app id, a dot and the name. Format: protocol/README.md#components. Kept by the daemon so docs that use them still draw after the app closes. */
   components?: Record<string, AppComponent>;
   /** One line for the agent about what the app is for, shown when it first connects in a session. Default: the first sentence of the MCP server's instructions. */
   description?: string;
 }
 
-/** An OpenUI component an app offers: what the agent may write as Name(…), and the program that draws it. The name is a PascalCase identifier that no library component, no other app's component and none of Query, Mutation or Action has; a clash rejects the registration. */
+/** A neoui component an app offers: what the agent may write as `<app.Name …/>`, and the markup that draws it. The name is a PascalCase identifier; the app id in front makes it its own, so it can clash with no library component and no other app's. */
 export interface AppComponent {
   /** What it is and when to use it; the agent reads it. */
   description: string;
-  /** Its arguments, positional in this order, by name. Each is string, number, boolean or any, optionally an array (string[]) and optionally optional (string?); the optional ones come last. */
+  /** Its attributes, by name. Each is string, number, boolean or any, optionally an array (string[]) and optionally optional (string?); the optional ones come last. */
   params: Record<string, string>;
-  /** The program, OpenUI Lang over the library (not over other app components). The arguments are the object `args`; each use has its own $state, queries and keys. */
-  openui: string;
+  /** The body, neoui over the library (not over other app components). The params are in scope by name and as `args`; each use has its own fields, queries and keys. */
+  neoui: string;
 }
 
 /** The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it. */
@@ -705,7 +705,7 @@ export interface AppConnected {
   tools: string[];
   /** One line about the connector; only in the first app_connected a session gets for it. */
   description?: string;
-  /** Names of the OpenUI components the connector offers (ui_library has their signatures). The full current list: with the first app_connected a session gets for it when there are any, and with an update when it changed (empty: it has none now). Rendered as components=…. */
+  /** What to write to use the neoui components the connector offers, `photo-editor.BrightnessCard` (ui_library has their signatures). The full current list: with the first app_connected a session gets for it when there are any, and with an update when it changed (empty: it has none now). Rendered as components=…. */
   components?: string[];
   /** The session already saw this exact version: earlier schemas still apply. Rendered as <app reconnected=…/>. */
   reconnect?: boolean;
@@ -1132,7 +1132,7 @@ export interface LinkComponent {
   text?: string;
 }
 
-/** A UI written in OpenUI Lang (an app's template or a Query result), parsed and evaluated by the daemon (docs/openui.md). Renderers draw the evaluated tree. */
+/** A UI written in neoui (an app's template or a Query result), parsed and evaluated by the daemon (docs/neoui.md). Renderers draw the evaluated tree. */
 export interface OpenUiComponent {
   type: "openui";
   ui: UiDoc;
@@ -1200,13 +1200,13 @@ export interface TableBlock {
   align?: ColumnAlign[];
 }
 
-/** An ```openui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/openui.md). Streams like any block. */
+/** A ```neoui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/neoui.md). The block type stays `openui`. Streams like any block. */
 export interface OpenUiBlock {
   type: "openui";
   ui: UiDoc;
 }
 
-/** One evaluated OpenUI program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions. */
+/** One evaluated neoui program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions. */
 export interface UiDoc {
   id: string;
   root?: UiNode;
@@ -1215,7 +1215,7 @@ export interface UiDoc {
   errors?: UiError[];
 }
 
-/** An evaluated component of the suite OpenUI library (docs/openui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node. */
+/** An evaluated component of the suite library (docs/neoui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node. */
 export interface UiNode {
   /** Library component name, e.g. Card, Input, BarChart. */
   component: string;

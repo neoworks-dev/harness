@@ -56,10 +56,8 @@ export interface StoredConnector {
   launch?: LaunchSpec;
   /** View templates by tool name (without the app prefix). */
   templates?: Record<string, unknown>;
-  /** The OpenUI components it offers, by name. */
+  /** The neoui components it offers, by name (written `app.Name`). */
   components?: Record<string, AppComponent>;
-  /** When it first registered (ms): of two apps with a component of one name, the earlier keeps it. */
-  registered?: number;
 }
 
 export interface StoredTool {

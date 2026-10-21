@@ -8,7 +8,7 @@
 # data dir, and is stopped afterwards. SEED holds lines to send first, one input each, e.g.
 #   SEED=$'hello\nshow me a diff' apps/gui/scripts/shot.sh /tmp/gui.png 4
 # SCENE=openui SCENE_SCRIPT=scene-openui.ts SCENE_DOCS=dashboard,form (scripts/openui-docs.ts) has the
-# agent answer with OpenUI docs, to look at how the window draws them.
+# agent answer with neoui docs, to look at how the window draws them.
 # Build first: bun apps/gui/build.mjs && cargo build --release -p suite-gui
 set -euo pipefail
 

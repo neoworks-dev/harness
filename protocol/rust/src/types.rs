@@ -1263,7 +1263,7 @@ pub struct AppPresence {
     /// View templates for this app's tool results, keyed by tool name (without the app prefix). Format: protocol/README.md#templates. Kept by the daemon so results still render after the app closes.
     #[serde(rename = "templates", default, skip_serializing_if = "Option::is_none")]
     pub templates: Option<BTreeMap<String, serde_json::Value>>,
-    /// OpenUI components this app offers the agent, built from the library, keyed by name. Format: protocol/README.md#components. Kept by the daemon so docs that use them still draw after the app closes.
+    /// neoui components this app offers the agent, built from the library, keyed by name. The agent writes each as `<app.Name …/>`, the app id, a dot and the name. Format: protocol/README.md#components. Kept by the daemon so docs that use them still draw after the app closes.
     #[serde(
         rename = "components",
         default,
@@ -1279,18 +1279,18 @@ pub struct AppPresence {
     pub description: Option<String>,
 }
 
-/// An OpenUI component an app offers: what the agent may write as Name(…), and the program that draws it. The name is a PascalCase identifier that no library component, no other app's component and none of Query, Mutation or Action has; a clash rejects the registration.
+/// A neoui component an app offers: what the agent may write as `<app.Name …/>`, and the markup that draws it. The name is a PascalCase identifier; the app id in front makes it its own, so it can clash with no library component and no other app's.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppComponent {
     /// What it is and when to use it; the agent reads it.
     #[serde(rename = "description")]
     pub description: String,
-    /// Its arguments, positional in this order, by name. Each is string, number, boolean or any, optionally an array (string[]) and optionally optional (string?); the optional ones come last.
+    /// Its attributes, by name. Each is string, number, boolean or any, optionally an array (string[]) and optionally optional (string?); the optional ones come last.
     #[serde(rename = "params")]
     pub params: BTreeMap<String, String>,
-    /// The program, OpenUI Lang over the library (not over other app components). The arguments are the object `args`; each use has its own $state, queries and keys.
-    #[serde(rename = "openui")]
-    pub openui: String,
+    /// The body, neoui over the library (not over other app components). The params are in scope by name and as `args`; each use has its own fields, queries and keys.
+    #[serde(rename = "neoui")]
+    pub neoui: String,
 }
 
 /// The connector's MCP server (Streamable HTTP). The gateway lists its tools and forwards calls to it.
@@ -2011,7 +2011,7 @@ pub struct AppConnected {
         skip_serializing_if = "Option::is_none"
     )]
     pub description: Option<String>,
-    /// Names of the OpenUI components the connector offers (ui_library has their signatures). The full current list: with the first app_connected a session gets for it when there are any, and with an update when it changed (empty: it has none now). Rendered as components=….
+    /// What to write to use the neoui components the connector offers, `photo-editor.BrightnessCard` (ui_library has their signatures). The full current list: with the first app_connected a session gets for it when there are any, and with an update when it changed (empty: it has none now). Rendered as components=….
     #[serde(
         rename = "components",
         default,
@@ -2927,7 +2927,7 @@ pub struct LinkComponent {
     pub text: Option<String>,
 }
 
-/// A UI written in OpenUI Lang (an app's template or a Query result), parsed and evaluated by the daemon (docs/openui.md). Renderers draw the evaluated tree.
+/// A UI written in neoui (an app's template or a Query result), parsed and evaluated by the daemon (docs/neoui.md). Renderers draw the evaluated tree.
 /// Tagged `type: "openui"` inside [`Component`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OpenUiComponent {
@@ -3134,7 +3134,7 @@ pub struct TableBlock {
     pub align: Option<Vec<ColumnAlign>>,
 }
 
-/// An ```openui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/openui.md). Streams like any block.
+/// A ```neoui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/neoui.md). The block type stays `openui`. Streams like any block.
 /// Tagged `type: "openui"` inside [`Block`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OpenUiBlock {
@@ -3142,7 +3142,7 @@ pub struct OpenUiBlock {
     pub ui: UiDoc,
 }
 
-/// One evaluated OpenUI program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions.
+/// One evaluated neoui program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UiDoc {
     #[serde(rename = "id")]
@@ -3156,7 +3156,7 @@ pub struct UiDoc {
     pub errors: Option<Vec<UiError>>,
 }
 
-/// An evaluated component of the suite OpenUI library (docs/openui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node.
+/// An evaluated component of the suite library (docs/neoui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UiNode {
     /// Library component name, e.g. Card, Input, BarChart.

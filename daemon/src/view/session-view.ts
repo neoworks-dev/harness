@@ -1,8 +1,7 @@
 // A session's chat as drawn: session events → view items, and each new event → the ops that
 // update every pane. Streaming text is merged here (re-parsed, only changed tail blocks sent);
 // tool results are filled into their app's template, or a generic card when there is none.
-import type { AppLibrary } from "@suite/openui/components";
-import type { CallTool, Program } from "@suite/openui/program";
+import type { AppLibrary, CallTool, Program } from "@neoworks/neoui";
 import type {
   Block,
   Component,
@@ -21,7 +20,7 @@ import type { Logger } from "../log.ts";
 import { MAIN, MESSAGES_APP } from "../messages.ts";
 import { diffLines } from "./diff.ts";
 import { GrowingMarkdown, parseMarkdown } from "./markdown.ts";
-import { isOpenUiTemplate, OpenUiDocs, templateProgram } from "./openui.ts";
+import { isNeoUiTemplate, NeoUiDocs, templateData } from "./neoui.ts";
 import { resolveTemplate, TemplateError } from "./template.ts";
 
 /** Finds the template registered for a tool (app.tool), if any. */
@@ -32,7 +31,7 @@ interface Stream {
   kind: "agent" | "thought";
   raw: string;
   blocks: Block[];
-  /** The message is complete: an openui fence still open is a finished program. */
+  /** The message is complete: a neoui fence still open is a finished program. */
   ended: boolean;
   markdown: GrowingMarkdown;
 }
@@ -133,12 +132,12 @@ export class SessionView {
   private readonly windows = new Map<string, string>();
   /** Those of them that outlive a turn (started in the background). */
   private readonly background = new Set<string>();
-  private readonly docs: OpenUiDocs;
+  private readonly docs: NeoUiDocs;
   private seq = 0;
   /** Inside `replay`, and the streams whose text has grown since they were parsed. */
   private replaying = false;
   private readonly unparsed = new Set<string>();
-  /** Told of the ops a change outside the event log makes (an OpenUI doc answering). */
+  /** Told of the ops a change outside the event log makes (a neoui doc answering). */
   onOps: ((ops: ViewOp[]) => void) | undefined;
 
   /**
@@ -155,7 +154,7 @@ export class SessionView {
     tools?: CallTool,
     apps?: () => AppLibrary,
   ) {
-    this.docs = new OpenUiDocs((ref) => this.changed(ref), tools, apps);
+    this.docs = new NeoUiDocs((ref) => this.changed(ref), tools, apps);
   }
 
   /** The seq of the last event applied. */
@@ -573,7 +572,7 @@ export class SessionView {
   }
 
   /**
-   * The blocks of a streamed message; its openui fences are programs, running ones. A chunk only
+   * The blocks of a streamed message; its neoui fences are programs, running ones. A chunk only
    * parses the message's end again; `all` parses all of it, for when a doc or the end changes
    * what blocks already settled say.
    */
@@ -622,7 +621,7 @@ export class SessionView {
     return [{ op: "blocks", ref, path: [], from, blocks: blocks.slice(from) }];
   }
 
-  /** The turn is over: an openui fence a message left open is a finished program. */
+  /** The turn is over: a neoui fence a message left open is a finished program. */
   private finishStreams(): ViewOp[] {
     const ops: ViewOp[] = [];
     for (const stream of this.streams.values()) {
@@ -667,12 +666,12 @@ export class SessionView {
     const template = result && this.templates(result.tool);
     if (result && template !== undefined && call.status === "completed") {
       try {
-        if (isOpenUiTemplate(template)) {
-          const source = templateProgram(template, result.rawOutput);
-          const ui = this.docs.doc(call.ref, "0", source, false);
+        if (isNeoUiTemplate(template)) {
+          const provided = templateData(result.rawOutput);
+          const ui = this.docs.doc(call.ref, "0", template.neoui, false, provided);
           if (ui.root) return { type: "openui", ui };
           const why = ui.errors?.[0]?.message ?? "no root";
-          this.log.warn(`openui template for ${result.tool} drew nothing: ${why}`);
+          this.log.warn(`neoui template for ${result.tool} drew nothing: ${why}`);
           return this.fallback(call);
         }
         return resolveTemplate(template, result.rawOutput);
@@ -743,7 +742,7 @@ export class SessionView {
     return this.docs.program(ref, doc);
   }
 
-  /** An OpenUI doc of item `ref` changed (a value was typed, a query answered): send the item again. */
+  /** A neoui doc of item `ref` changed (a value was typed, a query answered): send the item again. */
   changed(ref: string): void {
     const at = this.index.get(ref);
     const current = at === undefined ? undefined : this.items[at];

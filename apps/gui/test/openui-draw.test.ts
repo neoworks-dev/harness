@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Block, Component, UiDoc, UiNode, ViewItem } from "@suite/protocol/types";
-import { library } from "../../../openui/src/library.ts";
+import { COMPONENTS } from "@neoworks/neoui";
 import { isForm } from "../ui/plugins/transcript/components.ts";
 import { blocksText } from "../ui/plugins/transcript/components.ts";
 import { focusOrder, isInteractive } from "../ui/plugins/transcript/openui/focus.ts";
@@ -26,10 +26,16 @@ const PARTS = new Set([
   "FollowUpItem",
 ]);
 
+/** The names of the library a window draws: neoui's control elements (Query, For, Row…) are not. */
+function drawable(): string[] {
+  const control = new Set(["Query", "State", "For", "If", "Row"]);
+  return COMPONENTS.map((c) => c.name).filter((name) => !control.has(name));
+}
+
 test("every component of the suite@1 library is drawn", () => {
   const source = readFileSync(join(here, "../ui/plugins/transcript/openui/Node.svelte"), "utf8");
   const drawn = [...source.matchAll(/^\s{4}(\w+): /gm)].map((match) => match[1]);
-  const missing = Object.keys(library.components).filter(
+  const missing = drawable().filter(
     (name) => !PARTS.has(name) && !drawn.includes(name),
   );
   expect(missing).toEqual([]);
@@ -85,7 +91,7 @@ function docsOf(item: ViewItem): UiDoc[] {
 
 test("the fixtures' docs only use components the window draws and have their targets in order", () => {
   const dir = join(here, "../../../fixtures");
-  const known = new Set(Object.keys(library.components));
+  const known = new Set(COMPONENTS.map((c) => c.name));
   let seen = 0;
   let targets = 0;
   for (const name of readdirSync(dir).filter((entry) => entry.startsWith("openui-"))) {

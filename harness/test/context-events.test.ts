@@ -147,7 +147,7 @@ test("an app's UI components are in its announcement, and an update says the lis
       kind: "app",
       v: 1,
       tools: ["open", "crop"],
-      components: ["BrightnessCard", "PhotoCard"],
+      components: ["photo-editor.BrightnessCard", "photo-editor.PhotoCard"],
       description: "Edits one image at a time.",
     },
     { type: "app_connected", app: "notes", kind: "app", v: 1, tools: ["add"] },
@@ -158,7 +158,7 @@ test("an app's UI components are in its announcement, and an update says the lis
       v: 4,
       tools: ["navigate"],
       previous: 3,
-      components: ["PageCard"],
+      components: ["browser.PageCard"],
     },
     {
       type: "app_connected",
@@ -171,17 +171,17 @@ test("an app's UI components are in its announcement, and an update says the lis
     },
   ]).split("\n");
   expect(lines).toEqual([
-    '<app connected="photo-editor" kind="app" v="1" tools="open, crop" components="BrightnessCard, PhotoCard" about="Edits one image at a time."/>',
+    '<app connected="photo-editor" kind="app" v="1" tools="open, crop" components="photo-editor.BrightnessCard, photo-editor.PhotoCard" about="Edits one image at a time."/>',
     '<app connected="notes" kind="app" v="1" tools="add"/>',
-    '<app updated="browser" v="4" components="PageCard"/>',
+    '<app updated="browser" v="4" components="browser.PageCard"/>',
     '<app updated="maps" v="3" components=""/>',
     "go",
   ]);
 });
 
-test("every harness is told to call ui_library before its first openui block", () => {
-  expect(SYSTEM_PROMPT).toContain(OPENUI_LINE);
+test("every harness is told to call ui_library before its first neoui block", () => {
+  expect(SYSTEM_PROMPT).toContain(NEOUI_LINE);
 });
 
-const OPENUI_LINE =
-  "You can show UI by writing a ```openui block. Call ui_library before your first one.";
+const NEOUI_LINE =
+  "You can show UI by writing a ```neoui block. Call ui_library before your first one.";

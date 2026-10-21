@@ -28,7 +28,7 @@ saves a page as markdown in a file and returns its path and outline: grep and
 read the parts you need. Prefer the sources over what you remember for anything
 that changes (versions, prices, news).
 
-You can show UI by writing a \`\`\`openui block. Call ui_library before your first one.
+You can show UI by writing a \`\`\`neoui block. Call ui_library before your first one.
 
 The most recent <focus> event says where the user is now.
 

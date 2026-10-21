@@ -13,7 +13,6 @@ import type {
   ToolsSearchArgs,
   WaitArgs,
 } from "@suite/protocol/core-tools";
-import { uiLibraryText } from "@suite/openui/skill";
 import type { ToolResult } from "@suite/protocol/types";
 import Ajv2020, { type ValidateFunction } from "ajv/dist/2020.js";
 import type { Logger } from "../log.ts";
@@ -21,6 +20,7 @@ import type { MessageTools } from "../messages.ts";
 import type { StoredConnector, StoredTool } from "../store.ts";
 import type { ConnectorRegistry } from "./registry.ts";
 import { type SearchHit, searchTools } from "./search.ts";
+import { uiLibraryText } from "./ui-library.ts";
 
 const LAUNCH_TIMEOUT_MS = 20_000;
 
@@ -232,7 +232,7 @@ export class Gateway {
         }
         return this.options.messages.send(session, guest, args as unknown as SendMessageArgs);
       case "ui_library":
-        return text(uiLibraryText(this.registry.library(), this.registry.openApps()));
+        return text(uiLibraryText(this.registry.componentsOf(), this.registry.openApps()));
       case "wait": {
         const names: unknown = args.for;
         if (

@@ -52,7 +52,7 @@
         },
         "components": {
           "type": "object",
-          "description": "OpenUI components this app offers the agent, built from the library, keyed by name. Format: protocol/README.md#components. Kept by the daemon so docs that use them still draw after the app closes.",
+          "description": "neoui components this app offers the agent, built from the library, keyed by name. The agent writes each as `<app.Name …/>`, the app id, a dot and the name. Format: protocol/README.md#components. Kept by the daemon so docs that use them still draw after the app closes.",
           "additionalProperties": {
             "$ref": "#/$defs/AppComponent"
           }
@@ -66,7 +66,7 @@
       "additionalProperties": false
     },
     "AppComponent": {
-      "description": "An OpenUI component an app offers: what the agent may write as Name(…), and the program that draws it. The name is a PascalCase identifier that no library component, no other app's component and none of Query, Mutation or Action has; a clash rejects the registration.",
+      "description": "A neoui component an app offers: what the agent may write as `<app.Name …/>`, and the markup that draws it. The name is a PascalCase identifier; the app id in front makes it its own, so it can clash with no library component and no other app's.",
       "type": "object",
       "properties": {
         "description": {
@@ -75,17 +75,17 @@
         },
         "params": {
           "type": "object",
-          "description": "Its arguments, positional in this order, by name. Each is string, number, boolean or any, optionally an array (string[]) and optionally optional (string?); the optional ones come last.",
+          "description": "Its attributes, by name. Each is string, number, boolean or any, optionally an array (string[]) and optionally optional (string?); the optional ones come last.",
           "additionalProperties": {
             "type": "string"
           }
         },
-        "openui": {
+        "neoui": {
           "type": "string",
-          "description": "The program, OpenUI Lang over the library (not over other app components). The arguments are the object `args`; each use has its own $state, queries and keys."
+          "description": "The body, neoui over the library (not over other app components). The params are in scope by name and as `args`; each use has its own fields, queries and keys."
         }
       },
-      "required": ["description", "params", "openui"],
+      "required": ["description", "params", "neoui"],
       "additionalProperties": false
     },
     "McpEndpoint": {

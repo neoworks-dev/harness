@@ -388,7 +388,7 @@
       "additionalProperties": false
     },
     "OpenUiComponent": {
-      "description": "A UI written in OpenUI Lang (an app's template or a Query result), parsed and evaluated by the daemon (docs/openui.md). Renderers draw the evaluated tree.",
+      "description": "A UI written in neoui (an app's template or a Query result), parsed and evaluated by the daemon (docs/neoui.md). Renderers draw the evaluated tree.",
       "type": "object",
       "properties": {
         "type": {
@@ -587,7 +587,7 @@
       "additionalProperties": false
     },
     "OpenUiBlock": {
-      "description": "An ```openui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/openui.md). Streams like any block.",
+      "description": "A ```neoui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/neoui.md). The block type stays `openui`. Streams like any block.",
       "type": "object",
       "properties": {
         "type": {
@@ -601,7 +601,7 @@
       "additionalProperties": false
     },
     "UiDoc": {
-      "description": "One evaluated OpenUI program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions.",
+      "description": "One evaluated neoui program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions.",
       "type": "object",
       "properties": {
         "id": {
@@ -625,7 +625,7 @@
       "additionalProperties": false
     },
     "UiNode": {
-      "description": "An evaluated component of the suite OpenUI library (docs/openui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node.",
+      "description": "An evaluated component of the suite library (docs/neoui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node.",
       "type": "object",
       "properties": {
         "component": {

@@ -906,9 +906,9 @@ describe("/approvals", () => {
   });
 });
 
-test("every prompt tells the harness to call ui_library before its first openui block", () => {
+test("every prompt tells the harness to call ui_library before its first neoui block", () => {
   const line =
-    "You can show UI by writing a ```openui block. Call ui_library before your first one.";
+    "You can show UI by writing a ```neoui block. Call ui_library before your first one.";
   expect(GUEST_PROMPT).toContain(line);
   expect(MAIN_PROMPT).toContain(line);
   // neo's own prompt says the same, word for word.

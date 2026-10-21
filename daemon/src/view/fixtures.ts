@@ -1,11 +1,11 @@
 // Fixture inputs → resolved view items. Shared by the generator script and the daemon's tests.
 // Two kinds: a template + data (one item), or a list of session events (a whole chat, resolved
-// the way the daemon resolves a live session, templates by tool name). OpenUI docs in either can
+// the way the daemon resolves a live session, templates by tool name). neoui docs in either can
 // then be used: `inputs` are openui.input calls applied in order, `presses` openui.press calls
 // after them.
 import type { Component, ItemKind, ItemState, SessionEvent, ViewItem } from "@suite/protocol/types";
 import { silentLogger } from "../log.ts";
-import { isOpenUiTemplate, OpenUiDocs, templateProgram } from "./openui.ts";
+import { isNeoUiTemplate, NeoUiDocs, templateData } from "./neoui.ts";
 import { SessionView } from "./session-view.ts";
 import { resolveTemplate } from "./template.ts";
 
@@ -36,13 +36,13 @@ async function templateComponent(
   fixture: Extract<Fixture, { template: unknown }>,
 ): Promise<Component> {
   const { template, data } = fixture;
-  if (!isOpenUiTemplate(template)) return resolveTemplate(template, data);
-  const source = templateProgram(template, data);
-  const docs = new OpenUiDocs(() => undefined);
-  docs.doc(name, "0", source, false);
+  if (!isNeoUiTemplate(template)) return resolveTemplate(template, data);
+  const docs = new NeoUiDocs(() => undefined);
+  const provided = templateData(data);
+  docs.doc(name, "0", template.neoui, false, provided);
   await interact(fixture, (doc) => docs.program(name, doc));
-  const ui = docs.doc(name, "0", source, false);
-  if (!ui.root) throw new Error(`${name}: the openui template drew nothing`);
+  const ui = docs.doc(name, "0", template.neoui, false, provided);
+  if (!ui.root) throw new Error(`${name}: the neoui template drew nothing`);
   return { type: "openui", ui };
 }
 
@@ -63,7 +63,7 @@ async function resolveTemplateFixture(
 /** Applies the fixture's inputs, then its presses, to the programs `find` knows. */
 async function interact(
   fixture: Interaction,
-  find: (doc: string) => ReturnType<OpenUiDocs["program"]>,
+  find: (doc: string) => ReturnType<NeoUiDocs["program"]>,
 ): Promise<void> {
   for (const call of fixture.inputs ?? []) {
     const program = find(call.doc);
@@ -87,7 +87,7 @@ async function resolveEventFixture(
   fixture.events.forEach((event, i) => view.apply({ session: name, seq: i + 1, ts: 0, event }));
   const refs = view.snapshot().items.map((item) => item.ref);
   // The calls address a doc by id; the item is the first that has one.
-  const find = (doc: string): ReturnType<OpenUiDocs["program"]> => {
+  const find = (doc: string): ReturnType<NeoUiDocs["program"]> => {
     for (const ref of refs) {
       const program = view.program(ref, doc);
       if (program) return program;

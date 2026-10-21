@@ -7,7 +7,7 @@ it is back unchanged, <app updated=… added=… removed=…/> that its tools ch
 Use tools_search to get a connector's tool schemas and tools_call to run them.
 <focus app=…/> says which app the user is in.
 
-You can show UI by writing a \`\`\`openui block. Call ui_library before your first one.
+You can show UI by writing a \`\`\`neoui block. Call ui_library before your first one.
 
 Tools that produce files or media return handles like asset://img-7f3; other
 connector tools accept them. Results you get name the file behind each handle,
