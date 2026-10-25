@@ -871,7 +871,7 @@ pub struct SessionEvents {
     pub payload: SessionEventRecord,
 }
 
-/// Client → daemon: submit input. With an id it is acked once queued; from then on session.list shows the session running or queued > 0. The user_message event is logged when the turn starts, not when it is queued.
+/// Client → daemon: submit input. With an id it is acked once queued; from then on session.list shows the session running or queued > 0. The user_message event is logged when the turn starts, or when a running neo turn takes it in after its next tool calls, not when it is queued.
 /// Tagged `topic: "session.input"` inside [`Envelope`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionInputMessage {
@@ -2157,6 +2157,9 @@ pub struct SessionInfo {
     /// Inputs waiting behind the running turn.
     #[serde(rename = "queued")]
     pub queued: i64,
+    /// The inputs waiting behind the running turn, oldest first (queued of them): what clients show above their input. Absent when none wait.
+    #[serde(rename = "waiting", default, skip_serializing_if = "Option::is_none")]
+    pub waiting: Option<Vec<WaitingInput>>,
     /// The latest thing said, on one line and cut to about 120 characters: the agent's last message, else the user's.
     #[serde(rename = "preview", default, skip_serializing_if = "Option::is_none")]
     pub preview: Option<String>,
@@ -2172,6 +2175,20 @@ pub struct SessionInfo {
     /// The harness the session's next turn runs on: pi, claude, codex… (/harness).
     #[serde(rename = "harness", default, skip_serializing_if = "Option::is_none")]
     pub harness: Option<String>,
+}
+
+/// An input queued behind the running turn. neo takes it into the running turn after its next tool calls (it is logged as user_message then); other harnesses get it when the turn ends.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WaitingInput {
+    /// App the input came from.
+    #[serde(rename = "app")]
+    pub app: String,
+    /// What the chat will show: the input's text, or its shown text.
+    #[serde(rename = "text")]
+    pub text: String,
+    /// Absolute paths of attached images.
+    #[serde(rename = "images", default, skip_serializing_if = "Option::is_none")]
+    pub images: Option<Vec<String>>,
 }
 
 /// A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template.

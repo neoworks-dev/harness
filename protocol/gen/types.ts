@@ -230,7 +230,7 @@ export interface SessionEvents {
   payload: SessionEventRecord;
 }
 
-/** Client → daemon: submit input. With an id it is acked once queued; from then on session.list shows the session running or queued > 0. The user_message event is logged when the turn starts, not when it is queued. */
+/** Client → daemon: submit input. With an id it is acked once queued; from then on session.list shows the session running or queued > 0. The user_message event is logged when the turn starts, or when a running neo turn takes it in after its next tool calls, not when it is queued. */
 export interface SessionInputMessage {
   topic: "session.input";
   id?: string;
@@ -783,6 +783,8 @@ export interface SessionInfo {
   state: SessionState;
   /** Inputs waiting behind the running turn. */
   queued: number;
+  /** The inputs waiting behind the running turn, oldest first (queued of them): what clients show above their input. Absent when none wait. */
+  waiting?: WaitingInput[];
   /** The latest thing said, on one line and cut to about 120 characters: the agent's last message, else the user's. */
   preview?: string;
   /** Lines added by edits in this session (agent and guests), from their diffs. */
@@ -793,6 +795,16 @@ export interface SessionInfo {
   parent?: string;
   /** The harness the session's next turn runs on: pi, claude, codex… (/harness). */
   harness?: string;
+}
+
+/** An input queued behind the running turn. neo takes it into the running turn after its next tool calls (it is logged as user_message then); other harnesses get it when the turn ends. */
+export interface WaitingInput {
+  /** App the input came from. */
+  app: string;
+  /** What the chat will show: the input's text, or its shown text. */
+  text: string;
+  /** Absolute paths of attached images. */
+  images?: string[];
 }
 
 /** A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template. */

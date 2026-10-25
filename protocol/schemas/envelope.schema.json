@@ -583,7 +583,7 @@
       "additionalProperties": false
     },
     "SessionInputMessage": {
-      "description": "Client → daemon: submit input. With an id it is acked once queued; from then on session.list shows the session running or queued > 0. The user_message event is logged when the turn starts, not when it is queued.",
+      "description": "Client → daemon: submit input. With an id it is acked once queued; from then on session.list shows the session running or queued > 0. The user_message event is logged when the turn starts, or when a running neo turn takes it in after its next tool calls, not when it is queued.",
       "type": "object",
       "properties": {
         "topic": {

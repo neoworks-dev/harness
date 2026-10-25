@@ -34,6 +34,48 @@ describe("shutdown", () => {
 });
 
 describe("turn queue", () => {
+  test("a running turn takes the inputs behind it up to a command, and logs them as it does", async () => {
+    const { store, agent, sessions } = setup();
+    const { id } = sessions.create({});
+    sessions.input(id, "cli", "one");
+    await agent.started(1);
+    sessions.input(id, "term", "also this", ["/tmp/a.png"]);
+    sessions.input(id, "term", "and this");
+    sessions.input(id, "term", "/claude review it");
+    sessions.input(id, "term", "after the command");
+    expect(sessions.info(id)).toMatchObject({
+      queued: 4,
+      waiting: [
+        { app: "term", text: "also this", images: ["/tmp/a.png"] },
+        { app: "term", text: "and this" },
+        { app: "term", text: "/claude review it" },
+        { app: "term", text: "after the command" },
+      ],
+    });
+
+    const take = agent.prompts[0]?.takeInputs;
+    expect(take?.()).toEqual([{ text: "also this", images: ["/tmp/a.png"] }, { text: "and this" }]);
+    expect(take?.()).toEqual([]);
+    expect(sessions.info(id)?.queued).toBe(2);
+    const users = store
+      .read(id)
+      .map((r) => r.event)
+      .filter((e) => e.type === "user_message")
+      .map((e) => (e.type === "user_message" ? e.text : ""));
+    expect(users).toEqual(["one", "also this", "and this"]);
+
+    // The command gets a turn of its own, and what came after it the next.
+    agent.release();
+    await agent.started(2);
+    expect(agent.prompts[1]?.text).toBe("/claude review it");
+    agent.release();
+    await agent.started(3);
+    expect(agent.prompts[2]?.text).toBe("after the command");
+    agent.release();
+    await sessions.idle(id);
+    expect(sessions.info(id)?.waiting).toBeUndefined();
+  });
+
   test("runs one turn at a time, in input order", async () => {
     const { store, agent, sessions } = setup();
     const { id } = sessions.create({});

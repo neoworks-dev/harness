@@ -180,6 +180,13 @@ export interface PromptParams {
    * results, see messages.ts).
    */
   takeMessages?: () => string[];
+  /**
+   * Takes what the user sent while the turn runs (the daemon has logged each as user_message by
+   * then). neo calls it where it calls takeMessages and puts them in the conversation as the
+   * user's messages; an adapter that can't be told anything mid-turn doesn't call it, and they
+   * start the next turn instead.
+   */
+  takeInputs?: () => { text: string; images?: string[] }[];
   /** Called synchronously for each update, in order. */
   onUpdate: (update: AgentUpdate) => void;
 }

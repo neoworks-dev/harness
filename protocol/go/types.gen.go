@@ -636,7 +636,7 @@ func (v SessionEvents) MarshalJSON() ([]byte, error) {
 	}{"session.events", plain(v)})
 }
 
-// SessionInputMessage: Client → daemon: submit input. With an id it is acked once queued; from then on session.list shows the session running or queued > 0. The user_message event is logged when the turn starts, not when it is queued.
+// SessionInputMessage: Client → daemon: submit input. With an id it is acked once queued; from then on session.list shows the session running or queued > 0. The user_message event is logged when the turn starts, or when a running neo turn takes it in after its next tool calls, not when it is queued.
 type SessionInputMessage struct {
 	ID      *string      `json:"id,omitempty"`
 	Payload SessionInput `json:"payload"`
@@ -1834,6 +1834,8 @@ type SessionInfo struct {
 	State SessionState `json:"state"`
 	// Inputs waiting behind the running turn.
 	Queued int64 `json:"queued"`
+	// The inputs waiting behind the running turn, oldest first (queued of them): what clients show above their input. Absent when none wait.
+	Waiting []WaitingInput `json:"waiting,omitempty"`
 	// The latest thing said, on one line and cut to about 120 characters: the agent's last message, else the user's.
 	Preview *string `json:"preview,omitempty"`
 	// Lines added by edits in this session (agent and guests), from their diffs.
@@ -1844,6 +1846,16 @@ type SessionInfo struct {
 	Parent *string `json:"parent,omitempty"`
 	// The harness the session's next turn runs on: pi, claude, codex… (/harness).
 	Harness *string `json:"harness,omitempty"`
+}
+
+// WaitingInput: An input queued behind the running turn. neo takes it into the running turn after its next tool calls (it is logged as user_message then); other harnesses get it when the turn ends.
+type WaitingInput struct {
+	// App the input came from.
+	App string `json:"app"`
+	// What the chat will show: the input's text, or its shown text.
+	Text string `json:"text"`
+	// Absolute paths of attached images.
+	Images []string `json:"images,omitempty"`
 }
 
 // ToolResult: A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template.

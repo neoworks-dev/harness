@@ -303,10 +303,11 @@ export class Agent {
   }
 
   /**
-   * Messages from elsewhere (other agents), asked for wherever the steering queue is polled: at
-   * the start of a run and after each batch of tool calls, also when the agent would stop.
+   * Messages from elsewhere (the user typing on, other agents), asked for wherever the steering
+   * queue is polled: at the start of a run and after each batch of tool calls, also when the
+   * agent would stop.
    */
-  public incoming?: () => AgentMessage[];
+  public incoming?: () => AgentMessage[] | Promise<AgentMessage[]>;
 
   /** Active abort signal for the current run, if any. */
   get signal(): AbortSignal | undefined {
@@ -456,12 +457,12 @@ export class Agent {
       convertToLlm: this.convertToLlm,
       transformContext: this.transformContext,
       getApiKey: this.getApiKey,
-      getSteeringMessages: () => {
+      getSteeringMessages: async () => {
         if (skipInitialSteeringPoll) {
           skipInitialSteeringPoll = false;
-          return Promise.resolve([]);
+          return [];
         }
-        return Promise.resolve([...this.steeringQueue.drain(), ...(this.incoming?.() ?? [])]);
+        return [...this.steeringQueue.drain(), ...((await this.incoming?.()) ?? [])];
       },
       getFollowUpMessages: () => Promise.resolve(this.followUpQueue.drain()),
     };

@@ -1237,6 +1237,15 @@ fn queued_inputs_are_counted_while_a_turn_runs() {
         last_seq: 1,
         state: SessionState::Running,
         queued: 3,
+        waiting: Some(
+            ["later", "and then\nmore", "last"]
+                .map(|text| WaitingInput {
+                    app: "terminal".into(),
+                    text: text.into(),
+                    images: None,
+                })
+                .to_vec(),
+        ),
         preview: None,
         added: None,
         removed: None,
@@ -1246,6 +1255,38 @@ fn queued_inputs_are_counted_while_a_turn_runs() {
     // While running the app asks for fresh session info now and then.
     assert!(app.tick(NOW + 500).is_empty());
     assert_eq!(app.tick(NOW + 2500), [Effect::Refresh]);
+}
+
+#[test]
+fn waiting_inputs_show_above_the_editor_until_the_turn_takes_them() {
+    let mut app = app();
+    app.handle_event(user_message(NOW));
+    for text in ["first", "second\nline", "third", "fourth"] {
+        app.handle_paste(text);
+        app.handle_key(key(KeyCode::Enter));
+    }
+    let shown = screen(&mut app, 60, 20).join("\n");
+    assert!(shown.contains("› first"), "{shown}");
+    assert!(shown.contains("› second …"), "{shown}");
+    assert!(shown.contains("… +2 more queued"), "{shown}");
+    assert!(!shown.contains("› third"), "{shown}");
+
+    // The running turn took the first in: it is the chat's now.
+    app.handle_event(record(
+        "s1",
+        9,
+        NOW + 1,
+        SessionEvent::UserMessage(UserMessage {
+            app: "terminal".into(),
+            text: "first".into(),
+            shown: None,
+            images: None,
+        }),
+    ));
+    let shown = screen(&mut app, 60, 20).join("\n");
+    assert!(!shown.contains("› first"), "{shown}");
+    assert!(shown.contains("› third"), "{shown}");
+    assert!(app.status_lines(100)[1].to_string().contains("3 queued"));
 }
 
 // ---- following the session ----
@@ -1318,6 +1359,7 @@ fn the_switcher_lists_filters_and_switches() {
         last_seq: 3,
         state: SessionState::Idle,
         queued: 0,
+        waiting: None,
         preview: None,
         added: None,
         removed: None,
@@ -1357,7 +1399,7 @@ fn the_switcher_can_start_a_new_session_and_follow_it() {
             cwd: "/home/me/site".into()
         }]
     );
-    let fx = app.handle_msg(Msg::Created(Ok(SessionInfo {
+    let fx = app.handle_msg(Msg::Created(Ok(Box::new(SessionInfo {
         harness: None,
         parent: None,
         id: "s9".into(),
@@ -1368,10 +1410,11 @@ fn the_switcher_can_start_a_new_session_and_follow_it() {
         last_seq: 0,
         state: SessionState::Idle,
         queued: 0,
+        waiting: None,
         preview: None,
         added: None,
         removed: None,
-    })));
+    }))));
     assert!(matches!(&fx[..], [Effect::Switch { to, move_agent: true, .. }] if to == "s9"));
     assert_eq!(app.session(), "s9");
 }
@@ -1676,6 +1719,7 @@ fn info(id: &str, title: &str, last: i64) -> SessionInfo {
         last_seq: 3,
         state: SessionState::Idle,
         queued: 0,
+        waiting: None,
         preview: None,
         added: None,
         removed: None,
@@ -1755,9 +1799,14 @@ fn session_changed_updates_or_adds_one_entry_live() {
     app.turn_started_ms = NOW - 10_000;
     app.now_ms = NOW;
     let mut mine = info("s1", "Sticky header", NOW);
-    mine.queued = 2;
+    mine.queued = 1;
+    mine.waiting = Some(vec![WaitingInput {
+        app: "gui".into(),
+        text: "from the desktop".into(),
+        images: None,
+    }]);
     app.handle_event(Event::SessionChanged(mine));
-    assert_eq!(app.queued, 2);
+    assert_eq!(app.waiting.len(), 1);
     assert!(!app.running, "the daemon says idle");
 }
 
@@ -1927,7 +1976,7 @@ fn the_session_list_is_refreshed_by_list_sessions_answers() {
     let mut app = overview();
     app.handle_msg(Msg::Sessions(Ok(vec![info("s1", "Sticky header", NOW)])));
     assert_eq!(app.sessions().len(), 1);
-    app.handle_msg(Msg::Created(Ok(info("s5", "Fresh", NOW + 5))));
+    app.handle_msg(Msg::Created(Ok(Box::new(info("s5", "Fresh", NOW + 5)))));
     assert_eq!(app.sessions().len(), 2);
 }
 

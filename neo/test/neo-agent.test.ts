@@ -124,6 +124,35 @@ test("messages from other agents join the conversation after each tool batch, on
   expect(logged.some((m) => m.includes("look at x"))).toBe(true);
 });
 
+test("what the user sends during a turn joins it after the next tool batch", async () => {
+  const model = fakeModel([
+    reply([fauxToolCall("read", { path: "x.txt" }, { id: "call-1" })], "toolUse"),
+    reply("ok"),
+  ]);
+  const { session, cwd } = await newSession(model);
+  await writeFile(join(cwd, "x.txt"), "x");
+  const png = join(cwd, "shot.png");
+  await writeFile(png, Buffer.from("89504e470d0a1a0a", "hex"));
+  const updates: AgentUpdate[] = [];
+  const typed = [{ text: "use the other file", images: [png] }];
+  const result = await session.prompt({
+    text: "go",
+    app: "cli",
+    pendingEvents: [],
+    takeInputs: () => {
+      if (!updates.some((u) => u.type === "tool_call_update")) return [];
+      return typed.splice(0);
+    },
+    onUpdate: (update) => updates.push(update),
+  });
+  expect(result.stopReason).toBe("end_turn");
+  const second = model.requests[1] ?? [];
+  expect(second.map((m) => m.role)).toEqual(["user", "assistant", "toolResult", "user"]);
+  const last = JSON.stringify(second.at(-1));
+  expect(last).toContain("use the other file");
+  expect(last).toContain('"type":"image"');
+});
+
 test("messages that are there when the turn starts come after the user's text", async () => {
   const model = fakeModel([reply("ok")]);
   const { session } = await newSession(model);

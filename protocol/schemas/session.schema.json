@@ -537,6 +537,11 @@
           "type": "integer",
           "description": "Inputs waiting behind the running turn."
         },
+        "waiting": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/WaitingInput" },
+          "description": "The inputs waiting behind the running turn, oldest first (queued of them): what clients show above their input. Absent when none wait."
+        },
         "preview": {
           "type": "string",
           "description": "The latest thing said, on one line and cut to about 120 characters: the agent's last message, else the user's."
@@ -561,6 +566,24 @@
         }
       },
       "required": ["id", "cwd", "createdAt", "lastActivity", "lastSeq", "state", "queued"],
+      "additionalProperties": false
+    },
+    "WaitingInput": {
+      "description": "An input queued behind the running turn. neo takes it into the running turn after its next tool calls (it is logged as user_message then); other harnesses get it when the turn ends.",
+      "type": "object",
+      "properties": {
+        "app": { "type": "string", "description": "App the input came from." },
+        "text": {
+          "type": "string",
+          "description": "What the chat will show: the input's text, or its shown text."
+        },
+        "images": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Absolute paths of attached images."
+        }
+      },
+      "required": ["app", "text"],
       "additionalProperties": false
     },
     "ToolResult": {

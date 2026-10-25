@@ -308,6 +308,7 @@ fn work(client: &Client, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sen
                         cwd: Some(cwd),
                         title: None,
                     })
+                    .map(Box::new)
                     .map_err(|e| e.to_string());
                 let _ = msgs.send(Msg::Created(result));
             }
@@ -499,6 +500,7 @@ mod tests {
             last_seq: 0,
             state: SessionState::Idle,
             queued: 0,
+            waiting: None,
             preview: None,
             added: None,
             removed: None,

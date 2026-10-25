@@ -408,6 +408,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       pendingEvents,
       summary,
       takeMessages,
+      takeInputs,
       onUpdate,
     }: PromptParams): Promise<PromptResult> {
       if (running) return { stopReason: "error", error: "A turn is already running." };
@@ -440,13 +441,26 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
         if (event.type !== "agent_end") return;
         for (const message of event.messages) if (message.role === "assistant") final = message;
       });
-      // Messages from other agents join the conversation after the user's, and after each tool batch.
-      agent.incoming = () =>
-        (takeMessages?.() ?? []).map((message) => ({
-          role: "user",
-          content: [{ type: "text", text: message }],
+      // What the user sent meanwhile and messages from other agents join the conversation after
+      // the prompt, and after each tool batch.
+      agent.incoming = async () => {
+        const inputs = await Promise.all(
+          (takeInputs?.() ?? []).map(async (input) => ({
+            role: "user" as const,
+            content: [
+              { type: "text" as const, text: input.text },
+              ...(await loadImages(input.images ?? [])),
+            ],
+            timestamp: Date.now(),
+          })),
+        );
+        const messages = (takeMessages?.() ?? []).map((message) => ({
+          role: "user" as const,
+          content: [{ type: "text" as const, text: message }],
           timestamp: Date.now(),
         }));
+        return [...inputs, ...messages];
+      };
       try {
         // SessionStart hooks run before the session's first prompt, UserPromptSubmit before each.
         const context: string[] = [];

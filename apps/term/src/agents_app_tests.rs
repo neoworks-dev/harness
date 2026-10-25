@@ -134,6 +134,7 @@ fn session_info(id: &str, cwd: &str, parent: Option<&str>) -> SessionInfo {
         last_seq: 1,
         state: SessionState::Running,
         queued: 0,
+        waiting: None,
         preview: None,
         added: None,
         removed: None,

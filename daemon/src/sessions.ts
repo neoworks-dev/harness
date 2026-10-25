@@ -16,7 +16,12 @@ import type {
   RequestPermission,
   SafeSearch,
 } from "@neoworks-dev/neo/agent";
-import type { SessionEvent, SessionInfo, TurnEnded } from "@neoworks-dev/neo-protocol/types";
+import type {
+  SessionEvent,
+  SessionInfo,
+  TurnEnded,
+  WaitingInput,
+} from "@neoworks-dev/neo-protocol/types";
 import type { ConnectorSnapshot } from "./gateway/registry.ts";
 import { handoffSummary } from "./handoff.ts";
 import type { Logger } from "./log.ts";
@@ -75,6 +80,12 @@ function userMessage(input: QueuedInput): SessionEvent {
   if (input.images) event.images = input.images;
   if (input.shown !== undefined) event.shown = input.shown;
   return event;
+}
+
+function waiting(input: QueuedInput): WaitingInput {
+  const out: WaitingInput = { app: input.app, text: input.shown ?? input.text };
+  if (input.images) out.images = input.images;
+  return out;
 }
 
 export function newSessionId(): string {
@@ -468,7 +479,19 @@ export class SessionManager {
         ended.stopReason = "cancelled";
       } else {
         rt.active = agentSession;
-        const turn = await this.prompt(sessionId, agentSession, input, pendingEvents, summary);
+        // The user's next inputs join this turn as it goes, while it runs on the same harness.
+        const takeInputs = (): QueuedInput[] => {
+          if (this.harness(sessionId) !== harness) return [];
+          return this.takeInputs(sessionId, rt);
+        };
+        const turn = await this.prompt(
+          sessionId,
+          agentSession,
+          input,
+          pendingEvents,
+          summary,
+          takeInputs,
+        );
         Object.assign(ended, turn);
       }
     } catch (err) {
@@ -519,6 +542,7 @@ export class SessionManager {
     input: QueuedInput,
     pendingEvents: ContextEvent[],
     summary?: string,
+    takeInputs?: () => QueuedInput[],
   ): Promise<Omit<TurnEnded, "type">> {
     let open = true;
     const onUpdate = (update: AgentUpdate): void => {
@@ -530,6 +554,10 @@ export class SessionManager {
       if (summary !== undefined) params.summary = summary;
       const { takeMessages } = this.options;
       if (takeMessages) params.takeMessages = () => takeMessages(sessionId);
+      if (takeInputs) {
+        params.takeInputs = () =>
+          takeInputs().map(({ text, images }) => (images ? { text, images } : { text }));
+      }
       const result = await agentSession.prompt(params);
       const out: Omit<TurnEnded, "type"> = { stopReason: result.stopReason };
       if (result.error !== undefined) out.error = result.error;
@@ -537,6 +565,23 @@ export class SessionManager {
     } finally {
       open = false;
     }
+  }
+
+  /**
+   * Takes the inputs at the head of the queue a running turn can be told: not a command (a guest's
+   * "/claude task", a harness's own /command), which waits for a turn of its own, nor anything
+   * behind it. Each is logged as the user_message it is now.
+   */
+  private takeInputs(sessionId: string, rt: Runtime): QueuedInput[] {
+    const taken: QueuedInput[] = [];
+    for (let input = rt.queue[0]; input; input = rt.queue[0]) {
+      if (input.text.trimStart().startsWith("/")) break;
+      rt.queue.shift();
+      this.store.append(sessionId, userMessage(input));
+      taken.push(input);
+    }
+    if (taken.length > 0) this.stateChanged(sessionId);
+    return taken;
   }
 
   /**
@@ -585,6 +630,7 @@ export class SessionManager {
       state: rt?.running ? "running" : "idle",
       queued: rt?.queue.length ?? 0,
     };
+    if (rt && rt.queue.length > 0) info.waiting = rt.queue.map(waiting);
     if (row.title !== undefined) info.title = row.title;
     if (row.parent !== undefined) info.parent = row.parent;
     if (this.options.describe) Object.assign(info, this.options.describe(row.id));

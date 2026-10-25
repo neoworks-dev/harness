@@ -1014,12 +1014,13 @@ fn a_session_switch_closes_the_view_and_drops_the_cache() {
         last_seq: 0,
         state: neo_protocol::SessionState::Idle,
         queued: 0,
+        waiting: None,
         preview: None,
         added: None,
         removed: None,
         parent: None,
     };
-    app.handle_msg(crate::app::Msg::Created(Ok(info)));
+    app.handle_msg(crate::app::Msg::Created(Ok(Box::new(info))));
     assert!(!app.github_mut().is_open());
     ctrl_r(&mut app);
     app_settle(&mut app);

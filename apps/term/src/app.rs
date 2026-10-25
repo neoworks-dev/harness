@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use neo_protocol::{
     AgentFocus, SecretRequest, SessionEvent, SessionEventRecord, SessionInfo, SessionState,
-    SettingName, SlashCommand,
+    SettingName, SlashCommand, WaitingInput,
 };
 use neo_renderer_ratatui::{ButtonRef, Options, Palette, UiKind, UiTarget, openui_targets};
 use neo_sdk::Event;
@@ -52,6 +52,8 @@ const MENU_ROWS: usize = 8;
 const WHEEL_LINES: usize = 3;
 /// Most rows the editor grows to.
 const EDITOR_ROWS: usize = 8;
+/// Most rows the inputs waiting behind the running turn take above the editor.
+const WAITING_ROWS: usize = 3;
 const SPINNER: [char; 4] = ['◐', '◓', '◑', '◒'];
 /// The chat needs at least this much beside the sessions sidebar, else the sidebar is hidden.
 const CHAT_MIN_WIDTH: u16 = 52;
@@ -129,7 +131,7 @@ pub enum Effect {
 #[derive(Debug)]
 pub enum Msg {
     Sessions(Result<Vec<SessionInfo>, String>),
-    Created(Result<SessionInfo, String>),
+    Created(Result<Box<SessionInfo>, String>),
     Error(String),
     /// Something to tell the user that is not an error.
     Notice(String),
@@ -286,7 +288,8 @@ pub struct App {
     show_thoughts: bool,
     running: bool,
     turn_started_ms: i64,
-    queued: usize,
+    /// The inputs waiting behind the running turn (the daemon's list; ours until it answers).
+    waiting: Vec<WaitingInput>,
     settings: Vec<HarnessSettings>,
     /// The session's agent, from `/harness`.
     harness: String,
@@ -363,7 +366,7 @@ impl App {
             show_thoughts: false,
             running: false,
             turn_started_ms: now,
-            queued: 0,
+            waiting: Vec::new(),
             settings: Vec::new(),
             harness: DEFAULT_HARNESS.to_string(),
             offered: HashMap::new(),
@@ -580,7 +583,7 @@ impl App {
             }
             Event::Subscribed { session, .. } => {
                 if session.id == self.session {
-                    self.queued = usize::try_from(session.queued).unwrap_or(0);
+                    self.waiting = session.waiting.clone().unwrap_or_default();
                     if session.state == SessionState::Running && !self.running {
                         self.running = true;
                         self.turn_started_ms = self.now_ms;
@@ -712,10 +715,16 @@ impl App {
         self.widgets.on_session_event(record);
         self.agents.on_record(record);
         match &record.event {
-            SessionEvent::UserMessage(_) => {
+            SessionEvent::UserMessage(message) => {
+                // A turn starts with it, or the running one took it in.
+                if !self.running {
+                    self.turn_started_ms = record.ts;
+                }
                 self.running = true;
-                self.turn_started_ms = record.ts;
-                self.queued = self.queued.saturating_sub(1);
+                let text = message.shown.as_ref().unwrap_or(&message.text);
+                if let Some(at) = self.waiting.iter().position(|w| w.text == *text) {
+                    self.waiting.remove(at);
+                }
             }
             SessionEvent::TurnEnded(_) => self.running = false,
             SessionEvent::CommandsAvailable(offer) => {
@@ -754,7 +763,7 @@ impl App {
     /// What the daemon says about the shown session: how many inputs wait, and whether a turn
     /// still runs (a turn that just started is trusted for a few seconds).
     fn sync_info(&mut self, info: &SessionInfo) {
-        self.queued = usize::try_from(info.queued).unwrap_or(0);
+        self.waiting = info.waiting.clone().unwrap_or_default();
         if self.running
             && info.state == SessionState::Idle
             && self.now_ms - self.turn_started_ms > 3000
@@ -782,6 +791,7 @@ impl App {
                 }
             }
             Msg::Created(Ok(info)) => {
+                let info = *info;
                 self.sessions.upsert(info.clone());
                 let from = self.session.clone();
                 self.cancel_secret(&mut fx);
@@ -810,7 +820,7 @@ impl App {
         self.chat = Chat::new();
         self.running = false;
         self.turn_started_ms = self.now_ms;
-        self.queued = 0;
+        self.waiting.clear();
         self.settings.clear();
         self.harness = DEFAULT_HARNESS.to_string();
         self.offered.clear();
@@ -2089,13 +2099,18 @@ impl App {
         // Sending ends the typing: a card it brings (/model's choice) takes the editor's place at
         // once instead of showing in the chat first.
         self.prompt.typed_ms = 0;
+        let images = std::mem::take(&mut self.attachments);
         if self.running {
-            self.queued += 1;
+            self.waiting.push(WaitingInput {
+                app: self.app_id.clone(),
+                text: text.clone(),
+                images: (!images.is_empty()).then(|| images.clone()),
+            });
         }
         fx.push(Effect::Input {
             session: self.session.clone(),
             text,
-            images: std::mem::take(&mut self.attachments),
+            images,
         });
     }
 
@@ -2167,8 +2182,13 @@ impl App {
         };
         let hint_h = u16::from(self.prompt_waits() && room >= 3);
         let attached_h = u16::from(panel.is_empty() && !self.attachments.is_empty() && room >= 3);
+        let waiting_h = if panel.is_empty() && room >= 6 {
+            self.waiting.len().min(WAITING_ROWS) as u16
+        } else {
+            0
+        };
         let wanted = if panel.is_empty() {
-            self.editor.height().clamp(1, EDITOR_ROWS) as u16 + hint_h + attached_h
+            self.editor.height().clamp(1, EDITOR_ROWS) as u16 + hint_h + attached_h + waiting_h
         } else {
             panel.len() as u16
         };
@@ -2180,13 +2200,16 @@ impl App {
             ..main
         };
         let hint_h = hint_h.min(editor_h.saturating_sub(1));
-        let attached_h = attached_h.min(editor_h.saturating_sub(1 + hint_h));
-        let above = hint_h + attached_h;
+        let waiting_h = waiting_h.min(editor_h.saturating_sub(1 + hint_h));
+        let attached_h = attached_h.min(editor_h.saturating_sub(1 + hint_h + waiting_h));
+        let above = hint_h + waiting_h + attached_h;
+        let top = chat_h + rule_h;
         Areas {
             chat: at(0, chat_h),
             rule: at(chat_h, rule_h),
-            hint: at(chat_h + rule_h, hint_h),
-            attached: at(chat_h + rule_h + hint_h, attached_h),
+            hint: at(top, hint_h),
+            waiting: at(top + hint_h, waiting_h),
+            attached: at(top + hint_h + waiting_h, attached_h),
             editor: at(chat_h + rule_h + above, editor_h - above),
             panel,
             status: at(chat_h + rule_h + editor_h, status_h),
@@ -2314,6 +2337,9 @@ impl App {
                 )),
                 areas.hint,
             );
+        }
+        if areas.waiting.height > 0 {
+            self.draw_waiting(frame, areas.waiting);
         }
         if areas.attached.height > 0 {
             self.draw_attached(frame, areas.attached);
@@ -2685,6 +2711,46 @@ impl App {
         }
     }
 
+    /// The inputs waiting behind the running turn, one muted row each (their first line), the
+    /// last row counting those that don't fit.
+    fn draw_waiting(&self, frame: &mut Frame, area: Rect) {
+        let rows = usize::from(area.height);
+        let w = usize::from(area.width);
+        let shown = if self.waiting.len() > rows {
+            rows - 1
+        } else {
+            rows
+        };
+        let mut lines: Vec<Line> = self.waiting[..shown]
+            .iter()
+            .map(|input| {
+                let first = input
+                    .text
+                    .lines()
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("");
+                let mut text = format!("› {}", first.trim());
+                if input.text.trim().lines().nth(1).is_some() {
+                    text.push_str(" …");
+                }
+                match input.images.as_ref().map_or(0, Vec::len) {
+                    0 => {}
+                    1 => text.push_str("  [image]"),
+                    n => text.push_str(&format!("  [{n} images]")),
+                }
+                Line::from(Span::styled(truncate(&text, w), self.styles.muted))
+            })
+            .collect();
+        if shown < self.waiting.len() {
+            let more = format!("  … +{} more queued", self.waiting.len() - shown);
+            lines.push(Line::from(Span::styled(
+                truncate(&more, w),
+                self.styles.muted,
+            )));
+        }
+        frame.render_widget(Paragraph::new(lines), area);
+    }
+
     /// `[image 1: paste-1729.png] [image 2: cat.jpg]  backspace removes`
     fn draw_attached(&self, frame: &mut Frame, area: Rect) {
         let mut spans = Vec::new();
@@ -2730,7 +2796,7 @@ impl App {
                 .running
                 .then(|| u64::try_from((self.now_ms - self.turn_started_ms) / 1000).unwrap_or(0)),
             spinner: SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()],
-            queued: self.queued,
+            queued: self.waiting.len(),
             connected: self.connected,
             approvals: self.approvals,
             notice,
@@ -2894,6 +2960,8 @@ struct Areas {
     rule: Rect,
     /// One row above the editor: a prompt is waiting for the user to stop typing.
     hint: Rect,
+    /// Rows above the editor: the inputs waiting behind the running turn.
+    waiting: Rect,
     /// One row above the editor: the images going with the next message.
     attached: Rect,
     /// The editor, or the prompt that has taken its place.

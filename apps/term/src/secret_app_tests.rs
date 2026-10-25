@@ -244,6 +244,7 @@ fn another_session_is_cancelled_a_lost_connection_and_a_switch_drop_it() {
         last_seq: 1,
         state: SessionState::Idle,
         queued: 0,
+        waiting: None,
         preview: None,
         added: None,
         removed: None,
