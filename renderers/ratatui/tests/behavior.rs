@@ -133,8 +133,8 @@ fn tool_bullets_show_the_state() {
     for (state, color) in [
         ("pending", pal().muted),
         ("running", pal().accent),
-        // Done is the usual case and stays quiet, so failures stand out.
-        ("done", pal().muted),
+        // A colored bullet tells a call from the agent's prose.
+        ("done", pal().success),
         ("failed", pal().danger),
     ] {
         let it = tool(state, &code("x"));

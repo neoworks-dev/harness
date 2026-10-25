@@ -208,11 +208,12 @@ impl<'a> Cx<'a> {
     /// under `⎿` in muted, or in full when expanded. Items with buttons are always shown in
     /// full: the buttons are what the item is for.
     fn tool(&mut self, it: &pb::ViewItem, label: Option<String>, w: usize) -> Lines {
-        // Done is the usual case and stays quiet, so a failure stands out.
+        // The bullet's color tells a call from the agent's prose (whose bullet is the text color).
         let color = match it.state {
             Some(pb::ItemState::Running) => self.p.accent,
+            Some(pb::ItemState::Done) => self.p.success,
             Some(pb::ItemState::Failed) => self.p.danger,
-            Some(pb::ItemState::Done | pb::ItemState::Pending) | None => self.p.muted,
+            Some(pb::ItemState::Pending) | None => self.p.muted,
         };
         let bullet = vec![Span::styled("● ", Style::new().fg(color))];
         // A doc with fields or buttons is a form to fill in; one that holds focus is in use.

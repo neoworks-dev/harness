@@ -1,4 +1,4 @@
-⟦muted|● ⟧⟦bold|browser.tabs⟧
+⟦success|● ⟧⟦bold|browser.tabs⟧
   ⟦border|╭ ⟧⟦bold|Site preview⟧
   ⟦border|│ ⟧⟦accent underlined|http://localhost:5173/⟧
   ⟦border|│ ⟧⟦accent|Pinned⟧

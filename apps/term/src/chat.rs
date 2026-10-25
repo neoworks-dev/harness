@@ -655,7 +655,12 @@ fn foldable(
 fn folded_line(run: &[&ViewItem], width: usize, p: &Palette) -> Line<'static> {
     let mut verbs: Vec<(String, usize)> = Vec::new();
     for item in run {
-        let label = item.label.as_deref().unwrap_or("tool");
+        // A command's call (its label gave way to the command) counts as bash, like neo's.
+        let label = match (&item.label, &item.command) {
+            (Some(label), _) => label.as_str(),
+            (None, Some(_)) => "bash",
+            (None, None) => "tool",
+        };
         let verb = label
             .split_whitespace()
             .next()
@@ -685,7 +690,11 @@ fn folded_line(run: &[&ViewItem], width: usize, p: &Palette) -> Line<'static> {
             .collect::<String>()
             + "…";
     }
-    let mut spans = vec![Span::styled("● ", muted), Span::styled(text, muted)];
+    let bullet = if failed > 0 { p.danger } else { p.success };
+    let mut spans = vec![
+        Span::styled("● ", Style::new().fg(bullet)),
+        Span::styled(text, muted),
+    ];
     if let Some(tail) = tail {
         spans.push(Span::styled(tail, Style::new().fg(p.danger)));
     }
@@ -1019,6 +1028,33 @@ mod tests {
         let t = texts(&c);
         assert_eq!(t[..4], ["● read a", "  ⎿ out", "● read b", "  ⎿ out"]);
         assert_eq!(t[4], "", "a question gets room");
+    }
+
+    #[test]
+    fn a_folded_command_counts_as_bash_and_the_bullet_says_how_the_run_went() {
+        let mut command: ViewItem = serde_json::from_value(json!({
+            "ref": "t3", "kind": "tool", "command": "ls -la", "state": "done",
+            "component": {"type":"code","code":"out"}
+        }))
+        .unwrap();
+        let mut c = Chat::new();
+        let mut items = vec![
+            call("t1", "read a", "done"),
+            call("t2", "read b", "done"),
+            command.clone(),
+            item("a1", "agent", "Done."),
+        ];
+        c.apply_snapshot(snapshot(items.clone()));
+        c.layout(80, 20, &opts());
+        assert_eq!(texts(&c)[0], "● 3 tool calls · 2 read, 1 bash");
+        let bullet = |c: &Chat| c.visible()[0].spans[0].style.fg;
+        assert_eq!(bullet(&c), Some(Palette::default().success));
+
+        command.state = Some(ItemState::Failed);
+        items[2] = command;
+        c.apply_snapshot(snapshot(items));
+        c.layout(80, 20, &opts());
+        assert_eq!(bullet(&c), Some(Palette::default().danger));
     }
 
     #[test]
