@@ -16,7 +16,8 @@ use crate::{ImageOptions, ImageSlot, ImageStatus, Options, Palette, image_cells}
 /// padding and clipping ignore it; it is removed before the lines leave the renderer.
 const SLOT_MARK: &str = "\u{2060}";
 
-/// Rows the label of a finished tool call takes at most, unless expanded.
+/// Rows the label of a finished tool call takes at most, unless expanded; with a command, the
+/// rows of the command under the label.
 const LABEL_ROWS: usize = 2;
 
 pub(crate) type Lines = Vec<Line<'static>>;
@@ -218,27 +219,36 @@ impl<'a> Cx<'a> {
         let prompt = has_buttons(&it.component)
             || crate::openui::interactive(&it.component)
             || self.o.openui.values().any(|s| s.focus.is_some());
-        // A call that has run is history: a long label (a guest's command is its title) is cut,
-        // unless everything is expanded.
+        // A call that has run is history: a long label or command is cut, unless everything is
+        // expanded.
         let finished = matches!(it.state, Some(pb::ItemState::Done | pb::ItemState::Failed));
         let cut = finished && !prompt && !self.o.expanded;
-        let mut out = match label {
-            Some(label) => {
-                let spans = self.tool_label(&label);
-                let hw = w.saturating_sub(2).max(1);
-                let mut head = wrap(&spans, hw);
-                if cut && head.len() > LABEL_ROWS {
-                    head.truncate(LABEL_ROWS);
-                    if let Some(last) = head.last_mut() {
-                        let mut spans = std::mem::take(&mut last.spans);
-                        let style = spans.last().map_or(Style::new(), |s| s.style);
-                        spans.push(Span::styled("…", style));
-                        last.spans = truncate_spans(spans, hw);
-                    }
-                }
-                prefixed(head, bullet, vec![Span::raw("  ")])
+        let hw = w.saturating_sub(2).max(1);
+        let mut head = match &label {
+            Some(label) => wrap(&self.tool_label(label), hw),
+            None => Vec::new(),
+        };
+        // A shell command is highlighted, and broken after its `&&`, `|` and `;` when long.
+        let mut rows = LABEL_ROWS;
+        if let Some(command) = it.command.as_deref().filter(|c| !c.trim().is_empty()) {
+            rows += head.len();
+            let code = crate::shell::reflow(clean(command.trim_end()).as_ref(), hw);
+            let spans = crate::shell::highlight(&code, &self.p, Style::new());
+            head.extend(hard_wrap_spans(&spans, hw).into_iter().map(Line::from));
+        }
+        if cut && head.len() > rows {
+            head.truncate(rows);
+            if let Some(last) = head.last_mut() {
+                let mut spans = std::mem::take(&mut last.spans);
+                let style = spans.last().map_or(Style::new(), |s| s.style);
+                spans.push(Span::styled("…", style));
+                last.spans = truncate_spans(spans, hw);
             }
-            None => vec![Line::from(bullet)],
+        }
+        let mut out = if head.is_empty() {
+            vec![Line::from(bullet)]
+        } else {
+            prefixed(head, bullet, vec![Span::raw("  ")])
         };
         if self.o.expanded || prompt {
             self.budget = self.o.preview_lines.filter(|_| prompt && !self.o.expanded);

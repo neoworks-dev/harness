@@ -12,6 +12,7 @@ import type {
   Span,
   ToolCallContent,
   ToolCallStatus,
+  ToolKind,
   ViewItem,
   ViewOp,
   ViewSnapshot,
@@ -42,6 +43,7 @@ interface Call {
   agent?: string;
   tool?: string;
   title: string;
+  kind: ToolKind;
   status: ToolCallStatus;
   rawInput?: unknown;
   content?: ToolCallContent[];
@@ -121,6 +123,29 @@ function unfenced(output: string): string {
   const first = lines[0] ?? "";
   if (lines.length < 2 || !/^```[\w-]*$/.test(first) || lines.at(-1) !== "```") return output;
   return lines.slice(1, -1).join("\n");
+}
+
+/**
+ * The shell command an execute call runs, from its input: `command` as a string, or as an argv
+ * (`["bash", "-lc", "…"]` gives the script).
+ */
+function commandOf(input: unknown): string | undefined {
+  if (!isRecord(input)) return undefined;
+  const { command } = input;
+  if (typeof command === "string") return command.trim() === "" ? undefined : command;
+  if (!Array.isArray(command) || !command.every((part) => typeof part === "string")) {
+    return undefined;
+  }
+  const argv = command as string[];
+  const script = argv.length === 3 && /^-l?c$/.test(argv[1] ?? "") ? argv[2] : undefined;
+  return script ?? (argv.length > 0 ? argv.join(" ") : undefined);
+}
+
+/** Whether a call's title says no more than its command (neo cuts it to a part of the first line). */
+function repeats(title: string, command: string): boolean {
+  const flat = (value: string): string => value.replace(/\s+/g, " ").trim();
+  const said = flat(title.replace(/^bash: /, ""));
+  return said !== "" && flat(command).startsWith(said);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -356,6 +381,7 @@ export class SessionView {
     const call: Call = {
       ref: `c-${event.toolCallId}`,
       title: prefixed ? `${event.agent}: ${event.title}` : event.title,
+      kind: event.kind,
       status: event.status,
       rawInput: event.rawInput,
     };
@@ -693,13 +719,26 @@ export class SessionView {
   }
 
   private toolItem(call: Call): ViewItem {
-    return {
+    const item: ViewItem = {
       ref: call.ref,
       kind: "tool",
       label: this.callLabel(call),
       state: STATES[call.status],
       component: this.resultView(call),
     };
+    const command = call.kind === "execute" ? commandOf(call.rawInput) : undefined;
+    if (command !== undefined) {
+      item.command = command;
+      // A title that only repeats the command (Claude Code's; neo's `bash: …`) gives way to it,
+      // all but whose call it is.
+      const prefixed = call.agent !== undefined && this.only === undefined;
+      const title = prefixed ? call.title.slice(`${call.agent}: `.length) : call.title;
+      if (repeats(title, command)) {
+        if (prefixed) item.label = call.agent;
+        else delete item.label;
+      }
+    }
+    return item;
   }
 
   private resultView(call: Call): Component {

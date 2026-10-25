@@ -259,6 +259,68 @@ fn compact_results_count_the_leaves_left_out() {
 }
 
 #[test]
+fn a_command_is_highlighted_and_broken_at_its_operators() {
+    let command = "cd /work/site && cargo build --release 2>&1 | grep -E 'error|warning' | head -40; echo done";
+    let item = |label: Option<&str>, state: &str| {
+        let label = label.map_or(String::new(), |l| format!(r#""label":{},"#, json!(l)));
+        item_of(
+            "tool",
+            &format!(r#"{label}"command":{},"state":"{state}","#, json!(command)),
+            &code("ok"),
+        )
+    };
+    // Without a label the command is the header, broken after its operators.
+    let running = lines(&item(None, "running"), 40);
+    assert_eq!(
+        running,
+        [
+            "● cd /work/site &&",
+            "    cargo build --release 2>&1 |",
+            "    grep -E 'error|warning' |",
+            "    head -40;",
+            "    echo done",
+            "  ⎿ ok"
+        ]
+    );
+    let rendered = render_item(&item(None, "running"), 40, &Options::default());
+    let span = |text: &str| {
+        rendered
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .find(|s| s.content.contains(text))
+            .unwrap_or_else(|| panic!("no {text}"))
+            .style
+    };
+    assert_ne!(
+        span("cargo").fg,
+        span("--release").fg,
+        "commands and flags differ"
+    );
+    assert_eq!(span("'error|warning'").fg, Some(pal().success));
+
+    // Once it has run, two rows; under a label (a description, or whose call it is) too.
+    let done = lines(&item(None, "done"), 40);
+    assert_eq!(
+        done,
+        [
+            "● cd /work/site &&",
+            "    cargo build --release 2>&1 |…",
+            "  ⎿ ok"
+        ]
+    );
+    let described = lines(&item(Some("Build the site"), "done"), 40);
+    assert_eq!(
+        described,
+        [
+            "● Build the site",
+            "  cd /work/site &&",
+            "    cargo build --release 2>&1 |…",
+            "  ⎿ ok"
+        ]
+    );
+}
+
+#[test]
 fn a_long_label_is_cut_once_the_call_has_run() {
     let command = "cd /very/long/path && ".repeat(6) + "cargo test";
     let item = |state: &str| {

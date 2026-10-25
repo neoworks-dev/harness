@@ -3,6 +3,7 @@ import type {
   Component,
   Envelope,
   SessionEvent,
+  ToolKind,
   ViewItem,
   ViewOp,
   ViewPatch,
@@ -202,6 +203,43 @@ describe("session view", () => {
       ],
     });
     expect(plainText?.component).toEqual(para("just text"));
+  });
+
+  test("a call that runs a command carries it; a title that only repeats it gives way", () => {
+    const call = (
+      id: string,
+      title: string,
+      rawInput: unknown,
+      kind: ToolKind = "execute",
+    ): Extract<SessionEvent, { type: "tool_call" }> => ({
+      type: "tool_call",
+      toolCallId: id,
+      title,
+      kind,
+      status: "pending",
+      rawInput,
+    });
+    const codex: SessionEvent = {
+      ...call("e", "npm test", { command: "npm test" }),
+      agent: "codex",
+    };
+    const { view } = feed([
+      call("a", "ls -la && pwd", { command: "ls -la && pwd" }),
+      call("b", "bash: git status", { command: "git status --short" }),
+      call("c", "Show the branch", { command: "git branch" }),
+      call("d", "build", { command: ["bash", "-lc", "make build"] }),
+      codex,
+      call("f", "read a.txt", { path: "a.txt" }, "read"),
+    ]);
+    const items = view.snapshot().items.map(({ label, command }) => ({ label, command }));
+    expect(items).toEqual([
+      { label: undefined, command: "ls -la && pwd" },
+      { label: undefined, command: "git status --short" },
+      { label: "Show the branch", command: "git branch" },
+      { label: "build", command: "make build" },
+      { label: "codex", command: "npm test" },
+      { label: "read a.txt", command: undefined },
+    ]);
   });
 
   test("output in one markdown code block, as Claude Code sends it, is the output", () => {

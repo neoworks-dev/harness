@@ -1304,6 +1304,8 @@ export interface ViewItem {
   /** Who it's from (user items: the app) or the tool call's title. */
   label?: string;
   state?: ItemState;
+  /** Tool items of a call that runs a shell command: the command. Renderers draw it highlighted, under the label, or in its place when there is none (the title only repeated the command). */
+  command?: string;
   component: Component;
 }
 

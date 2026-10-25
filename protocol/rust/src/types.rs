@@ -3328,6 +3328,9 @@ pub struct ViewItem {
     pub label: Option<String>,
     #[serde(rename = "state", default, skip_serializing_if = "Option::is_none")]
     pub state: Option<ItemState>,
+    /// Tool items of a call that runs a shell command: the command. Renderers draw it highlighted, under the label, or in its place when there is none (the title only repeated the command).
+    #[serde(rename = "command", default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
     #[serde(rename = "component")]
     pub component: Component,
 }

@@ -2998,9 +2998,11 @@ type ViewItem struct {
 	Ref  string   `json:"ref"`
 	Kind ItemKind `json:"kind"`
 	// Who it's from (user items: the app) or the tool call's title.
-	Label     *string    `json:"label,omitempty"`
-	State     *ItemState `json:"state,omitempty"`
-	Component Component  `json:"component"`
+	Label *string    `json:"label,omitempty"`
+	State *ItemState `json:"state,omitempty"`
+	// Tool items of a call that runs a shell command: the command. Renderers draw it highlighted, under the label, or in its place when there is none (the title only repeated the command).
+	Command   *string   `json:"command,omitempty"`
+	Component Component `json:"component"`
 }
 
 type ItemKind string
