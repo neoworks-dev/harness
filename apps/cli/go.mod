@@ -10,8 +10,8 @@ require (
 
 require github.com/coder/websocket v1.8.15 // indirect
 
-replace neoworks.dev/suite/protocol/go => ../protocol/go
+replace neoworks.dev/suite/protocol/go => ../../protocol/go
 
-replace neoworks.dev/suite/sdk-go => ../sdk-go
+replace neoworks.dev/suite/sdk-go => ../../sdk-go
 
-replace neoworks.dev/suite/renderers/tui => ../renderers/tui
+replace neoworks.dev/suite/renderers/tui => ../../renderers/tui

@@ -1,8 +1,8 @@
 node_modules/
 bin/
-# `go build` in cli/ names its output after the folder.
-cli/cli
-cli/cli.exe
+# `go build` in apps/cli/ names its output after the folder.
+apps/cli/cli
+apps/cli/cli.exe
 *.db
 *.db-*
 .env

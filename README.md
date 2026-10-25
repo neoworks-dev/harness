@@ -8,7 +8,7 @@ One agent session shared across every app in the suite. The design is in [docs/d
 | `daemon/`            | TS on Bun: session store, bus hub, turn queue                                                 | 1     |
 | `harness/`           | TS on Bun: neo, our agent (loop, core tools, system prompt)                                   | 1     |
 | `websearch/`         | Web, news and image search across engines; pages as markdown                                  | 6     |
-| `cli/`               | Go: `suite status / sessions / attach / tools / focus / move`                                 | 1-3   |
+| `apps/cli/`          | Go: `suite status / sessions / attach / tools / focus / move`                                 | 1-3   |
 | `sdk-ts/`, `sdk-go/` | Bus clients (sessions, presence, hosting an app's tools); `sdk-ts` is `@neoworks-dev/neo-sdk` | 2     |
 | `sdk-rs/`            | Rust bus client for GPUI apps                                                                 | 3     |
 | `apps/term/`         | `suite-term`: full-screen terminal app (chat, plan, files, usage)                             | 6     |

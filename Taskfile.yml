@@ -3,7 +3,7 @@
 version: "3"
 
 vars:
-  GO_MODULES: cli sdk-go renderers/tui protocol/go
+  GO_MODULES: apps/cli sdk-go renderers/tui protocol/go
   # Named, so rustfmt leaves path dependencies outside this repo (svelte-gpui's host) alone.
   RUST_PACKAGES: -p suite-protocol -p suite-sdk -p suite-renderer-gpui -p suite-renderer-ratatui -p suite-term -p suite-gui -p suite-github
 
@@ -40,7 +40,7 @@ tasks:
   build:suite:
     desc: The CLI and daemon launcher (bin/suite)
     cmds:
-      - go build -o bin/suite ./cli
+      - go build -o bin/suite ./apps/cli
 
   build:term:
     desc: The terminal app (bin/suite-term), what `suite` with no arguments opens
