@@ -328,6 +328,24 @@ describe("session view", () => {
     expect(view.snapshot().items).toEqual([]);
   });
 
+  test("apps coming and going share one line until something else is said", () => {
+    const { view } = feed([
+      { type: "app_disconnected", app: "terminal-2" },
+      { type: "app_connected", app: "terminal", kind: "app", v: 0, tools: [], reconnect: true },
+      { type: "focus_changed", app: "terminal" },
+      { type: "app_connected", app: "terminal-2", kind: "app", v: 0, tools: [], reconnect: true },
+      { type: "user_message", app: "terminal", text: "hi" },
+      { type: "app_disconnected", app: "terminal-2" },
+    ]);
+    const texts = view
+      .snapshot()
+      .items.map((i) => (i.component.type === "text" ? i.component.blocks : undefined))
+      .map((blocks) => JSON.stringify(blocks));
+    expect(texts[0]).toContain('"terminal is back · now in terminal · terminal-2 is back"');
+    expect(texts[2]).toContain('"terminal-2 disconnected"');
+    expect(texts).toHaveLength(3);
+  });
+
   test("connector events, focus and failed turns become notices; harness messages don't show", () => {
     const { view } = feed([
       { type: "app_connected", app: "pad", kind: "app", v: 1, tools: [] },
@@ -342,15 +360,7 @@ describe("session view", () => {
         {
           type: "text",
           tone: "muted",
-          blocks: [{ type: "paragraph", spans: [{ text: "pad connected (v1): " }] }],
-        },
-      ],
-      [
-        "notice",
-        {
-          type: "text",
-          tone: "muted",
-          blocks: [{ type: "paragraph", spans: [{ text: "now in pad file=a.txt" }] }],
+          blocks: [{ type: "paragraph", spans: [{ text: "pad connected (v1):  · now in pad" }] }],
         },
       ],
       [

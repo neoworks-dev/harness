@@ -106,7 +106,13 @@ impl<'a> Cx<'a> {
     fn user(&mut self, it: &pb::ViewItem, label: Option<String>, w: usize) -> Lines {
         let inner = w.saturating_sub(2).max(1);
         let mut body = self.comp(&it.component, inner);
-        if let Some(label) = label {
+        let own = |label: &str| {
+            self.o
+                .app
+                .as_deref()
+                .is_some_and(|app| app_family(app) == app_family(label))
+        };
+        if let Some(label) = label.filter(|l| !own(l)) {
             let tag = format!("· {label}");
             match body.first_mut() {
                 Some(first) if first.width() + 2 + width(&tag) <= inner => {
@@ -229,13 +235,25 @@ impl<'a> Cx<'a> {
             Some(label) => wrap(&self.tool_label(label), hw),
             None => Vec::new(),
         };
-        // A shell command is highlighted, and broken after its `&&`, `|` and `;` when long.
+        // A shell command is highlighted while it runs or waits, muted once it has run, and
+        // broken after its `&&`, `|` and `;` when long.
         let mut rows = LABEL_ROWS;
         if let Some(command) = it.command.as_deref().filter(|c| !c.trim().is_empty()) {
             rows += head.len();
             let code = crate::shell::reflow(clean(command.trim_end()).as_ref(), hw);
             let spans = crate::shell::highlight(&code, &self.p, Style::new());
-            head.extend(hard_wrap_spans(&spans, hw).into_iter().map(Line::from));
+            let mut lines: Lines = hard_wrap_spans(&spans, hw)
+                .into_iter()
+                .map(Line::from)
+                .collect();
+            // Once it has run it steps back: the agent's prose is what to read.
+            if finished {
+                let muted = self.p.muted;
+                restyle(&mut lines, |st| {
+                    st.fg(muted).remove_modifier(Modifier::BOLD)
+                });
+            }
+            head.extend(lines);
         }
         if cut && head.len() > rows {
             head.truncate(rows);
@@ -1284,6 +1302,14 @@ pub(crate) fn indented(lines: Lines, n: usize) -> Lines {
 }
 
 /// Gives every span without a foreground color this one.
+/// An app's name without the number of its instance: `terminal-2` is `terminal`.
+fn app_family(app: &str) -> &str {
+    match app.rsplit_once('-') {
+        Some((base, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => base,
+        _ => app,
+    }
+}
+
 pub(crate) fn tint(lines: &mut Lines, color: Color) {
     restyle_spans(lines, |s| {
         if s.fg.is_none() {

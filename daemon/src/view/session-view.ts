@@ -153,7 +153,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function connectedNotice(event: Extract<SessionEvent, { type: "app_connected" }>): string {
-  if (event.reconnect === true) return `${event.app} is back (v${event.v})`;
+  if (event.reconnect === true) return `${event.app} is back`;
   if (event.previous === undefined) {
     const parts = [event.tools.join(", ")];
     if (event.components?.length) parts.push(`UI: ${event.components.join(", ")}`);
@@ -200,6 +200,8 @@ export class SessionView {
   /** Those of them that outlive a turn (started in the background). */
   private readonly background = new Set<string>();
   private readonly docs: NeoUiDocs;
+  /** The line of app news that is last in the chat, and what it says per app. */
+  private appNews: { ref: string; parts: Map<string, string> } | undefined;
   private seq = 0;
   /** Inside `replay`, and the streams whose text has grown since they were parsed. */
   private replaying = false;
@@ -363,13 +365,11 @@ export class SessionView {
         return [...finished, this.notice(`e${seq}`, what, tone)];
       }
       case "app_connected":
-        return [this.notice(`n${seq}`, connectedNotice(event))];
+        return this.appNotice(event.app, connectedNotice(event), seq);
       case "app_disconnected":
-        return [this.notice(`n${seq}`, `${event.app} disconnected`)];
-      case "focus_changed": {
-        const context = Object.entries(event.context ?? {}).map(([k, v]) => ` ${k}=${v}`);
-        return [this.notice(`n${seq}`, `now in ${event.app}${context.join("")}`)];
-      }
+        return this.appNotice(event.app, `${event.app} disconnected`, seq);
+      case "focus_changed":
+        return this.appNotice(" focus", `now in ${event.app}`, seq);
       default:
         return [];
     }
@@ -495,6 +495,22 @@ export class SessionView {
 
   private taskItem(ref: string, task: string): ViewOp {
     return { op: "set", item: { ref, kind: "user", label: "task", component: text(plain(task)) } };
+  }
+
+  /**
+   * Apps coming, going and the agent moving between them, said in one muted line while nothing
+   * else comes between: `terminal-2 disconnected · terminal is back · now in terminal`. Each app
+   * (and the focus) keeps only its latest news.
+   */
+  private appNotice(key: string, message: string, seq: number): ViewOp[] {
+    const open = this.appNews;
+    if (open === undefined || this.items.at(-1)?.ref !== open.ref) {
+      this.appNews = { ref: `n${seq}`, parts: new Map() };
+    }
+    const news = this.appNews as { ref: string; parts: Map<string, string> };
+    news.parts.delete(key);
+    news.parts.set(key, message);
+    return [this.notice(news.ref, [...news.parts.values()].join(" · "))];
   }
 
   private notice(ref: string, message: string, tone: "muted" | "danger" = "muted"): ViewOp {

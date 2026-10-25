@@ -50,6 +50,18 @@ fn assert_fits(lines: &[Line<'_>], width: u16) {
 // ---- items ----
 
 #[test]
+fn the_apps_own_messages_leave_out_their_tag() {
+    let it = |app: &str| item_of("user", &format!(r#""label":"{app}","#), &text("hi"));
+    let opts = Options {
+        app: Some("terminal".into()),
+        ..Options::default()
+    };
+    assert_eq!(lines_of(&it("terminal"), 40, &opts), ["› hi"]);
+    assert_eq!(lines_of(&it("terminal-2"), 40, &opts), ["› hi"]);
+    assert_eq!(lines_of(&it("gui"), 40, &opts), ["› hi  · gui"]);
+}
+
+#[test]
 fn user_items_get_a_prompt_and_the_app_dimmed_on_a_band() {
     let it = item_of("user", r#""label":"browser","#, &text("make it smaller"));
     assert_eq!(lines(&it, 40), ["› make it smaller  · browser"]);
@@ -298,6 +310,18 @@ fn a_command_is_highlighted_and_broken_at_its_operators() {
     );
     assert_eq!(span("'error|warning'").fg, Some(pal().success));
 
+    // Once it has run it is muted.
+    let done = render_item(&item(None, "done"), 40, &Options::default());
+    assert!(
+        done[0]
+            .spans
+            .iter()
+            .skip(1)
+            .all(|s| s.style.fg == Some(pal().muted)
+                && !s.style.add_modifier.contains(Modifier::BOLD)),
+        "{:?}",
+        done[0]
+    );
     // Once it has run, two rows; under a label (a description, or whose call it is) too.
     let done = lines(&item(None, "done"), 40);
     assert_eq!(

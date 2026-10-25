@@ -1,6 +1,4 @@
-photo-editor connected (v3): crop, export
-
-now in overlay
+photo-editor connected (v3): crop, export · now in overlay
 
 » overlay
 Crop this to a square logo and add it to the header.

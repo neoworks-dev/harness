@@ -4,13 +4,7 @@ item n1 kind=notice
   body
     text column gap=4
       text 12.6/400 fg=muted
-        "photo-editor connected (v3): crop, export"
-
-item n2 kind=notice
-  body
-    text column gap=4
-      text 12.6/400 fg=muted
-        "now in overlay"
+        "photo-editor connected (v3): crop, export · now in overlay"
 
 item u3 kind=user
   frame align=end max-width=85% bg=surface border=border radius=12 pad=8/16

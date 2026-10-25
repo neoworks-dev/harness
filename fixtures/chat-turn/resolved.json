@@ -6,17 +6,11 @@
       "type": "text",
       "tone": "muted",
       "blocks": [
-        { "type": "paragraph", "spans": [{ "text": "photo-editor connected (v3): crop, export" }] }
+        {
+          "type": "paragraph",
+          "spans": [{ "text": "photo-editor connected (v3): crop, export · now in overlay" }]
+        }
       ]
-    }
-  },
-  {
-    "ref": "n2",
-    "kind": "notice",
-    "component": {
-      "type": "text",
-      "tone": "muted",
-      "blocks": [{ "type": "paragraph", "spans": [{ "text": "now in overlay" }] }]
     }
   },
   {

@@ -335,6 +335,7 @@ impl App {
         };
         let now = crate::util::now_ms();
         let session = config.session.clone();
+        let chat = Chat::for_app(&config.app_id);
         App {
             widgets: Widgets::new(PathBuf::from(&config.cwd), palette),
             github: Github::new(PathBuf::from(&config.cwd), palette),
@@ -351,7 +352,7 @@ impl App {
             cwd: config.cwd,
             home: config.home,
             no_color: config.no_color,
-            chat: Chat::new(),
+            chat,
             images: None,
             editor: Editor::default(),
             attachments: Vec::new(),
@@ -824,7 +825,7 @@ impl App {
     fn begin_session(&mut self, id: &str, cwd: &str) {
         self.session = id.to_string();
         self.cwd = cwd.to_string();
-        self.chat = Chat::new();
+        self.chat = Chat::for_app(&self.app_id);
         self.running = false;
         self.turn_started_ms = self.now_ms;
         self.waiting.clear();

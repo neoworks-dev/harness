@@ -132,11 +132,21 @@ pub struct Chat {
     loaded: bool,
     /// The colors of the last layout, for the thinking animation.
     palette: Palette,
+    /// This app's name: the user's messages from it are drawn without their tag.
+    app: Option<String>,
 }
 
 impl Chat {
     pub fn new() -> Chat {
         Chat::default()
+    }
+
+    /// The pane of the app `app`: the user's messages from it leave out their `· app` tag.
+    pub fn for_app(app: &str) -> Chat {
+        Chat {
+            app: Some(app.to_string()),
+            ..Chat::default()
+        }
     }
 
     pub fn loaded(&self) -> bool {
@@ -454,7 +464,7 @@ impl Chat {
                 }
                 Some(c) if c.key == ckey => (c.lines.clone(), c.slots.clone(), c.focus),
                 _ => {
-                    let (lines, slots, focus) = render(item, width, &ckey);
+                    let (lines, slots, focus) = render(item, width, &ckey, self.app.as_deref());
                     let (lines, slots) = (Rc::new(lines), Rc::new(slots));
                     self.cache.insert(
                         r.clone(),
@@ -762,6 +772,7 @@ fn render(
     item: &ViewItem,
     width: u16,
     key: &CacheKey,
+    app: Option<&str>,
 ) -> (Vec<Line<'static>>, Vec<ImageSlot>, Option<usize>) {
     let opts = Options {
         expanded: key.expanded,
@@ -781,6 +792,7 @@ fn render(
             status: i.status.clone(),
         }),
         openui: key.ui.clone().unwrap_or_default(),
+        app: app.map(str::to_string),
     };
     if key.focused.is_none() {
         let out = render_item_images(item, width, &opts);
@@ -830,6 +842,7 @@ pub fn panel_lines(
         theme: palette,
         images: None,
         openui: HashMap::new(),
+        app: None,
     };
     neo_renderer_ratatui::render_item(item, width.saturating_sub(2).max(1), &opts)
         .into_iter()

@@ -61,6 +61,9 @@ pub struct Options {
     pub images: Option<ImageOptions>,
     /// The visual state of the item's OpenUI docs (focus, tabs, edits…), per doc id.
     pub openui: HashMap<String, UiState>,
+    /// The app drawing the chat: the user's messages from it (or another of its instances,
+    /// `terminal-2`) leave out their `· app` tag. None: every message has it.
+    pub app: Option<String>,
 }
 
 /// What the app knows about an image source (`src` of an image component).
