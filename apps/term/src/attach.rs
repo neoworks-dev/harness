@@ -3,6 +3,7 @@
 //! file first. The terminal only pastes text, so the clipboard is read with `wl-paste` (Wayland)
 //! or `xclip` (X11), as the desktop app does.
 
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -165,9 +166,99 @@ fn split_words(text: &str) -> Option<Vec<String>> {
     Some(words)
 }
 
+/// The marker that stands for the n-th image in the draft, where it was pasted.
+pub fn marker(n: usize) -> String {
+    format!("[image {n}]")
+}
+
+/// The image markers in `text`, in order: where each is and its number.
+pub fn markers(text: &str) -> Vec<(Range<usize>, usize)> {
+    const OPEN: &str = "[image ";
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(at) = text[from..].find(OPEN) {
+        let start = from + at;
+        let digits = &text[start + OPEN.len()..];
+        let len = digits.bytes().take_while(u8::is_ascii_digit).count();
+        from = start + OPEN.len();
+        if len == 0 || !digits[len..].starts_with(']') {
+            continue;
+        }
+        if let Ok(n) = digits[..len].parse() {
+            let end = start + OPEN.len() + len + 1;
+            out.push((start..end, n));
+            from = end;
+        }
+    }
+    out
+}
+
+/// The length of the marker that ends right before `cursor`, if one does: Backspace there
+/// deletes all of it.
+pub fn marker_before(text: &str, cursor: usize) -> Option<usize> {
+    markers(text)
+        .into_iter()
+        .find(|(range, _)| range.end == cursor)
+        .map(|(range, _)| range.len())
+}
+
+/// The attachments whose marker is still in the draft, in the order the markers appear.
+pub fn referenced<'a>(text: &str, attachments: &'a [(usize, String)]) -> Vec<(usize, &'a str)> {
+    let mut out: Vec<(usize, &str)> = Vec::new();
+    for (_, n) in markers(text) {
+        if out.iter().any(|(m, _)| *m == n) {
+            continue;
+        }
+        if let Some((_, path)) = attachments.iter().find(|(m, _)| *m == n) {
+            out.push((n, path));
+        }
+    }
+    out
+}
+
+/// The draft as it is sent: the markers of attached images renumbered 1, 2, … in the order they
+/// appear, and the images' paths in that order (an image whose marker was deleted stays home).
+/// A marker of no attachment is left as typed.
+pub fn outgoing(text: &str, attachments: &[(usize, String)]) -> (String, Vec<String>) {
+    let order = referenced(text, attachments);
+    let mut out = String::with_capacity(text.len());
+    let mut last = 0;
+    for (range, n) in markers(text) {
+        if let Some(i) = order.iter().position(|(m, _)| *m == n) {
+            out.push_str(&text[last..range.start]);
+            out.push_str(&marker(i + 1));
+            last = range.end;
+        }
+    }
+    out.push_str(&text[last..]);
+    (out, order.into_iter().map(|(_, p)| p.to_string()).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn markers_are_found_renumbered_and_deleted_whole() {
+        let text = "a [image 2] b [image 5] [image x] [image 9] [image 2]";
+        let found: Vec<usize> = markers(text).into_iter().map(|(_, n)| n).collect();
+        assert_eq!(found, [2, 5, 9, 2]);
+        assert_eq!(marker_before("see [image 12]", 14), Some(10));
+        assert_eq!(marker_before("see [image 12] ", 15), None);
+
+        let attached = [
+            (2, "/b.png".to_string()),
+            (5, "/a.png".to_string()),
+            (7, "/gone.png".to_string()),
+        ];
+        assert_eq!(
+            outgoing(text, &attached),
+            (
+                "a [image 1] b [image 2] [image x] [image 9] [image 1]".to_string(),
+                vec!["/b.png".to_string(), "/a.png".to_string()]
+            )
+        );
+    }
 
     #[test]
     fn png_is_preferred_and_text_alone_is_no_image() {

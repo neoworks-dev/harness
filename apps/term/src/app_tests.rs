@@ -255,51 +255,60 @@ fn ctrl_v_and_an_empty_paste_read_the_clipboard_image() {
 }
 
 #[test]
-fn pasted_images_go_with_the_next_message() {
+fn pasted_images_are_placed_in_the_draft_and_go_with_it() {
     let dir = std::env::temp_dir().join("neo-term-test-attach");
     std::fs::create_dir_all(&dir).unwrap();
     let dropped = dir.join("cat.png");
     std::fs::write(&dropped, b"x").unwrap();
     let dropped = dropped.to_string_lossy().into_owned();
     let mut app = app();
+    type_str(&mut app, "compare");
     app.handle_msg(Msg::Pasted(Some("/tmp/neo-term/paste-1.png".into())));
+    type_str(&mut app, "with");
     assert!(app.handle_paste(&format!("'{dropped}'")).is_empty());
-    assert_eq!(app.editor_text(), "", "image paths are attached, not typed");
+    assert_eq!(app.editor_text(), "compare [image 1] with [image 2] ");
     let shown = screen(&mut app, 80, 20).join("\n");
     assert!(
-        shown.contains("[image 1: paste-1.png] [image 2: cat.png]  backspace removes"),
+        shown.contains("[image 1] paste-1.png  [image 2] cat.png"),
         "{shown}"
     );
 
-    // Backspace on an empty editor takes the last one back.
+    // Backspace after a marker takes all of it, and the image with it.
     app.handle_key(key(KeyCode::Backspace));
+    app.handle_key(key(KeyCode::Backspace));
+    assert_eq!(app.editor_text(), "compare [image 1] with ");
+    let shown = screen(&mut app, 80, 20).join("\n");
+    assert!(!shown.contains("cat.png"), "{shown}");
+
+    // Pasted again it is image 3; sent, the markers count from 1 in reading order.
+    app.handle_key(ctrl('a'));
     app.handle_paste(&dropped);
-    type_str(&mut app, "what is this");
+    assert_eq!(app.editor_text(), "[image 3] compare [image 1] with ");
     let fx = app.handle_key(key(KeyCode::Enter));
     assert_eq!(
         fx,
         [Effect::Input {
             session: "s1".into(),
-            text: "what is this".into(),
-            images: vec!["/tmp/neo-term/paste-1.png".into(), dropped.clone()],
+            text: "[image 1] compare [image 2] with".into(),
+            images: vec![dropped.clone(), "/tmp/neo-term/paste-1.png".into()],
         }]
     );
     assert!(!screen(&mut app, 80, 20).join("\n").contains("[image"));
 
-    // Images alone are a message too; ctrl-c drops them.
-    app.handle_paste(&dropped);
-    assert_eq!(
-        app.handle_key(key(KeyCode::Enter)),
-        [Effect::Input {
-            session: "s1".into(),
-            text: String::new(),
-            images: vec![dropped.clone()],
-        }]
-    );
+    // Ctrl-C drops the draft and its images.
     app.handle_paste(&dropped);
     app.handle_key(ctrl('c'));
     assert!(app.handle_key(key(KeyCode::Enter)).is_empty());
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn thumbnails_keep_the_pictures_shape() {
+    // 6 rows of 20px cells are 120px high; a square picture is 120px wide, 12 cells of 10px.
+    assert_eq!(thumbnail_cols(400, 400, 6, (10, 20)), 12);
+    assert_eq!(thumbnail_cols(100, 400, 6, (10, 20)), 3);
+    assert_eq!(thumbnail_cols(4000, 400, 6, (10, 20)), PREVIEW_COLS);
+    assert_eq!(thumbnail_cols(0, 400, 6, (10, 20)), PREVIEW_COLS / 2);
 }
 
 #[test]

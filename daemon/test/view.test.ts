@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type {
+  Component,
   Envelope,
   SessionEvent,
   ViewItem,
@@ -171,6 +172,55 @@ describe("session view", () => {
         { key: "n", value: "1" },
       ],
     });
+  });
+
+  test("a user's images go where their markers are, the others after the text", () => {
+    const { view } = feed([
+      {
+        type: "user_message",
+        app: "terminal",
+        text: "compare [image 2] with\n\n[image 1] please",
+        images: ["/a.png", "/b.png", "/c.png"],
+      },
+      { type: "user_message", app: "terminal", text: "just text" },
+    ]);
+    const [placed, plainText] = view.snapshot().items;
+    const para = (t: string): Component => ({
+      type: "text",
+      blocks: [{ type: "paragraph", spans: [{ text: t }] }],
+    });
+    expect(placed?.component).toEqual({
+      type: "stack",
+      gap: "s",
+      children: [
+        para("compare"),
+        { type: "image", src: "/b.png" },
+        para("with"),
+        { type: "image", src: "/a.png" },
+        para("please"),
+        { type: "image", src: "/c.png" },
+      ],
+    });
+    expect(plainText?.component).toEqual(para("just text"));
+  });
+
+  test("output in one markdown code block, as Claude Code sends it, is the output", () => {
+    const { view } = feed([
+      {
+        type: "tool_call",
+        toolCallId: "a",
+        title: "git status",
+        kind: "execute",
+        status: "pending",
+      },
+      {
+        type: "tool_call_update",
+        toolCallId: "a",
+        status: "completed",
+        content: [{ type: "text", text: "```console\n?? .claude/\n```" }],
+      },
+    ]);
+    expect(view.snapshot().items[0]?.component).toEqual({ type: "code", code: "?? .claude/" });
   });
 
   test("a plan is one checklist per agent, replaced in place; usage is not shown", () => {

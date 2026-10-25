@@ -11,7 +11,9 @@ use neo_protocol::{
     AgentFocus, SecretRequest, SessionEvent, SessionEventRecord, SessionInfo, SessionState,
     SettingName, SlashCommand, WaitingInput,
 };
-use neo_renderer_ratatui::{ButtonRef, Options, Palette, UiKind, UiTarget, openui_targets};
+use neo_renderer_ratatui::{
+    ButtonRef, ImageStatus, Options, Palette, UiKind, UiTarget, openui_targets,
+};
 use neo_sdk::Event;
 use ratatui::Frame;
 use ratatui::crossterm::event::{
@@ -52,6 +54,10 @@ const MENU_ROWS: usize = 8;
 const WHEEL_LINES: usize = 3;
 /// Most rows the editor grows to.
 const EDITOR_ROWS: usize = 8;
+/// Rows a pasted image's thumbnail takes above the editor (its marker goes under it), and the
+/// most columns.
+const PREVIEW_ROWS: u16 = 6;
+const PREVIEW_COLS: u16 = 24;
 /// Most rows the inputs waiting behind the running turn take above the editor.
 const WAITING_ROWS: usize = 3;
 const SPINNER: [char; 4] = ['◐', '◓', '◑', '◒'];
@@ -261,8 +267,9 @@ pub struct App {
     /// Pictures in the chat; None shows the `[image …]` placeholder.
     images: Option<Images>,
     editor: Editor,
-    /// Images to send with the next message, by path.
-    attachments: Vec<String>,
+    /// Images pasted into the draft: the number of the `[image N]` marker that places each, and
+    /// its path. One whose marker is deleted is not sent.
+    attachments: Vec<(usize, String)>,
     histories: Histories,
     overlay: Overlay,
     switcher: Switcher,
@@ -1418,14 +1425,24 @@ impl App {
         }
     }
 
-    /// Adds images to the next message; one already attached is not added twice.
+    /// Pastes images into the draft: each gets a number and its `[image N]` marker goes in at
+    /// the cursor, so the message says where it belongs.
     fn attach(&mut self, paths: Vec<String>) {
         self.dirty = true;
+        self.prompt.typed_ms = self.now_ms;
         for path in paths {
-            if !self.attachments.contains(&path) {
-                self.attachments.push(path);
+            let n = self.attachments.iter().map(|(n, _)| *n).max().unwrap_or(0) + 1;
+            self.attachments.push((n, path));
+            let before = self.editor.text()[..self.editor.cursor()]
+                .chars()
+                .next_back();
+            if before.is_some_and(|c| !c.is_whitespace()) {
+                self.editor.insert_char(' ');
             }
+            self.editor.insert_str(&attach::marker(n));
+            self.editor.insert_char(' ');
         }
+        self.histories.of(&self.session).reset();
     }
 
     fn panel_key(&mut self, focus: Focus, key: KeyEvent, fx: &mut Vec<Effect>) {
@@ -1817,11 +1834,14 @@ impl App {
                 self.esc(fx);
                 edited = false;
             }
-            KeyCode::Backspace if empty && !self.attachments.is_empty() => {
-                self.attachments.pop();
-            }
             KeyCode::Backspace if alt => self.editor.delete_word_back(),
-            KeyCode::Backspace => self.editor.backspace(),
+            // A pasted image's marker goes as a whole (and the image with it).
+            KeyCode::Backspace => {
+                match attach::marker_before(self.editor.text(), self.editor.cursor()) {
+                    Some(len) => self.editor.delete_before(len),
+                    None => self.editor.backspace(),
+                }
+            }
             KeyCode::Delete => self.editor.delete(),
             KeyCode::Left if ctrl || alt => self.editor.word_left(),
             KeyCode::Right if ctrl || alt => self.editor.word_right(),
@@ -2041,7 +2061,7 @@ impl App {
             return true;
         }
         let text = self.editor.text().trim().to_string();
-        if text.is_empty() && self.attachments.is_empty() {
+        if text.is_empty() {
             return false;
         }
         self.editor.clear();
@@ -2092,14 +2112,13 @@ impl App {
     }
 
     fn send(&mut self, text: String, fx: &mut Vec<Effect>) {
-        if !text.is_empty() {
-            self.histories.record(&self.session, &text);
-        }
+        self.histories.record(&self.session, &text);
         self.chat.follow();
         // Sending ends the typing: a card it brings (/model's choice) takes the editor's place at
         // once instead of showing in the chat first.
         self.prompt.typed_ms = 0;
-        let images = std::mem::take(&mut self.attachments);
+        let (text, images) = attach::outgoing(&text, &self.attachments);
+        self.attachments.retain(|(_, path)| !images.contains(path));
         if self.running {
             self.waiting.push(WaitingInput {
                 app: self.app_id.clone(),
@@ -2181,7 +2200,14 @@ impl App {
             Vec::new()
         };
         let hint_h = u16::from(self.prompt_waits() && room >= 3);
-        let attached_h = u16::from(panel.is_empty() && !self.attachments.is_empty() && room >= 3);
+        let pasted = !attach::referenced(self.editor.text(), &self.attachments).is_empty();
+        let attached_h = if !panel.is_empty() || !pasted {
+            0
+        } else if self.images.is_some() && room >= PREVIEW_ROWS + 1 + 4 {
+            PREVIEW_ROWS + 1
+        } else {
+            u16::from(room >= 3)
+        };
         let waiting_h = if panel.is_empty() && room >= 6 {
             self.waiting.len().min(WAITING_ROWS) as u16
         } else {
@@ -2202,6 +2228,12 @@ impl App {
         let hint_h = hint_h.min(editor_h.saturating_sub(1));
         let waiting_h = waiting_h.min(editor_h.saturating_sub(1 + hint_h));
         let attached_h = attached_h.min(editor_h.saturating_sub(1 + hint_h + waiting_h));
+        // Too little room for a thumbnail: none, rather than half of one.
+        let attached_h = if attached_h > 1 && attached_h < PREVIEW_ROWS + 1 {
+            1
+        } else {
+            attached_h
+        };
         let above = hint_h + waiting_h + attached_h;
         let top = chat_h + rule_h;
         Areas {
@@ -2682,6 +2714,13 @@ impl App {
             let (row, col) = self.editor.cursor_pos();
             let h = usize::from(area.height);
             let start = if row >= h { row + 1 - h } else { 0 };
+            // The markers of pasted images stand out: that is where they go.
+            let marks: Vec<std::ops::Range<usize>> = attach::markers(self.editor.text())
+                .into_iter()
+                .filter(|(_, n)| self.attachments.iter().any(|(m, _)| m == n))
+                .map(|(range, _)| range)
+                .collect();
+            let accent = self.styles.accent;
             let lines: Vec<Line<'static>> = rows
                 .iter()
                 .enumerate()
@@ -2693,10 +2732,22 @@ impl App {
                     } else {
                         Span::raw("  ")
                     };
-                    let text = self.editor.text()[r.start..r.end]
-                        .trim_end_matches('\n')
-                        .to_string();
-                    Line::from(vec![lead, Span::raw(text)])
+                    let all = self.editor.text();
+                    let end = r.start + all[r.start..r.end].trim_end_matches('\n').len();
+                    let mut spans = vec![lead];
+                    let mut at = r.start;
+                    for m in marks.iter().filter(|m| m.start < end && m.end > r.start) {
+                        let (from, to) = (m.start.max(r.start), m.end.min(end));
+                        if from > at {
+                            spans.push(Span::raw(all[at..from].to_string()));
+                        }
+                        spans.push(Span::styled(all[from..to].to_string(), accent));
+                        at = to;
+                    }
+                    if at < end {
+                        spans.push(Span::raw(all[at..end].to_string()));
+                    }
+                    Line::from(spans)
                 })
                 .collect();
             frame.render_widget(Paragraph::new(lines), area);
@@ -2751,19 +2802,84 @@ impl App {
         frame.render_widget(Paragraph::new(lines), area);
     }
 
-    /// `[image 1: paste-1729.png] [image 2: cat.jpg]  backspace removes`
-    fn draw_attached(&self, frame: &mut Frame, area: Rect) {
+    /// The images pasted into the draft, above the editor: thumbnails with their marker under
+    /// them where the terminal shows pictures, else one row of `[image 1] cat.png`.
+    fn draw_attached(&mut self, frame: &mut Frame, area: Rect) {
+        let attached: Vec<(usize, String)> =
+            attach::referenced(self.editor.text(), &self.attachments)
+                .into_iter()
+                .map(|(n, path)| (n, path.to_string()))
+                .collect();
+        let (accent, muted) = (self.styles.accent, self.styles.muted);
+        if area.height > 1
+            && let Some(images) = self.images.as_mut()
+        {
+            images.request(attached.iter().map(|(_, path)| path.as_str()));
+            let view = images.chat_view();
+            let rows = area.height - 1;
+            let mut x = 0;
+            for (n, path) in &attached {
+                let status = view.status.get(path);
+                let cols = match status {
+                    Some(ImageStatus::Ready { width, height }) => {
+                        thumbnail_cols(*width, *height, rows, view.cell)
+                    }
+                    _ => PREVIEW_COLS / 2,
+                };
+                if x + cols > area.width {
+                    break;
+                }
+                let label_at = Rect {
+                    x: area.x + x,
+                    y: area.y + rows,
+                    width: cols,
+                    height: 1,
+                };
+                match status {
+                    Some(ImageStatus::Ready { .. }) => {
+                        let at = chat::Placement {
+                            src: path.clone(),
+                            x,
+                            y: 0,
+                            cols,
+                            rows,
+                        };
+                        images.draw(frame.buffer_mut(), area, &at, muted);
+                    }
+                    Some(ImageStatus::Failed(_)) => frame.render_widget(
+                        Paragraph::new(Span::styled("can't show it", muted)),
+                        Rect {
+                            y: area.y,
+                            ..label_at
+                        },
+                    ),
+                    _ => frame.render_widget(
+                        Paragraph::new(Span::styled("loading…", muted)),
+                        Rect {
+                            y: area.y,
+                            ..label_at
+                        },
+                    ),
+                }
+                frame.render_widget(
+                    Paragraph::new(Span::styled(
+                        truncate(&attach::marker(*n), usize::from(cols)),
+                        accent,
+                    )),
+                    label_at,
+                );
+                x += cols + 2;
+            }
+            return;
+        }
         let mut spans = Vec::new();
-        for (i, path) in self.attachments.iter().enumerate() {
+        for (n, path) in &attached {
             let name = std::path::Path::new(path)
                 .file_name()
                 .map_or_else(|| path.clone(), |n| n.to_string_lossy().into_owned());
-            spans.push(Span::styled(
-                format!("[image {}: {name}] ", i + 1),
-                self.styles.accent,
-            ));
+            spans.push(Span::styled(attach::marker(*n), accent));
+            spans.push(Span::styled(format!(" {name}  "), muted));
         }
-        spans.push(Span::styled(" backspace removes", self.styles.muted));
         let line = fit_line(Line::from(spans), usize::from(area.width));
         frame.render_widget(Paragraph::new(line), area);
     }
@@ -2953,6 +3069,17 @@ impl App {
         frame.render_widget(Clear, area);
         frame.render_widget(Paragraph::new(lines), area);
     }
+}
+
+/// Columns a thumbnail `rows` high takes for a picture of `width` × `height` pixels, with
+/// cells of `cell` pixels.
+fn thumbnail_cols(width: u32, height: u32, rows: u16, cell: (u16, u16)) -> u16 {
+    let (cw, ch) = cell;
+    if width == 0 || height == 0 || cw == 0 {
+        return PREVIEW_COLS / 2;
+    }
+    let px = f64::from(rows) * f64::from(ch) * f64::from(width) / f64::from(height);
+    ((px / f64::from(cw)).ceil() as u16).clamp(1, PREVIEW_COLS)
 }
 
 struct Areas {

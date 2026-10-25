@@ -81,6 +81,48 @@ function plain(value: string): Block[] {
     .map((p) => ({ type: "paragraph", spans: [{ text: p }] }));
 }
 
+const IMAGE_MARKER = /\[image (\d+)\]/g;
+
+/**
+ * A user message with its images: an image goes where its `[image N]` marker is in the text (the
+ * marker gives way to it), the ones without a marker after the text.
+ */
+function userParts(value: string, images: string[]): Component[] {
+  const parts: Component[] = [];
+  const placed = new Set<number>();
+  const prose = (chunk: string): void => {
+    const blocks = plain(chunk.trim());
+    if (blocks.length > 0) parts.push(text(blocks));
+  };
+  let last = 0;
+  for (const match of value.matchAll(IMAGE_MARKER)) {
+    const n = Number(match[1]);
+    const src = images[n - 1];
+    if (src === undefined || placed.has(n)) continue;
+    prose(value.slice(last, match.index));
+    parts.push({ type: "image", src });
+    placed.add(n);
+    last = match.index + match[0].length;
+  }
+  prose(value.slice(last));
+  images.forEach((src, i) => {
+    if (!placed.has(i + 1)) parts.push({ type: "image", src });
+  });
+  if (parts.length === 0) parts.push(text(plain(value)));
+  return parts;
+}
+
+/**
+ * Claude Code's adapter hands a command's output over as one markdown code block (```console …
+ * ```): the output inside it.
+ */
+function unfenced(output: string): string {
+  const lines = output.replace(/\n+$/, "").split("\n");
+  const first = lines[0] ?? "";
+  if (lines.length < 2 || !/^```[\w-]*$/.test(first) || lines.at(-1) !== "```") return output;
+  return lines.slice(1, -1).join("\n");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -223,8 +265,7 @@ export class SessionView {
       case "user_message": {
         // The turn that messages from other agents start: their rows are what the chat shows.
         if (event.app === MESSAGES_APP) return [];
-        const children: Component[] = [text(plain(event.shown ?? event.text))];
-        for (const src of event.images ?? []) children.push({ type: "image", src });
+        const children = userParts(event.shown ?? event.text, event.images ?? []);
         const component: Component =
           children.length === 1 && children[0]
             ? children[0]
@@ -715,7 +756,7 @@ export class SessionView {
       } else if (item.type === "image") {
         children.push({ type: "image", src: item.src });
       } else if (item.text.trim() !== "") {
-        const code = item.text.replace(/\n+$/, "");
+        const code = unfenced(item.text).replace(/\n+$/, "");
         children.push(
           language === undefined ? { type: "code", code } : { type: "code", code, language },
         );

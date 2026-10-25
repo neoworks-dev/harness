@@ -97,6 +97,16 @@ impl Editor {
         self.goal = None;
     }
 
+    /// Deletes the `bytes` before the cursor (they must end and start on character boundaries).
+    pub fn delete_before(&mut self, bytes: usize) {
+        let start = self.cursor.saturating_sub(bytes);
+        if self.text.is_char_boundary(start) {
+            self.text.replace_range(start..self.cursor, "");
+            self.cursor = start;
+        }
+        self.goal = None;
+    }
+
     pub fn delete(&mut self) {
         if let Some(next) = self.next_boundary(self.cursor) {
             self.text.replace_range(self.cursor..next, "");
