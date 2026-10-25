@@ -7,7 +7,7 @@ use std::time::Duration;
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{
     self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event,
+    Event, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use ratatui::crossterm::execute;
 use ratatui_image::picker::Picker;
@@ -92,15 +92,36 @@ impl Screen {
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
             let _ = execute!(io::stdout(), DisableBracketedPaste, DisableMouseCapture);
+            let _ = plain_keys();
             previous(info);
         }));
         execute!(io::stdout(), EnableBracketedPaste, EnableMouseCapture)?;
+        // Keys like Ctrl-Enter reported apart from Enter: kitty's keyboard protocol, and xterm's
+        // modifyOtherKeys, which is what tmux (`extended-keys on`) listens for.
+        execute!(
+            io::stdout(),
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        )?;
+        write!(io::stdout(), "{MODIFY_OTHER_KEYS_ON}")?;
+        io::stdout().flush()?;
         Ok(Screen { terminal, picker })
     }
 }
 
+/// xterm's modifyOtherKeys, level 2, and back to the terminal's default.
+const MODIFY_OTHER_KEYS_ON: &str = "\x1b[>4;2m";
+const MODIFY_OTHER_KEYS_OFF: &str = "\x1b[>4m";
+
+/// Gives the terminal its usual key reports back.
+fn plain_keys() -> io::Result<()> {
+    execute!(io::stdout(), PopKeyboardEnhancementFlags)?;
+    write!(io::stdout(), "{MODIFY_OTHER_KEYS_OFF}")?;
+    io::stdout().flush()
+}
+
 impl Drop for Screen {
     fn drop(&mut self) {
+        let _ = plain_keys();
         let _ = execute!(io::stdout(), DisableBracketedPaste, DisableMouseCapture);
         ratatui::restore();
     }

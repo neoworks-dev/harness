@@ -178,6 +178,8 @@ interface Guest {
   route?: Route;
   /** The slash commands the adapter last listed (available_commands_update). */
   commands?: SlashCommand[];
+  /** The adapter takes `_session/steering`: a message for the running turn. */
+  steering: boolean;
 }
 
 const KINDS = new Set<string>([
@@ -194,6 +196,8 @@ const KINDS = new Set<string>([
 const STATUSES = new Set<string>(["pending", "in_progress", "completed", "failed"]);
 const PLAN_STATUSES: PlanEntryStatus[] = ["pending", "in_progress", "completed"];
 const PLAN_PRIORITIES: PlanEntryPriority[] = ["high", "medium", "low"];
+/** ACP's extension method for a message to the turn that is running. */
+const STEER_METHOD = "_session/steering";
 const STOP_REASONS = new Set<string>(["end_turn", "max_tokens", "cancelled", "refusal"]);
 const IMAGE_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -645,6 +649,21 @@ export class GuestManager {
         return out;
       },
       cancel: () => controller?.abort(),
+      steer: async ({ text, images }) => {
+        if (!guest.steering || guest.run === undefined) return false;
+        try {
+          const reply = await guest.conn.request(STEER_METHOD, {
+            sessionId: guest.acpSession,
+            prompt: [{ type: "text", text }, ...(await imageBlocks(images))],
+            // No turn running: say so, and the daemon starts one.
+            _meta: { steering: { idleBehavior: "promptRequired" } },
+          });
+          return isRecord(reply) && reply.outcome === "injected";
+        } catch (err) {
+          this.options.log.warn(`${name}: steering failed: ${errorText(err)}`);
+          return false;
+        }
+      },
       configOptions: () => [...guest.config.values()],
       loadConfigOptions: () => this.optionsOf(guest),
       setConfigOption: async (category, value) => {
@@ -925,14 +944,15 @@ export class GuestManager {
     });
   }
 
-  private async initialize(conn: AcpConnection, route?: Route): Promise<void> {
+  /** Says hello; resolves with whether the adapter can be steered mid-turn. */
+  private async initialize(conn: AcpConnection, route?: Route): Promise<boolean> {
     const clientCapabilities: Record<string, unknown> = {
       fs: { readTextFile: false, writeTextFile: false },
       terminal: false,
     };
     // Codex's adapter takes a custom gateway only from a client that says it can sign in to one.
     if (route?.gateway) clientCapabilities.auth = { _meta: { gateway: true } };
-    await conn.request("initialize", {
+    const hello = await conn.request("initialize", {
       protocolVersion: 1,
       clientCapabilities,
       clientInfo: { name: "neo", version: "0.6.0" },
@@ -943,6 +963,8 @@ export class GuestManager {
         _meta: { gateway: route.gateway },
       });
     }
+    const meta = isRecord(hello) && isRecord(hello._meta) ? hello._meta : undefined;
+    return isRecord(meta?.steering) && meta.steering.supported === true;
   }
 
   /**
@@ -1012,7 +1034,7 @@ export class GuestManager {
       void this.guests.get(key)?.then((current) => current === guest && this.guests.delete(key));
     });
     try {
-      await this.initialize(conn, route ?? undefined);
+      const steering = await this.initialize(conn, route ?? undefined);
       const mcpServers = this.options
         .mcpServers(session, { name, guest: !main, text: true })
         .map((server) => ({ type: "http", ...server }));
@@ -1044,6 +1066,7 @@ export class GuestManager {
         told: new ToldState(),
         queue: Promise.resolve(),
         config,
+        steering,
       };
       if (route) guest.route = route;
       if (this.forgotten.has(session)) {

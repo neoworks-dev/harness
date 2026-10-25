@@ -1267,6 +1267,34 @@ fn queued_inputs_are_counted_while_a_turn_runs() {
 }
 
 #[test]
+fn ctrl_enter_cancels_the_running_turn_and_sends_now() {
+    let mut app = app();
+    app.handle_event(user_message(NOW));
+    type_str(&mut app, "stop, do this");
+    assert_eq!(
+        app.handle_key(with(KeyCode::Enter, KeyModifiers::CONTROL)),
+        [
+            Effect::Cancel {
+                session: "s1".into()
+            },
+            input("stop, do this")
+        ]
+    );
+    // Idle, it is just Enter; on an empty editor nothing is cancelled.
+    app.handle_event(turn_ended());
+    type_str(&mut app, "next");
+    assert_eq!(
+        app.handle_key(with(KeyCode::Enter, KeyModifiers::CONTROL)),
+        [input("next")]
+    );
+    app.handle_event(user_message(NOW + 1));
+    assert!(
+        app.handle_key(with(KeyCode::Enter, KeyModifiers::CONTROL))
+            .is_empty()
+    );
+}
+
+#[test]
 fn up_takes_the_queued_messages_back_into_the_editor() {
     let mut app = app();
     app.handle_event(user_message(NOW));

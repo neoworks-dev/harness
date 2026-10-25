@@ -54,6 +54,10 @@ interface Runtime {
   active?: AgentSession;
   /** Set when cancel() arrives while the agent session is still loading. */
   cancelRequested: boolean;
+  /** The running turn was cancelled: nothing more is steered into it. */
+  cancelling: boolean;
+  /** Inputs are being handed to the running turn (see steer). */
+  steering: boolean;
   /** Connector events not yet delivered to the agent. */
   pending: ContextEvent[];
   /** What this session's log has told the agent. */
@@ -293,11 +297,46 @@ export class SessionManager {
     const input: QueuedInput = images?.length ? { app, text, images } : { app, text };
     if (shown !== undefined) input.shown = shown;
     rt.queue.push(input);
-    if (!rt.running) {
-      rt.running = true;
-      rt.drained = this.drain(sessionId, rt);
-    }
+    this.kick(sessionId, rt);
     this.stateChanged(sessionId);
+    // A harness that can be steered gets it in the running turn at once.
+    if (rt.running) void this.steer(sessionId, rt);
+  }
+
+  /** Starts working off the queue, unless a turn already runs. */
+  private kick(sessionId: string, rt: Runtime): void {
+    if (rt.running) return;
+    rt.running = true;
+    rt.drained = this.drain(sessionId, rt);
+  }
+
+  /**
+   * Hands the inputs at the head of the queue, up to a command, to the running turn of a harness
+   * that can be steered (ACP), one by one, each logged as user_message once it took it. One it
+   * doesn't take (the turn just ended) goes back to the head of the queue and waits for a turn.
+   */
+  private async steer(sessionId: string, rt: Runtime): Promise<void> {
+    if (rt.steering) return;
+    rt.steering = true;
+    try {
+      for (let input = rt.queue[0]; input; input = rt.queue[0]) {
+        const active = rt.active;
+        if (isCommand(input) || !active?.steer || rt.cancelling) return;
+        rt.queue.shift();
+        const taken = await active
+          .steer(input.images ? { text: input.text, images: input.images } : { text: input.text })
+          .catch(() => false);
+        if (!taken) {
+          rt.queue.unshift(input);
+          this.kick(sessionId, rt);
+          return;
+        }
+        this.store.append(sessionId, userMessage(input));
+        this.stateChanged(sessionId);
+      }
+    } finally {
+      rt.steering = false;
+    }
   }
 
   /**
@@ -396,6 +435,7 @@ export class SessionManager {
     for (const listener of this.cancelListeners) listener(sessionId);
     const rt = this.runtime(sessionId);
     if (!rt.running) return;
+    rt.cancelling = true;
     if (rt.active) rt.active.cancel();
     else rt.cancelRequested = true;
   }
@@ -484,6 +524,8 @@ export class SessionManager {
       running: false,
       agentSessions: new Map(),
       cancelRequested: false,
+      cancelling: false,
+      steering: false,
       pending,
       told,
       drained: Promise.resolve(),
@@ -562,6 +604,7 @@ export class SessionManager {
       if (!userLogged) this.store.append(sessionId, userMessage(input));
     } finally {
       rt.cancelRequested = false;
+      rt.cancelling = false;
       rt.active = undefined;
     }
     this.store.append(sessionId, ended);
@@ -593,6 +636,7 @@ export class SessionManager {
       }
     }
     rt.cancelRequested = false;
+    rt.cancelling = false;
     this.store.append(sessionId, ended);
     return ended.stopReason;
   }

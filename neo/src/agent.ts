@@ -202,6 +202,13 @@ export interface AgentSession {
   prompt(params: PromptParams): Promise<PromptResult>;
   /** Cancels the running prompt, which then resolves with stopReason "cancelled". No-op when idle. */
   cancel(): void;
+  /**
+   * Hands what the user sent to the running turn at once (ACP steering). Resolves true when the
+   * turn took it, false when there is no turn to take it (it then waits for a turn of its own).
+   * Absent when the harness can't be told anything mid-turn, or asks for it itself (neo:
+   * PromptParams.takeInputs).
+   */
+  steer?(input: { text: string; images?: string[] }): Promise<boolean>;
   /** The options the user can set; absent when the harness has none. */
   configOptions?(): ConfigOption[];
   /** Like configOptions, for a harness that has to look something up first; preferred when set. */

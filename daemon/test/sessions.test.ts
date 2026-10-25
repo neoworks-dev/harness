@@ -17,6 +17,8 @@ function setup(store = new SessionStore(":memory:")): Setup {
   return { store, agent, sessions };
 }
 
+type UserMessage = Extract<SessionEvent, { type: "user_message" }>;
+
 const types = (store: SessionStore, id: string): string[] =>
   store.read(id).map((r) => r.event.type);
 
@@ -34,6 +36,39 @@ describe("shutdown", () => {
 });
 
 describe("turn queue", () => {
+  test("a harness that can be steered gets what is sent into the running turn at once", async () => {
+    const { store, agent, sessions } = setup();
+    agent.steerable = true;
+    const { id } = sessions.create({});
+    sessions.input(id, "term", "one");
+    await agent.started(1);
+    sessions.input(id, "term", "also this", ["/a.png"]);
+    await Bun.sleep(0);
+    expect(agent.steered).toEqual([{ text: "also this", images: ["/a.png"] }]);
+    expect(sessions.info(id)?.queued).toBe(0);
+    const users = (): string[] =>
+      store
+        .read(id)
+        .map((r) => r.event)
+        .filter((e): e is UserMessage => e.type === "user_message")
+        .map((e) => e.text);
+    expect(users()).toEqual(["one", "also this"]);
+
+    // A command waits for a turn of its own; after a cancel nothing is steered into the turn.
+    sessions.input(id, "term", "/claude review");
+    sessions.cancel(id);
+    sessions.input(id, "term", "after the cancel");
+    await Bun.sleep(0);
+    expect(agent.steered).toHaveLength(1);
+    await agent.started(2);
+    expect(agent.prompts[1]?.text).toBe("/claude review");
+    agent.release();
+    await agent.started(3);
+    expect(agent.prompts[2]?.text).toBe("after the cancel");
+    agent.release();
+    await sessions.idle(id);
+  });
+
   test("what waits from one app runs as one turn, up to a command", async () => {
     const { store, agent, sessions } = setup();
     const { id } = sessions.create({});
@@ -91,8 +126,8 @@ describe("turn queue", () => {
     const users = store
       .read(id)
       .map((r) => r.event)
-      .filter((e) => e.type === "user_message")
-      .map((e) => (e.type === "user_message" ? e.text : ""));
+      .filter((e): e is UserMessage => e.type === "user_message")
+      .map((e) => e.text);
     expect(users).toEqual(["one", "also this", "and this"]);
 
     // The command gets a turn of its own, and what came after it the next.

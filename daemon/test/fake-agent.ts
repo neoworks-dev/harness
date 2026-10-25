@@ -21,6 +21,9 @@ export class FakeAgent implements Agent {
   readonly prompts: PromptParams[] = [];
   /** The reasons its sessions were closed with. */
   readonly closed: string[] = [];
+  /** Its sessions take steering (as an ACP harness does); what they were steered with. */
+  steerable = false;
+  readonly steered: { text: string; images?: string[] }[] = [];
   active = 0;
   maxActive = 0;
   private waiting: Pending[] = [];
@@ -52,7 +55,7 @@ export class FakeAgent implements Agent {
 
   private session(): AgentSession {
     let current: Pending | undefined;
-    return {
+    const session: AgentSession = {
       prompt: (params) => {
         this.prompts.push(params);
         this.active += 1;
@@ -77,5 +80,13 @@ export class FakeAgent implements Agent {
         return Promise.resolve();
       },
     };
+    if (this.steerable) {
+      session.steer = (input): Promise<boolean> => {
+        const running = current !== undefined && this.waiting.includes(current);
+        if (running) this.steered.push(input);
+        return Promise.resolve(running);
+      };
+    }
+    return session;
   }
 }

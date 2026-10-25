@@ -1859,6 +1859,18 @@ impl App {
                 self.editor.insert_char(c);
             }
             KeyCode::Enter if alt || shift => self.editor.newline(),
+            // Ctrl-Enter: now, not after the running turn (which is cancelled for it).
+            KeyCode::Enter if ctrl => {
+                if self.running && !self.editor.is_empty() && !self.menu_visible() {
+                    fx.push(Effect::Cancel {
+                        session: self.session.clone(),
+                    });
+                }
+                if self.enter(fx) {
+                    self.histories.of(&self.session).reset();
+                    edited = false;
+                }
+            }
             KeyCode::Enter => {
                 if self.enter(fx) {
                     // Sent: the typing is over (see send), not just paused.
