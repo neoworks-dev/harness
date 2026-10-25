@@ -10,3 +10,4 @@ ratatui = { version = "0.30", default-features = false }
 serde_json = "1"
 neo-protocol = { path = "../../protocol/rust" }
 unicode-width = "0.2"
+syntect = { version = "5", default-features = false, features = ["default-syntaxes", "parsing", "regex-onig"] }

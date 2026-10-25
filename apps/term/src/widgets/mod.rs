@@ -21,8 +21,9 @@
 //!   Right/l opens a folder or goes into it, Left/h folds it or goes up to its folder.
 //! - **File view**: Enter on a file opens the diff overlay with the whole file as context and
 //!   unified (its changes marked in place); a file git sees no change in shows as it is.
-//! - **Syntax highlighting** (`syntax.rs`): the diff and file view color code by syntect's
-//!   grammar for the file name (`+++ b/` headers for a pull request's diff), worked out on a
+//! - **Syntax highlighting** (the renderer's `syntax` module, shared with the chat's diffs): the
+//!   diff and file view color code by syntect's grammar for the file name (`+++ b/` headers for
+//!   a pull request's diff), worked out on a
 //!   thread once the text is in (the code shows plain until then), old and new lines parsed
 //!   apart and each hunk starting over. The colors are picked for a dark or light background,
 //!   not the theme's few; changed lines keep their tint behind them and the sign its color.
@@ -42,7 +43,6 @@ mod diff;
 mod files;
 mod git;
 mod plan;
-mod syntax;
 mod terminal;
 mod text;
 mod usage;

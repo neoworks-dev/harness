@@ -16,8 +16,8 @@ use unicode_width::UnicodeWidthChar;
 
 use super::files::Mark;
 use super::git::git;
-use super::syntax::{self, Class, Highlighter, syntax_for};
 use super::text::{clean_line, truncate, truncate_start, width};
+use neo_renderer_ratatui::syntax::{self, Class, Highlighter, code_colors, syntax_for};
 
 /// More lines than this are dropped (a generated file diff can be megabytes).
 const MAX_LINES: usize = 20_000;
@@ -806,32 +806,6 @@ impl Look {
             None => self.base(tone).add_modifier(Modifier::REVERSED),
         }
     }
-}
-
-/// Colors of code, picked for a dark or a light background rather than taken from the theme:
-/// its few colors (an accent as green as its success color) can't tell five classes apart.
-fn code_colors(p: &Palette) -> Option<[Style; 7]> {
-    let (Color::Rgb(r, g, b), Color::Rgb(..)) = (p.bg, p.fg) else {
-        return None;
-    };
-    let dark = u32::from(r) * 299 + u32::from(g) * 587 + u32::from(b) * 114 < 128_000;
-    let rgb = |c: u32| Color::Rgb((c >> 16) as u8, (c >> 8) as u8, c as u8);
-    let [keyword, string, constant, function, kind] = if dark {
-        [0xc7_92ea, 0xc3_e88d, 0xf7_8c6c, 0x82_aaff, 0xff_cb6b]
-    } else {
-        [0x7c_3aed, 0x1a_7f37, 0xb4_5309, 0x1f_5fcc, 0x9a_6700]
-    };
-    let fg = |c: u32| Style::new().fg(rgb(c));
-    // In the order of `Class`.
-    Some([
-        Style::new().fg(p.fg),
-        Style::new().fg(p.muted).add_modifier(Modifier::ITALIC),
-        fg(string),
-        fg(keyword),
-        fg(constant),
-        fg(function),
-        fg(kind),
-    ])
 }
 
 /// What each char of a diff is, per unified line and per split row (left, right).

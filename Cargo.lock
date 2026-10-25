@@ -3757,6 +3757,7 @@ dependencies = [
  "neo-protocol",
  "ratatui",
  "serde_json",
+ "syntect",
  "unicode-width",
 ]
 
@@ -3783,7 +3784,6 @@ dependencies = [
  "ratatui",
  "ratatui-image",
  "serde_json",
- "syntect",
  "unicode-width",
  "zeroize",
 ]

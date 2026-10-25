@@ -4,6 +4,8 @@ use neo_protocol as pb;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
+use crate::palette::blend;
+use crate::syntax::{self, Highlighter, code_colors, syntax_for};
 use crate::text::{
     clean, clip, hard_wrap, hard_wrap_spans, line_width, one_line, push_text, sline, truncate,
     truncate_spans, width, wrap,
@@ -862,32 +864,87 @@ impl<'a> Cx<'a> {
         wrap(&spans, w)
     }
 
+    /// A colored unified diff. With true colors the code is highlighted by the grammar for the
+    /// path (old and new lines parsed apart, each hunk starting over) and changed lines are
+    /// tinted across the width; without, a changed line is just green or red.
     fn diff(&self, v: &pb::DiffComponent, w: usize) -> Lines {
         let mut out = Vec::new();
-        if let Some(path) = v.path.as_deref().map(one_line).filter(|p| !p.is_empty()) {
-            for l in hard_wrap(&path, w) {
+        let path = v.path.as_deref().map(one_line).filter(|p| !p.is_empty());
+        if let Some(path) = &path {
+            for l in hard_wrap(path, w) {
                 out.push(sline(l, Style::new().add_modifier(Modifier::BOLD)));
             }
         }
+        let colors = code_colors(&self.p);
+        let mut hl = path
+            .as_deref()
+            .filter(|_| colors.is_some() && v.lines.len() <= syntax::MAX_LINES)
+            .and_then(syntax_for)
+            .map(|s| (Highlighter::new(s), Highlighter::new(s)));
         for dl in &v.lines {
-            let (mark, st) = match dl.kind {
-                pb::DiffLineKind::Add => ("+", Style::new().fg(self.p.success)),
-                pb::DiffLineKind::Remove => ("-", Style::new().fg(self.p.danger)),
-                pb::DiffLineKind::Hunk => ("", self.p.muted_style()),
-                pb::DiffLineKind::Context => (" ", Style::new()),
+            let (mark, fg, bg) = match dl.kind {
+                pb::DiffLineKind::Add => {
+                    ("+", self.p.success, blend(self.p.bg, self.p.success, 16))
+                }
+                pb::DiffLineKind::Remove => {
+                    ("-", self.p.danger, blend(self.p.bg, self.p.danger, 16))
+                }
+                pb::DiffLineKind::Hunk => ("", self.p.muted, None),
+                pb::DiffLineKind::Context => (" ", Color::Reset, None),
+            };
+            let st = match (dl.kind, bg) {
+                (pb::DiffLineKind::Context, _) => Style::new(),
+                (_, Some(bg)) => Style::new().fg(fg).bg(bg),
+                (_, None) => Style::new().fg(fg),
             };
             let text = clean(&dl.text).replace('\n', " ");
-            let mut body = hard_wrap(&text, w.saturating_sub(mark.len()).max(1));
-            if body.is_empty() {
-                body.push(String::new());
-            }
-            for (i, l) in body.into_iter().enumerate() {
-                let lead = if i == 0 {
-                    mark
-                } else {
-                    &" ".repeat(mark.len())
-                };
-                out.push(Line::from(vec![Span::styled(format!("{lead}{l}"), st)]));
+            let classes = match (dl.kind, hl.as_mut()) {
+                (pb::DiffLineKind::Hunk, Some((old, new))) => {
+                    old.reset();
+                    new.reset();
+                    Vec::new()
+                }
+                (pb::DiffLineKind::Context, Some((old, new))) => {
+                    old.line(&text);
+                    new.line(&text)
+                }
+                (pb::DiffLineKind::Add, Some((_, new))) => new.line(&text),
+                (pb::DiffLineKind::Remove, Some((old, _))) => old.line(&text),
+                _ => Vec::new(),
+            };
+            let spans = match colors.filter(|_| !classes.is_empty()) {
+                Some(colors) => {
+                    let mut spans = Vec::new();
+                    for (c, class) in text.chars().zip(classes) {
+                        let style = st.patch(colors[class as usize]);
+                        match spans.last_mut() {
+                            Some(Span {
+                                content,
+                                style: last,
+                            }) if *last == style => {
+                                content.to_mut().push(c);
+                            }
+                            _ => spans.push(Span::styled(c.to_string(), style)),
+                        }
+                    }
+                    spans
+                }
+                None => vec![Span::styled(text, st)],
+            };
+            let indent = " ".repeat(mark.len());
+            for (i, row) in hard_wrap_spans(&spans, w.saturating_sub(mark.len()).max(1))
+                .into_iter()
+                .enumerate()
+            {
+                let lead = if i == 0 { mark } else { &indent };
+                let mut line = vec![Span::styled(lead.to_string(), st)];
+                line.extend(row);
+                // A changed line's tint runs to the edge.
+                let used = line_width(&line);
+                if bg.is_some() && used < w {
+                    line.push(Span::styled(" ".repeat(w - used), st));
+                }
+                out.push(Line::from(line));
             }
         }
         out

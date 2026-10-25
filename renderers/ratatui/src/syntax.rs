@@ -1,14 +1,17 @@
-//! Syntax highlighting for the file and diff view: syntect's grammars (its default set, chosen
-//! by file name) parse each line into scopes, and the scopes become a few classes the palette
-//! colors, so code takes the colors of the app's theme instead of a syntax theme of its own.
+//! Syntax highlighting for diffs and files: syntect's grammars (its default set, chosen by file
+//! name) parse each line into scopes, and the scopes become a few classes that [`code_colors`]
+//! colors for a dark or a light background.
 
 use std::sync::OnceLock;
 
+use ratatui::style::{Color, Modifier, Style};
 use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxReference, SyntaxSet};
+
+use crate::Palette;
 
 /// What a stretch of code is, as far as colors go.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) enum Class {
+pub enum Class {
     #[default]
     Plain,
     Comment,
@@ -22,7 +25,7 @@ pub(crate) enum Class {
 }
 
 /// Lines beyond this many are drawn without highlighting: a huge file stays quick to open.
-pub(crate) const MAX_LINES: usize = 20_000;
+pub const MAX_LINES: usize = 20_000;
 
 fn syntaxes() -> &'static SyntaxSet {
     static SET: OnceLock<SyntaxSet> = OnceLock::new();
@@ -66,7 +69,7 @@ fn classify(stack: &ScopeStack) -> Class {
 }
 
 /// The grammar for a file, by its name; None when there is none (or it is plain text).
-pub(crate) fn syntax_for(path: &str) -> Option<&'static SyntaxReference> {
+pub fn syntax_for(path: &str) -> Option<&'static SyntaxReference> {
     let set = syntaxes();
     let name = path.rsplit('/').next().unwrap_or(path);
     let ext = name.rsplit_once('.').map_or(name, |(_, ext)| ext);
@@ -86,14 +89,14 @@ pub(crate) fn syntax_for(path: &str) -> Option<&'static SyntaxReference> {
 
 /// Highlights one version of a file line by line. A hunk of a diff starts with `reset`: the
 /// lines before it aren't there, so the parse starts over.
-pub(crate) struct Highlighter {
+pub struct Highlighter {
     syntax: &'static SyntaxReference,
     state: ParseState,
     stack: ScopeStack,
 }
 
 impl Highlighter {
-    pub(crate) fn new(syntax: &'static SyntaxReference) -> Highlighter {
+    pub fn new(syntax: &'static SyntaxReference) -> Highlighter {
         Highlighter {
             syntax,
             state: ParseState::new(syntax),
@@ -101,12 +104,12 @@ impl Highlighter {
         }
     }
 
-    pub(crate) fn reset(&mut self) {
+    pub fn reset(&mut self) {
         *self = Highlighter::new(self.syntax);
     }
 
     /// The class of each char of `line` (without its newline).
-    pub(crate) fn line(&mut self, line: &str) -> Vec<Class> {
+    pub fn line(&mut self, line: &str) -> Vec<Class> {
         let text = format!("{line}\n");
         let Ok(ops) = self.state.parse_line(&text, syntaxes()) else {
             self.reset();
@@ -130,6 +133,33 @@ impl Highlighter {
         push_upto(line.len(), classify(&self.stack), &mut out);
         out
     }
+}
+
+/// Colors of code by [`Class`], picked for a dark or a light background rather than taken from
+/// the theme: its few colors (an accent as green as its success color) can't tell five classes
+/// apart. None without true colors: code stays plain.
+pub fn code_colors(p: &Palette) -> Option<[Style; 7]> {
+    let (Color::Rgb(r, g, b), Color::Rgb(..)) = (p.bg, p.fg) else {
+        return None;
+    };
+    let dark = u32::from(r) * 299 + u32::from(g) * 587 + u32::from(b) * 114 < 128_000;
+    let rgb = |c: u32| Color::Rgb((c >> 16) as u8, (c >> 8) as u8, c as u8);
+    let [keyword, string, constant, function, kind] = if dark {
+        [0xc7_92ea, 0xc3_e88d, 0xf7_8c6c, 0x82_aaff, 0xff_cb6b]
+    } else {
+        [0x7c_3aed, 0x1a_7f37, 0xb4_5309, 0x1f_5fcc, 0x9a_6700]
+    };
+    let fg = |c: u32| Style::new().fg(rgb(c));
+    // In the order of `Class`.
+    Some([
+        Style::new().fg(p.fg),
+        Style::new().fg(p.muted).add_modifier(Modifier::ITALIC),
+        fg(string),
+        fg(keyword),
+        fg(constant),
+        fg(function),
+        fg(kind),
+    ])
 }
 
 #[cfg(test)]

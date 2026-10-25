@@ -18,7 +18,6 @@ neo-github = { path = "../../crates/github" }
 neo-protocol = { path = "../../protocol/rust" }
 neo-renderer-ratatui = { path = "../../renderers/ratatui" }
 neo-sdk = { path = "../../sdk-rs" }
-syntect = { version = "5", default-features = false, features = ["default-syntaxes", "parsing", "regex-onig"] }
 unicode-width = "0.2"
 zeroize = "1"
 

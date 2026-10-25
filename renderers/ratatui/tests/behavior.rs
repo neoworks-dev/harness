@@ -407,6 +407,84 @@ fn a_permission_shows_its_diff_colored_and_the_buttons_below_a_gap() {
 }
 
 #[test]
+fn diffs_are_highlighted_by_their_grammar_on_the_change_tint() {
+    let diff = r#"{"type":"diff","path":"src/m.rs","lines":[
+        {"kind":"hunk","text":"@@ -1,2 +1,2 @@"},
+        {"kind":"context","text":"fn keep() {}"},
+        {"kind":"remove","text":"let a = \"x\";"},
+        {"kind":"add","text":"let a = \"y\";"}]}"#;
+    let it = tool("done", diff);
+    let opts = Options {
+        expanded: true,
+        ..Options::default()
+    };
+    let rendered = render_item(&it, 40, &opts);
+    let row = |prefix: &str| {
+        rendered
+            .iter()
+            .find(|l| plain_lines(std::slice::from_ref(l))[0].contains(prefix))
+            .unwrap_or_else(|| panic!("no {prefix} in {:?}", plain_lines(&rendered)))
+    };
+    let span = |line: &Line<'static>, text: &str| {
+        line.spans
+            .iter()
+            .find(|s| s.content.contains(text))
+            .unwrap_or_else(|| panic!("no {text} in {line:?}"))
+            .style
+    };
+    let colors = neo_renderer_ratatui::syntax::code_colors(&pal()).unwrap();
+    let keyword = colors[neo_renderer_ratatui::syntax::Class::Keyword as usize].fg;
+    let string = colors[neo_renderer_ratatui::syntax::Class::String as usize].fg;
+
+    let context = row("fn keep");
+    assert_eq!(span(context, "fn").fg, keyword);
+    assert_eq!(span(context, "fn").bg, None);
+
+    let removed = row("-let");
+    assert_eq!(span(removed, "-").fg, Some(pal().danger));
+    assert_eq!(span(removed, "let").fg, keyword);
+    let tint = span(removed, "let").bg;
+    assert!(matches!(tint, Some(Color::Rgb(..))), "{tint:?}");
+    // The tint runs to the edge of the item.
+    assert_eq!(removed.width(), 40);
+    assert_eq!(removed.spans.last().unwrap().style.bg, tint);
+
+    let added = row("+let");
+    assert_eq!(span(added, "\"y\"").fg, string);
+    assert_ne!(
+        span(added, "let").bg,
+        tint,
+        "additions are tinted green, not red"
+    );
+
+    // Without true colors a change is just its color, and code stays plain.
+    let plain = Palette {
+        fg: Color::Reset,
+        bg: Color::Reset,
+        ..pal()
+    };
+    let rendered = render_item(
+        &it,
+        40,
+        &Options {
+            theme: plain,
+            ..opts
+        },
+    );
+    let added = rendered
+        .iter()
+        .find(|l| plain_lines(std::slice::from_ref(l))[0].contains("+let"))
+        .unwrap();
+    assert!(
+        added
+            .spans
+            .iter()
+            .filter(|s| !s.content.trim().is_empty())
+            .all(|s| s.style.fg == Some(pal().success) && s.style.bg.is_none())
+    );
+}
+
+#[test]
 fn a_long_diff_is_cut_before_the_buttons_unless_expanded() {
     let it = permission(40);
     let opts = Options {

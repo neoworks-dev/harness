@@ -20,6 +20,7 @@ mod palette;
 mod render;
 mod shell;
 mod summary;
+pub mod syntax;
 mod text;
 
 use std::collections::HashMap;
