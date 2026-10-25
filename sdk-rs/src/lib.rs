@@ -25,9 +25,10 @@ use neo_protocol::{
     AssetRef, AssetUrl, ConnectorInfo, ConnectorsList, Envelope, ErrorInfo, FileChanged,
     FileChangedMessage, SecretAnswer, SecretAnswerMessage, SecretRequest, SessionCancel,
     SessionCreate, SessionCreateParams, SessionEventRecord, SessionInfo, SessionInput,
-    SessionInputMessage, SessionList, SessionRef, SessionSubscribe, SessionUnsubscribe,
-    SubscribeParams, SubscribedPayload, Theme, UiAction, UiActionMessage, ViewPatch, ViewRef,
-    ViewSnapshot, ViewSubscribe, ViewUnsubscribe,
+    SessionInputMessage, SessionList, SessionRef, SessionSubscribe, SessionUnqueue,
+    SessionUnqueueParams, SessionUnsubscribe, SubscribeParams, SubscribedPayload, Theme, UiAction,
+    UiActionMessage, ViewPatch, ViewRef, ViewSnapshot, ViewSubscribe, ViewUnsubscribe,
+    WaitingInput,
 };
 pub use socket::default_socket_path;
 pub use view::ViewState;
@@ -253,6 +254,24 @@ impl Client {
                 },
             })
         })
+    }
+
+    /// Takes back the inputs `app` queued behind the session's running turn, oldest first, to
+    /// edit them. Those a running neo turn already took in are not among them.
+    pub fn unqueue(&self, session: &str, app: &str) -> Result<Vec<WaitingInput>> {
+        let unqueue = |id| {
+            Envelope::SessionUnqueue(SessionUnqueue {
+                id,
+                payload: SessionUnqueueParams {
+                    session: session.into(),
+                    app: app.into(),
+                },
+            })
+        };
+        match self.call(Effect::None, unqueue)? {
+            Envelope::SessionUnqueued(reply) => Ok(reply.payload.inputs),
+            _ => Err(Error::Unexpected),
+        }
     }
 
     /// Cancels the session's running turn; a no-op when idle.

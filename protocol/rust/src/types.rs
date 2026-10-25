@@ -34,6 +34,8 @@ pub enum Envelope {
     SessionUnsubscribe(SessionUnsubscribe),
     SessionSubscribed(SessionSubscribed),
     SessionCancel(SessionCancel),
+    SessionUnqueue(SessionUnqueue),
+    SessionUnqueued(SessionUnqueued),
     SessionInfoMessage(SessionInfoMessage),
     SessionEvents(SessionEvents),
     SessionInputMessage(SessionInputMessage),
@@ -116,6 +118,14 @@ impl Serialize for Envelope {
             ),
             Envelope::SessionCancel(v) => (
                 "session.cancel",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::SessionUnqueue(v) => (
+                "session.unqueue",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::SessionUnqueued(v) => (
+                "session.unqueued",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
             Envelope::SessionInfoMessage(v) => (
@@ -269,6 +279,12 @@ impl<'de> Deserialize<'de> for Envelope {
                 .map_err(D::Error::custom),
             "session.cancel" => serde_json::from_value(value)
                 .map(Envelope::SessionCancel)
+                .map_err(D::Error::custom),
+            "session.unqueue" => serde_json::from_value(value)
+                .map(Envelope::SessionUnqueue)
+                .map_err(D::Error::custom),
+            "session.unqueued" => serde_json::from_value(value)
+                .map(Envelope::SessionUnqueued)
                 .map_err(D::Error::custom),
             "session.info" => serde_json::from_value(value)
                 .map(Envelope::SessionInfoMessage)
@@ -425,6 +441,18 @@ impl From<SessionSubscribed> for Envelope {
 impl From<SessionCancel> for Envelope {
     fn from(v: SessionCancel) -> Self {
         Envelope::SessionCancel(v)
+    }
+}
+
+impl From<SessionUnqueue> for Envelope {
+    fn from(v: SessionUnqueue) -> Self {
+        Envelope::SessionUnqueue(v)
+    }
+}
+
+impl From<SessionUnqueued> for Envelope {
+    fn from(v: SessionUnqueued) -> Self {
+        Envelope::SessionUnqueued(v)
     }
 }
 
@@ -853,6 +881,26 @@ pub struct SessionCancel {
     pub payload: SessionRef,
 }
 
+/// Client → daemon: take back the inputs this app queued behind the running turn, to edit them (Up in an empty editor). Replied to with session.unqueued; inputs a running neo turn already took in stay where they are.
+/// Tagged `topic: "session.unqueue"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionUnqueue {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: SessionUnqueueParams,
+}
+
+/// Daemon → client: reply to session.unqueue, the inputs taken out of the queue, oldest first (none when there were none).
+/// Tagged `topic: "session.unqueued"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionUnqueued {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: SessionUnqueuedPayload,
+}
+
 /// Daemon → client: reply to session.create.
 /// Tagged `topic: "session.info"` inside [`Envelope`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1260,6 +1308,21 @@ pub struct SessionRemoved {
     /// The session that no longer exists.
     #[serde(rename = "id")]
     pub id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionUnqueueParams {
+    #[serde(rename = "session")]
+    pub session: String,
+    /// Only inputs from this app are taken.
+    #[serde(rename = "app")]
+    pub app: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionUnqueuedPayload {
+    #[serde(rename = "inputs")]
+    pub inputs: Vec<WaitingInput>,
 }
 
 /// Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.

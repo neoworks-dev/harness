@@ -13,6 +13,7 @@ import type {
   SessionCreateParams,
   SessionInfo,
   SessionInput,
+  WaitingInput,
   SessionSettingsPayload,
   Theme,
   UiAction,
@@ -257,6 +258,15 @@ export class Client {
   /** Cancels the turn that is running in the session. Inputs queued behind it still run. */
   async cancel(session: string): Promise<void> {
     await this.connection.request("session.cancel", { session });
+  }
+
+  /**
+   * Takes back the inputs this app queued behind the running turn, oldest first, to edit them.
+   * Those a running neo turn already took in are not among them.
+   */
+  async unqueue(session: string, app = this.defaultApp()): Promise<WaitingInput[]> {
+    const { inputs } = await this.connection.request("session.unqueue", { session, app });
+    return inputs;
   }
 
   /**

@@ -14,6 +14,8 @@ export type Envelope =
   | SessionUnsubscribe
   | SessionSubscribed
   | SessionCancel
+  | SessionUnqueue
+  | SessionUnqueued
   | SessionInfoMessage
   | SessionEvents
   | SessionInputMessage
@@ -215,6 +217,20 @@ export interface SessionCancel {
   topic: "session.cancel";
   id: string;
   payload: SessionRef;
+}
+
+/** Client → daemon: take back the inputs this app queued behind the running turn, to edit them (Up in an empty editor). Replied to with session.unqueued; inputs a running neo turn already took in stay where they are. */
+export interface SessionUnqueue {
+  topic: "session.unqueue";
+  id: string;
+  payload: SessionUnqueueParams;
+}
+
+/** Daemon → client: reply to session.unqueue, the inputs taken out of the queue, oldest first (none when there were none). */
+export interface SessionUnqueued {
+  topic: "session.unqueued";
+  id: string;
+  payload: SessionUnqueuedPayload;
 }
 
 /** Daemon → client: reply to session.create. */
@@ -488,6 +504,16 @@ export interface SessionRemovedMessage {
 export interface SessionRemoved {
   /** The session that no longer exists. */
   id: string;
+}
+
+export interface SessionUnqueueParams {
+  session: string;
+  /** Only inputs from this app are taken. */
+  app: string;
+}
+
+export interface SessionUnqueuedPayload {
+  inputs: WaitingInput[];
 }
 
 /** Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update. */

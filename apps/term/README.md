@@ -38,36 +38,36 @@ Without flags it shows the agent's current session if that works in this directo
 
 ## Keys
 
-| Key                                          | What                                                                                                |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Enter                                        | send (trimmed, non-empty)                                                                           |
-| Alt-Enter, Ctrl-J                            | new line (pasting several lines keeps them in the editor)                                           |
-| Ctrl-V                                       | attach the clipboard's image to the next message (see Images)                                       |
-| Up / Down                                    | move between lines; on the first / last line through this session's input history                   |
-| Ctrl-A / Ctrl-E, Alt-B / Alt-F, Left / Right | line start / end, words, characters                                                                 |
-| Ctrl-W, Ctrl-U, Ctrl-K, Alt-D                | delete word back, to line start, to line end, word forward                                          |
-| PgUp / PgDn                                  | scroll the chat a page                                                                              |
-| Mouse wheel, Shift-Up / Shift-Down           | scroll the chat 3 lines / 1 line (the mouse is captured: select text with Shift-drag)               |
-| Home / End                                   | top / bottom of the chat when the editor is empty (Ctrl-Home / Ctrl-End always)                     |
-| Ctrl-U / Ctrl-D                              | half page up / down when the editor is empty (Ctrl-D quits when the chat is at the tail)            |
-| Ctrl-O                                       | expand / collapse tool results (`/expand`)                                                          |
-| Ctrl-T                                       | show / hide thoughts (`/thoughts`)                                                                  |
-| Esc                                          | close the menu; else dismiss the prompt (the editor comes back); else cancel the running turn       |
-| Ctrl-C                                       | clear the editor; on an empty editor press twice within 1.5 s to quit                               |
-| Shift-Tab                                    | approvals: ask → review → accept edits → auto → ask (`/approvals <next>`)                           |
-| Tab                                          | complete the slash command; a note for the agent on a prompt; else editor → Sessions → Plan → Files |
-| Ctrl-G                                       | focus the sessions sidebar (shows it if switched off); again to leave                               |
-| Ctrl-S                                       | session switcher (`/sessions`)                                                                      |
-| Ctrl-X, Down (empty editor)                  | focus the subagents list under the status lines (when one is shown)                                 |
-| Ctrl-R                                       | GitHub issues and pull requests (`/github`)                                                         |
-| 1-9, arrows, Enter                           | answer the active prompt (it has taken the editor's place)                                          |
-| Ctrl-P / Ctrl-N                              | pick an older prompt or form / back (else history)                                                  |
-| Tab, Shift-Tab, Up / Down (in a form)        | next / previous field, button, tab strip or accordion item                                          |
-| Space, Left / Right, Enter (in a form)       | toggle a checkbox or switch; pick, adjust or switch tab; open, choose, press                        |
-| ? (empty editor), `/help`                    | key list                                                                                            |
-| Ctrl-L                                       | repaint                                                                                             |
+| Key                                          | What                                                                                                                                            |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enter                                        | send (trimmed, non-empty)                                                                                                                       |
+| Alt-Enter, Ctrl-J                            | new line (pasting several lines keeps them in the editor)                                                                                       |
+| Ctrl-V                                       | attach the clipboard's image to the next message (see Images)                                                                                   |
+| Up / Down                                    | move between lines; on the first / last line through this session's input history (Up on an empty editor first takes your queued messages back) |
+| Ctrl-A / Ctrl-E, Alt-B / Alt-F, Left / Right | line start / end, words, characters                                                                                                             |
+| Ctrl-W, Ctrl-U, Ctrl-K, Alt-D                | delete word back, to line start, to line end, word forward                                                                                      |
+| PgUp / PgDn                                  | scroll the chat a page                                                                                                                          |
+| Mouse wheel, Shift-Up / Shift-Down           | scroll the chat 3 lines / 1 line (the mouse is captured: select text with Shift-drag)                                                           |
+| Home / End                                   | top / bottom of the chat when the editor is empty (Ctrl-Home / Ctrl-End always)                                                                 |
+| Ctrl-U / Ctrl-D                              | half page up / down when the editor is empty (Ctrl-D quits when the chat is at the tail)                                                        |
+| Ctrl-O                                       | expand / collapse tool results (`/expand`)                                                                                                      |
+| Ctrl-T                                       | show / hide thoughts (`/thoughts`)                                                                                                              |
+| Esc                                          | close the menu; else dismiss the prompt (the editor comes back); else cancel the running turn                                                   |
+| Ctrl-C                                       | clear the editor; on an empty editor press twice within 1.5 s to quit                                                                           |
+| Shift-Tab                                    | approvals: ask → review → accept edits → auto → ask (`/approvals <next>`)                                                                       |
+| Tab                                          | complete the slash command; a note for the agent on a prompt; else editor → Sessions → Plan → Files                                             |
+| Ctrl-G                                       | focus the sessions sidebar (shows it if switched off); again to leave                                                                           |
+| Ctrl-S                                       | session switcher (`/sessions`)                                                                                                                  |
+| Ctrl-X, Down (empty editor)                  | focus the subagents list under the status lines (when one is shown)                                                                             |
+| Ctrl-R                                       | GitHub issues and pull requests (`/github`)                                                                                                     |
+| 1-9, arrows, Enter                           | answer the active prompt (it has taken the editor's place)                                                                                      |
+| Ctrl-P / Ctrl-N                              | pick an older prompt or form / back (else history)                                                                                              |
+| Tab, Shift-Tab, Up / Down (in a form)        | next / previous field, button, tab strip or accordion item                                                                                      |
+| Space, Left / Right, Enter (in a form)       | toggle a checkbox or switch; pick, adjust or switch tab; open, choose, press                                                                    |
+| ? (empty editor), `/help`                    | key list                                                                                                                                        |
+| Ctrl-L                                       | repaint                                                                                                                                         |
 
-**Sending during a turn.** What you send while the agent works waits in the daemon's queue and shows above the editor, one muted row each (`› its first line`, at most three rows, then `… +2 more queued`), from any app. neo takes what waits into the running turn after its next tool calls, so it reads it before going on, and it moves into the chat then; a `/command` waits for a turn of its own, and so does everything behind it. Claude Code and Codex can't be told anything mid-turn: there it waits until the turn ends.
+**Sending during a turn.** What you send while the agent works waits in the daemon's queue and shows above the editor, one muted row each (`› its first line`, at most three rows, then `… +2 more queued`), from any app. neo takes what waits into the running turn after its next tool calls, so it reads it before going on, and it moves into the chat then; a `/command` waits for a turn of its own, and so does everything behind it. Up in an empty editor takes your waiting messages back out of the queue (`session.unqueue`; other apps' stay) and puts them in the editor, one per paragraph, with their images, before anything typed meanwhile; edit and send them again. Claude Code and Codex can't be told anything mid-turn: there it waits until the turn ends.
 
 While scrolled up, new output does not move the view; a dim `↓ new output (End)` shows. Sending or a new prompt jumps back to the tail.
 

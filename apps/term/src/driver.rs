@@ -319,6 +319,12 @@ fn work(client: &Client, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sen
                 }
             }
             Effect::OpenUrl(url) => open_url(&url, msgs),
+            Effect::Unqueue { session } => match client.unqueue(&session, app) {
+                Ok(inputs) => {
+                    let _ = msgs.send(Msg::Unqueued { session, inputs });
+                }
+                Err(err) => fail("taking the queued messages back failed", err),
+            },
             Effect::PasteImage => {
                 let path = attach::paste_image().map(|p| p.to_string_lossy().into_owned());
                 let _ = msgs.send(Msg::Pasted(path));

@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetFetchMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, SessionRemovedMessage, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionUnqueue, SessionUnqueued, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetFetchMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, SessionRemovedMessage, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -125,6 +125,18 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "session.cancel":
 		var v SessionCancel
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "session.unqueue":
+		var v SessionUnqueue
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "session.unqueued":
+		var v SessionUnqueued
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -601,6 +613,40 @@ func (v SessionCancel) MarshalJSON() ([]byte, error) {
 		Tag string `json:"topic"`
 		plain
 	}{"session.cancel", plain(v)})
+}
+
+// SessionUnqueue: Client → daemon: take back the inputs this app queued behind the running turn, to edit them (Up in an empty editor). Replied to with session.unqueued; inputs a running neo turn already took in stay where they are.
+type SessionUnqueue struct {
+	ID      string               `json:"id"`
+	Payload SessionUnqueueParams `json:"payload"`
+}
+
+func (SessionUnqueue) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v SessionUnqueue) MarshalJSON() ([]byte, error) {
+	type plain SessionUnqueue
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"session.unqueue", plain(v)})
+}
+
+// SessionUnqueued: Daemon → client: reply to session.unqueue, the inputs taken out of the queue, oldest first (none when there were none).
+type SessionUnqueued struct {
+	ID      string                 `json:"id"`
+	Payload SessionUnqueuedPayload `json:"payload"`
+}
+
+func (SessionUnqueued) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v SessionUnqueued) MarshalJSON() ([]byte, error) {
+	type plain SessionUnqueued
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"session.unqueued", plain(v)})
 }
 
 // SessionInfoMessage: Daemon → client: reply to session.create.
@@ -1134,6 +1180,16 @@ func (v SessionRemovedMessage) MarshalJSON() ([]byte, error) {
 type SessionRemoved struct {
 	// The session that no longer exists.
 	ID string `json:"id"`
+}
+
+type SessionUnqueueParams struct {
+	Session string `json:"session"`
+	// Only inputs from this app are taken.
+	App string `json:"app"`
+}
+
+type SessionUnqueuedPayload struct {
+	Inputs []WaitingInput `json:"inputs"`
 }
 
 // AppPresence: Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.

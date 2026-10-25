@@ -430,6 +430,12 @@ export class Hub {
         this.sessions.cancel(msg.payload.session);
         this.send(client, { topic: "bus.ack", id: msg.id });
         return;
+      case "session.unqueue": {
+        const { session, app } = msg.payload;
+        const inputs = this.sessions.unqueue(session, app);
+        this.send(client, { topic: "session.unqueued", id: msg.id, payload: { inputs } });
+        return;
+      }
       case "session.input": {
         const { session, app, text, images } = msg.payload;
         const { focus } = this.parts;

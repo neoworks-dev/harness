@@ -13,6 +13,7 @@ export const REPLY_TOPICS = {
   "session.subscribe": "session.subscribed",
   "session.unsubscribe": "bus.ack",
   "session.cancel": "bus.ack",
+  "session.unqueue": "session.unqueued",
   "session.input": "bus.ack",
   "app.presence": "bus.ack",
   "app.context": "bus.ack",

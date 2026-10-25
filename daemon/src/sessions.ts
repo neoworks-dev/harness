@@ -254,6 +254,19 @@ export class SessionManager {
     this.stateChanged(sessionId);
   }
 
+  /**
+   * Takes the inputs `app` queued behind the running turn back out of the queue, oldest first,
+   * as the user wrote them (to edit them again). Throws NotFoundError for an unknown session.
+   */
+  unqueue(sessionId: string, app: string): WaitingInput[] {
+    const rt = this.runtime(sessionId);
+    const taken = rt.queue.filter((input) => input.app === app);
+    if (taken.length === 0) return [];
+    rt.queue = rt.queue.filter((input) => input.app !== app);
+    this.stateChanged(sessionId);
+    return taken.map(waiting);
+  }
+
   /** The harness the session's next turn runs on. */
   harness(sessionId: string): string {
     return this.options.harness?.(sessionId) ?? this.agent.name;

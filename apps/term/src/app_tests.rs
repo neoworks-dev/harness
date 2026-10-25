@@ -1267,6 +1267,48 @@ fn queued_inputs_are_counted_while_a_turn_runs() {
 }
 
 #[test]
+fn up_takes_the_queued_messages_back_into_the_editor() {
+    let mut app = app();
+    app.handle_event(user_message(NOW));
+    for text in ["first", "second"] {
+        app.handle_paste(text);
+        app.handle_key(key(KeyCode::Enter));
+    }
+    assert_eq!(
+        app.handle_key(key(KeyCode::Up)),
+        [Effect::Unqueue {
+            session: "s1".into()
+        }]
+    );
+    type_str(&mut app, "typed meanwhile");
+    app.handle_msg(Msg::Unqueued {
+        session: "s1".into(),
+        inputs: ["first", "second [image 1]"]
+            .map(|text| WaitingInput {
+                app: "terminal".into(),
+                text: text.into(),
+                images: text
+                    .contains("[image")
+                    .then(|| vec!["/tmp/a.png".to_string()]),
+            })
+            .to_vec(),
+    });
+    assert_eq!(
+        app.editor_text(),
+        "first\n\nsecond [image 1]\n\ntyped meanwhile"
+    );
+    assert!(!app.status_lines(100)[1].to_string().contains("queued"));
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert!(matches!(&fx[..], [Effect::Input { images, .. }] if images == &["/tmp/a.png"]));
+
+    // Sent again while the turn runs, it waits again and Up takes it back again.
+    assert!(matches!(
+        &app.handle_key(key(KeyCode::Up))[..],
+        [Effect::Unqueue { .. }]
+    ));
+}
+
+#[test]
 fn waiting_inputs_show_above_the_editor_until_the_turn_takes_them() {
     let mut app = app();
     app.handle_event(user_message(NOW));

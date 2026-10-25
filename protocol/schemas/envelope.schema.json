@@ -47,6 +47,12 @@
           "$ref": "#/$defs/SessionCancel"
         },
         {
+          "$ref": "#/$defs/SessionUnqueue"
+        },
+        {
+          "$ref": "#/$defs/SessionUnqueued"
+        },
+        {
           "$ref": "#/$defs/SessionInfoMessage"
         },
         {
@@ -546,6 +552,40 @@
         },
         "payload": {
           "$ref": "#/$defs/SessionRef"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "SessionUnqueue": {
+      "description": "Client → daemon: take back the inputs this app queued behind the running turn, to edit them (Up in an empty editor). Replied to with session.unqueued; inputs a running neo turn already took in stay where they are.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.unqueue"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/SessionUnqueueParams"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "SessionUnqueued": {
+      "description": "Daemon → client: reply to session.unqueue, the inputs taken out of the queue, oldest first (none when there were none).",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.unqueued"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/SessionUnqueuedPayload"
         }
       },
       "required": ["topic", "id", "payload"],
@@ -1188,6 +1228,33 @@
         }
       },
       "required": ["id"],
+      "additionalProperties": false
+    },
+    "SessionUnqueueParams": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string"
+        },
+        "app": {
+          "type": "string",
+          "description": "Only inputs from this app are taken."
+        }
+      },
+      "required": ["session", "app"],
+      "additionalProperties": false
+    },
+    "SessionUnqueuedPayload": {
+      "type": "object",
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "session.schema.json#/$defs/WaitingInput"
+          }
+        }
+      },
+      "required": ["inputs"],
       "additionalProperties": false
     }
   }

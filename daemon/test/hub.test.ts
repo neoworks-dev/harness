@@ -244,6 +244,38 @@ describe("hub", () => {
     expect(store.read(id).at(-1)?.event).toEqual({ type: "turn_ended", stopReason: "cancelled" });
   });
 
+  test("unqueue hands an app its queued inputs back and leaves the others'", async () => {
+    const { hub, agent, sessions } = setup();
+    const id = sessions.create({}).id;
+    const c = client(hub);
+    const input = (app: string, text: string, images?: string[]): void =>
+      c.send({ topic: "session.input", payload: { session: id, app, text, images } });
+    input("term", "running");
+    await agent.started(1);
+    input("term", "first", ["/a.png"]);
+    input("gui", "from the desktop");
+    input("term", "second");
+    c.send({ topic: "session.unqueue", id: "q", payload: { session: id, app: "term" } });
+    expect(c.last()).toEqual({
+      topic: "session.unqueued",
+      id: "q",
+      payload: {
+        inputs: [
+          { app: "term", text: "first", images: ["/a.png"] },
+          { app: "term", text: "second" },
+        ],
+      },
+    });
+    expect(sessions.info(id)).toMatchObject({ queued: 1, waiting: [{ app: "gui" }] });
+    c.send({ topic: "session.unqueue", id: "r", payload: { session: id, app: "term" } });
+    expect(c.last()).toEqual({ topic: "session.unqueued", id: "r", payload: { inputs: [] } });
+    agent.release();
+    await agent.started(2);
+    expect(agent.prompts[1]?.text).toBe("from the desktop");
+    agent.release();
+    await sessions.idle(id);
+  });
+
   test("a client whose transport throws doesn't break others", () => {
     const { hub, store, sessions } = setup();
     const id = sessions.create({}).id;

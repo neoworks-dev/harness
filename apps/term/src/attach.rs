@@ -234,9 +234,54 @@ pub fn outgoing(text: &str, attachments: &[(usize, String)]) -> (String, Vec<Str
     (out, order.into_iter().map(|(_, p)| p.to_string()).collect())
 }
 
+/// A sent message made a draft again: its images get the numbers from `next` on, and its
+/// `[image N]` markers (N counting its images from 1) the new numbers. An image whose marker is
+/// not in the text gets one at the end.
+pub fn redraft(text: &str, images: &[String], next: usize) -> (String, Vec<(usize, String)>) {
+    let attached: Vec<(usize, String)> = images
+        .iter()
+        .enumerate()
+        .map(|(i, path)| (next + i, path.clone()))
+        .collect();
+    let mut out = String::with_capacity(text.len());
+    let mut last = 0;
+    let mut placed = vec![false; images.len()];
+    for (range, n) in markers(text) {
+        if let Some(slot) = n.checked_sub(1).filter(|&i| i < images.len()) {
+            out.push_str(&text[last..range.start]);
+            out.push_str(&marker(next + slot));
+            placed[slot] = true;
+            last = range.end;
+        }
+    }
+    out.push_str(&text[last..]);
+    for (i, done) in placed.iter().enumerate() {
+        if !done {
+            if !out.is_empty() && !out.ends_with(char::is_whitespace) {
+                out.push(' ');
+            }
+            out.push_str(&marker(next + i));
+        }
+    }
+    (out, attached)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sent_message_becomes_a_draft_with_fresh_numbers() {
+        let images = ["/a.png".to_string(), "/b.png".to_string()];
+        assert_eq!(
+            redraft("[image 2] then [image 1]", &images, 3),
+            (
+                "[image 4] then [image 3]".to_string(),
+                vec![(3, "/a.png".to_string()), (4, "/b.png".to_string())]
+            )
+        );
+        assert_eq!(redraft("look", &images[..1], 1).0, "look [image 1]");
+    }
 
     #[test]
     fn markers_are_found_renumbered_and_deleted_whole() {

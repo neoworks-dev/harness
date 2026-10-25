@@ -128,6 +128,10 @@ pub enum Effect {
     Copy(String),
     /// Save the clipboard's image to a file and attach it (`Msg::Pasted`).
     PasteImage,
+    /// Take this app's inputs back out of the session's queue (`Msg::Unqueued`).
+    Unqueue {
+        session: String,
+    },
     /// Open a link of an OpenUI button in the browser (xdg-open).
     OpenUrl(String),
     Quit,
@@ -143,6 +147,11 @@ pub enum Msg {
     Notice(String),
     /// The clipboard's image, saved; none when it holds no image.
     Pasted(Option<String>),
+    /// The inputs taken back out of the queue of `session`, oldest first.
+    Unqueued {
+        session: String,
+        inputs: Vec<WaitingInput>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -817,6 +826,8 @@ impl App {
             Msg::Notice(text) => self.notify(text, false),
             Msg::Pasted(Some(path)) => self.attach(vec![path]),
             Msg::Pasted(None) => self.notify("no image on the clipboard", false),
+            Msg::Unqueued { session, inputs } if session == self.session => self.redraft(inputs),
+            Msg::Unqueued { .. } => {}
         }
         fx
     }
@@ -1426,6 +1437,42 @@ impl App {
         }
     }
 
+    /// Up with messages waiting: asks for this app's back, to edit them (`redraft`).
+    fn unqueue(&mut self, fx: &mut Vec<Effect>) -> bool {
+        if !self.waiting.iter().any(|w| w.app == self.app_id) {
+            return false;
+        }
+        fx.push(Effect::Unqueue {
+            session: self.session.clone(),
+        });
+        true
+    }
+
+    /// The messages taken back out of the queue go into the editor, one per paragraph, before
+    /// whatever was typed meanwhile; their images come along.
+    fn redraft(&mut self, inputs: Vec<WaitingInput>) {
+        let app = self.app_id.clone();
+        self.waiting.retain(|w| w.app != app);
+        if inputs.is_empty() {
+            return;
+        }
+        self.dirty = true;
+        let mut parts = Vec::new();
+        for input in inputs {
+            let next = self.attachments.iter().map(|(n, _)| *n).max().unwrap_or(0) + 1;
+            let images = input.images.unwrap_or_default();
+            let (text, attached) = attach::redraft(&input.text, &images, next);
+            self.attachments.extend(attached);
+            parts.push(text);
+        }
+        let typed = self.editor.text().trim().to_string();
+        if !typed.is_empty() {
+            parts.push(typed);
+        }
+        self.editor.set_text(&parts.join("\n\n"));
+        self.histories.of(&self.session).reset();
+    }
+
     /// Pastes images into the draft: each gets a number and its `[image N]` marker goes in at
     /// the cursor, so the message says where it belongs.
     fn attach(&mut self, paths: Vec<String>) {
@@ -1860,7 +1907,9 @@ impl App {
                 edited = false;
                 if self.menu_visible() {
                     self.move_menu(-1);
-                } else if !self.editor.up() {
+                } else if !self.editor.up()
+                    && !(empty && !self.histories.of(&self.session).browsing() && self.unqueue(fx))
+                {
                     self.history_prev();
                 }
             }
