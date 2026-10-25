@@ -440,6 +440,17 @@ describe("a session on an ACP harness", () => {
     expect(events(daemon, session).filter((e) => e.type === "harness_message")).toHaveLength(1);
   });
 
+  test("a slash command reaches it alone; what it would have heard waits for the next prompt", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/harness fake");
+    await say(daemon, session, "/compact");
+    expect(thoughts(daemon, session)[0]).toBe("/compact");
+    await say(daemon, session, "hello");
+    const next = thoughts(daemon, session)[1] ?? "";
+    expect(next).toContain('<app connected="greeter"');
+    expect(next.endsWith("\nhello")).toBe(true);
+  });
+
   test("its tool calls are prefixed, unlabelled, and get the gateway's text results with refs", async () => {
     const { daemon, session } = await setup();
     await daemon.commands.run(session, "/harness fake");

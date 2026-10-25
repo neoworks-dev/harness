@@ -180,6 +180,8 @@ interface Guest {
   commands?: SlashCommand[];
   /** The adapter takes `_session/steering`: a message for the running turn. */
   steering: boolean;
+  /** What a slash command's prompt couldn't carry, for the next prompt. */
+  carried?: { events: ContextEvent[]; summary?: string };
 }
 
 const KINDS = new Set<string>([
@@ -1137,15 +1139,30 @@ export class GuestManager {
     };
     const text = (): string => [...run.messages.values()].at(-1)?.trim() ?? "";
     if (opts.signal?.aborted) return { stopReason: "cancelled", text: "" };
-    // What this adapter wasn't told yet about the connectors and focus, then what the session
-    // wants the agent to hear (guests' turns, reverted edits, the user's notes).
-    const events: ContextEvent[] = guest.told.changes(
-      this.options.connectors(),
-      this.options.focus(guest.session),
-    );
-    for (const event of events) guest.told.apply(event);
+    // What the session wants the agent to hear (guests' turns, reverted edits, the user's notes),
+    // with what an earlier command's prompt couldn't carry.
+    const carried = guest.carried;
+    guest.carried = undefined;
+    const said = [...(carried?.events ?? [])];
     for (const event of opts.events ?? []) {
-      if (["guest_turn", "edits_reverted", "user_note"].includes(event.type)) events.push(event);
+      if (["guest_turn", "edits_reverted", "user_note"].includes(event.type)) said.push(event);
+    }
+    const summary = opts.summary ?? carried?.summary;
+    // A slash command goes to the adapter alone, or it isn't one (`/compact`); the rest waits.
+    const command = task.trimStart().startsWith("/");
+    if (command) {
+      guest.carried = { events: said };
+      if (summary !== undefined) guest.carried.summary = summary;
+    }
+    // What this adapter wasn't told yet about the connectors and focus (told next time, for a
+    // command).
+    const events: ContextEvent[] = [];
+    if (!command) {
+      events.push(
+        ...guest.told.changes(this.options.connectors(), this.options.focus(guest.session)),
+      );
+      for (const event of events) guest.told.apply(event);
+      events.push(...said);
     }
     const onAbort = (): void => {
       guest.conn.notify("session/cancel", { sessionId: guest.acpSession });
@@ -1156,14 +1173,12 @@ export class GuestManager {
     try {
       // What arrived before this turn, ahead of the task (the gateway adds what comes during the
       // turn to its tool results).
-      const waiting = opts.takeMessages?.() ?? [];
-      const prompt = [
-        {
-          type: "text",
-          text: [...waiting, formatPrompt(task, events, undefined, opts.summary)].join("\n\n"),
-        },
-        ...(await imageBlocks(opts.images)),
-      ];
+      let body = task.trim();
+      if (!command) {
+        const waiting = opts.takeMessages?.() ?? [];
+        body = [...waiting, formatPrompt(task, events, undefined, summary)].join("\n\n");
+      }
+      const prompt = [{ type: "text", text: body }, ...(await imageBlocks(opts.images))];
       const result = await guest.conn.request("session/prompt", {
         sessionId: guest.acpSession,
         prompt,
