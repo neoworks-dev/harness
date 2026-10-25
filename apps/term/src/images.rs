@@ -59,11 +59,14 @@ pub fn parse_mode(value: Option<&str>) -> Mode {
     }
 }
 
-/// Asks the terminal what it can draw and how big a cell is (kitty, sixel and iTerm2 graphics
-/// through tmux work with `allow-passthrough on`; without, the terminal does not answer and
-/// half blocks it is). None when images are switched off. It talks to the terminal on stdin and
-/// stdout, so it runs after raw mode is on and before any key is read; tests build a
-/// [`Picker::halfblocks`] instead.
+/// Asks the terminal what it can draw and how big a cell is. None when images are switched off.
+/// It talks to the terminal on stdin and stdout, so it runs after raw mode is on and before any
+/// key is read; tests build a [`Picker::halfblocks`] instead.
+///
+/// Inside tmux the query goes through passthrough (ratatui-image turns `allow-passthrough` on for
+/// the pane), but kitty's answer to the graphics query does not come back through tmux, so it
+/// finds half blocks. tmux knows the terminal its client runs in, though: when that draws kitty
+/// graphics, they are used (as unicode placeholders, which tmux passes on).
 pub fn detect(mode: Mode) -> Option<Picker> {
     if mode == Mode::Off {
         return None;
@@ -74,10 +77,36 @@ pub fn detect(mode: Mode) -> Option<Picker> {
     };
     let mut picker =
         Picker::from_query_stdio_with_options(options).unwrap_or_else(|_| Picker::halfblocks());
+    if picker.protocol_type() == ProtocolType::Halfblocks
+        && std::env::var_os("TMUX").is_some()
+        && let Some(protocol) = tmux_client_terminal().as_deref().and_then(outer_protocol)
+    {
+        picker.set_protocol_type(protocol);
+    }
     if let Mode::Force(protocol) = mode {
         picker.set_protocol_type(protocol);
     }
     Some(picker)
+}
+
+/// The terminal tmux's client runs in, as tmux says (`kitty(0.48.2)|xterm-kitty`).
+fn tmux_client_terminal() -> Option<String> {
+    let out = std::process::Command::new("tmux")
+        .args(["display", "-p", "#{client_termtype}|#{client_termname}"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// The graphics protocol of a terminal tmux runs in, by its name: kitty's for kitty and
+/// Ghostty, which draw it with unicode placeholders.
+fn outer_protocol(terminal: &str) -> Option<ProtocolType> {
+    let terminal = terminal.to_ascii_lowercase();
+    (terminal.contains("kitty") || terminal.contains("ghostty")).then_some(ProtocolType::Kitty)
 }
 
 /// Turns an `asset://` handle or an `http(s)://` URL into a file on disk: the stored file, or

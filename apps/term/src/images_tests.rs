@@ -501,3 +501,16 @@ fn every_protocol_encodes_and_draws_into_the_buffer() {
         assert_eq!(non_blank(&buf, Rect::new(0, 6, 40, 6)), 0, "{protocol:?}");
     }
 }
+
+#[test]
+fn kitty_and_ghostty_under_tmux_get_kitty_graphics() {
+    assert_eq!(
+        outer_protocol("kitty(0.48.2)|xterm-kitty"),
+        Some(ProtocolType::Kitty)
+    );
+    assert_eq!(
+        outer_protocol("ghostty 1.2.0|xterm-ghostty"),
+        Some(ProtocolType::Kitty)
+    );
+    assert_eq!(outer_protocol("|xterm-256color"), None);
+}
