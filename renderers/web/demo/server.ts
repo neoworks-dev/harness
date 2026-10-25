@@ -6,7 +6,7 @@ import { daemonJsonAddress } from "@neoworks-dev/neo-sdk";
 export interface DemoServerOptions {
   /** Port on 127.0.0.1; 0 picks a free one. */
   port?: number;
-  /** Where to look for the daemon (SUITE_SOCKET etc.); defaults to process.env. */
+  /** Where to look for the daemon (NEO_SOCKET etc.); defaults to process.env. */
   env?: Record<string, string | undefined>;
   /** The bundled page script, if already built with buildDemoScript (default: build it now). */
   script?: string;
@@ -33,7 +33,7 @@ function html(address: DaemonAddress | undefined, problem: string): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>suite chat</title>
+<title>neo chat</title>
 <style>
   html, body { height: 100%; margin: 0; background: #16181d; }
   body { display: flex; flex-direction: column; font: 14px system-ui, sans-serif; }
@@ -48,7 +48,7 @@ function html(address: DaemonAddress | undefined, problem: string): string {
 <main id="chat" aria-label="chat"></main>
 <form id="form"><input id="input" autocomplete="off" placeholder="Say something" aria-label="message" autofocus><button id="send" type="submit">Send</button></form>
 <div id="status" role="status">${note}</div>
-<script type="application/json" id="suite-config">${config}</script>
+<script type="application/json" id="neo-config">${config}</script>
 <script type="module" src="/app.js"></script>
 </body>
 </html>

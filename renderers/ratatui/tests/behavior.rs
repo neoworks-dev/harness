@@ -9,7 +9,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use suite_renderer_ratatui::{
+use neo_renderer_ratatui::{
     ImageOptions, ImageSlot, ImageStatus, Options, Palette, buttons, image_cells, image_sources,
     keep_buttons, plain_text, render_item, render_item_images,
 };
@@ -25,11 +25,11 @@ fn text(s: &str) -> String {
     )
 }
 
-fn lines(it: &suite_protocol::ViewItem, width: u16) -> Vec<String> {
+fn lines(it: &neo_protocol::ViewItem, width: u16) -> Vec<String> {
     lines_of(it, width, &Options::default())
 }
 
-fn tool(state: &str, component: &str) -> suite_protocol::ViewItem {
+fn tool(state: &str, component: &str) -> neo_protocol::ViewItem {
     item_of(
         "tool",
         &format!(r#""label":"bash: ls","state":"{state}","#),
@@ -202,7 +202,7 @@ fn prose_wraps_at_the_prose_width_but_code_does_not() {
 fn a_command_to_approve_is_highlighted_and_broken_at_its_operators() {
     let c = json!({"type": "stack", "gap": "s", "children": [
         {"type": "code", "language": "bash", "code": "cd /tmp/some/dir && cargo test --workspace 2>&1 | tail -20"},
-        {"type": "button", "label": "Allow", "action": "suite.permit", "key": "1"}
+        {"type": "button", "label": "Allow", "action": "neo.permit", "key": "1"}
     ]});
     let it = item_of(
         "tool",
@@ -319,8 +319,8 @@ fn expanded_tools_draw_the_whole_component_indented() {
 #[test]
 fn tools_with_buttons_are_always_drawn_in_full() {
     let row = r#"{"type":"row","gap":"s","children":[
-        {"type":"button","label":"Allow","action":"suite.permit","args":{"id":"1","option":"a"},"key":"y"},
-        {"type":"button","label":"Deny","action":"suite.permit","args":{"id":"1","option":"b"}}]}"#;
+        {"type":"button","label":"Allow","action":"neo.permit","args":{"id":"1","option":"a"},"key":"y"},
+        {"type":"button","label":"Deny","action":"neo.permit","args":{"id":"1","option":"b"}}]}"#;
     let it = item_of(
         "tool",
         r#""label":"claude: run rm","state":"pending","#,
@@ -341,7 +341,7 @@ fn tools_with_buttons_are_always_drawn_in_full() {
 
 /// What the daemon's session view builds for a permission request that previews an edit: the
 /// diff, then one button per option.
-fn permission(diff_lines: usize) -> suite_protocol::ViewItem {
+fn permission(diff_lines: usize) -> neo_protocol::ViewItem {
     let mut lines = vec![json!({"kind":"hunk","text":"@@ -1,3 +1,3 @@"})];
     for i in 0..diff_lines {
         lines.push(
@@ -357,7 +357,7 @@ fn permission(diff_lines: usize) -> suite_protocol::ViewItem {
         .iter()
         .enumerate()
         .map(|(i, (id, name))| {
-            json!({"type":"button","label":name,"action":"suite.permit",
+            json!({"type":"button","label":name,"action":"neo.permit",
                    "args":{"id":"7","option":id},"key":(i + 1).to_string()})
         })
         .collect();
@@ -461,7 +461,7 @@ fn the_line_limit_is_shared_by_all_previews_of_an_item() {
 fn a_review_card_offers_keep_and_reverts_as_buttons() {
     // The daemon's choice item after a turn in edits mode.
     let option = |i: usize, id: &str, name: &str| {
-        json!({"type":"button","label":name,"action":"suite.choose",
+        json!({"type":"button","label":name,"action":"neo.choose",
                "args":{"id":"r1","option":id},"key":(i + 1).to_string()})
     };
     let it = item(
@@ -485,7 +485,7 @@ fn a_review_card_offers_keep_and_reverts_as_buttons() {
     );
     let b = buttons(&it);
     assert_eq!(b[3].args, Some(json!({"id":"r1","option":"revert:b.ts"})));
-    assert_eq!(b[3].action, "suite.choose");
+    assert_eq!(b[3].action, "neo.choose");
     // The third button is the focused one.
     let focused = render_item(
         &it,
@@ -506,7 +506,7 @@ fn a_review_card_offers_keep_and_reverts_as_buttons() {
 
 // ---- buttons ----
 
-fn two_buttons() -> suite_protocol::ViewItem {
+fn two_buttons() -> neo_protocol::ViewItem {
     item_of(
         "tool",
         r#""label":"t","state":"done","#,
@@ -669,7 +669,7 @@ fn code_has_a_background_band_the_width_of_the_view() {
 }
 
 fn plain_lines(lines: &[Line<'_>]) -> Vec<String> {
-    suite_renderer_ratatui::plain_text(lines)
+    neo_renderer_ratatui::plain_text(lines)
 }
 
 #[test]
@@ -923,7 +923,7 @@ fn ten_columns_never_overflow() {
 
 #[test]
 fn colors_come_from_the_palette() {
-    let mut theme: suite_protocol::Theme =
+    let mut theme: neo_protocol::Theme =
         serde_json::from_str(include_str!("../../../protocol/themes/default.json")).unwrap();
     theme.colors.danger = "#00ff00".into();
     let opts = Options {
@@ -1111,10 +1111,10 @@ fn a_collapsed_tool_result_keeps_the_text_and_the_picture() {
     }
 }
 
-fn choice() -> suite_protocol::ViewItem {
+fn choice() -> neo_protocol::ViewItem {
     let button = |label: &str, id: &str| {
         format!(
-            r#"{{"type":"button","label":"{label}","action":"suite.choose","args":{{"id":"c","option":"{id}"}}}}"#
+            r#"{{"type":"button","label":"{label}","action":"neo.choose","args":{{"id":"c","option":"{id}"}}}}"#
         )
     };
     let row = |label: &str, id: &str, about: &str| {

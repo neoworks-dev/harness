@@ -40,7 +40,7 @@ afterEach(() => {
 
 /** A hub with a test-only /ask command (not part of the daemon) that asks the typing client. */
 function setup(): Setup {
-  const dir = mkdtempSync(join(tmpdir(), "suite-secret-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "neo-secret-test-"));
   dirs.push(dir);
   const logged: string[] = [];
   const log: Logger = {

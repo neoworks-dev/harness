@@ -495,7 +495,7 @@ export class SessionView {
       const buttons: Component[] = request.options.map((option, i) => ({
         type: "button",
         label: option.name,
-        action: "suite.permit",
+        action: "neo.permit",
         args: { id: request.id, option: option.id },
         key: String(i + 1),
       }));
@@ -544,7 +544,7 @@ export class SessionView {
         const button: Component = {
           type: "button",
           label: option.name,
-          action: "suite.choose",
+          action: "neo.choose",
           args: { id: choice.id, option: option.id },
         };
         if (i < 9) button.key = String(i + 1);

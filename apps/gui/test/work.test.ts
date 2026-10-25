@@ -296,7 +296,7 @@ test("a tool nobody knows is a wrench with its title and input", () => {
 });
 
 test("questions are recognised by their ref and by their buttons", () => {
-  const button: Component = { type: "button", label: "Allow", action: "suite.permit" };
+  const button: Component = { type: "button", label: "Allow", action: "neo.permit" };
   expect(isQuestion(tool("claude asks: rm", button, "pending", "p-1"))).toBe(true);
   expect(isQuestion(tool("Mode", text("Auto"), "done", "q-2"))).toBe(true);
   expect(isQuestion(tool("x", { type: "row", children: [button] }))).toBe(true);

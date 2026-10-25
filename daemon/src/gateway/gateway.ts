@@ -44,8 +44,8 @@ export interface GatewayOptions {
 const ASSET_HANDLES = /asset:\/\/[a-z]+-[0-9a-f]+/g;
 
 /**
- * Who is calling: the session (x-suite-session); `guest` (x-suite-guest) names a subagent, which
- * may not delegate; `text` (x-suite-text) is an ACP client (guests and the session's own ACP
+ * Who is calling: the session (x-neo-session); `guest` (x-neo-guest) names a subagent, which
+ * may not delegate; `text` (x-neo-text) is an ACP client (guests and the session's own ACP
  * harness) that gets text only.
  */
 export interface Caller {
@@ -139,7 +139,7 @@ export class Gateway {
   /**
    * `caller` says whose agent calls: a session id, or the session and what kind of client. An
    * ACP agent can't be told anything mid-turn, so what other agents wrote to it comes with the
-   * result of its next suite tool.
+   * result of its next neo tool.
    */
   async call(
     name: CoreToolName,

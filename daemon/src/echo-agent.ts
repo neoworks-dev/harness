@@ -1,4 +1,4 @@
-// A scripted stand-in for the real harness, selected with SUITE_AGENT=echo. Deterministic and
+// A scripted stand-in for the real harness, selected with NEO_AGENT=echo. Deterministic and
 // offline, so end-to-end tests can drive the daemon and CLI without a model.
 //
 // Each turn replies "echo #<n>: <text>" in a few chunks, where n counts turns including those

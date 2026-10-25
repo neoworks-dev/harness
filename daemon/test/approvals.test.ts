@@ -61,7 +61,7 @@ async function press(
 ): Promise<void> {
   const args: Record<string, string> = { id, option };
   if (note !== undefined) args.note = note;
-  await daemon.actions.run({ session, ref: "x", action: "suite.permit", args }, "t");
+  await daemon.actions.run({ session, ref: "x", action: "neo.permit", args }, "t");
 }
 
 const diff: DiffContent = { type: "diff", path: "/w/a.ts", oldText: "a\n", newText: "b\n" };
@@ -588,7 +588,7 @@ describe("notes with an answer", () => {
     expect(await pending).toEqual({ allowed: true });
     expect(
       daemon.actions.run(
-        { session, ref: "x", action: "suite.permit", args: { id: "p", option: "a", note: 3 } },
+        { session, ref: "x", action: "neo.permit", args: { id: "p", option: "a", note: 3 } },
         "t",
       ),
     ).rejects.toThrow("note must be a string");
@@ -623,7 +623,7 @@ describe("notes with an answer", () => {
       {
         session,
         ref: "x",
-        action: "suite.choose",
+        action: "neo.choose",
         args: { id: card.id, option: "revert", note: "keep the old name" },
       },
       "t",
@@ -679,7 +679,7 @@ describe("review after the turn", () => {
   async function pick(daemon: TestDaemon, session: string, option: string): Promise<void> {
     const { id } = card(daemon, session);
     await daemon.actions.run(
-      { session, ref: "x", action: "suite.choose", args: { id, option } },
+      { session, ref: "x", action: "neo.choose", args: { id, option } },
       "t",
     );
   }

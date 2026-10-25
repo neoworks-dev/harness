@@ -149,11 +149,11 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     const { url, token } = server.info;
     const headers = [
       { name: "authorization", value: `Bearer ${token}` },
-      { name: "x-suite-session", value: sessionId },
+      { name: "x-neo-session", value: sessionId },
     ];
-    if (role?.guest === true) headers.push({ name: "x-suite-guest", value: role.name });
-    if (role?.text === true) headers.push({ name: "x-suite-text", value: "1" });
-    return [{ name: "suite", url: `${url}/mcp`, headers }];
+    if (role?.guest === true) headers.push({ name: "x-neo-guest", value: role.name });
+    if (role?.text === true) headers.push({ name: "x-neo-text", value: "1" });
+    return [{ name: "neo", url: `${url}/mcp`, headers }];
   };
   const settings = new Settings(store, agent.name);
   const asker = new Asker((session, event) => {

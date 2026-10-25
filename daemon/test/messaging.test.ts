@@ -30,7 +30,7 @@ function allowDelegations(daemon: TestDaemon): void {
     if (event.type !== "permission_request" || event.title !== "Start a subagent?") return;
     void Promise.resolve().then(() =>
       daemon.actions.run(
-        { session, ref: "p", action: "suite.permit", args: { id: event.id, option: "allow" } },
+        { session, ref: "p", action: "neo.permit", args: { id: event.id, option: "allow" } },
         "test",
       ),
     );
@@ -127,7 +127,7 @@ describe("a background delegation", () => {
     await daemon.sessions.idle(session);
   });
 
-  test("an ACP agent gets a message with the result of its next suite tool", async () => {
+  test("an ACP agent gets a message with the result of its next neo tool", async () => {
     const { daemon, session, main } = await setup();
     await delegate(daemon, session, { task: "poll", background: true });
     const id = await working(daemon, session);
@@ -162,7 +162,7 @@ describe("a background delegation", () => {
     expect(second.isError).toBe(true);
     expect(resultOf(second)).toContain(`still working on an earlier task here (${id})`);
     await daemon.actions.run(
-      { session, ref: "a", action: "suite.cancel_agent", args: { id } },
+      { session, ref: "a", action: "neo.cancel_agent", args: { id } },
       "test",
     );
     await until(() => events(daemon, session).some((e) => e.type === "subagent_ended"), "end");
@@ -310,7 +310,7 @@ describe("stopping", () => {
     await daemon.sessions.idle(session);
     expect(events(daemon, session).some((e) => e.type === "subagent_ended")).toBe(false);
     await daemon.actions.run(
-      { session, ref: "a", action: "suite.cancel_agent", args: { id } },
+      { session, ref: "a", action: "neo.cancel_agent", args: { id } },
       "test",
     );
     await until(() => events(daemon, session).some((e) => e.type === "subagent_ended"), "end");
@@ -321,7 +321,7 @@ describe("stopping", () => {
     await delegate(daemon, session, { task: "wait", background: true });
     const id = await working(daemon, session);
     await daemon.actions.run(
-      { session, ref: "a", action: "suite.cancel_agent", args: { id } },
+      { session, ref: "a", action: "neo.cancel_agent", args: { id } },
       "test",
     );
     await until(() => messages(daemon, session).some((m) => m.reply === true), "the report");

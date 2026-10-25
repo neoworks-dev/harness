@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { SuiteError } from "../src/index.ts";
+import { NeoError } from "../src/index.ts";
 import { cleanupAfterEach } from "./support/cleanup.ts";
 import { startRig } from "./support/real-daemon.ts";
 
@@ -28,12 +28,12 @@ test("putAsset takes data or a path, and getAsset finds it again", async () => {
   expect(await client.getAsset(data.handle)).toEqual(data);
 });
 
-test("getAsset rejects with SuiteError not_found for an unknown handle", async () => {
+test("getAsset rejects with NeoError not_found for an unknown handle", async () => {
   const { client } = await startRig(later);
   const missing = await client
     .getAsset("asset://img-ffffffffffff")
     .catch((thrown: unknown) => thrown);
-  expect(missing).toBeInstanceOf(SuiteError);
+  expect(missing).toBeInstanceOf(NeoError);
   expect(missing).toMatchObject({ code: "not_found" });
 });
 
@@ -41,7 +41,7 @@ test("fetchAsset rejects with bad_request for a URL that is not a public http(s)
   const { client } = await startRig(later);
   for (const url of ["http://127.0.0.1:1/a.png", "ftp://example.com/a.png"]) {
     const refused = await client.fetchAsset(url).catch((thrown: unknown) => thrown);
-    expect(refused).toBeInstanceOf(SuiteError);
+    expect(refused).toBeInstanceOf(NeoError);
     expect(refused).toMatchObject({ code: "bad_request" });
   }
 });

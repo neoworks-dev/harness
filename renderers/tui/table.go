@@ -3,7 +3,7 @@ package tui
 import (
 	"strings"
 
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 // table draws a box-drawn grid with a header row. Columns that don't fit are

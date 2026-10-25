@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	sdk "neoworks.dev/suite/sdk-go"
-	"neoworks.dev/suite/sdk-go/sdktest"
+	sdk "neoworks.dev/neo/sdk-go"
+	"neoworks.dev/neo/sdk-go/sdktest"
 
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 func ptr[T any](v T) *T { return &v }
@@ -44,10 +44,10 @@ func TestSocketPath(t *testing.T) {
 		env  map[string]string
 		want string
 	}{
-		{"override wins", "/f.sock", map[string]string{"SUITE_SOCKET": "/e.sock", "XDG_RUNTIME_DIR": "/run/user/1"}, "/f.sock"},
-		{"env over runtime dir", "", map[string]string{"SUITE_SOCKET": "/e.sock", "XDG_RUNTIME_DIR": "/run/user/1"}, "/e.sock"},
-		{"runtime dir", "", map[string]string{"XDG_RUNTIME_DIR": "/run/user/1"}, "/run/user/1/suite/bus.sock"},
-		{"tmp fallback", "", nil, "/tmp/suite-1000/bus.sock"},
+		{"override wins", "/f.sock", map[string]string{"NEO_SOCKET": "/e.sock", "XDG_RUNTIME_DIR": "/run/user/1"}, "/f.sock"},
+		{"env over runtime dir", "", map[string]string{"NEO_SOCKET": "/e.sock", "XDG_RUNTIME_DIR": "/run/user/1"}, "/e.sock"},
+		{"runtime dir", "", map[string]string{"XDG_RUNTIME_DIR": "/run/user/1"}, "/run/user/1/neo/bus.sock"},
+		{"tmp fallback", "", nil, "/tmp/neo-1000/bus.sock"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

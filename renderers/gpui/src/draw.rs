@@ -14,7 +14,7 @@ use gpui::{
     SharedString, StatefulInteractiveElement, StrikethroughStyle, Styled, StyledText, TextRun,
     UnderlineStyle, Window, div, img, px, relative, rgb,
 };
-use suite_protocol::DiffLineKind;
+use neo_protocol::DiffLineKind;
 
 use crate::layout::{
     BoxNode, ButtonNode, CodeNode, DiffNode, Dir, FileNode, ImageNode, ImageSource, Insets, KvNode,

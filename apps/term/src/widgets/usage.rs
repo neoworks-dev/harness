@@ -1,9 +1,9 @@
 //! The usage line under the prompt: context fill and cost of the session's own agent.
 
+use neo_protocol::Usage;
+use neo_renderer_ratatui::Palette;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use suite_protocol::Usage;
-use suite_renderer_ratatui::Palette;
 
 /// The newest `usage` event of the session's own agent. Guests' (events with an `agent`) are
 /// not shown: the line is about the harness the session runs on.

@@ -3,7 +3,7 @@
 
 use std::fmt::Write;
 
-use suite_protocol::DiffLineKind;
+use neo_protocol::DiffLineKind;
 
 use crate::layout::{
     BoxNode, Dir, Frame, Header, ImageSource, Insets, ItemLayout, Node, Run, TextNode,

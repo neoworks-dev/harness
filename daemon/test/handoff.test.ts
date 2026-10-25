@@ -5,7 +5,7 @@ import { SessionStore } from "../src/store.ts";
 
 const switchTo = (value: string): SessionEvent => ({
   type: "setting_changed",
-  harness: "suite",
+  harness: "daemon",
   option: "harness",
   value,
 });

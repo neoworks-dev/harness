@@ -9,19 +9,19 @@ import (
 	"path/filepath"
 	"strings"
 
-	sdk "neoworks.dev/suite/sdk-go"
+	sdk "neoworks.dev/neo/sdk-go"
 )
 
 // guiBundle is the desktop app's UI bundle relative to the repo root (bun apps/gui/build.mjs).
 var guiBundle = filepath.Join("apps", "gui", "dist", "gui.js")
 
 // errGuiMissing means the desktop app isn't built or installed.
-var errGuiMissing = errors.New("suite-gui isn't built: run task build, or use suite attach")
+var errGuiMissing = errors.New("neo-gui isn't built: run task build, or use neo attach")
 
-// resolveGui finds the desktop app: SUITE_GUI, else suite-gui next to the running executable,
+// resolveGui finds the desktop app: NEO_GUI, else neo-gui next to the running executable,
 // else on PATH. The same search as the terminal app's, for another name.
 func resolveGui(getenv func(string) string, exe string, lookPath func(string) (string, error)) (string, error) {
-	return resolveApp("SUITE_GUI", "suite-gui", errGuiMissing, getenv, exe, lookPath)
+	return resolveApp("NEO_GUI", "neo-gui", errGuiMissing, getenv, exe, lookPath)
 }
 
 // guiEnviron is base with the session choice (and the socket, when it was given) for the window.
@@ -29,27 +29,27 @@ func guiEnviron(base []string, session string, newSession bool, socket string) [
 	env := make([]string, 0, len(base)+3)
 	for _, kv := range base {
 		key, _, _ := strings.Cut(kv, "=")
-		if key == "SUITE_GUI_SESSION" || key == "SUITE_GUI_NEW" {
+		if key == "NEO_GUI_SESSION" || key == "NEO_GUI_NEW" {
 			continue
 		}
-		if key == "SUITE_SOCKET" && socket != "" {
+		if key == "NEO_SOCKET" && socket != "" {
 			continue
 		}
 		env = append(env, kv)
 	}
 	if session != "" {
-		env = append(env, "SUITE_GUI_SESSION="+session)
+		env = append(env, "NEO_GUI_SESSION="+session)
 	}
 	if newSession {
-		env = append(env, "SUITE_GUI_NEW=1")
+		env = append(env, "NEO_GUI_NEW=1")
 	}
 	if socket != "" {
-		env = append(env, "SUITE_SOCKET="+socket)
+		env = append(env, "NEO_SOCKET="+socket)
 	}
 	return env
 }
 
-// runGui is `suite gui`: start the daemon if needed (saying so only then), then open the desktop
+// runGui is `neo gui`: start the daemon if needed (saying so only then), then open the desktop
 // app on the session asked for and leave it running on its own, so the terminal is free.
 func runGui(ctx context.Context, args []string, e cliEnv) int {
 	fs, socket := commandFlags("gui", e)
@@ -60,7 +60,7 @@ func runGui(ctx context.Context, args []string, e cliEnv) int {
 		return 2
 	}
 	if len(positional) > 0 || (*newSession && *session != "") {
-		fmt.Fprint(e.Stderr, "usage: suite gui [--session ID | --new]\n")
+		fmt.Fprint(e.Stderr, "usage: neo gui [--session ID | --new]\n")
 		return 2
 	}
 
@@ -77,24 +77,24 @@ func runGui(ctx context.Context, args []string, e cliEnv) int {
 	// Resolve first so a missing app doesn't start a daemon for nothing.
 	gui, err := resolveGui(e.Getenv, exe, lookPath)
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "suite: %v\n", err)
+		fmt.Fprintf(e.Stderr, "neo: %v\n", err)
 		return 1
 	}
 	root, err := daemonRoot(e.Getenv, e.Executable)
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "suite: %v\n", err)
+		fmt.Fprintf(e.Stderr, "neo: %v\n", err)
 		return 1
 	}
 	bundle := filepath.Join(root, guiBundle)
 	if st, err := os.Stat(bundle); err != nil || st.IsDir() {
-		fmt.Fprintf(e.Stderr, "suite: the desktop app's bundle is missing (%s): run bun apps/gui/build.mjs, or task build\n", bundle)
+		fmt.Fprintf(e.Stderr, "neo: the desktop app's bundle is missing (%s): run bun apps/gui/build.mjs, or task build\n", bundle)
 		return 1
 	}
 
 	path := sdk.SocketPath(*socket, e.Getenv, e.UID)
 	pid, started, logPath, err := ensureDaemon(ctx, path, e)
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "suite: %v\n", err)
+		fmt.Fprintf(e.Stderr, "neo: %v\n", err)
 		return 1
 	}
 	if started {
@@ -108,7 +108,7 @@ func runGui(ctx context.Context, args []string, e cliEnv) int {
 		spawn = func(path string, argv, env []string) error { return spawnDetached(path, argv, env, dataDir(e.Getenv)) }
 	}
 	if err := spawn(gui, argv, env); err != nil {
-		fmt.Fprintf(e.Stderr, "suite: cannot run %s: %v\n", gui, err)
+		fmt.Fprintf(e.Stderr, "neo: cannot run %s: %v\n", gui, err)
 		return 1
 	}
 	return 0

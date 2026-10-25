@@ -2,10 +2,10 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use neo_renderer_ratatui::Palette;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use suite_renderer_ratatui::Palette;
 
 use super::git::{Change, GitStatus, LineCount};
 use super::text::{clean_line, truncate_start, width};

@@ -1,3 +1,3 @@
 fn main() -> std::process::ExitCode {
-    suite_term::runtime::main()
+    neo_term::runtime::main()
 }

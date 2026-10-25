@@ -19,7 +19,7 @@ const tools = await createToolServer({
   tools: createTools(pool),
 });
 
-const suite = await connect({
+const neo = await connect({
   client: "lsp",
   address: daemonJsonAddress,
   waitForDaemon: true,
@@ -42,13 +42,13 @@ let stopping = false;
 const stop = (): void => {
   if (stopping) return;
   stopping = true;
-  void Promise.all([suite.close(), pool.shutdown(), tools.close()]).then(() => process.exit(0));
+  void Promise.all([neo.close(), pool.shutdown(), tools.close()]).then(() => process.exit(0));
 };
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
 
 // Started by the daemon: go when it goes (even if it was killed).
-const daemonPid = Number(process.env.SUITE_DAEMON_PID);
+const daemonPid = Number(process.env.NEO_DAEMON_PID);
 if (Number.isInteger(daemonPid) && daemonPid > 0) {
   setInterval(() => {
     try {

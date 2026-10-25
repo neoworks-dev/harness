@@ -426,7 +426,7 @@ mod tests {
 
     #[test]
     fn new_files_count_their_lines_unless_binary() {
-        let dir = std::env::temp_dir().join(format!("suite-term-count-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("neo-term-count-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.txt"), "one\ntwo\nthree").unwrap();
         std::fs::write(dir.join("b.bin"), b"\x00\x01\n").unwrap();

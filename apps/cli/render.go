@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 // maxToolLines is how many lines of tool output are shown before truncating.

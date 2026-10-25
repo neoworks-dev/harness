@@ -11,13 +11,13 @@ export interface DaemonPaths {
 }
 
 export function resolvePaths(env: Record<string, string | undefined> = process.env): DaemonPaths {
-  let socket = env.SUITE_SOCKET;
-  if (!socket && env.XDG_RUNTIME_DIR) socket = join(env.XDG_RUNTIME_DIR, "suite", "bus.sock");
-  if (!socket) socket = join("/tmp", `suite-${userInfo().uid}`, "bus.sock");
+  let socket = env.NEO_SOCKET;
+  if (!socket && env.XDG_RUNTIME_DIR) socket = join(env.XDG_RUNTIME_DIR, "neo", "bus.sock");
+  if (!socket) socket = join("/tmp", `neo-${userInfo().uid}`, "bus.sock");
 
-  let dataDir = env.SUITE_DATA_DIR;
-  if (!dataDir && env.XDG_DATA_HOME) dataDir = join(env.XDG_DATA_HOME, "suite");
-  if (!dataDir) dataDir = join(homedir(), ".local", "share", "suite");
+  let dataDir = env.NEO_DATA_DIR;
+  if (!dataDir && env.XDG_DATA_HOME) dataDir = join(env.XDG_DATA_HOME, "neo");
+  if (!dataDir) dataDir = join(homedir(), ".local", "share", "neo");
 
   return {
     socket,

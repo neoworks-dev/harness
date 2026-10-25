@@ -1,6 +1,6 @@
 # renderers/gpui
 
-Rust renderer (`suite-renderer-gpui`) that draws the resolved view format with GPUI. A reusable crate for GPUI apps; Grove will host it. Conventions shared by all renderers are in `../README.md`.
+Rust renderer (`neo-renderer-gpui`) that draws the resolved view format with GPUI. A reusable crate for GPUI apps; Grove will host it. Conventions shared by all renderers are in `../README.md`.
 
 ```rust
 let chat = cx.new(ChatView::new);
@@ -44,4 +44,4 @@ Text can't be selected (GPUI has no text selection yet), code isn't syntax-highl
 
 ## Tests
 
-`cargo test -p suite-renderer-gpui`: fixture snapshots (`UPDATE_SNAPSHOTS=1` rewrites `fixtures/*/gpui.txt`), layout/key/copy unit tests, and headless GPUI tests (patches, selection, clipboard, drawing every fixture, following the end).
+`cargo test -p neo-renderer-gpui`: fixture snapshots (`UPDATE_SNAPSHOTS=1` rewrites `fixtures/*/gpui.txt`), layout/key/copy unit tests, and headless GPUI tests (patches, selection, clipboard, drawing every fixture, following the end).

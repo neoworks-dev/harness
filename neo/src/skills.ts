@@ -1,7 +1,7 @@
 // Skills: instructions neo loads when the work calls for them, kept out of the system prompt
 // until then. A skill is a directory with a SKILL.md: frontmatter `name` and `description`, then
 // the text. They come from the harness itself (neo/skills), the user's
-// ~/.config/suite/skills and the session's <cwd>/.suite/skills; a later one replaces an earlier
+// ~/.config/neo/skills and the session's <cwd>/.neo/skills; a later one replaces an earlier
 // one of the same name.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -18,7 +18,7 @@ export interface Skill {
   path: string;
 }
 
-/** Where skills are looked for. The session's own is `<cwd>/.suite/skills`. */
+/** Where skills are looked for. The session's own is `<cwd>/.neo/skills`. */
 export interface SkillDirs {
   bundled: string;
   user: string;
@@ -124,7 +124,7 @@ export function loadSkills(cwd: string, dirs: SkillDirs | undefined): Skill[] {
   if (!dirs) return [];
   const byName = new Map<string, Skill>();
   if (dirs.plugins) for (const skill of pluginSkills(dirs.plugins)) byName.set(skill.name, skill);
-  for (const dir of [dirs.bundled, dirs.user, join(cwd, ".suite", "skills")]) {
+  for (const dir of [dirs.bundled, dirs.user, join(cwd, ".neo", "skills")]) {
     for (const skill of readSkills(dir)) byName.set(skill.name, skill);
   }
   return [...byName.values()];

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 // ViewState is a session's view as drawn: the items from a view.snapshot with

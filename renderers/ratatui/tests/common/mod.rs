@@ -5,10 +5,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use neo_protocol::ViewItem;
+use neo_renderer_ratatui::{Options, Palette, plain_text, render_item};
 use ratatui::style::{Color, Modifier};
 use ratatui::text::Line;
-use suite_protocol::ViewItem;
-use suite_renderer_ratatui::{Options, Palette, plain_text, render_item};
 
 pub fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures")

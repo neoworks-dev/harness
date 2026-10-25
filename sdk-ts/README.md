@@ -155,7 +155,7 @@ The address carries the daemon token: keep it inside your own page or process.
 | `requestTimeoutMs?` | How long to wait for an answer before rejecting with `TimeoutError` (default 10000).                                       |
 | `onError?`          | Failures nobody is waiting for: a refused subscription, an error thrown by a callback.                                     |
 
-Rejects with `DisconnectedError` if the daemon cannot be reached, `SuiteError` if it refuses the client or the presence.
+Rejects with `DisconnectedError` if the daemon cannot be reached, `NeoError` if it refuses the client or the presence.
 
 ### `Client`
 
@@ -213,7 +213,7 @@ These properties are `Watched<T>`: `.value` is the latest, `.on(callback)` retur
 
 ### Errors
 
-- `SuiteError`: the daemon said no; `code` is `bad_request`, `not_found`, `unsupported_protocol` or `internal`.
+- `NeoError`: the daemon said no; `code` is `bad_request`, `not_found`, `unsupported_protocol` or `internal`.
 - `DisconnectedError`: there is no connection. Requests waiting when it drops reject with it too.
 - `TimeoutError`: no answer in time, or a `waitFor` ran out of time.
 

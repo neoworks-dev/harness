@@ -71,7 +71,7 @@
     if (row.state !== "running") return;
     stopping = new Set([...stopping, row.id]);
     // The same action the terminal app sends: the daemon ends the delegation.
-    void daemon.action("agents", "suite.cancel_agent", { id: row.id });
+    void daemon.action("agents", "neo.cancel_agent", { id: row.id });
   }
 
   function key(event: KeyEvent): void {

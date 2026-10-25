@@ -5,14 +5,14 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use suite_protocol::{ItemKind, ItemState, ViewItem, ViewPatch, ViewSnapshot};
-use suite_renderer_ratatui::{
+use neo_protocol::{ItemKind, ItemState, ViewItem, ViewPatch, ViewSnapshot};
+use neo_renderer_ratatui::{
     ButtonRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiDocInfo, UiState, buttons,
     image_sources, openui_docs, render_item_images,
 };
-use suite_sdk::ViewState;
+use neo_sdk::ViewState;
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
 
 /// Lines of diff or code a prompt shows before the buttons (Ctrl-O shows all of it).
 const PREVIEW_LINES: usize = 12;
@@ -822,7 +822,7 @@ pub fn panel_lines(
         images: None,
         openui: HashMap::new(),
     };
-    suite_renderer_ratatui::render_item(item, width.saturating_sub(2).max(1), &opts)
+    neo_renderer_ratatui::render_item(item, width.saturating_sub(2).max(1), &opts)
         .into_iter()
         .map(|line| barred(line, marker))
         .collect()
@@ -888,8 +888,8 @@ fn panel_stub(item: &ViewItem, opts: &ChatOpts) -> Line<'static> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use neo_renderer_ratatui::plain_text;
     use serde_json::json;
-    use suite_renderer_ratatui::plain_text;
 
     pub fn item(r: &str, kind: &str, text: &str) -> ViewItem {
         serde_json::from_value(json!({
@@ -902,7 +902,7 @@ mod tests {
     pub fn prompt(r: &str, state: &str, labels: &[&str]) -> ViewItem {
         let children: Vec<_> = labels
             .iter()
-            .map(|l| json!({"type":"button","label":l,"action":"suite.permit","args":{"id":r,"option":l}}))
+            .map(|l| json!({"type":"button","label":l,"action":"neo.permit","args":{"id":r,"option":l}}))
             .collect();
         serde_json::from_value(json!({
             "ref": r, "kind": "tool", "label": "asks", "state": state,
@@ -1364,7 +1364,7 @@ mod tests {
         assert_eq!(c.image_sources().collect::<Vec<_>>(), ["/tmp/q.png"]);
     }
 
-    fn set(item: ViewItem) -> suite_protocol::ViewOp {
-        suite_protocol::ViewOp::SetViewOp(suite_protocol::SetViewOp { item })
+    fn set(item: ViewItem) -> neo_protocol::ViewOp {
+        neo_protocol::ViewOp::SetViewOp(neo_protocol::SetViewOp { item })
     }
 }

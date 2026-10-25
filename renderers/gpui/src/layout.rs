@@ -5,7 +5,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use suite_protocol::{
+use neo_protocol::{
     Block, ButtonComponent, CardComponent, CodeComponent, Component, DiffComponent, DiffLineKind,
     FileComponent, ImageComponent, ItemKind, ItemState, KvComponent, LinkComponent, ListBlock,
     ProgressComponent, Span, TableBlock, TableCell, TableComponent, TextComponent, TextRole,

@@ -61,7 +61,7 @@ interface Entry {
   buttons: ButtonComponent[];
 }
 
-const STYLE_ATTRIBUTE = "data-suite-chat-styles";
+const STYLE_ATTRIBUTE = "data-neo-chat-styles";
 const COPIED_MS = 1500;
 const ARROWS: Record<string, number> = { ArrowDown: 1, ArrowUp: -1 };
 
@@ -75,7 +75,7 @@ function componentAt(body: Element, path: readonly number[]): Element | undefine
   for (const index of path) {
     if (!node) return undefined;
     const children = Array.from(node.children).filter(
-      (child) => !child.classList.contains("suite-card-title"),
+      (child) => !child.classList.contains("neo-card-title"),
     );
     node = children[index];
   }
@@ -185,7 +185,7 @@ export function mountChat(container: HTMLElement, options: ChatOptions = {}): Ch
   function rerenderTail(entry: Entry, change: Extract<ViewChange, { type: "blocks" }>): boolean {
     const host = componentAt(entry.body, change.path);
     const component = componentAtPath(change.item.component, change.path);
-    if (!host?.classList.contains("suite-text") || component?.type !== "text") return false;
+    if (!host?.classList.contains("neo-text") || component?.type !== "text") return false;
     while (host.children.length > change.from) host.lastElementChild?.remove();
     const tail = component.blocks.slice(host.children.length);
     host.append(...renderBlocks({ doc, buttons: [] }, tail));

@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 const (
@@ -39,7 +39,7 @@ func handshake(ctx context.Context, socket, client string) (*websocket.Conn, pro
 		},
 	}}
 	// The host is ignored by the dialer above; it only has to be well-formed.
-	ws, _, err := websocket.Dial(ctx, "ws://suite/bus", &websocket.DialOptions{HTTPClient: httpClient})
+	ws, _, err := websocket.Dial(ctx, "ws://neo/bus", &websocket.DialOptions{HTTPClient: httpClient})
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED) {
 			err = ErrDaemonDown

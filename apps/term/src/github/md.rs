@@ -8,7 +8,7 @@ use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthChar;
 
 use crate::style::Styles;
-use suite_github::strip_comments;
+use neo_github::strip_comments;
 
 /// A styled character, the unit wrapping works on.
 type Cell = (char, Style);

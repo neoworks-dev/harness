@@ -2359,7 +2359,7 @@ pub struct PermissionOption {
     pub kind: PermissionOptionKind,
 }
 
-/// An agent asks before doing something: a guest running a tool, the main agent running a command, changing or reading a file, starting a guest. Panes show the content (a diff to preview) and the options as buttons (action suite.permit {id, option, note?}); the agent waits until one is picked or the turn is cancelled. Reads of sensitive files (.env, keys, credentials) ask in every approvals mode, with kind read and a title like "Read .env?". In review mode an edit is asked about after it was written: the diff in content, options Keep and Revert (an ACP harness's edit is not held back: the card comes when its completed diff arrives).
+/// An agent asks before doing something: a guest running a tool, the main agent running a command, changing or reading a file, starting a guest. Panes show the content (a diff to preview) and the options as buttons (action neo.permit {id, option, note?}); the agent waits until one is picked or the turn is cancelled. Reads of sensitive files (.env, keys, credentials) ask in every approvals mode, with kind read and a title like "Read .env?". In review mode an edit is asked about after it was written: the diff in content, options Keep and Revert (an ACP harness's edit is not held back: the card comes when its completed diff arrives).
 /// Tagged `type: "permission_request"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PermissionRequest {
@@ -2417,7 +2417,7 @@ pub enum PermissionOptionKind {
     RejectAlways,
 }
 
-/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "suite", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "suite", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness "suite", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for the suite's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session.
+/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "neo", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "neo", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness "neo", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for neo's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session.
 /// Tagged `type: "setting_changed"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SettingChanged {
@@ -2460,7 +2460,7 @@ pub struct ChoiceOption {
     pub description: Option<String>,
 }
 
-/// The suite asks the user to pick one of several options (a model, a conversation to resume). Panes show them as buttons (action suite.choose {id, option, note?}).
+/// Neo asks the user to pick one of several options (a model, a conversation to resume). Panes show them as buttons (action neo.choose {id, option, note?}).
 /// Tagged `type: "choice"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Choice {
@@ -2980,7 +2980,7 @@ pub struct ProgressComponent {
 pub struct ButtonComponent {
     #[serde(rename = "label")]
     pub label: String,
-    /// app.tool, copy:<text> (client-side), suite.permit {id, option} (answers a permission_request) or suite.choose {id, option} (answers a choice).
+    /// app.tool, copy:<text> (client-side), neo.permit {id, option} (answers a permission_request) or neo.choose {id, option} (answers a choice).
     #[serde(rename = "action")]
     pub action: String,
     /// Arguments for the action.
@@ -3233,7 +3233,7 @@ pub struct UiDoc {
     pub errors: Option<Vec<UiError>>,
 }
 
-/// An evaluated component of the suite library (docs/neoui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node.
+/// An evaluated component of neo library (docs/neoui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UiNode {
     /// Library component name, e.g. Card, Input, BarChart.

@@ -1,14 +1,14 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use neo_protocol::{ViewItem, ViewSnapshot};
+use neo_renderer_ratatui::Palette;
+use neo_sdk::Event;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::style::{Color, Style};
 use serde_json::json;
-use suite_protocol::{ViewItem, ViewSnapshot};
-use suite_renderer_ratatui::Palette;
-use suite_sdk::Event;
 
 use super::*;
 use crate::app::{App, Config};
@@ -22,7 +22,7 @@ impl Dir {
     fn new(name: &str) -> Dir {
         static N: AtomicUsize = AtomicUsize::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "suite-term-images-{name}-{}-{}",
+            "neo-term-images-{name}-{}-{}",
             std::process::id(),
             N.fetch_add(1, Ordering::Relaxed)
         ));
@@ -239,7 +239,7 @@ fn what_can_not_be_shown_says_why() {
     chat.set_images(Some(images.chat_view()));
     chat.layout(60, 10, &opts());
     assert_eq!(
-        suite_renderer_ratatui::plain_text(&chat.visible()),
+        neo_renderer_ratatui::plain_text(&chat.visible()),
         ["[image a red box · file not found]"]
     );
     assert!(chat.placements().is_empty());
@@ -298,7 +298,7 @@ fn an_image_in_view_is_encoded_once_and_drawn_into_its_rows() {
     );
     // The caption is part of the chat's own lines.
     assert_eq!(
-        suite_renderer_ratatui::plain_text(&chat.visible())[12],
+        neo_renderer_ratatui::plain_text(&chat.visible())[12],
         "a red box · 400×400"
     );
     // Drawing again asks for nothing new.

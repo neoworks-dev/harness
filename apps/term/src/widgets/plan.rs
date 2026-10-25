@@ -2,11 +2,11 @@
 
 use std::cell::Cell;
 
+use neo_protocol::{Plan, PlanEntryStatus};
+use neo_renderer_ratatui::Palette;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use suite_protocol::{Plan, PlanEntryStatus};
-use suite_renderer_ratatui::Palette;
 
 use super::text::wrap;
 
@@ -246,7 +246,7 @@ fn fit(blocks: &[Block], start: usize, height: usize) -> Fit {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use suite_protocol::PlanEntry;
+    use neo_protocol::PlanEntry;
 
     fn entry(text: &str, status: PlanEntryStatus) -> PlanEntry {
         PlanEntry {

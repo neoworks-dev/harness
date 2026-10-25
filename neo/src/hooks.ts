@@ -4,8 +4,8 @@
 //   { "hooks": { "PreToolUse": [ { "matcher": "Bash|Edit",
 //       "hooks": [ { "type": "command", "command": "…", "timeout": 10 } ] } ] } }
 //
-// and comes from three places, all of which run: the `hooks` key of ~/.config/suite/config.json,
-// `<cwd>/.suite/settings.json`, and the `hooks/hooks.json` of each enabled plugin (plugins.ts),
+// and comes from three places, all of which run: the `hooks` key of ~/.config/neo/config.json,
+// `<cwd>/.neo/settings.json`, and the `hooks/hooks.json` of each enabled plugin (plugins.ts),
 // where `${CLAUDE_PLUGIN_ROOT}` is the plugin's folder.
 //
 // What a hook's answer means, by event:
@@ -59,7 +59,7 @@ export interface HookCommand {
   condition?: string;
   /** Run in the background; its answer is not used. */
   async: boolean;
-  /** Where it was written, for messages: "plugin hookify@official", ".suite/settings.json". */
+  /** Where it was written, for messages: "plugin hookify@official", ".neo/settings.json". */
   source: string;
   /** The plugin it belongs to. */
   plugin?: Plugin;
@@ -179,8 +179,8 @@ export function loadHooks(config: HarnessConfig, cwd: string): LoadedHooks {
     problems.push(...parsed.problems);
   };
   add(config.hooks, "the hooks of config.json");
-  const projectFile = join(cwd, ".suite", "settings.json");
-  if (existsSync(projectFile)) add(hooksOf(readJsonFile(projectFile)), ".suite/settings.json");
+  const projectFile = join(cwd, ".neo", "settings.json");
+  if (existsSync(projectFile)) add(hooksOf(readJsonFile(projectFile)), ".neo/settings.json");
   for (const plugin of enabledPlugins(config.plugins)) {
     const source = `plugin ${plugin.id}`;
     const file = join(plugin.root, "hooks", "hooks.json");

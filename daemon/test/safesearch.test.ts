@@ -71,7 +71,7 @@ test("/safesearch without a value asks, and a bad value is refused", async () =>
   expect(choice.options.map((o) => o.id)).toEqual(["strict", "moderate", "off"]);
 
   await daemon.actions.run(
-    { session, ref: "x", action: "suite.choose", args: { id: choice.id, option: "moderate" } },
+    { session, ref: "x", action: "neo.choose", args: { id: choice.id, option: "moderate" } },
     "t",
   );
   await Bun.sleep(5); // the card's answer is applied after the action returns

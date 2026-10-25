@@ -9,7 +9,7 @@
 //   ---
 //   You review diffs…
 //
-// They come from `<cwd>/.suite/agents/*.md` (the project's), `~/.config/suite/agents/*.md` (the
+// They come from `<cwd>/.neo/agents/*.md` (the project's), `~/.config/neo/agents/*.md` (the
 // user's) and `agents/*.md` of each enabled plugin (plugins.ts). When a name is defined twice the
 // project's wins over the user's, which wins over a plugin's. A plugin's agent is also known as
 // `plugin:name`, which is how plugins refer to each other's.
@@ -240,7 +240,7 @@ function manifestAgentPaths(root: string): string[] {
 }
 
 export interface AgentDirs {
-  /** The user's folder of agents (~/.config/suite/agents). */
+  /** The user's folder of agents (~/.config/neo/agents). */
   user?: string;
   /** Where plugins are installed (HarnessConfig.plugins). */
   plugins?: string;
@@ -251,7 +251,7 @@ export interface AgentDirs {
  * plugins' (by plugin id). `findAgent` takes the first that fits, so earlier ones win.
  */
 export function loadAgents(cwd: string, dirs: AgentDirs): AgentDefinition[] {
-  const all = readAgents(join(cwd, ".suite", "agents"), "project");
+  const all = readAgents(join(cwd, ".neo", "agents"), "project");
   if (dirs.user) all.push(...readAgents(dirs.user, "user"));
   for (const plugin of enabledPlugins(dirs.plugins)) {
     all.push(...readAgents(join(plugin.root, "agents"), "plugin", plugin.name));

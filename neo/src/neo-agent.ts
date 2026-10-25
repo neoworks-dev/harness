@@ -156,9 +156,9 @@ interface ModelSetting {
   host?: string;
 }
 
-/** The daemon's gateway, if it handed us one (it's named "suite"). */
+/** The daemon's gateway, if it handed us one (it's named "neo"). */
 function gatewayOf(servers: McpServer[]): GatewayConnection | undefined {
-  const server = servers.find((s) => s.name === "suite") ?? servers[0];
+  const server = servers.find((s) => s.name === "neo") ?? servers[0];
   return server && connectGateway(server);
 }
 
@@ -183,7 +183,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
    * The web tools' settings for a session: safe search is the user's choice in the daemon
    * (/safesearch), else config.json's. Fetched pages go to a temp directory of its own,
    * which the system clears; TinyFish is searched too when the user has a key (its env var, or a
-   * "tinyfish" API key in the suite's accounts file).
+   * "tinyfish" API key in neo's accounts file).
    */
   function webToolsFor(params: NewSessionParams): WebToolsOptions {
     const web: WebToolsOptions = {

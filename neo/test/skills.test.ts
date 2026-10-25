@@ -48,8 +48,8 @@ test("skills come from the bundled, the user's and the project's directories; la
   await skill(dirs.bundled, "neoui", doc("neoui", "bundled neoui", "one"));
   await skill(dirs.bundled, "other", doc("other", "bundled other", "two"));
   await skill(dirs.user, "neoui", doc("neoui", "user neoui", "three"));
-  await skill(join(cwd, ".suite", "skills"), "mine", doc("mine", "project only", "four"));
-  await skill(join(cwd, ".suite", "skills"), "other", doc("other", "project other", "five"));
+  await skill(join(cwd, ".neo", "skills"), "mine", doc("mine", "project only", "four"));
+  await skill(join(cwd, ".neo", "skills"), "other", doc("other", "project other", "five"));
   await skill(dirs.user, "broken", "no frontmatter");
 
   const skills = loadSkills(cwd, dirs);

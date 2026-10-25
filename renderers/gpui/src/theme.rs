@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use suite_protocol::{Theme, Tone};
+use neo_protocol::{Theme, Tone};
 
 /// The theme served by the daemon until it sends its own (`protocol/themes/default.json`).
 pub fn default_theme() -> Theme {
@@ -95,7 +95,7 @@ pub struct ChatTheme {
 impl ChatTheme {
     pub fn new(theme: &Theme) -> ChatTheme {
         let c = &theme.colors;
-        let style = |s: &suite_protocol::TextStyle| TextStyle {
+        let style = |s: &neo_protocol::TextStyle| TextStyle {
             size: s.size.clamp(1, 200) as f32,
             weight: s.weight.clamp(1, 1000) as u16,
             mono: s.mono,
@@ -128,11 +128,11 @@ impl ChatTheme {
         }
     }
 
-    pub fn space(&self, space: suite_protocol::Space) -> f32 {
+    pub fn space(&self, space: neo_protocol::Space) -> f32 {
         match space {
-            suite_protocol::Space::S => self.s,
-            suite_protocol::Space::M => self.m,
-            suite_protocol::Space::L => self.l,
+            neo_protocol::Space::S => self.s,
+            neo_protocol::Space::M => self.m,
+            neo_protocol::Space::L => self.l,
         }
     }
 }

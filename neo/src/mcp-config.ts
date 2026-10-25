@@ -3,7 +3,7 @@
 //   { "mcpServers": { "headroom": { "command": "headroom", "args": ["mcp", "serve"], "env": {} },
 //                     "docs": { "type": "http", "url": "https://…", "headers": {} } } }
 //
-// They come from `mcpServers` in ~/.config/suite/config.json, from an enabled plugin's `.mcp.json`
+// They come from `mcpServers` in ~/.config/neo/config.json, from an enabled plugin's `.mcp.json`
 // (with `${CLAUDE_PLUGIN_ROOT}` expanded), and, when config.json says `"projectMcp": true`, from
 // `<cwd>/.mcp.json` of the user's sessions. A project's file starts programs of whoever wrote the
 // repository, so it is off until the user turns it on. The first source to name an app wins.
@@ -29,7 +29,7 @@ export interface McpServerSpec {
 }
 
 export interface McpSources {
-  /** ~/.config/suite/config.json. */
+  /** ~/.config/neo/config.json. */
   configFile?: string;
   /** The plugins directory (HarnessConfig.plugins). */
   plugins?: string;
@@ -45,9 +45,9 @@ export interface LoadedMcp {
   problems: string[];
 }
 
-/** Where the suite keeps its configuration: $XDG_CONFIG_HOME/suite. */
-export function suiteConfigDir(env: Record<string, string | undefined> = process.env): string {
-  return join(env.XDG_CONFIG_HOME || join(env.HOME || homedir(), ".config"), "suite");
+/** Where neo keeps its configuration: $XDG_CONFIG_HOME/neo. */
+export function neoConfigDir(env: Record<string, string | undefined> = process.env): string {
+  return join(env.XDG_CONFIG_HOME || join(env.HOME || homedir(), ".config"), "neo");
 }
 
 /** `${VAR}` and `${VAR:-default}`, from `env`; an unset variable without a default is empty. */

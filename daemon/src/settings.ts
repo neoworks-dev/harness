@@ -1,5 +1,5 @@
 // What the user chose for this session: each harness's settings (/model, /effort, /mode), the
-// harness the session runs on (/harness) and the suite's approvals mode (/approvals). They are
+// harness the session runs on (/harness) and neo's approvals mode (/approvals). They are
 // setting_changed events in the session's log; the last harness settings and the last harness
 // choice are kept as the defaults for new sessions (approvals is not: a new session asks). The
 // model that writes session titles (/title-model) is the user's last choice, for every session.
@@ -9,7 +9,7 @@ import type { ConfigCategory, SafeSearch } from "@neoworks-dev/neo/agent";
 import type { SettingName } from "@neoworks-dev/neo-protocol/types";
 import type { SessionStore } from "./store.ts";
 
-/** The settings that belong to a harness (approvals and harness are the suite's own). */
+/** The settings that belong to a harness (approvals and harness are neo's own). */
 export type HarnessSettingName = Exclude<SettingName, "approvals" | "harness" | "title_model">;
 
 export const CATEGORIES: Record<HarnessSettingName, ConfigCategory> = {
@@ -94,22 +94,22 @@ export class Settings {
     this.store.setMeta(metaKey(harness, option), value);
   }
 
-  /** What the user chose to write titles, or undefined: the suite's choice (see titles.ts). */
+  /** What the user chose to write titles, or undefined: neo's choice (see titles.ts). */
   titleModel(): TitleModel | undefined {
-    const last = this.store.getMeta(metaKey("suite", "title_model"));
+    const last = this.store.getMeta(metaKey("daemon", "title_model"));
     return last === undefined ? undefined : parseTitleModel(last);
   }
 
-  /** `undefined` goes back to the suite's choice. Logged in the session it was set in. */
+  /** `undefined` goes back to neo's choice. Logged in the session it was set in. */
   setTitleModel(session: string, value: TitleModel | undefined): void {
     const text = value === undefined ? "default" : titleModelText(value);
     this.store.append(session, {
       type: "setting_changed",
-      harness: "suite",
+      harness: "daemon",
       option: "title_model",
       value: text,
     });
-    this.store.setMeta(metaKey("suite", "title_model"), text);
+    this.store.setMeta(metaKey("daemon", "title_model"), text);
   }
 
   /** The harness the session's turns run on: the last /harness choice in its log, else main. */
@@ -125,11 +125,11 @@ export class Settings {
   setHarness(session: string, value: string): void {
     this.store.append(session, {
       type: "setting_changed",
-      harness: "suite",
+      harness: "daemon",
       option: "harness",
       value,
     });
-    this.store.setMeta(metaKey("suite", "harness"), value);
+    this.store.setMeta(metaKey("daemon", "harness"), value);
     this.carryOver(session, value);
   }
 
@@ -156,11 +156,11 @@ export class Settings {
    * it); so are that harness's last settings (carryOver).
    */
   inheritHarness(session: string, exists: (harness: string) => boolean): void {
-    const last = this.store.getMeta(metaKey("suite", "harness"));
+    const last = this.store.getMeta(metaKey("daemon", "harness"));
     if (last !== undefined && last !== this.main && exists(last)) {
       this.store.append(session, {
         type: "setting_changed",
-        harness: "suite",
+        harness: "daemon",
         option: "harness",
         value: last,
       });
@@ -184,19 +184,19 @@ export class Settings {
 
   /** The user's safe-search choice; undefined until they make one (the harness's config holds). */
   safeSearch(): SafeSearch | undefined {
-    const value = this.store.getMeta(metaKey("suite", "safesearch"));
+    const value = this.store.getMeta(metaKey("daemon", "safesearch"));
     return value === undefined ? undefined : parseSafeSearch(value);
   }
 
   /** For every session, from their next search on. Not logged in a session: it isn't one's. */
   setSafeSearch(value: SafeSearch): void {
-    this.store.setMeta(metaKey("suite", "safesearch"), value);
+    this.store.setMeta(metaKey("daemon", "safesearch"), value);
   }
 
   setApprovals(session: string, value: Approvals): void {
     this.store.append(session, {
       type: "setting_changed",
-      harness: "suite",
+      harness: "daemon",
       option: "approvals",
       value,
     });

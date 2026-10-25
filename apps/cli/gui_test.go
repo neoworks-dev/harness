@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"neoworks.dev/suite/sdk-go/sdktest"
+	"neoworks.dev/neo/sdk-go/sdktest"
 )
 
-// guiFixture is a repo with the desktop app's bundle, and an executable standing in for suite-gui.
+// guiFixture is a repo with the desktop app's bundle, and an executable standing in for neo-gui.
 type guiFixture struct {
 	root, bundle, gui string
 }
@@ -45,17 +45,17 @@ func (s *spawned) spawn(path string, argv, env []string) error {
 	return s.fail
 }
 
-// guiEnv is an environment for `suite gui` against a running test daemon.
+// guiEnv is an environment for `neo gui` against a running test daemon.
 func guiEnv(t *testing.T, f guiFixture) *upEnv {
 	t.Helper()
 	d := sdktest.New(t)
 	u := newUpEnv(t)
 	u.socket = d.Socket
-	u.vars["SUITE_SOCKET"] = d.Socket
-	u.vars["SUITE_ROOT"] = f.root
-	u.vars["SUITE_GUI"] = f.gui
+	u.vars["NEO_SOCKET"] = d.Socket
+	u.vars["NEO_ROOT"] = f.root
+	u.vars["NEO_GUI"] = f.gui
 	// A daemon already answers; without this the daemon's age is checked against the repo's sources.
-	u.vars["SUITE_DAEMON_CMD"] = "true"
+	u.vars["NEO_DAEMON_CMD"] = "true"
 	return u
 }
 
@@ -94,27 +94,27 @@ func TestGuiPassesTheSessionChoiceOnAsEnvironmentVariables(t *testing.T) {
 	s := &spawned{}
 	u := guiEnv(t, f)
 	// What a parent shell left behind must not choose the session.
-	stale := []string{"A=1", "SUITE_GUI_SESSION=old", "SUITE_GUI_NEW=1"}
+	stale := []string{"A=1", "NEO_GUI_SESSION=old", "NEO_GUI_NEW=1"}
 
 	if code := runGuiWith(t, u, s, stale, "--session", "s_ab"); code != 0 {
 		t.Fatalf("code %d, stderr %q", code, u.stderr.String())
 	}
-	if !slices.Equal(s.env, []string{"A=1", "SUITE_GUI_SESSION=s_ab"}) {
+	if !slices.Equal(s.env, []string{"A=1", "NEO_GUI_SESSION=s_ab"}) {
 		t.Errorf("--session: env %q", s.env)
 	}
 
 	if code := runGuiWith(t, u, s, stale, "--new"); code != 0 {
 		t.Fatalf("code %d, stderr %q", code, u.stderr.String())
 	}
-	if !slices.Equal(s.env, []string{"A=1", "SUITE_GUI_NEW=1"}) {
+	if !slices.Equal(s.env, []string{"A=1", "NEO_GUI_NEW=1"}) {
 		t.Errorf("--new: env %q", s.env)
 	}
 
 	// A socket given on the command line is the window's too.
-	if code := runGuiWith(t, u, s, []string{"SUITE_SOCKET=/other"}, "--socket", u.socket); code != 0 {
+	if code := runGuiWith(t, u, s, []string{"NEO_SOCKET=/other"}, "--socket", u.socket); code != 0 {
 		t.Fatalf("code %d, stderr %q", code, u.stderr.String())
 	}
-	if !slices.Equal(s.env, []string{"SUITE_SOCKET=" + u.socket}) {
+	if !slices.Equal(s.env, []string{"NEO_SOCKET=" + u.socket}) {
 		t.Errorf("--socket: env %q", s.env)
 	}
 }
@@ -144,13 +144,13 @@ func TestGuiSaysWhatIsMissingAndStartsNoDaemonForIt(t *testing.T) {
 	f := newGuiFixture(t)
 	s := &spawned{}
 	u := guiEnv(t, f)
-	u.vars["SUITE_DAEMON_CMD"] = writeScript(t, "exec sleep 60")
-	u.vars["SUITE_SOCKET"] = filepath.Join(t.TempDir(), "none.sock")
-	u.socket = u.vars["SUITE_SOCKET"]
-	u.vars["SUITE_DATA_DIR"] = u.dataDir
+	u.vars["NEO_DAEMON_CMD"] = writeScript(t, "exec sleep 60")
+	u.vars["NEO_SOCKET"] = filepath.Join(t.TempDir(), "none.sock")
+	u.socket = u.vars["NEO_SOCKET"]
+	u.vars["NEO_DATA_DIR"] = u.dataDir
 
-	// No suite-gui anywhere.
-	delete(u.vars, "SUITE_GUI")
+	// No neo-gui anywhere.
+	delete(u.vars, "NEO_GUI")
 	e := u.cli()
 	e.Spawn = s.spawn
 	e.LookPath = func(string) (string, error) { return "", osexec.ErrNotFound }
@@ -160,7 +160,7 @@ func TestGuiSaysWhatIsMissingAndStartsNoDaemonForIt(t *testing.T) {
 
 	// No bundle.
 	u.stderr.Reset()
-	u.vars["SUITE_GUI"] = f.gui
+	u.vars["NEO_GUI"] = f.gui
 	if err := os.Remove(f.bundle); err != nil {
 		t.Fatal(err)
 	}
@@ -186,17 +186,17 @@ func TestGuiReportsAWindowThatWillNotStart(t *testing.T) {
 
 func TestResolveGui(t *testing.T) {
 	bin := t.TempDir()
-	exe := filepath.Join(bin, "suite")
-	nextTo := filepath.Join(bin, "suite-gui")
+	exe := filepath.Join(bin, "neo")
+	nextTo := filepath.Join(bin, "neo-gui")
 	custom := filepath.Join(t.TempDir(), "custom-gui")
-	onPath := filepath.Join(t.TempDir(), "suite-gui")
+	onPath := filepath.Join(t.TempDir(), "neo-gui")
 	for _, p := range []string{exe, nextTo, custom, onPath} {
 		if err := os.WriteFile(p, []byte("#!/bin/sh\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	look := func(name string) (string, error) {
-		if name == "suite-gui" {
+		if name == "neo-gui" {
 			return onPath, nil
 		}
 		return "", osexec.ErrNotFound
@@ -219,11 +219,11 @@ func TestResolveGui(t *testing.T) {
 		want    string
 		wantErr string
 	}{
-		{"SUITE_GUI path wins", env("SUITE_GUI=" + custom), exe, look, custom, ""},
-		{"SUITE_GUI missing", env("SUITE_GUI=/nonexistent/x"), exe, look, "", "SUITE_GUI=/nonexistent/x"},
+		{"NEO_GUI path wins", env("NEO_GUI=" + custom), exe, look, custom, ""},
+		{"NEO_GUI missing", env("NEO_GUI=/nonexistent/x"), exe, look, "", "NEO_GUI=/nonexistent/x"},
 		{"next to the executable", env(""), exe, look, nextTo, ""},
-		{"PATH", env(""), filepath.Join(t.TempDir(), "suite"), look, onPath, ""},
-		{"missing", env(""), filepath.Join(t.TempDir(), "suite"), none, "", errGuiMissing.Error()},
+		{"PATH", env(""), filepath.Join(t.TempDir(), "neo"), look, onPath, ""},
+		{"missing", env(""), filepath.Join(t.TempDir(), "neo"), none, "", errGuiMissing.Error()},
 	}
 	for _, tc := range tests {
 		got, err := resolveGui(tc.getenv, tc.exe, tc.look)
@@ -242,8 +242,8 @@ func TestResolveGui(t *testing.T) {
 func TestSpawnDetachedWritesTheLogAndDoesNotWait(t *testing.T) {
 	dir := t.TempDir()
 	logDir := filepath.Join(dir, "data")
-	script := writeScript(t, `echo "args: $*"; echo "session: $SUITE_GUI_SESSION"`)
-	if err := spawnDetached(script, []string{script, "--bundle", "x.js"}, []string{"SUITE_GUI_SESSION=s_1"}, logDir); err != nil {
+	script := writeScript(t, `echo "args: $*"; echo "session: $NEO_GUI_SESSION"`)
+	if err := spawnDetached(script, []string{script, "--bundle", "x.js"}, []string{"NEO_GUI_SESSION=s_1"}, logDir); err != nil {
 		t.Fatal(err)
 	}
 	var got string

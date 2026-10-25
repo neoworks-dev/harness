@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn persists_per_session() {
-        let dir = std::env::temp_dir().join(format!("suite-term-hist-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("neo-term-hist-{}", std::process::id()));
         let store = HistoryStore::new(Some(dir.clone()));
         let mut a = Histories::new(store.clone());
         a.record("s1", "first");

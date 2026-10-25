@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 const fixturesDir = "../../fixtures"

@@ -509,11 +509,11 @@ test.skipIf(!HAVE_PYTHON)(
   },
 );
 
-test("project hooks are read from .suite/settings.json", async () => {
+test("project hooks are read from .neo/settings.json", async () => {
   const cwd = await tempDir();
-  await mkdir(join(cwd, ".suite"), { recursive: true });
+  await mkdir(join(cwd, ".neo"), { recursive: true });
   await writeFile(
-    join(cwd, ".suite", "settings.json"),
+    join(cwd, ".neo", "settings.json"),
     JSON.stringify({
       hooks: {
         PreToolUse: [

@@ -1,12 +1,12 @@
 [package]
-name = "suite-term"
-description = "The suite's full-screen terminal app: the shared conversation, plan, files and usage"
+name = "neo-term"
+description = "Neo's full-screen terminal app: the shared conversation, plan, files and usage"
 edition.workspace = true
 version.workspace = true
 publish.workspace = true
 
 [[bin]]
-name = "suite-term"
+name = "neo-term"
 path = "src/main.rs"
 
 [dependencies]
@@ -14,13 +14,13 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 ratatui = { version = "0.30", features = ["crossterm"] }
 ratatui-image = { version = "11", default-features = false, features = ["crossterm"] }
 serde_json = "1"
-suite-github = { path = "../../crates/github" }
-suite-protocol = { path = "../../protocol/rust" }
-suite-renderer-ratatui = { path = "../../renderers/ratatui" }
-suite-sdk = { path = "../../sdk-rs" }
+neo-github = { path = "../../crates/github" }
+neo-protocol = { path = "../../protocol/rust" }
+neo-renderer-ratatui = { path = "../../renderers/ratatui" }
+neo-sdk = { path = "../../sdk-rs" }
 syntect = { version = "5", default-features = false, features = ["default-syntaxes", "parsing", "regex-onig"] }
 unicode-width = "0.2"
 zeroize = "1"
 
 [dev-dependencies]
-suite-github = { path = "../../crates/github", features = ["fixtures"] }
+neo-github = { path = "../../crates/github", features = ["fixtures"] }

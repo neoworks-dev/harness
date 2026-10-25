@@ -8,13 +8,13 @@
 //! the turn that started it (`[bg]` after its name); a message to or from a subagent shows as its
 //! activity (`← main`, `→ main`).
 
+use neo_protocol::{SessionEvent, SessionEventRecord, StopReason};
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
-use suite_protocol::{SessionEvent, SessionEventRecord, StopReason};
 
 use crate::chat::{Chat, ChatOpts};
 use crate::style::Styles;

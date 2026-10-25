@@ -1,6 +1,6 @@
-// The suite's API keys for the guests (design §9, "Accounts for guests"). A guest normally uses
+// Neo's API keys for the guests (design §9, "Accounts for guests"). A guest normally uses
 // its own login (Claude Code's, Codex's). When the user picks a model as `provider/model`
-// (`/model codex openrouter/openai/gpt-5-mini`) and the suite has an API key for that provider,
+// (`/model codex openrouter/openai/gpt-5-mini`) and neo has an API key for that provider,
 // the guest starts on that key instead: Codex through the adapter's custom gateway sign-in,
 // Claude Code through ANTHROPIC_* variables. Nothing is set for a guest the user didn't point at
 // an account.
@@ -36,12 +36,12 @@ export interface RouteModel {
 }
 
 export interface GuestAccounts {
-  /** The models the guest can run on the suite's keys: the providers that have one. */
+  /** The models the guest can run on neo's keys: the providers that have one. */
   models(kind: RouteKind): Promise<RouteModel[]>;
   /**
    * The route for a model value, or undefined when the value is not `provider/model` of a
    * provider this guest can use (it is then the adapter's own). Rejects with BadRequestError
-   * when the provider is known but the suite has no key for it.
+   * when the provider is known but neo has no key for it.
    */
   route(kind: RouteKind, value: string): Promise<Route | undefined>;
 }
@@ -157,7 +157,7 @@ export function claudeRoute(provider: string, model: string, key: string): Route
 }
 
 export interface AccountFiles {
-  /** The suite's accounts file. */
+  /** Neo's accounts file. */
   authPath: string;
   /** pi's, read only. */
   piAuthPath: string;
@@ -172,8 +172,8 @@ async function readOr(path: string): Promise<Accounts> {
 }
 
 /**
- * The API key for a provider: its environment variable, the suite's file, then pi's. Never an
- * OAuth login (so never a Claude subscription) and never SUITE_API_KEY, which is neo's own.
+ * The API key for a provider: its environment variable, neo's file, then pi's. Never an
+ * OAuth login (so never a Claude subscription) and never NEO_API_KEY, which is neo's own.
  */
 async function apiKey(files: AccountFiles, provider: string): Promise<string | undefined> {
   for (const name of findEnvKeys(provider) ?? []) {

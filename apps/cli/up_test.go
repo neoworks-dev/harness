@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"neoworks.dev/suite/sdk-go/sdktest"
+	"neoworks.dev/neo/sdk-go/sdktest"
 )
 
 // upEnv is a CLI environment for up/down tests: a temp socket and data dir,
@@ -30,14 +30,14 @@ type upEnv struct {
 
 func newUpEnv(t *testing.T) *upEnv {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "suite")
+	dir, err := os.MkdirTemp("", "neo")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	u := &upEnv{socket: filepath.Join(dir, "bus.sock"), dataDir: filepath.Join(dir, "data"), vars: map[string]string{}}
-	u.vars["SUITE_SOCKET"] = u.socket
-	u.vars["SUITE_DATA_DIR"] = u.dataDir
+	u.vars["NEO_SOCKET"] = u.socket
+	u.vars["NEO_DATA_DIR"] = u.dataDir
 	// Never leak a stopped test's daemon: stop whatever answers on the socket.
 	t.Cleanup(func() {
 		pid, err := probe(context.Background(), u.socket)
@@ -65,7 +65,7 @@ func (u *upEnv) cli() cliEnv {
 		Now:        time.Now,
 		Environ:    func() []string { return append(os.Environ(), u.extra...) },
 		UpTimeout:  u.timeout,
-		Executable: func() (string, error) { return "/nonexistent/bin/suite", nil },
+		Executable: func() (string, error) { return "/nonexistent/bin/neo", nil },
 	}
 }
 
@@ -109,8 +109,8 @@ func TestUpDownRealDaemon(t *testing.T) {
 	}
 	u := newUpEnv(t)
 	root := repoRoot(t)
-	u.vars["SUITE_DAEMON_CMD"] = "bun run " + filepath.Join(root, "daemon", "src", "main.ts")
-	u.extra = []string{"SUITE_AGENT=echo", "SUITE_SERVICES=none", "SUITE_GUESTS=none", "SUITE_PORT=0"}
+	u.vars["NEO_DAEMON_CMD"] = "bun run " + filepath.Join(root, "daemon", "src", "main.ts")
+	u.extra = []string{"NEO_AGENT=echo", "NEO_SERVICES=none", "NEO_GUESTS=none", "NEO_PORT=0"}
 	u.timeout = 20 * time.Second
 
 	code, stdout, stderr := u.do(t, "up")
@@ -164,7 +164,7 @@ func TestUpFailureShowsLog(t *testing.T) {
 		body.WriteString("echo line " + strconv.Itoa(i) + "\n")
 	}
 	body.WriteString("echo boom >&2\nexit 3")
-	u.vars["SUITE_DAEMON_CMD"] = writeScript(t, body.String())
+	u.vars["NEO_DAEMON_CMD"] = writeScript(t, body.String())
 	u.timeout = 5 * time.Second
 
 	code, stdout, stderr := u.do(t, "up")
@@ -183,7 +183,7 @@ func TestUpFailureShowsLog(t *testing.T) {
 
 func TestUpTimeout(t *testing.T) {
 	u := newUpEnv(t)
-	u.vars["SUITE_DAEMON_CMD"] = writeScript(t, "echo starting\nexec sleep 60")
+	u.vars["NEO_DAEMON_CMD"] = writeScript(t, "echo starting\nexec sleep 60")
 	u.timeout = 400 * time.Millisecond
 
 	code, _, stderr := u.do(t, "up")
@@ -194,15 +194,15 @@ func TestUpTimeout(t *testing.T) {
 
 func TestUpCommandMissing(t *testing.T) {
 	u := newUpEnv(t)
-	u.vars["SUITE_DAEMON_CMD"] = "/nonexistent/daemon"
+	u.vars["NEO_DAEMON_CMD"] = "/nonexistent/daemon"
 	code, _, stderr := u.do(t, "up")
 	if code != 1 || !strings.Contains(stderr, "cannot start the daemon") {
 		t.Errorf("code %d, stderr %q", code, stderr)
 	}
-	// And without a repo to find: the error names SUITE_ROOT.
-	delete(u.vars, "SUITE_DAEMON_CMD")
+	// And without a repo to find: the error names NEO_ROOT.
+	delete(u.vars, "NEO_DAEMON_CMD")
 	code, _, stderr = u.do(t, "up")
-	if code != 1 || !strings.Contains(stderr, "SUITE_ROOT") {
+	if code != 1 || !strings.Contains(stderr, "NEO_ROOT") {
 		t.Errorf("code %d, stderr %q", code, stderr)
 	}
 }
@@ -210,7 +210,7 @@ func TestUpCommandMissing(t *testing.T) {
 func TestUpBadArgs(t *testing.T) {
 	u := newUpEnv(t)
 	for _, cmd := range []string{"up", "down"} {
-		if code, _, stderr := u.do(t, cmd, "extra"); code != 2 || !strings.Contains(stderr, "usage: suite "+cmd) {
+		if code, _, stderr := u.do(t, cmd, "extra"); code != 2 || !strings.Contains(stderr, "usage: neo "+cmd) {
 			t.Errorf("%s extra: code %d, stderr %q", cmd, code, stderr)
 		}
 	}
@@ -245,8 +245,8 @@ func TestNoArgsTerminalExecsTermApp(t *testing.T) {
 	term := writeScript(t, "exit 0")
 	u := newUpEnv(t)
 	u.socket = d.Socket
-	u.vars["SUITE_SOCKET"] = d.Socket
-	u.vars["SUITE_TERM"] = term
+	u.vars["NEO_SOCKET"] = d.Socket
+	u.vars["NEO_TERM"] = term
 
 	var gotPath string
 	var gotArgv, gotEnv []string
@@ -282,9 +282,9 @@ func TestNoArgsTerminalStartsDaemonAndMissingApp(t *testing.T) {
 	e.Exec = func(string, []string, []string) error { t.Error("exec must not run"); return nil }
 	e.LookPath = func(string) (string, error) { return "", osexec.ErrNotFound }
 
-	// No suite-term: a clear message, and no daemon started for nothing.
-	u.vars["SUITE_DAEMON_CMD"] = writeScript(t, "exec sleep 60")
-	if code := run(context.Background(), nil, e); code != 1 || !strings.Contains(u.stderr.String(), "suite-term isn't built: run task build, or use suite attach") {
+	// No neo-term: a clear message, and no daemon started for nothing.
+	u.vars["NEO_DAEMON_CMD"] = writeScript(t, "exec sleep 60")
+	if code := run(context.Background(), nil, e); code != 1 || !strings.Contains(u.stderr.String(), "neo-term isn't built: run task build, or use neo attach") {
 		t.Errorf("code %d, stderr %q", code, u.stderr.String())
 	}
 	if _, err := os.Stat(filepath.Join(u.dataDir, "daemon.log")); err == nil {
@@ -294,10 +294,10 @@ func TestNoArgsTerminalStartsDaemonAndMissingApp(t *testing.T) {
 
 func TestResolveTerm(t *testing.T) {
 	bin := t.TempDir()
-	exe := filepath.Join(bin, "suite")
-	nextTo := filepath.Join(bin, "suite-term")
+	exe := filepath.Join(bin, "neo")
+	nextTo := filepath.Join(bin, "neo-term")
 	other := filepath.Join(t.TempDir(), "custom-term")
-	onPath := filepath.Join(t.TempDir(), "suite-term")
+	onPath := filepath.Join(t.TempDir(), "neo-term")
 	for _, p := range []string{exe, nextTo, other, onPath} {
 		if err := os.WriteFile(p, []byte("#!/bin/sh\n"), 0o755); err != nil {
 			t.Fatal(err)
@@ -308,7 +308,7 @@ func TestResolveTerm(t *testing.T) {
 
 	look := func(name string) (string, error) {
 		switch name {
-		case "suite-term":
+		case "neo-term":
 			return onPath, nil
 		case "custom":
 			return other, nil
@@ -325,7 +325,7 @@ func TestResolveTerm(t *testing.T) {
 		}
 	}
 	// A symlinked executable resolves to the directory of its target too.
-	link := filepath.Join(t.TempDir(), "suite")
+	link := filepath.Join(t.TempDir(), "neo")
 	if err := os.Symlink(exe, link); err != nil {
 		t.Fatal(err)
 	}
@@ -338,15 +338,15 @@ func TestResolveTerm(t *testing.T) {
 		want    string
 		wantErr string
 	}{
-		{"SUITE_TERM path wins", env("SUITE_TERM=" + other), exe, look, other, ""},
-		{"SUITE_TERM name via PATH", env("SUITE_TERM=custom"), exe, look, other, ""},
-		{"SUITE_TERM missing", env("SUITE_TERM=/nonexistent/x"), exe, look, "", "SUITE_TERM=/nonexistent/x"},
-		{"SUITE_TERM not executable", env("SUITE_TERM=" + notExec), exe, look, "", "SUITE_TERM="},
-		{"SUITE_TERM unknown name", env("SUITE_TERM=nope"), exe, look, "", "SUITE_TERM=nope"},
+		{"NEO_TERM path wins", env("NEO_TERM=" + other), exe, look, other, ""},
+		{"NEO_TERM name via PATH", env("NEO_TERM=custom"), exe, look, other, ""},
+		{"NEO_TERM missing", env("NEO_TERM=/nonexistent/x"), exe, look, "", "NEO_TERM=/nonexistent/x"},
+		{"NEO_TERM not executable", env("NEO_TERM=" + notExec), exe, look, "", "NEO_TERM="},
+		{"NEO_TERM unknown name", env("NEO_TERM=nope"), exe, look, "", "NEO_TERM=nope"},
 		{"next to the executable", env(""), exe, look, nextTo, ""},
 		{"next to a symlink target", env(""), link, none, nextTo, ""},
-		{"PATH", env(""), filepath.Join(t.TempDir(), "suite"), look, onPath, ""},
-		{"missing", env(""), filepath.Join(t.TempDir(), "suite"), none, "", errTermMissing.Error()},
+		{"PATH", env(""), filepath.Join(t.TempDir(), "neo"), look, onPath, ""},
+		{"missing", env(""), filepath.Join(t.TempDir(), "neo"), none, "", errTermMissing.Error()},
 	}
 	for _, tc := range tests {
 		got, err := resolveTerm(tc.getenv, tc.exe, tc.look)
@@ -369,10 +369,10 @@ func TestDaemonCommandAndRoot(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(root, daemonEntry), nil, 0o644)
 	os.MkdirAll(filepath.Join(root, "bin"), 0o755)
-	exe := filepath.Join(root, "bin", "suite")
+	exe := filepath.Join(root, "bin", "neo")
 	os.WriteFile(exe, nil, 0o755)
 	// Installed elsewhere through a symlink: the real path decides.
-	link := filepath.Join(t.TempDir(), "suite")
+	link := filepath.Join(t.TempDir(), "neo")
 	if err := os.Symlink(exe, link); err != nil {
 		t.Fatal(err)
 	}
@@ -385,17 +385,17 @@ func TestDaemonCommandAndRoot(t *testing.T) {
 		exe  string
 		want []string
 	}{
-		"walks up from bin/suite": {nil, exe, want},
-		"follows symlinks":        {nil, link, want},
-		"SUITE_ROOT overrides":    {map[string]string{"SUITE_ROOT": root}, "/nowhere/suite", want},
-		"SUITE_DAEMON_CMD wins":   {map[string]string{"SUITE_DAEMON_CMD": "  node  x.js\t--flag "}, exe, []string{"node", "x.js", "--flag"}},
+		"walks up from bin/neo": {nil, exe, want},
+		"follows symlinks":      {nil, link, want},
+		"NEO_ROOT overrides":    {map[string]string{"NEO_ROOT": root}, "/nowhere/neo", want},
+		"NEO_DAEMON_CMD wins":   {map[string]string{"NEO_DAEMON_CMD": "  node  x.js\t--flag "}, exe, []string{"node", "x.js", "--flag"}},
 	} {
 		got, err := daemonCommand(getenv(tc.env), at(tc.exe))
 		if err != nil || !slices.Equal(got, tc.want) {
 			t.Errorf("%s: got %q, %v; want %q", name, got, err, tc.want)
 		}
 	}
-	if _, err := daemonCommand(getenv(nil), at(filepath.Join(t.TempDir(), "suite"))); err == nil {
+	if _, err := daemonCommand(getenv(nil), at(filepath.Join(t.TempDir(), "neo"))); err == nil {
 		t.Error("expected an error when no repo is found")
 	}
 }
@@ -405,9 +405,9 @@ func TestDataDir(t *testing.T) {
 		env  map[string]string
 		want string
 	}{
-		{map[string]string{"SUITE_DATA_DIR": "/d", "XDG_DATA_HOME": "/x", "HOME": "/h"}, "/d"},
-		{map[string]string{"XDG_DATA_HOME": "/x", "HOME": "/h"}, "/x/suite"},
-		{map[string]string{"HOME": "/h"}, "/h/.local/share/suite"},
+		{map[string]string{"NEO_DATA_DIR": "/d", "XDG_DATA_HOME": "/x", "HOME": "/h"}, "/d"},
+		{map[string]string{"XDG_DATA_HOME": "/x", "HOME": "/h"}, "/x/neo"},
+		{map[string]string{"HOME": "/h"}, "/h/.local/share/neo"},
 	} {
 		if got := dataDir(func(k string) string { return tc.env[k] }); got != tc.want {
 			t.Errorf("%v: got %q, want %q", tc.env, got, tc.want)
@@ -432,8 +432,8 @@ func TestUpRestartsAStaleDaemon(t *testing.T) {
 	}
 	old := time.Now().Add(-time.Hour)
 	os.Chtimes(filepath.Join(src, "main.ts"), old, old)
-	u.vars["SUITE_ROOT"] = root
-	u.extra = []string{"SUITE_AGENT=echo", "SUITE_SERVICES=none", "SUITE_GUESTS=none", "SUITE_PORT=0"}
+	u.vars["NEO_ROOT"] = root
+	u.extra = []string{"NEO_AGENT=echo", "NEO_SERVICES=none", "NEO_GUESTS=none", "NEO_PORT=0"}
 	u.timeout = 20 * time.Second
 
 	if code, _, stderr := u.do(t, "up"); code != 0 {

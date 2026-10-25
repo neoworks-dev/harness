@@ -2,16 +2,16 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use neo_renderer_ratatui::Palette;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-use suite_renderer_ratatui::Palette;
 
 use super::gh::{Gh, GhError, is_read_only};
 use super::model::*;
 use super::*;
 use crate::style::Styles;
-use suite_github::fixtures::*;
+use neo_github::fixtures::*;
 
 /// Answers `gh` from recorded output, and checks everything asked is a read.
 struct Fake {
@@ -711,7 +711,7 @@ fn markdown_reads_well() {
     let st = styles();
     let src = "<!-- hidden -->\n# Title\n\n**bold** and *it* and `code` and ~~gone~~\n\n- one\n  - nested item that is long enough to wrap around\n1. first\n- [x] done\n> quoted\n\n---\n![shot](https://x/y.png) <br> after\n\n```\nlet x = 1;\n```";
     let lines = md::render(src, 30, 0, &st);
-    let text = suite_renderer_ratatui::plain_text(&lines);
+    let text = neo_renderer_ratatui::plain_text(&lines);
     assert_eq!(
         text,
         [
@@ -1004,7 +1004,7 @@ fn a_session_switch_closes_the_view_and_drops_the_cache() {
     ctrl_r(&mut app);
     app_settle(&mut app);
     // Another session in another directory.
-    let info = suite_protocol::SessionInfo {
+    let info = neo_protocol::SessionInfo {
         harness: None,
         id: "s2".into(),
         title: None,
@@ -1012,7 +1012,7 @@ fn a_session_switch_closes_the_view_and_drops_the_cache() {
         created_at: 0,
         last_activity: 0,
         last_seq: 0,
-        state: suite_protocol::SessionState::Idle,
+        state: neo_protocol::SessionState::Idle,
         queued: 0,
         preview: None,
         added: None,

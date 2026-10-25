@@ -12,10 +12,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"neoworks.dev/suite/renderers/tui"
+	"neoworks.dev/neo/renderers/tui"
 
-	protocol "neoworks.dev/suite/protocol/go"
-	sdk "neoworks.dev/suite/sdk-go"
+	protocol "neoworks.dev/neo/protocol/go"
+	sdk "neoworks.dev/neo/sdk-go"
 )
 
 const (
@@ -47,7 +47,7 @@ func colorMode(getenv func(string) string, tty bool) tui.ColorMode {
 	return tui.ANSI16
 }
 
-// viewAttachment is `suite attach` drawing the session's resolved view.
+// viewAttachment is `neo attach` drawing the session's resolved view.
 //
 // A terminal only appends, so the chat is split in two. Items that are
 // settled are printed once and scroll up. The live tail, from the first item
@@ -125,10 +125,10 @@ func (a *viewAttachment) note(format string, args ...any) {
 // tail's row count.
 func (a *viewAttachment) warnf(format string, args ...any) {
 	if a.tty {
-		a.note("suite: "+format, args...)
+		a.note("neo: "+format, args...)
 		return
 	}
-	fmt.Fprintf(a.stderr, "suite: "+format+"\n", args...)
+	fmt.Fprintf(a.stderr, "neo: "+format+"\n", args...)
 }
 
 // failed reports a failed request. A refusal from the daemon is only a

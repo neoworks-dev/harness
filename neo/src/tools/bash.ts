@@ -51,7 +51,7 @@ class Output {
     const hadFile = this.file !== undefined;
     this.tail += chunk;
     if (!hadFile && (this.bytes > MAX_BYTES || this.newlines > MAX_LINES)) {
-      this.fullOutputPath = join(tmpdir(), `suite-bash-${crypto.randomUUID()}.log`);
+      this.fullOutputPath = join(tmpdir(), `neo-bash-${crypto.randomUUID()}.log`);
       this.file = createWriteStream(this.fullOutputPath);
       this.file.write(this.tail);
     } else {

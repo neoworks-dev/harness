@@ -54,14 +54,14 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use neo_protocol::{SessionEvent, SessionEventRecord, ToolCallContent};
+use neo_renderer_ratatui::Palette;
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyEvent, KeyEventKind};
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use suite_protocol::{SessionEvent, SessionEventRecord, ToolCallContent};
-use suite_renderer_ratatui::Palette;
 
 use diff::DiffRequest;
 pub(crate) use diff::DiffView;

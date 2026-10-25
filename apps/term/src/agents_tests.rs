@@ -1,6 +1,6 @@
+use neo_renderer_ratatui::Palette;
 use ratatui::crossterm::event::{KeyEventState, KeyModifiers};
 use serde_json::json;
-use suite_renderer_ratatui::Palette;
 
 use super::*;
 

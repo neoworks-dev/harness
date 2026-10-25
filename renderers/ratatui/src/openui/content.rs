@@ -1,10 +1,10 @@
 //! Content components: text, code, tables, lists, key/values, tags, metrics, progress, images,
 //! links.
 
+use neo_protocol as pb;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use serde_json::Value;
-use suite_protocol as pb;
 
 use super::layout::columns;
 use super::{N, join, scalar};

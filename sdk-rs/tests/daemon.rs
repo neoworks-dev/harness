@@ -8,10 +8,10 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use common::{TempDir, wait_for};
-use suite_protocol::{
+use neo_protocol::{
     AgentFocus, AppPresence, ConnectorKind, SessionCreateParams, SessionEvent, StopReason,
 };
-use suite_sdk::{Client, Event, Options};
+use neo_sdk::{Client, Event, Options};
 
 struct Daemon {
     child: Child,
@@ -27,11 +27,11 @@ impl Daemon {
         let child = match Command::new("bun")
             .args(["run", "daemon/src/main.ts"])
             .current_dir(root)
-            .env("SUITE_AGENT", "echo")
-            .env("SUITE_SERVICES", "none")
-            .env("SUITE_SOCKET", &socket)
-            .env("SUITE_DATA_DIR", dir.join("data"))
-            .env("SUITE_PORT", "0")
+            .env("NEO_AGENT", "echo")
+            .env("NEO_SERVICES", "none")
+            .env("NEO_SOCKET", &socket)
+            .env("NEO_DATA_DIR", dir.join("data"))
+            .env("NEO_PORT", "0")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -281,7 +281,7 @@ fn the_agent_moves_between_apps() {
     let error = pad
         .move_agent(Some("nowhere"), None)
         .expect_err("unknown app");
-    assert!(matches!(error, suite_sdk::Error::Daemon(_)), "{error:?}");
+    assert!(matches!(error, neo_sdk::Error::Daemon(_)), "{error:?}");
 }
 
 #[test]
@@ -296,7 +296,7 @@ fn assets_and_file_changes() {
     let png = daemon._dir.join("logo.png");
     std::fs::write(&png, b"\x89PNG\r\n\x1a\n-fake").expect("write png");
     let stored = editor
-        .put_asset(suite_protocol::AssetPut {
+        .put_asset(neo_protocol::AssetPut {
             path: Some(png.display().to_string()),
             data: None,
             name: None,
@@ -313,12 +313,12 @@ fn assets_and_file_changes() {
     assert_eq!(browser.get_asset(&stored.handle).expect("get"), stored);
     assert!(matches!(
         browser.get_asset("asset://img-ffffffffffff"),
-        Err(suite_sdk::Error::Daemon(_))
+        Err(neo_sdk::Error::Daemon(_))
     ));
     // Only public web images are downloaded.
     let refused = browser.fetch_asset("http://127.0.0.1:1/a.png");
     assert!(
-        matches!(refused, Err(suite_sdk::Error::Daemon(_))),
+        matches!(refused, Err(neo_sdk::Error::Daemon(_))),
         "{refused:?}"
     );
 
@@ -333,7 +333,7 @@ fn assets_and_file_changes() {
 
 #[test]
 fn the_gateway_lists_tools_from_a_rust_tool_server() {
-    use suite_sdk::tools::{Tool, ToolResult, ToolServer};
+    use neo_sdk::tools::{Tool, ToolResult, ToolServer};
     let Some(daemon) = Daemon::start() else {
         return;
     };

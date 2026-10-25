@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	sdk "neoworks.dev/suite/sdk-go"
+	sdk "neoworks.dev/neo/sdk-go"
 )
 
 const (
-	// upTimeout bounds how long `suite up` waits for a started daemon to answer.
+	// upTimeout bounds how long `neo up` waits for a started daemon to answer.
 	upTimeout = 15 * time.Second
-	// downTimeout bounds how long `suite down` waits for the socket to go quiet.
+	// downTimeout bounds how long `neo down` waits for the socket to go quiet.
 	downTimeout = 10 * time.Second
 	// pollEvery is the interval between socket probes.
 	pollEvery = 100 * time.Millisecond
@@ -42,21 +42,21 @@ func probe(ctx context.Context, socket string) (pid int, err error) {
 
 // dataDir resolves the daemon's data directory like daemon/src/paths.ts.
 func dataDir(getenv func(string) string) string {
-	if d := getenv("SUITE_DATA_DIR"); d != "" {
+	if d := getenv("NEO_DATA_DIR"); d != "" {
 		return d
 	}
 	if d := getenv("XDG_DATA_HOME"); d != "" {
-		return filepath.Join(d, "suite")
+		return filepath.Join(d, "neo")
 	}
 	home := getenv("HOME")
 	if home == "" {
 		home, _ = os.UserHomeDir()
 	}
-	return filepath.Join(home, ".local", "share", "suite")
+	return filepath.Join(home, ".local", "share", "neo")
 }
 
 // findRoot walks up from the real path of exe to the directory that holds
-// daemon/src/main.ts (bin/suite -> the repo root).
+// daemon/src/main.ts (bin/neo -> the repo root).
 func findRoot(exe string) (string, error) {
 	real, err := filepath.EvalSymlinks(exe)
 	if err != nil {
@@ -70,13 +70,13 @@ func findRoot(exe string) (string, error) {
 			break
 		}
 	}
-	return "", fmt.Errorf("cannot find %s above %s; set SUITE_ROOT to the repo or SUITE_DAEMON_CMD to the daemon command", daemonEntry, real)
+	return "", fmt.Errorf("cannot find %s above %s; set NEO_ROOT to the repo or NEO_DAEMON_CMD to the daemon command", daemonEntry, real)
 }
 
-// daemonCommand is the command that starts the daemon: SUITE_DAEMON_CMD, else
-// bun running the entry point under SUITE_ROOT or the repo found from exe.
+// daemonCommand is the command that starts the daemon: NEO_DAEMON_CMD, else
+// bun running the entry point under NEO_ROOT or the repo found from exe.
 func daemonCommand(getenv func(string) string, exe func() (string, error)) ([]string, error) {
-	if c := strings.Fields(getenv("SUITE_DAEMON_CMD")); len(c) > 0 {
+	if c := strings.Fields(getenv("NEO_DAEMON_CMD")); len(c) > 0 {
 		return c, nil
 	}
 	root, err := daemonRoot(getenv, exe)
@@ -86,9 +86,9 @@ func daemonCommand(getenv func(string) string, exe func() (string, error)) ([]st
 	return []string{"bun", "run", filepath.Join(root, daemonEntry)}, nil
 }
 
-// daemonRoot is the repo the daemon runs from: SUITE_ROOT, else found from exe.
+// daemonRoot is the repo the daemon runs from: NEO_ROOT, else found from exe.
 func daemonRoot(getenv func(string) string, exe func() (string, error)) (string, error) {
-	if root := getenv("SUITE_ROOT"); root != "" {
+	if root := getenv("NEO_ROOT"); root != "" {
 		return root, nil
 	}
 	if exe == nil {
@@ -96,16 +96,16 @@ func daemonRoot(getenv func(string) string, exe func() (string, error)) (string,
 	}
 	path, err := exe()
 	if err != nil {
-		return "", fmt.Errorf("cannot locate the suite executable: %w", err)
+		return "", fmt.Errorf("cannot locate neo executable: %w", err)
 	}
 	return findRoot(path)
 }
 
 // restartIfStale stops a daemon started before its code last changed, unless a
 // turn is running (then it only says so). It reports whether the daemon was
-// stopped. A daemon run by SUITE_DAEMON_CMD has no known sources: never stale.
+// stopped. A daemon run by NEO_DAEMON_CMD has no known sources: never stale.
 func restartIfStale(ctx context.Context, socket string, e cliEnv) (bool, error) {
-	if e.Getenv("SUITE_DAEMON_CMD") != "" {
+	if e.Getenv("NEO_DAEMON_CMD") != "" {
 		return false, nil
 	}
 	root, err := daemonRoot(e.Getenv, e.Executable)
@@ -117,10 +117,10 @@ func restartIfStale(ctx context.Context, socket string, e cliEnv) (bool, error) 
 		return false, nil
 	}
 	if st.busy {
-		fmt.Fprintf(e.Stderr, "suite: the daemon (pid %d) is older than its code but a turn is running; run suite down and start again when it's done\n", st.pid)
+		fmt.Fprintf(e.Stderr, "neo: the daemon (pid %d) is older than its code but a turn is running; run neo down and start again when it's done\n", st.pid)
 		return false, nil
 	}
-	fmt.Fprintf(e.Stderr, "suite: the daemon (pid %d) is older than its code; restarting it\n", st.pid)
+	fmt.Fprintf(e.Stderr, "neo: the daemon (pid %d) is older than its code; restarting it\n", st.pid)
 	if err := stopDaemon(ctx, socket, st.pid, e); err != nil {
 		return false, err
 	}
@@ -174,7 +174,7 @@ func ensureDaemon(ctx context.Context, socket string, e cliEnv) (pid int, starte
 
 	cmd := osexec.Command(argv[0], argv[1:]...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = devnull, logf, logf
-	cmd.Env = append(e.environ(), "SUITE_SOCKET="+socket)
+	cmd.Env = append(e.environ(), "NEO_SOCKET="+socket)
 	detach(cmd)
 	if err := cmd.Start(); err != nil {
 		return 0, false, logPath, fmt.Errorf("cannot start the daemon (%s): %w", strings.Join(argv, " "), err)
@@ -230,13 +230,13 @@ func runUp(ctx context.Context, args []string, e cliEnv) int {
 		return 2
 	}
 	if len(positional) > 0 {
-		fmt.Fprint(e.Stderr, "usage: suite up\n")
+		fmt.Fprint(e.Stderr, "usage: neo up\n")
 		return 2
 	}
 	path := sdk.SocketPath(*socket, e.Getenv, e.UID)
 	pid, started, logPath, err := ensureDaemon(ctx, path, e)
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "suite: %v\n", err)
+		fmt.Fprintf(e.Stderr, "neo: %v\n", err)
 		return 1
 	}
 	if started {
@@ -254,7 +254,7 @@ func runDown(ctx context.Context, args []string, e cliEnv) int {
 		return 2
 	}
 	if len(positional) > 0 {
-		fmt.Fprint(e.Stderr, "usage: suite down\n")
+		fmt.Fprint(e.Stderr, "usage: neo down\n")
 		return 2
 	}
 	path := sdk.SocketPath(*socket, e.Getenv, e.UID)
@@ -264,15 +264,15 @@ func runDown(ctx context.Context, args []string, e cliEnv) int {
 		return 0
 	}
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "suite: cannot connect to daemon (socket %s): %v\n", path, err)
+		fmt.Fprintf(e.Stderr, "neo: cannot connect to daemon (socket %s): %v\n", path, err)
 		return 1
 	}
 	if pid <= 0 {
-		fmt.Fprintf(e.Stderr, "suite: the daemon on %s reports no pid\n", path)
+		fmt.Fprintf(e.Stderr, "neo: the daemon on %s reports no pid\n", path)
 		return 1
 	}
 	if err := stopDaemon(ctx, path, pid, e); err != nil {
-		fmt.Fprintf(e.Stderr, "suite: %v\n", err)
+		fmt.Fprintf(e.Stderr, "neo: %v\n", err)
 		return 1
 	}
 	fmt.Fprintf(e.Stdout, "daemon stopped (pid %d)\n", pid)
@@ -305,12 +305,12 @@ func stopDaemon(ctx context.Context, path string, pid int, e cliEnv) error {
 }
 
 // errTermMissing means the terminal app isn't built or installed.
-var errTermMissing = errors.New("suite-term isn't built: run task build, or use suite attach")
+var errTermMissing = errors.New("neo-term isn't built: run task build, or use neo attach")
 
-// resolveTerm finds the terminal app: SUITE_TERM, else suite-term next to the
+// resolveTerm finds the terminal app: NEO_TERM, else neo-term next to the
 // running executable, else on PATH.
 func resolveTerm(getenv func(string) string, exe string, lookPath func(string) (string, error)) (string, error) {
-	return resolveApp("SUITE_TERM", "suite-term", errTermMissing, getenv, exe, lookPath)
+	return resolveApp("NEO_TERM", "neo-term", errTermMissing, getenv, exe, lookPath)
 }
 
 // resolveApp finds an app binary: the path or command name in the environment variable envVar,
@@ -348,7 +348,7 @@ func isExecutable(path string) bool {
 	return err == nil && st.Mode().IsRegular() && st.Mode().Perm()&0o111 != 0
 }
 
-// runTerm is plain `suite` on a terminal: start the daemon if needed (saying
+// runTerm is plain `neo` on a terminal: start the daemon if needed (saying
 // so only then), then replace this process with the terminal app.
 func runTerm(ctx context.Context, e cliEnv) int {
 	exe := ""
@@ -364,13 +364,13 @@ func runTerm(ctx context.Context, e cliEnv) int {
 	// Resolve first so a missing app doesn't start a daemon for nothing.
 	term, err := resolveTerm(e.Getenv, exe, lookPath)
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "suite: %v\n", err)
+		fmt.Fprintf(e.Stderr, "neo: %v\n", err)
 		return 1
 	}
 	path := sdk.SocketPath("", e.Getenv, e.UID)
 	pid, started, logPath, err := ensureDaemon(ctx, path, e)
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "suite: %v\n", err)
+		fmt.Fprintf(e.Stderr, "neo: %v\n", err)
 		return 1
 	}
 	if started {
@@ -381,7 +381,7 @@ func runTerm(ctx context.Context, e cliEnv) int {
 		execFn = execReplace
 	}
 	err = execFn(term, []string{term}, e.environ())
-	fmt.Fprintf(e.Stderr, "suite: cannot run %s: %v\n", term, err)
+	fmt.Fprintf(e.Stderr, "neo: cannot run %s: %v\n", term, err)
 	return 1
 }
 

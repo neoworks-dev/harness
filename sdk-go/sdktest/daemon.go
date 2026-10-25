@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 // DefaultTheme is what the fake daemon serves unless SetTheme changes it
@@ -97,7 +97,7 @@ type connState struct {
 // New starts a fake daemon that is stopped when the test ends.
 func New(t testing.TB) *Daemon {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "suite")
+	dir, err := os.MkdirTemp("", "neo")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-//! Rust client for the suite bus, kept minimal for GPUI apps. See the README.
+//! Rust client for neo bus, kept minimal for GPUI apps. See the README.
 //!
 //! One background thread owns the WebSocket (over the daemon's Unix socket). Requests are
 //! blocking calls with a timeout, so run them on a background executor; everything the daemon
@@ -18,9 +18,8 @@ use std::time::Duration;
 use std::{fmt, io, thread};
 
 use conn::{Command, Effect, Request};
-pub use socket::default_socket_path;
-pub use suite_protocol as protocol;
-use suite_protocol::{
+pub use neo_protocol as protocol;
+use neo_protocol::{
     AgentFocus, AgentMove, AgentMoveMessage, AppContext, AppContextMessage, AppPresence,
     AppPresenceMessage, Asset, AssetFetchMessage, AssetGetMessage, AssetPut, AssetPutMessage,
     AssetRef, AssetUrl, ConnectorInfo, ConnectorsList, Envelope, ErrorInfo, FileChanged,
@@ -30,6 +29,7 @@ use suite_protocol::{
     SubscribeParams, SubscribedPayload, Theme, UiAction, UiActionMessage, ViewPatch, ViewRef,
     ViewSnapshot, ViewSubscribe, ViewUnsubscribe,
 };
+pub use socket::default_socket_path;
 pub use view::ViewState;
 
 /// How long a request waits for its reply.
@@ -168,7 +168,7 @@ impl Client {
             options.presence.filter(|presence| presence.open),
         );
         let thread = thread::Builder::new()
-            .name("suite-sdk".into())
+            .name("neo-sdk".into())
             .spawn(move || io.run(ws))?;
         Ok(Client {
             commands,

@@ -16,6 +16,6 @@
     "@neoworks-dev/neo-protocol": "workspace:*"
   },
   "devDependencies": {
-    "@suite/daemon": "workspace:*"
+    "@neoworks-dev/neo-daemon": "workspace:*"
   }
 }

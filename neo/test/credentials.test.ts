@@ -1,5 +1,5 @@
 // Which providers have a credential, and /model listing the models of all of them. Everything runs
-// on temp auth files and a cleared environment: never the real ~/.pi or ~/.local/share/suite.
+// on temp auth files and a cleared environment: never the real ~/.pi or ~/.local/share/neo.
 import { expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -40,16 +40,16 @@ async function withEnv<T>(vars: Record<string, string>, body: () => Promise<T>):
 }
 
 async function configWith(
-  suite: Record<string, unknown> | undefined,
+  neo: Record<string, unknown> | undefined,
   pi: Record<string, unknown> | undefined,
   extra: Partial<HarnessConfig> = {},
 ): Promise<HarnessConfig> {
   const dir = await tempDir();
-  const authPath = join(dir, "suite", "auth.json");
+  const authPath = join(dir, "neo", "auth.json");
   const piAuthPath = join(dir, "pi", "auth.json");
-  await mkdir(join(dir, "suite"));
+  await mkdir(join(dir, "neo"));
   await mkdir(join(dir, "pi"));
-  if (suite) await writeFile(authPath, JSON.stringify(suite));
+  if (neo) await writeFile(authPath, JSON.stringify(neo));
   if (pi) await writeFile(piAuthPath, JSON.stringify(pi));
   return {
     provider: "deepseek",
@@ -72,7 +72,7 @@ test("providers with a credential: env var, the config key for its provider, our
       groq: { type: "api_key", key: "" }, // not a usable entry
     },
     { openai: api("sk-pi"), xai: api("xai-pi"), "github-copilot": oauth(FAR) },
-    { apiKey: "from-suite-api-key" },
+    { apiKey: "from-neo-api-key" },
   );
   const found = await withEnv({ OPENROUTER_API_KEY: "or-key", MISTRAL_API_KEY: "m" }, () =>
     Promise.resolve(providersWithCredential(config, { oauthProvider })),
@@ -81,14 +81,14 @@ test("providers with a credential: env var, the config key for its provider, our
     { provider: "deepseek", source: "config" },
     { provider: "github-copilot", source: "pi" },
     { provider: "mistral", source: "env" },
-    { provider: "openai", source: "suite" },
-    { provider: "openai-codex", source: "suite" },
+    { provider: "openai", source: "neo" },
+    { provider: "openai-codex", source: "neo" },
     { provider: "openrouter", source: "env" },
     { provider: "xai", source: "pi" },
   ]);
 });
 
-test("SUITE_API_KEY counts for the configured provider only, and missing files for nobody", async () => {
+test("NEO_API_KEY counts for the configured provider only, and missing files for nobody", async () => {
   const config = await configWith(undefined, undefined, { apiKey: "k", provider: "openai" });
   const found = await withEnv({}, () => Promise.resolve(providersWithCredential(config)));
   expect(found).toEqual([{ provider: "openai", source: "config" }]);
@@ -127,7 +127,7 @@ test("/model lists the models of every provider that has a credential, the curre
   const config = await configWith(
     { openrouter: api("or-key") },
     { openai: api("sk-pi") },
-    { apiKey: "from-suite-api-key" },
+    { apiKey: "from-neo-api-key" },
   );
   await withEnv({}, async () => {
     const option = modelOption(await sessionFor(config));

@@ -5,7 +5,7 @@ import (
 	"math"
 	"strings"
 
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 // component draws c in w columns.

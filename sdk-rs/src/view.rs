@@ -1,6 +1,6 @@
 //! The client side of the view stream: a snapshot plus patches, applied in order.
 
-use suite_protocol::{Block, Component, ViewItem, ViewOp, ViewPatch, ViewSnapshot};
+use neo_protocol::{Block, Component, ViewItem, ViewOp, ViewPatch, ViewSnapshot};
 
 /// A session's view as drawn: keep one per followed session and feed it every
 /// [`crate::Event::ViewSnapshot`] and [`crate::Event::ViewPatch`].

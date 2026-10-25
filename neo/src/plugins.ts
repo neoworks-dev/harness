@@ -2,7 +2,7 @@
 // `<dir>/installed.json`; everything that uses a plugin's parts (skills, commands, agents, hooks,
 // MCP servers, language servers) reads the enabled ones from here.
 //
-//   ~/.config/suite/plugins/
+//   ~/.config/neo/plugins/
 //     installed.json                 { version: 1, plugins: { "name@marketplace": InstalledPlugin } }
 //     marketplaces.json              the marketplaces added (the installer's own)
 //     cache/<marketplace>/<name>/<version>/   a plugin's folder: .claude-plugin/plugin.json, skills/, …

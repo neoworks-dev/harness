@@ -9,7 +9,7 @@ import type {
 } from "@neoworks-dev/neo-protocol/types";
 
 /**
- * Where a session's title came from, when the suite made it: the start of the first message
+ * Where a session's title came from, when neo made it: the start of the first message
  * (until a model has written one), or a model. A title without one was given by the user.
  */
 export type TitleSource = "first_line" | "generated";
@@ -181,7 +181,7 @@ export class SessionStore {
     return row;
   }
 
-  /** Without `source` the title counts as the user's own: the suite never replaces it by itself. */
+  /** Without `source` the title counts as the user's own: neo never replaces it by itself. */
   setTitle(id: string, title: string, source?: TitleSource): void {
     this.db
       .query("UPDATE sessions SET title = ?, title_source = ? WHERE id = ?")

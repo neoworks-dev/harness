@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"neoworks.dev/suite/renderers/tui"
+	"neoworks.dev/neo/renderers/tui"
 
-	protocol "neoworks.dev/suite/protocol/go"
-	"neoworks.dev/suite/sdk-go/sdktest"
+	protocol "neoworks.dev/neo/protocol/go"
+	"neoworks.dev/neo/sdk-go/sdktest"
 )
 
 func TestAttachViewNew(t *testing.T) {
@@ -327,7 +327,7 @@ func startTTY(t *testing.T, socket string, stdin io.Reader, env map[string]strin
 	c := &cli{interrupt: make(chan os.Signal, 1), done: make(chan int, 1)}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	t.Cleanup(cancel)
-	env["SUITE_SOCKET"] = socket
+	env["NEO_SOCKET"] = socket
 	go func() {
 		c.done <- run(ctx, args, cliEnv{
 			Stdin: stdin, Stdout: &c.stdout, Stderr: &c.stderr,

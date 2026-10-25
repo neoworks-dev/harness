@@ -7,9 +7,9 @@ import type {
   FileChanged,
   SecretRequest,
 } from "@neoworks-dev/neo-protocol/types";
-import type { TestDaemon } from "@suite/daemon/testing";
+import type { TestDaemon } from "@neoworks-dev/neo-daemon/testing";
 import { createToolServer } from "@neoworks-dev/neo-sdk";
-import { connect, fixedAddress, SuiteError, TimeoutError, type Client } from "../src/index.ts";
+import { connect, fixedAddress, NeoError, TimeoutError, type Client } from "../src/index.ts";
 import { cleanupAfterEach } from "./support/cleanup.ts";
 import { FakeDaemon, THEME } from "./support/fake-daemon.ts";
 import { sessionInfo } from "./support/fixtures.ts";
@@ -82,7 +82,7 @@ describe("agent focus", () => {
     const { client } = await viewer(daemon);
     await client.focus.waitFor();
     const noApp = await client.moveAgent({ app: "nope" }).catch((thrown: unknown) => thrown);
-    expect(noApp).toBeInstanceOf(SuiteError);
+    expect(noApp).toBeInstanceOf(NeoError);
     expect(noApp).toMatchObject({ code: "not_found" });
     const noSession = await client
       .moveAgent({ session: "nope" })

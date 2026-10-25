@@ -1,6 +1,6 @@
 // A scripted ACP agent (stdio, one JSON-RPC message per line) standing in for Claude Code or
 // Codex in guest tests. What it does depends on the task, the prompt's last line:
-//   greet <name>  calls greeter.greet through the suite's MCP server (the gateway)
+//   greet <name>  calls greeter.greet through neo's MCP server (the gateway)
 //   ask           asks for permission and reports the answer
 //   ask edit      the same, for a tool call of kind edit with a diff (ask execute: kind execute;
 //                 ask diff: a diff but no kind)
@@ -16,17 +16,17 @@
 //                 generateText asked for (the prompt's last line)
 //   started       reports how the conversation began: "new" or "resume" (resuming a session id
 //                 that starts with "gone" fails, like an adapter that lost the conversation)
-//   suitetool <t> asks for permission to use the suite's own MCP tool <t> (titled
-//                 mcp__suite__<t>; "codex <t>": mcp.suite.<t>) and reports the answer
+//   neotool <t> asks for permission to use neo's own MCP tool <t> (titled
+//                 mcp__neo__<t>; "codex <t>": mcp.neo.<t>) and reports the answer
 //   cwd           reports the directory session/new (or resume) was given
 //   route         reports how the process was started: the CODEX_CONFIG, ANTHROPIC_*,
 //                 CLAUDE_CODE_{OAUTH,USE_,EXECUTABLE} and MODEL_PROVIDER variables it has, the initialize params
 //                 and the params of an authenticate request (Codex's gateway sign-in; header values are the
 //                 first 12 hex digits of their sha256, so the report holds no key)
 //   usage         sends usage_updates in the middle of one message (USD cost, then EUR cost)
-//   send <to> <text>  calls the suite's send_message and reports "sent: …" (or the error)
+//   send <to> <text>  calls neo's send_message and reports "sent: …" (or the error)
 //   spam <to>     sends 25 messages to <to> and reports how many were taken and the last answer
-//   listen        calls the suite's wait (5 s) and reports "heard: …"
+//   listen        calls neo's wait (5 s) and reports "heard: …"
 //   poll          calls tools_search until a message rides on a result, and reports it
 //   commands      replaces its slash commands with one (review) and says so
 // It lists slash commands (available_commands_update) when a conversation starts or resumes: after
@@ -105,22 +105,22 @@ function say(sessionId: string, text: string, kind = "agent_message_chunk"): voi
   update(sessionId, { sessionUpdate: kind, content: { type: "text", text } });
 }
 
-let suiteClient: Promise<Client> | undefined;
+let neoClient: Promise<Client> | undefined;
 
-/** A call of one of the suite's core tools as this agent: the text of the result, and whether it failed. */
-async function suite(
+/** A call of one of neo's core tools as this agent: the text of the result, and whether it failed. */
+async function neo(
   name: string,
   args: Record<string, unknown>,
 ): Promise<{ text: string; isError: boolean }> {
   if (!gateway) throw new Error("no MCP server");
   const { url, headers } = gateway;
-  suiteClient ??= (async () => {
+  neoClient ??= (async () => {
     const client = new Client({ name: "fake-guest", version: "1" });
     const requestInit = { headers: Object.fromEntries(headers.map((h) => [h.name, h.value])) };
     await client.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit }));
     return client;
   })();
-  const result = await (await suiteClient).callTool({ name, arguments: args });
+  const result = await (await neoClient).callTool({ name, arguments: args });
   const blocks = result.content as { text?: string }[];
   return { text: blocks.map((b) => b.text ?? "").join("\n"), isError: result.isError === true };
 }
@@ -136,7 +136,7 @@ async function greet(sessionId: string, name: string): Promise<void> {
   update(sessionId, {
     sessionUpdate: "tool_call",
     toolCallId: "t1",
-    title: "mcp__suite__tools_call",
+    title: "mcp__neo__tools_call",
     kind: "other",
     status: "pending",
     rawInput: {},
@@ -227,27 +227,27 @@ async function prompt(params: {
     return { stopReason: "end_turn" };
   } else if (task.startsWith("send ")) {
     const [to = "", ...rest] = task.slice(5).split(" ");
-    const sent = await suite("send_message", { to, text: rest.join(" ") });
+    const sent = await neo("send_message", { to, text: rest.join(" ") });
     say(sessionId, `${sent.isError ? "refused" : "sent"}: ${sent.text}`);
     return { stopReason: "end_turn" };
   } else if (task.startsWith("spam ")) {
     let taken = 0;
     let last = "";
     for (let i = 0; i < 25; i++) {
-      const sent = await suite("send_message", { to: task.slice(5), text: `ping ${i}` });
+      const sent = await neo("send_message", { to: task.slice(5), text: `ping ${i}` });
       if (!sent.isError) taken += 1;
       last = sent.text;
     }
     say(sessionId, `taken: ${taken}; last: ${last}`);
     return { stopReason: "end_turn" };
   } else if (task === "listen") {
-    const heard = await suite("wait", { timeoutSeconds: 5 });
+    const heard = await neo("wait", { timeoutSeconds: 5 });
     say(sessionId, `heard: ${heard.text}`);
     return { stopReason: "end_turn" };
   } else if (task === "poll") {
     let text = "";
     for (let i = 0; i < 200 && !text.includes("<message"); i++) {
-      text = (await suite("tools_search", { query: "zzz" })).text;
+      text = (await neo("tools_search", { query: "zzz" })).text;
       await Bun.sleep(30);
     }
     say(sessionId, `polled: ${text}`);
@@ -264,9 +264,9 @@ async function prompt(params: {
     update(sessionId, { sessionUpdate: "plan", entries: [] });
     say(sessionId, `answer: ${picked}`);
     return { stopReason: "end_turn" };
-  } else if (task.startsWith("suitetool ") || task.startsWith("codex ")) {
+  } else if (task.startsWith("neotool ") || task.startsWith("codex ")) {
     const [style, name = ""] = task.split(" ");
-    const title = `${style === "codex" ? "mcp.suite." : "mcp__suite__"}${name}`;
+    const title = `${style === "codex" ? "mcp.neo." : "mcp__neo__"}${name}`;
     const picked = await permission(sessionId, { toolCallId: "t9", title, kind: "other" });
     update(sessionId, { sessionUpdate: "plan", entries: [] });
     say(sessionId, `answer: ${picked}`);

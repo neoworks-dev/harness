@@ -17,7 +17,7 @@ const HOME_FILES = [
   ".aws/credentials",
   ".netrc",
   ".pi/agent/auth.json",
-  ".local/share/suite/auth.json",
+  ".local/share/neo/auth.json",
   ".config/gh/hosts.yml",
   ".docker/config.json",
   ".kube/config",

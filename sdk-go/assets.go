@@ -3,7 +3,7 @@ package sdk
 import (
 	"context"
 
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 // PutAsset stores a file or bytes in the daemon's asset store and returns

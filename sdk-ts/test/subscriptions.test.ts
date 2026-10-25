@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ViewPatch, ViewRef, ViewSnapshot } from "@neoworks-dev/neo-protocol/types";
-import { connect, DisconnectedError, fixedAddress, SuiteError } from "../src/index.ts";
+import { connect, DisconnectedError, fixedAddress, NeoError } from "../src/index.ts";
 import type { Client } from "../src/index.ts";
 import { cleanupAfterEach } from "./support/cleanup.ts";
 import { FakeDaemon } from "./support/fake-daemon.ts";
@@ -119,7 +119,7 @@ describe("subscribe (session events)", () => {
     const errors: Error[] = [];
     client.subscribe("nope", { onEvent: () => {}, onError: (error) => errors.push(error) });
     await until(() => errors.length === 1, "error");
-    expect(errors[0]).toBeInstanceOf(SuiteError);
+    expect(errors[0]).toBeInstanceOf(NeoError);
     expect(errors[0]).toMatchObject({ code: "not_found" });
   });
 
@@ -213,12 +213,12 @@ describe("subscribeView", () => {
     expect(view.patches).toEqual([]);
   });
 
-  test("a refused subscription reports a SuiteError through onError", async () => {
+  test("a refused subscription reports a NeoError through onError", async () => {
     const { client } = await fakeRig();
     const view = viewRecorder();
     client.subscribeView("missing", view.options);
     await until(() => view.errors.length === 1, "error");
-    expect(view.errors[0]).toBeInstanceOf(SuiteError);
+    expect(view.errors[0]).toBeInstanceOf(NeoError);
     expect(view.errors[0]).toMatchObject({ code: "not_found" });
   });
 

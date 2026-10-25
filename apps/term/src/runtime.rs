@@ -28,18 +28,18 @@ pub fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         Err(why) => {
-            eprintln!("suite-term: {why}\n{USAGE}");
+            eprintln!("neo-term: {why}\n{USAGE}");
             return ExitCode::from(2);
         }
     };
     if !io::stdout().is_terminal() || !io::stdin().is_terminal() {
-        eprintln!("suite-term needs a terminal (use `suite attach` in scripts)");
+        eprintln!("neo-term needs a terminal (use `neo attach` in scripts)");
         return ExitCode::FAILURE;
     }
     let cwd = match driver::current_dir() {
         Ok(cwd) => cwd,
         Err(why) => {
-            eprintln!("suite-term: {why}");
+            eprintln!("neo-term: {why}");
             return ExitCode::FAILURE;
         }
     };
@@ -55,18 +55,18 @@ pub fn main() -> ExitCode {
     let started = match started {
         Ok(started) => started,
         Err(StartError::DaemonDown) => {
-            eprintln!("daemon not running: run suite (or suite up)");
+            eprintln!("daemon not running: run neo (or neo up)");
             return ExitCode::FAILURE;
         }
         Err(StartError::Other(why)) => {
-            eprintln!("suite-term: {why}");
+            eprintln!("neo-term: {why}");
             return ExitCode::FAILURE;
         }
     };
     match run(started.app, started.driver) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("suite-term: {err}");
+            eprintln!("neo-term: {err}");
             ExitCode::FAILURE
         }
     }
@@ -75,7 +75,7 @@ pub fn main() -> ExitCode {
 /// Puts the terminal back when dropped, including while unwinding from a panic.
 struct Screen {
     terminal: DefaultTerminal,
-    /// What the terminal shows images with (None: `SUITE_TERM_IMAGES=off`).
+    /// What the terminal shows images with (None: `NEO_TERM_IMAGES=off`).
     picker: Option<Picker>,
 }
 

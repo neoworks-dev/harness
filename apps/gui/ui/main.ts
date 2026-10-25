@@ -14,6 +14,6 @@ void boot(root, services, plugins).finally(() =>
   start(
     App,
     {},
-    { window: { title: "suite", width: 1100, height: 780, minWidth: 520, minHeight: 360 } },
+    { window: { title: "neo", width: 1100, height: 780, minWidth: 520, minHeight: 360 } },
   ),
 );

@@ -3,7 +3,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { startTestDaemon, type TestDaemon } from "@suite/daemon/testing";
+import { startTestDaemon, type TestDaemon } from "@neoworks-dev/neo-daemon/testing";
 import { connect, type Client, type ConnectOptions } from "../../src/index.ts";
 import { daemonJsonAddress } from "../../src/node.ts";
 
@@ -11,12 +11,12 @@ export type Later = (undo: () => Promise<unknown> | void) => void;
 
 /** A directory with no daemon in it. */
 export function emptyDaemonDir(): string {
-  return mkdtempSync(join(tmpdir(), "suite-none-"));
+  return mkdtempSync(join(tmpdir(), "neo-none-"));
 }
 
 /** Finds the daemon running in `dir`, again on every call: a restarted daemon is found too. */
 export function addressIn(dir: string): ConnectOptions["address"] {
-  return () => daemonJsonAddress({ SUITE_SOCKET: join(dir, "bus.sock") });
+  return () => daemonJsonAddress({ NEO_SOCKET: join(dir, "bus.sock") });
 }
 
 /**

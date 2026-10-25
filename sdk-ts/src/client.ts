@@ -71,17 +71,17 @@ export interface InputOptions {
  * Connects to the daemon, says hello and registers the presence, if any.
  *
  * Rejects with `DisconnectedError` if the daemon cannot be reached (unless `waitForDaemon` is
- * set), and with `SuiteError` if it refuses the client or the presence.
+ * set), and with `NeoError` if it refuses the client or the presence.
  */
 export function connect(options: ConnectOptions): Promise<Client> {
   return Client.open(options);
 }
 
 /**
- * A connection to the suite daemon. Get one from `connect`. It survives a daemon restart:
+ * A connection to neo daemon. Get one from `connect`. It survives a daemon restart:
  * it reconnects, registers the presence again, and resumes every subscription.
  *
- * Requests reject with `SuiteError` when the daemon refuses them, with `DisconnectedError` when
+ * Requests reject with `NeoError` when the daemon refuses them, with `DisconnectedError` when
  * there is no connection (also for requests still waiting when it drops), and with
  * `TimeoutError` when the daemon does not answer.
  */
@@ -150,7 +150,7 @@ export class Client {
   /**
    * Moves the agent to `move.app` (an open connector of kind app), or home when `app` is omitted.
    * With `move.session`, that session also becomes the current one for everybody. Resolves once
-   * the daemon has acted; rejects with `SuiteError` `not_found` for an unknown app or session.
+   * the daemon has acted; rejects with `NeoError` `not_found` for an unknown app or session.
    */
   async moveAgent(move: AgentMove = {}): Promise<void> {
     await this.connection.request("agent.move", move);
@@ -268,14 +268,14 @@ export class Client {
     return this.connection.request("asset.put", asset);
   }
 
-  /** Looks up an asset by handle. Rejects with `SuiteError` `not_found` for an unknown one. */
+  /** Looks up an asset by handle. Rejects with `NeoError` `not_found` for an unknown one. */
   getAsset(handle: string): Promise<Asset> {
     return this.connection.request("asset.get", { handle });
   }
 
   /**
    * Has the daemon download the image at an `http(s)://` URL into its asset store, once per URL,
-   * and returns the asset. Rejects with `SuiteError` `bad_request` for a URL that isn't a public
+   * and returns the asset. Rejects with `NeoError` `bad_request` for a URL that isn't a public
    * image (a private address, another scheme, too large, not png / jpeg / gif / webp).
    */
   fetchAsset(url: string): Promise<Asset> {

@@ -3,7 +3,7 @@
 Go renderer that draws resolved view items in the terminal: the TUI column of `renderers/README.md`. It is a pure function from items, theme and options to text, so the CLI, tests and snapshots all use the same code.
 
 ```go
-import "neoworks.dev/suite/renderers/tui"
+import "neoworks.dev/neo/renderers/tui"
 
 out := tui.Render(items, theme, tui.Options{Width: 80, Color: tui.TrueColor})
 one := tui.RenderItem(item, theme, tui.Options{Width: 80})   // no trailing newline

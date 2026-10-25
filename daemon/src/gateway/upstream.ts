@@ -29,7 +29,7 @@ export type ConnectUpstream = (endpoint: McpEndpoint) => Promise<Upstream>;
 const TIMEOUT_MS = 10_000;
 
 export const connectMcp: ConnectUpstream = async (endpoint) => {
-  const client = new Client({ name: "suite-gateway", version: "0.2.0" });
+  const client = new Client({ name: "neo-gateway", version: "0.2.0" });
   const transport = new StreamableHTTPClientTransport(new URL(endpoint.url), {
     requestInit: { headers: endpoint.headers ?? {} },
   });
@@ -88,7 +88,7 @@ export async function connectStdio(spec: StdioSpec): Promise<StdioConnection> {
   transport.stderr?.on("data", (chunk: Buffer) => {
     tail = (tail + chunk.toString()).slice(-2000);
   });
-  const client = new Client({ name: "suite-gateway", version: "0.2.0" });
+  const client = new Client({ name: "neo-gateway", version: "0.2.0" });
   const exits: ((reason: string) => void)[] = [];
   let closing = false;
   let exited = false;

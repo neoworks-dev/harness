@@ -639,7 +639,7 @@ describe("over real MCP", () => {
   });
 
   test("unreachable app servers are reported, not fatal", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "suite-gw-"));
+    const dir = mkdtempSync(join(tmpdir(), "neo-gw-"));
     const store = new SessionStore(join(dir, "s.db"));
     const registry = new ConnectorRegistry(store, connectMcp, silentLogger);
     await registry.presence(

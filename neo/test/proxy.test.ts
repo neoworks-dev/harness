@@ -268,8 +268,8 @@ test("a proxy that fails is the turn's error, with its message", async () => {
 
 async function configWith(proxy: unknown): Promise<() => ReturnType<typeof loadHarnessConfig>> {
   const home = await tempDir();
-  await mkdir(join(home, ".config", "suite"), { recursive: true });
-  await writeFile(join(home, ".config", "suite", "config.json"), JSON.stringify({ proxy }));
+  await mkdir(join(home, ".config", "neo"), { recursive: true });
+  await writeFile(join(home, ".config", "neo", "config.json"), JSON.stringify({ proxy }));
   return () => loadHarnessConfig({ HOME: home });
 }
 

@@ -22,7 +22,7 @@ function text(result: CallToolResult): string {
 
 /** A fresh configuration directory with a config.json and an (empty) plugins directory. */
 function configDir(config: Record<string, unknown>): { configFile: string; plugins: string } {
-  const dir = mkdtempSync(join(tmpdir(), "suite-mcp-"));
+  const dir = mkdtempSync(join(tmpdir(), "neo-mcp-"));
   const configFile = join(dir, "config.json");
   writeFileSync(configFile, JSON.stringify(config));
   const plugins = join(dir, "plugins");
@@ -77,8 +77,8 @@ describe("stdio MCP servers", () => {
     });
     expect(text(echoed)).toBe("fixture: hi");
     // Its own variables reach it, the daemon's secrets do not.
-    process.env.SUITE_TEST_SECRET = "s3cret";
-    cleanups.push(() => Promise.resolve(void delete process.env.SUITE_TEST_SECRET));
+    process.env.NEO_TEST_SECRET = "s3cret";
+    cleanups.push(() => Promise.resolve(void delete process.env.NEO_TEST_SECRET));
     const own = await daemon.gateway.call("tools_call", {
       name: "mcp-fixture.env",
       args: { name: "GREETING" },
@@ -86,7 +86,7 @@ describe("stdio MCP servers", () => {
     expect(text(own)).toBe("hello");
     const secret = await daemon.gateway.call("tools_call", {
       name: "mcp-fixture.env",
-      args: { name: "SUITE_TEST_SECRET" },
+      args: { name: "NEO_TEST_SECRET" },
     });
     expect(text(secret)).toBe("(unset)");
     // The gateway checks arguments against the tool's schema.
@@ -177,7 +177,7 @@ describe("stdio MCP servers", () => {
   });
 
   test("a project's .mcp.json counts only when config.json allows it", async () => {
-    const project = mkdtempSync(join(tmpdir(), "suite-project-"));
+    const project = mkdtempSync(join(tmpdir(), "neo-project-"));
     writeFileSync(
       join(project, ".mcp.json"),
       JSON.stringify({ mcpServers: { proj: fixtureServer("proj") } }),

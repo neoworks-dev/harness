@@ -1,11 +1,11 @@
 //! OpenUI docs in the app: focus, typing, keys and what is sent to the daemon, headless.
 
+use neo_protocol::{ViewItem, ViewOp, ViewPatch, ViewSnapshot};
+use neo_renderer_ratatui::{UiKind, UiTarget};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyEventState, KeyModifiers};
 use serde_json::{Value, json};
-use suite_protocol::{ViewItem, ViewOp, ViewPatch, ViewSnapshot};
-use suite_renderer_ratatui::{UiKind, UiTarget};
 
 use super::*;
 
@@ -135,7 +135,7 @@ fn patch(app: &mut App, item: ViewItem) {
         agent: None,
         session: "s1".into(),
         seq: 2,
-        ops: vec![ViewOp::SetViewOp(suite_protocol::SetViewOp { item })],
+        ops: vec![ViewOp::SetViewOp(neo_protocol::SetViewOp { item })],
     }));
 }
 
@@ -871,8 +871,8 @@ fn focus_moves_on_when_the_daemon_takes_the_focused_field_away() {
     assert_eq!(focused(&app).as_deref(), Some("email"));
     // The form comes back without the email field.
     let mut gone = form_item("f1", false, "");
-    if let suite_protocol::Component::TextComponent(t) = &mut gone.component
-        && let suite_protocol::Block::OpenUiBlock(b) = &mut t.blocks[1]
+    if let neo_protocol::Component::TextComponent(t) = &mut gone.component
+        && let neo_protocol::Block::OpenUiBlock(b) = &mut t.blocks[1]
         && let Some(root) = b.ui.root.as_mut()
         && let Some(children) = root.props.get_mut("children").and_then(Value::as_array_mut)
     {

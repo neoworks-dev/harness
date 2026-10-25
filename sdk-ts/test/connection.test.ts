@@ -1,7 +1,7 @@
 // Connecting and reconnecting, against a fake daemon that tests can drop, replace and make refuse.
 import { describe, expect, test } from "bun:test";
 import type { ViewSnapshot } from "@neoworks-dev/neo-protocol/types";
-import { connect, fixedAddress, SuiteError, type DaemonAddress } from "../src/index.ts";
+import { connect, fixedAddress, NeoError, type DaemonAddress } from "../src/index.ts";
 import { cleanupAfterEach } from "./support/cleanup.ts";
 import { FakeDaemon } from "./support/fake-daemon.ts";
 import { rejection, until } from "./support/wait.ts";
@@ -74,7 +74,7 @@ describe("reconnecting", () => {
     daemon.dropConnections();
     await client.state.waitFor(8000, (state) => state === "closed");
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toBeInstanceOf(SuiteError);
+    expect(errors[0]).toBeInstanceOf(NeoError);
     expect(errors[0]).toMatchObject({ code: "bad_request" });
   });
 

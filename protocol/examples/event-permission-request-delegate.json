@@ -18,7 +18,7 @@
           "value": "~/site/.worktrees/fix-login (new worktree, branch fix-login)"
         }
       ],
-      "content": [{ "type": "text", "text": "Fix the failing login test and run the suite." }],
+      "content": [{ "type": "text", "text": "Fix the failing login test and run neo." }],
       "options": [
         { "id": "allow", "name": "Start neo", "kind": "allow_once" },
         { "id": "reject", "name": "Reject", "kind": "reject_once" }

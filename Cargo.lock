@@ -3714,6 +3714,81 @@ dependencies = [
 ]
 
 [[package]]
+name = "neo-github"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "neo-gui"
+version = "0.3.0"
+dependencies = [
+ "neo-github",
+ "neo-sdk",
+ "serde",
+ "serde_json",
+ "svelte_gpui_host",
+]
+
+[[package]]
+name = "neo-protocol"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "neo-renderer-gpui"
+version = "0.3.0"
+dependencies = [
+ "gpui",
+ "neo-protocol",
+ "neo-sdk",
+ "serde_json",
+]
+
+[[package]]
+name = "neo-renderer-ratatui"
+version = "0.3.0"
+dependencies = [
+ "neo-protocol",
+ "ratatui",
+ "serde_json",
+ "unicode-width",
+]
+
+[[package]]
+name = "neo-sdk"
+version = "0.3.0"
+dependencies = [
+ "async-channel 2.5.0",
+ "neo-protocol",
+ "serde",
+ "serde_json",
+ "tungstenite 0.30.0",
+]
+
+[[package]]
+name = "neo-term"
+version = "0.3.0"
+dependencies = [
+ "image",
+ "neo-github",
+ "neo-protocol",
+ "neo-renderer-ratatui",
+ "neo-sdk",
+ "ratatui",
+ "ratatui-image",
+ "serde_json",
+ "syntect",
+ "unicode-width",
+ "zeroize",
+]
+
+[[package]]
 name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6064,81 +6139,6 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
-
-[[package]]
-name = "suite-github"
-version = "0.3.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "suite-gui"
-version = "0.3.0"
-dependencies = [
- "serde",
- "serde_json",
- "suite-github",
- "suite-sdk",
- "svelte_gpui_host",
-]
-
-[[package]]
-name = "suite-protocol"
-version = "0.3.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "suite-renderer-gpui"
-version = "0.3.0"
-dependencies = [
- "gpui",
- "serde_json",
- "suite-protocol",
- "suite-sdk",
-]
-
-[[package]]
-name = "suite-renderer-ratatui"
-version = "0.3.0"
-dependencies = [
- "ratatui",
- "serde_json",
- "suite-protocol",
- "unicode-width",
-]
-
-[[package]]
-name = "suite-sdk"
-version = "0.3.0"
-dependencies = [
- "async-channel 2.5.0",
- "serde",
- "serde_json",
- "suite-protocol",
- "tungstenite 0.30.0",
-]
-
-[[package]]
-name = "suite-term"
-version = "0.3.0"
-dependencies = [
- "image",
- "ratatui",
- "ratatui-image",
- "serde_json",
- "suite-github",
- "suite-protocol",
- "suite-renderer-ratatui",
- "suite-sdk",
- "syntect",
- "unicode-width",
- "zeroize",
-]
 
 [[package]]
 name = "sval"

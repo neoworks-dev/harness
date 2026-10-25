@@ -20,7 +20,7 @@ async function setup(): Promise<{
   session: string;
   plugins: string;
 }> {
-  const plugins = mkdtempSync(join(tmpdir(), "suite-plugins-"));
+  const plugins = mkdtempSync(join(tmpdir(), "neo-plugins-"));
   cleanups.push(() => rmSync(plugins, { recursive: true, force: true }));
   const agent = new FakeAgent("neo");
   const guests = {

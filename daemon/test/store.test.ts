@@ -39,7 +39,7 @@ describe("SessionStore", () => {
   });
 
   test("a title knows where it came from; one without a source is the user's", () => {
-    const dir = mkdtempSync(join(tmpdir(), "suite-store-"));
+    const dir = mkdtempSync(join(tmpdir(), "neo-store-"));
     const path = join(dir, "events.db");
     const store = new SessionStore(path);
     store.createSession({ id: "a", cwd: "/", title: "Given" });
@@ -109,7 +109,7 @@ describe("SessionStore", () => {
   });
 
   test("sessions, events and the counter survive reopening", () => {
-    const path = join(mkdtempSync(join(tmpdir(), "suite-store-")), "s.db");
+    const path = join(mkdtempSync(join(tmpdir(), "neo-store-")), "s.db");
     const first = new SessionStore(path);
     first.createSession({ id: "a", cwd: "/w", title: "T", now: 5 });
     first.append("a", chunk("1"), 10);

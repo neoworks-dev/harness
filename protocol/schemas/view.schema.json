@@ -353,7 +353,7 @@
         },
         "action": {
           "type": "string",
-          "description": "app.tool, copy:<text> (client-side), suite.permit {id, option} (answers a permission_request) or suite.choose {id, option} (answers a choice)."
+          "description": "app.tool, copy:<text> (client-side), neo.permit {id, option} (answers a permission_request) or neo.choose {id, option} (answers a choice)."
         },
         "args": {
           "description": "Arguments for the action."
@@ -625,7 +625,7 @@
       "additionalProperties": false
     },
     "UiNode": {
-      "description": "An evaluated component of the suite library (docs/neoui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node.",
+      "description": "An evaluated component of neo library (docs/neoui.md lists them and their props). Props are concrete JSON; a prop value that is an object with `component` is a child node.",
       "type": "object",
       "properties": {
         "component": {

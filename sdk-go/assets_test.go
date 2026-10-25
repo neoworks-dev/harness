@@ -10,9 +10,9 @@ import (
 	"sync"
 	"testing"
 
-	protocol "neoworks.dev/suite/protocol/go"
-	sdk "neoworks.dev/suite/sdk-go"
-	"neoworks.dev/suite/sdk-go/sdktest"
+	protocol "neoworks.dev/neo/protocol/go"
+	sdk "neoworks.dev/neo/sdk-go"
+	"neoworks.dev/neo/sdk-go/sdktest"
 )
 
 var pngMagic = []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0}

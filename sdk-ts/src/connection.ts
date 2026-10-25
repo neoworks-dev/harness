@@ -3,7 +3,7 @@
 // moves them.
 import type { Envelope, ErrorCode } from "@neoworks-dev/neo-protocol/types";
 import { busUrl, type AddressSource } from "./address.ts";
-import { asError, DisconnectedError, SuiteError, TimeoutError } from "./errors.ts";
+import { asError, DisconnectedError, NeoError, TimeoutError } from "./errors.ts";
 import {
   REPLY_TOPICS,
   type PayloadArgs,
@@ -15,7 +15,7 @@ import { WatchedValue } from "./watched.ts";
 const PROTOCOL_VERSION = 1;
 const FIRST_RETRY_DELAY_MS = 250;
 const MAX_RETRY_DELAY_MS = 5000;
-const NOT_CONNECTED = "not connected to the suite daemon";
+const NOT_CONNECTED = "not connected to neo daemon";
 
 /**
  * Where the connection is in its life:
@@ -195,7 +195,7 @@ export class Connection {
   private lost(socket: WebSocket): void {
     if (this.socket !== socket) return;
     this.socket = undefined;
-    this.failWaiting(new DisconnectedError("connection to the suite daemon closed"));
+    this.failWaiting(new DisconnectedError("connection to neo daemon closed"));
     // A connect attempt that fails is handled by the code making the attempt.
     if (this.state.value !== "open") return;
     if (!this.options.reconnect) {
@@ -272,7 +272,7 @@ export class Connection {
 
   /** An error that answers no request: a failed hello, or something the daemon could not parse. */
   private rejectWithoutRequest(code: ErrorCode, message: string): void {
-    const error = new SuiteError(code, message);
+    const error = new NeoError(code, message);
     if (this.pendingWelcome) {
       this.pendingWelcome.reject(error);
       this.pendingWelcome = undefined;
@@ -286,14 +286,14 @@ export class Connection {
     this.pendingReplies.delete(id);
     clearTimeout(pending.timer);
     if (frame.topic === "bus.error") {
-      pending.reject(new SuiteError(frame.payload.code, frame.payload.message));
+      pending.reject(new NeoError(frame.payload.code, frame.payload.message));
     } else pending.resolve(frame);
   }
 }
 
 /** The daemon answered and said no. Only a missing daemon is worth retrying. */
-function isRefusal(error: unknown): error is SuiteError {
-  return error instanceof SuiteError;
+function isRefusal(error: unknown): error is NeoError {
+  return error instanceof NeoError;
 }
 
 function longerDelay(delayMs: number): number {
@@ -325,7 +325,7 @@ function dial(url: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url);
     socket.onopen = () => resolve(socket);
-    socket.onerror = () => reject(new DisconnectedError("could not reach the suite daemon"));
-    socket.onclose = () => reject(new DisconnectedError("could not reach the suite daemon"));
+    socket.onerror = () => reject(new DisconnectedError("could not reach neo daemon"));
+    socket.onclose = () => reject(new DisconnectedError("could not reach neo daemon"));
   });
 }

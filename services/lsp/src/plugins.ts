@@ -1,6 +1,6 @@
 // Language servers that installed plugins bring (#25), as `Language`s next to the fixed ones.
 import { join } from "node:path";
-import { suiteConfigDir } from "../../../neo/src/mcp-config.ts";
+import { neoConfigDir } from "../../../neo/src/mcp-config.ts";
 import { enabledLspServers } from "../../../neo/src/plugin-lsp.ts";
 import type { Language } from "./servers.ts";
 
@@ -8,9 +8,7 @@ import type { Language } from "./servers.ts";
 const ROOT_MARKERS = [".git"];
 
 /** The enabled plugins' servers; read each time, so a plugin installed now is used at once. */
-export function pluginLanguages(
-  pluginsDir: string = join(suiteConfigDir(), "plugins"),
-): Language[] {
+export function pluginLanguages(pluginsDir: string = join(neoConfigDir(), "plugins")): Language[] {
   return enabledLspServers(pluginsDir).map((server) => ({
     id: server.name,
     extensions: server.extensions,

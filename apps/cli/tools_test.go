@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	protocol "neoworks.dev/suite/protocol/go"
-	"neoworks.dev/suite/sdk-go/sdktest"
+	protocol "neoworks.dev/neo/protocol/go"
+	"neoworks.dev/neo/sdk-go/sdktest"
 )
 
 func seedConnectors(d *sdktest.Daemon) {

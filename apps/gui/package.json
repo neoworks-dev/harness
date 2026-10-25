@@ -1,5 +1,5 @@
 {
-  "name": "@suite/gui",
+  "name": "@neoworks-dev/neo-gui",
   "private": true,
   "type": "module",
   "scripts": {

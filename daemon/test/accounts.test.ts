@@ -1,4 +1,4 @@
-// Guests on the suite's API keys: `/model codex provider/model` starts the adapter (here the fake
+// Guests on neo's API keys: `/model codex provider/model` starts the adapter (here the fake
 // ACP agent) with the key; without such a pick it runs on its own login and gets nothing.
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
@@ -51,7 +51,7 @@ const VARS = [
   "XAI_API_KEY",
   "FIREWORKS_API_KEY",
   "AI_GATEWAY_API_KEY",
-  "SUITE_API_KEY",
+  "NEO_API_KEY",
 ];
 
 beforeEach(() => {
@@ -156,7 +156,7 @@ async function modelCard(s: Setup, guest = "codex"): Promise<ChoiceOption[]> {
     {
       session: s.session,
       ref: "x",
-      action: "suite.choose",
+      action: "neo.choose",
       args: { id: card.id, option: "small" },
     },
     "t",
@@ -164,7 +164,7 @@ async function modelCard(s: Setup, guest = "codex"): Promise<ChoiceOption[]> {
   return card.options;
 }
 
-describe("Codex on the suite's API keys", () => {
+describe("Codex on neo's API keys", () => {
   test("without a pick the adapter gets nothing of ours", async () => {
     const s = await setup();
     await setAccount(s.authPath, "openrouter", { type: "api_key", key: KEY });
@@ -353,7 +353,7 @@ describe("codexRoute", () => {
   });
 });
 
-describe("Claude Code on the suite's API keys", () => {
+describe("Claude Code on neo's API keys", () => {
   test("without a pick it keeps its own login: nothing of ours is set", async () => {
     const s = await setup();
     await setAccount(s.authPath, "deepseek", { type: "api_key", key: DS_KEY });
@@ -429,7 +429,7 @@ describe("Claude Code on the suite's API keys", () => {
 
   test("a Claude subscription is never handed over, however it is stored", async () => {
     const s = await setup();
-    // pi's login, the suite's login, a subscription token pasted as a key, and the variable.
+    // pi's login, neo's login, a subscription token pasted as a key, and the variable.
     await setAccount(s.piAuthPath, "anthropic", {
       type: "oauth",
       access: "sk-ant-oat01-access-token",

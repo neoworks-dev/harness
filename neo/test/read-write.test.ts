@@ -74,8 +74,8 @@ test("read returns images as base64 and rejects other binary files", async () =>
 
 test("read expands ~ and fails clearly on a missing file", async () => {
   const read = createReadTool(await tempDir());
-  expect(await errorMessage(read.execute("t", { path: "~/.suite-no-such-file" }))).toContain(
-    join(homedir(), ".suite-no-such-file"),
+  expect(await errorMessage(read.execute("t", { path: "~/.neo-no-such-file" }))).toContain(
+    join(homedir(), ".neo-no-such-file"),
   );
 });
 

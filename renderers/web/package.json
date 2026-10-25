@@ -1,5 +1,5 @@
 {
-  "name": "@suite/renderer-web",
+  "name": "@neoworks-dev/neo-renderer-web",
   "private": true,
   "type": "module",
   "exports": {

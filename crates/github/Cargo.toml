@@ -1,6 +1,6 @@
 [package]
-name = "suite-github"
-description = "Read-only GitHub for the suite's apps: issues and pull requests through the gh CLI"
+name = "neo-github"
+description = "Read-only GitHub for neo's apps: issues and pull requests through the gh CLI"
 edition.workspace = true
 version.workspace = true
 publish.workspace = true

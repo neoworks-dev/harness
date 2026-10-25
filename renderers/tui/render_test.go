@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 func TestWidth(t *testing.T) {

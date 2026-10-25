@@ -7,6 +7,12 @@ use std::cell::Cell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use neo_protocol::{
+    AgentFocus, SecretRequest, SessionEvent, SessionEventRecord, SessionInfo, SessionState,
+    SettingName, SlashCommand,
+};
+use neo_renderer_ratatui::{ButtonRef, Options, Palette, UiKind, UiTarget, openui_targets};
+use neo_sdk::Event;
 use ratatui::Frame;
 use ratatui::crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
@@ -15,12 +21,6 @@ use ratatui::layout::{Position, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
-use suite_protocol::{
-    AgentFocus, SecretRequest, SessionEvent, SessionEventRecord, SessionInfo, SessionState,
-    SettingName, SlashCommand,
-};
-use suite_renderer_ratatui::{ButtonRef, Options, Palette, UiKind, UiTarget, openui_targets};
-use suite_sdk::Event;
 
 use crate::agents::{Agents, AgentsAction, MainRow, Transcript};
 use crate::chat::{self, Chat, ChatOpts};
@@ -207,7 +207,7 @@ struct Note {
 
 /// Buttons that answer a question of the daemon's can carry a note for the agent.
 fn takes_note(button: &ButtonRef) -> bool {
-    matches!(button.action.as_str(), "suite.permit" | "suite.choose")
+    matches!(button.action.as_str(), "neo.permit" | "neo.choose")
         && button
             .args
             .as_ref()
@@ -682,7 +682,7 @@ impl App {
             }
         }
         if here && focus.session != self.session {
-            // Someone made another session current while the agent is here (/clear, `suite
+            // Someone made another session current while the agent is here (/clear, `neo
             // move`): follow it. A new conversation starts in the same directory.
             let cwd = self.cwd.clone();
             let from = self.session.clone();
@@ -727,16 +727,16 @@ impl App {
         }
     }
 
-    /// The suite's own settings (approvals, harness) and each harness's (model, effort, mode).
+    /// Neo's own settings (approvals, harness) and each harness's (model, effort, mode).
     fn on_setting(&mut self, harness: &str, option: &str, value: &str) {
         match (harness, option) {
-            ("suite", "approvals") => {
+            ("daemon", "approvals") => {
                 if let Some(mode) = Approvals::parse(value) {
                     self.approvals = mode;
                 }
             }
-            ("suite", "harness") => self.harness = value.to_string(),
-            ("suite", _) | (_, "approvals" | "harness") => {}
+            ("daemon", "harness") => self.harness = value.to_string(),
+            ("daemon", _) | (_, "approvals" | "harness") => {}
             _ => record_setting(&mut self.settings, harness, option, value),
         }
     }
@@ -1447,7 +1447,7 @@ impl App {
                 fx.push(Effect::Action {
                     session: self.session.clone(),
                     item: "agents".into(),
-                    action: "suite.cancel_agent".into(),
+                    action: "neo.cancel_agent".into(),
                     args: Some(serde_json::json!({ "id": id })),
                 });
             }
@@ -2479,7 +2479,7 @@ impl App {
         let shown = filtering.then(|| choice::matching(buttons, &self.prompt.filter));
         let filtered = shown
             .as_ref()
-            .map(|s| suite_renderer_ratatui::keep_buttons(item, s));
+            .map(|s| neo_renderer_ratatui::keep_buttons(item, s));
         let (item, focused) = match (&filtered, &shown) {
             (Some(filtered), Some(shown)) => (
                 filtered,

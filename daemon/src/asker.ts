@@ -1,7 +1,7 @@
 // Questions for the user, answered with buttons in any pane: permission requests (a guest wants
 // to run a tool, the agent wants to start a guest) and choices (a model, a conversation to
-// resume). The question goes into the session log; the answer (action suite.permit or
-// suite.choose, with an optional note for the agent) settles it and is logged too.
+// resume). The question goes into the session log; the answer (action neo.permit or
+// neo.choose, with an optional note for the agent) settles it and is logged too.
 import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import { BadRequestError } from "./focus.ts";
 
@@ -91,7 +91,7 @@ export class Asker {
     });
   }
 
-  /** A button press: suite.permit or suite.choose with {id, option}. */
+  /** A button press: neo.permit or neo.choose with {id, option}. */
   answer(
     session: string,
     kind: Pending["kind"],

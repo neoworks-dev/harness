@@ -7,13 +7,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use common::*;
-use ratatui::style::{Color, Modifier};
-use serde_json::{Value, json};
-use suite_protocol::ViewItem;
-use suite_renderer_ratatui::{
+use neo_protocol::ViewItem;
+use neo_renderer_ratatui::{
     ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiEdit, UiKind, UiState, image_sources,
     openui_docs, openui_targets, plain_text, render_item, render_item_images,
 };
+use ratatui::style::{Color, Modifier};
+use serde_json::{Value, json};
 
 fn pal() -> Palette {
     Palette::default()

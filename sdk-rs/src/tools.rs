@@ -13,8 +13,8 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
+use neo_protocol::McpEndpoint;
 use serde_json::{Value, json};
-use suite_protocol::McpEndpoint;
 
 /// MCP protocol versions this server speaks; the newest is offered when the client asks for an
 /// unknown one.
@@ -116,7 +116,7 @@ impl ToolServer {
         });
         let accept = Arc::clone(&shared);
         thread::Builder::new()
-            .name("suite-tools".into())
+            .name("neo-tools".into())
             .spawn(move || {
                 for stream in listener.incoming() {
                     if accept.stopped.load(Ordering::Relaxed) {
@@ -125,7 +125,7 @@ impl ToolServer {
                     let Ok(stream) = stream else { continue };
                     let shared = Arc::clone(&accept);
                     let _ = thread::Builder::new()
-                        .name("suite-tool-call".into())
+                        .name("neo-tool-call".into())
                         .spawn(move || serve(stream, &shared));
                 }
             })?;

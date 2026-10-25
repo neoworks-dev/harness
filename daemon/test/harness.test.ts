@@ -68,7 +68,7 @@ async function setup(
       if (event.type !== "permission_request" || event.title !== "Start a subagent?") return;
       void Promise.resolve().then(() =>
         daemon.actions.run(
-          { session, ref: "p", action: "suite.permit", args: { id: event.id, option: gate } },
+          { session, ref: "p", action: "neo.permit", args: { id: event.id, option: gate } },
           "test",
         ),
       );
@@ -148,7 +148,7 @@ async function answer(
   );
   const open = events(daemon, session).findLast((e) => e.type === type);
   if (open?.type !== type) throw new Error(`no ${type}`);
-  const action = type === "choice" ? "suite.choose" : "suite.permit";
+  const action = type === "choice" ? "neo.choose" : "neo.permit";
   await daemon.actions.run({ session, ref: "x", action, args: { id: open.id, option } }, "test");
   return open;
 }
@@ -163,7 +163,7 @@ describe("/harness", () => {
     // The session list says which harness each session runs on.
     expect(daemon.sessions.info(session)?.harness).toBe("fake");
     expect(events(daemon, session).filter((e) => e.type === "setting_changed")).toEqual([
-      { type: "setting_changed", harness: "suite", option: "harness", value: "fake" },
+      { type: "setting_changed", harness: "daemon", option: "harness", value: "fake" },
     ]);
     // Unlike the approvals mode this one shows in the chat.
     const items = daemon.views.get(session).snapshot().items;
@@ -203,7 +203,7 @@ describe("/harness", () => {
     expect(daemon.settings.harness(next)).toBe("fake");
     // Logged, so panes see it and a later choice elsewhere doesn't move the session.
     expect(events(daemon, next)).toEqual([
-      { type: "setting_changed", harness: "suite", option: "harness", value: "fake" },
+      { type: "setting_changed", harness: "daemon", option: "harness", value: "fake" },
     ]);
     await daemon.commands.run(early, "/harness other");
     expect(daemon.settings.harness(next)).toBe("fake");
@@ -219,12 +219,12 @@ describe("/harness", () => {
     const other = daemon.sessions.create({}).id;
     await daemon.commands.run(other, "/harness fake");
     expect(events(daemon, other)).toEqual([
-      { type: "setting_changed", harness: "suite", option: "harness", value: "fake" },
+      { type: "setting_changed", harness: "daemon", option: "harness", value: "fake" },
       { type: "setting_changed", harness: "fake", option: "model", value: "large" },
     ]);
     // A new session starts on fake, with its model, too.
     expect(events(daemon, daemon.sessions.create({}).id)).toEqual([
-      { type: "setting_changed", harness: "suite", option: "harness", value: "fake" },
+      { type: "setting_changed", harness: "daemon", option: "harness", value: "fake" },
       { type: "setting_changed", harness: "fake", option: "model", value: "large" },
     ]);
     // A choice made in the session already is not repeated.
@@ -706,7 +706,7 @@ describe("delegate from a session on an ACP harness", () => {
           requestInit: {
             headers: {
               authorization: `Bearer ${daemon.info.token}`,
-              "x-suite-session": session,
+              "x-neo-session": session,
               ...headers,
             },
           },
@@ -715,7 +715,7 @@ describe("delegate from a session on an ACP harness", () => {
       cleanups.push(() => client.close());
       return client;
     };
-    const main = await connect({ "x-suite-text": "1" });
+    const main = await connect({ "x-neo-text": "1" });
     const names = async (client: Client): Promise<string[]> =>
       (await client.listTools()).tools.map((t) => t.name);
     expect(await names(main)).toContain("delegate");
@@ -727,12 +727,12 @@ describe("delegate from a session on an ACP harness", () => {
     });
     expect(resultOf(done as { content: unknown[] })).toBe("Done: x");
 
-    const guest = await connect({ "x-suite-text": "1", "x-suite-guest": "fake" });
+    const guest = await connect({ "x-neo-text": "1", "x-neo-guest": "fake" });
     expect(await names(guest)).not.toContain("delegate");
     expect(await names(guest)).not.toContain("models");
     expect(await names(guest)).toContain("send_message");
     expect(await names(guest)).toContain("wait");
-    const subagent = await connect({ "x-suite-guest": "neo" });
+    const subagent = await connect({ "x-neo-guest": "neo" });
     expect(await names(subagent)).not.toContain("delegate");
     expect(await names(subagent)).not.toContain("models");
     const neo = await subagent.callTool({ name: "tools_search", arguments: { query: "greet" } });

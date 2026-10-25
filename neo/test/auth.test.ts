@@ -68,7 +68,7 @@ const mode = async (path: string): Promise<number> => (await stat(path)).mode & 
 const readJson = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, "utf8"));
 
 test("setAccount creates the directory (0700) and the file (0600), readAccounts reads it back", async () => {
-  const dir = join(await tempDir(), "data", "suite");
+  const dir = join(await tempDir(), "data", "neo");
   const path = join(dir, "auth.json");
   await setAccount(path, "deepseek", { type: "api_key", key: "k1" });
   await setAccount(path, "openai-codex", login("a", NOW + HOUR));

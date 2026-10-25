@@ -18,10 +18,10 @@ pub use forms::is_date;
 
 use std::collections::HashMap;
 
+use neo_protocol as pb;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use serde_json::Value;
-use suite_protocol as pb;
 
 use crate::Options;
 use crate::render::{Cx, Lines};

@@ -1,5 +1,5 @@
 // The ACP bridge (design §9): starts agents (Claude Code, Codex) through their ACP adapters and
-// streams what they do into the suite session. Two roles: guests, one per suite session and
+// streams what they do into neo session. Two roles: guests, one per neo session and
 // name, that the session's agent reaches with delegate and the user with "/claude task"; and the
 // session's own agent when the user runs it on that harness (/harness claude), which has no
 // label in the log and gets the session's context events. neo subagents (subagent.ts) are
@@ -59,7 +59,7 @@ export interface GuestConfig {
   command: string[];
   env?: Record<string, string>;
   /**
-   * Which of the suite's API keys the guest can run on (see accounts.ts): `/model <name>
+   * Which of neo's API keys the guest can run on (see accounts.ts): `/model <name>
    * provider/model` then starts it on that key. Unset: only its own login.
    */
   route?: RouteKind;
@@ -110,7 +110,7 @@ export interface GuestManagerOptions {
   storeImage?: StoreImage;
   /** The hook a neo subagent's own bash, write and edit ask through. */
   requestPermission?: (session: string, agent: string) => RequestPermission;
-  /** The suite's API keys, for guests with a `route`. */
+  /** Neo's API keys, for guests with a `route`. */
   accounts?: GuestAccounts;
 }
 
@@ -349,12 +349,12 @@ export function mcpResultText(rawOutput: unknown): ToolCallContent[] | undefined
 }
 
 /**
- * The suite's core tools as an adapter names them (Claude Code: mcp__suite__tools_call with the
- * arguments as input; Codex: mcp.suite.tools_call with {server, tool, arguments}): show what
+ * Neo's core tools as an adapter names them (Claude Code: mcp__neo__tools_call with the
+ * arguments as input; Codex: mcp.neo.tools_call with {server, tool, arguments}): show what
  * they do instead.
  */
 export function describeCall(title: string, rawInput: unknown): { title: string; tool?: string } {
-  const plain = title.replace(/^mcp(__|\.)suite(__|\.)/, "");
+  const plain = title.replace(/^mcp(__|\.)neo(__|\.)/, "");
   // The view draws a delegation by its arguments (agent, task).
   if (plain === "delegate") return { title: plain, tool: plain };
   const named = plain === "wait" ? "wait for messages" : plain;
@@ -375,14 +375,14 @@ export function describeCall(title: string, rawInput: unknown): { title: string;
 }
 
 /**
- * Whether a permission request is for one of the suite's own MCP tools (tools_search, tools_call,
+ * Whether a permission request is for one of neo's own MCP tools (tools_search, tools_call,
  * apps_launch, apps_focus, delegate, models, send_message, wait), as Claude Code
- * (`mcp__suite__tools_call`, also in its `_meta.claudeCode.toolName`) and Codex
- * (`mcp.suite.tools_call`, or the server and tool in the input) name them. The gateway gates what needs gating, so these are not asked about twice.
+ * (`mcp__neo__tools_call`, also in its `_meta.claudeCode.toolName`) and Codex
+ * (`mcp.neo.tools_call`, or the server and tool in the input) name them. The gateway gates what needs gating, so these are not asked about twice.
  */
-export function isSuiteTool(call: Record<string, unknown>): boolean {
+export function isNeoTool(call: Record<string, unknown>): boolean {
   const named = (title: string | undefined): boolean => {
-    const match = title === undefined ? null : /^mcp(?:__|\.)suite(?:__|\.)(\w+)$/.exec(title);
+    const match = title === undefined ? null : /^mcp(?:__|\.)neo(?:__|\.)(\w+)$/.exec(title);
     return match?.[1] !== undefined && isCoreToolName(match[1]);
   };
   const claude =
@@ -392,7 +392,7 @@ export function isSuiteTool(call: Record<string, unknown>): boolean {
   if (named(str(call.title)) || named(claude)) return true;
   const input = call.rawInput;
   const tool = isRecord(input) ? str(input.tool) : undefined;
-  return isRecord(input) && input.server === "suite" && tool !== undefined && isCoreToolName(tool);
+  return isRecord(input) && input.server === "neo" && tool !== undefined && isCoreToolName(tool);
 }
 
 /** ACP config options (flat or grouped selects) → ours, keyed by config id. */
@@ -671,7 +671,7 @@ export class GuestManager {
   }
 
   /**
-   * The guest's options, with the suite's accounts added to its models (a guest with a `route`):
+   * The guest's options, with neo's accounts added to its models (a guest with a `route`):
    * `provider/model` values that start it on that key.
    */
   private async optionsOf(guest: Guest): Promise<ConfigOption[]> {
@@ -707,7 +707,7 @@ export class GuestManager {
   }
 
   /**
-   * Sets an option. A model that is `provider/model` of a suite account, or a plain model after
+   * Sets an option. A model that is `provider/model` of a neo account, or a plain model after
    * one, restarts the adapter on the other key (continuing its conversation); the guest it
    * returns is the one to keep using.
    */
@@ -781,7 +781,7 @@ export class GuestManager {
     const config = this.options.configs[name];
     if (!config) throw new BadRequestError(`no guest named ${name}`);
     const title = this.title(name);
-    const cwd = await mkdtemp(join(tmpdir(), "suite-text-"));
+    const cwd = await mkdtemp(join(tmpdir(), "neo-text-"));
     const messages = new Map<string, string>();
     const conn = AcpConnection.spawn({
       command: config.command,
@@ -935,7 +935,7 @@ export class GuestManager {
     await conn.request("initialize", {
       protocolVersion: 1,
       clientCapabilities,
-      clientInfo: { name: "suite", version: "0.6.0" },
+      clientInfo: { name: "neo", version: "0.6.0" },
     });
     if (route?.gateway) {
       await conn.request("authenticate", {
@@ -1276,8 +1276,8 @@ export class GuestManager {
       const command = callCommand(call);
       if (command !== undefined) touches.command = command;
     }
-    // The suite's own tools: the gateway asks where it matters (delegate's gate), in every mode.
-    if (allow && isSuiteTool(call)) {
+    // Neo's own tools: the gateway asks where it matters (delegate's gate), in every mode.
+    if (allow && isNeoTool(call)) {
       return { outcome: { outcome: "selected", optionId: allow.id } };
     }
     let sensitive: string[] = [];

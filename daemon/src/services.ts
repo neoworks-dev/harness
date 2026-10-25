@@ -1,6 +1,6 @@
 // Background services the daemon starts with itself (today: the lsp service), so their tools
 // work before any app opens. Each registers like an app over the bus; the daemon only owns the
-// process. SUITE_SERVICES=none starts nothing. Services get SUITE_DAEMON_PID and exit when that
+// process. NEO_SERVICES=none starts nothing. Services get NEO_DAEMON_PID and exit when that
 // process is gone, so a killed daemon doesn't leave them behind.
 import { join } from "node:path";
 import type { Subprocess } from "bun";

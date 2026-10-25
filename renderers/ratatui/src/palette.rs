@@ -1,7 +1,7 @@
 //! The daemon's theme colors as ratatui colors.
 
+use neo_protocol::{Theme, Tone};
 use ratatui::style::{Color, Style};
-use suite_protocol::{Theme, Tone};
 
 /// The theme's colors by meaning, as true-color ratatui colors. Fields are public: an app that
 /// wants 16/256 colors or none at all (`NO_COLOR`) maps or replaces them before rendering.

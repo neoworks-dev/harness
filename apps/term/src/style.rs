@@ -1,7 +1,7 @@
 //! Styles derived from the palette; with `NO_COLOR` only modifiers are used.
 
+use neo_renderer_ratatui::Palette;
 use ratatui::style::{Color, Modifier, Style};
-use suite_renderer_ratatui::Palette;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Styles {

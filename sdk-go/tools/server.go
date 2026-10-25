@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 // Protocol versions this server speaks, newest first. initialize echoes the

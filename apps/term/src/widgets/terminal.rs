@@ -4,11 +4,11 @@
 use std::cell::Cell;
 use std::collections::HashSet;
 
+use neo_protocol::{ToolCall, ToolCallContent, ToolCallStatus, ToolCallUpdate, ToolKind};
+use neo_renderer_ratatui::{Palette, highlight_shell};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use suite_protocol::{ToolCall, ToolCallContent, ToolCallStatus, ToolCallUpdate, ToolKind};
-use suite_renderer_ratatui::{Palette, highlight_shell};
 use unicode_width::UnicodeWidthChar;
 
 use super::text::clean_line;
@@ -317,8 +317,8 @@ fn wrap_spans(spans: Vec<Span<'static>>, width: usize) -> Vec<Line<'static>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use neo_renderer_ratatui::plain_text;
     use serde_json::json;
-    use suite_renderer_ratatui::plain_text;
 
     fn call(id: &str, kind: &str, command: &str) -> ToolCall {
         serde_json::from_value(json!({

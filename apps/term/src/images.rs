@@ -15,6 +15,7 @@ use std::thread;
 use std::time::Duration;
 
 use image::DynamicImage;
+use neo_renderer_ratatui::ImageStatus;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Rect, Size};
 use ratatui::style::Style;
@@ -23,13 +24,12 @@ use ratatui_image::picker::cap_parser::QueryStdioOptions;
 use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::sliced::{SignedPosition, SlicedImage, SlicedProtocol};
 use ratatui_image::{FilterType, Resize};
-use suite_renderer_ratatui::ImageStatus;
 
 use crate::chat::{ChatImages, Placement};
 
 /// `kitty`, `sixel`, `iterm2`, `halfblocks` force a protocol, `off` keeps the text placeholder;
 /// anything else (or unset) asks the terminal.
-pub const ENV: &str = "SUITE_TERM_IMAGES";
+pub const ENV: &str = "NEO_TERM_IMAGES";
 
 /// How long to wait for the terminal to answer the detection query.
 const QUERY_TIMEOUT: Duration = Duration::from_millis(1000);
@@ -40,7 +40,7 @@ const KEEP_DECODED: usize = 4;
 /// Larger images are scaled down once, after decoding: no thumbnail needs more.
 const MAX_PIXELS: u32 = 2000;
 
-/// What `SUITE_TERM_IMAGES` asks for.
+/// What `NEO_TERM_IMAGES` asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Off,
@@ -173,7 +173,7 @@ impl Images {
         let (done_tx, done) = mpsc::channel();
         let tx = done_tx.clone();
         thread::Builder::new()
-            .name("suite-term-image-probe".into())
+            .name("neo-term-image-probe".into())
             .spawn(move || {
                 while let Ok(src) = probe_rx.recv() {
                     let result = resolve(&src, &cwd, assets.as_ref())
@@ -186,7 +186,7 @@ impl Images {
             .expect("spawn image probe thread");
         let encoder = picker.clone();
         thread::Builder::new()
-            .name("suite-term-image-encode".into())
+            .name("neo-term-image-encode".into())
             .spawn(move || encode_loop(&encoder, &encode_rx, &done_tx))
             .expect("spawn image encode thread");
         Images {

@@ -1,5 +1,5 @@
 {
-  "name": "@suite/daemon",
+  "name": "@neoworks-dev/neo-daemon",
   "private": true,
   "type": "module",
   "dependencies": {

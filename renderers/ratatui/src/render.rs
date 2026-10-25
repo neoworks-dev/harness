@@ -1,8 +1,8 @@
 //! Components and items as styled lines.
 
+use neo_protocol as pb;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use suite_protocol as pb;
 
 use crate::text::{
     clean, clip, hard_wrap, hard_wrap_spans, line_width, one_line, push_text, sline, truncate,

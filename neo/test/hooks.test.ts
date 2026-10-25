@@ -377,7 +377,7 @@ test("hooks come from config.json, the project's settings and enabled plugins", 
   const pluginsDir = await tempDir();
   const root = join(pluginsDir, "cache", "m", "p", "1");
   await mkdir(join(root, "hooks"), { recursive: true });
-  await mkdir(join(cwd, ".suite"), { recursive: true });
+  await mkdir(join(cwd, ".neo"), { recursive: true });
   await writeFile(
     join(root, "hooks", "hooks.json"),
     JSON.stringify({
@@ -394,7 +394,7 @@ test("hooks come from config.json, the project's settings and enabled plugins", 
     }),
   );
   await writeFile(
-    join(cwd, ".suite", "settings.json"),
+    join(cwd, ".neo", "settings.json"),
     JSON.stringify({
       hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "project-hook" }] }] },
     }),
@@ -413,7 +413,7 @@ test("hooks come from config.json, the project's settings and enabled plugins", 
   const sources = (table.PreToolUse ?? []).flatMap((group) =>
     group.hooks.map((hook) => hook.source),
   );
-  expect(sources).toEqual(["the hooks of config.json", ".suite/settings.json", "plugin p@m"]);
+  expect(sources).toEqual(["the hooks of config.json", ".neo/settings.json", "plugin p@m"]);
 });
 
 test("a plugin's manifest may declare hooks inline or by path", async () => {

@@ -1,4 +1,4 @@
-// Command suite is the CLI for the suite daemon.
+// Command neo is the CLI for neo daemon.
 package main
 
 import (

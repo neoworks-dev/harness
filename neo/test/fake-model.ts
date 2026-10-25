@@ -14,7 +14,7 @@ export const TEST_CONFIG: HarnessConfig = {
   modelId: "deepseek-v4-flash",
   thinkingLevel: "off",
   apiKey: "test-key-not-real",
-  authPath: "/nonexistent/suite-auth.json",
+  authPath: "/nonexistent/neo-auth.json",
   piAuthPath: "/nonexistent/auth.json",
   web: { safeSearch: "moderate" },
 };

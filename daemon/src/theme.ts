@@ -1,4 +1,4 @@
-// The theme the daemon serves: SUITE_THEME or ~/.config/suite/theme.json if present, else the
+// The theme the daemon serves: NEO_THEME or ~/.config/neo/theme.json if present, else the
 // built-in default. An invalid file is reported and ignored.
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -10,7 +10,7 @@ import type { Logger } from "./log.ts";
 
 export function loadTheme(env: Record<string, string | undefined>, log: Logger): Theme {
   const configHome = env.XDG_CONFIG_HOME ?? join(homedir(), ".config");
-  const path = env.SUITE_THEME ?? join(configHome, "suite", "theme.json");
+  const path = env.NEO_THEME ?? join(configHome, "neo", "theme.json");
   if (!existsSync(path)) return defaultTheme;
   try {
     const theme: unknown = JSON.parse(readFileSync(path, "utf8"));

@@ -1,13 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AppPresence } from "@neoworks-dev/neo-protocol/types";
 import { createToolServer } from "@neoworks-dev/neo-sdk";
-import {
-  connect,
-  DisconnectedError,
-  fixedAddress,
-  SuiteError,
-  TimeoutError,
-} from "../src/index.ts";
+import { connect, DisconnectedError, fixedAddress, NeoError, TimeoutError } from "../src/index.ts";
 import { cleanupAfterEach } from "./support/cleanup.ts";
 import { FakeDaemon } from "./support/fake-daemon.ts";
 import { Recorder } from "./support/recorder.ts";
@@ -43,7 +37,7 @@ describe("requests", () => {
     expect(harnesses[0]).toMatchObject({ current: true, options: [] });
     expect(harnesses[0]?.error).toBeUndefined();
     const error = await rejection(client.sessionSettings("s_nope"));
-    expect(error).toBeInstanceOf(SuiteError);
+    expect(error).toBeInstanceOf(NeoError);
   });
 
   test("input comes from the presence's app, else the client name, else the app you give", async () => {
@@ -81,10 +75,10 @@ describe("requests", () => {
     expect(events.turnEnds()).toEqual(["cancelled"]);
   });
 
-  test("a request the daemon refuses rejects with SuiteError and its code", async () => {
+  test("a request the daemon refuses rejects with NeoError and its code", async () => {
     const { client } = await startRig(later);
     const error = await client.input("nope", "x").catch((thrown: unknown) => thrown);
-    expect(error).toBeInstanceOf(SuiteError);
+    expect(error).toBeInstanceOf(NeoError);
     expect(error).toMatchObject({ code: "not_found" });
   });
 

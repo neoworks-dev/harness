@@ -1,26 +1,26 @@
 # apps/gui
 
-`suite-gui`, the suite's desktop app: the shared conversation in a native window, with the sessions of every project at its left, the agents working for you under the input, and the plan and changed files at its right. It is the terminal app ([apps/term](../term/README.md)) with a mouse, a real window and pictures.
+`neo-gui`, neo's desktop app: the shared conversation in a native window, with the sessions of every project at its left, the agents working for you under the input, and the plan and changed files at its right. It is the terminal app ([apps/term](../term/README.md)) with a mouse, a real window and pictures.
 
 It is only a client. The conversation lives in the daemon, so closing the window never stops work, and the terminal app and other windows show the same session.
 
 ## Running it
 
 ```sh
-task build                  # bin/suite and bin/suite-gui (builds the window's UI too)
-suite gui                   # the agent's session if it works in this directory, else the latest one here, else a new one
-suite gui --session 3fa9    # a session by id or unique prefix
-suite gui --new             # a new session in this directory
+task build                  # bin/neo and bin/neo-gui (builds the window's UI too)
+neo gui                   # the agent's session if it works in this directory, else the latest one here, else a new one
+neo gui --session 3fa9    # a session by id or unique prefix
+neo gui --new             # a new session in this directory
 ```
 
-`suite gui` starts the daemon if it is not running, opens the window and returns: the terminal is free to use. The window's own output goes to `gui.log` in the data directory. `SUITE_GUI` names another `suite-gui` binary.
+`neo gui` starts the daemon if it is not running, opens the window and returns: the terminal is free to use. The window's own output goes to `gui.log` in the data directory. `NEO_GUI` names another `neo-gui` binary.
 
 ## What you see
 
 - **Sessions** (left, Ctrl-S shows or hides it). Every session, grouped by project and, under it, by worktree (`<repo>/.worktrees/<name>` or any linked worktree). The newest activity is first. Each shows its title, the lines its edits changed (`+12 −3`), the last thing said and how long ago. The session you are in has a bar in the margin; one that finished while you looked elsewhere has a bold title until you open it, and the header counts them (`3 done`). A session that another one delegated to sits under its parent with `↳`. Press a row to open it. A session is named after the start of its first message, which a model then replaces with a short title; the row's menu has **Regenerate title**, and `/title-model` chooses the model (see the [README](../../README.md#session-titles)).
   - **Search** (Ctrl-Shift-F) replaces the list with the sessions whose title, last message or project holds every word typed, titles first; Up and Down walk the results, Enter opens one, Esc clears. It searches what the daemon lists, not whole conversations.
   - The header's buttons **filter by project** (a popover of the projects; the choice is kept while the window is open), **add a project** (the system's folder picker, then a new session in the folder) and start a **new session** in the shown session's project (Shift asks which project).
-  - **Pin** a session to keep it at the top, or **settle** it to fold it away under "Settled (n)" at the bottom until it does something again. Both are in the row's right-press menu, with the folder and id to copy and a project filter; hovering a row shows a Settle button where its age is. Pins and settled sessions are kept in `suite-gui/sessions.json` in the data directory.
+  - **Pin** a session to keep it at the top, or **settle** it to fold it away under "Settled (n)" at the bottom until it does something again. Both are in the row's right-press menu, with the folder and id to copy and a project filter; hovering a row shows a Settle button where its age is. Pins and settled sessions are kept in `neo-gui/sessions.json` in the data directory.
   - Where a row shows its age it shows what the session is doing instead: a blue spinner and `Working 12s` while it runs (counted from when the window first saw it run), a green `Done` once it finished while you looked elsewhere.
 - **The chat** (middle), the input under it, and the status line at the bottom. A turn running shows its work as it comes (commands, reads, edits and the rest as rows of one group, "Working for 12s" under them); a finished turn folds it under "Worked for 3m 43s", with the files it changed on a card under the agent's last reply. Press a row to see what it did.
 - **UI in the chat.** When the agent answers with a UI (the [neoui](../../docs/neoui.md) blocks the model writes, or an app's template for a tool result) the window draws it as cards, tabs, accordions, carousels, tables, tags, metrics, progress bars, charts (bars, lines, areas, pies and rings, sparklines), pictures and the generic boxes and shapes a model or an app composes, and fills in as it streams. Cards line up in a grid as wide as the chat allows, key numbers in a band. Fields and buttons work: type into a text field or area, choose from a dropdown, rings, cards, boxes and switches, drag a slider, pick a day from the calendar beside a date field. A field that fails shows its message in red under it, a required one has a `*`. Press a button to send the form's values to the agent; a button with a link opens it in the browser, one that copies copies. A doc that is still arriving draws dimmed and cannot be used yet. A UI an app returned for a tool stays open under its row while it has something to fill in. Pictures in a UI may be on disk, in the asset store or on the web: the daemon downloads web ones (public hosts only) and the window loads them from it.

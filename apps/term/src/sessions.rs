@@ -10,10 +10,10 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use neo_protocol::{SessionInfo, SessionState};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
-use suite_protocol::{SessionInfo, SessionState};
 
 use crate::menu::session_title;
 use crate::style::Styles;
@@ -623,7 +623,7 @@ fn changed(info: &SessionInfo, styles: &Styles) -> Vec<Span<'static>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use suite_renderer_ratatui::Palette;
+    use neo_renderer_ratatui::Palette;
 
     fn info(id: &str, title: &str, last: i64) -> SessionInfo {
         SessionInfo {
@@ -1053,7 +1053,7 @@ mod tests {
 
     #[test]
     fn places_come_from_the_worktrees_convention_and_from_git_files() {
-        let root = std::env::temp_dir().join(format!("suite-term-places-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("neo-term-places-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let repo = root.join("app");
         let linked = root.join("app-hotfix");

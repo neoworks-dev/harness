@@ -9,7 +9,7 @@
 #   SEED=$'hello\nshow me a diff' apps/gui/scripts/shot.sh /tmp/gui.png 4
 # SCENE=openui SCENE_SCRIPT=scene-openui.ts SCENE_DOCS=dashboard,form (scripts/openui-docs.ts) has the
 # agent answer with neoui docs, to look at how the window draws them.
-# Build first: bun apps/gui/build.mjs && cargo build --release -p suite-gui
+# Build first: bun apps/gui/build.mjs && cargo build --release -p neo-gui
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -19,8 +19,8 @@ shift
 if [ $# -gt 0 ]; then shift; fi
 
 tmp=$(mktemp -d)
-export SUITE_SOCKET=$tmp/bus.sock SUITE_DATA_DIR=$tmp/data
-export SUITE_AGENT=echo SUITE_SERVICES=none SUITE_GUESTS=none
+export NEO_SOCKET=$tmp/bus.sock NEO_DATA_DIR=$tmp/data
+export NEO_AGENT=echo NEO_SERVICES=none NEO_GUESTS=none
 daemon_pid=""
 cleanup() {
   kill $daemon_pid 2>/dev/null || true
@@ -62,7 +62,7 @@ done
 mkdir -p "$tmp/work"
 cd "$tmp/work"
 if [ -n "${SEED:-}" ]; then
-  printf '%s\n' "$SEED" | "$root/bin/suite" attach --new >/dev/null
+  printf '%s\n' "$SEED" | "$root/bin/neo" attach --new >/dev/null
 fi
 # More sessions, each from its own directory (under work/, so the window's own stays the first
 # session's): SEED2 in work/site, SEED3 in a worktree of it. A line "wait:60000" keeps one running.
@@ -71,9 +71,9 @@ for extra in "SEED2 site" "SEED3 site/.worktrees/dark"; do
   seed=${!var:-}
   if [ -n "$seed" ]; then
     mkdir -p "$tmp/work/$dir"
-    (cd "$tmp/work/$dir" && printf '%s\n' "$seed" | timeout 5 "$root/bin/suite" attach --new >/dev/null) || true
+    (cd "$tmp/work/$dir" && printf '%s\n' "$seed" | timeout 5 "$root/bin/neo" attach --new >/dev/null) || true
   fi
 done
 
-HOST="$root/target/release/suite-gui" \
+HOST="$root/target/release/neo-gui" \
   "$root/../svelte-gpui/scripts/shot.sh" "$root/apps/gui/dist/gui.js" "$out" "$seconds" "$@"

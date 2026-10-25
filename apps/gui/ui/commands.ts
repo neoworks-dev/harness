@@ -8,9 +8,9 @@ import type { Committed, Editor, Overview } from "./plugins/workspace/workspace.
 export interface Startup {
   /** Where the window was started. */
   cwd: string;
-  /** `suite gui --session ID`. */
+  /** `neo gui --session ID`. */
   session: string | null;
-  /** `suite gui --new`. */
+  /** `neo gui --new`. */
   new: boolean;
 }
 

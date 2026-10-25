@@ -60,7 +60,7 @@ export function applyEvent(status: SessionStatus, record: SessionEventRecord): S
       return { ...status, usage: event };
     case "setting_changed": {
       const { harness, option, value } = event;
-      if (harness === "suite") {
+      if (harness === "daemon") {
         if (option === "harness") return { ...status, harness: value };
         if (option === "approvals" && isApprovals(value)) return { ...status, approvals: value };
         return status;

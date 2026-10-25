@@ -148,16 +148,16 @@ pub fn osc52(text: &str) -> String {
     format!("\x1b]52;c;{}\x07", base64(text.as_bytes()))
 }
 
-/// The suite's data directory (as the daemon resolves it).
+/// Neo's data directory (as the daemon resolves it).
 pub fn data_dir() -> Option<PathBuf> {
-    if let Some(dir) = std::env::var_os("SUITE_DATA_DIR").filter(|d| !d.is_empty()) {
+    if let Some(dir) = std::env::var_os("NEO_DATA_DIR").filter(|d| !d.is_empty()) {
         return Some(PathBuf::from(dir));
     }
     if let Some(dir) = std::env::var_os("XDG_DATA_HOME").filter(|d| !d.is_empty()) {
-        return Some(Path::new(&dir).join("suite"));
+        return Some(Path::new(&dir).join("neo"));
     }
     let home = std::env::var_os("HOME").filter(|d| !d.is_empty())?;
-    Some(Path::new(&home).join(".local/share/suite"))
+    Some(Path::new(&home).join(".local/share/neo"))
 }
 
 #[cfg(test)]

@@ -4,8 +4,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use suite_protocol::ViewItem;
-use suite_renderer_gpui::{ChatTheme, dump_items, layout_items};
+use neo_protocol::ViewItem;
+use neo_renderer_gpui::{ChatTheme, dump_items, layout_items};
 
 fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures")

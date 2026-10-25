@@ -10,7 +10,7 @@ function byId<T extends HTMLElement>(id: string, kind: new () => T): T {
 }
 
 function readAddress(): DaemonAddress {
-  const raw = byId("suite-config", HTMLScriptElement).textContent;
+  const raw = byId("neo-config", HTMLScriptElement).textContent;
   const config: { url?: unknown; token?: unknown } = JSON.parse(raw);
   if (typeof config.url !== "string" || typeof config.token !== "string") {
     throw new Error("the page has no daemon address");

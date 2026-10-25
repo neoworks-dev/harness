@@ -44,7 +44,7 @@ func StartReal(t testing.TB) *RealDaemon {
 		t.Skip("bun is not installed; cannot start the real daemon")
 	}
 	root := repoRoot(t)
-	dir, err := os.MkdirTemp("", "suite")
+	dir, err := os.MkdirTemp("", "neo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,11 +58,11 @@ func StartReal(t testing.TB) *RealDaemon {
 	cmd := exec.Command(bun, "run", "daemon/src/main.ts")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(),
-		"SUITE_AGENT=echo",
-		"SUITE_SERVICES=none",
-		"SUITE_SOCKET="+r.Socket,
-		"SUITE_DATA_DIR="+r.DataDir,
-		"SUITE_PORT=0",
+		"NEO_AGENT=echo",
+		"NEO_SERVICES=none",
+		"NEO_SOCKET="+r.Socket,
+		"NEO_DATA_DIR="+r.DataDir,
+		"NEO_PORT=0",
 	)
 	cmd.Stdout, cmd.Stderr = r.out, r.out
 	if err := cmd.Start(); err != nil {

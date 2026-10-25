@@ -1,14 +1,14 @@
 //! The GitHub view's data: issues and pull requests of the session's repository, read through
-//! `suite-github`, whose `gh` runner refuses anything that could write.
+//! `neo-github`, whose `gh` runner refuses anything that could write.
 
 use std::path::Path;
 
+use neo_github::fetch;
+use neo_github::format;
+use neo_github::gh::{Gh, GhCli, GhError};
+use neo_github::model::Kind;
 use serde::Serialize;
 use serde_json::{Value, json};
-use suite_github::fetch;
-use suite_github::format;
-use suite_github::gh::{Gh, GhCli, GhError};
-use suite_github::model::Kind;
 use svelte_gpui::{CommandError, Commands};
 
 /// A `gh` failure for the UI: the code says what the user can do about it.
@@ -99,14 +99,14 @@ pub fn register(commands: Commands) -> Commands {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use suite_github::fixtures::*;
+    use neo_github::fixtures::*;
 
     /// Answers like the recorded acme/site, and fails the test on a command that may write.
     struct Recorded;
 
     impl Gh for Recorded {
         fn run(&self, _cwd: &Path, args: &[String]) -> Result<String, GhError> {
-            assert!(suite_github::gh::is_read_only(args), "{args:?}");
+            assert!(neo_github::gh::is_read_only(args), "{args:?}");
             let line = args.join(" ");
             let reply = [
                 ("repo view", REPO),

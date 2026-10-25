@@ -1,5 +1,5 @@
 // What was sent in a session, walked back with Up and forward with Down, and how it is kept on
-// disk (`<data>/suite/gui-history/<session>.jsonl`, one JSON string per line, like the terminal
+// disk (`<data>/neo/gui-history/<session>.jsonl`, one JSON string per line, like the terminal
 // app's). The file access itself is in history-store.ts; this part needs no window.
 
 /** Entries kept (and loaded) per session. */

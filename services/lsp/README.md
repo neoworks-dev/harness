@@ -1,6 +1,6 @@
 # lsp service
 
-Language servers as a background connector (`kind: service`), so the agent gets diagnostics and navigation whether or not an editor is open. The daemon starts it (`SUITE_SERVICES=none` to skip; it exits when the daemon does); by hand: `bun run services/lsp/main.ts`.
+Language servers as a background connector (`kind: service`), so the agent gets diagnostics and navigation whether or not an editor is open. The daemon starts it (`NEO_SERVICES=none` to skip; it exits when the daemon does); by hand: `bun run services/lsp/main.ts`.
 
 | Tool          | Args                                 | Does                                            |
 | ------------- | ------------------------------------ | ----------------------------------------------- |

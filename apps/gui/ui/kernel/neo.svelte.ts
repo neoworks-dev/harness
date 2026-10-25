@@ -47,7 +47,7 @@ function message(error: unknown): string {
   return String(error);
 }
 
-class Suite {
+class Neo {
   /** "starting" until the first connection, then the client's state. */
   connection = $state<ConnectionState | "starting">("starting");
   /** Why starting or the last request failed, for the window to show. */
@@ -92,7 +92,7 @@ class Suite {
     return this.sessions.find((session) => session.id === this.sessionId);
   }
 
-  /** Connects, registers the window and opens the session `suite gui` asked for. */
+  /** Connects, registers the window and opens the session `neo gui` asked for. */
   async start(): Promise<void> {
     try {
       const startup = await invoke("startup", null);
@@ -143,7 +143,7 @@ class Suite {
 
   /**
    * Someone else made another session current while the agent is in this window (`/clear`,
-   * `suite move`): show it too. Focus changes from before our own move are stale, so they are
+   * `neo move`): show it too. Focus changes from before our own move are stale, so they are
    * skipped until the one for the session we moved to arrives.
    */
   private followFocus(focus: AgentFocus | undefined): void {
@@ -339,7 +339,7 @@ class Suite {
   }
 
   private need(): Client {
-    if (!this.client) throw new Error("not connected to the suite daemon");
+    if (!this.client) throw new Error("not connected to neo daemon");
     return this.client;
   }
 
@@ -362,7 +362,7 @@ class Suite {
   }
 }
 
-export const suite = new Suite();
+export const neo = new Neo();
 
 /** Known options fill in a harness that had none; they never take away what a full ask found. */
 function mergeKnown(

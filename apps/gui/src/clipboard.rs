@@ -64,9 +64,9 @@ fn run(argv: &[&str]) -> Option<Vec<u8>> {
     output.status.success().then_some(output.stdout)
 }
 
-/// Writes the image to `$TMPDIR/suite-gui/paste-<ms>.<extension>`.
+/// Writes the image to `$TMPDIR/neo-gui/paste-<ms>.<extension>`.
 fn save(bytes: &[u8], extension: &str) -> Option<PathBuf> {
-    let dir = std::env::temp_dir().join("suite-gui");
+    let dir = std::env::temp_dir().join("neo-gui");
     std::fs::create_dir_all(&dir).ok()?;
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)

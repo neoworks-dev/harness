@@ -1,15 +1,15 @@
 // Daemon entry point: `bun run daemon` (or `bun run daemon/src/main.ts`).
 //
-// Env: SUITE_SOCKET, SUITE_DATA_DIR (see paths.ts), SUITE_PORT (TCP, default: any free port);
-// SUITE_AGENT=neo|echo (default neo); SUITE_SERVICES=none skips the background services (lsp);
-// SUITE_TITLES=off keeps a model from writing session titles (/title still does, see titles.ts);
-// guests (Claude Code, Codex) are configured in guests/config.ts (SUITE_GUESTS=none: none);
+// Env: NEO_SOCKET, NEO_DATA_DIR (see paths.ts), NEO_PORT (TCP, default: any free port);
+// NEO_AGENT=neo|echo (default neo); NEO_SERVICES=none skips the background services (lsp);
+// NEO_TITLES=off keeps a model from writing session titles (/title still does, see titles.ts);
+// guests (Claude Code, Codex) are configured in guests/config.ts (NEO_GUESTS=none: none);
 // model and API key settings are read by the harness (see neo/src/config.ts).
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Agent } from "@neoworks-dev/neo/agent";
 import { authPaths } from "@neoworks-dev/neo/config";
-import { suiteConfigDir } from "@neoworks-dev/neo/mcp-config";
+import { neoConfigDir } from "@neoworks-dev/neo/mcp-config";
 import { createDaemon } from "./daemon.ts";
 import { createEchoAgent } from "./echo-agent.ts";
 import { loadGuestConfigs } from "./guests/config.ts";
@@ -20,7 +20,7 @@ import { loadTheme } from "./theme.ts";
 
 async function createAgent(name: string, log: Logger): Promise<Agent> {
   if (name === "echo") return createEchoAgent();
-  if (name !== "neo") throw new Error(`unknown SUITE_AGENT ${name} (expected neo or echo)`);
+  if (name !== "neo") throw new Error(`unknown NEO_AGENT ${name} (expected neo or echo)`);
   const { createNeoAgent } = await import("@neoworks-dev/neo/neo");
   const { loadHarnessConfig } = await import("@neoworks-dev/neo/config");
   const config = loadHarnessConfig();
@@ -33,26 +33,26 @@ async function main(): Promise<void> {
   const paths = resolvePaths();
   const daemon = await createDaemon({
     paths,
-    agent: await createAgent(process.env.SUITE_AGENT ?? "neo", log),
+    agent: await createAgent(process.env.NEO_AGENT ?? "neo", log),
     log,
-    port: Number(process.env.SUITE_PORT ?? 0),
+    port: Number(process.env.NEO_PORT ?? 0),
     defaultCwd: homedir(),
     theme: loadTheme(process.env, log),
     guests: loadGuestConfigs(),
-    titles: process.env.SUITE_TITLES !== "off",
+    titles: process.env.NEO_TITLES !== "off",
     accounts: authPaths(),
-    plugins: join(suiteConfigDir(), "plugins"),
-    mcp: { configFile: join(suiteConfigDir(), "config.json") },
+    plugins: join(neoConfigDir(), "plugins"),
+    mcp: { configFile: join(neoConfigDir(), "config.json") },
   });
   log.info(`listening on ${paths.socket} and ${daemon.info.url}, data in ${paths.dataDir}`);
   const commands: string[][] = [];
-  if (process.env.SUITE_SERVICES !== "none") commands.push(...DEFAULT_SERVICES);
+  if (process.env.NEO_SERVICES !== "none") commands.push(...DEFAULT_SERVICES);
   const services = startServices(
     commands,
     {
       ...process.env,
-      SUITE_SOCKET: paths.socket,
-      SUITE_DAEMON_PID: String(process.pid),
+      NEO_SOCKET: paths.socket,
+      NEO_DAEMON_PID: String(process.pid),
     },
     log,
   );
@@ -73,6 +73,6 @@ async function main(): Promise<void> {
 try {
   await main();
 } catch (err) {
-  process.stderr.write(`suite daemon: ${err instanceof Error ? err.message : String(err)}\n`);
+  process.stderr.write(`neo daemon: ${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(1);
 }

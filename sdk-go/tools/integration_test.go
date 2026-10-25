@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	protocol "neoworks.dev/suite/protocol/go"
-	sdk "neoworks.dev/suite/sdk-go"
-	"neoworks.dev/suite/sdk-go/sdktest"
-	"neoworks.dev/suite/sdk-go/tools"
+	protocol "neoworks.dev/neo/protocol/go"
+	sdk "neoworks.dev/neo/sdk-go"
+	"neoworks.dev/neo/sdk-go/sdktest"
+	"neoworks.dev/neo/sdk-go/tools"
 )
 
 func start(t *testing.T) (*sdktest.RealDaemon, *sdk.Client, *tools.Server) {

@@ -33,7 +33,7 @@ const INLINE = new Set([
 
 /** Diff lines are spans that display as blocks. */
 function isInline(node: Element): boolean {
-  return INLINE.has(node.tagName.toLowerCase()) && !node.classList.contains("suite-diff-line");
+  return INLINE.has(node.tagName.toLowerCase()) && !node.classList.contains("neo-diff-line");
 }
 
 function isInlineOnly(node: Element): boolean {

@@ -7,13 +7,13 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
+use neo_term::app::App;
+use neo_term::driver::{Args, Driver, StartOptions, Started, start};
+use neo_term::history::HistoryStore;
+use neo_term::util::now_ms;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use suite_term::app::App;
-use suite_term::driver::{Args, Driver, StartOptions, Started, start};
-use suite_term::history::HistoryStore;
-use suite_term::util::now_ms;
 
 struct TempDir(PathBuf);
 
@@ -21,8 +21,7 @@ impl TempDir {
     fn new(label: &str) -> TempDir {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir =
-            std::env::temp_dir().join(format!("suite-term-{label}-{}-{n}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("neo-term-{label}-{}-{n}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         TempDir(dir)
     }
@@ -52,12 +51,12 @@ impl Daemon {
         let child = match Command::new("bun")
             .args(["run", "daemon/src/main.ts"])
             .current_dir(root)
-            .env("SUITE_AGENT", "echo")
-            .env("SUITE_SERVICES", "none")
-            .env("SUITE_GUESTS", "none")
-            .env("SUITE_SOCKET", &socket)
-            .env("SUITE_DATA_DIR", dir.join("data"))
-            .env("SUITE_PORT", "0")
+            .env("NEO_AGENT", "echo")
+            .env("NEO_SERVICES", "none")
+            .env("NEO_GUESTS", "none")
+            .env("NEO_SOCKET", &socket)
+            .env("NEO_DATA_DIR", dir.join("data"))
+            .env("NEO_PORT", "0")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -89,7 +88,7 @@ impl Daemon {
             home: Some("/nonexistent-home".into()),
             no_color: true,
             history: HistoryStore::new(Some(self.dir.join("history"))),
-            prefs: suite_term::theme::Prefs::default(),
+            prefs: neo_term::theme::Prefs::default(),
             args,
         }) {
             Ok(started) => started,
@@ -194,8 +193,8 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
     ui.until("the turn to end", |s| !s.contains("working"));
 
     // Registered as the app "terminal", and the agent is here with this session.
-    let probe = suite_sdk::Client::connect({
-        let mut o = suite_sdk::Options::new("probe");
+    let probe = neo_sdk::Client::connect({
+        let mut o = neo_sdk::Options::new("probe");
         o.socket = Some(daemon.socket.clone());
         o
     })
@@ -203,7 +202,7 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
     let events = probe.events();
     let focus = loop {
         match events.recv_blocking() {
-            Ok(suite_sdk::Event::Focus(f)) => break f,
+            Ok(neo_sdk::Event::Focus(f)) => break f,
             Ok(_) => {}
             Err(e) => panic!("{e}"),
         }
@@ -314,8 +313,8 @@ fn a_second_terminal_registers_under_its_own_name_and_resumes_the_session() {
     let mut second = Ui::new(daemon.open(&cwd, Args::default()));
     assert_eq!(second.app.session(), first.app.session());
     second.until("replay", |s| s.contains("echo #1: one"));
-    let probe = suite_sdk::Client::connect({
-        let mut o = suite_sdk::Options::new("probe");
+    let probe = neo_sdk::Client::connect({
+        let mut o = neo_sdk::Options::new("probe");
         o.socket = Some(daemon.socket.clone());
         o
     })

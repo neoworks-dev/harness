@@ -55,7 +55,7 @@ export interface McpServer {
   headers: { name: string; value: string }[];
 }
 
-/** ACP's config option categories the suite lets the user set (/model, /effort, /mode). */
+/** ACP's config option categories neo lets the user set (/model, /effort, /mode). */
 export type ConfigCategory = "model" | "thought_level" | "mode";
 
 /** One settable option of a session, as ACP's session config options describe it. */

@@ -6,9 +6,9 @@
 
 use std::path::PathBuf;
 
+use neo_renderer_ratatui::Palette;
 use ratatui::buffer::Buffer;
 use ratatui::style::Color;
-use suite_renderer_ratatui::Palette;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Theme {
@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn the_theme_is_kept_in_a_file() {
-        let dir = std::env::temp_dir().join(format!("suite-term-prefs-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("neo-term-prefs-{}", std::process::id()));
         let prefs = Prefs::new(Some(dir.join("term.json")));
         assert_eq!(prefs.theme(), Theme::Dark);
         prefs.set_theme(Theme::Light).unwrap();

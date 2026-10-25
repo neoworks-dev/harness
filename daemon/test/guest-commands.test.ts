@@ -122,7 +122,7 @@ test("a delegated subagent's commands are not the user's", async () => {
     if (event.type !== "permission_request" || event.title !== "Start a subagent?") return;
     void Promise.resolve().then(() =>
       daemon.actions.run(
-        { session: id, ref: "p", action: "suite.permit", args: { id: event.id, option: "allow" } },
+        { session: id, ref: "p", action: "neo.permit", args: { id: event.id, option: "allow" } },
         "test",
       ),
     );

@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use std::collections::HashSet;
 
-use suite_protocol::{
+use neo_protocol::{
     AppPresence, AppPresenceMessage, BusHello, Envelope, Hello, SessionSubscribe, SubscribeParams,
     ViewRef, ViewSubscribe,
 };
@@ -115,7 +115,7 @@ pub(crate) fn dial(path: &Path, client: &str) -> Result<Socket> {
     stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;
     stream.set_write_timeout(Some(WRITE_TIMEOUT))?;
     // The host is not used for routing; it only has to be well-formed.
-    let request = "ws://suite/bus"
+    let request = "ws://neo/bus"
         .into_client_request()
         .map_err(|err| Error::Connect(err.to_string()))?;
     let (mut ws, _) =

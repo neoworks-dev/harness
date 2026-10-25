@@ -1,14 +1,14 @@
-// The sidebar's marks on disk: `<data>/suite-gui/sessions.json`. The marks themselves are in
+// The sidebar's marks on disk: `<data>/neo-gui/sessions.json`. The marks themselves are in
 // marks.ts; this part touches files, so a window is needed to run it.
 import { files } from "@neoworks/svelte-gpui";
 import { NO_MARKS, parseMarks, serializeMarks, type Marks } from "./marks.ts";
 
 let directory: Promise<string> | undefined;
 
-/** `<data>/suite-gui`, made on first use. */
+/** `<data>/neo-gui`, made on first use. */
 function marksDirectory(): Promise<string> {
   directory ??= files.paths().then(async ({ data }) => {
-    const path = `${data}/suite-gui`;
+    const path = `${data}/neo-gui`;
     await files.mkdir(path, { recursive: true });
     return path;
   });

@@ -3,9 +3,9 @@
 //! The result is flattened into leaves (a card's title, a text, a code block, a diff, ...); the
 //! first leaf's first line is shown, and what is left out is counted at its end: `… +N lines`.
 
+use neo_protocol as pb;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use suite_protocol as pb;
 
 use crate::render::{Cx, Lines};
 use crate::text::{clean, one_line, sline, truncate, truncate_spans, width};

@@ -1,14 +1,14 @@
 //! Type-to-filter on a long choice (`/model` with a key for every provider): which options
 //! match what was typed, and where the focus goes among them. Pure, so it is tested alone.
 
-use suite_renderer_ratatui::ButtonRef;
+use neo_renderer_ratatui::ButtonRef;
 
 /// The number keys stop at 9: a choice with more options than that gets a filter field.
 pub const FILTER_FROM: usize = 9;
 
 /// Whether the buttons are a choice long enough to filter. Permission cards never are.
 pub fn is_long(buttons: &[ButtonRef]) -> bool {
-    buttons.len() > FILTER_FROM && buttons.iter().all(|b| b.action == "suite.choose")
+    buttons.len() > FILTER_FROM && buttons.iter().all(|b| b.action == "neo.choose")
 }
 
 /// The option's id, as the daemon knows it (`openrouter/anthropic/claude-haiku-4.5`).
@@ -74,7 +74,7 @@ mod tests {
     fn option(label: &str, id: &str, description: Option<&str>) -> ButtonRef {
         ButtonRef {
             label: label.into(),
-            action: "suite.choose".into(),
+            action: "neo.choose".into(),
             args: Some(json!({"id": "c", "option": id})),
             key: "1".into(),
             current: false,
@@ -103,7 +103,7 @@ mod tests {
         assert!(!is_long(&nine));
         nine.push(option("m", "m9", None));
         assert!(is_long(&nine));
-        nine[3].action = "suite.permit".into();
+        nine[3].action = "neo.permit".into();
         assert!(!is_long(&nine));
     }
 

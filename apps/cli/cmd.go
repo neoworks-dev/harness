@@ -12,8 +12,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	protocol "neoworks.dev/suite/protocol/go"
-	sdk "neoworks.dev/suite/sdk-go"
+	protocol "neoworks.dev/neo/protocol/go"
+	sdk "neoworks.dev/neo/sdk-go"
 )
 
 // cliEnv is everything the commands take from the process, so tests can call
@@ -36,18 +36,18 @@ type cliEnv struct {
 	Environ     func() []string                             // default os.Environ
 	LookPath    func(string) (string, error)                // default exec.LookPath
 	Exec        func(path string, argv, env []string) error // default syscall.Exec
-	Spawn       func(path string, argv, env []string) error // default: start detached (suite gui)
+	Spawn       func(path string, argv, env []string) error // default: start detached (neo gui)
 	UpTimeout   time.Duration                               // default 15s
 	DownTimeout time.Duration                               // default 10s
 }
 
-const usage = `usage: suite [command] [flags]
+const usage = `usage: neo [command] [flags]
 
-With no command on a terminal, suite starts the daemon if needed and opens the
-terminal app (suite-term).
+With no command on a terminal, neo starts the daemon if needed and opens the
+terminal app (neo-term).
 
 commands:
-  gui [--session ID | --new]    open the desktop app (suite-gui) on the agent's
+  gui [--session ID | --new]    open the desktop app (neo-gui) on the agent's
                                 session, a given one, or a new one in this
                                 directory; the terminal stays free
   up                            make sure the daemon is running; start it in the
@@ -105,15 +105,15 @@ func run(ctx context.Context, args []string, e cliEnv) int {
 		fmt.Fprint(e.Stdout, usage)
 		return 0
 	}
-	fmt.Fprintf(e.Stderr, "suite: unknown command %q\n\n%s", cmd, usage)
+	fmt.Fprintf(e.Stderr, "neo: unknown command %q\n\n%s", cmd, usage)
 	return 2
 }
 
 // commandFlags builds a flag set with the flags every command shares.
 func commandFlags(name string, e cliEnv) (fs *flag.FlagSet, socket *string) {
-	fs = flag.NewFlagSet("suite "+name, flag.ContinueOnError)
+	fs = flag.NewFlagSet("neo "+name, flag.ContinueOnError)
 	fs.SetOutput(e.Stderr)
-	socket = fs.String("socket", "", "daemon socket path (default $SUITE_SOCKET or the runtime dir)")
+	socket = fs.String("socket", "", "daemon socket path (default $NEO_SOCKET or the runtime dir)")
 	return fs, socket
 }
 
@@ -140,9 +140,9 @@ func connect(ctx context.Context, socketFlag string, e cliEnv) (*sdk.Client, str
 	c, err := sdk.Dial(ctx, sdk.Options{Socket: path, Client: "cli"})
 	switch {
 	case errors.Is(err, sdk.ErrDaemonDown):
-		fmt.Fprintf(e.Stderr, "suite: daemon not running (socket %s); start it with: suite up\n", path)
+		fmt.Fprintf(e.Stderr, "neo: daemon not running (socket %s); start it with: neo up\n", path)
 	case err != nil:
-		fmt.Fprintf(e.Stderr, "suite: cannot connect to daemon (socket %s): %v\n", path, err)
+		fmt.Fprintf(e.Stderr, "neo: cannot connect to daemon (socket %s): %v\n", path, err)
 	default:
 		return c, path, true
 	}
@@ -162,7 +162,7 @@ func runStatus(ctx context.Context, args []string, e cliEnv) int {
 
 	sessions, err := c.ListSessions(ctx)
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "suite: %v\n", err)
+		fmt.Fprintf(e.Stderr, "neo: %v\n", err)
 		return 1
 	}
 	running := 0
@@ -209,7 +209,7 @@ func runFocus(ctx context.Context, args []string, e cliEnv) int {
 		return 2
 	}
 	if len(positional) > 0 {
-		fmt.Fprint(e.Stderr, "usage: suite focus\n")
+		fmt.Fprint(e.Stderr, "usage: neo focus\n")
 		return 2
 	}
 	c, _, ok := connect(ctx, *socket, e)
@@ -220,7 +220,7 @@ func runFocus(ctx context.Context, args []string, e cliEnv) int {
 
 	focus, err := waitFocus(ctx, c)
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "suite: no agent.focus from the daemon: %v\n", err)
+		fmt.Fprintf(e.Stderr, "neo: no agent.focus from the daemon: %v\n", err)
 		return 1
 	}
 	fmt.Fprintln(e.Stdout, describeFocus(focus))
@@ -235,7 +235,7 @@ func runMove(ctx context.Context, args []string, e cliEnv) int {
 		return 2
 	}
 	if len(positional) > 1 {
-		fmt.Fprint(e.Stderr, "usage: suite move [app] [--session ID]\n")
+		fmt.Fprint(e.Stderr, "usage: neo move [app] [--session ID]\n")
 		return 2
 	}
 	c, _, ok := connect(ctx, *socket, e)
@@ -257,12 +257,12 @@ func runMove(ctx context.Context, args []string, e cliEnv) int {
 			}
 		}
 		if err != nil {
-			fmt.Fprintf(e.Stderr, "suite: %v\n", err)
+			fmt.Fprintf(e.Stderr, "neo: %v\n", err)
 			return 1
 		}
 	}
 	if err := c.MoveAgent(ctx, move); err != nil {
-		fmt.Fprintf(e.Stderr, "suite: move: %v\n", err)
+		fmt.Fprintf(e.Stderr, "neo: move: %v\n", err)
 		return 1
 	}
 	// The daemon sends the initial focus right after the handshake and broadcasts the new one
@@ -285,7 +285,7 @@ func runSessions(ctx context.Context, args []string, e cliEnv) int {
 
 	sessions, err := c.ListSessions(ctx)
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "suite: %v\n", err)
+		fmt.Fprintf(e.Stderr, "neo: %v\n", err)
 		return 1
 	}
 	if len(sessions) == 0 {

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use suite_sdk::Event;
+use neo_sdk::Event;
 
 /// A fresh scratch directory, removed on drop.
 pub struct TempDir(pub PathBuf);
@@ -13,8 +13,7 @@ impl TempDir {
     pub fn new(label: &str) -> TempDir {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir =
-            std::env::temp_dir().join(format!("suite-sdk-{label}-{}-{n}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("neo-sdk-{label}-{}-{n}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         TempDir(dir)
     }

@@ -1,9 +1,9 @@
 //! Layout components: stacks (with a measured row), cards, headers, tabs, accordions, steps.
 
+use neo_protocol as pb;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use serde_json::Value;
-use suite_protocol as pb;
 
 use super::generic::{Ask, ask, share_of};
 use super::{N, UiKind, join};

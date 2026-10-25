@@ -1,11 +1,11 @@
+use neo_protocol::{
+    CommandsAvailable, FocusReason, SessionEvent, SettingChanged, SettingName, SlashCommand,
+    StopReason, TurnEnded, UserMessage, ViewItem, ViewOp, ViewPatch, ViewSnapshot,
+};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use serde_json::json;
-use suite_protocol::{
-    CommandsAvailable, FocusReason, SessionEvent, SettingChanged, SettingName, SlashCommand,
-    StopReason, TurnEnded, UserMessage, ViewItem, ViewOp, ViewPatch, ViewSnapshot,
-};
 
 use super::*;
 
@@ -67,7 +67,7 @@ fn prompt(r: &str, state: &str, labels: &[&str]) -> ViewItem {
         .iter()
         .enumerate()
         .map(|(i, l)| {
-            json!({"type":"button","label":l,"action":"suite.permit",
+            json!({"type":"button","label":l,"action":"neo.permit",
                    "args":{"id":r,"option":l},"key":(i + 1).to_string()})
         })
         .collect();
@@ -92,7 +92,7 @@ fn patch(app: &mut App, item: ViewItem) {
         agent: None,
         session: "s1".into(),
         seq: 2,
-        ops: vec![ViewOp::SetViewOp(suite_protocol::SetViewOp { item })],
+        ops: vec![ViewOp::SetViewOp(neo_protocol::SetViewOp { item })],
     }));
 }
 
@@ -385,7 +385,7 @@ fn the_slash_menu_lists_the_commands_of_the_harness_the_session_runs_on() {
     app.handle_key(ctrl('u'));
 
     // After /harness claude the menu is claude's, after ours; ours win a name.
-    app.handle_event(setting("suite", SettingName::Harness, "claude"));
+    app.handle_event(setting("daemon", SettingName::Harness, "claude"));
     type_str(&mut app, "/rev");
     let found = app.menu_matches();
     assert_eq!(found.len(), 1);
@@ -751,7 +751,7 @@ fn enter_and_digits_press_buttons() {
         [Effect::Action {
             session: "s1".into(),
             item: "p1".into(),
-            action: "suite.permit".into(),
+            action: "neo.permit".into(),
             args: Some(json!({"id":"p1","option":"Reject"})),
         }]
     );
@@ -1063,20 +1063,20 @@ fn settings_and_approvals_come_from_setting_changed() {
     let mut app = app();
     app.handle_event(setting("neo", SettingName::Model, "sonnet"));
     app.handle_event(setting("claude", SettingName::Effort, "high"));
-    app.handle_event(setting("suite", SettingName::Approvals, "auto"));
+    app.handle_event(setting("daemon", SettingName::Approvals, "auto"));
     assert_eq!(app.approvals(), Approvals::Auto);
     let line = app.status_lines(100)[0].to_string();
     assert!(
         line.ends_with("neo · model sonnet"),
         "only the harness's own: {line}"
     );
-    assert!(!line.contains("suite") && !line.contains("auto"));
+    assert!(!line.contains("daemon") && !line.contains("auto"));
     assert!(
         app.status_lines(100)[2]
             .to_string()
             .starts_with("⏵⏵ auto mode on")
     );
-    app.handle_event(setting("suite", SettingName::Approvals, "edits"));
+    app.handle_event(setting("daemon", SettingName::Approvals, "edits"));
     assert_eq!(app.approvals(), Approvals::Edits);
     assert!(
         app.status_lines(100)[2]
@@ -1091,7 +1091,7 @@ fn the_harness_comes_from_its_setting_and_defaults_to_pi() {
     assert_eq!(app.harness(), "neo");
     assert!(app.status_lines(100)[0].to_string().ends_with("· neo"));
     app.handle_event(setting("claude", SettingName::Model, "opus"));
-    app.on_setting("suite", "harness", "claude");
+    app.on_setting("daemon", "harness", "claude");
     assert_eq!(app.harness(), "claude");
     assert!(
         app.status_lines(100)[0]
@@ -1112,13 +1112,13 @@ fn shift_tab_cycles_approvals_ask_review_edits_auto() {
         ("edits", "auto"),
         ("auto", "ask"),
     ] {
-        app.handle_event(setting("suite", SettingName::Approvals, now));
+        app.handle_event(setting("daemon", SettingName::Approvals, now));
         let fx = app.handle_key(with(KeyCode::BackTab, KeyModifiers::SHIFT));
         assert_eq!(fx, [input(&format!("/approvals {next}"))]);
-        app.handle_event(setting("suite", SettingName::Approvals, next));
+        app.handle_event(setting("daemon", SettingName::Approvals, next));
     }
     assert_eq!(app.approvals(), Approvals::Ask);
-    app.handle_event(setting("suite", SettingName::Approvals, "review"));
+    app.handle_event(setting("daemon", SettingName::Approvals, "review"));
     assert_eq!(app.approvals(), Approvals::Review);
     let line = app.status_lines(100)[2].to_string();
     assert!(
@@ -1356,7 +1356,7 @@ fn permission_with_diff(changed: usize) -> ViewItem {
         .iter()
         .enumerate()
         .map(|(i, (id, name))| {
-            json!({"type":"button","label":name,"action":"suite.permit",
+            json!({"type":"button","label":name,"action":"neo.permit",
                    "args":{"id":"7","option":id},"key":(i + 1).to_string()})
         })
         .collect();
@@ -1381,7 +1381,7 @@ fn a_permission_previews_its_diff_and_the_buttons_answer_from_the_keyboard() {
     let fx = app.handle_key(key(KeyCode::Enter));
     assert!(
         matches!(&fx[..], [Effect::Action { item, action, args: Some(a), .. }]
-            if item == "p-7" && action == "suite.permit" && a["option"] == "always"),
+            if item == "p-7" && action == "neo.permit" && a["option"] == "always"),
         "{fx:?}"
     );
     let mut app = self::app();
@@ -1402,7 +1402,7 @@ fn edit_review_card() -> ViewItem {
         .iter()
         .enumerate()
         .map(|(i, (id, name))| {
-            json!({"type":"button","label":name,"action":"suite.permit",
+            json!({"type":"button","label":name,"action":"neo.permit",
                    "args":{"id":"9","option":id},"key":(i + 1).to_string()})
         })
         .collect::<Vec<_>>();
@@ -1427,7 +1427,7 @@ fn the_review_mode_edit_card_shows_its_diff_with_keep_and_revert() {
     let fx = app.handle_key(key(KeyCode::Char('2')));
     assert!(
         matches!(&fx[..], [Effect::Action { item, action, args: Some(a), .. }]
-            if item == "p-9" && action == "suite.permit" && a["option"] == "revert"
+            if item == "p-9" && action == "neo.permit" && a["option"] == "revert"
                 && a.get("note").is_none()),
         "{fx:?}"
     );
@@ -1463,7 +1463,7 @@ fn tab_on_a_card_types_a_note_that_goes_with_the_focused_button() {
         [Effect::Action {
             session: "s1".into(),
             item: "p-9".into(),
-            action: "suite.permit".into(),
+            action: "neo.permit".into(),
             args: Some(json!({"id":"9","option":"revert","note":"1 wrong file, use b.tc"})),
         }]
     );
@@ -1509,7 +1509,7 @@ fn a_note_is_dropped_when_the_card_is_answered_elsewhere() {
     app.handle_key(key(KeyCode::Tab));
     type_str(&mut app, "hm");
     let mut answered = edit_review_card();
-    answered.state = Some(suite_protocol::ItemState::Done);
+    answered.state = Some(neo_protocol::ItemState::Done);
     answered.component = serde_json::from_value(json!({
         "type":"text","blocks":[{"type":"paragraph","spans":[{"text":"Keep"}]}]
     }))
@@ -1568,7 +1568,7 @@ fn a_long_diff_keeps_the_buttons_in_reach_until_expanded() {
 #[test]
 fn the_review_card_after_an_edits_turn_is_answered_with_keys() {
     let option = |i: usize, id: &str, name: &str| {
-        json!({"type":"button","label":name,"action":"suite.choose",
+        json!({"type":"button","label":name,"action":"neo.choose",
                "args":{"id":"r1","option":id},"key":(i + 1).to_string()})
     };
     let card: ViewItem = serde_json::from_value(json!({
@@ -1594,7 +1594,7 @@ fn the_review_card_after_an_edits_turn_is_answered_with_keys() {
         [Effect::Action {
             session: "s1".into(),
             item: "q-r1".into(),
-            action: "suite.choose".into(),
+            action: "neo.choose".into(),
             args: Some(json!({"id":"r1","option":"revert:a.ts"})),
         }]
     );
@@ -1876,17 +1876,17 @@ fn plan_event() -> Event {
         "s1",
         5,
         NOW,
-        SessionEvent::Plan(suite_protocol::Plan {
+        SessionEvent::Plan(neo_protocol::Plan {
             agent: None,
             entries: vec![
-                suite_protocol::PlanEntry {
+                neo_protocol::PlanEntry {
                     content: "crop the logo".into(),
-                    status: suite_protocol::PlanEntryStatus::Completed,
+                    status: neo_protocol::PlanEntryStatus::Completed,
                     priority: None,
                 },
-                suite_protocol::PlanEntry {
+                neo_protocol::PlanEntry {
                     content: "wire it into the header".into(),
-                    status: suite_protocol::PlanEntryStatus::InProgress,
+                    status: neo_protocol::PlanEntryStatus::InProgress,
                     priority: None,
                 },
             ],
@@ -1937,7 +1937,7 @@ fn layout_at_100x30() {
 fn layout_at_60x20_while_working_with_a_menu_open() {
     let mut app = scenario();
     app.handle_event(user_message(NOW - 12_000));
-    app.handle_event(setting("suite", SettingName::Approvals, "auto"));
+    app.handle_event(setting("daemon", SettingName::Approvals, "auto"));
     app.tick(NOW);
     type_str(&mut app, "/c");
     let text = screen_text(&mut app, 60, 20);
@@ -2085,7 +2085,7 @@ fn the_cursor_sits_in_the_editor() {
 #[test]
 fn a_prompt_answered_below_the_chat_leaves_one_line_in_the_chat_and_starts_on_the_current_value() {
     let option = |i: usize, id: &str, name: &str, current: bool| {
-        let mut b = json!({"type":"button","label":name,"action":"suite.choose",
+        let mut b = json!({"type":"button","label":name,"action":"neo.choose",
                "args":{"id":"m1","option":id},"key":(i + 1).to_string()});
         if current {
             b["current"] = json!(true);
@@ -2131,7 +2131,7 @@ fn a_prompt_answered_below_the_chat_leaves_one_line_in_the_chat_and_starts_on_th
         [Effect::Action {
             session: "s1".into(),
             item: "q-m1".into(),
-            action: "suite.choose".into(),
+            action: "neo.choose".into(),
             args: Some(json!({"id":"m1","option":"haiku"})),
         }]
     );
@@ -2143,7 +2143,7 @@ fn a_long_choice_scrolls_to_the_focused_button() {
     long_chat(&mut app, 10);
     let rows: Vec<_> = (0..120)
         .map(|i| {
-            json!({"type":"button","label":format!("model-{i:03}"),"action":"suite.choose",
+            json!({"type":"button","label":format!("model-{i:03}"),"action":"neo.choose",
                    "args":{"id":"c","option":format!("m{i}")},"current": i == 0})
         })
         .collect();
@@ -2190,7 +2190,7 @@ fn model_choice(app: &mut App) {
         .map(|i| {
             let (provider, name) = (providers[i % 3], names[i % 4]);
             let button = json!({"type":"button","label":format!("{name} · {provider}"),
-                "action":"suite.choose","args":{"id":"c","option":format!("{provider}/{i}/{name}")},
+                "action":"neo.choose","args":{"id":"c","option":format!("{provider}/{i}/{name}")},
                 "current": i == 0, "key": (i < 9).then(|| (i + 1).to_string())});
             if i == 3 || i == 4 {
                 json!({"type":"row","children":[button,
@@ -2356,7 +2356,7 @@ fn a_choice_of_nine_or_a_permission_has_no_filter() {
     assert!(app.active_ref().is_some());
     let rows: Vec<_> = (0..9)
         .map(|i| {
-            json!({"type":"button","label":format!("m{i}"),"action":"suite.choose",
+            json!({"type":"button","label":format!("m{i}"),"action":"neo.choose",
                         "args":{"id":"c","option":format!("m{i}")}})
         })
         .collect();
@@ -2376,7 +2376,7 @@ fn a_filtered_list_scrolls_to_the_focused_match() {
     long_chat(&mut app, 10);
     let rows: Vec<_> = (0..120)
         .map(|i| {
-            json!({"type":"button","label":format!("model-{i:03}"),"action":"suite.choose",
+            json!({"type":"button","label":format!("model-{i:03}"),"action":"neo.choose",
                    "args":{"id":"c","option":format!("m{i}")}})
         })
         .collect();

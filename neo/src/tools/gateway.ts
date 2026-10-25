@@ -43,7 +43,7 @@ export function connectGateway(server: McpServer): GatewayConnection {
   const headers = Object.fromEntries(server.headers.map((h) => [h.name, h.value]));
 
   const connect = async (): Promise<Client> => {
-    const c = new Client({ name: "suite-harness", version: "0.2.0" });
+    const c = new Client({ name: "neo-harness", version: "0.2.0" });
     await c.connect(
       new StreamableHTTPClientTransport(new URL(server.url), { requestInit: { headers } }),
     );

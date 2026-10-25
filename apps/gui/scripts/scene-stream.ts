@@ -1,5 +1,5 @@
 // A throwaway daemon whose session receives a long agent reply as it streams, for measuring how
-// the window keeps up (SUITE_GUI_SESSION=s_stream SCENE_SCRIPT=scene-stream.ts SCENE=stream
+// the window keeps up (NEO_GUI_SESSION=s_stream SCENE_SCRIPT=scene-stream.ts SCENE=stream
 // apps/gui/scripts/shot.sh).
 // After STREAM_DELAY_MS (default 3000) it appends STREAM_CHARS (default 12000) characters of
 // markdown in chunks of STREAM_CHUNK (default 12) every STREAM_EVERY_MS (default 20), then ends the
@@ -27,7 +27,7 @@ const daemon = await createDaemon({
   port: 0,
   defaultCwd: cwd,
 });
-// A fixed id, so the window can be pointed at it: SUITE_GUI_SESSION=s_stream.
+// A fixed id, so the window can be pointed at it: NEO_GUI_SESSION=s_stream.
 const session = daemon.store.createSession({ id: "s_stream", cwd, title: "A long answer" });
 daemon.store.append(session.id, { type: "user_message", app: "desktop", text: "explain it all" });
 

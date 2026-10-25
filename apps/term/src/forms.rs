@@ -8,9 +8,9 @@
 
 use std::collections::HashMap;
 
+use neo_renderer_ratatui::{UiEdit, UiKind, UiOption, UiState, UiTarget, is_date};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde_json::{Value, json};
-use suite_renderer_ratatui::{UiEdit, UiKind, UiOption, UiState, UiTarget, is_date};
 
 /// How long a typed value waits for the next key before it is sent.
 pub const DEBOUNCE_MS: i64 = 150;

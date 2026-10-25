@@ -5,7 +5,7 @@ export { connect, type Client, type ConnectOptions, type InputOptions } from "./
 export type { ConnectionState } from "./connection.ts";
 export type { SubscribeOptions, ViewSubscribeOptions } from "./subscriptions.ts";
 export type { Unsubscribe, Watched } from "./watched.ts";
-export { DisconnectedError, SuiteError, TimeoutError } from "./errors.ts";
+export { DisconnectedError, NeoError, TimeoutError } from "./errors.ts";
 export {
   assetUrl,
   busUrl,

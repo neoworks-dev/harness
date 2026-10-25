@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	protocol "neoworks.dev/suite/protocol/go"
-	sdk "neoworks.dev/suite/sdk-go"
-	"neoworks.dev/suite/sdk-go/sdktest"
+	protocol "neoworks.dev/neo/protocol/go"
+	sdk "neoworks.dev/neo/sdk-go"
+	"neoworks.dev/neo/sdk-go/sdktest"
 )
 
 // syncBuffer is a bytes.Buffer that a test can read while run is writing.
@@ -54,7 +54,7 @@ func start(t *testing.T, socket string, stdin io.Reader, args ...string) *cli {
 			Stdin:     stdin,
 			Stdout:    &c.stdout,
 			Stderr:    &c.stderr,
-			Getenv:    func(k string) string { return map[string]string{"SUITE_SOCKET": socket}[k] },
+			Getenv:    func(k string) string { return map[string]string{"NEO_SOCKET": socket}[k] },
 			UID:       1000,
 			Interrupt: c.interrupt,
 			Now:       time.Now,
@@ -286,7 +286,7 @@ func TestConnectionLost(t *testing.T) {
 }
 
 func TestDaemonNotRunning(t *testing.T) {
-	dir, err := os.MkdirTemp("", "suite")
+	dir, err := os.MkdirTemp("", "neo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestDaemonNotRunning(t *testing.T) {
 				args = append(args, "x")
 			}
 			code, stdout, stderr := exec(t, sock, "", args...)
-			want := "suite: daemon not running (socket " + sock + "); start it with: suite up\n"
+			want := "neo: daemon not running (socket " + sock + "); start it with: neo up\n"
 			if code != 1 || stdout != "" || stderr != want {
 				t.Errorf("%v: code %d stdout %q stderr %q", args, code, stdout, stderr)
 			}

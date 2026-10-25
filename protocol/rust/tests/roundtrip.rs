@@ -1,5 +1,5 @@
 //! Every example in protocol/examples decodes into a known variant and re-encodes to the same JSON.
-use suite_protocol::{Envelope, SessionEvent};
+use neo_protocol::{Envelope, SessionEvent};
 
 #[test]
 fn examples_round_trip() {

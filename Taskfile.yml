@@ -5,7 +5,7 @@ version: "3"
 vars:
   GO_MODULES: apps/cli sdk-go renderers/tui protocol/go
   # Named, so rustfmt leaves path dependencies outside this repo (svelte-gpui's host) alone.
-  RUST_PACKAGES: -p suite-protocol -p suite-sdk -p suite-renderer-gpui -p suite-renderer-ratatui -p suite-term -p suite-gui -p suite-github
+  RUST_PACKAGES: -p neo-protocol -p neo-sdk -p neo-renderer-gpui -p neo-renderer-ratatui -p neo-term -p neo-gui -p neo-github
 
 tasks:
   default:
@@ -33,28 +33,28 @@ tasks:
   build:
     desc: Build every binary into bin/
     cmds:
-      - task: build:suite
+      - task: build:neo
       - task: build:term
       - task: build:gui
 
-  build:suite:
-    desc: The CLI and daemon launcher (bin/suite)
+  build:neo:
+    desc: The CLI and daemon launcher (bin/neo)
     cmds:
-      - go build -o bin/suite ./apps/cli
+      - go build -o bin/neo ./apps/cli
 
   build:term:
-    desc: The terminal app (bin/suite-term), what `suite` with no arguments opens
+    desc: The terminal app (bin/neo-term), what `neo` with no arguments opens
     cmds:
-      - cargo build --release -p suite-term
-      - cp target/release/suite-term bin/suite-term.tmp && mv bin/suite-term.tmp bin/suite-term
+      - cargo build --release -p neo-term
+      - cp target/release/neo-term bin/neo-term.tmp && mv bin/neo-term.tmp bin/neo-term
 
   build:gui:
-    desc: The desktop app (bin/suite-gui) and its UI bundle
+    desc: The desktop app (bin/neo-gui) and its UI bundle
     summary: Needs svelte-gpui and extension-system (built with `bun run build`) checked out next to this repo.
     cmds:
       - task: gui:bundle
-      - cargo build --release -p suite-gui
-      - cp target/release/suite-gui bin/suite-gui.tmp && mv bin/suite-gui.tmp bin/suite-gui
+      - cargo build --release -p neo-gui
+      - cp target/release/neo-gui bin/neo-gui.tmp && mv bin/neo-gui.tmp bin/neo-gui
 
   gui:bundle:
     desc: Bundle the desktop app's Svelte UI (apps/gui/dist/gui.js)
@@ -65,14 +65,14 @@ tasks:
 
   up:
     desc: Make sure the daemon is running
-    deps: [build:suite]
+    deps: [build:neo]
     cmds:
-      - bin/suite up
+      - bin/neo up
 
   down:
     desc: Stop the daemon
     cmds:
-      - bin/suite down
+      - bin/neo down
 
   daemon:
     desc: Run the daemon in the foreground
@@ -80,26 +80,26 @@ tasks:
       - bun run daemon/src/main.ts
 
   gui:
-    desc: Open the desktop app the way users do (`suite gui`), after building it
-    deps: [build:suite, build:gui]
+    desc: Open the desktop app the way users do (`neo gui`), after building it
+    deps: [build:neo, build:gui]
     cmds:
-      - bin/suite gui {{.CLI_ARGS}}
+      - bin/neo gui {{.CLI_ARGS}}
 
   gui:dev:
     desc: The desktop app with hot reload; a saved .svelte or .ts file updates the open window
     summary: |
       Watches and rebundles the UI, and runs a window that reloads when the bundle changes.
       Rust changes (apps/gui/src) still need a restart of this task. Pick the session with
-      SUITE_GUI_SESSION=<id> or SUITE_GUI_NEW=1.
+      NEO_GUI_SESSION=<id> or NEO_GUI_NEW=1.
     deps: [up]
     cmds:
-      - cargo build --release -p suite-gui
+      - cargo build --release -p neo-gui
       - task: gui:bundle
       - |
         bun apps/gui/build.mjs --watch &
         watcher=$!
         trap 'kill $watcher 2>/dev/null' EXIT
-        target/release/suite-gui --bundle apps/gui/dist/gui.js --watch
+        target/release/neo-gui --bundle apps/gui/dist/gui.js --watch
 
   gui:shot:
     desc: "Screenshot the desktop app headless, e.g. `task gui:shot -- /tmp/gui.png 4` (SCENE, SEED: see apps/gui/scripts/shot.sh)"
@@ -108,9 +108,9 @@ tasks:
 
   term:
     desc: Open the terminal app, after building it
-    deps: [build:suite, build:term]
+    deps: [build:neo, build:term]
     cmds:
-      - bin/suite
+      - bin/neo
 
   # Testing and linting
 

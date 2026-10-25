@@ -307,7 +307,7 @@ export function createDelegate(parts: DelegateParts): Delegate {
     const child = sessions.create({ cwd: dir, parent: session }).id;
     store.append(child, {
       type: "setting_changed",
-      harness: "suite",
+      harness: "daemon",
       option: "harness",
       value: agent,
     });
@@ -315,7 +315,7 @@ export function createDelegate(parts: DelegateParts): Delegate {
     if (mode !== "ask") {
       store.append(child, {
         type: "setting_changed",
-        harness: "suite",
+        harness: "daemon",
         option: "approvals",
         value: mode,
       });

@@ -32,7 +32,7 @@ function drawable(): string[] {
   return COMPONENTS.map((c) => c.name).filter((name) => !control.has(name));
 }
 
-test("every component of the suite@1 library is drawn", () => {
+test("every component of neo@1 library is drawn", () => {
   const source = readFileSync(join(here, "../ui/plugins/transcript/openui/Node.svelte"), "utf8");
   const drawn = [...source.matchAll(/^\s{4}(\w+): /gm)].map((match) => match[1]);
   const missing = drawable().filter((name) => !PARTS.has(name) && !drawn.includes(name));

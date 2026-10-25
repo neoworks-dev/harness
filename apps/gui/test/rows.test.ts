@@ -221,7 +221,7 @@ test("a question is a row of its own and splits a group", () => {
     kind: "tool",
     label: "claude asks: rm",
     state: "pending",
-    component: { type: "button", label: "Allow", action: "suite.permit" },
+    component: { type: "button", label: "Allow", action: "neo.permit" },
   };
   const list = rows([user(1), bash("a"), question, bash("b")], { running: true });
   expect(kinds(list)).toEqual(["item", "work", "work", "work", "working"]);

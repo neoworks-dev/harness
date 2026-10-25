@@ -171,7 +171,7 @@ export class ConnectorRegistry {
     return new Set(this.live.keys());
   }
 
-  /** The suite library with every known app's components (see `componentsOf`). */
+  /** Neo library with every known app's components (see `componentsOf`). */
   library(): AppLibrary {
     this.apps ??= appLibrary(this.componentsOf());
     return this.apps;

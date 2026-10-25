@@ -1,4 +1,4 @@
-//! Draws the suite's resolved view items (`protocol/schemas/view.schema.json`) as styled
+//! Draws neo's resolved view items (`protocol/schemas/view.schema.json`) as styled
 //! [ratatui] lines, for full-screen terminal apps.
 //!
 //! The renderer is pure: [`render_item`] turns one [`ViewItem`] into lines wrapped to a width,
@@ -7,8 +7,8 @@
 //! the input box are the app's job. See `renderers/README.md` for what every renderer shares.
 //!
 //! ```
-//! use suite_renderer_ratatui::{Options, render_item};
-//! # let item: suite_protocol::ViewItem = serde_json::from_str(
+//! use neo_renderer_ratatui::{Options, render_item};
+//! # let item: neo_protocol::ViewItem = serde_json::from_str(
 //! #   r#"{"ref":"m1","kind":"agent","component":{"type":"text","blocks":[
 //! #   {"type":"paragraph","spans":[{"text":"hello"}]}]}}"#).unwrap();
 //! let lines = render_item(&item, 80, &Options::default());
@@ -25,9 +25,9 @@ mod text;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use neo_protocol as pb;
+use neo_protocol::ViewItem;
 use ratatui::text::Line;
-use suite_protocol as pb;
-use suite_protocol::ViewItem;
 
 pub use openui::{
     UiDocInfo, UiEdit, UiKind, UiOption, UiState, UiTarget, is_date, openui_docs, openui_targets,
@@ -133,7 +133,7 @@ pub fn image_cells(
 #[derive(Debug, Clone, PartialEq)]
 pub struct ButtonRef {
     pub label: String,
-    /// `app.tool`, `copy:<text>`, `suite.permit`, `suite.choose`.
+    /// `app.tool`, `copy:<text>`, `neo.permit`, `neo.choose`.
     pub action: String,
     pub args: Option<serde_json::Value>,
     /// What triggers it: the button's own key, else its 1-based position among the item's

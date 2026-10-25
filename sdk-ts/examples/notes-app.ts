@@ -1,6 +1,6 @@
-// A tiny connector: a notes app with two tools, registered with the suite until Ctrl-C.
+// A tiny connector: a notes app with two tools, registered with neo until Ctrl-C.
 //   bun run sdk-ts/examples/notes-app.ts
-// Then ask the agent (e.g. `suite attach --new`) to use the notes app. Its results are drawn with
+// Then ask the agent (e.g. `neo attach --new`) to use the notes app. Its results are drawn with
 // the templates below (buttons included) in every pane.
 import { connect } from "@neoworks-dev/neo-sdk";
 import { daemonJsonAddress } from "@neoworks-dev/neo-sdk";
@@ -92,7 +92,7 @@ const templates = {
   clear_notes: { type: "text", markdown: "Removed **{{data.removed}}** notes.", tone: "muted" },
 };
 
-const suite = await connect({
+const neo = await connect({
   client: "notes",
   address: daemonJsonAddress,
   waitForDaemon: true,
@@ -109,7 +109,7 @@ const suite = await connect({
 process.stderr.write("notes app registered; Ctrl-C to quit\n");
 
 process.on("SIGINT", () => {
-  void suite
+  void neo
     .close()
     .then(() => tools.close())
     .then(() => process.exit(0));

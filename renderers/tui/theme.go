@@ -1,6 +1,6 @@
 package tui
 
-import protocol "neoworks.dev/suite/protocol/go"
+import protocol "neoworks.dev/neo/protocol/go"
 
 // DefaultTheme is protocol/themes/default.json, for callers whose daemon
 // has not sent a theme.

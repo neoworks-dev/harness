@@ -36,8 +36,8 @@ test("settings are kept per harness and the status shows the current one's", () 
   const status = fold(
     { type: "setting_changed", harness: "claude", option: "model", value: "haiku" },
     { type: "setting_changed", harness: "neo", option: "effort", value: "high" },
-    { type: "setting_changed", harness: "suite", option: "harness", value: "claude" },
-    { type: "setting_changed", harness: "suite", option: "approvals", value: "edits" },
+    { type: "setting_changed", harness: "daemon", option: "harness", value: "claude" },
+    { type: "setting_changed", harness: "daemon", option: "approvals", value: "edits" },
   );
   expect(status.harness).toBe("claude");
   expect(status.approvals).toBe("edits");

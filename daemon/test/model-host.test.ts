@@ -78,7 +78,7 @@ async function pick(
   option: string,
 ): Promise<void> {
   await daemon.actions.run(
-    { session, ref: "x", action: "suite.choose", args: { id: choice.id, option } },
+    { session, ref: "x", action: "neo.choose", args: { id: choice.id, option } },
     "test",
   );
 }

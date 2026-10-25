@@ -5,10 +5,10 @@ import { History, historyFile, historyLine, parseHistory } from "./history.ts";
 
 let directory: Promise<string> | undefined;
 
-/** `<data>/suite/gui-history`, made on first use. */
+/** `<data>/neo/gui-history`, made on first use. */
 function historyDirectory(): Promise<string> {
   directory ??= files.paths().then(async ({ data }) => {
-    const path = `${data}/suite/gui-history`;
+    const path = `${data}/neo/gui-history`;
     await files.mkdir(path, { recursive: true });
     return path;
   });

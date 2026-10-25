@@ -362,7 +362,7 @@ export class Commands {
 
   /**
    * /title-model: no value opens a choice of harness and then of its model; `default` goes back
-   * to the suite's choice; a harness alone is its own default model.
+   * to neo's choice; a harness alone is its own default model.
    */
   private async titleModel(session: string, args: string[]): Promise<void> {
     const { guests, main, settings, titles } = this.parts;
@@ -392,7 +392,7 @@ export class Commands {
             type: "choice",
             title: `Title model (now: ${current})`,
             options: [
-              { id: "default", name: "Default", description: "The suite's choice" },
+              { id: "default", name: "Default", description: "Neo's choice" },
               ...names.map((id) => ({ id, name: id === main ? id : guests.title(id) })),
             ],
             current: chosen ? now.harness : "default",

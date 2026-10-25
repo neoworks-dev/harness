@@ -1,7 +1,7 @@
 // The gateway's MCP endpoint (Streamable HTTP, stateless): serves the fixed core tools to the
-// harness, the session's ACP harness and subagents (x-suite-guest: they don't get delegate or
+// harness, the session's ACP harness and subagents (x-neo-guest: they don't get delegate or
 // models; send_message and wait they do).
-// x-suite-text marks an ACP client that gets text-only results and, appended to them, the
+// x-neo-text marks an ACP client that gets text-only results and, appended to them, the
 // messages other agents wrote to it. The tool list of a kind of
 // client never changes; connector tools are reached through tools_search / tools_call.
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -21,14 +21,14 @@ function header(
 
 function createServer(gateway: Gateway): Server {
   const server = new Server(
-    { name: "suite", version: VERSION },
+    { name: "neo", version: VERSION },
     { capabilities: { tools: { listChanged: false } } },
   );
   server.setRequestHandler(ListToolsRequestSchema, (_request, extra) => ({
     tools: CORE_TOOLS.filter(
       ({ name }) =>
         (name !== "delegate" && name !== "models") ||
-        header(extra.requestInfo, "x-suite-guest") === undefined,
+        header(extra.requestInfo, "x-neo-guest") === undefined,
     ).map(({ name, description, inputSchema }) => ({
       name,
       description,
@@ -41,11 +41,11 @@ function createServer(gateway: Gateway): Server {
       return { content: [{ type: "text", text: `Unknown tool ${name}.` }], isError: true };
     }
     const caller: Caller = {};
-    const session = header(extra.requestInfo, "x-suite-session");
-    const guest = header(extra.requestInfo, "x-suite-guest");
+    const session = header(extra.requestInfo, "x-neo-session");
+    const guest = header(extra.requestInfo, "x-neo-guest");
     if (session !== undefined) caller.session = session;
     if (guest !== undefined) caller.guest = guest;
-    if (header(extra.requestInfo, "x-suite-text") !== undefined) caller.text = true;
+    if (header(extra.requestInfo, "x-neo-text") !== undefined) caller.text = true;
     return gateway.call(name, args, extra.signal, caller);
   });
   return server;

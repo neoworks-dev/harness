@@ -18,9 +18,9 @@ use gpui::{
     Render, SharedString, StatefulInteractiveElement, Styled, Window, div, list,
     prelude::FluentBuilder, px, relative, transparent_black,
 };
+use neo_protocol::{ItemState, Theme, ViewItem, ViewPatch, ViewSnapshot};
+use neo_sdk::ViewState;
 use serde_json::Value;
-use suite_protocol::{ItemState, Theme, ViewItem, ViewPatch, ViewSnapshot};
-use suite_sdk::ViewState;
 
 use crate::draw::{self, ChatFonts, DrawCx, PressFn, color};
 use crate::dump::dump_items;
@@ -292,7 +292,7 @@ impl ChatView {
                 .state
                 .items
                 .last()
-                .is_some_and(|i| i.kind == suite_protocol::ItemKind::User)
+                .is_some_and(|i| i.kind == neo_protocol::ItemKind::User)
     }
 
     /// Brings `layouts` (and the list's measurements) in line with `state.items`. `touched` names
@@ -642,8 +642,8 @@ impl ChatView {
 impl Render for ChatView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
-            .id("suite-chat")
-            .key_context("SuiteChat")
+            .id("neo-chat")
+            .key_context("NeoChat")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::on_key_down))
             .size_full()

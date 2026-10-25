@@ -122,7 +122,7 @@ export async function startServer(hub: Hub, options: ServerOptions): Promise<Bus
     unix: socket,
     fetch(req, srv) {
       if (new URL(req.url).pathname === "/bus") return upgrade(req, srv);
-      return new Response("suite daemon\n");
+      return new Response("neo daemon\n");
     },
     websocket: websocketHandler(hub),
   });

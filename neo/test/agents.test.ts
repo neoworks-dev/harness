@@ -178,7 +178,7 @@ test("the project's agent wins over the user's, which wins over a plugin's", asy
   await put(join(root, "agents"), "b.md", "only-plugin", "plugin only");
   await put(user, "a.md", "reviewer", "from the user");
   await put(user, "b.md", "only-user", "user only");
-  await put(join(cwd, ".suite", "agents"), "a.md", "reviewer", "from the project");
+  await put(join(cwd, ".neo", "agents"), "a.md", "reviewer", "from the project");
 
   const all = loadAgents(cwd, { user, plugins });
   expect(findAgent(all, "reviewer")?.description).toBe("from the project");
@@ -278,7 +278,7 @@ test("the main agent's prompt lists the agents, and nothing without any", () => 
 
 test("a neo session lists the agents in its prompt; a subagent doesn't, and runs as its agent", async () => {
   const cwd = await tempDir();
-  const dir = join(cwd, ".suite", "agents");
+  const dir = join(cwd, ".neo", "agents");
   await mkdir(dir, { recursive: true });
   await writeFile(
     join(dir, "reviewer.md"),

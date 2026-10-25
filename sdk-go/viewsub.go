@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 // ViewUpdate is one change to a followed view: either a patch, or (after a

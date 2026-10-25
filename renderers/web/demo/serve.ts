@@ -8,4 +8,4 @@ const port = Number(values.port ?? 0);
 if (!Number.isInteger(port) || port < 0 || port > 65535)
   throw new Error(`bad --port ${values.port}`);
 const server = await startDemoServer({ port });
-process.stdout.write(`suite web demo: ${server.url}\n`);
+process.stdout.write(`neo web demo: ${server.url}\n`);

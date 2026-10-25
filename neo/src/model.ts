@@ -32,7 +32,7 @@ function lookup(provider: string, modelId: string, logger?: Logger): Model<Api> 
   if (!template) throw new Error(`Unknown model provider "${provider}"`);
   if (VISION.has(`${provider}/${modelId}`)) return { ...template, id: modelId, name: modelId };
   logger?.warn(
-    `Model "${modelId}" is not in pi-ai's registry for "${provider}"; using ${template.id} settings (set SUITE_IMAGES=1 if it takes images).`,
+    `Model "${modelId}" is not in pi-ai's registry for "${provider}"; using ${template.id} settings (set NEO_IMAGES=1 if it takes images).`,
   );
   return { ...template, id: modelId, name: modelId };
 }

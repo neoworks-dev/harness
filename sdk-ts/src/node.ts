@@ -9,13 +9,13 @@ import { DisconnectedError } from "./errors.ts";
 type Env = Record<string, string | undefined>;
 
 /**
- * Where the daemon writes `daemon.json`: next to its socket, which is `$SUITE_SOCKET`, else
- * `$XDG_RUNTIME_DIR/suite/bus.sock`, else `/tmp/suite-<uid>/bus.sock`.
+ * Where the daemon writes `daemon.json`: next to its socket, which is `$NEO_SOCKET`, else
+ * `$XDG_RUNTIME_DIR/neo/bus.sock`, else `/tmp/neo-<uid>/bus.sock`.
  */
 export function daemonJsonPath(env: Env = process.env): string {
-  let socket = env.SUITE_SOCKET;
-  if (!socket && env.XDG_RUNTIME_DIR) socket = join(env.XDG_RUNTIME_DIR, "suite", "bus.sock");
-  if (!socket) socket = join("/tmp", `suite-${userInfo().uid}`, "bus.sock");
+  let socket = env.NEO_SOCKET;
+  if (!socket && env.XDG_RUNTIME_DIR) socket = join(env.XDG_RUNTIME_DIR, "neo", "bus.sock");
+  if (!socket) socket = join("/tmp", `neo-${userInfo().uid}`, "bus.sock");
   return join(dirname(socket), "daemon.json");
 }
 
@@ -32,7 +32,7 @@ export async function daemonJsonAddress(env: Env = process.env): Promise<DaemonA
   try {
     text = await readFile(path, "utf8");
   } catch {
-    throw new DisconnectedError(`the suite daemon is not running (no ${path})`);
+    throw new DisconnectedError(`neo daemon is not running (no ${path})`);
   }
   let info: unknown;
   try {

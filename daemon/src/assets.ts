@@ -25,7 +25,7 @@ const FETCH_MAX_REDIRECTS = 5;
 const REMOTE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 /** Some hosts refuse a request that doesn't say who asks. */
 const FETCH_HEADERS = {
-  "user-agent": "suite (image download)",
+  "user-agent": "neo (image download)",
   accept: "image/png,image/jpeg,image/gif,image/webp;q=0.9,*/*;q=0.1",
 };
 

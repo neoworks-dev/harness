@@ -6,9 +6,9 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::thread;
 
 use common::{TempDir, wait_for};
+use neo_protocol::{AppPresence, ConnectorKind};
+use neo_sdk::{Client, Error, Event, Options};
 use serde_json::{Value, json};
-use suite_protocol::{AppPresence, ConnectorKind};
-use suite_sdk::{Client, Error, Event, Options};
 use tungstenite::{Message, WebSocket};
 
 /// The daemon's side of one connection.

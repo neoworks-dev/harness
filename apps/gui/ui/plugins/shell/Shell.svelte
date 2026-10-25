@@ -39,7 +39,7 @@
             {#if daemon.error}
               <Text style={{ color: p.danger }}>{daemon.error}</Text>
             {:else}
-              <Text style={{ color: p.muted }}>Connecting to the suite daemon…</Text>
+              <Text style={{ color: p.muted }}>Connecting to neo daemon…</Text>
             {/if}
           </View>
         {:else}

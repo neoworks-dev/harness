@@ -53,7 +53,7 @@ async function setup(
       if (event.type !== "permission_request" || event.title !== "Start a subagent?") return;
       void Promise.resolve().then(() =>
         daemon.actions.run(
-          { session, ref: "p", action: "suite.permit", args: { id: event.id, option: gate } },
+          { session, ref: "p", action: "neo.permit", args: { id: event.id, option: gate } },
           "test",
         ),
       );
@@ -216,8 +216,8 @@ describe("delegate", () => {
         requestInit: {
           headers: {
             authorization: `Bearer ${daemon.info.token}`,
-            "x-suite-session": session,
-            "x-suite-guest": "fake",
+            "x-neo-session": session,
+            "x-neo-guest": "fake",
           },
         },
       }),
@@ -344,20 +344,20 @@ describe("permissions", () => {
       component: {
         type: "row",
         children: [
-          { type: "button", label: "Allow", action: "suite.permit", args: { id, option: "yes" } },
-          { type: "button", label: "Reject", action: "suite.permit", args: { id, option: "no" } },
+          { type: "button", label: "Allow", action: "neo.permit", args: { id, option: "yes" } },
+          { type: "button", label: "Reject", action: "neo.permit", args: { id, option: "no" } },
         ],
       },
     });
 
     const press = (option: string): Promise<void> =>
       daemon.actions.run(
-        { session, ref: `p-${id}`, action: "suite.permit", args: { id, option } },
+        { session, ref: `p-${id}`, action: "neo.permit", args: { id, option } },
         "pad",
       );
     expect(press("maybe")).rejects.toThrow("has no option maybe");
     await daemon.actions.run(
-      { session, ref: `p-${id}`, action: "suite.permit", args: { id, option: "yes" } },
+      { session, ref: `p-${id}`, action: "neo.permit", args: { id, option: "yes" } },
       "pad",
     );
     await daemon.sessions.idle(session);
@@ -410,13 +410,13 @@ describe("config", () => {
     expect(all.claude?.command).toEqual(["bunx", "@agentclientprotocol/claude-agent-acp@0.91.0"]);
     const env = loadGuestConfigs({
       ...base,
-      SUITE_GUESTS: "claude",
-      SUITE_GUEST_PERMISSIONS: "allow",
+      NEO_GUESTS: "claude",
+      NEO_GUEST_PERMISSIONS: "allow",
     });
     expect(Object.keys(env)).toEqual(["claude"]);
     expect(env.claude).toMatchObject({ permissions: "allow" });
-    expect(loadGuestConfigs({ ...base, SUITE_GUESTS: "none" })).toEqual({});
-    expect(() => loadGuestConfigs({ ...base, SUITE_GUEST_PERMISSIONS: "yolo" })).toThrow(
+    expect(loadGuestConfigs({ ...base, NEO_GUESTS: "none" })).toEqual({});
+    expect(() => loadGuestConfigs({ ...base, NEO_GUEST_PERMISSIONS: "yolo" })).toThrow(
       "permissions must be ask or allow",
     );
   });
@@ -425,26 +425,26 @@ describe("config", () => {
 describe("adapter shapes", () => {
   test("core tool calls are titled by what they do, for either adapter", () => {
     expect(
-      describeCall("mcp__suite__tools_call", { name: "greeter.greet", args: { name: "Ada" } }),
+      describeCall("mcp__neo__tools_call", { name: "greeter.greet", args: { name: "Ada" } }),
     ).toEqual({ title: "greeter.greet", tool: "greeter.greet" });
     expect(
-      describeCall("mcp.suite.tools_call", {
-        server: "suite",
+      describeCall("mcp.neo.tools_call", {
+        server: "neo",
         tool: "tools_call",
         arguments: { name: "greeter.greet", args: {} },
       }),
     ).toEqual({ title: "greeter.greet", tool: "greeter.greet" });
-    expect(describeCall("mcp.suite.tools_search", { arguments: { query: "greet" } })).toEqual({
+    expect(describeCall("mcp.neo.tools_search", { arguments: { query: "greet" } })).toEqual({
       title: "search tools: greet",
     });
-    expect(describeCall("mcp__suite__apps_focus", {})).toEqual({ title: "apps_focus" });
+    expect(describeCall("mcp__neo__apps_focus", {})).toEqual({ title: "apps_focus" });
     expect(
-      describeCall("mcp__suite__send_message", { to: "main", text: "Which db?\nstaging or prod" }),
+      describeCall("mcp__neo__send_message", { to: "main", text: "Which db?\nstaging or prod" }),
     ).toEqual({ title: "message main: Which db?" });
-    expect(describeCall("mcp.suite.wait", { arguments: {} })).toEqual({
+    expect(describeCall("mcp.neo.wait", { arguments: {} })).toEqual({
       title: "wait for messages",
     });
-    expect(describeCall("mcp__suite__wait", undefined)).toEqual({ title: "wait for messages" });
+    expect(describeCall("mcp__neo__wait", undefined)).toEqual({ title: "wait for messages" });
     expect(describeCall("Edit a.ts", undefined)).toEqual({ title: "Edit a.ts" });
   });
 
@@ -481,7 +481,7 @@ async function answer(
   );
   const open = events(daemon, session).findLast((e) => e.type === type);
   if (open?.type !== type) throw new Error(`no ${type}`);
-  const action = type === "choice" ? "suite.choose" : "suite.permit";
+  const action = type === "choice" ? "neo.choose" : "neo.permit";
   const args: Record<string, string> = { id: open.id, option };
   if (note !== undefined) args.note = note;
   await daemon.actions.run({ session, ref: "x", action, args }, "test");
@@ -655,7 +655,7 @@ describe("settings", () => {
       .snapshot()
       .items.find((i) => i.ref.startsWith("q-"));
     const shown = JSON.stringify(picker?.component);
-    expect(shown).toContain('"label":"LARGE","action":"suite.choose","args":{"id"');
+    expect(shown).toContain('"label":"LARGE","action":"neo.choose","args":{"id"');
     expect(shown.match(/"current":true/g)?.length).toBe(1);
     expect(shown).toMatch(/"label":"LARGE"[^}]*\}[^}]*"current":true/);
   });

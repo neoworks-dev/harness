@@ -1,6 +1,6 @@
 //! The slash-command list and the session switcher's state.
 
-use suite_protocol::{SessionInfo, SessionState, SlashCommand};
+use neo_protocol::{SessionInfo, SessionState, SlashCommand};
 
 use crate::util::{relative_time, shorten_home};
 

@@ -1,4 +1,4 @@
-//! GPUI renderer for the suite's resolved view format. See the README.
+//! GPUI renderer for neo's resolved view format. See the README.
 //!
 //! Two layers: [`layout`] turns a `ViewItem` plus a theme into a tree of boxes, text runs and
 //! leaf shapes (pure, snapshot-tested through [`dump`]), and [`ChatView`] draws that tree with

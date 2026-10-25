@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 // Subscription follows one session's event log: the replay requested at

@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/coder/websocket"
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 var (

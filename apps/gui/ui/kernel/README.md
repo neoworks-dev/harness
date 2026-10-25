@@ -109,15 +109,15 @@ A component reaches the services of the plugin that registered it with `useCtx()
 
 ## Host services
 
-| Service    | What                                                                                                                     |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `slots`    | `add`, `inject` (above)                                                                                                  |
-| `daemon`   | the session, chat, palette, status, `open`, `send`, `action`, `newSession`, `onRecord`… (wraps `kernel/suite.svelte.ts`) |
-| `git`      | `branch`, `status`, `diff`, `places` (host commands)                                                                     |
-| `github`   | `repo`, `issues`, `prs`, `issue`, `pr`, `prDiff`, … (read-only host commands)                                            |
-| `keymap`   | `bind`, `observe`                                                                                                        |
-| `keyboard` | `claim(held)`, `taken`: a pane that wants the keyboard claims it, and the input stays away while one is held             |
-| `commands` | `register`, `list`                                                                                                       |
+| Service    | What                                                                                                                   |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `slots`    | `add`, `inject` (above)                                                                                                |
+| `daemon`   | the session, chat, palette, status, `open`, `send`, `action`, `newSession`, `onRecord`… (wraps `kernel/neo.svelte.ts`) |
+| `git`      | `branch`, `status`, `diff`, `places` (host commands)                                                                   |
+| `github`   | `repo`, `issues`, `prs`, `issue`, `pr`, `prDiff`, … (read-only host commands)                                          |
+| `keymap`   | `bind`, `observe`                                                                                                      |
+| `keyboard` | `claim(held)`, `taken`: a pane that wants the keyboard claims it, and the input stays away while one is held           |
+| `commands` | `register`, `list`                                                                                                     |
 
 What the panes offer one another is in the table above: `viewer.showChanges(path)`, `viewer.showDiff(diff)` and `viewer.openFile(path)`, `comments.add(comment)` and `comments.take(text)`, `transcript.visible(items)` and `transcript.stub(ref)`, `agentview.open(agent)`, `sidepanel.claim(has)` and `sidepanel.cover(when)`. Each is in the plugin's `service.ts`.
 

@@ -19,7 +19,7 @@ export interface Parts {
   gateway: Gateway;
   views: ViewManager;
   asker?: Asker;
-  /** Stops one running subagent of the session (suite.cancel_agent {id}). */
+  /** Stops one running subagent of the session (neo.cancel_agent {id}). */
   cancelAgent?: (session: string, id: string) => boolean;
 }
 
@@ -128,7 +128,7 @@ export class ActionRunner {
     if (action.startsWith("copy:")) {
       throw new BadRequestError("copy: actions are handled by the client");
     }
-    if (action === "suite.permit" || action === "suite.choose") {
+    if (action === "neo.permit" || action === "neo.choose") {
       // Answers a permission_request or a choice: args {id, option, note?}.
       const fields: Record<string, unknown> = Object.assign({}, args);
       const { id, option, note } = fields;
@@ -138,7 +138,7 @@ export class ActionRunner {
       if (note !== undefined && typeof note !== "string") {
         throw new BadRequestError(`${action}: note must be a string`);
       }
-      const kind = action === "suite.permit" ? "permission" : "choice";
+      const kind = action === "neo.permit" ? "permission" : "choice";
       // An empty note is no note.
       const trimmed = note?.trim();
       const added = trimmed === "" ? undefined : trimmed;
@@ -149,11 +149,11 @@ export class ActionRunner {
       await this.openUi(session, ref, action, args, from);
       return;
     }
-    if (action === "suite.cancel_agent") {
+    if (action === "neo.cancel_agent") {
       const fields: Record<string, unknown> = Object.assign({}, args);
       const { id } = fields;
       if (typeof id !== "string" || !this.parts.cancelAgent) {
-        throw new BadRequestError("suite.cancel_agent needs args {id}");
+        throw new BadRequestError("neo.cancel_agent needs args {id}");
       }
       if (!this.parts.cancelAgent(session, id)) {
         throw new BadRequestError(`${id} isn't a running subagent of this session`);

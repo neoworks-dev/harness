@@ -9,7 +9,7 @@ mod common;
 use std::fs;
 
 use common::*;
-use suite_renderer_ratatui::{Options, Palette};
+use neo_renderer_ratatui::{Options, Palette};
 
 fn snapshots(name: &str) -> Vec<(&'static str, String)> {
     let items = fixture_items(name);
@@ -86,7 +86,7 @@ fn no_line_overflows_at_any_width() {
         for opts in &modes {
             for width in [1u16, 2, 3, 4, 5, 7, 10, 13, 20, 33, 40, 80, 200] {
                 for it in &items {
-                    for (n, line) in suite_renderer_ratatui::render_item(it, width, opts)
+                    for (n, line) in neo_renderer_ratatui::render_item(it, width, opts)
                         .iter()
                         .enumerate()
                     {

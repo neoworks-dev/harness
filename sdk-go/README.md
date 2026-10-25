@@ -1,15 +1,15 @@
 # sdk-go
 
-Go client for the suite bus: connect, register as a connector (presence), list connectors, create, follow and drive sessions, and follow the resolved view of a session (items, theme, button actions). It has the same shape as `sdk-ts`. The only dependency besides the generated protocol types is `github.com/coder/websocket`.
+Go client for neo bus: connect, register as a connector (presence), list connectors, create, follow and drive sessions, and follow the resolved view of a session (items, theme, button actions). It has the same shape as `sdk-ts`. The only dependency besides the generated protocol types is `github.com/coder/websocket`.
 
 ```go
 import (
-    protocol "neoworks.dev/suite/protocol/go"
-    sdk "neoworks.dev/suite/sdk-go"
+    protocol "neoworks.dev/neo/protocol/go"
+    sdk "neoworks.dev/neo/sdk-go"
 )
 ```
 
-Consumers outside this workspace need `replace neoworks.dev/suite/protocol/go => ../protocol/go` (and the same for `sdk-go`) in their `go.mod`, like `cli/go.mod`.
+Consumers outside this workspace need `replace neoworks.dev/neo/protocol/go => ../protocol/go` (and the same for `sdk-go`) in their `go.mod`, like `cli/go.mod`.
 
 ## Connect
 
@@ -19,7 +19,7 @@ if errors.Is(err, sdk.ErrDaemonDown) { /* nothing listening on the socket */ }
 defer c.Close()
 ```
 
-The socket is `Options.Socket`, else `$SUITE_SOCKET`, else `$XDG_RUNTIME_DIR/suite/bus.sock`, else `/tmp/suite-<uid>/bus.sock` (`sdk.SocketPath`). `Dial` does the WebSocket upgrade at `/bus` and the hello/welcome exchange; `c.Welcome()` has the daemon info.
+The socket is `Options.Socket`, else `$NEO_SOCKET`, else `$XDG_RUNTIME_DIR/neo/bus.sock`, else `/tmp/neo-<uid>/bus.sock` (`sdk.SocketPath`). `Dial` does the WebSocket upgrade at `/bus` and the hello/welcome exchange; `c.Welcome()` has the daemon info.
 
 All methods take a `context.Context`, are safe to call concurrently, and may overlap with event delivery: replies are matched to requests by id. A reply of `bus.error` becomes an `*sdk.Error` (`errors.As`; it carries the protocol error code).
 
@@ -64,7 +64,7 @@ defer srv.Close()
 err = c.SetPresence(ctx, protocol.AppPresence{App: "photo-editor", Kind: protocol.ConnectorKindApp, Open: true, Mcp: srv.Endpoint()})
 ```
 
-`Result.Structured` becomes `structuredContent` (the data view templates get); without `Text` its JSON is the text content. The tool list is fixed once the server started (there is no server-to-client stream, so no `list_changed`); a changed list needs a new server and a new `SetPresence`. Tests can use `sdktest.StartReal(t)`, which runs the real TypeScript daemon (`SUITE_AGENT=echo`, temp socket and data dir; skips without `bun`) and calls tools through its `/mcp` with `CallTool("app.tool", args)`.
+`Result.Structured` becomes `structuredContent` (the data view templates get); without `Text` its JSON is the text content. The tool list is fixed once the server started (there is no server-to-client stream, so no `list_changed`); a changed list needs a new server and a new `SetPresence`. Tests can use `sdktest.StartReal(t)`, which runs the real TypeScript daemon (`NEO_AGENT=echo`, temp socket and data dir; skips without `bun`) and calls tools through its `/mcp` with `CallTool("app.tool", args)`.
 
 ## Assets and file changes
 

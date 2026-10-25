@@ -20,23 +20,23 @@ pub fn all() -> Commands {
     ))))
 }
 
-/// Where the window was started and which session it should open: `suite gui` passes
-/// `--session` and `--new` on as `SUITE_GUI_SESSION` and `SUITE_GUI_NEW=1`, since the host's
+/// Where the window was started and which session it should open: `neo gui` passes
+/// `--session` and `--new` on as `NEO_GUI_SESSION` and `NEO_GUI_NEW=1`, since the host's
 /// command line belongs to svelte-gpui.
 fn startup() -> Value {
     let cwd = std::env::current_dir()
         .map(|dir| dir.display().to_string())
         .unwrap_or_default();
-    let session = std::env::var("SUITE_GUI_SESSION")
+    let session = std::env::var("NEO_GUI_SESSION")
         .ok()
         .filter(|id| !id.is_empty());
-    let new = std::env::var("SUITE_GUI_NEW").is_ok_and(|value| value == "1");
+    let new = std::env::var("NEO_GUI_NEW").is_ok_and(|value| value == "1");
     json!({ "cwd": cwd, "session": session, "new": new })
 }
 
 /// `daemon.json` sits next to the daemon's socket.
 fn daemon_info_path() -> std::path::PathBuf {
-    let socket = suite_sdk::default_socket_path();
+    let socket = neo_sdk::default_socket_path();
     socket.with_file_name("daemon.json")
 }
 
@@ -46,7 +46,7 @@ pub fn daemon_address(path: &Path) -> Result<Value, CommandError> {
     let raw = std::fs::read_to_string(path).map_err(|_| {
         CommandError::with_code(
             "NotRunning",
-            format!("the suite daemon is not running (no {})", path.display()),
+            format!("neo daemon is not running (no {})", path.display()),
         )
     })?;
     let info: Value = serde_json::from_str(&raw)
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn reads_the_address_from_daemon_json() {
-        let dir = std::env::temp_dir().join(format!("suite-gui-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("neo-gui-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("daemon.json");
         std::fs::write(

@@ -68,7 +68,7 @@ function baseName(path: string): string {
 
 function renderSpan(doc: Document, span: Span): Node {
   let node: Node = doc.createTextNode(span.text);
-  if (span.code) node = el(doc, "code", "suite-inline-code", {}, node);
+  if (span.code) node = el(doc, "code", "neo-inline-code", {}, node);
   if (span.bold) node = el(doc, "strong", "", {}, node);
   if (span.italic) node = el(doc, "em", "", {}, node);
   if (span.strike) node = el(doc, "del", "", {}, node);
@@ -76,7 +76,7 @@ function renderSpan(doc: Document, span: Span): Node {
     node = el(
       doc,
       "a",
-      "suite-link",
+      "neo-link",
       { href: span.href, target: "_blank", rel: "noopener noreferrer" },
       node,
     );
@@ -100,12 +100,12 @@ function renderCodeBlock(
 function renderList(ctx: RenderContext, block: ListBlock): HTMLElement {
   const tag = block.ordered ? "ol" : "ul";
   const start = block.ordered && block.start !== undefined ? String(block.start) : undefined;
-  const list = el(ctx.doc, tag, "suite-list", { start });
+  const list = el(ctx.doc, tag, "neo-list", { start });
   for (const item of block.items) {
     const li = el(ctx.doc, "li", "");
     if (item.checked !== undefined) {
-      li.className = "suite-task";
-      const box = el(ctx.doc, "input", "suite-checkbox", {
+      li.className = "neo-task";
+      const box = el(ctx.doc, "input", "neo-checkbox", {
         type: "checkbox",
         disabled: "",
         "aria-label": item.checked ? "done" : "not done",
@@ -132,13 +132,13 @@ function renderTableBlock(doc: Document, table: TableBlock): HTMLElement {
   };
   const head = el(doc, "thead", "", {}, row(table.header, "th"));
   const body = el(doc, "tbody", "", {}, ...table.rows.map((cells) => row(cells, "td")));
-  const grid = el(doc, "table", "suite-table suite-md-table", {}, head, body);
-  return el(doc, "div", "suite-table-wrap", {}, grid);
+  const grid = el(doc, "table", "neo-table neo-md-table", {}, head, body);
+  return el(doc, "div", "neo-table-wrap", {}, grid);
 }
 
 /** What a renderer without the component draws in its place (docs/neoui.md: web doesn't yet). */
 function renderUnsupported(doc: Document, kind: string): HTMLElement {
-  return el(doc, "div", "suite-unsupported", {}, `[unsupported component: ${kind}]`);
+  return el(doc, "div", "neo-unsupported", {}, `[unsupported component: ${kind}]`);
 }
 
 export function renderBlock(ctx: RenderContext, block: Block): HTMLElement {
@@ -148,16 +148,16 @@ export function renderBlock(ctx: RenderContext, block: Block): HTMLElement {
       return el(doc, "p", "", {}, ...renderSpans(doc, block.spans));
     case "heading": {
       const level = Math.min(Math.max(Math.trunc(block.level), 1), 6);
-      return el(doc, `h${level}`, "suite-heading", {}, ...renderSpans(doc, block.spans));
+      return el(doc, `h${level}`, "neo-heading", {}, ...renderSpans(doc, block.spans));
     }
     case "list":
       return renderList(ctx, block);
     case "code_block":
-      return renderCodeBlock(doc, block, "suite-code");
+      return renderCodeBlock(doc, block, "neo-code");
     case "quote":
-      return el(doc, "blockquote", "suite-quote", {}, ...renderBlocks(ctx, block.blocks));
+      return el(doc, "blockquote", "neo-quote", {}, ...renderBlocks(ctx, block.blocks));
     case "rule":
-      return el(doc, "hr", "suite-rule");
+      return el(doc, "hr", "neo-rule");
     case "table_block":
       return renderTableBlock(doc, block);
     case "openui":
@@ -179,7 +179,7 @@ function renderImageFallback(doc: Document, image: ImageComponent): HTMLElement 
   return el(
     doc,
     "div",
-    "suite-image-fallback",
+    "neo-image-fallback",
     { role: "img", "aria-label": image.alt ?? "image" },
     `[image${size} · ${image.src}]`,
   );
@@ -197,7 +197,7 @@ function imageSource(ctx: RenderContext, src: string): string | undefined {
 
 function renderImage(ctx: RenderContext, image: ImageComponent): HTMLElement {
   const { doc } = ctx;
-  const figure = el(doc, "figure", "suite-image");
+  const figure = el(doc, "figure", "neo-image");
   // An asset:// handle needs the host's resolver, and a bare path means nothing to a browser: both
   // get the text box, as does an image that fails to load.
   const source = imageSource(ctx, image.src);
@@ -222,9 +222,9 @@ function renderFile(doc: Document, file: FileComponent): HTMLElement {
   return el(
     doc,
     "span",
-    "suite-file",
+    "neo-file",
     { title: file.path },
-    el(doc, "span", "suite-file-icon", { "aria-hidden": "true" }, "📄"),
+    el(doc, "span", "neo-file-icon", { "aria-hidden": "true" }, "📄"),
     ` ${file.name ?? baseName(file.path)}`,
   );
 }
@@ -235,22 +235,22 @@ function lineNumber(n: number | undefined): string {
 }
 
 function renderDiff(doc: Document, diff: DiffComponent): HTMLElement {
-  const figure = el(doc, "figure", "suite-diff");
+  const figure = el(doc, "figure", "neo-diff");
   if (diff.path !== undefined) {
-    figure.append(el(doc, "figcaption", "suite-diff-path", {}, diff.path));
+    figure.append(el(doc, "figcaption", "neo-diff-path", {}, diff.path));
   }
-  const body = el(doc, "pre", "suite-diff-body");
+  const body = el(doc, "pre", "neo-diff-body");
   for (const line of diff.lines) {
     const sign = { add: "+", remove: "-", context: " ", hunk: "" }[line.kind];
-    const row = el(doc, "span", "suite-diff-line", { "data-kind": line.kind });
+    const row = el(doc, "span", "neo-diff-line", { "data-kind": line.kind });
     if (line.kind !== "hunk") {
       row.append(
-        el(doc, "span", "suite-diff-num", {}, lineNumber(line.old)),
-        el(doc, "span", "suite-diff-num", {}, lineNumber(line.new)),
-        el(doc, "span", "suite-diff-sign", { "aria-hidden": "true" }, sign),
+        el(doc, "span", "neo-diff-num", {}, lineNumber(line.old)),
+        el(doc, "span", "neo-diff-num", {}, lineNumber(line.new)),
+        el(doc, "span", "neo-diff-sign", { "aria-hidden": "true" }, sign),
       );
     }
-    row.append(el(doc, "span", "suite-diff-text", {}, line.text));
+    row.append(el(doc, "span", "neo-diff-text", {}, line.text));
     body.append(row);
   }
   figure.append(body);
@@ -264,19 +264,19 @@ function renderTable(doc: Document, table: TableComponent): HTMLElement {
   for (const row of table.rows) {
     body.append(el(doc, "tr", "", {}, ...row.map((cell) => el(doc, "td", "", {}, cell))));
   }
-  const grid = el(doc, "table", "suite-table", {}, el(doc, "thead", "", {}, head), body);
-  return el(doc, "div", "suite-table-wrap", {}, grid);
+  const grid = el(doc, "table", "neo-table", {}, el(doc, "thead", "", {}, head), body);
+  return el(doc, "div", "neo-table-wrap", {}, grid);
 }
 
 function renderProgress(doc: Document, value: number, label: string | undefined): HTMLElement {
   const fraction = Math.min(Math.max(value, 0), 1);
   const percent = Math.round(fraction * 100);
-  const bar = el(doc, "div", "suite-progress-bar");
-  bar.style.setProperty("--suite-progress", `${percent}%`);
+  const bar = el(doc, "div", "neo-progress-bar");
+  bar.style.setProperty("--neo-progress", `${percent}%`);
   const track = el(
     doc,
     "div",
-    "suite-progress-track",
+    "neo-progress-track",
     {
       role: "progressbar",
       "aria-valuemin": "0",
@@ -286,9 +286,9 @@ function renderProgress(doc: Document, value: number, label: string | undefined)
     },
     bar,
   );
-  const root = el(doc, "div", "suite-progress", {}, track);
-  root.append(el(doc, "span", "suite-progress-percent", {}, `${percent}%`));
-  if (label !== undefined) root.append(el(doc, "span", "suite-progress-label", {}, label));
+  const root = el(doc, "div", "neo-progress", {}, track);
+  root.append(el(doc, "span", "neo-progress-percent", {}, `${percent}%`));
+  if (label !== undefined) root.append(el(doc, "span", "neo-progress-label", {}, label));
   return root;
 }
 
@@ -304,21 +304,21 @@ function renderButton(ctx: RenderContext, button: ButtonComponent): HTMLElement 
   return el(
     ctx.doc,
     "button",
-    "suite-button",
+    "neo-button",
     { type: "button", "data-button": String(index), "aria-keyshortcuts": key },
-    el(ctx.doc, "span", "suite-button-label", {}, button.label),
+    el(ctx.doc, "span", "neo-button-label", {}, button.label),
     " ",
-    el(ctx.doc, "kbd", "suite-key", { "aria-hidden": "true" }, key),
+    el(ctx.doc, "kbd", "neo-key", { "aria-hidden": "true" }, key),
   );
 }
 
 function renderLink(doc: Document, link: LinkComponent): HTMLElement {
   const text = link.text ?? link.url;
-  if (!safeUrl(link.url)) return el(doc, "span", "suite-link", {}, text);
+  if (!safeUrl(link.url)) return el(doc, "span", "neo-link", {}, text);
   return el(
     doc,
     "a",
-    "suite-link",
+    "neo-link",
     { href: link.url, target: "_blank", rel: "noopener noreferrer", title: link.url },
     text,
   );
@@ -330,16 +330,16 @@ export function renderComponent(ctx: RenderContext, component: Component): HTMLE
   const { doc } = ctx;
   switch (component.type) {
     case "card": {
-      const card = el(doc, "section", "suite-card", { "data-tone": component.tone });
+      const card = el(doc, "section", "neo-card", { "data-tone": component.tone });
       if (component.title !== undefined) {
-        card.append(el(doc, "h3", "suite-card-title", {}, component.title));
+        card.append(el(doc, "h3", "neo-card-title", {}, component.title));
       }
       card.append(...component.children.map((child) => renderComponent(ctx, child)));
       return card;
     }
     case "row":
     case "stack": {
-      const tag = component.type === "row" ? "suite-row" : "suite-stack";
+      const tag = component.type === "row" ? "neo-row" : "neo-stack";
       const box = el(doc, "div", tag, { "data-gap": component.gap });
       box.append(...component.children.map((child) => renderComponent(ctx, child)));
       return box;
@@ -348,7 +348,7 @@ export function renderComponent(ctx: RenderContext, component: Component): HTMLE
       return el(
         doc,
         "div",
-        "suite-text",
+        "neo-text",
         { "data-role": component.role, "data-tone": component.tone },
         ...renderBlocks(ctx, component.blocks),
       );
@@ -357,13 +357,13 @@ export function renderComponent(ctx: RenderContext, component: Component): HTMLE
     case "file":
       return renderFile(doc, component);
     case "code":
-      return renderCodeBlock(doc, component, "suite-code");
+      return renderCodeBlock(doc, component, "neo-code");
     case "diff":
       return renderDiff(doc, component);
     case "table":
       return renderTable(doc, component);
     case "kv": {
-      const list = el(doc, "dl", "suite-kv");
+      const list = el(doc, "dl", "neo-kv");
       for (const { key, value, tone } of component.items) {
         list.append(el(doc, "dt", "", {}, key), el(doc, "dd", "", { "data-tone": tone }, value));
       }
@@ -396,32 +396,32 @@ export function renderItem(
   resolveImage?: RenderContext["resolveImage"],
 ): RenderedItem {
   const ctx: RenderContext = { doc, buttons: [], resolveImage };
-  const body = el(doc, "div", "suite-item-body", {}, renderComponent(ctx, item.component));
+  const body = el(doc, "div", "neo-item-body", {}, renderComponent(ctx, item.component));
   const attrs: Attrs = { "data-ref": item.ref, "data-kind": item.kind, "data-state": item.state };
   let root: HTMLElement;
   switch (item.kind) {
     case "user": {
-      root = el(doc, "article", "suite-item", attrs);
+      root = el(doc, "article", "neo-item", attrs);
       const header = item.label === undefined || item.label === "" ? "»" : `» ${item.label}`;
-      root.append(el(doc, "header", "suite-item-header", {}, header));
+      root.append(el(doc, "header", "neo-item-header", {}, header));
       break;
     }
     case "tool": {
-      root = el(doc, "article", "suite-item", attrs);
-      const header = el(doc, "header", "suite-item-header");
+      root = el(doc, "article", "neo-item", attrs);
+      const header = el(doc, "header", "neo-item-header");
       if (item.state !== undefined) {
         header.append(
           el(
             doc,
             "span",
-            "suite-state",
+            "neo-state",
             { "data-state": item.state, role: "img", "aria-label": item.state },
             STATE_ICONS[item.state],
           ),
           " ",
         );
       }
-      if (item.label !== undefined) header.append(el(doc, "span", "suite-label", {}, item.label));
+      if (item.label !== undefined) header.append(el(doc, "span", "neo-label", {}, item.label));
       root.append(header);
       break;
     }
@@ -430,19 +430,19 @@ export function renderItem(
       root = el(
         doc,
         "details",
-        "suite-item",
+        "neo-item",
         attrs,
-        el(doc, "summary", "suite-item-header", {}, summary),
+        el(doc, "summary", "neo-item-header", {}, summary),
       );
       break;
     }
     case "agent":
       // A guest agent's items carry its name; the main agent's have no label and no header.
-      root = el(doc, "article", "suite-item", attrs);
-      if (item.label) root.append(el(doc, "header", "suite-item-header", {}, item.label));
+      root = el(doc, "article", "neo-item", attrs);
+      if (item.label) root.append(el(doc, "header", "neo-item-header", {}, item.label));
       break;
     case "notice":
-      root = el(doc, "article", "suite-item", attrs);
+      root = el(doc, "article", "neo-item", attrs);
       break;
   }
   root.append(body);

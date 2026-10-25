@@ -238,7 +238,7 @@ describe("/title", () => {
 });
 
 describe("the title model", () => {
-  test("is the suite's choice until the user chooses: Claude's Haiku if there is such a guest", async () => {
+  test("is neo's choice until the user chooses: Claude's Haiku if there is such a guest", async () => {
     const withClaude = await setup({ guests: { claude: { ...FAKE, title: "Claude Code" } } });
     expect(withClaude.daemon.titles.current()).toEqual({
       model: DEFAULT_TITLE_MODEL,
@@ -257,14 +257,14 @@ describe("the title model", () => {
     });
     expect(daemon.store.read(session).map((r) => r.event)).toContainEqual({
       type: "setting_changed",
-      harness: "suite",
+      harness: "daemon",
       option: "title_model",
       value: "fake large",
     });
     // Another session, and a new daemon on the same data, have it too.
     const other = daemon.sessions.create({}).id;
     expect(daemon.settings.titleModel()).toEqual({ harness: "fake", model: "large" });
-    expect(daemon.store.getMeta("setting:suite:title_model")).toBe("fake large");
+    expect(daemon.store.getMeta("setting:daemon:title_model")).toBe("fake large");
     await daemon.commands.run(other, "/title-model default");
     expect(daemon.titles.current().chosen).toBe(false);
   });
@@ -300,7 +300,7 @@ describe("the title model", () => {
     const answer = async (option: string): Promise<void> => {
       const { id } = asked();
       await daemon.actions.run(
-        { session, ref: "c", action: "suite.choose", args: { id, option } },
+        { session, ref: "c", action: "neo.choose", args: { id, option } },
         "test",
       );
     };

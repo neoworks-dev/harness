@@ -143,7 +143,7 @@ async function pick(s: Setup, option: string): Promise<void> {
     {
       session: s.session,
       ref: "x",
-      action: "suite.choose",
+      action: "neo.choose",
       args: { id: lastChoice(s).id, option },
     },
     "t",
@@ -577,10 +577,10 @@ describe("/accounts", () => {
     expect(notices(s)[0]).toBe(
       [
         "Logins (the first source is used):",
-        "deepseek: API key from the suite's file, pi's file",
-        "github-copilot: GitHub Copilot from the suite's file, token expired (renewed when used)",
+        "deepseek: API key from neo's file, pi's file",
+        "github-copilot: GitHub Copilot from neo's file, token expired (renewed when used)",
         "groq: API key from pi's file",
-        "openai-codex: ChatGPT from the suite's file, token until 2099-01-02 03:04",
+        "openai-codex: ChatGPT from neo's file, token until 2099-01-02 03:04",
         "openrouter: API key from OPENROUTER_API_KEY",
       ].join("\n"),
     );
@@ -603,7 +603,7 @@ describe("/accounts", () => {
     const c = s.client();
     c.type("/accounts");
     await until(() => notices(s).length > 0);
-    expect(notices(s)[0]).toContain("deepseek: API key from DEEPSEEK_API_KEY, the suite's file");
+    expect(notices(s)[0]).toContain("deepseek: API key from DEEPSEEK_API_KEY, neo's file");
   });
 
   test("nothing", async () => {

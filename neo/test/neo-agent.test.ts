@@ -410,9 +410,9 @@ test("a session lists its skills in the system prompt, and the skill tool loads 
     "---\nname: demo\ndescription: Use when demoing\n---\n\nStep one.\nStep two.\n",
   );
   const cwd = join(root, "project");
-  await mkdir(join(cwd, ".suite", "skills", "local"), { recursive: true });
+  await mkdir(join(cwd, ".neo", "skills", "local"), { recursive: true });
   await writeFile(
-    join(cwd, ".suite", "skills", "local", "SKILL.md"),
+    join(cwd, ".neo", "skills", "local", "SKILL.md"),
     "---\nname: local\ndescription: Project rules\n---\nUse tabs.",
   );
   const prompts: (string | undefined)[] = [];

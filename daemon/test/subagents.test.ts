@@ -1,4 +1,4 @@
-// Delegation as the user sees it: the suite's own MCP tools are not asked about twice, one clear
+// Delegation as the user sees it: neo's own MCP tools are not asked about twice, one clear
 // "Start a subagent?" gate, a model the harness doesn't list is refused before asking, the
 // session's view shows one item per delegation (the subagent's events stay in the log and in its
 // own view), and a delegation into a directory or worktree runs as a session there.
@@ -36,7 +36,7 @@ async function setup(
       if (event.type !== "permission_request" || event.title !== "Start a subagent?") return;
       void Promise.resolve().then(() =>
         daemon.actions.run(
-          { session, ref: "p", action: "suite.permit", args: { id: event.id, option: gate } },
+          { session, ref: "p", action: "neo.permit", args: { id: event.id, option: gate } },
           "test",
         ),
       );
@@ -54,7 +54,7 @@ function git(dir: string, ...args: string[]): string {
 
 /** A repository with one commit in a temp dir. */
 function gitRepo(): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "suite-repo-")));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "neo-repo-")));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   git(dir, "init", "-q", "-b", "main");
   git(
@@ -115,7 +115,7 @@ async function answer(
   const request = open();
   if (!request) throw new Error("no open question");
   await daemon.actions.run(
-    { session, ref: "x", action: "suite.permit", args: { id: request.id, option } },
+    { session, ref: "x", action: "neo.permit", args: { id: request.id, option } },
     "test",
   );
   return request;
@@ -150,11 +150,11 @@ You review diffs.`;
     cwd: string;
     model: ReturnType<typeof fakeModel>;
   }> {
-    const cwd = realpathSync(mkdtempSync(join(tmpdir(), "suite-agents-")));
+    const cwd = realpathSync(mkdtempSync(join(tmpdir(), "neo-agents-")));
     cleanups.push(() => rmSync(cwd, { recursive: true, force: true }));
-    mkdirSync(join(cwd, ".suite", "agents"), { recursive: true });
+    mkdirSync(join(cwd, ".neo", "agents"), { recursive: true });
     for (const [name, text] of Object.entries(files)) {
-      await Bun.write(join(cwd, ".suite", "agents", name), text);
+      await Bun.write(join(cwd, ".neo", "agents", name), text);
     }
     const model = fakeModel(steps);
     const neo = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
@@ -164,7 +164,7 @@ You review diffs.`;
       if (event.type !== "permission_request" || event.title !== "Start a subagent?") return;
       void Promise.resolve().then(() =>
         daemon.actions.run(
-          { session, ref: "p", action: "suite.permit", args: { id: event.id, option: gate } },
+          { session, ref: "p", action: "neo.permit", args: { id: event.id, option: gate } },
           "test",
         ),
       );
@@ -258,13 +258,13 @@ You review diffs.`;
   });
 });
 
-describe("the suite's own MCP tools", () => {
+describe("neo's own MCP tools", () => {
   test("are allowed without a question in every mode, whatever the adapter calls them", async () => {
     const { daemon, session } = await setup();
     for (const mode of ["ask", "review", "edits", "auto"]) {
       await daemon.commands.run(session, `/approvals ${mode}`);
       for (const tool of ["tools_search", "tools_call", "apps_launch", "delegate"]) {
-        expect(await guestTurn(daemon, session, `suitetool ${tool}`)).toBe("answer: yes");
+        expect(await guestTurn(daemon, session, `neotool ${tool}`)).toBe("answer: yes");
       }
       // Codex's spelling.
       expect(await guestTurn(daemon, session, "codex tools_call")).toBe("answer: yes");
@@ -274,7 +274,7 @@ describe("the suite's own MCP tools", () => {
 
   test("another tool of the same adapter still asks", async () => {
     const { daemon, session } = await setup();
-    daemon.sessions.input(session, "cli", "/fake suitetool nothing_of_ours");
+    daemon.sessions.input(session, "cli", "/fake neotool nothing_of_ours");
     const request = await answer(daemon, session, "yes");
     // Titled by what it does, like any request.
     expect(request.title).toBe("nothing_of_ours");
@@ -629,7 +629,7 @@ describe("delegating into a directory", () => {
 
   test("bad directories are refused before anything is asked", async () => {
     const repo = gitRepo();
-    const plain = mkdtempSync(join(tmpdir(), "suite-plain-"));
+    const plain = mkdtempSync(join(tmpdir(), "neo-plain-"));
     cleanups.push(() => rmSync(plain, { recursive: true, force: true }));
     const { daemon, session } = await setup({ gate: "manual", cwd: repo });
     const refused = async (args: Record<string, string>, cwdSession = session): Promise<string> => {
@@ -659,7 +659,7 @@ describe("delegating into a directory", () => {
       if (event.type !== "permission_request" || event.title !== "Start a subagent?") return;
       void Promise.resolve().then(() =>
         daemon.actions.run(
-          { session, ref: "p", action: "suite.permit", args: { id: event.id, option: "allow" } },
+          { session, ref: "p", action: "neo.permit", args: { id: event.id, option: "allow" } },
           "test",
         ),
       );
@@ -716,14 +716,14 @@ describe("delegating into a directory", () => {
 });
 
 describe("stopping one subagent", () => {
-  test("suite.cancel_agent stops it; the delegate call reports it and the turn goes on", async () => {
+  test("neo.cancel_agent stops it; the delegate call reports it and the turn goes on", async () => {
     const { daemon, session } = await setup();
     const call = delegate(daemon, session, { task: "wait" });
     await until(() => events(daemon, session).some((e) => e.type === "subagent_started"), "start");
     const started = events(daemon, session).find((e) => e.type === "subagent_started");
     if (started?.type !== "subagent_started") throw new Error("no start");
     await daemon.actions.run(
-      { session, ref: "agents", action: "suite.cancel_agent", args: { id: started.id } },
+      { session, ref: "agents", action: "neo.cancel_agent", args: { id: started.id } },
       "test",
     );
     const result = await call;
@@ -736,7 +736,7 @@ describe("stopping one subagent", () => {
     // Gone: a second stop is an error.
     expect(
       daemon.actions.run(
-        { session, ref: "agents", action: "suite.cancel_agent", args: { id: started.id } },
+        { session, ref: "agents", action: "neo.cancel_agent", args: { id: started.id } },
         "test",
       ),
     ).rejects.toThrow("isn't a running subagent");
@@ -754,7 +754,7 @@ describe("stopping one subagent", () => {
     await until(() => daemon.sessions.info(child)?.state === "running", "the child's turn");
     await Bun.sleep(100);
     await daemon.actions.run(
-      { session, ref: "agents", action: "suite.cancel_agent", args: { id: started.id } },
+      { session, ref: "agents", action: "neo.cancel_agent", args: { id: started.id } },
       "test",
     );
     const result = await call;

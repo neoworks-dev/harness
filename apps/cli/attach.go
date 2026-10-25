@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	protocol "neoworks.dev/suite/protocol/go"
-	sdk "neoworks.dev/suite/sdk-go"
+	protocol "neoworks.dev/neo/protocol/go"
+	sdk "neoworks.dev/neo/sdk-go"
 )
 
 // pollInterval is how often we ask whether the session went idle after stdin
@@ -32,10 +32,10 @@ func runAttach(ctx context.Context, args []string, e cliEnv) int {
 	}
 	switch {
 	case *create && len(positional) > 0, !*create && len(positional) > 1:
-		fmt.Fprint(e.Stderr, "usage: suite attach [flags] [id|prefix]\n       suite attach --new [--cwd DIR] [--title T] [flags]\n")
+		fmt.Fprint(e.Stderr, "usage: neo attach [flags] [id|prefix]\n       neo attach --new [--cwd DIR] [--title T] [flags]\n")
 		return 2
 	case !*create && (*cwd != "" || *title != ""):
-		fmt.Fprintln(e.Stderr, "suite: --cwd and --title only apply with --new")
+		fmt.Fprintln(e.Stderr, "neo: --cwd and --title only apply with --new")
 		return 2
 	}
 
@@ -50,7 +50,7 @@ func runAttach(ctx context.Context, args []string, e cliEnv) int {
 		dir := *cwd
 		if dir == "" {
 			if dir, err = os.Getwd(); err != nil {
-				fmt.Fprintf(e.Stderr, "suite: %v\n", err)
+				fmt.Fprintf(e.Stderr, "neo: %v\n", err)
 				return 1
 			}
 		}
@@ -60,7 +60,7 @@ func runAttach(ctx context.Context, args []string, e cliEnv) int {
 		}
 		info, err := c.CreateSession(ctx, params)
 		if err != nil {
-			fmt.Fprintf(e.Stderr, "suite: create session: %v\n", err)
+			fmt.Fprintf(e.Stderr, "neo: create session: %v\n", err)
 			return 1
 		}
 		id = info.ID
@@ -68,7 +68,7 @@ func runAttach(ctx context.Context, args []string, e cliEnv) int {
 	} else if len(positional) == 0 {
 		focus, err := waitFocus(ctx, c)
 		if err != nil {
-			fmt.Fprintf(e.Stderr, "suite: no agent.focus from the daemon: %v\n", err)
+			fmt.Fprintf(e.Stderr, "neo: no agent.focus from the daemon: %v\n", err)
 			return 1
 		}
 		id = focus.Session
@@ -81,7 +81,7 @@ func runAttach(ctx context.Context, args []string, e cliEnv) int {
 			}
 		}
 		if err != nil {
-			fmt.Fprintf(e.Stderr, "suite: %v\n", err)
+			fmt.Fprintf(e.Stderr, "neo: %v\n", err)
 			return 1
 		}
 	}
@@ -94,7 +94,7 @@ func runAttach(ctx context.Context, args []string, e cliEnv) int {
 
 	sub, err := c.Subscribe(ctx, id, 1)
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "suite: attach %s: %v\n", id, err)
+		fmt.Fprintf(e.Stderr, "neo: attach %s: %v\n", id, err)
 		return 1
 	}
 	a := &attachment{
@@ -116,17 +116,17 @@ func attachView(ctx context.Context, c *sdk.Client, id, app string, thoughts boo
 	view, err := c.SubscribeView(ctx, id)
 	var refused *sdk.Error
 	if errors.As(err, &refused) && refused.Code != protocol.ErrorCodeNotFound {
-		fmt.Fprintf(e.Stderr, "suite: the daemon does not serve views (%v); showing raw events\n", err)
+		fmt.Fprintf(e.Stderr, "neo: the daemon does not serve views (%v); showing raw events\n", err)
 		return 0, false
 	}
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "suite: attach %s: %v\n", id, err)
+		fmt.Fprintf(e.Stderr, "neo: attach %s: %v\n", id, err)
 		return 1, true
 	}
 	// The view says nothing of turns; the events do, and only their end matters.
 	events, err := c.SubscribeLive(ctx, id)
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "suite: attach %s: %v\n", id, err)
+		fmt.Fprintf(e.Stderr, "neo: attach %s: %v\n", id, err)
 		return 1, true
 	}
 	// Give the theme a moment; it comes right after the handshake.
@@ -175,7 +175,7 @@ type attachment struct {
 func (a *attachment) finish(code int) { a.done, a.code = true, code }
 
 func (a *attachment) warnf(format string, args ...any) {
-	fmt.Fprintf(a.stderr, "suite: "+format+"\n", args...)
+	fmt.Fprintf(a.stderr, "neo: "+format+"\n", args...)
 }
 
 // failed reports a failed request. A refusal from the daemon is only a

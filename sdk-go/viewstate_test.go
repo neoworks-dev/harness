@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	protocol "neoworks.dev/suite/protocol/go"
-	sdk "neoworks.dev/suite/sdk-go"
+	protocol "neoworks.dev/neo/protocol/go"
+	sdk "neoworks.dev/neo/sdk-go"
 )
 
 func para(text string) protocol.Block {

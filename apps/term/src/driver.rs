@@ -7,10 +7,10 @@ use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use suite_protocol::{
+use neo_protocol::{
     AgentFocus, AppPresence, ConnectorInfo, ConnectorKind, SessionCreateParams, SessionInfo,
 };
-use suite_sdk::{Client, Event};
+use neo_sdk::{Client, Event};
 
 use crate::app::{App, Config, Effect, Msg};
 use crate::history::HistoryStore;
@@ -25,9 +25,9 @@ pub struct Args {
     pub new: bool,
 }
 
-pub const USAGE: &str = "usage: suite-term [--session ID|PREFIX] [--new]
+pub const USAGE: &str = "usage: neo-term [--session ID|PREFIX] [--new]
 
-The suite's full-screen terminal app: the shared conversation, plan, files and usage.
+Neo's full-screen terminal app: the shared conversation, plan, files and usage.
 Without flags it shows the agent's current session if it works in this directory, else the
 latest session here, else a new one.
 
@@ -163,7 +163,7 @@ impl Driver {
             let client = client.clone();
             let app = app_id.to_string();
             thread::Builder::new()
-                .name("suite-term-worker".into())
+                .name("neo-term-worker".into())
                 .spawn(move || work(&client, &app, &job_rx, &msg_tx))
                 .expect("spawn worker")
         };
@@ -229,7 +229,7 @@ impl Drop for Driver {
 }
 
 fn work(client: &Client, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sender<Msg>) {
-    let fail = |what: &str, err: suite_sdk::Error| {
+    let fail = |what: &str, err: neo_sdk::Error| {
         let _ = msgs.send(Msg::Error(format!("{what}: {err}")));
     };
     // What is followed besides the shown session: the sessions of subagents in directories of
@@ -346,7 +346,7 @@ fn switch(
     to: &str,
     cwd: &str,
     move_agent: bool,
-) -> suite_sdk::Result<()> {
+) -> neo_sdk::Result<()> {
     if let Some(old) = from.filter(|old| *old != to) {
         let _ = client.unsubscribe_view(old);
         let _ = client.unsubscribe(old);
@@ -386,14 +386,14 @@ pub struct StartOptions {
 /// Connects, registers as a terminal app, picks the session, and starts following it with the
 /// agent moved here. Nothing is drawn yet.
 pub fn start(options: StartOptions) -> Result<Started, StartError> {
-    let mut client_options = suite_sdk::Options::new("terminal");
+    let mut client_options = neo_sdk::Options::new("terminal");
     client_options.socket = options.socket;
     client_options.reconnect = true;
     let client = Client::connect(client_options).map_err(|err| match err {
-        suite_sdk::Error::DaemonDown => StartError::DaemonDown,
+        neo_sdk::Error::DaemonDown => StartError::DaemonDown,
         other => StartError::Other(other.to_string()),
     })?;
-    let other = |what: &str, err: suite_sdk::Error| StartError::Other(format!("{what}: {err}"));
+    let other = |what: &str, err: neo_sdk::Error| StartError::Other(format!("{what}: {err}"));
     let events = client.events();
 
     // The daemon sends the agent's location right after hello; wait a moment for it.
@@ -476,7 +476,7 @@ pub fn current_dir() -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use suite_protocol::{FocusReason, SessionState};
+    use neo_protocol::{FocusReason, SessionState};
 
     fn info(id: &str, cwd: &str, last: i64) -> SessionInfo {
         SessionInfo {

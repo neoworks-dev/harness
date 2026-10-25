@@ -16,7 +16,7 @@ test("the browser entry bundles for a browser", async () => {
       join(SRC, "browser.ts"),
       "--target=browser",
       "--outdir",
-      mkdtempSync(join(tmpdir(), "suite-bundle-")),
+      mkdtempSync(join(tmpdir(), "neo-bundle-")),
     ],
     { stdout: "pipe", stderr: "pipe" },
   );

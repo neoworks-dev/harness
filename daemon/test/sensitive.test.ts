@@ -34,7 +34,7 @@ test("sensitive files", () => {
     "~/.gnupg/pubring.kbx",
     "~/.netrc",
     "~/.pi/agent/auth.json",
-    "~/.local/share/suite/auth.json",
+    "~/.local/share/neo/auth.json",
     "~/.config/gh/hosts.yml",
     "~/.docker/config.json",
     "~/.kube/config",
@@ -76,7 +76,7 @@ test("paths resolve against the working directory and ~, and links to sensitive 
   expect(sensitivePath("../app/.env", cwd, home)).toBe("/work/app/.env");
   expect(sensitivePath("~/.ssh/config", cwd, home)).toBe("/home/me/.ssh/config");
 
-  const dir = mkdtempSync(join(tmpdir(), "suite-sensitive-"));
+  const dir = mkdtempSync(join(tmpdir(), "neo-sensitive-"));
   await mkdir(join(dir, "home", ".ssh"), { recursive: true });
   await writeFile(join(dir, "home", ".ssh", "config"), "Host x\n");
   await writeFile(join(dir, "notes.txt"), "plain\n");

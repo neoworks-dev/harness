@@ -1,9 +1,9 @@
 //! The masked field for `secret.request`, inside the app and drawn into a test backend.
 
+use neo_protocol::{SecretRequest, SessionState};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::KeyEventState;
-use suite_protocol::{SecretRequest, SessionState};
 
 use super::*;
 
@@ -257,7 +257,7 @@ fn another_session_is_cancelled_a_lost_connection_and_a_switch_drop_it() {
 
 #[test]
 fn a_secret_stays_out_of_history_effects_debug_and_frames() {
-    let dir = std::env::temp_dir().join(format!("suite-term-secret-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("neo-term-secret-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let mut app = app_with(HistoryStore::new(Some(dir.clone())));
     // One real prompt so the history file exists to look in.

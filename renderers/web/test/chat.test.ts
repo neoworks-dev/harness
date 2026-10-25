@@ -149,7 +149,7 @@ describe("patches update only what they touch", () => {
   test("streaming blocks re-render only the tail of the text component", () => {
     const { page, chat } = rig();
     chat.setItems([agent("m", para("first"), para("sec"))]);
-    const [first, second] = Array.from(itemEl(page, "m").querySelectorAll(".suite-text > p"));
+    const [first, second] = Array.from(itemEl(page, "m").querySelectorAll(".neo-text > p"));
 
     chat.applyPatch(
       patch(1, {
@@ -160,7 +160,7 @@ describe("patches update only what they touch", () => {
         blocks: [para("second"), para("third")],
       }),
     );
-    const paragraphs = Array.from(itemEl(page, "m").querySelectorAll(".suite-text > p"));
+    const paragraphs = Array.from(itemEl(page, "m").querySelectorAll(".neo-text > p"));
     expect(paragraphs.map((p) => p.textContent)).toEqual(["first", "second", "third"]);
     expect(paragraphs[0]).toBe(first);
     expect(paragraphs[1]).not.toBe(second);
@@ -168,7 +168,7 @@ describe("patches update only what they touch", () => {
     chat.applyPatch(
       patch(2, { op: "blocks", ref: "m", path: [], from: 2, blocks: [para("third!")] }),
     );
-    const after = Array.from(itemEl(page, "m").querySelectorAll(".suite-text > p"));
+    const after = Array.from(itemEl(page, "m").querySelectorAll(".neo-text > p"));
     expect(after.map((p) => p.textContent)).toEqual(["first", "second", "third!"]);
     expect(after[0]).toBe(first);
     expect(after[1]).toBe(paragraphs[1]);
@@ -189,7 +189,7 @@ describe("patches update only what they touch", () => {
       },
     };
     chat.setItems([item]);
-    const zero = itemEl(page, "t").querySelector(".suite-text");
+    const zero = itemEl(page, "t").querySelector(".neo-text");
     chat.applyPatch(
       patch(1, {
         op: "blocks",
@@ -199,18 +199,18 @@ describe("patches update only what they touch", () => {
         blocks: [para("deeper"), para("x")],
       }),
     );
-    const texts = Array.from(itemEl(page, "t").querySelectorAll(".suite-text"));
+    const texts = Array.from(itemEl(page, "t").querySelectorAll(".neo-text"));
     expect(texts).toHaveLength(2);
     expect(texts[0] === zero).toBe(true);
     expect(texts[0]?.textContent).toBe("zero");
     expect(Array.from(texts[1]?.children ?? []).map((p) => p.textContent)).toEqual(["deeper", "x"]);
-    expect(itemEl(page, "t").querySelector(".suite-card-title")?.textContent).toBe("Card");
+    expect(itemEl(page, "t").querySelector(".neo-card-title")?.textContent).toBe("Card");
 
     // The card's title is not a child component: path [0] is still the first text.
     chat.applyPatch(
       patch(2, { op: "blocks", ref: "t", path: [0], from: 1, blocks: [para("more")] }),
     );
-    expect(itemEl(page, "t").querySelector(".suite-text")?.textContent).toBe("zeromore");
+    expect(itemEl(page, "t").querySelector(".neo-text")?.textContent).toBe("zeromore");
   });
 
   test("a blocks op the DOM can't follow falls back to redrawing the item", () => {
@@ -219,7 +219,7 @@ describe("patches update only what they touch", () => {
     // Past the end: the state clamps, the text component ends up with ["a", "b"].
     chat.applyPatch(patch(1, { op: "blocks", ref: "m", path: [], from: 5, blocks: [para("b")] }));
     expect(
-      Array.from(itemEl(page, "m").querySelectorAll(".suite-text > p")).map((p) => p.textContent),
+      Array.from(itemEl(page, "m").querySelectorAll(".neo-text > p")).map((p) => p.textContent),
     ).toEqual(["a", "b"]);
   });
 
@@ -287,7 +287,7 @@ describe("items", () => {
     expect(itemEl(page, "th").querySelector("summary")?.textContent).toBe("… thinking");
     const icons = ["pending", "running", "done", "failed"].map((state) => [
       state,
-      itemEl(page, `t-${state}`).querySelector(".suite-state")?.textContent,
+      itemEl(page, `t-${state}`).querySelector(".neo-state")?.textContent,
     ]);
     expect(icons).toEqual([
       ["pending", "○"],
@@ -308,7 +308,7 @@ describe("items", () => {
     ]);
     expect(itemEl(page, "a").querySelector("header")).toBeNull();
     expect(itemEl(page, "ga").querySelector("header")?.textContent).toBe("claude");
-    expect(itemEl(page, "ga").querySelector("header")?.className).toBe("suite-item-header");
+    expect(itemEl(page, "ga").querySelector("header")?.className).toBe("neo-item-header");
     expect(itemEl(page, "t").querySelector("summary")?.textContent).toBe("… thinking");
     expect(itemEl(page, "gt").querySelector("summary")?.textContent).toBe("… codex thinking");
   });
@@ -327,7 +327,7 @@ describe("items", () => {
       image("web", "https://example.com/a.png"),
     ]);
     expect(itemEl(page, "asset").querySelector("img")).toBeNull();
-    expect(itemEl(page, "asset").querySelector(".suite-image-fallback")?.textContent).toBe(
+    expect(itemEl(page, "asset").querySelector(".neo-image-fallback")?.textContent).toBe(
       "[image 4×3 · asset://img-1]",
     );
     expect(itemEl(page, "path").querySelector("img")).toBeNull();
@@ -340,7 +340,7 @@ describe("items", () => {
 
     web?.dispatchEvent(new page.window.Event("error") as unknown as Event);
     expect(itemEl(page, "web").querySelector("img")).toBeNull();
-    expect(itemEl(page, "web").querySelector(".suite-image-fallback")).not.toBeNull();
+    expect(itemEl(page, "web").querySelector(".neo-image-fallback")).not.toBeNull();
   });
 
   test("resolveImage maps asset:// to a loadable URL; unsafe results are ignored", () => {
@@ -369,7 +369,7 @@ describe("items", () => {
     );
     for (const ref of ["two", "three", "four"]) {
       expect(itemEl(page, ref).querySelector("img")).toBeNull();
-      expect(itemEl(page, ref).querySelector(".suite-image-fallback")).not.toBeNull();
+      expect(itemEl(page, ref).querySelector(".neo-image-fallback")).not.toBeNull();
     }
     expect(itemEl(page, "web").querySelector("img")?.getAttribute("src")).toBe(
       "https://example.com/a.png",
@@ -542,11 +542,11 @@ describe("theme", () => {
   test("setTheme sets the custom properties on the container", () => {
     const { page, chat } = rig();
     const style = page.container.style;
-    expect(style.getPropertyValue("--suite-accent")).toBe(theme.colors.accent);
-    expect(style.getPropertyValue("--suite-space-m")).toBe("8px");
-    expect(style.getPropertyValue("--suite-code-size")).toBe("13px");
-    expect(style.getPropertyValue("--suite-code-font")).toBe("var(--suite-font-mono)");
-    expect(style.getPropertyValue("--suite-title-weight")).toBe("600");
+    expect(style.getPropertyValue("--neo-accent")).toBe(theme.colors.accent);
+    expect(style.getPropertyValue("--neo-space-m")).toBe("8px");
+    expect(style.getPropertyValue("--neo-code-size")).toBe("13px");
+    expect(style.getPropertyValue("--neo-code-font")).toBe("var(--neo-font-mono)");
+    expect(style.getPropertyValue("--neo-title-weight")).toBe("600");
 
     const light: Theme = {
       ...theme,
@@ -554,15 +554,15 @@ describe("theme", () => {
       colors: { ...theme.colors, bg: "#ffffff", accent: "#0044cc" },
     };
     chat.setTheme(light);
-    expect(style.getPropertyValue("--suite-accent")).toBe("#0044cc");
-    expect(style.getPropertyValue("--suite-bg")).toBe("#ffffff");
+    expect(style.getPropertyValue("--neo-accent")).toBe("#0044cc");
+    expect(style.getPropertyValue("--neo-bg")).toBe("#ffffff");
   });
 
   test("every variable the stylesheet reads is one the theme sets", () => {
     const set = new Set(Object.keys(themeVariables(theme)));
-    // --suite-progress is per element (the bar's width), not theme.
-    const used = new Set([...chatStyles.matchAll(/var\((--suite-[a-z-]+)\)/g)].map((m) => m[1]));
-    used.delete("--suite-progress");
+    // --neo-progress is per element (the bar's width), not theme.
+    const used = new Set([...chatStyles.matchAll(/var\((--neo-[a-z-]+)\)/g)].map((m) => m[1]));
+    used.delete("--neo-progress");
     expect([...used].filter((name) => name !== undefined && !set.has(name))).toEqual([]);
   });
 
@@ -577,7 +577,7 @@ describe("theme", () => {
     const second = page.window.document.createElement("div");
     page.window.document.body.append(second);
     mountChat(second as unknown as HTMLElement, { theme });
-    expect(page.window.document.querySelectorAll("style[data-suite-chat-styles]")).toHaveLength(1);
+    expect(page.window.document.querySelectorAll("style[data-neo-chat-styles]")).toHaveLength(1);
 
     const bare = newPage();
     mountChat(bare.container, { theme, injectStyles: false });

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 // defaultWidth is the line width for tool descriptions when $COLUMNS is unset.
@@ -30,7 +30,7 @@ func runTools(ctx context.Context, args []string, e cliEnv) int {
 
 	connectors, err := c.ListConnectors(ctx)
 	if err != nil {
-		fmt.Fprintf(e.Stderr, "suite: %v\n", err)
+		fmt.Fprintf(e.Stderr, "neo: %v\n", err)
 		return 1
 	}
 	if len(connectors) == 0 {

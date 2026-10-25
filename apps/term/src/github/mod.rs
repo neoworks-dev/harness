@@ -19,7 +19,7 @@ mod md;
 mod view;
 
 // The read-only `gh` boundary and its data are shared with the desktop app.
-pub use suite_github::{format, gh, model};
+pub use neo_github::{format, gh, model};
 
 #[cfg(test)]
 mod tests;
@@ -29,16 +29,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 
+use neo_renderer_ratatui::Palette;
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::text::Line;
-use suite_renderer_ratatui::Palette;
 
 use crate::widgets::DiffView;
 use gh::{Gh, GhCli, GhError};
 use model::{Detail, Kind, Summary};
-use suite_github::fetch;
+use neo_github::fetch;
 
 /// Rows one wheel notch moves.
 const WHEEL_ROWS: usize = 3;

@@ -5,13 +5,13 @@ use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
+use neo_renderer_ratatui::Palette;
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, Paragraph};
-use suite_renderer_ratatui::Palette;
 use unicode_width::UnicodeWidthChar;
 
 use super::files::Mark;
@@ -2252,7 +2252,7 @@ index 1111111..2222222 100644
             .unwrap()
             .as_nanos();
         let dir =
-            std::env::temp_dir().join(format!("suite-term-diff-{}-{nanos}", std::process::id()));
+            std::env::temp_dir().join(format!("neo-term-diff-{}-{nanos}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         git_run(&dir, &["init", "-q"]);
         let lines = |mid: &str| -> String {

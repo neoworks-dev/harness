@@ -8,7 +8,7 @@
 // inbox, which is how a message is delivered, once:
 //   - neo (the session's agent or a subagent) takes it after each tool batch, as user messages in
 //     its conversation (PromptParams.takeMessages);
-//   - an ACP agent (Claude Code, Codex) cannot be told anything mid-turn, but every suite tool it
+//   - an ACP agent (Claude Code, Codex) cannot be told anything mid-turn, but every neo tool it
 //     calls goes through the gateway, which appends the inbox to that tool's result; what is left
 //     when its turn ends starts its next turn;
 //   - `wait` takes it too, and returns it.
@@ -175,7 +175,7 @@ export class Messenger implements MessageTools {
   // ---- the callers (gateway) ----
 
   /**
-   * Who a gateway call is from. `guest` (x-suite-guest) is a subagent of the harness it names,
+   * Who a gateway call is from. `guest` (x-neo-guest) is a subagent of the harness it names,
    * working in the session; without it the caller is the session's own agent, or the subagent
    * that runs as that session. A guest that isn't a running subagent (the user's own `/claude
    * task` turn) is nobody.

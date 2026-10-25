@@ -39,14 +39,14 @@ const permission: ViewItem = {
           {
             type: "button",
             label: "Allow",
-            action: "suite.permit",
+            action: "neo.permit",
             args: { id: "1", option: "allow" },
             key: "1",
           },
           {
             type: "button",
             label: "Deny",
-            action: "suite.permit",
+            action: "neo.permit",
             args: { id: "1", option: "deny" },
             key: "2",
           },
@@ -70,7 +70,7 @@ const choice: ViewItem = {
           {
             type: "button",
             label: "sonnet",
-            action: "suite.choose",
+            action: "neo.choose",
             args: { id: "2", option: "s" },
           },
           text("fast and cheap"),
@@ -82,7 +82,7 @@ const choice: ViewItem = {
           {
             type: "button",
             label: "opus",
-            action: "suite.choose",
+            action: "neo.choose",
             args: { id: "2", option: "o" },
             current: true,
           },
@@ -136,7 +136,7 @@ test("a note goes along in the args of answers that carry args", () => {
   });
   expect(argsWithNote(allow, "  ")).toEqual({ id: "1", option: "allow" });
   expect(takesNote({ label: "x", action: "copy:abc", current: false })).toBe(false);
-  expect(takesNote({ label: "x", action: "suite.permit", current: false })).toBe(false);
+  expect(takesNote({ label: "x", action: "neo.permit", current: false })).toBe(false);
   expect(takesNote(undefined)).toBe(false);
 });
 
@@ -163,7 +163,7 @@ test("text blocks flatten to lines", () => {
 
 test("a copy button has text for the clipboard and nothing to send", () => {
   expect(copyText({ label: "Copy", action: "copy:asset://x", current: false })).toBe("asset://x");
-  expect(copyText({ label: "Allow", action: "suite.permit", current: false })).toBeUndefined();
+  expect(copyText({ label: "Allow", action: "neo.permit", current: false })).toBeUndefined();
 });
 
 // ---- type to find an option of a long choice ----
@@ -177,7 +177,7 @@ function models(): PromptButton[] {
     const name = names[i % 4];
     const button: PromptButton = {
       label: `${name} · ${provider}`,
-      action: "suite.choose",
+      action: "neo.choose",
       args: { id: "c", option: `${provider}/${i}/${name}` },
       current: i === 2,
     };
@@ -190,7 +190,7 @@ test("only a choice with more than nine options is filtered", () => {
   const all = models();
   expect(isLongChoice(all)).toBe(true);
   expect(isLongChoice(all.slice(0, 9))).toBe(false);
-  expect(isLongChoice(all.map((b) => ({ ...b, action: "suite.permit" })))).toBe(false);
+  expect(isLongChoice(all.map((b) => ({ ...b, action: "neo.permit" })))).toBe(false);
   expect(isLongChoice(promptOf(permission)?.buttons ?? [])).toBe(false);
 });
 

@@ -4,7 +4,7 @@
 // (session.create's) is never replaced by itself, only by `/title`.
 //
 // The model is the user's choice (`/title-model <harness> [model]`, kept for every session). Until
-// they choose it is the suite's: DEFAULT_TITLE_MODEL when that harness exists here, else the
+// they choose it is neo's: DEFAULT_TITLE_MODEL when that harness exists here, else the
 // daemon's own agent on the model it is configured with. When a model can't be reached the session
 // keeps the start of its first message.
 import type { GenerateTextParams } from "@neoworks-dev/neo/agent";
@@ -14,7 +14,7 @@ import type { Logger } from "./log.ts";
 import type { Settings, TitleModel } from "./settings.ts";
 import type { SessionStore } from "./store.ts";
 
-/** What the suite asks for titles until the user chooses: Claude Code's Haiku. */
+/** What neo asks for titles until the user chooses: Claude Code's Haiku. */
 export const DEFAULT_TITLE_MODEL: TitleModel = { harness: "claude", model: "haiku" };
 
 /** How many times a title is asked for before the session keeps the one it has. */

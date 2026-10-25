@@ -1,9 +1,9 @@
 # renderers/ratatui
 
-Rust renderer (`suite-renderer-ratatui`) that draws the resolved view format as styled [ratatui](https://ratatui.rs) lines, for full-screen terminal apps. It has no terminal, input or scrolling code: the app owns the screen and scrolls over the lines. Conventions shared by all renderers are in `../README.md`.
+Rust renderer (`neo-renderer-ratatui`) that draws the resolved view format as styled [ratatui](https://ratatui.rs) lines, for full-screen terminal apps. It has no terminal, input or scrolling code: the app owns the screen and scrolls over the lines. Conventions shared by all renderers are in `../README.md`.
 
 ```rust
-use suite_renderer_ratatui::{buttons, render_item, Options, Palette};
+use neo_renderer_ratatui::{buttons, render_item, Options, Palette};
 
 let opts = Options { theme: Palette::from_theme(&theme), ..Options::default() };
 let lines: Vec<Line<'static>> = render_item(&item, width, &opts);   // wrapped to `width` cells
@@ -67,4 +67,4 @@ This deliberately differs from the shared item conventions (`» label` header, `
 
 ## Tests
 
-`cargo test -p suite-renderer-ratatui`. Every `fixtures/<name>/resolved.json` is drawn and compared with `ratatui.txt` (80 columns), `ratatui-40.txt`, `ratatui-expanded.txt` (tool results in full, thoughts shown) and `ratatui-styled.txt` (every styled run as `⟦style|text⟧`, colors by theme name) next to it; `UPDATE_SNAPSHOTS=1` rewrites them. A sweep checks that no line of any fixture is wider than the width, from 1 to 200 columns. `tests/behavior.rs` covers wrapping, compact summaries, `buttons()`, focus, unknown components and narrow widths; `tests/openui.rs` the OpenUI drawing (row layout, charts, forms, focus targets, tabs, narrow widths). Everything is headless: lines are inspected as data, nothing opens a terminal.
+`cargo test -p neo-renderer-ratatui`. Every `fixtures/<name>/resolved.json` is drawn and compared with `ratatui.txt` (80 columns), `ratatui-40.txt`, `ratatui-expanded.txt` (tool results in full, thoughts shown) and `ratatui-styled.txt` (every styled run as `⟦style|text⟧`, colors by theme name) next to it; `UPDATE_SNAPSHOTS=1` rewrites them. A sweep checks that no line of any fixture is wider than the width, from 1 to 200 columns. `tests/behavior.rs` covers wrapping, compact summaries, `buttons()`, focus, unknown components and narrow widths; `tests/openui.rs` the OpenUI drawing (row layout, charts, forms, focus targets, tabs, narrow widths). Everything is headless: lines are inspected as data, nothing opens a terminal.

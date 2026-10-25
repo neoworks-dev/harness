@@ -1,5 +1,5 @@
 [package]
-name = "suite-protocol"
+name = "neo-protocol"
 description = "Bus types generated from protocol/schemas"
 edition.workspace = true
 version.workspace = true

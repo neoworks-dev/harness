@@ -1,4 +1,4 @@
-// Package sdktest is an in-process fake of the suite daemon for tests. It
+// Package sdktest is an in-process fake of neo daemon for tests. It
 // speaks enough of the bus protocol to exercise clients: sessions with an
 // event log, replay-then-live subscriptions, a scripted agent, connector
 // presence and listing, and recording of what clients sent.

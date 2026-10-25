@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	protocol "neoworks.dev/suite/protocol/go"
-	sdk "neoworks.dev/suite/sdk-go"
-	"neoworks.dev/suite/sdk-go/sdktest"
+	protocol "neoworks.dev/neo/protocol/go"
+	sdk "neoworks.dev/neo/sdk-go"
+	"neoworks.dev/neo/sdk-go/sdktest"
 )
 
 func nextUpdate(t *testing.T, sub *sdk.ViewSubscription) sdk.ViewUpdate {

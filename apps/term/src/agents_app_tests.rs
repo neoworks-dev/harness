@@ -1,11 +1,11 @@
 //! The subagents list and transcript inside the app, drawn into a test backend.
 
+use neo_protocol::{SessionState, ViewItem, ViewSnapshot};
+use neo_renderer_ratatui::Palette as RenderPalette;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyEventState, KeyModifiers};
 use serde_json::json;
-use suite_protocol::{SessionState, ViewItem, ViewSnapshot};
-use suite_renderer_ratatui::Palette as RenderPalette;
 
 use super::*;
 
@@ -381,7 +381,7 @@ fn x_stops_the_selected_subagent() {
         [Effect::Action {
             session: "s1".into(),
             item: "agents".into(),
-            action: "suite.cancel_agent".into(),
+            action: "neo.cancel_agent".into(),
             args: Some(json!({"id": "d2"})),
         }]
     );
@@ -420,7 +420,7 @@ fn the_delegation_gate_is_a_compact_card_with_highlighted_values() {
         .iter()
         .enumerate()
         .map(|(i, l)| {
-            json!({"type": "button", "label": l, "action": "suite.permit",
+            json!({"type": "button", "label": l, "action": "neo.permit",
                    "args": {"id": "p1", "option": l}, "key": (i + 1).to_string()})
         })
         .collect();

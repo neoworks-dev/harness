@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	protocol "neoworks.dev/suite/protocol/go"
+	protocol "neoworks.dev/neo/protocol/go"
 )
 
 // textComponent draws the blocks of a text component. The role picks a style

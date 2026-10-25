@@ -210,7 +210,7 @@ fn duration(secs: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use suite_renderer_ratatui::Palette;
+    use neo_renderer_ratatui::Palette;
 
     fn status<'a>(styles: &'a Styles, settings: &'a [HarnessSettings]) -> Status<'a> {
         Status {
@@ -238,7 +238,7 @@ mod tests {
         let s = status(&styles, &settings);
         assert_eq!(s.lines(80)[0].to_string(), "~/site · main ↑1 · neo");
         record_setting(&mut settings, "neo", "model", "sonnet");
-        record_setting(&mut settings, "suite", "approvals", "auto");
+        record_setting(&mut settings, "daemon", "approvals", "auto");
         let mut s = status(&styles, &settings);
         assert_eq!(
             s.lines(80)[0].to_string(),

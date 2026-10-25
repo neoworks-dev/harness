@@ -60,7 +60,7 @@ describe("demo server", () => {
     const body = await page.text();
     expect(body).toContain('id="chat"');
     expect(body).toContain('<script type="module" src="/app.js">');
-    const config = body.match(/<script type="application\/json" id="suite-config">(.*)<\/script>/);
+    const config = body.match(/<script type="application\/json" id="neo-config">(.*)<\/script>/);
     expect(JSON.parse(config?.[1] ?? "null")).toEqual({ url: d.info.url, token: d.info.token });
 
     const bundle = await fetch(`${s.url}/app.js`);
@@ -68,7 +68,7 @@ describe("demo server", () => {
     expect(bundle.headers.get("content-type")).toContain("javascript");
     const code = await bundle.text();
     expect(code).toContain("view.subscribe");
-    expect(code).toContain("suite-chat");
+    expect(code).toContain("neo-chat");
     expect(code).not.toContain("node:");
 
     const address = await fetch(`${s.url}/daemon`);
@@ -85,7 +85,7 @@ describe("demo server", () => {
   });
 
   test("says so when no daemon is running", async () => {
-    const s = await server({ SUITE_SOCKET: "/nonexistent-dir/bus.sock" });
+    const s = await server({ NEO_SOCKET: "/nonexistent-dir/bus.sock" });
     const page = await fetch(s.url);
     expect(page.status).toBe(503);
     expect(await page.text()).toContain("not running");
@@ -117,7 +117,7 @@ describe("demo page logic against a real daemon", () => {
     await until(() => demo.session !== undefined, "focus");
     expect(demo.session).toBe(client.focus.value?.session);
     // The daemon's theme arrived and was applied.
-    await until(() => container.style.getPropertyValue("--suite-accent") !== "", "theme");
+    await until(() => container.style.getPropertyValue("--neo-accent") !== "", "theme");
 
     // Typing in the box sends session.input from app "web".
     input.value = "hello";

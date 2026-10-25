@@ -1,5 +1,5 @@
-// /login, /logout and /accounts: the suite's accounts (API keys and OAuth logins), kept in the
-// suite's own auth file in pi's format (neo/src/auth.ts). A key or a pasted code is asked with
+// /login, /logout and /accounts: neo's accounts (API keys and OAuth logins), kept in the
+// neo's own auth file in pi's format (neo/src/auth.ts). A key or a pasted code is asked with
 // askSecret, so it never reaches the session log; what the user sees in the chat is a notice.
 //
 // A login can take minutes (a browser, a device code), so the command returns once it has
@@ -37,7 +37,7 @@ export interface LoginParts {
   log: Logger;
   /** A line in the session's chat (tone danger for a failure). Never pass a secret. */
   notice: (session: string, text: string, tone?: "muted" | "danger") => void;
-  /** The suite's accounts file: written by /login and /logout. */
+  /** Neo's accounts file: written by /login and /logout. */
   authPath: string;
   /** pi's accounts file: read only, only to tell where an account comes from. */
   piAuthPath: string;
@@ -330,7 +330,7 @@ export class Login {
     const vars = this.envKeys(provider);
     const lines: string[] = [];
     if (removed) lines.push(`Logged out of ${provider}.`);
-    else lines.push(`No login for ${provider} in the suite's auth file.`);
+    else lines.push(`No login for ${provider} in neo's auth file.`);
     if (piHas) {
       lines.push(`${piAuthPath} has one too; that file is pi's own, so it stays. Log out in pi.`);
     }
@@ -346,19 +346,18 @@ export class Login {
     const providers = new Set<string>([...Object.keys(ours), ...Object.keys(theirs)]);
     const known = [...this.keyProviders(), ...this.parts.oauthProviders().map((p) => p.id)];
     for (const id of known) if (this.envKeys(id).length > 0) providers.add(id);
-    // The first source is the one in use: variable, then the suite's file, then pi's.
+    // The first source is the one in use: variable, then neo's file, then pi's.
     const lines: string[] = [];
     for (const id of [...providers].sort()) {
       const sources = this.envKeys(id);
-      if (id in ours) sources.push("the suite's file");
+      if (id in ours) sources.push("neo's file");
       if (id in theirs) sources.push("pi's file");
       const account = ours[id] ?? theirs[id];
       let line = `${id}: ${this.label(id, account)} from ${sources.join(", ")}`;
       if (account?.type === "oauth") line += this.expiry(account.expires);
       lines.push(line);
     }
-    if (process.env.SUITE_API_KEY)
-      lines.push("SUITE_API_KEY is set: it is the key for any provider.");
+    if (process.env.NEO_API_KEY) lines.push("NEO_API_KEY is set: it is the key for any provider.");
     if (lines.length === 0) {
       this.parts.notice(session, "No logins. /login adds one.");
       return;

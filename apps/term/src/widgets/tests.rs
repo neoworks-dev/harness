@@ -4,14 +4,14 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
+use neo_protocol::SessionEventRecord;
+use neo_renderer_ratatui::Palette;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 use serde_json::json;
-use suite_protocol::SessionEventRecord;
-use suite_renderer_ratatui::Palette;
 
 use super::diff::DiffView;
 use super::git::{Change, GitEntry, GitStatus};
@@ -408,7 +408,7 @@ fn real_git_end_to_end() {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("suite-term-git-{}-{nanos}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("neo-term-git-{}-{nanos}", std::process::id()));
     std::fs::create_dir_all(dir.join("src")).unwrap();
     run(&dir, &["init", "-q"]);
     run(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
@@ -495,8 +495,7 @@ fn real_git_end_to_end() {
     assert_eq!(sub.diff.as_ref().unwrap().counts(), (1, 1));
 
     // Not a repository: git fails, only the agent's files show.
-    let plain =
-        std::env::temp_dir().join(format!("suite-term-plain-{}-{nanos}", std::process::id()));
+    let plain = std::env::temp_dir().join(format!("neo-term-plain-{}-{nanos}", std::process::id()));
     std::fs::create_dir_all(&plain).unwrap();
     let mut p = Widgets::new(plain.clone(), Palette::default());
     p.on_session_event(&diff_update(

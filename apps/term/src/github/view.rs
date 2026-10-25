@@ -71,7 +71,7 @@ fn draw_diff(
     diff: &DiffView,
     frame: &mut Frame,
     area: Rect,
-    palette: &suite_renderer_ratatui::Palette,
+    palette: &neo_renderer_ratatui::Palette,
 ) {
     diff.draw(frame, area, palette);
 }

@@ -1,7 +1,7 @@
 // Which guests exist and how they start. Defaults: Claude Code and Codex through their ACP
-// adapters (fetched by bunx on first use, pinned). `$XDG_CONFIG_HOME/suite/config.json` may set
+// adapters (fetched by bunx on first use, pinned). `$XDG_CONFIG_HOME/neo/config.json` may set
 // `guests: {claude: {title, command, permissions}, …}` (other names add guests); env overrides it:
-// SUITE_GUESTS=none (or a list like claude), SUITE_GUEST_PERMISSIONS=ask|allow. Model, effort and
+// NEO_GUESTS=none (or a list like claude), NEO_GUEST_PERMISSIONS=ask|allow. Model, effort and
 // mode are the user's choice per session (/model, /effort, /mode), not configured here.
 // Their own subagents are off (Claude Code's Agent tool, Codex's multi_agent): delegate, which
 // asks first and shows the work, is how agents hand work on here.
@@ -61,7 +61,7 @@ function defaults(env: NodeJS.ProcessEnv): Record<string, GuestConfig> {
 
 function readGuestsKey(env: NodeJS.ProcessEnv): Record<string, unknown> {
   const home = env.HOME || homedir();
-  const path = join(env.XDG_CONFIG_HOME || join(home, ".config"), "suite", "config.json");
+  const path = join(env.XDG_CONFIG_HOME || join(home, ".config"), "neo", "config.json");
   let file: unknown;
   try {
     file = JSON.parse(readFileSync(path, "utf8"));
@@ -93,12 +93,12 @@ export function loadGuestConfigs(
     }
     if (config.command.length > 0) configs[name] = config;
   }
-  if (env.SUITE_GUEST_PERMISSIONS) {
-    const value = permissions(env.SUITE_GUEST_PERMISSIONS, "SUITE_GUEST_PERMISSIONS");
+  if (env.NEO_GUEST_PERMISSIONS) {
+    const value = permissions(env.NEO_GUEST_PERMISSIONS, "NEO_GUEST_PERMISSIONS");
     for (const config of Object.values(configs)) config.permissions = value;
   }
-  if (env.SUITE_GUESTS !== undefined) {
-    const wanted = env.SUITE_GUESTS.split(",").map((s) => s.trim()); // "none" matches none
+  if (env.NEO_GUESTS !== undefined) {
+    const wanted = env.NEO_GUESTS.split(",").map((s) => s.trim()); // "none" matches none
     for (const name of Object.keys(configs)) if (!wanted.includes(name)) delete configs[name];
   }
   return configs;

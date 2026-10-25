@@ -19,7 +19,7 @@ export interface PromptButton {
 }
 
 export interface Prompt {
-  /** The chat item, for `suite.action` and for `ui.panelRef`. */
+  /** The chat item, for `neo.action` and for `ui.panelRef`. */
   ref: string;
   title: string;
   /** Everything but the buttons: details, a diff, text. */
@@ -145,7 +145,7 @@ export const FILTER_FROM = 9;
 
 /** Whether the buttons are a choice long enough to filter. Permission cards never are. */
 export function isLongChoice(buttons: readonly PromptButton[]): boolean {
-  return buttons.length > FILTER_FROM && buttons.every((b) => b.action === "suite.choose");
+  return buttons.length > FILTER_FROM && buttons.every((b) => b.action === "neo.choose");
 }
 
 /** The option's id, as the daemon knows it (`openrouter/anthropic/claude-haiku-4.5`). */
@@ -218,7 +218,7 @@ export function scrollToRow(
 /** Whether Tab can add a note: permission and choice answers carry one, other buttons do not. */
 export function takesNote(button: PromptButton | undefined): boolean {
   if (button === undefined) return false;
-  const answers = button.action === "suite.permit" || button.action === "suite.choose";
+  const answers = button.action === "neo.permit" || button.action === "neo.choose";
   return answers && typeof button.args === "object" && button.args !== null;
 }
 

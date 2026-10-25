@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	protocol "neoworks.dev/suite/protocol/go"
-	sdk "neoworks.dev/suite/sdk-go"
+	protocol "neoworks.dev/neo/protocol/go"
+	sdk "neoworks.dev/neo/sdk-go"
 )
 
 // sourceDirs hold the code a running daemon has loaded (relative to the repo

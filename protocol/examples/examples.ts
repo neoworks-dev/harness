@@ -345,7 +345,7 @@ export const examples: Record<string, Envelope> = {
             value: "~/site/.worktrees/fix-login (new worktree, branch fix-login)",
           },
         ],
-        content: [{ type: "text", text: "Fix the failing login test and run the suite." }],
+        content: [{ type: "text", text: "Fix the failing login test and run neo." }],
         options: [
           { id: "allow", name: "Start neo", kind: "allow_once" },
           { id: "reject", name: "Reject", kind: "reject_once" },
@@ -681,7 +681,7 @@ export const examples: Record<string, Envelope> = {
     id: "22",
     payload: {
       handle: "asset://img-7f3a91c2",
-      path: "/home/user/.local/share/suite/assets/img-7f3a91c2.png",
+      path: "/home/user/.local/share/neo/assets/img-7f3a91c2.png",
       name: "logo.png",
       mime: "image/png",
       size: 48213,
