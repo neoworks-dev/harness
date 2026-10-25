@@ -69,6 +69,23 @@ describe("turn queue", () => {
     await sessions.idle(id);
   });
 
+  test("nothing is steered into a running command; it waits for the command to end", async () => {
+    const { agent, sessions } = setup();
+    agent.steerable = true;
+    const { id } = sessions.create({});
+    sessions.input(id, "term", "/compact");
+    await agent.started(1);
+    sessions.input(id, "term", "after it");
+    await Bun.sleep(0);
+    expect(agent.steered).toEqual([]);
+    expect(sessions.info(id)?.queued).toBe(1);
+    agent.release();
+    await agent.started(2);
+    expect(agent.prompts[1]?.text).toBe("after it");
+    agent.release();
+    await sessions.idle(id);
+  });
+
   test("what waits from one app runs as one turn, up to a command", async () => {
     const { store, agent, sessions } = setup();
     const { id } = sessions.create({});

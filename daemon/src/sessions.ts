@@ -58,6 +58,8 @@ interface Runtime {
   cancelling: boolean;
   /** Inputs are being handed to the running turn (see steer). */
   steering: boolean;
+  /** The running turn is a command (/compact…): what is sent meanwhile waits for it to end. */
+  command: boolean;
   /** Connector events not yet delivered to the agent. */
   pending: ContextEvent[];
   /** What this session's log has told the agent. */
@@ -321,7 +323,7 @@ export class SessionManager {
     try {
       for (let input = rt.queue[0]; input; input = rt.queue[0]) {
         const active = rt.active;
-        if (isCommand(input) || !active?.steer || rt.cancelling) return;
+        if (isCommand(input) || !active?.steer || rt.cancelling || rt.command) return;
         rt.queue.shift();
         const taken = await active
           .steer(input.images ? { text: input.text, images: input.images } : { text: input.text })
@@ -526,6 +528,7 @@ export class SessionManager {
       cancelRequested: false,
       cancelling: false,
       steering: false,
+      command: false,
       pending,
       told,
       drained: Promise.resolve(),
@@ -582,9 +585,10 @@ export class SessionManager {
         ended.stopReason = "cancelled";
       } else {
         rt.active = agentSession;
+        rt.command = isCommand(input);
         // The user's next inputs join this turn as it goes, while it runs on the same harness.
         const takeInputs = (): QueuedInput[] => {
-          if (this.harness(sessionId) !== harness) return [];
+          if (rt.command || this.harness(sessionId) !== harness) return [];
           return this.takeInputs(sessionId, rt);
         };
         const turn = await this.prompt(
@@ -605,6 +609,7 @@ export class SessionManager {
     } finally {
       rt.cancelRequested = false;
       rt.cancelling = false;
+      rt.command = false;
       rt.active = undefined;
     }
     this.store.append(sessionId, ended);
