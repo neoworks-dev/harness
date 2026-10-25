@@ -10,7 +10,7 @@ import { fauxToolCall } from "@mariozechner/pi-ai";
 import { createNeoAgent } from "@neoworks-dev/neo/neo";
 import type { Envelope, HarnessSettings, SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import { validateEnvelope } from "@neoworks-dev/neo-protocol/validate";
-import { fakeModel, reply, TEST_CONFIG, withUsage } from "../../harness/test/fake-model.ts";
+import { fakeModel, reply, TEST_CONFIG, withUsage } from "../../neo/test/fake-model.ts";
 import type { GuestConfig } from "../src/guests/guests.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { FakeAgent } from "./fake-agent.ts";

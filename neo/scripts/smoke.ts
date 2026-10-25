@@ -1,5 +1,5 @@
 // Live smoke test (not part of `bun test`): one real prompt through the neo agent with the real
-// config. Usage: bun run harness/scripts/smoke.ts
+// config. Usage: bun run neo/scripts/smoke.ts
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

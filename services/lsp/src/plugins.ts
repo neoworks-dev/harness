@@ -1,7 +1,7 @@
 // Language servers that installed plugins bring (#25), as `Language`s next to the fixed ones.
 import { join } from "node:path";
-import { suiteConfigDir } from "../../../harness/src/mcp-config.ts";
-import { enabledLspServers } from "../../../harness/src/plugin-lsp.ts";
+import { suiteConfigDir } from "../../../neo/src/mcp-config.ts";
+import { enabledLspServers } from "../../../neo/src/plugin-lsp.ts";
 import type { Language } from "./servers.ts";
 
 /** Files that mark a project root for a plugin's server, which doesn't say. */

@@ -6,7 +6,7 @@
   "workspaces": [
     "protocol",
     "daemon",
-    "harness",
+    "neo",
     "sdk-ts",
     "websearch",
     "renderers/web",

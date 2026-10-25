@@ -476,7 +476,7 @@ func TestNewestSource(t *testing.T) {
 	// Not daemon code: apps, node_modules, other file types.
 	write("apps/x/main.ts", base.Add(time.Hour))
 	write("daemon/src/node_modules/m/index.ts", base.Add(time.Hour))
-	write("harness/src/notes.md", base.Add(time.Hour))
+	write("neo/src/notes.md", base.Add(time.Hour))
 	if got := newestSource(root); !got.Equal(base.Add(time.Minute)) {
 		t.Errorf("newest = %v", got)
 	}

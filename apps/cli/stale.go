@@ -15,7 +15,7 @@ import (
 // root). Apps and services run as their own processes, so they don't count.
 var sourceDirs = []string{
 	filepath.Join("daemon", "src"),
-	filepath.Join("harness", "src"),
+	filepath.Join("neo", "src"),
 	filepath.Join("protocol", "gen"),
 	filepath.Join("protocol", "schemas"),
 	filepath.Join("protocol", "core-tools.json"),

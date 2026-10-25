@@ -4,7 +4,7 @@
 // SUITE_AGENT=neo|echo (default neo); SUITE_SERVICES=none skips the background services (lsp);
 // SUITE_TITLES=off keeps a model from writing session titles (/title still does, see titles.ts);
 // guests (Claude Code, Codex) are configured in guests/config.ts (SUITE_GUESTS=none: none);
-// model and API key settings are read by the harness (see harness/src/config.ts).
+// model and API key settings are read by the harness (see neo/src/config.ts).
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Agent } from "@neoworks-dev/neo/agent";

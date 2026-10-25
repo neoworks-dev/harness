@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { SessionEvent, ViewItem } from "@neoworks-dev/neo-protocol/types";
-import { SYSTEM_PROMPT } from "../../harness/src/system-prompt.ts";
+import { SYSTEM_PROMPT } from "../../neo/src/system-prompt.ts";
 import { loadGuestConfigs } from "../src/guests/config.ts";
 import { describeCall, type GuestConfig, mcpResultText } from "../src/guests/guests.ts";
 import { GUEST_PROMPT, MAIN_PROMPT } from "../src/guests/prompt.ts";

@@ -6,7 +6,7 @@ One agent session shared across every app in the suite. The design is in [docs/d
 | -------------------- | --------------------------------------------------------------------------------------------- | ----- |
 | `protocol/`          | JSON Schemas (source of truth) + generated TS, Go, Rust types                                 | 0     |
 | `daemon/`            | TS on Bun: session store, bus hub, turn queue                                                 | 1     |
-| `harness/`           | TS on Bun: neo, our agent (loop, core tools, system prompt)                                   | 1     |
+| `neo/`               | TS on Bun: neo, our agent (loop, core tools, system prompt)                                   | 1     |
 | `websearch/`         | Web, news and image search across engines; pages as markdown                                  | 6     |
 | `apps/cli/`          | Go: `suite status / sessions / attach / tools / focus / move`                                 | 1-3   |
 | `sdk-ts/`, `sdk-go/` | Bus clients (sessions, presence, hosting an app's tools); `sdk-ts` is `@neoworks-dev/neo-sdk` | 2     |
@@ -33,7 +33,7 @@ bin/suite gui              # the desktop app (apps/gui) in its own window, termi
 bin/suite up               # make sure the daemon runs; starts it in the background (log: <data dir>/daemon.log)
 bin/suite down             # stop the daemon (SIGTERM; waits for the socket to close)
 bun run daemon             # alternatively: the daemon in the foreground (Ctrl-C stops it)
-# suite and suite up restart a daemon whose code (daemon/, harness/, protocol/) changed since it
+# suite and suite up restart a daemon whose code (daemon/, neo/, protocol/) changed since it
 # started, unless a turn is running (then they say so and keep it).
 bin/suite attach --new     # new session in the current directory; type to chat
 bin/suite status           # daemon info + session counts + where the agent is

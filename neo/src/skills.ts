@@ -1,6 +1,6 @@
 // Skills: instructions neo loads when the work calls for them, kept out of the system prompt
 // until then. A skill is a directory with a SKILL.md: frontmatter `name` and `description`, then
-// the text. They come from the harness itself (harness/skills), the user's
+// the text. They come from the harness itself (neo/skills), the user's
 // ~/.config/suite/skills and the session's <cwd>/.suite/skills; a later one replaces an earlier
 // one of the same name.
 import { existsSync, readdirSync, readFileSync } from "node:fs";

@@ -6,8 +6,8 @@ go.work.sum
 fixtures/*/web.html
 websearch/test/fixtures
 <<<<<<< HEAD
-harness/test/fixtures/marketplace
+neo/test/fixtures/marketplace
 =======
-harness/test/fixtures/plugins
-harness/test/fixtures/agents
+neo/test/fixtures/plugins
+neo/test/fixtures/agents
 >>>>>>> hooks-agents

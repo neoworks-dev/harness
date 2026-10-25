@@ -20,7 +20,7 @@
   "include": [
     "protocol",
     "daemon",
-    "harness",
+    "neo",
     "sdk-ts",
     "renderers/web",
     "services",

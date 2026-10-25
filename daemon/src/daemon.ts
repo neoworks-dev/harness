@@ -72,12 +72,12 @@ export interface DaemonOptions {
    */
   accounts?: { authPath?: string; piAuthPath?: string };
   /**
-   * Where plugins are installed (harness/src/plugins.ts): /plugin works on it, and the enabled
+   * Where plugins are installed (neo/src/plugins.ts): /plugin works on it, and the enabled
    * plugins' commands, MCP servers and language servers are used. No plugins without.
    */
   plugins?: string;
   /**
-   * The MCP servers the daemon runs (see harness/src/mcp-config.ts): config.json, the enabled
+   * The MCP servers the daemon runs (see neo/src/mcp-config.ts): config.json, the enabled
    * plugins' `.mcp.json`, and the sessions' directories when config.json allows. None without.
    */
   mcp?: {

@@ -1,5 +1,5 @@
 // /login, /logout and /accounts: the suite's accounts (API keys and OAuth logins), kept in the
-// suite's own auth file in pi's format (harness/src/auth.ts). A key or a pasted code is asked with
+// suite's own auth file in pi's format (neo/src/auth.ts). A key or a pasted code is asked with
 // askSecret, so it never reaches the session log; what the user sees in the chat is a notice.
 //
 // A login can take minutes (a browser, a device code), so the command returns once it has

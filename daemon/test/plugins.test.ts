@@ -7,7 +7,7 @@ import { BadRequestError } from "../src/focus.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { FakeAgent } from "./fake-agent.ts";
 
-const MARKETPLACE = join(import.meta.dir, "..", "..", "harness", "test", "fixtures", "marketplace");
+const MARKETPLACE = join(import.meta.dir, "..", "..", "neo", "test", "fixtures", "marketplace");
 
 const cleanups: (() => Promise<void> | void)[] = [];
 afterEach(async () => {

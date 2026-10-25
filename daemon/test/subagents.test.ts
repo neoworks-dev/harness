@@ -11,7 +11,7 @@ import { createNeoAgent } from "@neoworks-dev/neo/neo";
 import type { Envelope, SessionEvent, ViewItem, ViewPatch } from "@neoworks-dev/neo-protocol/types";
 import type { GuestConfig } from "../src/guests/guests.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
-import { fakeModel, reply, TEST_CONFIG } from "../../harness/test/fake-model.ts";
+import { fakeModel, reply, TEST_CONFIG } from "../../neo/test/fake-model.ts";
 import { FakeAgent } from "./fake-agent.ts";
 
 const cleanups: (() => Promise<void> | void)[] = [];

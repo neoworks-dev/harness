@@ -37,7 +37,7 @@ export const connectMcp: ConnectUpstream = async (endpoint) => {
   return upstreamOf(client);
 };
 
-/** What a stdio MCP server is started with (see harness/src/mcp-config.ts). */
+/** What a stdio MCP server is started with (see neo/src/mcp-config.ts). */
 export interface StdioSpec {
   command: string;
   args: string[];

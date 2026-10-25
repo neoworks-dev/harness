@@ -10,7 +10,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { GuestConfig } from "../src/guests/guests.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
-import { fakeModel, reply, TEST_CONFIG } from "../../harness/test/fake-model.ts";
+import { fakeModel, reply, TEST_CONFIG } from "../../neo/test/fake-model.ts";
 import { FakeAgent } from "./fake-agent.ts";
 
 const cleanups: (() => Promise<void> | void)[] = [];

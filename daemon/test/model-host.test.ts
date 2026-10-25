@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createNeoAgent } from "@neoworks-dev/neo/neo";
 import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
-import { fakeModel, TEST_CONFIG } from "../../harness/test/fake-model.ts";
+import { fakeModel, TEST_CONFIG } from "../../neo/test/fake-model.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -14,7 +14,7 @@ afterEach(async () => {
 });
 
 const fixture = async (name: string): Promise<unknown> =>
-  JSON.parse(await readFile(join(import.meta.dir, "../../harness/test/fixtures", name), "utf8"));
+  JSON.parse(await readFile(join(import.meta.dir, "../../neo/test/fixtures", name), "utf8"));
 const MODELS = await fixture("openrouter-models.json");
 const ENDPOINTS = await fixture("openrouter-endpoints.json");
 
