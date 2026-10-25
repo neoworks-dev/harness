@@ -514,3 +514,40 @@ fn kitty_and_ghostty_under_tmux_get_kitty_graphics() {
     );
     assert_eq!(outer_protocol("|xterm-256color"), None);
 }
+
+#[test]
+fn a_pasted_image_is_drawn_above_the_editor() {
+    let dir = Dir::new("preview");
+    let path = dir.png("shot.png", 400, 200);
+    let mut picker = Picker::halfblocks();
+    picker.set_protocol_type(ProtocolType::Kitty);
+    let mut app = app_with(Some(Images::new(picker, dir.0.clone(), None)), &dir);
+    app.handle_paste(&path.to_string_lossy());
+    let until = Instant::now() + Duration::from_secs(10);
+    let buf = loop {
+        app.tick(0);
+        let buf = screen(&mut app);
+        let text = screen_text(&buf);
+        if !text.iter().any(|l| l.contains("loading"))
+            && text.iter().any(|l| l.contains("[image 1]"))
+        {
+            break buf;
+        }
+        assert!(Instant::now() < until, "the preview never came: {text:#?}");
+        thread::sleep(Duration::from_millis(5));
+    };
+    // The picture's kitty placeholders fill the rows above its marker.
+    let text = screen_text(&buf);
+    let label = text
+        .iter()
+        .position(|l| l.trim_start().starts_with("[image 1]"))
+        .unwrap();
+    let placeholders = (0..buf.area.width)
+        .filter(|x| {
+            buf[(*x, (label - 1) as u16)]
+                .symbol()
+                .starts_with('\u{10eeee}')
+        })
+        .count();
+    assert!(placeholders > 0, "{text:#?}");
+}
