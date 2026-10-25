@@ -959,7 +959,7 @@ fn s_sends_through_the_editor_path() {
     app_settle(&mut app);
     app_key(&mut app, KeyCode::Char('s'));
     let fx = app_settle(&mut app);
-    let [Effect::Input { session, text }] = fx.as_slice() else {
+    let [Effect::Input { session, text, .. }] = fx.as_slice() else {
         panic!("expected one input, got {fx:?}");
     };
     assert_eq!(session, "s1");

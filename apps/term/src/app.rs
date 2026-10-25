@@ -23,6 +23,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 
 use crate::agents::{Agents, AgentsAction, MainRow, Transcript};
+use crate::attach;
 use crate::chat::{self, Chat, ChatOpts};
 use crate::choice;
 use crate::editor::Editor;
@@ -73,6 +74,8 @@ pub enum Effect {
     Input {
         session: String,
         text: String,
+        /// Absolute paths of attached images.
+        images: Vec<String>,
     },
     /// A button was pressed.
     Action {
@@ -115,6 +118,8 @@ pub enum Effect {
     },
     /// Put text on the clipboard (OSC 52).
     Copy(String),
+    /// Save the clipboard's image to a file and attach it (`Msg::Pasted`).
+    PasteImage,
     /// Open a link of an OpenUI button in the browser (xdg-open).
     OpenUrl(String),
     Quit,
@@ -128,6 +133,8 @@ pub enum Msg {
     Error(String),
     /// Something to tell the user that is not an error.
     Notice(String),
+    /// The clipboard's image, saved; none when it holds no image.
+    Pasted(Option<String>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -252,6 +259,8 @@ pub struct App {
     /// Pictures in the chat; None shows the `[image …]` placeholder.
     images: Option<Images>,
     editor: Editor,
+    /// Images to send with the next message, by path.
+    attachments: Vec<String>,
     histories: Histories,
     overlay: Overlay,
     switcher: Switcher,
@@ -335,6 +344,7 @@ impl App {
             chat: Chat::new(),
             images: None,
             editor: Editor::default(),
+            attachments: Vec::new(),
             histories: Histories::new(config.history),
             overlay: Overlay::None,
             switcher: Switcher::new(&session),
@@ -787,6 +797,8 @@ impl App {
             Msg::Created(Err(why)) => self.notify(format!("new session failed: {why}"), true),
             Msg::Error(why) => self.notify(why, true),
             Msg::Notice(text) => self.notify(text, false),
+            Msg::Pasted(Some(path)) => self.attach(vec![path]),
+            Msg::Pasted(None) => self.notify("no image on the clipboard", false),
         }
         fx
     }
@@ -804,6 +816,7 @@ impl App {
         self.offered.clear();
         self.approvals = Approvals::Ask;
         self.editor.clear();
+        self.attachments.clear();
         self.prompt = PromptState::default();
         self.forms = Forms::default();
         self.note = None;
@@ -1343,7 +1356,13 @@ impl App {
         }
     }
 
-    pub fn handle_paste(&mut self, text: &str) {
+    pub fn handle_paste(&mut self, text: &str) -> Vec<Effect> {
+        let mut fx = Vec::new();
+        self.paste(text, &mut fx);
+        fx
+    }
+
+    fn paste(&mut self, text: &str, fx: &mut Vec<Effect>) {
         self.dirty = true;
         if let Some(secret) = self.secret.as_mut() {
             secret.paste(text);
@@ -1374,9 +1393,27 @@ impl App {
             Overlay::None => {
                 if self.focus.is_none() && !self.widgets.overlay_open() && !self.prompt.engaged {
                     self.prompt.typed_ms = self.now_ms;
+                    // Files dropped on the terminal arrive as their paths. An empty paste is what
+                    // some terminals send when the clipboard holds only an image.
+                    if text.is_empty() {
+                        return fx.push(Effect::PasteImage);
+                    }
+                    if let Some(paths) = attach::image_paths(text, &self.cwd) {
+                        return self.attach(paths);
+                    }
                     self.editor.insert_str(text);
                     self.histories.of(&self.session).reset();
                 }
+            }
+        }
+    }
+
+    /// Adds images to the next message; one already attached is not added twice.
+    fn attach(&mut self, paths: Vec<String>) {
+        self.dirty = true;
+        for path in paths {
+            if !self.attachments.contains(&path) {
+                self.attachments.push(path);
             }
         }
     }
@@ -1621,12 +1658,14 @@ impl App {
         fx.push(Effect::Input {
             session: self.session.clone(),
             text: format!("/approvals {}", self.approvals.next().word()),
+            images: Vec::new(),
         });
     }
 
     fn ctrl_c(&mut self, fx: &mut Vec<Effect>) {
-        if !self.editor.is_empty() && !self.prompt.engaged {
+        if (!self.editor.is_empty() || !self.attachments.is_empty()) && !self.prompt.engaged {
             self.editor.clear();
+            self.attachments.clear();
             self.histories.of(&self.session).reset();
         } else if self.quit_armed_until > self.now_ms {
             fx.push(Effect::Quit);
@@ -1768,6 +1807,9 @@ impl App {
                 self.esc(fx);
                 edited = false;
             }
+            KeyCode::Backspace if empty && !self.attachments.is_empty() => {
+                self.attachments.pop();
+            }
             KeyCode::Backspace if alt => self.editor.delete_word_back(),
             KeyCode::Backspace => self.editor.backspace(),
             KeyCode::Delete => self.editor.delete(),
@@ -1847,6 +1889,10 @@ impl App {
                 return false;
             }
             'd' => self.editor.delete(),
+            'v' => {
+                fx.push(Effect::PasteImage);
+                return false;
+            }
             's' => {
                 self.open_switcher(fx);
                 return false;
@@ -1985,7 +2031,7 @@ impl App {
             return true;
         }
         let text = self.editor.text().trim().to_string();
-        if text.is_empty() {
+        if text.is_empty() && self.attachments.is_empty() {
             return false;
         }
         self.editor.clear();
@@ -2036,7 +2082,9 @@ impl App {
     }
 
     fn send(&mut self, text: String, fx: &mut Vec<Effect>) {
-        self.histories.record(&self.session, &text);
+        if !text.is_empty() {
+            self.histories.record(&self.session, &text);
+        }
         self.chat.follow();
         // Sending ends the typing: a card it brings (/model's choice) takes the editor's place at
         // once instead of showing in the chat first.
@@ -2047,6 +2095,7 @@ impl App {
         fx.push(Effect::Input {
             session: self.session.clone(),
             text,
+            images: std::mem::take(&mut self.attachments),
         });
     }
 
@@ -2117,8 +2166,9 @@ impl App {
             Vec::new()
         };
         let hint_h = u16::from(self.prompt_waits() && room >= 3);
+        let attached_h = u16::from(panel.is_empty() && !self.attachments.is_empty() && room >= 3);
         let wanted = if panel.is_empty() {
-            self.editor.height().clamp(1, EDITOR_ROWS) as u16 + hint_h
+            self.editor.height().clamp(1, EDITOR_ROWS) as u16 + hint_h + attached_h
         } else {
             panel.len() as u16
         };
@@ -2130,11 +2180,14 @@ impl App {
             ..main
         };
         let hint_h = hint_h.min(editor_h.saturating_sub(1));
+        let attached_h = attached_h.min(editor_h.saturating_sub(1 + hint_h));
+        let above = hint_h + attached_h;
         Areas {
             chat: at(0, chat_h),
             rule: at(chat_h, rule_h),
             hint: at(chat_h + rule_h, hint_h),
-            editor: at(chat_h + rule_h + hint_h, editor_h - hint_h),
+            attached: at(chat_h + rule_h + hint_h, attached_h),
+            editor: at(chat_h + rule_h + above, editor_h - above),
             panel,
             status: at(chat_h + rule_h + editor_h, status_h),
             agents: at(h, agents_h),
@@ -2261,6 +2314,9 @@ impl App {
                 )),
                 areas.hint,
             );
+        }
+        if areas.attached.height > 0 {
+            self.draw_attached(frame, areas.attached);
         }
         if areas.panel.is_empty() {
             self.draw_editor(frame, areas.editor);
@@ -2629,6 +2685,23 @@ impl App {
         }
     }
 
+    /// `[image 1: paste-1729.png] [image 2: cat.jpg]  backspace removes`
+    fn draw_attached(&self, frame: &mut Frame, area: Rect) {
+        let mut spans = Vec::new();
+        for (i, path) in self.attachments.iter().enumerate() {
+            let name = std::path::Path::new(path)
+                .file_name()
+                .map_or_else(|| path.clone(), |n| n.to_string_lossy().into_owned());
+            spans.push(Span::styled(
+                format!("[image {}: {name}] ", i + 1),
+                self.styles.accent,
+            ));
+        }
+        spans.push(Span::styled(" backspace removes", self.styles.muted));
+        let line = fit_line(Line::from(spans), usize::from(area.width));
+        frame.render_widget(Paragraph::new(line), area);
+    }
+
     /// The terminal cursor sits in the editor unless something else has the keys.
     fn editor_has_cursor(&self) -> bool {
         self.focus.is_none()
@@ -2821,6 +2894,8 @@ struct Areas {
     rule: Rect,
     /// One row above the editor: a prompt is waiting for the user to stop typing.
     hint: Rect,
+    /// One row above the editor: the images going with the next message.
+    attached: Rect,
     /// The editor, or the prompt that has taken its place.
     editor: Rect,
     /// The prompt's lines when it has taken the editor's place.

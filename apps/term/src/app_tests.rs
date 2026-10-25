@@ -157,6 +157,7 @@ fn input(text: &str) -> Effect {
     Effect::Input {
         session: "s1".into(),
         text: text.into(),
+        images: Vec::new(),
     }
 }
 
@@ -238,6 +239,67 @@ fn alt_enter_and_ctrl_j_insert_newlines_and_paste_stays_in_the_editor() {
     assert_eq!(app.editor_text(), "a\nb\nc\nd\ne");
     let fx = app.handle_key(key(KeyCode::Enter));
     assert_eq!(fx, [input("a\nb\nc\nd\ne")]);
+}
+
+#[test]
+fn ctrl_v_and_an_empty_paste_read_the_clipboard_image() {
+    let mut app = app();
+    assert_eq!(app.handle_key(ctrl('v')), [Effect::PasteImage]);
+    assert_eq!(app.handle_paste(""), [Effect::PasteImage]);
+    app.handle_msg(Msg::Pasted(None));
+    assert!(
+        app.status_lines(80)[2]
+            .to_string()
+            .contains("no image on the clipboard")
+    );
+}
+
+#[test]
+fn pasted_images_go_with_the_next_message() {
+    let dir = std::env::temp_dir().join("neo-term-test-attach");
+    std::fs::create_dir_all(&dir).unwrap();
+    let dropped = dir.join("cat.png");
+    std::fs::write(&dropped, b"x").unwrap();
+    let dropped = dropped.to_string_lossy().into_owned();
+    let mut app = app();
+    app.handle_msg(Msg::Pasted(Some("/tmp/neo-term/paste-1.png".into())));
+    assert!(app.handle_paste(&format!("'{dropped}'")).is_empty());
+    assert_eq!(app.editor_text(), "", "image paths are attached, not typed");
+    let shown = screen(&mut app, 80, 20).join("\n");
+    assert!(
+        shown.contains("[image 1: paste-1.png] [image 2: cat.png]  backspace removes"),
+        "{shown}"
+    );
+
+    // Backspace on an empty editor takes the last one back.
+    app.handle_key(key(KeyCode::Backspace));
+    app.handle_paste(&dropped);
+    type_str(&mut app, "what is this");
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert_eq!(
+        fx,
+        [Effect::Input {
+            session: "s1".into(),
+            text: "what is this".into(),
+            images: vec!["/tmp/neo-term/paste-1.png".into(), dropped.clone()],
+        }]
+    );
+    assert!(!screen(&mut app, 80, 20).join("\n").contains("[image"));
+
+    // Images alone are a message too; ctrl-c drops them.
+    app.handle_paste(&dropped);
+    assert_eq!(
+        app.handle_key(key(KeyCode::Enter)),
+        [Effect::Input {
+            session: "s1".into(),
+            text: String::new(),
+            images: vec![dropped.clone()],
+        }]
+    );
+    app.handle_paste(&dropped);
+    app.handle_key(ctrl('c'));
+    assert!(app.handle_key(key(KeyCode::Enter)).is_empty());
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]

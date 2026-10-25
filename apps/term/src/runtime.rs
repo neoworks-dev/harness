@@ -140,10 +140,7 @@ fn run(mut app: crate::app::App, driver: Driver) -> io::Result<()> {
                         app.handle_mouse(mouse);
                         Vec::new()
                     }
-                    Event::Paste(text) => {
-                        app.handle_paste(&text);
-                        Vec::new()
-                    }
+                    Event::Paste(text) => app.handle_paste(&text),
                     Event::Resize(w, h) => {
                         app.resize(w, h);
                         Vec::new()

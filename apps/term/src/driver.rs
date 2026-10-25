@@ -13,6 +13,7 @@ use neo_protocol::{
 use neo_sdk::{Client, Event};
 
 use crate::app::{App, Config, Effect, Msg};
+use crate::attach;
 use crate::history::HistoryStore;
 use crate::secret::SecretValue;
 
@@ -238,8 +239,12 @@ fn work(client: &Client, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sen
     let mut agent_views: HashSet<(String, String)> = HashSet::new();
     while let Ok(Job::Effect(effect)) = jobs.recv() {
         match effect {
-            Effect::Input { session, text } => {
-                if let Err(err) = client.input(&session, app, &text, &[]) {
+            Effect::Input {
+                session,
+                text,
+                images,
+            } => {
+                if let Err(err) = client.input(&session, app, &text, &images) {
                     fail("send failed", err);
                 }
             }
@@ -313,6 +318,10 @@ fn work(client: &Client, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sen
                 }
             }
             Effect::OpenUrl(url) => open_url(&url, msgs),
+            Effect::PasteImage => {
+                let path = attach::paste_image().map(|p| p.to_string_lossy().into_owned());
+                let _ = msgs.send(Msg::Pasted(path));
+            }
             Effect::Copy(_) | Effect::Quit => {}
         }
     }
