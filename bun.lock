@@ -46,7 +46,7 @@
         "@mariozechner/pi-ai": "0.73.1",
         "@modelcontextprotocol/sdk": "^1.32.1",
         "@neoworks-dev/neo-protocol": "workspace:*",
-        "@neoworks/websearch": "workspace:*",
+        "@neoworks/websearch": "link:@neoworks/websearch",
         "proper-lockfile": "^4.1.2",
         "typebox": "^1.3.37",
       },
@@ -91,10 +91,6 @@
         "@neoworks-dev/neo-protocol": "workspace:*",
         "@suite/daemon": "workspace:*",
       },
-    },
-    "websearch": {
-      "name": "@neoworks/websearch",
-      "version": "0.1.0",
     },
   },
   "packages": {
@@ -168,7 +164,7 @@
 
     "@neoworks/neoui": ["@neoworks/neoui@link:@neoworks/neoui", {}],
 
-    "@neoworks/websearch": ["@neoworks/websearch@workspace:websearch"],
+    "@neoworks/websearch": ["@neoworks/websearch@link:@neoworks/websearch", {}],
 
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.43.0", "", {}, "sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg=="],
 

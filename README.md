@@ -7,7 +7,6 @@ One agent session shared across every app in the suite. The design is in [docs/d
 | `protocol/`          | JSON Schemas (source of truth) + generated TS, Go, Rust types                                 | 0     |
 | `daemon/`            | TS on Bun: session store, bus hub, turn queue                                                 | 1     |
 | `neo/`               | TS on Bun: neo, our agent (loop, core tools, system prompt)                                   | 1     |
-| `websearch/`         | Web, news and image search across engines; pages as markdown                                  | 6     |
 | `apps/cli/`          | Go: `suite status / sessions / attach / tools / focus / move`                                 | 1-3   |
 | `sdk-ts/`, `sdk-go/` | Bus clients (sessions, presence, hosting an app's tools); `sdk-ts` is `@neoworks-dev/neo-sdk` | 2     |
 | `sdk-rs/`            | Rust bus client for GPUI apps                                                                 | 3     |
@@ -22,7 +21,7 @@ One agent session shared across every app in the suite. The design is in [docs/d
 
 Bun ≥ 1.3, Go ≥ 1.27, Rust ≥ 1.85 (edition 2024; the desktop app needs GPUI's Linux build deps: Wayland/X11, xkbcommon, Vulkan).
 
-The UI language, [neoui](docs/neoui.md), is a package next to this repo: a fresh clone needs `cd ../neoui && bun link` before `bun install`.
+The UI language, [neoui](docs/neoui.md), and the search engines, [websearch](../websearch/README.md), are packages next to this repo: a fresh clone needs `bun link` in `../neoui` and in `../websearch` before `bun install`.
 
 ## Running it
 
@@ -82,7 +81,7 @@ To send neo's model requests through a proxy such as headroom (`headroom proxy`)
 
 Run the proxy with its upstream set (`OPENAI_TARGET_API_URL=https://openrouter.ai/api/v1`). The model's own settings still apply: an OpenRouter model pinned to a host stays pinned, and DeepSeek's API still gets the request it understands.
 
-neo searches the web itself: `web_search` asks several engines at once (web, news or images; no key needed) and lists what they found, and `web_fetch` saves a page as markdown in a file that the agent greps and reads in parts. You're asked before each fetch unless approvals is `auto`. Safe search is your setting, not the agent's: `/safesearch strict|moderate|off` sets it for every session (no value: a card to pick from). TinyFish's free search API is asked too once you add its key with `/login tinyfish`. The search engines are in [websearch](websearch/README.md).
+neo searches the web itself: `web_search` asks several engines at once (web, news or images; no key needed) and lists what they found, and `web_fetch` saves a page as markdown in a file that the agent greps and reads in parts. You're asked before each fetch unless approvals is `auto`. Safe search is your setting, not the agent's: `/safesearch strict|moderate|off` sets it for every session (no value: a card to pick from). TinyFish's free search API is asked too once you add its key with `/login tinyfish`. The search engines are in [websearch](../websearch/README.md), its own repository next to this one.
 
 Skills are instructions neo loads when the work calls for them: a folder with a `SKILL.md` (frontmatter `name` and `description`, then the text) in `~/.config/suite/skills/` or in a project's `.suite/skills/`. neo sees each skill's description and loads the text with its `skill` tool.
 

@@ -8,7 +8,6 @@
     "daemon",
     "neo",
     "sdk-ts",
-    "websearch",
     "renderers/web",
     "services/lsp",
     "apps/gui"
