@@ -89,6 +89,8 @@ pub struct Status<'a> {
     pub working_secs: Option<u64>,
     pub spinner: char,
     pub queued: usize,
+    /// A draft is put aside (Ctrl-S).
+    pub stashed: bool,
     pub connected: bool,
     pub approvals: Approvals,
     /// A transient message and whether it is an error.
@@ -154,6 +156,12 @@ impl Status<'_> {
             push(
                 &mut spans,
                 vec![Span::styled(format!("{} queued", self.queued), s.muted)],
+            );
+        }
+        if self.stashed {
+            push(
+                &mut spans,
+                vec![Span::styled("draft put aside (ctrl-s)", s.muted)],
             );
         }
         if !self.connected {
@@ -223,6 +231,7 @@ mod tests {
             working_secs: None,
             spinner: '◐',
             queued: 0,
+            stashed: false,
             connected: true,
             approvals: Approvals::Ask,
             notice: None,

@@ -1421,10 +1421,45 @@ fn focus_events_from_before_our_own_move_are_ignored() {
     assert!(app.awaiting.is_none());
 }
 
+/// `/sessions` and Enter: the switcher opens.
+fn sessions_command(app: &mut App) -> Vec<Effect> {
+    type_str(app, "/sessions");
+    app.handle_key(key(KeyCode::Enter))
+}
+
+#[test]
+fn ctrl_s_puts_the_draft_aside_until_the_next_one_is_sent() {
+    let mut app = app();
+    app.attach(vec!["/tmp/a.png".into()]);
+    type_str(&mut app, "first");
+    app.handle_key(ctrl('s'));
+    assert_eq!(app.editor.text(), "");
+    assert!(app.attachments.is_empty());
+    assert!(screen_text(&mut app, 80, 20).contains("draft put aside (ctrl-s)"));
+
+    // Ctrl-S brings it back, and puts what was written meanwhile aside in its place.
+    type_str(&mut app, "second");
+    app.handle_key(ctrl('s'));
+    assert_eq!(app.editor.text(), "[image 1] first");
+    assert_eq!(app.attachments, [(1, "/tmp/a.png".to_string())]);
+    app.handle_key(ctrl('s'));
+    assert_eq!(app.editor.text(), "second");
+
+    // Sending the other one brings it back too.
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert!(
+        fx.iter()
+            .any(|e| matches!(e, Effect::Input { text, .. } if text == "second"))
+    );
+    assert_eq!(app.editor.text(), "[image 1] first");
+    assert_eq!(app.attachments, [(1, "/tmp/a.png".to_string())]);
+    assert!(app.stash.is_none());
+}
+
 #[test]
 fn the_switcher_lists_filters_and_switches() {
     let mut app = app();
-    assert!(app.handle_key(ctrl('s')).contains(&Effect::ListSessions));
+    assert!(sessions_command(&mut app).contains(&Effect::ListSessions));
     let text = screen_text(&mut app, 80, 20);
     assert!(text.contains("loading…"), "{text}");
     let info = |id: &str, title: &str, cwd: &str, last: i64| SessionInfo {
@@ -1470,7 +1505,7 @@ fn the_switcher_lists_filters_and_switches() {
 #[test]
 fn the_switcher_can_start_a_new_session_and_follow_it() {
     let mut app = app();
-    app.handle_key(ctrl('s'));
+    sessions_command(&mut app);
     app.handle_msg(Msg::Sessions(Ok(vec![])));
     assert_eq!(
         app.handle_key(key(KeyCode::Enter)),
@@ -2193,6 +2228,8 @@ fn nothing_panics_on_tiny_terminals() {
         type_str(&mut app, "/");
         screen(&mut app, w, h);
         app.handle_key(ctrl('s'));
+        screen(&mut app, w, h);
+        sessions_command(&mut app);
         screen(&mut app, w, h);
         app.handle_key(key(KeyCode::Esc));
         app.handle_key(ctrl('c'));

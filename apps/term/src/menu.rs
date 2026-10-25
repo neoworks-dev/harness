@@ -86,7 +86,7 @@ pub const COMMANDS: &[Command] = &[
         "[install|enable|…]",
         "plugins for neo: list, search, install, uninstall, enable, disable, marketplace add",
     ),
-    local("sessions", "switch to another session (ctrl-s)"),
+    local("sessions", "switch to another session"),
     local(
         "sidebar",
         "show or hide the sessions sidebar (ctrl-g focuses it)",
@@ -199,7 +199,7 @@ pub enum Entry {
     Session(usize),
 }
 
-/// The overlay for Ctrl-S / `/sessions`.
+/// The overlay for `/sessions`.
 #[derive(Debug, Clone)]
 pub struct Switcher {
     /// None while the list is being fetched.

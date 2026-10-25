@@ -278,22 +278,13 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
     });
 
     // The first session is still there and the switcher can go back to it.
-    ui.key_ctrl('s');
+    ui.type_line("/sessions");
     ui.until("the session list", |s| s.contains("new session in"));
     let screen = ui.screen();
     assert!(
         screen.contains("session ") || screen.contains(&cwd),
         "{screen}"
     );
-}
-
-impl Ui {
-    fn key_ctrl(&mut self, c: char) {
-        let fx = self
-            .app
-            .handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL));
-        self.driver.run(fx);
-    }
 }
 
 #[test]

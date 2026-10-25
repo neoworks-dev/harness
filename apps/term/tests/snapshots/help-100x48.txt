@@ -15,7 +15,7 @@ keys (any key closes this)
   ctrl-c                    clear input; twice to quit
   shift-tab                 approvals: ask / review / accept edits / auto
   tab                       complete command, note on a prompt, next panel
-  ctrl-s                    switch session (picker)
+  ctrl-s                    put the draft aside / bring it back
   ctrl-g                    sessions sidebar: focus (up/down, enter, esc)
   ctrl-r                    GitHub issues and pull requests (/github)
   ctrl-x, down              subagents under the prompt: enter opens, x stops (down: empty input)
@@ -38,7 +38,7 @@ commands
   /logout [provider]                  remove a stored API key or account
   /accounts                           list the API keys and accounts in use
   /plugin [install|enable|…]          plugins for neo: list, search, install, uninstall, enable, di…
-  /sessions                           switch to another session (ctrl-s)
+  /sessions                           switch to another session
   /sidebar                            show or hide the sessions sidebar (ctrl-g focuses it)
   /expand                             toggle full tool results (ctrl-o)
 ────────────────────────────────────────────────────────────────────────────────────────────────────

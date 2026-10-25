@@ -279,6 +279,9 @@ pub struct App {
     /// Images pasted into the draft: the number of the `[image N]` marker that places each, and
     /// its path. One whose marker is deleted is not sent.
     attachments: Vec<(usize, String)>,
+    /// The draft Ctrl-S put aside, with its images; it comes back with Ctrl-S or once the one
+    /// written meanwhile is sent.
+    stash: Option<(String, Vec<(usize, String)>)>,
     histories: Histories,
     overlay: Overlay,
     switcher: Switcher,
@@ -365,6 +368,7 @@ impl App {
             images: None,
             editor: Editor::default(),
             attachments: Vec::new(),
+            stash: None,
             histories: Histories::new(config.history),
             overlay: Overlay::None,
             switcher: Switcher::new(&session),
@@ -1169,7 +1173,7 @@ impl App {
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         if let KeyCode::Char(c) = key.code
             && ctrl
-            && matches!(c, 'c' | 'p' | 'n' | 'o' | 't' | 's' | 'l' | 'g' | 'x')
+            && matches!(c, 'c' | 'p' | 'n' | 'o' | 't' | 'l' | 'g' | 'x')
         {
             match c {
                 'c' => self.ctrl_c(fx),
@@ -1666,7 +1670,7 @@ impl App {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Esc => self.overlay = Overlay::None,
-            KeyCode::Char('c' | 's') if ctrl => self.overlay = Overlay::None,
+            KeyCode::Char('c') if ctrl => self.overlay = Overlay::None,
             KeyCode::Up => self.switcher.move_by(-1),
             KeyCode::Down => self.switcher.move_by(1),
             KeyCode::Char('p') if ctrl => self.switcher.move_by(-1),
@@ -1985,10 +1989,7 @@ impl App {
                 fx.push(Effect::PasteImage);
                 return false;
             }
-            's' => {
-                self.open_switcher(fx);
-                return false;
-            }
+            's' => self.swap_stash(),
             'r' => {
                 self.github.open();
                 return false;
@@ -2193,6 +2194,28 @@ impl App {
             text,
             images,
         });
+        // What was written in its place is out: the draft put aside comes back.
+        if self.editor.is_empty() && self.stash.is_some() {
+            self.swap_stash();
+        }
+    }
+
+    /// Ctrl-S: the draft and its images go aside and the editor is free for another message, or
+    /// the one put aside comes back (trading places with what is in the editor now).
+    fn swap_stash(&mut self) {
+        let text = self.editor.text().to_string();
+        let attachments = std::mem::take(&mut self.attachments);
+        let draft = (!text.trim().is_empty()).then_some((text, attachments));
+        match std::mem::replace(&mut self.stash, draft) {
+            Some((text, attachments)) => {
+                self.editor.set_text(&text);
+                self.attachments = attachments;
+            }
+            None => self.editor.clear(),
+        }
+        self.menu_sel = 0;
+        self.histories.of(&self.session).reset();
+        self.dirty = true;
     }
 
     // ---- drawing ----
@@ -2512,7 +2535,7 @@ impl App {
         self.chat.layout(content.width, content.height, &opts);
         if self.chat.items().is_empty() {
             let hint = if self.chat.loaded() {
-                "message the agent below · / for commands · ctrl-s sessions · /help for keys"
+                "message the agent below · / for commands · ctrl-g sessions · /help for keys"
             } else {
                 "connecting to the session…"
             };
@@ -2975,6 +2998,7 @@ impl App {
                 .then(|| u64::try_from((self.now_ms - self.turn_started_ms) / 1000).unwrap_or(0)),
             spinner: SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()],
             queued: self.waiting.len(),
+            stashed: self.stash.is_some(),
             connected: self.connected,
             approvals: self.approvals,
             notice,
@@ -3029,7 +3053,7 @@ impl App {
             key("ctrl-c", "clear input; twice to quit"),
             key("shift-tab", "approvals: ask / review / accept edits / auto"),
             key("tab", "complete command, note on a prompt, next panel"),
-            key("ctrl-s", "switch session (picker)"),
+            key("ctrl-s", "put the draft aside / bring it back"),
             key("ctrl-g", "sessions sidebar: focus (up/down, enter, esc)"),
             key("ctrl-r", "GitHub issues and pull requests (/github)"),
             key(
