@@ -16,7 +16,7 @@ import (
 var guiBundle = filepath.Join("apps", "gui", "dist", "gui.js")
 
 // errGuiMissing means the desktop app isn't built or installed.
-var errGuiMissing = errors.New("suite-gui isn't built: run make build, or use suite attach")
+var errGuiMissing = errors.New("suite-gui isn't built: run task build, or use suite attach")
 
 // resolveGui finds the desktop app: SUITE_GUI, else suite-gui next to the running executable,
 // else on PATH. The same search as the terminal app's, for another name.
@@ -87,7 +87,7 @@ func runGui(ctx context.Context, args []string, e cliEnv) int {
 	}
 	bundle := filepath.Join(root, guiBundle)
 	if st, err := os.Stat(bundle); err != nil || st.IsDir() {
-		fmt.Fprintf(e.Stderr, "suite: the desktop app's bundle is missing (%s): run bun apps/gui/build.mjs, or make build\n", bundle)
+		fmt.Fprintf(e.Stderr, "suite: the desktop app's bundle is missing (%s): run bun apps/gui/build.mjs, or task build\n", bundle)
 		return 1
 	}
 

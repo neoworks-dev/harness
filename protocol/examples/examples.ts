@@ -1,5 +1,5 @@
 // Example bus frames. Typed against the generated TS types (so tsc checks them), written to
-// protocol/examples/*.json by `make codegen`, and decoded/re-encoded by the Go round-trip test.
+// protocol/examples/*.json by `task codegen`, and decoded/re-encoded by the Go round-trip test.
 // Add one whenever a schema gains a type or field.
 import type { Envelope } from "../gen/types.ts";
 

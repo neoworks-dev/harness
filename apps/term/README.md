@@ -5,7 +5,7 @@
 It is only a client. The conversation lives in the daemon, so closing the app never stops work, and the overlay, the desktop app and other terminals show the same session. It registers as the app `terminal` (a second one as `terminal-2`, …; kind app, not home, context `{cwd}`), and the agent moves into it when you start it or type in it.
 
 ```sh
-make build                      # bin/suite-term (next to bin/suite)
+task build                      # bin/suite-term (next to bin/suite)
 suite                           # opens it (SUITE_TERM overrides which binary)
 suite-term --new                # a new session in this directory
 suite-term --session 3fa9       # a session by id or unique prefix

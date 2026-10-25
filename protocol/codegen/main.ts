@@ -77,7 +77,7 @@ for (const file of readdirSync(join(root, "examples"))) {
 
 if (stale.length > 0) {
   process.stderr.write(
-    `${check ? "Generated files are stale" : "Leftover files"} (run \`make codegen\`):\n${stale.map((p) => `  ${p}`).join("\n")}\n`,
+    `${check ? "Generated files are stale" : "Leftover files"} (run \`task codegen\`):\n${stale.map((p) => `  ${p}`).join("\n")}\n`,
   );
   process.exit(1);
 }

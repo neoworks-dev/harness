@@ -1,5 +1,5 @@
 // End to end: the real daemon (with the scripted echo agent) and the real Go CLI over the Unix
-// socket. Needs bin/suite (`make build`; `make check` builds before testing).
+// socket. Needs bin/suite (`task build`; `task check` builds before testing).
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

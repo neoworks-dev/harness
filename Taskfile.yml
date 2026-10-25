@@ -1,4 +1,4 @@
-# The Makefile's targets, plus the dev loops. `task --list` shows them all; `task check` builds,
+# Every build, lint and test task, plus the dev loops. `task --list` shows them all; `task check` builds,
 # lints and tests everything. On Arch the binary is `go-task`.
 version: "3"
 

@@ -284,7 +284,7 @@ func TestNoArgsTerminalStartsDaemonAndMissingApp(t *testing.T) {
 
 	// No suite-term: a clear message, and no daemon started for nothing.
 	u.vars["SUITE_DAEMON_CMD"] = writeScript(t, "exec sleep 60")
-	if code := run(context.Background(), nil, e); code != 1 || !strings.Contains(u.stderr.String(), "suite-term isn't built: run make build, or use suite attach") {
+	if code := run(context.Background(), nil, e); code != 1 || !strings.Contains(u.stderr.String(), "suite-term isn't built: run task build, or use suite attach") {
 		t.Errorf("code %d, stderr %q", code, u.stderr.String())
 	}
 	if _, err := os.Stat(filepath.Join(u.dataDir, "daemon.log")); err == nil {

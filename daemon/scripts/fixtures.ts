@@ -26,7 +26,7 @@ for (const name of readdirSync(dir).sort()) {
 
 if (stale.length > 0) {
   process.stderr.write(
-    `Stale fixtures (run \`make codegen\`):\n${stale.map((p) => `  ${p}`).join("\n")}\n`,
+    `Stale fixtures (run \`task codegen\`):\n${stale.map((p) => `  ${p}`).join("\n")}\n`,
   );
   process.exit(1);
 }

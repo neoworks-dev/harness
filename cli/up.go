@@ -305,7 +305,7 @@ func stopDaemon(ctx context.Context, path string, pid int, e cliEnv) error {
 }
 
 // errTermMissing means the terminal app isn't built or installed.
-var errTermMissing = errors.New("suite-term isn't built: run make build, or use suite attach")
+var errTermMissing = errors.New("suite-term isn't built: run task build, or use suite attach")
 
 // resolveTerm finds the terminal app: SUITE_TERM, else suite-term next to the
 // running executable, else on PATH.

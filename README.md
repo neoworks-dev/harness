@@ -27,7 +27,7 @@ The UI language, [neoui](docs/neoui.md), is a package next to this repo: a fresh
 ## Running it
 
 ```sh
-make build                 # bin/suite, bin/suite-term, bin/suite-gui
+task build                 # bin/suite, bin/suite-term, bin/suite-gui
 bin/suite                  # in a terminal: starts the daemon if needed, then opens the terminal app (suite-term)
 bin/suite gui              # the desktop app (apps/gui) in its own window, terminal stays free: [--session ID | --new]
 bin/suite up               # make sure the daemon runs; starts it in the background (log: <data dir>/daemon.log)
@@ -132,7 +132,7 @@ Every pane draws the same thing: the daemon turns session events into view items
 ## Commands
 
 ```sh
-make check      # install, codegen check, format check, lint, typecheck, test, build — everything
-make codegen    # regenerate protocol types after editing protocol/schemas
-make build      # builds bin/suite, bin/suite-term and bin/suite-gui
+task check      # install, codegen check, format check, lint, typecheck, test, build — everything
+task codegen    # regenerate protocol types after editing protocol/schemas
+task build      # builds bin/suite, bin/suite-term and bin/suite-gui
 ```

@@ -7,7 +7,7 @@ It is only a client. The conversation lives in the daemon, so closing the window
 ## Running it
 
 ```sh
-make build                  # bin/suite and bin/suite-gui (builds the window's UI too)
+task build                  # bin/suite and bin/suite-gui (builds the window's UI too)
 suite gui                   # the agent's session if it works in this directory, else the latest one here, else a new one
 suite gui --session 3fa9    # a session by id or unique prefix
 suite gui --new             # a new session in this directory
