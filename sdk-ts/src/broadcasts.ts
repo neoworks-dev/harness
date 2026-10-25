@@ -50,6 +50,9 @@ export class Broadcasts {
       case "session.info":
         this.sessions.set(withSession(this.sessions.value, frame.payload));
         return;
+      case "session.removed":
+        this.sessions.set(withoutSession(this.sessions.value, frame.payload.id));
+        return;
       case "file.changed":
         this.fileChanges.callAll(frame.payload);
         return;
@@ -65,4 +68,9 @@ export class Broadcasts {
 function withSession(sessions: SessionInfo[], session: SessionInfo): SessionInfo[] {
   if (!sessions.some((known) => known.id === session.id)) return [...sessions, session];
   return sessions.map((known) => (known.id === session.id ? session : known));
+}
+
+/** The list without the session of that id. */
+function withoutSession(sessions: SessionInfo[], id: string): SessionInfo[] {
+  return sessions.filter((known) => known.id !== id);
 }

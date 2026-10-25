@@ -15,7 +15,7 @@ import type { Logger } from "./log.ts";
 import { NotFoundError, type SessionManager } from "./sessions.ts";
 import type { SessionStore } from "./store.ts";
 import type { ConnectorRegistry } from "./gateway/registry.ts";
-import { type ViewManager, viewKey } from "./view/views.ts";
+import { parseViewKey, type ViewManager, viewKey } from "./view/views.ts";
 import { BadRequestError, type FocusManager } from "./focus.ts";
 
 export const PROTOCOL_VERSION = 1;
@@ -88,6 +88,13 @@ function frameId(parsed: unknown): string | undefined {
   return typeof parsed.id === "string" ? parsed.id : undefined;
 }
 
+/** The sessions a client follows: those it subscribed to, and those it has a view of. */
+function followedBy(client: Client): Set<string> {
+  const sessions = new Set(client.subscriptions);
+  for (const key of client.views) sessions.add(parseViewKey(key).session);
+  return sessions;
+}
+
 /** How often a session's overview may update while it streams. */
 const SESSION_CHANGE_MS = 250;
 
@@ -113,6 +120,8 @@ export class Hub {
       }
     });
     focus?.onChange((payload) => this.broadcastAll({ topic: "agent.focus", payload }));
+    focus?.onLeave((session) => this.releaseIfUnused(session));
+    sessions.onRemove((id) => this.sessionRemoved(id));
     // Coalesce bursts (an app registering, then listing its tools) into one broadcast.
     let scheduled = false;
     connectors?.onChange(() => {
@@ -148,6 +157,7 @@ export class Hub {
           pending.resolve(undefined);
         }
         void this.parts.connectors?.disconnect(client);
+        for (const session of followedBy(client)) this.releaseIfUnused(session);
       },
     };
   }
@@ -189,6 +199,43 @@ export class Hub {
       if (question.placeholder !== undefined) payload.placeholder = question.placeholder;
       this.send(client, { topic: "secret.request", payload });
     });
+  }
+
+  /**
+   * Deletes the session if it is empty (see SessionManager.removable) and nothing follows it
+   * any more: no client's subscription or view, and not the agent's current session.
+   */
+  private releaseIfUnused(session: string): void {
+    if (this.isFollowed(session)) {
+      return;
+    }
+    if (this.parts.focus?.current().session === session) {
+      return;
+    }
+    if (!this.sessions.removable(session)) {
+      return;
+    }
+    this.sessions.remove(session);
+  }
+
+  /** Whether some client has the session subscribed, or one of its views. */
+  private isFollowed(session: string): boolean {
+    for (const client of this.clients) {
+      if (followedBy(client).has(session)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Tells every client a session is gone; a session.changed still pending for it is dropped. */
+  private sessionRemoved(id: string): void {
+    const pending = this.pendingChanges.get(id);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      this.pendingChanges.delete(id);
+    }
+    this.broadcastAll({ topic: "session.removed", payload: { id } });
   }
 
   private broadcast(record: SessionEventRecord): void {
@@ -377,6 +424,7 @@ export class Hub {
       case "session.unsubscribe":
         client.subscriptions.delete(msg.payload.session);
         this.send(client, { topic: "bus.ack", id: msg.id });
+        this.releaseIfUnused(msg.payload.session);
         return;
       case "session.cancel":
         this.sessions.cancel(msg.payload.session);
@@ -460,6 +508,7 @@ export class Hub {
       case "view.unsubscribe":
         client.views.delete(viewKey(msg.payload.session, msg.payload.agent));
         this.send(client, { topic: "bus.ack", id: msg.id });
+        this.releaseIfUnused(msg.payload.session);
         return;
       case "ui.action": {
         const { action } = this.parts;
@@ -532,6 +581,7 @@ export class Hub {
       case "session.settings_result":
       case "session.subscribed":
       case "session.events":
+      case "session.removed":
       case "connectors.list_result":
       case "connectors.changed":
       case "agent.focus":

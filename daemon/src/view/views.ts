@@ -21,7 +21,7 @@ export class ViewManager {
   ) {
     store.onAppend((record) => {
       for (const [key, view] of this.views) {
-        const { session, agent } = parseKey(key);
+        const { session, agent } = parseViewKey(key);
         if (session !== record.session) continue;
         const ops = view.apply(record);
         if (ops.length === 0) continue;
@@ -68,13 +68,22 @@ export class ViewManager {
     const main = this.get(session);
     const candidates = [main];
     for (const [key, view] of this.views) {
-      if (view !== main && parseKey(key).session === session) candidates.push(view);
+      if (view !== main && parseViewKey(key).session === session) candidates.push(view);
     }
     for (const view of candidates) {
       const program = view.program(ref, doc);
       if (program) return { program, view };
     }
     return undefined;
+  }
+
+  /** Drops the views of a session that was deleted. */
+  forget(session: string): void {
+    for (const key of [...this.views.keys()]) {
+      if (parseViewKey(key).session === session) {
+        this.views.delete(key);
+      }
+    }
   }
 
   onPatch(listener: (patch: ViewPatch) => void): () => void {
@@ -88,7 +97,8 @@ export function viewKey(session: string, agent?: string): string {
   return agent === undefined ? session : `${session}\0${agent}`;
 }
 
-function parseKey(key: string): { session: string; agent?: string } {
+/** The session and agent a viewKey was made of. */
+export function parseViewKey(key: string): { session: string; agent?: string } {
   const at = key.indexOf("\0");
   return at < 0 ? { session: key } : { session: key.slice(0, at), agent: key.slice(at + 1) };
 }

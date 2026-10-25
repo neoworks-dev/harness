@@ -451,6 +451,8 @@ export class GuestManager {
   private readonly subagents?: NeoSubagents;
   /** The commands each session's guest last listed, as JSON, so an unchanged list isn't logged again. */
   private readonly commandLists = new Map<string, string>();
+  /** Sessions that were deleted: an adapter still starting for one is stopped once it is up. */
+  private readonly forgotten = new Set<string>();
 
   constructor(private readonly options: GuestManagerOptions) {
     const { neo, requestPermission } = options;
@@ -852,6 +854,24 @@ export class GuestManager {
     await resumed;
   }
 
+  /** Stops the adapters of a session that was deleted and forgets what was kept for it. */
+  forget(session: string): void {
+    this.forgotten.add(session);
+    for (const guest of this.live) {
+      if (guest.session === session) {
+        this.live.delete(guest);
+        guest.conn.kill();
+      }
+    }
+    const prefix = `${session}\0`;
+    for (const key of [...this.guests.keys()]) {
+      if (key.startsWith(prefix)) this.guests.delete(key);
+    }
+    for (const key of [...this.commandLists.keys()]) {
+      if (key.startsWith(prefix)) this.commandLists.delete(key);
+    }
+  }
+
   shutdown(): void {
     for (const guest of this.live) guest.conn.kill();
     this.guests.clear();
@@ -1026,6 +1046,9 @@ export class GuestManager {
         config,
       };
       if (route) guest.route = route;
+      if (this.forgotten.has(session)) {
+        throw new NotFoundError(`no session ${session}`);
+      }
       target.guest = guest;
       this.live.add(guest);
       if (target.commands) this.setCommands(guest, target.commands);

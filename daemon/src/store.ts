@@ -123,6 +123,7 @@ export class SessionStore {
   private readonly db: Database;
   private readonly listeners = new Set<AppendListener>();
   private readonly appendTx: (session: string, event: SessionEvent, ts: number) => number;
+  private readonly deleteTx: (session: string) => void;
 
   /** `path` is a file path, or ":memory:" for tests. */
   constructor(path: string) {
@@ -153,6 +154,12 @@ export class SessionStore {
       if (!bumped) throw new Error(`unknown session ${session}`);
       insert.run(session, bumped.last_seq, ts, event.type, JSON.stringify(event));
       return bumped.last_seq;
+    });
+    const deleteEvents = this.db.query("DELETE FROM events WHERE session = ?");
+    const deleteRow = this.db.query("DELETE FROM sessions WHERE id = ?");
+    this.deleteTx = this.db.transaction((session: string) => {
+      deleteEvents.run(session);
+      deleteRow.run(session);
     });
   }
 
@@ -231,6 +238,31 @@ export class SessionStore {
       )
       .all(session, ...types)
       .map(toRecord);
+  }
+
+  /** Whether the session's log has an event of this type. */
+  hasEventOfType(session: string, type: SessionEvent["type"]): boolean {
+    const row = this.db
+      .query<{ found: number }, [string, string]>(
+        "SELECT EXISTS (SELECT 1 FROM events WHERE session = ? AND type = ?) AS found",
+      )
+      .get(session, type);
+    return row?.found === 1;
+  }
+
+  /** Whether any session names this one as its parent. */
+  hasChildren(session: string): boolean {
+    const row = this.db
+      .query<{ found: number }, [string]>(
+        "SELECT EXISTS (SELECT 1 FROM sessions WHERE parent = ?) AS found",
+      )
+      .get(session);
+    return row?.found === 1;
+  }
+
+  /** Deletes the session and its whole log in one transaction. */
+  deleteSession(id: string): void {
+    this.deleteTx(id);
   }
 
   saveConnector(connector: StoredConnector): void {

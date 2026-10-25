@@ -217,10 +217,12 @@ describe("hub", () => {
   test("unsubscribe and disconnect stop delivery", () => {
     const { hub, store, sessions } = setup();
     const id = sessions.create({}).id;
+    // Written in, so it outlives its followers (an empty one is deleted, see removal tests).
+    store.append(id, { type: "user_message", app: "cli", text: "hi" });
     const a = client(hub);
     const b = client(hub);
     for (const c of [a, b])
-      c.send({ topic: "session.subscribe", id: "s", payload: { session: id } });
+      c.send({ topic: "session.subscribe", id: "s", payload: { session: id, fromSeq: 2 } });
     a.send({ topic: "session.unsubscribe", id: "u", payload: { session: id } });
     expect(a.last()).toEqual({ topic: "bus.ack", id: "u" });
     b.handle.closed();

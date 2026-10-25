@@ -117,6 +117,9 @@
         },
         {
           "$ref": "#/$defs/SessionChangedMessage"
+        },
+        {
+          "$ref": "#/$defs/SessionRemovedMessage"
         }
       ],
       "discriminator": {
@@ -1160,6 +1163,31 @@
         }
       },
       "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "SessionRemovedMessage": {
+      "description": "Daemon → every client: a session was deleted. The daemon deletes a session nobody wrote in once nothing follows it any more (no subscription, no view, not the agent's current session); drop it from overviews.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "session.removed"
+        },
+        "payload": {
+          "$ref": "#/$defs/SessionRemoved"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "SessionRemoved": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "The session that no longer exists.",
+          "type": "string"
+        }
+      },
+      "required": ["id"],
       "additionalProperties": false
     }
   }

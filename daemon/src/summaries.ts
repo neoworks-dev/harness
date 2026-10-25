@@ -78,6 +78,11 @@ export class SessionSummaries {
     return summary;
   }
 
+  /** Drops what is kept for a session that was deleted. */
+  forget(session: string): void {
+    this.states.delete(session);
+  }
+
   /** An untitled session is named after its first message; the title given, if any. */
   private nameAfter(session: string, text: string): string | undefined {
     const row = this.store.getSession(session);

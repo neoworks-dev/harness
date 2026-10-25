@@ -195,6 +195,16 @@ impl Sessions {
         self.sort();
     }
 
+    /// Drops a session the daemon deleted (`session.removed`).
+    pub fn remove(&mut self, id: &str) {
+        self.list.retain(|s| s.id != id);
+        self.finished.remove(id);
+        if self.selected.as_deref() == Some(id) {
+            self.selected = None;
+        }
+        self.sort();
+    }
+
     /// A session that was running and isn't any more finished a turn.
     fn note_finished(&mut self, info: &SessionInfo) {
         let was_running = self

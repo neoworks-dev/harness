@@ -12,6 +12,32 @@ const chunk = (text: string): AgentMessageChunk => ({
 });
 
 describe("SessionStore", () => {
+  test("deleteSession removes the session and its log, and leaves the others", () => {
+    const store = new SessionStore(":memory:");
+    store.createSession({ id: "gone", cwd: "/" });
+    store.createSession({ id: "kept", cwd: "/" });
+    store.append("gone", chunk("a"));
+    store.append("kept", { type: "user_message", app: "cli", text: "hi" });
+    expect(store.hasEventOfType("kept", "user_message")).toBe(true);
+    expect(store.hasEventOfType("gone", "user_message")).toBe(false);
+
+    store.deleteSession("gone");
+
+    expect(store.getSession("gone")).toBeUndefined();
+    expect(store.read("gone")).toEqual([]);
+    expect(store.listSessions().map((row) => row.id)).toEqual(["kept"]);
+    expect(store.read("kept")).toHaveLength(1);
+    expect(() => store.append("gone", chunk("b"))).toThrow("unknown session gone");
+  });
+
+  test("hasChildren says whether a session delegated into another", () => {
+    const store = new SessionStore(":memory:");
+    store.createSession({ id: "parent", cwd: "/" });
+    store.createSession({ id: "child", cwd: "/", parent: "parent" });
+    expect(store.hasChildren("parent")).toBe(true);
+    expect(store.hasChildren("child")).toBe(false);
+  });
+
   test("a title knows where it came from; one without a source is the user's", () => {
     const dir = mkdtempSync(join(tmpdir(), "suite-store-"));
     const path = join(dir, "events.db");

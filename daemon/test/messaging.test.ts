@@ -332,6 +332,7 @@ describe("stopping", () => {
   test("one that was running when the daemon died is closed when it starts again", async () => {
     const first = await startTestDaemon({});
     const session = first.sessions.create({}).id;
+    first.store.append(session, { type: "user_message", app: "cli", text: "go" });
     first.store.append(session, {
       type: "subagent_started",
       id: "d_gone",

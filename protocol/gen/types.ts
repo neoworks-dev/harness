@@ -37,7 +37,8 @@ export type Envelope =
   | AssetInfoMessage
   | FileChangedMessage
   | AppContextMessage
-  | SessionChangedMessage;
+  | SessionChangedMessage
+  | SessionRemovedMessage;
 
 export type EnvelopeTag = Envelope["topic"];
 
@@ -476,6 +477,17 @@ export interface AppContext {
 export interface SessionChangedMessage {
   topic: "session.changed";
   payload: SessionInfo;
+}
+
+/** Daemon → every client: a session was deleted. The daemon deletes a session nobody wrote in once nothing follows it any more (no subscription, no view, not the agent's current session); drop it from overviews. */
+export interface SessionRemovedMessage {
+  topic: "session.removed";
+  payload: SessionRemoved;
+}
+
+export interface SessionRemoved {
+  /** The session that no longer exists. */
+  id: string;
 }
 
 /** Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update. */

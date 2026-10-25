@@ -131,6 +131,9 @@ pub enum Event {
     FileChanged(FileChanged),
     /// `session.changed`: a session's state, title, preview or lines changed (for overviews).
     SessionChanged(SessionInfo),
+    /// `session.removed`: the daemon deleted a session nobody wrote in once nothing followed
+    /// it; drop it from overviews. Carries its id.
+    SessionRemoved(String),
     /// `secret.request`: the daemon asks this client alone for a secret (an API key, a login
     /// code). Answer it with [`Client::answer_secret`]; never log or store the value.
     Secret(SecretRequest),

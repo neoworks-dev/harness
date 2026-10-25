@@ -557,6 +557,7 @@ impl App {
                 }
                 self.sessions.upsert(info);
             }
+            Event::SessionRemoved(id) => self.sessions.remove(&id),
             Event::Session(record) => {
                 if record.session == self.session {
                     self.on_record(&record);

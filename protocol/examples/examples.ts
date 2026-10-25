@@ -199,6 +199,7 @@ export const examples: Record<string, Envelope> = {
       removed: 3,
     },
   },
+  "session-removed": { topic: "session.removed", payload: { id: "s_7k2m9x4q1p8r3t5w6y0z" } },
   "connectors-changed": {
     topic: "connectors.changed",
     payload: {

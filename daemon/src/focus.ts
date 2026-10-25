@@ -15,6 +15,7 @@ export class FocusManager {
   private app: string | undefined;
   private last: AgentFocus;
   private readonly listeners = new Set<(focus: AgentFocus) => void>();
+  private readonly leaveListeners = new Set<(session: string) => void>();
 
   constructor(
     private readonly store: SessionStore,
@@ -79,7 +80,8 @@ export class FocusManager {
 
   /**
    * `/clear` typed in any pane: a fresh session in the same working directory becomes current,
-   * and the agent stays in the app it's in. The old session stays in the list.
+   * and the agent stays in the app it's in. The old session stays in the list, unless it is
+   * empty and nothing follows it (see Hub).
    */
   clear(from: string): AgentFocus {
     const params: { cwd?: string } = {};
@@ -92,6 +94,12 @@ export class FocusManager {
   onChange(listener: (focus: AgentFocus) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** Called with the session the focus left, after onChange listeners heard where it went. */
+  onLeave(listener: (session: string) => void): () => void {
+    this.leaveListeners.add(listener);
+    return () => this.leaveListeners.delete(listener);
   }
 
   /** Falls back home when the agent's app closes; the home app picks it up when it opens. */
@@ -110,12 +118,16 @@ export class FocusManager {
     const focus: AgentFocus = { session, reason };
     if (app !== undefined) focus.app = app;
     if (this.app !== undefined && this.app !== app) focus.from = this.app;
-    if (session !== this.session) this.store.setMeta(CURRENT_SESSION, session);
+    const left = this.session;
+    if (session !== left) this.store.setMeta(CURRENT_SESSION, session);
     this.session = session;
     this.app = app;
     this.last = focus;
     this.log.info(`agent → ${session} in ${app ?? "no app"} (${reason})`);
     for (const listener of this.listeners) listener(focus);
+    if (session !== left) {
+      for (const listener of this.leaveListeners) listener(left);
+    }
     return focus;
   }
 }

@@ -227,6 +227,15 @@ describe("sessions", () => {
     expect(lists[1]).toEqual(["one", "two", "three"]);
   });
 
+  test("session.removed drops the session from the list", async () => {
+    const { daemon, client } = await fakeRig();
+    daemon.sessions = [sessionInfo("one"), sessionInfo("two")];
+    await client.listSessions();
+    daemon.broadcast({ topic: "session.removed", payload: { id: "one" } });
+    await client.sessions.waitFor(1000, (sessions) => sessions.length === 1);
+    expect(client.sessions.value.map((session) => session.id)).toEqual(["two"]);
+  });
+
   test("each change is a new array, and the old one is left as it was", async () => {
     const { daemon, client } = await fakeRig();
     daemon.sessions = [sessionInfo("one")];

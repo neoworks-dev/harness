@@ -251,9 +251,11 @@ describe("over the bus and the gateway", () => {
   });
 
   test("/clear starts a fresh current session in the same directory; the agent stays put", async () => {
-    const { hub, registry, focus, sessions, agent } = hubSetup();
+    const { hub, registry, focus, sessions, agent, store } = hubSetup();
     await registry.presence({}, app("code-editor"));
     const old = sessions.create({ cwd: "/site" }).id;
+    // Written in: an empty one would be deleted once the focus left it.
+    store.append(old, { type: "user_message", app: "code-editor", text: "hi" });
     focus.move({ app: "code-editor", session: old }, "user");
     const a = client(hub);
     a.send({

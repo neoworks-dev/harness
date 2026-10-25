@@ -1684,6 +1684,10 @@ fn session_changed_updates_or_adds_one_entry_live() {
     app.handle_event(Event::SessionChanged(info("s9", "Brand new", NOW + 1)));
     assert_eq!(app.sessions().len(), 4);
     assert_eq!(titles(&mut app)[0], "Brand new");
+    // One the daemon deleted goes again.
+    app.handle_event(Event::SessionRemoved("s9".into()));
+    assert_eq!(app.sessions().len(), 3);
+    assert_eq!(titles(&mut app)[0], "Docs");
     // The shown session's own queue and turn state follow it too.
     app.running = true;
     app.turn_started_ms = NOW - 10_000;

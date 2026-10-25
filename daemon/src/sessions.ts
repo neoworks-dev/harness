@@ -121,6 +121,16 @@ export interface SessionManagerOptions {
   takeMessages?: (sessionId: string) => string[];
 }
 
+/** Ends the agent sessions a runtime loaded, also those still loading (their SessionEnd hooks run). */
+function closeAgentSessions(rt: Runtime): void {
+  for (const loading of rt.agentSessions.values()) {
+    loading.then(
+      (session) => session.close?.("other"),
+      () => undefined,
+    );
+  }
+}
+
 /** "/claude fix it" → claude, "fix it". */
 function guestCommand(text: string): { name: string; task: string } | undefined {
   const match = /^\/([a-z][\w-]*)(?:\s+([\s\S]*))?$/.exec(text.trim());
@@ -132,6 +142,7 @@ export class SessionManager {
   private readonly runtimes = new Map<string, Runtime>();
   private readonly stateListeners: ((sessionId: string) => void)[] = [];
   private readonly cancelListeners: ((sessionId: string) => void)[] = [];
+  private readonly removeListeners: ((sessionId: string) => void)[] = [];
 
   constructor(
     private readonly store: SessionStore,
@@ -167,6 +178,53 @@ export class SessionManager {
 
   list(): SessionInfo[] {
     return this.store.listSessions().map((row) => this.toInfo(row));
+  }
+
+  /**
+   * Whether the session can be deleted without losing anything: nobody wrote in it (no
+   * user_message), it was not delegated and delegated into nothing (no parent, no children),
+   * and nothing runs or waits in it. Whether something still follows it is the caller's to know.
+   */
+  removable(sessionId: string): boolean {
+    const row = this.store.getSession(sessionId);
+    if (!row) {
+      return false;
+    }
+    if (row.parent !== undefined || this.store.hasChildren(sessionId)) {
+      return false;
+    }
+    if (this.store.hasEventOfType(sessionId, "user_message")) {
+      return false;
+    }
+    const rt = this.runtimes.get(sessionId);
+    if (rt && (rt.running || rt.queue.length > 0)) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Deletes a session and its log, and closes the agent sessions it loaded. onRemove listeners
+   * are told afterwards, to drop what they keep for it. Check removable() first.
+   */
+  remove(sessionId: string): void {
+    const rt = this.runtimes.get(sessionId);
+    this.runtimes.delete(sessionId);
+    this.store.deleteSession(sessionId);
+    if (rt) {
+      closeAgentSessions(rt);
+    }
+    this.options.log.info(`removed empty session ${sessionId}`);
+    for (const listener of this.removeListeners) listener(sessionId);
+  }
+
+  /** Deletes every removable session; for daemon start, when nothing follows any yet. */
+  pruneEmpty(): void {
+    for (const row of this.store.listSessions()) {
+      if (this.removable(row.id)) {
+        this.remove(row.id);
+      }
+    }
   }
 
   /**
@@ -536,6 +594,11 @@ export class SessionManager {
   /** Called when someone cancels a session's turn (also when it is idle). */
   onCancel(listener: (sessionId: string) => void): void {
     this.cancelListeners.push(listener);
+  }
+
+  /** Called when a session was deleted (see remove). */
+  onRemove(listener: (sessionId: string) => void): void {
+    this.removeListeners.push(listener);
   }
 
   /** Called when a session starts or stops running, or its queue changes. */

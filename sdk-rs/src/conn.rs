@@ -342,6 +342,9 @@ impl Io {
             Envelope::SessionChangedMessage(message) => {
                 self.emit(Event::SessionChanged(message.payload));
             }
+            Envelope::SessionRemovedMessage(message) => {
+                self.emit(Event::SessionRemoved(message.payload.id));
+            }
             Envelope::SecretRequestMessage(message) => self.emit(Event::Secret(message.payload)),
             Envelope::ViewPatchMessage(message) => {
                 let key = (

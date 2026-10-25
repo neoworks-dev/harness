@@ -58,6 +58,7 @@ pub enum Envelope {
     FileChangedMessage(FileChangedMessage),
     AppContextMessage(AppContextMessage),
     SessionChangedMessage(SessionChangedMessage),
+    SessionRemovedMessage(SessionRemovedMessage),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -212,6 +213,10 @@ impl Serialize for Envelope {
                 "session.changed",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            Envelope::SessionRemovedMessage(v) => (
+                "session.removed",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             Envelope::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("topic", tag, value).serialize(serializer)
@@ -336,6 +341,9 @@ impl<'de> Deserialize<'de> for Envelope {
                 .map_err(D::Error::custom),
             "session.changed" => serde_json::from_value(value)
                 .map(Envelope::SessionChangedMessage)
+                .map_err(D::Error::custom),
+            "session.removed" => serde_json::from_value(value)
+                .map(Envelope::SessionRemovedMessage)
                 .map_err(D::Error::custom),
             _ => Ok(Envelope::Unknown(value)),
         }
@@ -561,6 +569,12 @@ impl From<AppContextMessage> for Envelope {
 impl From<SessionChangedMessage> for Envelope {
     fn from(v: SessionChangedMessage) -> Self {
         Envelope::SessionChangedMessage(v)
+    }
+}
+
+impl From<SessionRemovedMessage> for Envelope {
+    fn from(v: SessionRemovedMessage) -> Self {
+        Envelope::SessionRemovedMessage(v)
     }
 }
 
@@ -1231,6 +1245,21 @@ pub struct AppContext {
 pub struct SessionChangedMessage {
     #[serde(rename = "payload")]
     pub payload: SessionInfo,
+}
+
+/// Daemon → every client: a session was deleted. The daemon deletes a session nobody wrote in once nothing follows it any more (no subscription, no view, not the agent's current session); drop it from overviews.
+/// Tagged `topic: "session.removed"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionRemovedMessage {
+    #[serde(rename = "payload")]
+    pub payload: SessionRemoved,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionRemoved {
+    /// The session that no longer exists.
+    #[serde(rename = "id")]
+    pub id: String,
 }
 
 /// Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.

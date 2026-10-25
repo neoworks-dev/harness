@@ -120,6 +120,19 @@ export class Asker {
     }
   }
 
+  /**
+   * Drops the open questions of a session that was deleted, unanswered and without logging:
+   * its log is gone.
+   */
+  forget(session: string): void {
+    for (const [id, pending] of this.pending) {
+      if (pending.session !== session) continue;
+      this.pending.delete(id);
+      pending.resolve({});
+    }
+    this.mirrored.delete(session);
+  }
+
   private settle(id: string, option: string | undefined, by?: string, note?: string): void {
     const pending = this.pending.get(id);
     if (!pending) return;

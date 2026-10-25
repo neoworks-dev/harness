@@ -273,6 +273,16 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     auto: options.titles ?? true,
   });
   sessions.recoverInterruptedTurns();
+  // A deleted session takes what was kept for it along (views drop theirs once they exist).
+  sessions.onRemove((session) => {
+    summaries.forget(session);
+    guests.forget(session);
+    asker.forget(session);
+    toldCommands.delete(session);
+  });
+  // Sessions nobody wrote in are deleted once nothing follows them (see Hub); after a restart
+  // nothing does yet. Before the focus is made, so it never starts on one that is gone.
+  sessions.pruneEmpty();
   const delegate = createDelegate({
     guests,
     asker,
@@ -318,6 +328,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     (session) => openUiTools({ store, gateway }, session),
     () => connectors.library(),
   );
+  sessions.onRemove((session) => views.forget(session));
   const actions = new ActionRunner({
     store,
     sessions,

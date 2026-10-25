@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetFetchMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetFetchMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, SessionRemovedMessage, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -269,6 +269,12 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "session.changed":
 		var v SessionChangedMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "session.removed":
+		var v SessionRemovedMessage
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -1107,6 +1113,27 @@ func (v SessionChangedMessage) MarshalJSON() ([]byte, error) {
 		Tag string `json:"topic"`
 		plain
 	}{"session.changed", plain(v)})
+}
+
+// SessionRemovedMessage: Daemon → every client: a session was deleted. The daemon deletes a session nobody wrote in once nothing follows it any more (no subscription, no view, not the agent's current session); drop it from overviews.
+type SessionRemovedMessage struct {
+	Payload SessionRemoved `json:"payload"`
+}
+
+func (SessionRemovedMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v SessionRemovedMessage) MarshalJSON() ([]byte, error) {
+	type plain SessionRemovedMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"session.removed", plain(v)})
+}
+
+type SessionRemoved struct {
+	// The session that no longer exists.
+	ID string `json:"id"`
 }
 
 // AppPresence: Client → daemon. Registers (open: true) or unregisters (open: false) a connector for as long as the bus connection lives; closing the connection unregisters it too. Send again to update.

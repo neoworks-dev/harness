@@ -86,6 +86,8 @@ describe("subscribe (session events)", () => {
   test("stopping a subscription stops its events", async () => {
     const { client } = await startRig(later);
     const { id } = await client.createSession();
+    // The agent's current session: an empty one nothing follows would be deleted.
+    await client.moveAgent({ session: id });
     const events = new Recorder();
     const stop = client.subscribe(id, events);
     await until(() => events.live === 1, "live");
