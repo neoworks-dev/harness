@@ -12,7 +12,7 @@ use std::path::Path;
 
 use neo_protocol::{SessionInfo, SessionState};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::style::Modifier;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::menu::session_title;
@@ -23,6 +23,8 @@ use crate::util::{fit_line, truncate, width};
 pub const SIDEBAR_WIDTH: u16 = 31;
 /// Rows a PgUp / PgDn moves.
 const PAGE: usize = 5;
+/// Idle longer than this, a session is drawn faded.
+const STALE_MS: i64 = 24 * 3600 * 1000;
 
 /// What a key in the focused sidebar asks the app to do.
 #[derive(Debug, Clone, PartialEq)]
@@ -123,7 +125,8 @@ enum Entry {
 impl Entry {
     fn height(&self) -> usize {
         match self {
-            Entry::Session { .. } => 2,
+            // Title, preview and a blank row, so sessions read apart.
+            Entry::Session { .. } => 3,
             _ => 1,
         }
     }
@@ -465,10 +468,16 @@ impl Sessions {
             used += entry.height();
             match entry {
                 Entry::Cluster(name) => {
-                    out.push(Line::from(Span::styled(
-                        format!(" {}", truncate(name, w.saturating_sub(1))),
-                        styles.muted,
-                    )));
+                    // The repository's name, then a rule to the edge.
+                    let name = truncate(name, w.saturating_sub(3));
+                    let rule = "─".repeat(w.saturating_sub(width(&name) + 2));
+                    out.push(Line::from(vec![
+                        Span::styled(
+                            format!(" {name} "),
+                            Style::new().add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(rule, styles.border),
+                    ]));
                 }
                 Entry::Group(name) => {
                     out.push(Line::from(Span::styled(
@@ -497,6 +506,7 @@ impl Sessions {
                         }
                     }
                     out.extend(pair);
+                    out.push(Line::default());
                 }
             }
         }
@@ -547,10 +557,15 @@ fn row(
     }
     .saturating_sub(marker_w);
     let title = truncate(&session_title(info), title_room);
+    // Sessions idle for over a day fade, so the ones in use stand out.
+    let stale = mark == Mark::None
+        && info.state != SessionState::Running
+        && look.now_ms - info.last_activity > STALE_MS;
     let title_style = match mark {
         Mark::Current => styles.accent.add_modifier(Modifier::BOLD),
-        Mark::Finished => ratatui::style::Style::new().add_modifier(Modifier::BOLD),
-        Mark::None => ratatui::style::Style::new(),
+        Mark::Finished => Style::new().add_modifier(Modifier::BOLD),
+        Mark::None if stale => styles.muted,
+        Mark::None => Style::new(),
     };
     let pad = room.saturating_sub(width(&title) + stat_w + marker_w);
     let mut first = lead(state);
@@ -589,7 +604,15 @@ fn row(
     } else {
         second.push(Span::styled(truncate(&preview, left), styles.muted));
     }
-    [Line::from(first), Line::from(second)]
+    let mut lines = [Line::from(first), Line::from(second)];
+    if stale {
+        for line in &mut lines {
+            for span in &mut line.spans {
+                span.style = span.style.add_modifier(Modifier::DIM);
+            }
+        }
+    }
+    lines
 }
 
 /// How long ago, short: now, 5m, 3h, 2d.
@@ -709,13 +732,16 @@ mod tests {
             got,
             [
                 "Sessions · 3",
-                " w",
+                " w ──────────────────────────",
                 " ◐ Fix the login form  +12 −3",
                 "   2 queued · Looking at… now",
+                "",
                 "▎  session b               +7",
                 "▎  Done. I changed the f… now",
+                "",
                 "   Docs                   −40",
                 "                          now",
+                "",
             ]
         );
         // Green and red for the changed lines, the spinner in the accent color.
@@ -731,9 +757,32 @@ mod tests {
             st.danger
         );
         assert_eq!(
-            lines[4].spans[0].content, "▎",
+            lines[5].spans[0].content, "▎",
             "the shown session has a bar"
         );
+    }
+
+    #[test]
+    fn sessions_idle_for_over_a_day_fade() {
+        let mut s = Sessions::default();
+        let day = 24 * 3600 * 1000;
+        s.set_all(vec![
+            info("new", "Fresh", 10 * day),
+            info("old", "Stale", day),
+        ]);
+        let mut l = look("x", false);
+        l.now_ms = 10 * day + 1000;
+        let lines = s.render(29, 20, &l, &styles());
+        let title = |text: &str| {
+            lines
+                .iter()
+                .flat_map(|l| l.spans.iter())
+                .find(|s| s.content.contains(text))
+                .unwrap()
+                .style
+        };
+        assert!(!title("Fresh").add_modifier.contains(Modifier::DIM));
+        assert!(title("Stale").add_modifier.contains(Modifier::DIM));
     }
 
     #[test]
@@ -820,9 +869,9 @@ mod tests {
                 .map(|i| info(&format!("s{i}"), &format!("title {i}"), 100 - i))
                 .collect(),
         );
-        // Room for 3 sessions: header, the group's name and 6 rows.
+        // Room for 3 sessions: header, the group's name and 9 rows.
         let shown = |s: &mut Sessions, current: &str, focused: bool| {
-            text(&s.render(29, 8, &look(current, focused), &styles()))
+            text(&s.render(29, 11, &look(current, focused), &styles()))
                 .iter()
                 .filter(|l| l.contains("title"))
                 .map(|l| l.trim().trim_start_matches('▎').trim().to_string())
@@ -921,22 +970,28 @@ mod tests {
             got,
             [
                 "Sessions · 6",
-                " site",
+                " site ───────────────────────",
                 "   Docs",
                 "                          now",
+                "",
                 "▎  Plan the release",
                 "▎                         now",
+                "",
                 "   ⎇ fix-login",
                 " ◐ Fix the login",
                 "   Editing the form       now",
+                "",
                 "   ↳ Write tests",
                 "                          now",
+                "",
                 "   ⎇ dark",
                 "   Dark mode",
                 "                          now",
-                " notes",
+                "",
+                " notes ──────────────────────",
                 "   Scratch",
                 "                          now",
+                "",
             ]
         );
     }
@@ -1019,12 +1074,14 @@ mod tests {
             got,
             [
                 "Sessions · 2",
-                " site",
+                " site ───────────────────────",
                 "▎  Main chat",
                 "▎                         now",
+                "",
                 "   ⎇ ci",
                 "   ↳ Run the build",
                 "                          now",
+                "",
             ]
         );
     }
@@ -1043,12 +1100,12 @@ mod tests {
                 "   ⎇ dark",
                 "   Dark mode",
                 "                          now",
-                " notes"
+                ""
             ]
         );
         s.focus("f");
         let got = text(&s.render(29, 5, &look("a", true), &styles()));
-        assert_eq!(got[1].trim_end(), " notes");
+        assert_eq!(got[1].trim_end(), " notes ──────────────────────");
         assert_eq!(got[2].trim_end(), "   Scratch");
     }
 
