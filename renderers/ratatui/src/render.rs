@@ -16,9 +16,10 @@ use crate::{ImageOptions, ImageSlot, ImageStatus, Options, Palette, image_cells}
 /// padding and clipping ignore it; it is removed before the lines leave the renderer.
 const SLOT_MARK: &str = "\u{2060}";
 
-/// Rows the label of a finished tool call takes at most, unless expanded; with a command, the
-/// rows of the command under the label.
+/// Rows the label of a finished tool call takes at most, and its command; unless expanded.
 const LABEL_ROWS: usize = 2;
+/// Rows the command of a running tool call takes at most, unless expanded or asked about.
+const RUNNING_ROWS: usize = 4;
 
 pub(crate) type Lines = Vec<Line<'static>>;
 
@@ -236,11 +237,10 @@ impl<'a> Cx<'a> {
             None => Vec::new(),
         };
         // A shell command is highlighted while it runs or waits, muted once it has run, and
-        // broken after its `&&`, `|` and `;` when long.
-        let mut rows = LABEL_ROWS;
+        // broken after its `&&`, `||` and `;` when long (pipelines stay whole). Unless it is a
+        // question or everything is expanded, it takes a few rows while it runs and two after.
         if let Some(command) = it.command.as_deref().filter(|c| !c.trim().is_empty()) {
-            rows += head.len();
-            let code = crate::shell::reflow(clean(command.trim_end()).as_ref(), hw);
+            let code = crate::shell::reflow_lists(clean(command.trim_end()).as_ref(), hw);
             let spans = crate::shell::highlight(&code, &self.p, Style::new());
             let mut lines: Lines = hard_wrap_spans(&spans, hw)
                 .into_iter()
@@ -253,16 +253,19 @@ impl<'a> Cx<'a> {
                     st.fg(muted).remove_modifier(Modifier::BOLD)
                 });
             }
-            head.extend(lines);
-        }
-        if cut && head.len() > rows {
-            head.truncate(rows);
-            if let Some(last) = head.last_mut() {
-                let mut spans = std::mem::take(&mut last.spans);
-                let style = spans.last().map_or(Style::new(), |s| s.style);
-                spans.push(Span::styled("…", style));
-                last.spans = truncate_spans(spans, hw);
+            if !prompt && !self.o.expanded {
+                cut_rows(
+                    &mut lines,
+                    if finished { LABEL_ROWS } else { RUNNING_ROWS },
+                    hw,
+                );
             }
+            if cut {
+                cut_rows(&mut head, LABEL_ROWS, hw);
+            }
+            head.extend(lines);
+        } else if cut {
+            cut_rows(&mut head, LABEL_ROWS, hw);
         }
         let mut out = if head.is_empty() {
             vec![Line::from(bullet)]
@@ -1307,6 +1310,20 @@ fn app_family(app: &str) -> &str {
     match app.rsplit_once('-') {
         Some((base, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => base,
         _ => app,
+    }
+}
+
+/// At most `rows` lines, the last one ending in `…` when any were dropped.
+fn cut_rows(lines: &mut Lines, rows: usize, w: usize) {
+    if lines.len() <= rows {
+        return;
+    }
+    lines.truncate(rows);
+    if let Some(last) = lines.last_mut() {
+        let mut spans = std::mem::take(&mut last.spans);
+        let style = spans.last().map_or(Style::new(), |s| s.style);
+        spans.push(Span::styled("…", style));
+        last.spans = truncate_spans(spans, w);
     }
 }
 

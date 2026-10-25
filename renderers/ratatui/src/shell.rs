@@ -184,6 +184,21 @@ fn word(
 /// after the first indented two more. Only where bash takes a newline the same way: not inside
 /// quotes, parentheses or `$(…)`, comments or heredoc bodies. Lines that fit stay as they are.
 pub(crate) fn reflow(source: &str, w: usize) -> String {
+    reflow_at(source, w, true)
+}
+
+/// [`reflow`] that keeps pipelines whole where it can: lines break after `&&`, `||` and `;`,
+/// and after `|` too only when a pipeline is wider than `w` on its own.
+pub(crate) fn reflow_lists(source: &str, w: usize) -> String {
+    let lists = reflow_at(source, w, false);
+    if lists.lines().all(|l| crate::text::width(l) <= w) {
+        lists
+    } else {
+        reflow_at(source, w, true)
+    }
+}
+
+fn reflow_at(source: &str, w: usize, pipes: bool) -> String {
     let chars: Vec<char> = source.chars().collect();
     let mut out = String::with_capacity(source.len());
     // The current line, and where it may break (char indices into it).
@@ -321,7 +336,8 @@ pub(crate) fn reflow(source: &str, w: usize) -> String {
                 let redirect = op.starts_with('&') && chars.get(i) == Some(&'>');
                 if depth == 0
                     && !redirect
-                    && matches!(op.as_str(), "&&" | "||" | "|" | "|&" | ";" | ";;")
+                    && (matches!(op.as_str(), "&&" | "||" | ";" | ";;")
+                        || (pipes && matches!(op.as_str(), "|" | "|&")))
                 {
                     breaks.push(line.chars().count());
                 }
@@ -407,6 +423,14 @@ mod tests {
                 (s.content.trim().to_string(), class)
             })
             .collect()
+    }
+
+    #[test]
+    fn lists_break_but_pipelines_stay_whole() {
+        assert_eq!(
+            reflow_lists("cd ~/x && grep -rn a src | head -5; echo done", 30),
+            "cd ~/x &&\n  grep -rn a src | head -5;\n  echo done"
+        );
     }
 
     #[test]

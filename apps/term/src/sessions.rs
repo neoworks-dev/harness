@@ -604,15 +604,13 @@ fn row(
     } else {
         second.push(Span::styled(truncate(&preview, left), styles.muted));
     }
-    let mut lines = [Line::from(first), Line::from(second)];
+    // A stale title is muted (above); its preview fades further, so the title stays readable.
     if stale {
-        for line in &mut lines {
-            for span in &mut line.spans {
-                span.style = span.style.add_modifier(Modifier::DIM);
-            }
+        for span in &mut second {
+            span.style = span.style.add_modifier(Modifier::DIM);
         }
     }
-    lines
+    [Line::from(first), Line::from(second)]
 }
 
 /// How long ago, short: now, 5m, 3h, 2d.
@@ -766,10 +764,9 @@ mod tests {
     fn sessions_idle_for_over_a_day_fade() {
         let mut s = Sessions::default();
         let day = 24 * 3600 * 1000;
-        s.set_all(vec![
-            info("new", "Fresh", 10 * day),
-            info("old", "Stale", day),
-        ]);
+        let mut old = info("old", "Stale", day);
+        old.preview = Some("said long ago".into());
+        s.set_all(vec![info("new", "Fresh", 10 * day), old]);
         let mut l = look("x", false);
         l.now_ms = 10 * day + 1000;
         let lines = s.render(29, 20, &l, &styles());
@@ -782,7 +779,8 @@ mod tests {
                 .style
         };
         assert!(!title("Fresh").add_modifier.contains(Modifier::DIM));
-        assert!(title("Stale").add_modifier.contains(Modifier::DIM));
+        assert_eq!(title("Stale"), styles().muted);
+        assert!(title("said long ago").add_modifier.contains(Modifier::DIM));
     }
 
     #[test]

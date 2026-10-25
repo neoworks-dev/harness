@@ -141,6 +141,12 @@ function commandOf(input: unknown): string | undefined {
   return script ?? (argv.length > 0 ? argv.join(" ") : undefined);
 }
 
+/** Whether a call's content is nothing but `text`. */
+function onlyText(content: ToolCallContent[] | undefined, text: string): boolean {
+  const [only, ...rest] = content ?? [];
+  return rest.length === 0 && only?.type === "text" && only.text.trim() === text.trim();
+}
+
 /** Whether a call's title says no more than its command (neo cuts it to a part of the first line). */
 function repeats(title: string, command: string): boolean {
   const flat = (value: string): string => value.replace(/\s+/g, " ").trim();
@@ -739,7 +745,9 @@ export class SessionView {
       ref: call.ref,
       kind: "tool",
       label: this.callLabel(call),
-      state: STATES[call.status],
+      // Claude Code's adapter rarely says a call is in progress: one that has started and not
+      // ended is running. (A question about it is an item of its own.)
+      state: call.status === "pending" ? "running" : STATES[call.status],
       component: this.resultView(call),
     };
     const command = call.kind === "execute" ? commandOf(call.rawInput) : undefined;
@@ -752,6 +760,14 @@ export class SessionView {
       if (repeats(title, command)) {
         if (prefixed) item.label = call.agent;
         else delete item.label;
+      }
+      // While it runs, Claude Code sends the command's description as its content: that is the
+      // label, and there is no output yet.
+      const description = isRecord(call.rawInput) ? call.rawInput.description : undefined;
+      const running = call.status === "pending" || call.status === "in_progress";
+      if (running && typeof description === "string" && onlyText(call.content, description)) {
+        item.label = prefixed ? `${call.agent}: ${description}` : description;
+        item.component = { type: "stack", gap: "s", children: [] };
       }
     }
     return item;

@@ -18,8 +18,6 @@ pub(crate) enum Mark {
     Renamed,
     Untracked,
     Conflicted,
-    /// Touched by an agent, but git sees no difference (committed since).
-    Clean,
 }
 
 impl Mark {
@@ -31,7 +29,6 @@ impl Mark {
             Mark::Renamed => 'R',
             Mark::Untracked => '?',
             Mark::Conflicted => 'U',
-            Mark::Clean => '·',
         }
     }
 
@@ -41,7 +38,7 @@ impl Mark {
             Mark::Modified | Mark::Renamed => fg(palette.accent),
             Mark::Added => fg(palette.success),
             Mark::Deleted => fg(palette.danger),
-            Mark::Untracked | Mark::Clean => fg(palette.muted),
+            Mark::Untracked => fg(palette.muted),
             Mark::Conflicted => fg(palette.danger).add_modifier(Modifier::BOLD),
         }
     }
@@ -98,6 +95,8 @@ pub(crate) struct FilesState {
     rows: Vec<TreeRow>,
     /// Folders folded away, by path.
     collapsed: HashSet<String>,
+    /// Folders opened by hand that would start folded (more than `FOLD_FILES` in them).
+    opened: HashSet<String>,
     selected: usize,
 }
 
@@ -162,12 +161,9 @@ impl FilesState {
             let listed = entries
                 .iter()
                 .any(|e| e.rel == t.rel || (e.rel.ends_with('/') && t.rel.starts_with(&e.rel)));
-            if !listed {
-                let mark = match (&self.status, t.added) {
-                    (Some(_), _) => Mark::Clean,
-                    (None, true) => Mark::Added,
-                    (None, false) => Mark::Modified,
-                };
+            // In a repository, a file git sees no change in (committed, or changed back) is done.
+            if !listed && self.status.is_none() {
+                let mark = if t.added { Mark::Added } else { Mark::Modified };
                 entries.push(FileEntry {
                     rel: clean_line(&t.rel),
                     orig: None,
@@ -205,7 +201,11 @@ impl FilesState {
             node.files.push(i);
         }
         let mut rows = Vec::new();
-        flatten(&root, 0, &self.entries, &self.collapsed, &mut rows);
+        let folds = Folds {
+            collapsed: &self.collapsed,
+            opened: &self.opened,
+        };
+        flatten(&root, 0, &self.entries, &folds, &mut rows);
         self.rows = rows;
     }
 
@@ -251,9 +251,11 @@ impl FilesState {
         };
         let path = path.clone();
         if collapse {
+            self.opened.remove(&path);
             self.collapsed.insert(path);
         } else {
             self.collapsed.remove(&path);
+            self.opened.insert(path);
         }
         self.rebuild_rows();
     }
@@ -360,6 +362,10 @@ struct Dir {
 }
 
 impl Dir {
+    fn file_count(&self) -> usize {
+        self.files.len() + self.dirs.values().map(Dir::file_count).sum::<usize>()
+    }
+
     /// What changed in every file below, summed.
     fn counts(&self, entries: &[FileEntry]) -> Option<LineCount> {
         let mut sum: Option<LineCount> = None;
@@ -389,6 +395,8 @@ enum RowKind {
         name: String,
         collapsed: bool,
         counts: Option<LineCount>,
+        /// Files below it, all levels.
+        files: usize,
     },
     /// An index into the entries.
     File(usize),
@@ -411,13 +419,21 @@ impl TreeRow {
 }
 
 /// The rows below `dir`: its folders first, then its files, each by name.
-fn flatten(
-    dir: &Dir,
-    depth: usize,
-    entries: &[FileEntry],
-    collapsed: &HashSet<String>,
-    rows: &mut Vec<TreeRow>,
-) {
+/// Which folders are folded: the ones folded by hand, and the ones with more than
+/// `FOLD_FILES` files right in them (generated files, snapshots) unless opened by hand.
+struct Folds<'a> {
+    collapsed: &'a HashSet<String>,
+    opened: &'a HashSet<String>,
+}
+
+impl Folds<'_> {
+    fn folded(&self, dir: &Dir) -> bool {
+        self.collapsed.contains(&dir.path)
+            || (dir.files.len() > FOLD_FILES && !self.opened.contains(&dir.path))
+    }
+}
+
+fn flatten(dir: &Dir, depth: usize, entries: &[FileEntry], folds: &Folds, rows: &mut Vec<TreeRow>) {
     for child in dir.dirs.values() {
         let mut node = child;
         let mut name = child.path[dir.path.len()..].to_string();
@@ -428,7 +444,7 @@ fn flatten(
             name.push_str(&only.path[node.path.len()..]);
             node = only;
         }
-        let folded = collapsed.contains(&node.path);
+        let folded = folds.folded(node);
         rows.push(TreeRow {
             depth,
             kind: RowKind::Dir {
@@ -436,10 +452,11 @@ fn flatten(
                 name,
                 collapsed: folded,
                 counts: node.counts(entries),
+                files: node.file_count(),
             },
         });
         if !folded {
-            flatten(node, depth + 1, entries, collapsed, rows);
+            flatten(node, depth + 1, entries, folds, rows);
         }
     }
     let mut files = dir.files.clone();
@@ -479,6 +496,8 @@ fn line_counts(lines: Option<LineCount>, palette: &Palette) -> Vec<Span<'static>
 
 /// Below this many cells for the name, the line counts are left out.
 const MIN_NAME: usize = 8;
+/// A folder with more files than this right in it starts folded.
+const FOLD_FILES: usize = 5;
 
 /// The file's name in the tree: the last part of its path (`new/` for a new folder), a rename
 /// as `old → new`.
@@ -511,13 +530,19 @@ fn tree_row(
             name,
             collapsed,
             counts,
+            files,
             ..
         } => {
             let arrow = if *collapsed { "▸ " } else { "▾ " };
-            // An open folder's files carry its counts.
+            // An open folder's files carry its counts; a folded one says how many there are.
             let lines = if *collapsed { *counts } else { None };
+            let tag = if *collapsed {
+                format!(" {files} file{}", if *files == 1 { "" } else { "s" })
+            } else {
+                String::new()
+            };
             let lead = Span::styled(format!("{indent}{arrow}"), Style::new().fg(palette.muted));
-            (lead, name.clone(), Style::new(), String::new(), lines)
+            (lead, name.clone(), Style::new(), tag, lines)
         }
         RowKind::File(i) => {
             let Some(e) = entries.get(*i) else {
@@ -631,8 +656,27 @@ mod tests {
         f.key(KeyEvent::from(KeyCode::Enter));
         assert_eq!(
             text(&f.render(24, 10, false, &p))[1],
-            "▸ src/            +12 −3"
+            "▸ src/ 1 file     +12 −3"
         );
+    }
+
+    #[test]
+    fn a_folder_with_many_changed_files_starts_folded_until_opened() {
+        let mut f = FilesState::default();
+        let mut entries: Vec<_> = (0..6)
+            .map(|i| entry(&format!("fixtures/t/{i}.txt"), Change::Modified))
+            .collect();
+        entries.push(entry("src/a.rs", Change::Modified));
+        f.set_status(Some(status(entries)));
+        let shown = |f: &FilesState| text(&f.render(40, 20, false, &Palette::default()));
+        assert_eq!(
+            shown(&f)[1..],
+            ["▸ fixtures/t/ 6 files", "▾ src/", "  M a.rs"]
+        );
+        f.key(KeyEvent::from(KeyCode::Enter));
+        assert_eq!(shown(&f).len(), 10, "opened by hand it stays open");
+        f.key(KeyEvent::from(KeyCode::Enter));
+        assert_eq!(shown(&f)[1], "▸ fixtures/t/ 6 files");
     }
 
     #[test]
@@ -664,7 +708,7 @@ mod tests {
         assert_eq!(f.key(key(KeyCode::Enter)), FileKey::Handled);
         assert_eq!(
             text(&f.render(30, 10, false, &p))[1..],
-            ["▸ apps/term/", "M Cargo.lock"]
+            ["▸ apps/term/ 3 files", "M Cargo.lock"]
         );
         f.key(key(KeyCode::Right)); // opens apps/term/
         f.key(key(KeyCode::Right)); // into it: src/
@@ -673,7 +717,7 @@ mod tests {
         // Left goes up to the folder, then folds it; Enter on a file opens it.
         f.key(key(KeyCode::Left));
         f.key(key(KeyCode::Left));
-        assert_eq!(text(&f.render(30, 10, false, &p))[2], "  ▸ src/");
+        assert_eq!(text(&f.render(30, 10, false, &p))[2], "  ▸ src/ 2 files");
         f.key(key(KeyCode::Char('G')));
         assert_eq!(f.key(key(KeyCode::Enter)), FileKey::Open);
         // The fold survives a refresh.
@@ -681,7 +725,7 @@ mod tests {
             s.ahead = 2;
             s
         }));
-        assert_eq!(text(&f.render(30, 10, false, &p))[2], "  ▸ src/");
+        assert_eq!(text(&f.render(30, 10, false, &p))[2], "  ▸ src/ 2 files");
     }
 
     fn text(lines: &[Line]) -> Vec<String> {
@@ -692,7 +736,7 @@ mod tests {
     }
 
     #[test]
-    fn git_entries_with_agent_tags_and_touched_only() {
+    fn git_entries_with_agent_tags_and_committed_ones_left_out() {
         let mut f = FilesState::default();
         f.touch("src/a.ts", "agent", false);
         f.touch("src/a.ts", "claude", false);
@@ -719,9 +763,9 @@ mod tests {
                     vec!["agent".to_string(), "claude".to_string()]
                 ),
                 ("b.txt", Mark::Untracked, vec![]),
-                ("gone.txt", Mark::Clean, vec!["claude".to_string()]),
             ]
         );
+        // gone.txt: touched, but git sees no change in it any more (committed), so it is done.
         assert_eq!(f.branch().as_deref(), Some("main ↑1"));
         // Same status again is no change.
         assert!(!f.set_status(f.status.clone()));

@@ -242,6 +242,44 @@ describe("session view", () => {
     ]);
   });
 
+  test("a started call is running; its description is the label until there is output", () => {
+    const input = { command: "bun test", description: "Run the tests" };
+    const { view } = feed([
+      { type: "tool_call", toolCallId: "a", title: "Terminal", kind: "execute", status: "pending" },
+      {
+        type: "tool_call_update",
+        toolCallId: "a",
+        title: "bun test",
+        rawInput: input,
+        content: [{ type: "text", text: "Run the tests" }],
+      },
+    ]);
+    expect(view.snapshot().items[0]).toMatchObject({
+      label: "Run the tests",
+      command: "bun test",
+      state: "running",
+      component: { type: "stack", children: [] },
+    });
+    const done = feed([
+      {
+        type: "tool_call",
+        toolCallId: "a",
+        title: "bun test",
+        kind: "execute",
+        status: "pending",
+        rawInput: input,
+      },
+      {
+        type: "tool_call_update",
+        toolCallId: "a",
+        status: "completed",
+        content: [{ type: "text", text: "```console\n3 pass\n```" }],
+      },
+    ]).view.snapshot().items[0];
+    expect(done).toMatchObject({ state: "done", component: { type: "code", code: "3 pass" } });
+    expect(done?.label).toBeUndefined();
+  });
+
   test("output in one markdown code block, as Claude Code sends it, is the output", () => {
     const { view } = feed([
       {

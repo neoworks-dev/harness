@@ -281,16 +281,24 @@ fn a_command_is_highlighted_and_broken_at_its_operators() {
             &code("ok"),
         )
     };
-    // Without a label the command is the header, broken after its operators.
-    let running = lines(&item(None, "running"), 40);
+    // Without a label the command is the header, broken after `&&` and `;`; a pipeline stays
+    // whole where it fits, else it breaks after its `|` too.
     assert_eq!(
-        running,
+        lines(&item(None, "running"), 80),
+        [
+            "● cd /work/site &&",
+            "    cargo build --release 2>&1 | grep -E 'error|warning' | head -40;",
+            "    echo done",
+            "  ⎿ ok"
+        ]
+    );
+    assert_eq!(
+        lines(&item(None, "running"), 40),
         [
             "● cd /work/site &&",
             "    cargo build --release 2>&1 |",
             "    grep -E 'error|warning' |",
-            "    head -40;",
-            "    echo done",
+            "    head -40;…",
             "  ⎿ ok"
         ]
     );
@@ -323,7 +331,7 @@ fn a_command_is_highlighted_and_broken_at_its_operators() {
         done[0]
     );
     // Once it has run, two rows; under a label (a description, or whose call it is) too.
-    let done = lines(&item(None, "done"), 40);
+    let done = lines(&item(None, "done"), 60);
     assert_eq!(
         done,
         [
@@ -332,7 +340,7 @@ fn a_command_is_highlighted_and_broken_at_its_operators() {
             "  ⎿ ok"
         ]
     );
-    let described = lines(&item(Some("Build the site"), "done"), 40);
+    let described = lines(&item(Some("Build the site"), "done"), 60);
     assert_eq!(
         described,
         [
@@ -342,6 +350,39 @@ fn a_command_is_highlighted_and_broken_at_its_operators() {
             "  ⎿ ok"
         ]
     );
+}
+
+#[test]
+fn a_running_command_takes_four_rows_unless_asked_about_or_expanded() {
+    let command = (1..=8)
+        .map(|i| format!("step-{i}"))
+        .collect::<Vec<_>>()
+        .join(" && ");
+    let item = item_of(
+        "tool",
+        &format!(
+            r#""label":"Run the steps","command":{},"state":"running","#,
+            json!(command)
+        ),
+        r#"{"type":"stack","gap":"s","children":[]}"#,
+    );
+    let shown = lines(&item, 30);
+    assert_eq!(
+        shown,
+        [
+            "● Run the steps",
+            "  step-1 &&",
+            "    step-2 &&",
+            "    step-3 &&",
+            "    step-4 &&…"
+        ],
+        "and no result line while there is no output"
+    );
+    let expanded = Options {
+        expanded: true,
+        ..Options::default()
+    };
+    assert_eq!(lines_of(&item, 30, &expanded).len(), 9);
 }
 
 #[test]
