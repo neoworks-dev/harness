@@ -34,6 +34,37 @@ describe("shutdown", () => {
 });
 
 describe("turn queue", () => {
+  test("what waits from one app runs as one turn, up to a command", async () => {
+    const { store, agent, sessions } = setup();
+    const { id } = sessions.create({});
+    sessions.input(id, "term", "one");
+    await agent.started(1);
+    sessions.input(id, "term", "look [image 1]", ["/a.png"]);
+    sessions.input(id, "term", "and [image 1] too", ["/b.png"]);
+    sessions.input(id, "term", "/claude review");
+    sessions.input(id, "term", "after");
+    agent.release();
+    await agent.started(2);
+    expect(agent.prompts[1]).toMatchObject({
+      app: "term",
+      text: "look [image 1]\n\nand [image 2] too",
+      images: ["/a.png", "/b.png"],
+    });
+    agent.release();
+    await agent.started(3);
+    expect(agent.prompts[2]?.text).toBe("/claude review");
+    agent.release();
+    await agent.started(4);
+    expect(agent.prompts[3]?.text).toBe("after");
+    agent.release();
+    await sessions.idle(id);
+    const users = store
+      .read(id)
+      .map((r) => r.event)
+      .filter((e) => e.type === "user_message");
+    expect(users).toHaveLength(4);
+  });
+
   test("a running turn takes the inputs behind it up to a command, and logs them as it does", async () => {
     const { store, agent, sessions } = setup();
     const { id } = sessions.create({});

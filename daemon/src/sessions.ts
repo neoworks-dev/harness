@@ -82,6 +82,52 @@ function userMessage(input: QueuedInput): SessionEvent {
   return event;
 }
 
+const isCommand = (input: QueuedInput): boolean => input.text.trimStart().startsWith("/");
+
+/**
+ * The next turn's input: what waits at the head of the queue, as one message. Inputs from the
+ * same app run together up to a command (a guest's "/claude task", a harness's /command), which
+ * gets a turn of its own.
+ */
+function takeBatch(queue: QueuedInput[]): QueuedInput | undefined {
+  const first = queue.shift();
+  if (first === undefined || isCommand(first)) return first;
+  const batch = [first];
+  for (let next = queue[0]; next; next = queue[0]) {
+    if (next.app !== first.app || isCommand(next)) break;
+    queue.shift();
+    batch.push(next);
+  }
+  return batch.length === 1 ? first : joinInputs(batch);
+}
+
+/**
+ * Inputs as one, a paragraph each. Each one's `[image N]` markers count its own images, so they
+ * are moved past the images of the ones before it.
+ */
+function joinInputs(inputs: QueuedInput[]): QueuedInput {
+  const texts: string[] = [];
+  const shown: string[] = [];
+  const images: string[] = [];
+  for (const input of inputs) {
+    const offset = images.length;
+    const renumber = (value: string): string =>
+      offset === 0
+        ? value
+        : value.replace(/\[image (\d+)\]/g, (marker, n: string) => {
+            const at = Number(n);
+            return at >= 1 && at <= (input.images?.length ?? 0) ? `[image ${at + offset}]` : marker;
+          });
+    texts.push(renumber(input.text));
+    shown.push(renumber(input.shown ?? input.text));
+    images.push(...(input.images ?? []));
+  }
+  const joined: QueuedInput = { app: inputs[0]?.app ?? "", text: texts.join("\n\n") };
+  if (images.length > 0) joined.images = images;
+  if (inputs.some((input) => input.shown !== undefined)) joined.shown = shown.join("\n\n");
+  return joined;
+}
+
 function waiting(input: QueuedInput): WaitingInput {
   const out: WaitingInput = { app: input.app, text: input.shown ?? input.text };
   if (input.images) out.images = input.images;
@@ -448,12 +494,14 @@ export class SessionManager {
 
   private async drain(sessionId: string, rt: Runtime): Promise<void> {
     try {
-      let input = rt.queue.shift();
+      let input = takeBatch(rt.queue);
       while (input) {
+        // What it took out of the queue is no longer waiting.
+        this.stateChanged(sessionId);
         const stopReason = await this.runTurn(sessionId, rt, input);
         // A turn that ended well goes on with what other agents wrote meanwhile.
         input =
-          rt.queue.shift() ??
+          takeBatch(rt.queue) ??
           (stopReason === "end_turn" ? this.messageInput(sessionId) : undefined);
       }
     } finally {
@@ -588,7 +636,7 @@ export class SessionManager {
   private takeInputs(sessionId: string, rt: Runtime): QueuedInput[] {
     const taken: QueuedInput[] = [];
     for (let input = rt.queue[0]; input; input = rt.queue[0]) {
-      if (input.text.trimStart().startsWith("/")) break;
+      if (isCommand(input)) break;
       rt.queue.shift();
       this.store.append(sessionId, userMessage(input));
       taken.push(input);
