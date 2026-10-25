@@ -259,6 +259,40 @@ fn compact_results_count_the_leaves_left_out() {
 }
 
 #[test]
+fn a_long_label_is_cut_once_the_call_has_run() {
+    let command = "cd /very/long/path && ".repeat(6) + "cargo test";
+    let item = |state: &str| {
+        item_of(
+            "tool",
+            &format!(r#""label":{},"state":"{state}","#, json!(command)),
+            &code("ok"),
+        )
+    };
+    let done = lines(&item("done"), 40);
+    assert_eq!(
+        &done[..2],
+        [
+            "● cd /very/long/path && cd",
+            "  /very/long/path && cd /very/long/path…"
+        ]
+    );
+    assert_eq!(done[2], "  ⎿ ok");
+    assert_eq!(lines(&item("failed"), 40).len(), 3);
+    // Running, or with everything expanded, the whole command shows.
+    assert!(lines(&item("running"), 40).len() > 3);
+    let expanded = Options {
+        expanded: true,
+        ..Options::default()
+    };
+    assert!(lines_of(&item("done"), 40, &expanded).len() > 3);
+    // A label that fits is left alone.
+    assert_eq!(
+        lines(&tool("done", &code("ok")), 40),
+        ["● bash: ls", "  ⎿ ok"]
+    );
+}
+
+#[test]
 fn compact_summaries_by_component() {
     let diff = r#"{"type":"diff","path":"src/a.ts","lines":[
         {"kind":"hunk","text":"@@ -1,3 +1,4 @@"},

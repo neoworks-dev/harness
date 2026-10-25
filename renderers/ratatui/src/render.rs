@@ -16,6 +16,9 @@ use crate::{ImageOptions, ImageSlot, ImageStatus, Options, Palette, image_cells}
 /// padding and clipping ignore it; it is removed before the lines leave the renderer.
 const SLOT_MARK: &str = "\u{2060}";
 
+/// Rows the label of a finished tool call takes at most, unless expanded.
+const LABEL_ROWS: usize = 2;
+
 pub(crate) type Lines = Vec<Line<'static>>;
 
 /// What one render needs: the options and the running count of buttons drawn so far (the
@@ -211,18 +214,32 @@ impl<'a> Cx<'a> {
             Some(pb::ItemState::Done | pb::ItemState::Pending) | None => self.p.muted,
         };
         let bullet = vec![Span::styled("● ", Style::new().fg(color))];
-        let mut out = match label {
-            Some(label) => {
-                let spans = self.tool_label(&label);
-                let head = wrap(&spans, w.saturating_sub(2).max(1));
-                prefixed(head, bullet, vec![Span::raw("  ")])
-            }
-            None => vec![Line::from(bullet)],
-        };
         // A doc with fields or buttons is a form to fill in; one that holds focus is in use.
         let prompt = has_buttons(&it.component)
             || crate::openui::interactive(&it.component)
             || self.o.openui.values().any(|s| s.focus.is_some());
+        // A call that has run is history: a long label (a guest's command is its title) is cut,
+        // unless everything is expanded.
+        let finished = matches!(it.state, Some(pb::ItemState::Done | pb::ItemState::Failed));
+        let cut = finished && !prompt && !self.o.expanded;
+        let mut out = match label {
+            Some(label) => {
+                let spans = self.tool_label(&label);
+                let hw = w.saturating_sub(2).max(1);
+                let mut head = wrap(&spans, hw);
+                if cut && head.len() > LABEL_ROWS {
+                    head.truncate(LABEL_ROWS);
+                    if let Some(last) = head.last_mut() {
+                        let mut spans = std::mem::take(&mut last.spans);
+                        let style = spans.last().map_or(Style::new(), |s| s.style);
+                        spans.push(Span::styled("…", style));
+                        last.spans = truncate_spans(spans, hw);
+                    }
+                }
+                prefixed(head, bullet, vec![Span::raw("  ")])
+            }
+            None => vec![Line::from(bullet)],
+        };
         if self.o.expanded || prompt {
             self.budget = self.o.preview_lines.filter(|_| prompt && !self.o.expanded);
             let body = self.comp(&it.component, w.saturating_sub(2).max(1));
