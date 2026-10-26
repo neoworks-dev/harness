@@ -353,6 +353,39 @@ fn a_command_is_highlighted_and_broken_at_its_operators() {
 }
 
 #[test]
+fn a_cd_into_the_sessions_directory_goes_without_saying() {
+    let in_site = Options {
+        cwd: Some("/work/site/".into()),
+        ..Options::default()
+    };
+    let item = |extra: &str| item_of("tool", extra, &code("ok"));
+    for command in [
+        "cd /work/site && cargo build",
+        "cd \"/work/site\"; cargo build",
+        "  cd /work/site/ ;\ncargo build",
+    ] {
+        let it = item(&format!(r#""command":{},"state":"done","#, json!(command)));
+        assert_eq!(
+            lines_of(&it, 60, &in_site),
+            ["cargo build", "  ⎿ ok"],
+            "{command}"
+        );
+    }
+    // neo's label carries its command.
+    let it = item(r#""label":"bash: cd /work/site && ls","state":"done","#);
+    assert_eq!(lines_of(&it, 60, &in_site), ["bash: ls", "  ⎿ ok"]);
+    // Somewhere else, or nothing after it, it stays.
+    for command in [
+        "cd /work/site2 && ls",
+        "cd /work/site/src && ls",
+        "cd /work/site",
+    ] {
+        let it = item(&format!(r#""command":{},"state":"done","#, json!(command)));
+        assert_eq!(lines_of(&it, 60, &in_site)[0], command);
+    }
+}
+
+#[test]
 fn a_running_command_takes_four_rows_unless_asked_about_or_expanded() {
     let command = (1..=8)
         .map(|i| format!("step-{i}"))

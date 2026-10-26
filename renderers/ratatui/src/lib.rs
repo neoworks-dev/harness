@@ -89,6 +89,38 @@ pub fn relative_path<'a>(path: &'a str, cwd: Option<&str>) -> &'a str {
         .unwrap_or(path)
 }
 
+/// `command` without a leading `cd` into `cwd` (`cd /w/site && ls`, `cd "/w/site"; ls`): agents
+/// start most commands with one, and the session's directory goes without saying. Anything
+/// else, a `cd` elsewhere or nothing after it, stays as it is.
+pub fn strip_cd<'a>(command: &'a str, cwd: Option<&str>) -> &'a str {
+    let Some(cwd) = cwd
+        .map(|c| c.trim_end_matches('/'))
+        .filter(|c| !c.is_empty())
+    else {
+        return command;
+    };
+    let Some(rest) = command.trim_start().strip_prefix("cd ") else {
+        return command;
+    };
+    let rest = rest.trim_start_matches(' ');
+    let after = ["\"", "'", ""].iter().find_map(|q| {
+        let r = rest.strip_prefix(q)?.strip_prefix(cwd)?;
+        let r = r.strip_prefix('/').unwrap_or(r);
+        r.strip_prefix(q)
+    });
+    let Some(after) = after else {
+        return command;
+    };
+    let after = after.trim_start_matches(' ');
+    let next = after
+        .strip_prefix("&&")
+        .or_else(|| after.strip_prefix(';'))
+        .or_else(|| after.strip_prefix('\n'))
+        .map(str::trim_start)
+        .filter(|n| !n.is_empty());
+    next.unwrap_or(command)
+}
+
 /// What the app knows about an image source (`src` of an image component).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImageStatus {

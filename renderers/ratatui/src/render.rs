@@ -222,7 +222,13 @@ impl<'a> Cx<'a> {
         // A shell command is highlighted while it runs or waits, muted once it has run, and
         // broken after its `&&`, `||` and `;` when long (pipelines stay whole). Unless it is a
         // question or everything is expanded, it takes a few rows while it runs and two after.
-        if let Some(command) = it.command.as_deref().filter(|c| !c.trim().is_empty()) {
+        // A `cd` into the session's directory is left out.
+        if let Some(command) = it
+            .command
+            .as_deref()
+            .map(|c| crate::strip_cd(c, self.o.cwd.as_deref()))
+            .filter(|c| !c.trim().is_empty())
+        {
             let code = crate::shell::reflow_lists(clean(command.trim_end()).as_ref(), hw);
             let spans = crate::shell::highlight(&code, &self.p, Style::new());
             let mut lines: Lines = hard_wrap_spans(&spans, hw)
@@ -273,6 +279,7 @@ impl<'a> Cx<'a> {
     fn tool_label(&self, label: &str) -> Vec<Span<'static>> {
         let bold = Style::new().add_modifier(Modifier::BOLD);
         if let Some(command) = label.strip_prefix("bash: ") {
+            let command = crate::strip_cd(command, self.o.cwd.as_deref());
             let mut spans = vec![Span::styled("bash: ".to_string(), bold)];
             spans.extend(crate::shell::highlight(command, &self.p, Style::new()));
             return spans;
