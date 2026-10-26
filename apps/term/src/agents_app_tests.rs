@@ -591,7 +591,11 @@ fn cd_completes_folders_and_enter_runs_it_once_one_is_named() {
 }
 
 #[test]
-fn ctrl_plus_and_minus_widen_and_narrow_the_terminal_panel() {
+fn alt_period_and_comma_widen_and_narrow_the_terminal_panel() {
+    let alt = |c: char| KeyEvent {
+        modifiers: KeyModifiers::ALT,
+        ..key(KeyCode::Char(c))
+    };
     let mut app = app_without_agents();
     app.handle_event(event(
         "s1",
@@ -610,25 +614,26 @@ fn ctrl_plus_and_minus_widen_and_narrow_the_terminal_panel() {
         line[..line.find("Terminal").unwrap()].chars().count()
     };
     let at = column(&mut app);
-    app.handle_key(ctrl('='));
+    app.handle_key(alt('.'));
     assert_eq!(column(&mut app), at - 4, "wider by four");
-    app.handle_key(ctrl('-'));
-    app.handle_key(ctrl('-'));
+    app.handle_key(alt(','));
+    app.handle_key(alt(','));
     assert_eq!(column(&mut app), at + 4);
-    // With the shift, and Ctrl-- as a legacy terminal sends it (Ctrl-7).
-    app.handle_key(ctrl('+'));
-    app.handle_key(ctrl('7'));
+    // With the shift: > and <.
+    app.handle_key(alt('>'));
+    app.handle_key(alt('<'));
     assert_eq!(column(&mut app), at + 4);
     // Not narrower than its least.
     for _ in 0..30 {
-        app.handle_key(ctrl('-'));
+        app.handle_key(alt(','));
     }
     let least = column(&mut app);
     // 40 columns: the border and a space, then the title.
     assert_eq!(160 - least, 40 - 2, "{least}");
     // Presses past the edge don't pile up: one press back moves it.
-    app.handle_key(ctrl('='));
+    app.handle_key(alt('.'));
     assert_eq!(column(&mut app), least - 4);
+    assert!(app.editor.text().is_empty(), "nothing typed");
 }
 
 #[test]
