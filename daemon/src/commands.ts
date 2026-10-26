@@ -4,6 +4,8 @@
 //   /resume [guest]                           pick a stored guest conversation to continue
 //   /approvals [ask|review|edits|auto]        how much the agents ask first; no value: next mode
 //   /harness [name]                           the harness the session runs on; no name: pick one
+//   /cd [dir]                                 move the session to another directory; none: where
+//                                             it is
 //   /title                                    write the session's title again, with a model
 //   /title-model [harness] [model|default]    the model that writes titles (for every session)
 //   /safesearch [strict|moderate|off]         what neo's web search may return, for every session
@@ -13,6 +15,10 @@
 //   /logout [provider], /accounts             remove a login; list what is logged in
 //   /plugin …                                 marketplaces and plugins (plugins.ts)
 // The harness defaults to the one the session runs on. Nothing is chosen for the user.
+import { stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
+
 import type { ConfigOption, SafeSearch } from "@neoworks-dev/neo/agent";
 import type { HarnessSettings } from "@neoworks-dev/neo-protocol/types";
 
@@ -23,7 +29,7 @@ import type { CommandContext } from "./hub.ts";
 import type { Logger } from "./log.ts";
 import type { Login } from "./login.ts";
 import type { PluginCommands } from "./plugins.ts";
-import type { SessionManager } from "./sessions.ts";
+import { NotFoundError, type SessionManager } from "./sessions.ts";
 import {
   APPROVALS,
   CATEGORIES,
@@ -51,6 +57,7 @@ export const DAEMON_COMMANDS: readonly string[] = [
   "safesearch",
   "settings",
   "harness",
+  "cd",
   "title",
   "title-model",
   "login",
@@ -77,6 +84,8 @@ export interface CommandParts {
   log: Logger;
   /** Tells the user something in the session's log. */
   notice: (session: string, text: string, tone?: "muted" | "danger") => void;
+  /** Tells the session's agent something with its next prompt (a user_note). */
+  tell: (session: string, note: string, about: string) => void;
   /** The daemon's own agent's harness name, e.g. neo. */
   main: string;
   /** The harness the session runs on now. */
@@ -120,6 +129,7 @@ export class Commands {
     if (name === "safesearch") return this.safeSearch(session, args);
     if (name === "settings") return this.toggleCommand(session, args);
     if (name === "harness") return this.harness(session, args);
+    if (name === "cd") return this.cd(session, args);
     if (name === "title") return this.titleCommand(session, args);
     if (name === "title-model") return this.titleModel(session, args);
     if (name === "login")
@@ -414,6 +424,40 @@ export class Commands {
       })
       .catch((err: unknown) => this.parts.log.warn(`/settings: ${String(err)}`));
     return Promise.resolve();
+  }
+
+  /**
+   * /cd <dir>: the session works in another directory from its next turn on, relative to the
+   * one it is in (`~` is home); /cd alone says where it is.
+   */
+  private async cd(session: string, args: string[]): Promise<void> {
+    const { sessions, notice, tell } = this.parts;
+    const from = sessions.info(session)?.cwd;
+    if (from === undefined) throw new NotFoundError(`no session ${session}`);
+    if (args.length === 0) {
+      notice(session, `in ${from}`, "muted");
+      return;
+    }
+    const arg = args.join(" ");
+    const home = arg === "~" || arg.startsWith("~/") ? homedir() + arg.slice(1) : arg;
+    const dir = resolve(from, home);
+    const isDir = await stat(dir).then(
+      (s) => s.isDirectory(),
+      () => false,
+    );
+    if (!isDir) throw new BadRequestError(`no directory ${dir}`);
+    if (dir === from) {
+      notice(session, `already in ${dir}`, "muted");
+      return;
+    }
+    sessions.move(session, dir);
+    notice(session, `moved to ${dir}`);
+    tell(
+      session,
+      `The user moved this session from ${from} to ${dir}: you work there now, and relative ` +
+        "paths and commands start there.",
+      `/cd ${arg}`,
+    );
   }
 
   private harness(session: string, args: string[]): Promise<void> {

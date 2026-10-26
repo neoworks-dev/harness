@@ -1935,6 +1935,24 @@ fn session_changed_updates_or_adds_one_entry_live() {
 }
 
 #[test]
+fn a_session_that_moved_takes_the_app_along() {
+    let mut app = overview();
+    app.handle_event(Event::Session(
+        serde_json::from_value(json!({"session": "s1", "seq": 9, "ts": NOW, "event": {
+            "type": "todos", "items": [{"id": "t1", "text": "Ship it", "done": false}]
+        }}))
+        .unwrap(),
+    ));
+    let mut moved = info("s1", "Sticky header", NOW);
+    moved.cwd = "/home/me/site/docs".into();
+    app.handle_event(Event::SessionChanged(moved));
+    assert_eq!(app.cwd(), "/home/me/site/docs");
+    // The session's own state stays: only where it works changed.
+    assert!(app.widgets().has_todos());
+    assert_eq!(app.session(), "s1");
+}
+
+#[test]
 fn running_sessions_animate_in_the_sidebar() {
     let mut app = overview();
     app.tick(NOW);

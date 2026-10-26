@@ -881,6 +881,14 @@ export class GuestManager {
   /** Stops the adapters of a session that was deleted and forgets what was kept for it. */
   forget(session: string): void {
     this.forgotten.add(session);
+    this.stop(session);
+  }
+
+  /**
+   * Stops the adapters of a session (it moved to another directory): the next guest it addresses
+   * starts over, where it works now.
+   */
+  stop(session: string): void {
     for (const guest of this.live) {
       if (guest.session === session) {
         this.live.delete(guest);

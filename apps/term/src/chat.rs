@@ -203,6 +203,16 @@ impl Chat {
         }
     }
 
+    /// The session moved (/cd): paths are shown relative to `cwd` now, so every item draws
+    /// again.
+    pub fn set_dir(&mut self, cwd: &str) {
+        self.cwd = Some(cwd.to_string());
+        for rev in self.revs.values_mut() {
+            self.next_rev += 1;
+            *rev = self.next_rev;
+        }
+    }
+
     pub fn loaded(&self) -> bool {
         self.loaded
     }

@@ -25,6 +25,7 @@ keys (any key closes this)
 
 commands
   /clear                              start a new conversation in this directory
+  /cd [dir]                           move this session to another directory
   /model [harness] [model]            show or set the model
   /effort [harness] [level]           show or set the reasoning effort
   /mode [harness] [mode]              show or set the agent mode
@@ -40,7 +41,6 @@ commands
   /accounts                           list the API keys and accounts in use
   /plugin [install|enable|…]          plugins for neo: list, search, install, uninstall, enable, di…
   /sessions                           switch to another session
-  /sidebar                            show or hide the sessions sidebar (ctrl-g focuses it)
 
 ┃
 ┃ message the agent · / for commands

@@ -170,6 +170,21 @@ impl Widgets {
         self.split_diffs = split;
     }
 
+    /// The same session works in another directory now (/cd): the files and git start over
+    /// there; the plan, todos, usage and commands stay.
+    pub fn move_to(&mut self, cwd: PathBuf) {
+        let icons = self.files.icons;
+        self.files = FilesState::default();
+        self.files.icons = icons;
+        self.diff = None;
+        if self.runner.is_some() {
+            let mut runner = Runner::for_dir(&cwd, Instant::now());
+            runner.poll(Instant::now());
+            self.runner = Some(runner);
+        }
+        self.cwd = cwd;
+    }
+
     /// File type icons in the files panel.
     pub fn set_icons(&mut self, on: bool) {
         self.files.icons = on;

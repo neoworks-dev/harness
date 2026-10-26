@@ -8,9 +8,9 @@
 
 
 
-
 ────────────────────────────────────────────────────────────
 › /clear           start a new conversation in this directo…
+  /cd [dir]        move this session to another directory
   /claude <task>   give a task to Claude Code
   /codex <task>    give a task to Codex
 

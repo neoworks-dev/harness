@@ -188,6 +188,10 @@ export class SessionStore {
       .run(title, source ?? null, id);
   }
 
+  setCwd(id: string, cwd: string): void {
+    this.db.query("UPDATE sessions SET cwd = ? WHERE id = ?").run(cwd, id);
+  }
+
   getSession(id: string): SessionRow | undefined {
     const r = this.db.query<SessionDbRow, [string]>("SELECT * FROM sessions WHERE id = ?").get(id);
     return r ? toRow(r) : undefined;

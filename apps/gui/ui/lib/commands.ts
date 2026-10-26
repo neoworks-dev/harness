@@ -21,6 +21,7 @@ function daemon(name: string, args: string, desc: string, needsArgs = false): Co
 /** The commands the daemon answers. */
 export const COMMANDS: readonly Command[] = [
   daemon("clear", "", "start a new conversation in this directory"),
+  daemon("cd", "[dir]", "move this session to another directory"),
   daemon("model", "[harness] [model]", "show or set the model"),
   daemon("effort", "[harness] [level]", "show or set the reasoning effort"),
   daemon("mode", "[harness] [mode]", "show or set the agent mode"),

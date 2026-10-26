@@ -919,9 +919,16 @@ impl App {
         }
     }
 
-    /// What the daemon says about the shown session: how many inputs wait, and whether a turn
-    /// still runs (a turn that just started is trusted for a few seconds).
+    /// What the daemon says about the shown session: how many inputs wait, whether a turn still
+    /// runs (a turn that just started is trusted for a few seconds), and where it works (/cd
+    /// moves it: the files, git and paths follow).
     fn sync_info(&mut self, info: &SessionInfo) {
+        if info.cwd != self.cwd {
+            self.cwd = info.cwd.clone();
+            self.chat.set_dir(&info.cwd);
+            self.widgets.move_to(PathBuf::from(&info.cwd));
+            self.github.reset(PathBuf::from(&info.cwd));
+        }
         self.waiting = info.waiting.clone().unwrap_or_default();
         if self.running
             && info.state == SessionState::Idle

@@ -19,7 +19,7 @@ const names = (typed: string, commands = COMMANDS): string[] =>
 
 test("a bare slash lists every command, then the list narrows by prefix", () => {
   expect(names("/")).toHaveLength(COMMANDS.length);
-  expect(names("/c")).toEqual(["clear", "claude", "codex"]);
+  expect(names("/c")).toEqual(["clear", "cd", "claude", "codex"]);
   expect(names("/mod")).toEqual(["model", "mode"]);
   expect(names("/model")).toEqual(["model"]);
 });

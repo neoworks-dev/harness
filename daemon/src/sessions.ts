@@ -209,6 +209,7 @@ export class SessionManager {
   private readonly stateListeners: ((sessionId: string) => void)[] = [];
   private readonly cancelListeners: ((sessionId: string) => void)[] = [];
   private readonly removeListeners: ((sessionId: string) => void)[] = [];
+  private readonly moveListeners: ((sessionId: string) => void)[] = [];
 
   constructor(
     private readonly store: SessionStore,
@@ -267,6 +268,24 @@ export class SessionManager {
       return false;
     }
     return true;
+  }
+
+  /**
+   * Moves an idle session to another working directory: the agent sessions it loaded close, so
+   * the next turn loads them, with the history, there. onMove listeners are told afterwards (the
+   * guests started in the old one stop).
+   */
+  move(sessionId: string, cwd: string): void {
+    if (!this.store.getSession(sessionId)) throw new NotFoundError(`no session ${sessionId}`);
+    const rt = this.runtimes.get(sessionId);
+    if (rt?.running) throw new BadRequestError("wait until the turn ends, or cancel it");
+    this.store.setCwd(sessionId, cwd);
+    if (rt) {
+      closeAgentSessions(rt);
+      rt.agentSessions.clear();
+    }
+    for (const listener of this.moveListeners) listener(sessionId);
+    this.stateChanged(sessionId);
   }
 
   /**
@@ -524,7 +543,8 @@ export class SessionManager {
         }
       }
       for (const [id, type] of asked) this.store.append(row.id, { type, id });
-      if (asked.size > 0) this.options.log.info(`dropped ${asked.size} open questions in ${row.id}`);
+      if (asked.size > 0)
+        this.options.log.info(`dropped ${asked.size} open questions in ${row.id}`);
     }
   }
 
@@ -781,6 +801,11 @@ export class SessionManager {
   /** Called when a session was deleted (see remove). */
   onRemove(listener: (sessionId: string) => void): void {
     this.removeListeners.push(listener);
+  }
+
+  /** Called when a session moved to another working directory (see move). */
+  onMove(listener: (sessionId: string) => void): void {
+    this.moveListeners.push(listener);
   }
 
   /** Called when a session starts or stops running, or its queue changes. */

@@ -39,6 +39,7 @@ const fn local(name: &'static str, desc: &'static str) -> Command {
 
 pub const COMMANDS: &[Command] = &[
     daemon("clear", "", "start a new conversation in this directory"),
+    daemon("cd", "[dir]", "move this session to another directory"),
     daemon("model", "[harness] [model]", "show or set the model"),
     daemon(
         "effort",
@@ -351,7 +352,7 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(names("/").len(), COMMANDS.len());
-        assert_eq!(names("/c"), ["clear", "claude", "codex"]);
+        assert_eq!(names("/c"), ["clear", "cd", "claude", "codex"]);
         assert_eq!(names("/mod"), ["model", "mode"]);
         assert_eq!(names("/h"), ["harness", "help"]);
         assert_eq!(names("/model"), ["model"]);
