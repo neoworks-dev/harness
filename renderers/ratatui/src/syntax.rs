@@ -240,7 +240,8 @@ pub fn code_colors(p: &Palette) -> Option<[Style; CLASSES]> {
     let [keyword, string, constant, function, kind] = if dark {
         [0xc7_92ea, 0xc3_e88d, 0xf7_8c6c, 0x82_aaff, 0xff_cb6b]
     } else {
-        [0x7c_3aed, 0x1a_7f37, 0xb4_5309, 0x1f_5fcc, 0x9a_6700]
+        // At least 7:1 on white, 6.5:1 on a light code background.
+        [0x5b_21b6, 0x0f_5e22, 0x9a_3412, 0x17_4ea6, 0x7a_4a00]
     };
     let fg = |c: u32| Style::new().fg(rgb(c));
     let bold = Modifier::BOLD;

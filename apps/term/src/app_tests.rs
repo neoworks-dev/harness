@@ -2288,7 +2288,7 @@ fn theme_paints_the_whole_screen_and_switches() {
     type_str(&mut app, "/theme light");
     app.handle_key(key(KeyCode::Enter));
     let (seen, _) = backgrounds(&mut app);
-    assert!(seen.contains(&Color::Rgb(244, 235, 217)));
+    assert!(seen.contains(&Color::Rgb(255, 255, 255)));
     assert!(!seen.contains(&Color::Reset));
 
     // No name: the next one, which leaves the terminal's own colors.

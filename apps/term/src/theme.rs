@@ -1,4 +1,4 @@
-//! The app's colors (`/theme`): `dark` paints the screen near-black, `light` cream, `terminal` leaves
+//! The app's colors (`/theme`): `dark` paints the screen near-black, `light` white, `terminal` leaves
 //! the terminal's own background and text color. The choice is kept in `<data dir>/term.json`.
 //!
 //! Painting happens once a frame is drawn: every cell still on the terminal's default color gets
@@ -64,17 +64,18 @@ impl Theme {
     }
 }
 
+/// High contrast on white: text near black, every color at least 7:1 but the borders.
 const LIGHT: Palette = Palette {
-    fg: Color::Rgb(0x1f, 0x23, 0x28),
-    bg: Color::Rgb(244, 235, 217),
+    fg: Color::Rgb(0x0b, 0x0d, 0x10),
+    bg: Color::Rgb(0xff, 0xff, 0xff),
     // A shade darker than the background, for code.
-    surface: Color::Rgb(232, 221, 199),
-    border: Color::Rgb(206, 193, 168),
-    // The dark theme's green, deep enough to read on cream (5:1), so the accent still marks.
-    accent: Color::Rgb(0x13, 0x6b, 0x50),
-    muted: Color::Rgb(0x6b, 0x66, 0x5c),
-    success: Color::Rgb(0x1a, 0x7f, 0x37),
-    danger: Color::Rgb(0xcf, 0x22, 0x2e),
+    surface: Color::Rgb(0xf0, 0xf1, 0xf3),
+    border: Color::Rgb(0xb4, 0xb9, 0xc1),
+    // The dark theme's green, deep enough for 7:1.
+    accent: Color::Rgb(0x0a, 0x5c, 0x3c),
+    muted: Color::Rgb(0x45, 0x4a, 0x52),
+    success: Color::Rgb(0x0f, 0x5e, 0x22),
+    danger: Color::Rgb(0xa1, 0x12, 0x1c),
 };
 
 /// Gives every cell left on the terminal's default colors the palette's.
