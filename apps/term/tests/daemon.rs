@@ -227,7 +227,10 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
     };
     let screen = ui.until("the session in the sidebar", |s| {
         let side = side(s);
-        side.contains("hello from the termin") && side.contains("[app_connected]")
+        // The shown session's title goes on under itself.
+        side.contains("hello from the")
+            && side.contains("terminal")
+            && side.contains("[app_connected]")
     });
     assert!(screen.contains("Sessions · "), "{screen}");
     assert!(screen.contains("· neo"), "the session's harness: {screen}");

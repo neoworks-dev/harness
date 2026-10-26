@@ -127,12 +127,14 @@ enum Entry {
     Cluster(String),
     /// A worktree of the cluster above.
     Group(String),
-    /// A session: index into the list, whether it is drawn as a child of the one above, and
-    /// whether it has a second row (a preview, a queue or changed lines).
+    /// A session: index into the list, whether it is drawn as a child of the one above,
+    /// whether it has a second row (a preview, a queue or changed lines), and whether its title
+    /// takes two rows (the shown session's, when it doesn't fit; set as it is drawn).
     Session {
         index: usize,
         child: bool,
         tall: bool,
+        wraps: bool,
     },
     /// The group's sessions idle for over a day: how many, and whether they are shown (after it).
     Older {
@@ -146,8 +148,7 @@ impl Entry {
     fn height(&self) -> usize {
         match self {
             // Title, preview and a blank row, so sessions read apart.
-            Entry::Session { tall: true, .. } => 3,
-            Entry::Session { .. } => 2,
+            Entry::Session { tall, wraps, .. } => 2 + usize::from(*tall) + usize::from(*wraps),
             Entry::Older { .. } => 2,
             _ => 1,
         }
@@ -354,6 +355,7 @@ impl Sessions {
                 index,
                 child,
                 tall: tall(&self.list[index]),
+                wraps: false,
             };
             for (index, child) in recent {
                 visual.push(Pick::Session(self.list[index].id.clone()));
@@ -561,6 +563,21 @@ impl Sessions {
         }
         let mut out = vec![Line::from(header)];
         let rows = (h - 1).max(2);
+        for entry in &mut self.entries {
+            if let Entry::Session {
+                index,
+                child,
+                wraps,
+                ..
+            } = entry
+            {
+                let info = &self.list[*index];
+                *wraps = info.id == current
+                    && split_title(&session_title(info), title_room(info, *child, w, look).0)
+                        .1
+                        .is_some();
+            }
+        }
         let shown = Pick::Session(current.to_string());
         let anchor_pick = if focused {
             self.selected.as_ref()
@@ -692,22 +709,18 @@ fn row(
         Span::raw(" ")
     };
     let lead = |second: Span<'static>| vec![bar.clone(), second, Span::raw(" ")];
-    let room = w.saturating_sub(3);
-    let marker_w = if child { 2 } else { 0 };
     // Sessions idle for over a day fade, so the ones in use stand out.
     let stale = mark == Mark::None
         && info.state != SessionState::Running
         && look.now_ms - info.last_activity > STALE_MS;
 
-    let age = age(info.last_activity, look.now_ms);
-    let age_w = width(&age);
-    let left = room.saturating_sub(marker_w);
-    let (title_room, age) = if age_w + 2 <= left {
-        (left - age_w - 1, Some(age))
-    } else {
-        (left, None)
+    let (title_room, age, left) = title_room(info, child, w, look);
+    let age_w = age.as_deref().map_or(0, width);
+    // The shown session's title goes on under itself rather than be cut.
+    let (title, rest) = match split_title(&session_title(info), title_room) {
+        (first, Some(rest)) if current => (first, Some(truncate(&rest, left))),
+        _ => (truncate(&session_title(info), title_room), None),
     };
-    let title = truncate(&session_title(info), title_room);
     let title_style = match mark {
         Mark::Current => styles.accent.add_modifier(Modifier::BOLD),
         Mark::Finished => Style::new().add_modifier(Modifier::BOLD),
@@ -724,8 +737,17 @@ fn row(
         first.push(Span::raw(" ".repeat(left - title_w - age_w)));
         first.push(Span::styled(age, styles.muted));
     }
+    let mut lines = vec![Line::from(first)];
+    if let Some(rest) = rest {
+        let mut next = lead(Span::raw(" "));
+        if child {
+            next.push(Span::raw("  "));
+        }
+        next.push(Span::styled(rest, title_style));
+        lines.push(Line::from(next));
+    }
     if !tall(info) {
-        return vec![Line::from(first)];
+        return lines;
     }
 
     let mut second = lead(Span::raw(" "));
@@ -760,7 +782,54 @@ fn row(
             span.style = span.style.add_modifier(Modifier::DIM);
         }
     }
-    vec![Line::from(first), Line::from(second)]
+    lines.push(Line::from(second));
+    lines
+}
+
+/// A row's room in `w` cells: for the title, the age beside it (when it fits), and in all after
+/// the margin and the child marker.
+fn title_room(
+    info: &SessionInfo,
+    child: bool,
+    w: usize,
+    look: &Look,
+) -> (usize, Option<String>, usize) {
+    let left = w
+        .saturating_sub(3)
+        .saturating_sub(if child { 2 } else { 0 });
+    let age = age(info.last_activity, look.now_ms);
+    let age_w = width(&age);
+    if age_w + 2 <= left {
+        (left - age_w - 1, Some(age), left)
+    } else {
+        (left, None, left)
+    }
+}
+
+/// `title` broken after the last word that fits in `room`, the rest when there is any; whole
+/// when it fits or its first word doesn't.
+fn split_title(title: &str, room: usize) -> (String, Option<String>) {
+    if width(title) <= room {
+        return (title.to_string(), None);
+    }
+    let mut first = String::new();
+    let mut words = title.split_whitespace().peekable();
+    while let Some(word) = words.peek() {
+        let w = width(&first) + usize::from(!first.is_empty()) + width(word);
+        if w > room {
+            break;
+        }
+        if !first.is_empty() {
+            first.push(' ');
+        }
+        first.push_str(word);
+        words.next();
+    }
+    if first.is_empty() {
+        return (title.to_string(), None);
+    }
+    let rest: Vec<&str> = words.collect();
+    (first, Some(rest.join(" ")))
 }
 
 /// How long ago, short: now, 5m, 3h, 2d.
@@ -854,6 +923,33 @@ mod tests {
         s.upsert(running);
         assert!(s.any_running());
         assert_eq!(ids(&s), ["c", "a", "b"]);
+    }
+
+    #[test]
+    fn the_shown_sessions_title_goes_on_under_itself() {
+        let mut s = Sessions::default();
+        let mut a = info("a", "Term TUI highlighting, icons and polish", 30);
+        a.preview = Some("Both are committed".into());
+        let b = info("b", "Cheap modern hotels in Hamburg", 20);
+        s.set_all(vec![a, b]);
+        let lines = s.render(29, 12, &look("a", false), &styles());
+        let got: Vec<_> = text(&lines)
+            .iter()
+            .map(|l| l.trim_end().to_string())
+            .collect();
+        assert_eq!(
+            got,
+            [
+                " Sessions · 2",
+                " w ──────────────────────────",
+                "▎  Term TUI highlighting, now",
+                "▎  icons and polish",
+                "▎  Both are committed",
+                "",
+                "   Cheap modern hotels i… now",
+                "",
+            ]
+        );
     }
 
     #[test]
