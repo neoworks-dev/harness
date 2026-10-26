@@ -5,7 +5,13 @@ import { join } from "node:path";
 import type { GenerateTextParams } from "@neoworks-dev/neo/agent";
 import type { SessionInfo } from "@neoworks-dev/neo-protocol/types";
 import type { GuestConfig } from "../src/guests/guests.ts";
-import { cleanTitle, DEFAULT_TITLE_MODEL, parseTitle, TITLE_ATTEMPTS } from "../src/titles.ts";
+import {
+  cleanTitle,
+  DEFAULT_TITLE_MODEL,
+  parseTitle,
+  REFRESH_EVERY,
+  TITLE_ATTEMPTS,
+} from "../src/titles.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { FakeAgent } from "./fake-agent.ts";
 
@@ -141,15 +147,20 @@ describe("the first message", () => {
     expect(agent.asked[0]?.model).toBeUndefined();
   });
 
-  test("only the first message asks", async () => {
+  test("the first message asks, then every REFRESH_EVERY-th asks again from the conversation", async () => {
     const agent = new TitleAgent(['{"title": "First"}', '{"title": "Second"}']);
     const { daemon, session } = await setup({ agent });
     say(daemon, session, "one");
     await until(daemon, session, (i) => i.title === "First");
-    say(daemon, session, "two");
+    for (let n = 2; n < REFRESH_EVERY; n++) say(daemon, session, `message ${n}`);
     await Bun.sleep(50);
     expect(daemon.sessions.info(session)?.title).toBe("First");
     expect(agent.asked).toHaveLength(1);
+    say(daemon, session, "the conversation moved on");
+    await until(daemon, session, (i) => i.title === "Second");
+    expect(agent.asked).toHaveLength(2);
+    expect(agent.asked[1]?.system).toContain('The previous title was "First"');
+    expect(agent.asked[1]?.prompt).toContain("the conversation moved on");
   });
 
   test("a title the user gave stays", async () => {

@@ -1,6 +1,7 @@
 // Session titles written by a model. After a session's first message one cheap model call writes
 // a short title for it, which replaces the start of the message that names the session until
-// then; `/title` writes it again from the conversation so far. A title the user gave the session
+// then; every REFRESH_EVERY messages and on `/title` it is written again from the conversation
+// so far, as the conversation moves on. A title the user gave the session
 // (session.create's) is never replaced by itself, only by `/title`.
 //
 // The model is the user's choice (`/title-model <harness> [model]`, kept for every session). Until
@@ -16,6 +17,9 @@ import type { SessionStore } from "./store.ts";
 
 /** What neo asks for titles until the user chooses: Claude Code's Haiku. */
 export const DEFAULT_TITLE_MODEL: TitleModel = { harness: "claude", model: "haiku" };
+
+/** A title a model wrote is looked at again after this many more user messages. */
+export const REFRESH_EVERY = 10;
 
 /** How many times a title is asked for before the session keeps the one it has. */
 export const TITLE_ATTEMPTS = 3;
@@ -113,7 +117,7 @@ export class Titles {
 
   constructor(private readonly parts: TitleParts) {
     parts.store.onAppend(({ session, event }) => {
-      if (event.type === "user_message" && parts.auto) this.afterFirstMessage(session);
+      if (event.type === "user_message" && parts.auto) this.afterMessage(session);
     });
   }
 
@@ -139,16 +143,20 @@ export class Titles {
     await this.write(session, "again");
   }
 
-  private afterFirstMessage(session: string): void {
+  /** The first message asks for a title; every REFRESH_EVERY-th asks for a model's again. */
+  private afterMessage(session: string): void {
     const { store, log } = this.parts;
     const row = store.getSession(session);
     if (!row) return;
-    // The user's own title stays; so does a title a model wrote.
+    // The user's own title stays.
     if (row.titleSource === undefined && row.title !== undefined) return;
-    if (row.titleSource === "generated") return;
-    if (store.readTypes(session, ["user_message"]).length !== 1) return;
+    const count = store.readTypes(session, ["user_message"]).length;
+    let kind: "first" | "again";
+    if (row.titleSource !== "generated" && count === 1) kind = "first";
+    else if (row.titleSource === "generated" && count % REFRESH_EVERY === 0) kind = "again";
+    else return;
     if (!this.parts.can(this.current().model.harness)) return;
-    this.write(session, "first").catch((err: unknown) => {
+    this.write(session, kind).catch((err: unknown) => {
       log.warn(`title for ${session}: ${err instanceof Error ? err.message : String(err)}`);
     });
   }
