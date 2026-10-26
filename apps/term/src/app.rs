@@ -327,6 +327,8 @@ pub struct App {
     split_diffs: bool,
     /// What Ctrl-] / Ctrl-[ did to the panes' widths.
     resized: Resized,
+    /// The daemon's connectors (apps and services), for the sidebar's servers.
+    connectors: Vec<neo_protocol::ConnectorInfo>,
     editor: Editor,
     /// Images pasted into the draft: the number of the `[image N]` marker that places each, and
     /// its path. One whose marker is deleted is not sent.
@@ -433,6 +435,7 @@ impl App {
             icons: false,
             split_diffs,
             resized: Resized::default(),
+            connectors: Vec::new(),
             editor: Editor::default(),
             attachments: Vec::new(),
             stash: None,
@@ -715,7 +718,7 @@ impl App {
         let mut fx = Vec::new();
         match event {
             Event::Focus(focus) => self.on_focus(focus, &mut fx),
-            Event::Connectors(_) => {}
+            Event::Connectors(connectors) => self.connectors = connectors,
             Event::SessionChanged(info) => {
                 if info.id == self.session {
                     self.sync_info(&info);
@@ -2830,10 +2833,36 @@ impl App {
     /// The sessions on the left: the list, then a border and a gap before the chat.
     fn draw_sessions(&mut self, frame: &mut Frame, area: Rect) {
         let inner = area.width.saturating_sub(2);
+        // The shown session's details at the foot, while the list keeps a dozen rows.
+        let dir = shorten_home(&self.cwd, self.home.as_deref());
+        let details = crate::details::lines(
+            &crate::details::Details {
+                dir: &dir,
+                usage: self.widgets.usage(),
+                connectors: &self.connectors,
+            },
+            usize::from(inner),
+            &self.styles,
+        );
+        let details_h = u16::try_from(details.len() + 1).unwrap_or(u16::MAX);
+        let details_h = if area.height >= details_h + 12 {
+            details_h
+        } else {
+            0
+        };
         let list = Rect {
             width: inner,
+            height: area.height - details_h,
             ..area
         };
+        if details_h > 0 {
+            let at = Rect {
+                y: area.y + area.height - details_h + 1,
+                height: details_h - 1,
+                ..list
+            };
+            frame.render_widget(Paragraph::new(details), at);
+        }
         let spinner = SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()];
         let look = Look {
             current: &self.session,

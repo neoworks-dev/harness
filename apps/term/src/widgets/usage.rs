@@ -12,6 +12,8 @@ pub(crate) struct UsageState {
     /// contextUsed / contextSize, when both are known and the size is not zero.
     ctx: Option<f64>,
     cost: Option<f64>,
+    /// The event's numbers as they came, for the sidebar's details.
+    last: Option<Usage>,
 }
 
 impl UsageState {
@@ -24,6 +26,12 @@ impl UsageState {
             _ => None,
         };
         self.cost = u.cost;
+        self.last = Some(u.clone());
+    }
+
+    /// The newest usage of the session's own agent.
+    pub(crate) fn last(&self) -> Option<&Usage> {
+        self.last.as_ref()
     }
 
     pub(crate) fn line(&self, palette: &Palette) -> Option<Line<'static>> {

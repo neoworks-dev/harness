@@ -20,5 +20,5 @@
                              │
                              │ ─────────────────────────────────────────────────────────────────────────────────────────
                              │ > message the agent · / for commands
-                             │ site · neo
-                             │ ? ask before acting (shift+tab to cycle)
+ Session ────────────────────│ site · neo
+ ~/site                      │ ? ask before acting (shift+tab to cycle)

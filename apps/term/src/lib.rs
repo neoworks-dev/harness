@@ -7,6 +7,7 @@ pub mod app;
 pub mod attach;
 pub mod chat;
 pub mod choice;
+pub mod details;
 pub mod driver;
 pub mod editor;
 pub mod forms;

@@ -80,6 +80,7 @@ use plan::PlanState;
 use terminal::TerminalState;
 pub use terminal::{JOB_LINGER_MS, JobRow};
 use usage::UsageState;
+pub(crate) use usage::format_cost;
 
 /// Lines PgUp/PgDn move in the terminal panel.
 const TERMINAL_PAGE: usize = 10;
@@ -319,6 +320,11 @@ impl Widgets {
                 frame.render_widget(Paragraph::new(lines), at(top + 1, files_h - 1));
             }
         }
+    }
+
+    /// The newest usage of the session's own agent (context, tokens, cost).
+    pub fn usage(&self) -> Option<&neo_protocol::Usage> {
+        self.usage.last()
     }
 
     /// The background commands to list under the prompt.

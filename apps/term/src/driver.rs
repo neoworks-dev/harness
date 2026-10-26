@@ -482,6 +482,8 @@ pub fn start(options: StartOptions) -> Result<Started, StartError> {
         known.push(session.clone());
     }
     app.set_sessions(known);
+    // The sidebar's servers start from this list; connectors.changed keeps it current.
+    app.handle_event(Event::Connectors(connectors));
     for event in early {
         let fx = app.handle_event(event);
         driver.run(fx);
