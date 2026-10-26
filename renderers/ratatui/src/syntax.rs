@@ -232,10 +232,10 @@ pub fn highlight_spans(
 /// the theme: its few colors (an accent as green as its success color) can't tell five classes
 /// apart. None without true colors.
 pub fn code_colors(p: &Palette) -> Option<[Style; CLASSES]> {
-    let (Color::Rgb(r, g, b), Color::Rgb(..)) = (p.bg, p.fg) else {
+    let (Color::Rgb(..), Color::Rgb(..)) = (p.bg, p.fg) else {
         return None;
     };
-    let dark = u32::from(r) * 299 + u32::from(g) * 587 + u32::from(b) * 114 < 128_000;
+    let dark = !p.is_light();
     let rgb = |c: u32| Color::Rgb((c >> 16) as u8, (c >> 8) as u8, c as u8);
     let [keyword, string, constant, function, kind] = if dark {
         [0xc7_92ea, 0xc3_e88d, 0xf7_8c6c, 0x82_aaff, 0xff_cb6b]

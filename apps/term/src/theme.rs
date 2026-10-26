@@ -70,7 +70,8 @@ const LIGHT: Palette = Palette {
     // A shade darker than the background, for code.
     surface: Color::Rgb(232, 221, 199),
     border: Color::Rgb(206, 193, 168),
-    accent: Color::Rgb(0, 0, 0),
+    // The dark theme's green, deep enough to read on cream (5:1), so the accent still marks.
+    accent: Color::Rgb(0x13, 0x6b, 0x50),
     muted: Color::Rgb(0x6b, 0x66, 0x5c),
     success: Color::Rgb(0x1a, 0x7f, 0x37),
     danger: Color::Rgb(0xcf, 0x22, 0x2e),

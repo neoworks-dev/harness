@@ -56,6 +56,14 @@ impl Palette {
         Style::new().fg(self.muted)
     }
 
+    /// Whether the background is a light one; false without a true color.
+    pub fn is_light(&self) -> bool {
+        let Color::Rgb(r, g, b) = self.bg else {
+            return false;
+        };
+        u32::from(r) * 299 + u32::from(g) * 587 + u32::from(b) * 114 >= 128_000
+    }
+
     /// The background of the user's messages: the text color mixed into the background, so the
     /// band reads in any theme (the surface color is often too close to the background). Themes
     /// without true colors get the surface color.
