@@ -62,7 +62,10 @@ impl Cx<'_> {
         }
         let bold = Style::new().add_modifier(Modifier::BOLD);
         let mut spans = vec![Span::styled(verb.to_string(), bold)];
-        spans.extend(self.diff_line(v, w.saturating_sub(width(verb)).max(1)).spans);
+        spans.extend(
+            self.diff_line(v, w.saturating_sub(width(verb)).max(1))
+                .spans,
+        );
         Some(Line::from(spans))
     }
 
