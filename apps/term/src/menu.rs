@@ -109,6 +109,14 @@ pub const COMMANDS: &[Command] = &[
         "the changed files: a tree, enter opens a file (tab also gets there)",
     ),
     Command {
+        args: "<what to do>",
+        needs_args: true,
+        ..local(
+            "todo",
+            "add to the session's shared todo list (the agents see it too; tab to the Todos panel)",
+        )
+    },
+    Command {
         args: "[dark|light|terminal]",
         ..local("theme", "dark or light background, or the terminal's own")
     },

@@ -666,13 +666,33 @@ impl App {
         }
     }
 
+    /// Changes the shared todo list as the user (`neo.todos`, silent: no turn, no chat line).
+    fn change_todos(&mut self, args: serde_json::Value, fx: &mut Vec<Effect>) {
+        fx.push(Effect::Action {
+            session: self.session.clone(),
+            item: "todos".into(),
+            action: "neo.todos".into(),
+            args: Some(args),
+        });
+    }
+
+    /// `/todo <text>`: a new item on the shared list.
+    fn add_todo(&mut self, text: &str, fx: &mut Vec<Effect>) {
+        let item = text.trim_start().strip_prefix("/todo").unwrap_or("").trim();
+        if item.is_empty() {
+            self.notify("usage: /todo <what to do>", true);
+            return;
+        }
+        self.change_todos(serde_json::json!({ "action": "add", "text": item }), fx);
+    }
+
     /// Ctrl-] / Ctrl-[: the focused pane (else the terminal panel, else the sessions sidebar)
     /// gets `by` columns more or less, within what leaves the chat its room.
     fn resize_pane(&mut self, by: i16) {
         let pane = match self.focus {
             Some(Focus::Sessions) => Pane::Sessions,
             Some(Focus::Panel(Panel::Terminal)) | Some(Focus::Jobs) => Pane::Terminal,
-            Some(Focus::Panel(Panel::Plan | Panel::Files)) => Pane::Side,
+            Some(Focus::Panel(Panel::Todos | Panel::Plan | Panel::Files)) => Pane::Side,
             _ if self.terminal_area.is_some() => Pane::Terminal,
             _ if self.sessions_shown => Pane::Sessions,
             _ if self.sidebar_shown => Pane::Side,
@@ -1637,11 +1657,16 @@ impl App {
             KeyCode::Char('c') if ctrl => self.ctrl_c(fx),
             KeyCode::Char('g') if ctrl => self.toggle_sessions_focus(),
             _ => match focus {
-                Focus::Panel(panel) => {
-                    if self.widgets.handle_key(panel, key) == WidgetAction::Leave {
+                Focus::Panel(panel) => match self.widgets.handle_key(panel, key) {
+                    WidgetAction::Redraw => {}
+                    WidgetAction::Leave => self.focus = None,
+                    // A new todo is written in the editor, as /todo.
+                    WidgetAction::AddTodo => {
                         self.focus = None;
+                        self.editor.set_text("/todo ");
                     }
-                }
+                    WidgetAction::Todo(args) => self.change_todos(args, fx),
+                },
                 Focus::Sessions => match self.sessions.key(key) {
                     SessionsAction::Redraw => {}
                     SessionsAction::Leave => self.focus = None,
@@ -1805,6 +1830,10 @@ impl App {
             (self.chat.has_files(), Focus::Chat),
             (self.sessions_shown, Focus::Sessions),
             (self.terminal_area.is_some(), Focus::Panel(Panel::Terminal)),
+            (
+                self.sidebar_shown && self.widgets.has_todos(),
+                Focus::Panel(Panel::Todos),
+            ),
             (self.sidebar_shown, Focus::Panel(Panel::Plan)),
             (self.sidebar_shown, Focus::Panel(Panel::Files)),
         ];
@@ -2429,6 +2458,7 @@ impl App {
             "help" => self.overlay = Overlay::Help,
             "github" => self.github.open(),
             "theme" => self.switch_theme(text),
+            "todo" => self.add_todo(text, fx),
             "files" => self.focus_files(),
             "terminal" => self.toggle_terminal(),
             "quit" => fx.push(Effect::Quit),
@@ -2716,9 +2746,13 @@ impl App {
             Some(Focus::Panel(Panel::Terminal)) if !self.terminal_area.is_some() => {
                 self.focus = None
             }
-            Some(Focus::Panel(Panel::Plan | Panel::Files)) if !self.sidebar_shown => {
+            Some(Focus::Panel(Panel::Todos | Panel::Plan | Panel::Files))
+                if !self.sidebar_shown =>
+            {
                 self.focus = None;
             }
+            // The last todo went: so did its panel.
+            Some(Focus::Panel(Panel::Todos)) if !self.widgets.has_todos() => self.focus = None,
             Some(Focus::Sessions) if !self.sessions_shown => self.focus = None,
             Some(Focus::Agents) if !self.agents.visible(self.now_ms) => self.focus = None,
             Some(Focus::Jobs) if self.widgets.jobs(self.now_ms).is_empty() => {

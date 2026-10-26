@@ -52,6 +52,7 @@ mod lit;
 mod plan;
 mod terminal;
 mod text;
+mod todos;
 mod usage;
 
 pub(crate) use text::truncate_start;
@@ -79,6 +80,7 @@ use git::Runner;
 use plan::PlanState;
 use terminal::TerminalState;
 pub use terminal::{JOB_LINGER_MS, JobRow};
+use todos::{TodoKey, TodosState};
 use usage::UsageState;
 pub(crate) use usage::format_cost;
 
@@ -93,6 +95,7 @@ const SIDEBAR_MIN_WIDTH: u16 = 100;
 /// Which side panel has keyboard focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
+    Todos,
     Plan,
     Files,
     Terminal,
@@ -105,6 +108,10 @@ pub enum WidgetAction {
     Redraw,
     /// Give focus back to the editor (Esc).
     Leave,
+    /// The editor, to write a new todo in (`a` in the todos panel).
+    AddTodo,
+    /// Change the shared todo list: `neo.todos` with these args.
+    Todo(serde_json::Value),
 }
 
 /// All panels of one session.
@@ -112,6 +119,7 @@ pub struct Widgets {
     cwd: PathBuf,
     palette: Palette,
     plan: PlanState,
+    todos: TodosState,
     usage: UsageState,
     files: FilesState,
     terminal: TerminalState,
@@ -141,6 +149,7 @@ impl Widgets {
             cwd,
             palette,
             plan: PlanState::default(),
+            todos: TodosState::default(),
             usage: UsageState::default(),
             files: FilesState::default(),
             terminal: TerminalState::default(),
@@ -175,6 +184,7 @@ impl Widgets {
     pub fn on_session_event(&mut self, record: &SessionEventRecord) {
         match &record.event {
             SessionEvent::Plan(p) => self.plan.apply(p),
+            SessionEvent::Todos(t) => self.todos.apply(t),
             SessionEvent::Usage(u) => self.usage.apply(u),
             SessionEvent::ToolCall(call) => {
                 self.tool_agents
@@ -252,13 +262,14 @@ impl Widgets {
     /// Whether the side column is worth showing at this terminal width (there is a plan or
     /// changed files, and it fits).
     pub fn wants_sidebar(&self, width: u16) -> bool {
-        width >= SIDEBAR_MIN_WIDTH && (self.plan.has_any() || self.files.worth_showing())
+        width >= SIDEBAR_MIN_WIDTH
+            && (self.plan.has_any() || self.files.worth_showing() || self.todos.has_any())
     }
 
     /// Columns the side column wants (border and margins included): `max` with a plan, whose
     /// text wraps; else as wide as the widest file row, at least `min`.
     pub fn sidebar_width(&self, min: u16, max: u16) -> u16 {
-        if self.plan.has_any() {
+        if self.plan.has_any() || self.todos.has_any() {
             return max;
         }
         let rows = self.files.natural_width(&self.palette);
@@ -280,9 +291,39 @@ impl Widgets {
         }
         let x = area.x + 2;
         let w = area.width - 3;
-        let height = area.height as usize;
         let has_plan = self.plan.has_any();
         let has_files = self.files.worth_showing();
+        // The shared todos on top while there are any: what they need, up to a third; the plan
+        // and the files below.
+        let todos_h = if self.todos.has_any() {
+            (1 + self.todos.natural_height(w as usize, p))
+                .min((area.height as usize / 3).max(3))
+                .min(area.height as usize)
+        } else {
+            0
+        };
+        let todos_at = |y: u16, h: usize| Rect {
+            x,
+            y: area.y + y,
+            width: w,
+            height: h as u16,
+        };
+        if todos_h > 0 {
+            let title = title_line("Todos", focus == Some(Panel::Todos), p);
+            frame.render_widget(Paragraph::new(title), todos_at(0, 1));
+        }
+        if todos_h > 1 {
+            let focused = focus == Some(Panel::Todos);
+            let lines = self.todos.render(w as usize, todos_h - 1, focused, p);
+            frame.render_widget(Paragraph::new(lines), todos_at(1, todos_h - 1));
+        }
+        let below = todos_h + usize::from(todos_h > 0 && (has_plan || has_files));
+        let area = Rect {
+            y: area.y + below as u16,
+            height: area.height.saturating_sub(below as u16),
+            ..area
+        };
+        let height = area.height as usize;
         let plan_need = 1 + self.plan.natural_height(w as usize, p);
         let files_need = 1 + self.files.natural_height();
         let (plan_h, files_h) = match (has_plan, has_files) {
@@ -325,6 +366,11 @@ impl Widgets {
     /// The newest usage of the session's own agent (context, tokens, cost).
     pub fn usage(&self) -> Option<&neo_protocol::Usage> {
         self.usage.last()
+    }
+
+    /// Whether the shared todo list has items (its panel is drawn).
+    pub fn has_todos(&self) -> bool {
+        self.todos.has_any()
     }
 
     /// The background commands to list under the prompt.
@@ -427,6 +473,12 @@ impl Widgets {
             return WidgetAction::Redraw;
         }
         match panel {
+            Panel::Todos => match self.todos.key(key) {
+                TodoKey::Handled => {}
+                TodoKey::Leave => return WidgetAction::Leave,
+                TodoKey::Add => return WidgetAction::AddTodo,
+                TodoKey::Change(args) => return WidgetAction::Todo(args),
+            },
             Panel::Plan => {
                 if self.plan.key(key) {
                     return WidgetAction::Leave;

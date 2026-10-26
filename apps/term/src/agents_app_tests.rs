@@ -597,3 +597,50 @@ fn ctrl_brackets_widen_and_narrow_the_terminal_panel() {
     app.handle_key(ctrl(']'));
     assert_eq!(column(&mut app), least - 4);
 }
+
+#[test]
+fn the_shared_todos_show_in_the_side_column_and_the_keys_change_them() {
+    let mut app = app_without_agents();
+    app.handle_event(event(
+        "s1",
+        1,
+        NOW,
+        json!({"type": "todos", "by": "claude", "items": [
+            {"id": "t1", "text": "Make the header sticky", "done": false, "by": "claude"}
+        ]}),
+    ));
+    let text = screen_text(&mut app, 140, 30);
+    assert!(
+        text.contains("Todos") && text.contains("[ ] Make the header sticky"),
+        "{text}"
+    );
+
+    // /todo adds, silently, as the user.
+    for c in "/todo Check mobile".chars() {
+        app.handle_key(key(KeyCode::Char(c)));
+    }
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert!(
+        fx.iter()
+            .any(|e| matches!(e, Effect::Action { action, args: Some(a), .. }
+            if action == "neo.todos" && a["action"] == "add" && a["text"] == "Check mobile")),
+        "{fx:?}"
+    );
+    assert!(app.editor.text().is_empty());
+
+    // Tab reaches the panel; space checks the selected one off.
+    while app.focus != Some(Focus::Panel(Panel::Todos)) {
+        app.handle_key(key(KeyCode::Tab));
+    }
+    let fx = app.handle_key(key(KeyCode::Char(' ')));
+    assert!(
+        fx.iter()
+            .any(|e| matches!(e, Effect::Action { args: Some(a), .. }
+            if a["action"] == "done" && a["id"] == "t1")),
+        "{fx:?}"
+    );
+    // a writes a new one in the editor.
+    app.handle_key(key(KeyCode::Char('a')));
+    assert_eq!(app.focus, None);
+    assert_eq!(app.editor.text(), "/todo ");
+}
