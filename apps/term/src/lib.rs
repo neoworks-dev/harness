@@ -14,6 +14,7 @@ pub mod github;
 pub mod history;
 pub mod images;
 pub mod jobs;
+pub mod mention;
 pub mod menu;
 pub mod runtime;
 pub mod secret;

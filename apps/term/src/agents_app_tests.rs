@@ -530,3 +530,33 @@ fn down_lists_a_background_command_and_the_terminal_panel_shows_it() {
     assert!(!text.contains("esc all commands"), "{text}");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn an_at_lists_files_to_mention_and_tab_puts_one_in() {
+    let root = std::env::temp_dir().join(format!("neo-term-app-mention-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("site/src")).unwrap();
+    std::fs::write(root.join("site/src/app.rs"), "").unwrap();
+    std::fs::write(root.join("notes.txt"), "").unwrap();
+    let mut app = app();
+    app.cwd = root.join("site").display().to_string();
+    for c in "see @".chars() {
+        app.handle_key(key(KeyCode::Char(c)));
+    }
+    let text = screen_text(&mut app, 100, 24);
+    assert!(text.contains("@../") && text.contains("@src/"), "{text}");
+    // Down to src/, Tab opens it, Tab puts the file in and ends the word.
+    app.handle_key(key(KeyCode::Down));
+    app.handle_key(key(KeyCode::Tab));
+    assert_eq!(app.editor.text(), "see @src/");
+    app.handle_key(key(KeyCode::Enter));
+    assert_eq!(app.editor.text(), "see @src/app.rs ");
+    assert!(!app.mention_visible());
+    // One folder up, by name.
+    app.editor.set_text("@../no");
+    assert_eq!(app.mention_matches()[0].path, "../notes.txt");
+    // Esc closes it for this text.
+    app.handle_key(key(KeyCode::Esc));
+    assert!(!app.mention_visible());
+    std::fs::remove_dir_all(&root).unwrap();
+}

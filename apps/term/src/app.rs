@@ -34,6 +34,7 @@ use crate::github::{Github, Outgoing};
 use crate::history::{Histories, HistoryStore};
 use crate::images::Images;
 use crate::jobs::{Jobs, JobsAction};
+use crate::mention::{self, Candidate, Mentions};
 use crate::menu::{self, Entry, Item, Switcher, session_title};
 use crate::secret::{self, Secret, SecretValue};
 use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction, sidebar_width};
@@ -325,6 +326,10 @@ pub struct App {
     menu_sel: usize,
     /// The editor text the slash menu was closed for.
     menu_closed_for: Option<String>,
+    /// The `@` file list: the walked trees, the selected row, and the text Esc closed it for.
+    mentions: Mentions,
+    mention_sel: usize,
+    mention_closed_for: Option<String>,
 
     expanded: bool,
     show_thoughts: bool,
@@ -412,6 +417,9 @@ impl App {
             secret: None,
             menu_sel: 0,
             menu_closed_for: None,
+            mentions: Mentions::default(),
+            mention_sel: 0,
+            mention_closed_for: None,
             expanded: false,
             show_thoughts: false,
             running: false,
@@ -1979,6 +1987,23 @@ impl App {
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         let empty = self.editor.is_empty();
+        // The `@` file list takes the arrows, Tab, Enter and Esc while it is open.
+        if !ctrl && !alt && !shift && self.mention_visible() {
+            match key.code {
+                KeyCode::Up => return self.move_mention(-1),
+                KeyCode::Down => return self.move_mention(1),
+                KeyCode::Tab | KeyCode::Enter => {
+                    self.accept_mention();
+                    self.prompt.typed_ms = self.now_ms;
+                    return;
+                }
+                KeyCode::Esc => {
+                    self.mention_closed_for = Some(self.editor.text().to_string());
+                    return;
+                }
+                _ => {}
+            }
+        }
         let mut edited = true;
         match key.code {
             KeyCode::Char(c) if ctrl => edited = self.ctrl_key(c, fx),
@@ -2102,6 +2127,7 @@ impl App {
         if edited {
             self.histories.of(&self.session).reset();
             self.prompt.typed_ms = self.now_ms;
+            self.mention_sel = 0;
         }
     }
 
@@ -2221,6 +2247,57 @@ impl App {
             return Vec::new();
         }
         menu::matching(text, &self.commands())
+    }
+
+    /// The files the `@word` at the cursor could be (none while anything else has the keys).
+    fn mention_matches(&self) -> Vec<Candidate> {
+        let text = self.editor.text();
+        if self.focus.is_some()
+            || self.prompt.engaged
+            || self.overlay != Overlay::None
+            || self.mention_closed_for.as_deref() == Some(text)
+        {
+            return Vec::new();
+        }
+        let Some(m) = mention::at_cursor(text, self.editor.cursor()) else {
+            return Vec::new();
+        };
+        self.mentions
+            .candidates(std::path::Path::new(&self.cwd), &m.query)
+    }
+
+    fn mention_visible(&self) -> bool {
+        !self.mention_matches().is_empty()
+    }
+
+    fn move_mention(&mut self, delta: isize) {
+        let n = self.mention_matches().len() as isize;
+        if n > 0 {
+            self.mention_sel = (self.mention_sel as isize + delta).rem_euclid(n) as usize;
+        }
+    }
+
+    /// Puts the selected file in the `@word`'s place: a folder stays open to go on in, a file
+    /// ends the word with a space.
+    fn accept_mention(&mut self) {
+        let matches = self.mention_matches();
+        let Some(pick) = matches.get(self.mention_sel.min(matches.len().saturating_sub(1))) else {
+            return;
+        };
+        let text = self.editor.text().to_string();
+        let cursor = self.editor.cursor();
+        let Some(m) = mention::at_cursor(&text, cursor) else {
+            return;
+        };
+        let word = format!("@{}{}", pick.path, if pick.dir { "" } else { " " });
+        let after = &text[cursor..];
+        let new = format!("{}{word}{after}", &text[..m.start]);
+        self.editor.set_text(&new);
+        // The cursor after the word: set_text leaves it at the end.
+        for _ in 0..after.chars().count() {
+            self.editor.left();
+        }
+        self.mention_sel = 0;
     }
 
     fn menu_visible(&self) -> bool {
@@ -2592,6 +2669,7 @@ impl App {
                 Overlay::Switcher => self.draw_switcher(frame, areas.chat),
             }
             self.draw_menu(frame, areas.chat);
+            self.draw_mentions(frame, areas.chat);
         }
         if let Some(left) = areas.left {
             self.draw_sessions(frame, left);
@@ -2823,6 +2901,55 @@ impl App {
                 frame.render_widget(Paragraph::new(Span::styled(text, self.styles.muted)), at);
             }
         }
+    }
+
+    /// The `@` file list over the bottom of the chat, like the slash menu: a rule, then the
+    /// files with their icons, the selected one marked.
+    fn draw_mentions(&mut self, frame: &mut Frame, chat: Rect) {
+        let matches = self.mention_matches();
+        if matches.is_empty() || chat.height == 0 {
+            return;
+        }
+        self.mention_sel = self.mention_sel.min(matches.len() - 1);
+        let rows = matches
+            .len()
+            .min(MENU_ROWS)
+            .min(usize::from(chat.height).saturating_sub(1));
+        if rows == 0 {
+            return;
+        }
+        let start = (self.mention_sel + 1).saturating_sub(rows);
+        let w = usize::from(chat.width);
+        let lines = matches
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(rows)
+            .map(|(i, c)| {
+                let (marker, style) = if i == self.mention_sel {
+                    ("› ", self.styles.accent.add_modifier(Modifier::BOLD))
+                } else if c.dir {
+                    ("  ", self.styles.muted)
+                } else {
+                    ("  ", Style::new())
+                };
+                let mut spans = vec![Span::styled(marker, self.styles.accent)];
+                if self.icons {
+                    spans.push(neo_renderer_ratatui::file_icon(&c.path, &self.palette));
+                    spans.push(Span::raw(" "));
+                }
+                spans.push(Span::styled(format!("@{}", c.path), style));
+                fit_line(Line::from(spans), w)
+            });
+        let rule = Line::from(Span::styled("─".repeat(w), self.styles.border));
+        let lines: Vec<Line<'static>> = std::iter::once(rule).chain(lines).collect();
+        let rect = Rect {
+            y: chat.y + chat.height - rows as u16 - 1,
+            height: rows as u16 + 1,
+            ..chat
+        };
+        frame.render_widget(Clear, rect);
+        frame.render_widget(Paragraph::new(lines), rect);
     }
 
     fn draw_menu(&mut self, frame: &mut Frame, chat: Rect) {
