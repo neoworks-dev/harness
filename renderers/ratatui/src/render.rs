@@ -20,6 +20,12 @@ const SLOT_MARK: &str = "\u{2060}";
 const LABEL_ROWS: usize = 2;
 /// Rows the command of a running tool call takes at most, unless expanded or asked about.
 const RUNNING_ROWS: usize = 4;
+/// A diff is side by side from this width on (each side then has some 40 cells).
+const SPLIT_MIN: usize = 81;
+/// An open edit's lines around each change, and the rows its diff takes at most (unless
+/// expanded): a whole new file is cut there.
+const EDIT_CONTEXT: usize = 5;
+const EDIT_ROWS: usize = 40;
 
 pub(crate) type Lines = Vec<Line<'static>>;
 
@@ -220,8 +226,22 @@ impl<'a> Cx<'a> {
             let edit = label
                 .as_deref()
                 .zip(crate::summary::lone_diff(&it.component));
-            if let Some(line) = edit.and_then(|(l, d)| self.edit_line(l, d, w)) {
-                return vec![line];
+            if let Some((line, d)) = edit.and_then(|(l, d)| Some((self.edit_line(l, d, w)?, d))) {
+                let mut out = vec![line];
+                if self.o.open_edits {
+                    let lines = around_changes(&d.lines, EDIT_CONTEXT);
+                    let mut rows = self.diff_rows(d.path.as_deref(), &lines, w);
+                    if rows.len() > EDIT_ROWS {
+                        let more = rows.len() - (EDIT_ROWS - 1);
+                        rows.truncate(EDIT_ROWS - 1);
+                        rows.push(sline(
+                            format!("… +{more} lines (ctrl-o shows all)"),
+                            self.p.muted_style(),
+                        ));
+                    }
+                    out.extend(rows);
+                }
+                return out;
             }
         }
         let mut head = match &label {
@@ -916,10 +936,16 @@ impl<'a> Cx<'a> {
         wrap(&spans, w)
     }
 
-    /// A colored unified diff. With true colors the code is highlighted by the grammar for the
-    /// path (old and new lines parsed apart, each hunk starting over) and changed lines are
-    /// tinted across the width; without, a changed line is just green or red.
+    /// A colored diff under its path: unified, or side by side when the app asks for it
+    /// ([`Options::split_diffs`]) and the width allows.
     fn diff(&self, v: &pb::DiffComponent, w: usize) -> Lines {
+        let mut out = self.diff_title(v, w);
+        out.extend(self.diff_rows(v.path.as_deref(), &v.lines, w));
+        out
+    }
+
+    /// The diff's path, bold, with its icon.
+    fn diff_title(&self, v: &pb::DiffComponent, w: usize) -> Lines {
         let mut out = Vec::new();
         let path = v
             .path
@@ -943,30 +969,74 @@ impl<'a> Cx<'a> {
                 out.push(line);
             }
         }
+        out
+    }
+
+    /// A diff line's mark, its style, and whether it is tinted (a change).
+    fn diff_style(&self, kind: pb::DiffLineKind) -> (&'static str, Style, bool) {
+        let (mark, fg, bg) = match kind {
+            pb::DiffLineKind::Add => ("+", self.p.success, blend(self.p.bg, self.p.success, 16)),
+            pb::DiffLineKind::Remove => ("-", self.p.danger, blend(self.p.bg, self.p.danger, 16)),
+            pb::DiffLineKind::Hunk => ("", self.p.muted, None),
+            pb::DiffLineKind::Context => (" ", Color::Reset, None),
+        };
+        let st = match (kind, bg) {
+            (pb::DiffLineKind::Context, _) => Style::new(),
+            (_, Some(bg)) => Style::new().fg(fg).bg(bg),
+            (_, None) => Style::new().fg(fg),
+        };
+        (mark, st, bg.is_some())
+    }
+
+    /// Highlighters for the old and new side of a diff of `path`, when it is highlighted.
+    fn diff_highlighters(
+        &self,
+        path: Option<&str>,
+        n: usize,
+    ) -> Option<(Highlighter, Highlighter)> {
         let colors = code_colors(&self.p);
-        let mut hl = path
-            .as_deref()
-            .filter(|_| {
-                !self.o.plain_code && colors.is_some() && v.lines.len() <= syntax::MAX_LINES
-            })
+        path.filter(|_| !self.o.plain_code && colors.is_some() && n <= syntax::MAX_LINES)
             .and_then(syntax_for)
-            .map(|s| (Highlighter::new(s), Highlighter::new(s)));
-        for dl in &v.lines {
-            let (mark, fg, bg) = match dl.kind {
-                pb::DiffLineKind::Add => {
-                    ("+", self.p.success, blend(self.p.bg, self.p.success, 16))
-                }
-                pb::DiffLineKind::Remove => {
-                    ("-", self.p.danger, blend(self.p.bg, self.p.danger, 16))
-                }
-                pb::DiffLineKind::Hunk => ("", self.p.muted, None),
-                pb::DiffLineKind::Context => (" ", Color::Reset, None),
-            };
-            let st = match (dl.kind, bg) {
-                (pb::DiffLineKind::Context, _) => Style::new(),
-                (_, Some(bg)) => Style::new().fg(fg).bg(bg),
-                (_, None) => Style::new().fg(fg),
-            };
+            .map(|s| (Highlighter::new(s), Highlighter::new(s)))
+    }
+
+    /// A diff line's text as spans: highlighted by `classes` (one per char) over `st`.
+    fn diff_spans(&self, text: String, classes: Vec<syntax::Class>, st: Style) -> Vec<Span<'static>> {
+        let Some(colors) = code_colors(&self.p).filter(|_| !classes.is_empty()) else {
+            return vec![Span::styled(text, st)];
+        };
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        for (c, class) in text.chars().zip(classes) {
+            let style = st.patch(colors[class as usize]);
+            match spans.last_mut() {
+                Some(Span {
+                    content,
+                    style: last,
+                }) if *last == style => content.to_mut().push(c),
+                _ => spans.push(Span::styled(c.to_string(), style)),
+            }
+        }
+        spans
+    }
+
+    /// The lines of a diff: side by side when the app asks and both sides get room, else
+    /// unified.
+    pub(crate) fn diff_rows(&self, path: Option<&str>, lines: &[pb::DiffLine], w: usize) -> Lines {
+        if self.o.split_diffs && w >= SPLIT_MIN {
+            return self.split_rows(path, lines, w);
+        }
+        self.unified_rows(path, lines, w)
+    }
+
+    /// Unified: one line after the other. With true colors the code is highlighted by the
+    /// grammar for the path (old and new lines parsed apart, each hunk starting over) and changed
+    /// lines are tinted across the width; without, a changed line is just green or red.
+    fn unified_rows(&self, path: Option<&str>, lines: &[pb::DiffLine], w: usize) -> Lines {
+        let mut out = Vec::new();
+        let mut hl = self.diff_highlighters(path, lines.len());
+        for dl in lines {
+            let (mark, st, tinted) = self.diff_style(dl.kind);
+            let bg = tinted.then_some(());
             let text = clean(&dl.text).replace('\n', " ");
             let classes = match (dl.kind, hl.as_mut()) {
                 (pb::DiffLineKind::Hunk, Some((old, new))) => {
@@ -982,25 +1052,7 @@ impl<'a> Cx<'a> {
                 (pb::DiffLineKind::Remove, Some((old, _))) => old.line(&text),
                 _ => Vec::new(),
             };
-            let spans = match colors.filter(|_| !classes.is_empty()) {
-                Some(colors) => {
-                    let mut spans = Vec::new();
-                    for (c, class) in text.chars().zip(classes) {
-                        let style = st.patch(colors[class as usize]);
-                        match spans.last_mut() {
-                            Some(Span {
-                                content,
-                                style: last,
-                            }) if *last == style => {
-                                content.to_mut().push(c);
-                            }
-                            _ => spans.push(Span::styled(c.to_string(), style)),
-                        }
-                    }
-                    spans
-                }
-                None => vec![Span::styled(text, st)],
-            };
+            let spans = self.diff_spans(text, classes, st);
             let indent = " ".repeat(mark.len());
             for (i, row) in hard_wrap_spans(&spans, w.saturating_sub(mark.len()).max(1))
                 .into_iter()
@@ -1018,6 +1070,129 @@ impl<'a> Cx<'a> {
             }
         }
         out
+    }
+
+    /// Side by side: the old lines on the left, the new on the right, a removal next to the
+    /// addition that replaced it, context on both sides and a hunk line across. Each side wraps
+    /// in its own half; the shorter one goes on blank.
+    fn split_rows(&self, path: Option<&str>, lines: &[pb::DiffLine], w: usize) -> Lines {
+        use pb::DiffLineKind::{Add, Context, Hunk, Remove};
+        let left_w = (w - 1) / 2;
+        let right_w = w - 1 - left_w;
+        let mut hl = self.diff_highlighters(path, lines.len());
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < lines.len() {
+            let dl = &lines[i];
+            match dl.kind {
+                Hunk => {
+                    if let Some((old, new)) = hl.as_mut() {
+                        old.reset();
+                        new.reset();
+                    }
+                    let text = truncate(&one_line(&dl.text), w);
+                    out.push(sline(text, self.p.muted_style()));
+                    i += 1;
+                }
+                Context => {
+                    let text = clean(&dl.text).replace('\n', " ");
+                    let (old, new) = match hl.as_mut() {
+                        Some((old, new)) => (old.line(&text), new.line(&text)),
+                        None => (Vec::new(), Vec::new()),
+                    };
+                    let left = self.side(Some((text.clone(), old, Context)), left_w);
+                    let right = self.side(Some((text, new, Context)), right_w);
+                    out.extend(self.beside(left, right, left_w, right_w));
+                    i += 1;
+                }
+                Remove | Add => {
+                    let dels: Vec<&pb::DiffLine> =
+                        lines[i..].iter().take_while(|l| l.kind == Remove).collect();
+                    let adds: Vec<&pb::DiffLine> = lines[i + dels.len()..]
+                        .iter()
+                        .take_while(|l| l.kind == Add)
+                        .collect();
+                    let mut side_of = |l: Option<&&pb::DiffLine>, old_side: bool| {
+                        l.map(|l| {
+                            let text = clean(&l.text).replace('\n', " ");
+                            let classes = match hl.as_mut() {
+                                Some((old, _)) if old_side => old.line(&text),
+                                Some((_, new)) => new.line(&text),
+                                None => Vec::new(),
+                            };
+                            (text, classes, l.kind)
+                        })
+                    };
+                    for k in 0..dels.len().max(adds.len()) {
+                        let left = side_of(dels.get(k), true);
+                        let right = side_of(adds.get(k), false);
+                        let left = self.side(left, left_w);
+                        let right = self.side(right, right_w);
+                        out.extend(self.beside(left, right, left_w, right_w));
+                    }
+                    i += dels.len() + adds.len();
+                }
+            }
+        }
+        out
+    }
+
+    /// One side of a split row: the mark and the text wrapped in `col` cells, a change's tint
+    /// to its edge. None: no line on this side.
+    fn side(
+        &self,
+        line: Option<(String, Vec<syntax::Class>, pb::DiffLineKind)>,
+        col: usize,
+    ) -> Vec<Vec<Span<'static>>> {
+        let Some((text, classes, kind)) = line else {
+            return Vec::new();
+        };
+        let (mark, st, tinted) = self.diff_style(kind);
+        let spans = self.diff_spans(text, classes, st);
+        let indent = " ".repeat(mark.len());
+        hard_wrap_spans(&spans, col.saturating_sub(mark.len()).max(1))
+            .into_iter()
+            .enumerate()
+            .map(|(i, row)| {
+                let lead = if i == 0 { mark } else { &indent };
+                let mut cells = vec![Span::styled(lead.to_string(), st)];
+                cells.extend(row);
+                let used = line_width(&cells);
+                if used < col {
+                    let fill = if tinted { st } else { Style::new() };
+                    cells.push(Span::styled(" ".repeat(col - used), fill));
+                }
+                cells
+            })
+            .collect()
+    }
+
+    /// Two sides next to each other, a rule between them.
+    fn beside(
+        &self,
+        left: Vec<Vec<Span<'static>>>,
+        right: Vec<Vec<Span<'static>>>,
+        left_w: usize,
+        right_w: usize,
+    ) -> Lines {
+        let rule = Style::new().fg(self.p.border);
+        let rows = left.len().max(right.len()).max(1);
+        let mut left = left.into_iter();
+        let mut right = right.into_iter();
+        (0..rows)
+            .map(|_| {
+                let mut spans = left
+                    .next()
+                    .unwrap_or_else(|| vec![Span::raw(" ".repeat(left_w))]);
+                spans.push(Span::styled("│", rule));
+                spans.extend(
+                    right
+                        .next()
+                        .unwrap_or_else(|| vec![Span::raw(" ".repeat(right_w))]),
+                );
+                Line::from(spans)
+            })
+            .collect()
     }
 
     /// A kv value with a tone is highlighted: its color, bold.
@@ -1366,4 +1541,50 @@ fn restyle_spans(lines: &mut Lines, mut f: impl FnMut(&mut Style)) {
             f(&mut span.style);
         }
     }
+}
+
+/// The changed lines of a diff with `n` lines of context around each; a stretch left out
+/// inside a hunk becomes a `⋯` hunk line, a hunk with nothing left goes.
+fn around_changes(lines: &[pb::DiffLine], n: usize) -> Vec<pb::DiffLine> {
+    use pb::DiffLineKind::{Add, Hunk, Remove};
+    let changed: Vec<usize> = (0..lines.len())
+        .filter(|&i| matches!(lines[i].kind, Add | Remove))
+        .collect();
+    let near = |i: usize| {
+        let at = changed.partition_point(|&c| c < i);
+        let after = changed.get(at).is_some_and(|&c| c - i <= n);
+        let before = at > 0 && i - changed[at - 1] <= n;
+        after || before
+    };
+    let keep: Vec<bool> = (0..lines.len())
+        .map(|i| lines[i].kind != Hunk && near(i))
+        .collect();
+    let mut out: Vec<pb::DiffLine> = Vec::new();
+    let mut gap = false;
+    for (i, line) in lines.iter().enumerate() {
+        if line.kind == Hunk {
+            let next = lines[i + 1..]
+                .iter()
+                .position(|l| l.kind == Hunk)
+                .map_or(lines.len(), |p| i + 1 + p);
+            if keep[i + 1..next].iter().any(|&k| k) {
+                out.push(line.clone());
+            }
+            gap = false;
+        } else if keep[i] {
+            if gap {
+                out.push(pb::DiffLine {
+                    kind: Hunk,
+                    text: "⋯".into(),
+                    old: None,
+                    new: None,
+                });
+                gap = false;
+            }
+            out.push(line.clone());
+        } else if out.last().is_some_and(|l| l.kind != Hunk) {
+            gap = true;
+        }
+    }
+    out
 }

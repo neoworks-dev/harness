@@ -73,6 +73,11 @@ pub struct Options {
     /// Code blocks and diffs without syntax colors: the same lines, much quicker. An app lays a
     /// long conversation out with this and highlights only what comes into view.
     pub plain_code: bool,
+    /// Diffs side by side (old left, new right) where there is room for both, else unified.
+    pub split_diffs: bool,
+    /// A finished edit (a call with one diff) shows its changes, with a few lines around them,
+    /// under its `edit path  +3 −1` line, rather than that line alone.
+    pub open_edits: bool,
 }
 
 /// `path` relative to `cwd` when it is inside it, else as it is.

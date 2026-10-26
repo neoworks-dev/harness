@@ -1568,3 +1568,60 @@ fn bash_rows_and_shell_code_are_highlighted() {
         .unwrap();
     assert_eq!(main.style.fg, code_fg(Class::Function));
 }
+
+/// An edit of `src/a.txt`: twenty lines, the tenth replaced.
+fn edit_item() -> neo_protocol::ViewItem {
+    let mut lines: Vec<serde_json::Value> = vec![json!({"kind": "hunk", "text": "@@ -1,20 +1,20 @@"})];
+    for i in 1..=20 {
+        if i == 10 {
+            lines.push(json!({"kind": "remove", "text": "old ten"}));
+            lines.push(json!({"kind": "add", "text": "new ten"}));
+        } else {
+            lines.push(json!({"kind": "context", "text": format!("line {i}")}));
+        }
+    }
+    item_of(
+        "tool",
+        r#""label":"edit src/a.txt","state":"done","#,
+        &json!({"type": "diff", "path": "src/a.txt", "lines": lines}).to_string(),
+    )
+}
+
+#[test]
+fn an_open_edit_shows_its_changes_with_five_lines_around_them() {
+    let open = Options {
+        open_edits: true,
+        ..Options::default()
+    };
+    let shown = lines_of(&edit_item(), 60, &open);
+    assert_eq!(shown[0], "edit src/a.txt  +1 −1");
+    assert_eq!(shown[1], "@@ -1,20 +1,20 @@");
+    assert_eq!(shown[2], " line 5");
+    assert_eq!(shown[7], "-old ten");
+    assert_eq!(shown[8], "+new ten");
+    assert_eq!(shown.last().unwrap(), " line 15");
+    assert_eq!(shown.len(), 2 + 5 + 2 + 5);
+    // Closed, the one line.
+    assert_eq!(lines_of(&edit_item(), 60, &Options::default()), ["edit src/a.txt  +1 −1"]);
+}
+
+#[test]
+fn a_split_diff_puts_the_old_line_beside_the_new_one() {
+    let split = Options {
+        open_edits: true,
+        split_diffs: true,
+        ..Options::default()
+    };
+    let shown = lines_of(&edit_item(), 81, &split);
+    let row = shown.iter().find(|l| l.contains("old ten")).unwrap();
+    assert!(row.starts_with("-old ten"), "{row}");
+    assert!(row.contains("│+new ten"), "{row}");
+    // The right half starts in the middle.
+    assert_eq!(row.find('│').map(|b| row[..b].chars().count()), Some(40), "{row}");
+    assert_fits(&render_item(&edit_item(), 81, &split), 81);
+    let context = shown.iter().find(|l| l.starts_with(" line 9")).unwrap();
+    assert!(context.contains("│ line 9"), "{context}");
+    // Too narrow for two sides: unified.
+    let narrow = lines_of(&edit_item(), 60, &split);
+    assert!(narrow.contains(&"-old ten".to_string()), "{narrow:#?}");
+}
