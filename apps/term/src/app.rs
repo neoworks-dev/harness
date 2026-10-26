@@ -76,7 +76,7 @@ const EMPTY_RECENT: usize = 5;
 /// The terminal panel's width: two fifths of what the chat would have, within these.
 const TERMINAL_MIN_WIDTH: u16 = 40;
 const TERMINAL_MAX_WIDTH: u16 = 100;
-/// Columns Ctrl-] / Ctrl-[ widen or narrow a pane by.
+/// Columns Ctrl-+ / Ctrl-- widen or narrow a pane by.
 const RESIZE_STEP: i16 = 4;
 /// Most rows a prompt takes where the editor is (its question, preview, buttons and hint).
 const PANEL_ROWS: u16 = 16;
@@ -190,14 +190,14 @@ enum Focus {
     Jobs,
 }
 
-/// A pane Ctrl-] / Ctrl-[ resize.
+/// A pane Ctrl-+ / Ctrl-- resize.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pane {
     Sessions,
     Side,
 }
 
-/// Columns each pane was widened (or, negative, narrowed) by with Ctrl-] / Ctrl-[.
+/// Columns each pane was widened (or, negative, narrowed) by with Ctrl-+ / Ctrl--.
 #[derive(Debug, Clone, Copy, Default)]
 struct Resized {
     sessions: i16,
@@ -323,7 +323,7 @@ pub struct App {
     icons: bool,
     /// `/settings split-diffs`: diffs side by side, in the chat and the file view.
     split_diffs: bool,
-    /// What Ctrl-] / Ctrl-[ did to the panes' widths.
+    /// What Ctrl-+ / Ctrl-- did to the panes' widths.
     resized: Resized,
     /// The daemon's connectors (apps and services), for the sidebar's servers.
     connectors: Vec<neo_protocol::ConnectorInfo>,
@@ -684,7 +684,7 @@ impl App {
         self.change_todos(serde_json::json!({ "action": "add", "text": item }), fx);
     }
 
-    /// Ctrl-] / Ctrl-[: the focused pane (else the side column while it holds the terminal panel,
+    /// Ctrl-+ / Ctrl--: the focused pane (else the side column while it holds the terminal panel,
     /// else the sessions sidebar) gets `by` columns more or less, within what leaves the chat its
     /// room.
     fn resize_pane(&mut self, by: i16) {
@@ -1477,12 +1477,17 @@ impl App {
             self.transcript_key(key, &mut fx);
             return fx;
         }
-        // Ctrl-] / Ctrl-[ widen / narrow the focused pane (legacy terminals send Ctrl-] as
-        // Ctrl-5 and Ctrl-[ as Esc).
+        // Ctrl-+ / Ctrl-- widen / narrow the focused pane: Ctrl-= is Ctrl-+ without the shift,
+        // and legacy terminals send Ctrl-- as Ctrl-_ (0x1f, which crossterm reads as Ctrl-7).
         if key.modifiers.contains(KeyModifiers::CONTROL)
-            && let KeyCode::Char(c @ (']' | '5' | '[')) = key.code
+            && let KeyCode::Char(c @ ('+' | '=' | '-' | '_' | '7')) = key.code
         {
-            self.resize_pane(if c == '[' { -RESIZE_STEP } else { RESIZE_STEP });
+            let by = if matches!(c, '+' | '=') {
+                RESIZE_STEP
+            } else {
+                -RESIZE_STEP
+            };
+            self.resize_pane(by);
             return fx;
         }
         let ctrl_c =

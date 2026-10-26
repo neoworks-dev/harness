@@ -591,7 +591,7 @@ fn cd_completes_folders_and_enter_runs_it_once_one_is_named() {
 }
 
 #[test]
-fn ctrl_brackets_widen_and_narrow_the_terminal_panel() {
+fn ctrl_plus_and_minus_widen_and_narrow_the_terminal_panel() {
     let mut app = app_without_agents();
     app.handle_event(event(
         "s1",
@@ -610,20 +610,24 @@ fn ctrl_brackets_widen_and_narrow_the_terminal_panel() {
         line[..line.find("Terminal").unwrap()].chars().count()
     };
     let at = column(&mut app);
-    app.handle_key(ctrl(']'));
+    app.handle_key(ctrl('='));
     assert_eq!(column(&mut app), at - 4, "wider by four");
-    app.handle_key(ctrl('['));
-    app.handle_key(ctrl('['));
+    app.handle_key(ctrl('-'));
+    app.handle_key(ctrl('-'));
+    assert_eq!(column(&mut app), at + 4);
+    // With the shift, and Ctrl-- as a legacy terminal sends it (Ctrl-7).
+    app.handle_key(ctrl('+'));
+    app.handle_key(ctrl('7'));
     assert_eq!(column(&mut app), at + 4);
     // Not narrower than its least.
     for _ in 0..30 {
-        app.handle_key(ctrl('['));
+        app.handle_key(ctrl('-'));
     }
     let least = column(&mut app);
     // 40 columns: the border and a space, then the title.
     assert_eq!(160 - least, 40 - 2, "{least}");
     // Presses past the edge don't pile up: one press back moves it.
-    app.handle_key(ctrl(']'));
+    app.handle_key(ctrl('='));
     assert_eq!(column(&mut app), least - 4);
 }
 
