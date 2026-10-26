@@ -178,11 +178,10 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
     let mut ui = Ui::new(daemon.open(&cwd, Args::default()));
     let first_session = ui.app.session().to_string();
 
-    // The chat view of the new session arrives; the status line shows the directory.
-    let screen = ui.until("an empty session", |s| {
-        s.contains("message the agent below")
-    });
-    assert!(screen.contains(&cwd), "{screen}");
+    // The chat view of the new session arrives; the status line names the directory.
+    let screen = ui.until("an empty session", |s| s.contains("enter send"));
+    let project = cwd.rsplit('/').next().unwrap();
+    assert!(screen.contains(&format!("{project} · neo")), "{screen}");
 
     // Typing sends input; the echo agent's reply is drawn in the chat.
     ui.type_line("hello from the terminal");
@@ -228,7 +227,7 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
     };
     let screen = ui.until("the session in the sidebar", |s| {
         let side = side(s);
-        side.contains("hello from the terminal") && side.contains("[app_connected]")
+        side.contains("hello from the termin") && side.contains("[app_connected]")
     });
     assert!(screen.contains("Sessions · "), "{screen}");
     assert!(screen.contains("· neo"), "the session's harness: {screen}");
@@ -295,7 +294,7 @@ fn a_second_terminal_registers_under_its_own_name_and_resumes_the_session() {
     let work = TempDir::new("work2");
     let cwd = work.0.to_string_lossy().into_owned();
     let mut first = Ui::new(daemon.open(&cwd, Args::default()));
-    first.until("session", |s| s.contains("message the agent below"));
+    first.until("session", |s| s.contains("enter send"));
     first.type_line("one");
     first.until("echo", |s| s.contains("echo #1: one"));
 

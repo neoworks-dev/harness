@@ -2,6 +2,7 @@ Edit src/app.ts · answer below
 
 
 
+
 ──────────────────────────────────────────────────────────────────────
 ▎ Edit src/app.ts
 ▎   src/app.ts
@@ -13,6 +14,5 @@ Edit src/app.ts · answer below
 ▎
 ▎   [1 Allow once]  [2 Always allow]  [3 Reject]
 ▎ enter allow once · ←/→ choose · tab add a note · esc dismiss
-~/site · neo
-
+site · neo
 ? ask before acting (shift+tab to cycle)

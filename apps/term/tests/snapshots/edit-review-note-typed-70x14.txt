@@ -1,5 +1,6 @@
 Edited src/a.ts — keep it? · answer below
 
+
 ──────────────────────────────────────────────────────────────────────
 ▎ Edited src/a.ts — keep it?
 ▎   src/a.ts
@@ -9,6 +10,5 @@ Edited src/a.ts — keep it? · answer below
 ▎
 ▎   [1 Keep]  [2 Revert]
 ▎ note › 1 wrong file, use b.ts
-~/site · neo
-
+site · neo
 ? ask before acting (shift+tab to cycle)

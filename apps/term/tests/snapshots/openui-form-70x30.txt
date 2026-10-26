@@ -23,8 +23,8 @@
 
 
 
+
 ──────────────────────────────────────────────────────────────────────
 ▎ Service · enter opens · ←/→ choose · tab next · esc input
-~/site · neo
-
+site · neo
 ? ask before acting (shift+tab to cycle)

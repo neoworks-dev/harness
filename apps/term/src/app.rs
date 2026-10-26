@@ -33,13 +33,13 @@ use crate::forms::{Forms, Outcome, Pending};
 use crate::github::{Github, Outgoing};
 use crate::history::{Histories, HistoryStore};
 use crate::images::Images;
-use crate::menu::{self, Entry, Item, Switcher};
+use crate::menu::{self, Entry, Item, Switcher, session_title};
 use crate::secret::{self, Secret, SecretValue};
-use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction};
+use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction, sidebar_width};
 use crate::status::{Approvals, HarnessSettings, Status, record_setting};
 use crate::style::{Styles, plain_palette};
 use crate::theme::{Prefs, Theme};
-use crate::util::{fit_line, shorten_home, truncate, width};
+use crate::util::{fit_line, relative_time, shorten_home, truncate, width};
 use crate::widgets::{Panel, WidgetAction, Widgets};
 
 /// How long a second Ctrl-C quits.
@@ -63,6 +63,10 @@ const WAITING_ROWS: usize = 3;
 const SPINNER: [char; 4] = ['◐', '◓', '◑', '◒'];
 /// The chat needs at least this much beside the sessions sidebar, else the sidebar is hidden.
 const CHAT_MIN_WIDTH: u16 = 52;
+/// The narrowest the plan / files column gets.
+const SIDE_MIN_WIDTH: u16 = 24;
+/// Sessions an empty chat lists from the same repository.
+const EMPTY_RECENT: usize = 5;
 
 /// The terminal panel's width: two fifths of what the chat would have, within these.
 const TERMINAL_MIN_WIDTH: u16 = 40;
@@ -2221,16 +2225,19 @@ impl App {
     // ---- drawing ----
 
     fn areas(&mut self, area: Rect) -> Areas {
-        let side_w = (area.width / 3).clamp(32, 40);
+        // The plan / files column: as wide as its files need, up to a third of the terminal.
+        let side_w = self
+            .widgets
+            .sidebar_width(SIDE_MIN_WIDTH, (area.width / 3).clamp(32, 40));
         let side = (area.width >= side_w + 1 + 40 && self.widgets.wants_sidebar(area.width))
             .then_some(side_w);
         let right_w = side.map_or(0, |w| w + 1);
         // The sessions sidebar yields to the plan / files column, and to the chat's width.
-        let left = (self.sessions_on
-            && !self.sessions.is_empty()
-            && area.width >= SIDEBAR_WIDTH + right_w + CHAT_MIN_WIDTH)
+        let left_w =
+            sidebar_width(area.width).min(area.width.saturating_sub(right_w + CHAT_MIN_WIDTH));
+        let left = (self.sessions_on && !self.sessions.is_empty() && left_w >= SIDEBAR_WIDTH)
             .then_some(Rect {
-                width: SIDEBAR_WIDTH,
+                width: left_w,
                 ..area
             });
         let left_w = left.map_or(0, |r| r.width);
@@ -2266,7 +2273,7 @@ impl App {
         // The subagents list sits under the status lines.
         let agents_h = self.agents_rows(main.height);
         let h = main.height - agents_h;
-        let status_h = h.saturating_sub(3).min(3);
+        let status_h = h.saturating_sub(3).min(2);
         let rule_h = h.saturating_sub(status_h).min(1);
         let room = h - status_h - rule_h;
         // An engaged prompt takes the editor's place; a waiting one adds a hint row above it.
@@ -2515,6 +2522,61 @@ impl App {
         }
     }
 
+    /// A session nothing was said in yet: where it works, the latest sessions there when the
+    /// sidebar doesn't list them, and the keys to start with.
+    fn empty_chat(&mut self, w: usize) -> Vec<Line<'static>> {
+        let muted = self.styles.muted;
+        let project = self
+            .cwd
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or("")
+            .to_string();
+        let mut head = vec![Span::styled(project, Modifier::BOLD)];
+        if let Some(branch) = self.widgets.branch() {
+            head.push(Span::styled(format!(" · {branch}"), muted));
+        }
+        let mut lines = vec![fit_line(Line::from(head), w), Line::default()];
+        if !self.sessions_shown {
+            let recent = self
+                .sessions
+                .recent_at(&self.cwd, &self.session, EMPTY_RECENT);
+            if !recent.is_empty() {
+                lines.push(Line::from(Span::styled("recent here", muted)));
+                for info in &recent {
+                    let age = relative_time(info.last_activity, self.now_ms);
+                    let room = w.saturating_sub(width(&age) + 4);
+                    let title = truncate(&session_title(info), room);
+                    let pad = w.saturating_sub(width(&title) + width(&age) + 2).max(1);
+                    lines.push(fit_line(
+                        Line::from(vec![
+                            Span::raw(format!("  {title}")),
+                            Span::raw(" ".repeat(pad)),
+                            Span::styled(age, muted),
+                        ]),
+                        w,
+                    ));
+                }
+                lines.push(Line::default());
+            }
+        }
+        let key = |k: &'static str, what: &'static str| {
+            vec![
+                Span::styled(k, self.styles.accent),
+                Span::styled(format!(" {what}"), muted),
+            ]
+        };
+        let sep = || Span::styled("  ·  ", muted);
+        let mut keys = key("enter", "send");
+        for (k, what) in [("/", "commands"), ("ctrl-g", "sessions"), ("/help", "keys")] {
+            keys.push(sep());
+            keys.extend(key(k, what));
+        }
+        lines.push(fit_line(Line::from(keys), w));
+        lines
+    }
+
     fn draw_chat(&mut self, frame: &mut Frame, area: Rect) {
         if area.height == 0 || area.width == 0 {
             return;
@@ -2534,18 +2596,15 @@ impl App {
         }
         self.chat.layout(content.width, content.height, &opts);
         if self.chat.items().is_empty() {
-            let hint = if self.chat.loaded() {
-                "message the agent below · / for commands · ctrl-g sessions · /help for keys"
+            let lines = if self.chat.loaded() {
+                self.empty_chat(usize::from(content.width))
             } else {
-                "connecting to the session…"
-            };
-            frame.render_widget(
-                Paragraph::new(Line::from(Span::styled(
-                    truncate(hint, usize::from(content.width)),
+                vec![Line::from(Span::styled(
+                    "connecting to the session…",
                     self.styles.muted,
-                ))),
-                content,
-            );
+                ))]
+            };
+            frame.render_widget(Paragraph::new(lines), content);
             return;
         }
         frame.render_widget(
@@ -2978,8 +3037,11 @@ impl App {
             && self.transcript.is_none()
     }
 
-    fn status_lines(&self, width: usize) -> [Line<'static>; 3] {
+    fn status_lines(&self, width: usize) -> [Line<'static>; 2] {
+        // The project's name: the terminal's own title or prompt has the whole path.
         let cwd = shorten_home(&self.cwd, self.home.as_deref());
+        let cwd = cwd.trim_end_matches('/').rsplit('/').next().unwrap_or(&cwd);
+        let cwd = if cwd.is_empty() { "/" } else { cwd };
         let branch = self.widgets.branch();
         let agent_in = self
             .agent_app
@@ -2987,7 +3049,7 @@ impl App {
             .filter(|a| *a != self.app_id.as_str());
         let notice = self.notice.as_ref().map(|n| (n.text.as_str(), n.error));
         Status {
-            cwd: &cwd,
+            cwd,
             branch: branch.as_deref(),
             settings: &self.settings,
             harness: &self.harness,

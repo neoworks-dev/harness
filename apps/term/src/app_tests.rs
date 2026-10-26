@@ -248,7 +248,7 @@ fn ctrl_v_and_an_empty_paste_read_the_clipboard_image() {
     assert_eq!(app.handle_paste(""), [Effect::PasteImage]);
     app.handle_msg(Msg::Pasted(None));
     assert!(
-        app.status_lines(80)[2]
+        app.status_lines(80)[1]
             .to_string()
             .contains("no image on the clipboard")
     );
@@ -600,7 +600,7 @@ fn ctrl_c_clears_then_needs_a_second_press_to_quit() {
     assert_eq!(app.editor_text(), "");
     assert!(app.handle_key(ctrl('c')).is_empty());
     assert!(
-        app.status_lines(60)[2]
+        app.status_lines(60)[1]
             .to_string()
             .contains("press ctrl-c again to quit")
     );
@@ -962,7 +962,7 @@ fn a_prompt_leaves_the_draft_alone_for_ctrl_c_and_paste() {
         "ctrl-c arms quit, it doesn't clear the draft"
     );
     assert!(
-        app.status_lines(80)[2]
+        app.status_lines(80)[1]
             .to_string()
             .contains("press ctrl-c again to quit")
     );
@@ -1143,14 +1143,14 @@ fn settings_and_approvals_come_from_setting_changed() {
     );
     assert!(!line.contains("daemon") && !line.contains("auto"));
     assert!(
-        app.status_lines(100)[2]
+        app.status_lines(100)[1]
             .to_string()
             .starts_with("⏵⏵ auto mode on")
     );
     app.handle_event(setting("daemon", SettingName::Approvals, "edits"));
     assert_eq!(app.approvals(), Approvals::Edits);
     assert!(
-        app.status_lines(100)[2]
+        app.status_lines(100)[1]
             .to_string()
             .starts_with("⏵⏵ accept edits on")
     );
@@ -1191,7 +1191,7 @@ fn shift_tab_cycles_approvals_ask_review_edits_auto() {
     assert_eq!(app.approvals(), Approvals::Ask);
     app.handle_event(setting("daemon", SettingName::Approvals, "review"));
     assert_eq!(app.approvals(), Approvals::Review);
-    let line = app.status_lines(100)[2].to_string();
+    let line = app.status_lines(100)[1].to_string();
     assert!(
         line.starts_with("⏵ review each edit (shift+tab to cycle)"),
         "{line}"
@@ -1537,10 +1537,10 @@ fn the_switcher_can_start_a_new_session_and_follow_it() {
 fn errors_from_the_worker_show_for_a_while() {
     let mut app = app();
     app.handle_msg(Msg::Error("send failed: connection to daemon lost".into()));
-    let line = app.status_lines(100)[2].to_string();
+    let line = app.status_lines(100)[1].to_string();
     assert!(line.contains("send failed"), "{line}");
     app.tick(NOW + 10_000);
-    assert!(!app.status_lines(100)[2].to_string().contains("send failed"));
+    assert!(!app.status_lines(100)[1].to_string().contains("send failed"));
 }
 
 // ---- panels ----
@@ -2082,7 +2082,7 @@ fn sidebar_command_hides_and_shows_it() {
     app.handle_key(ctrl('g'));
     screen(&mut app, 70, 24);
     assert_eq!(app.focus, None);
-    assert!(app.status_lines(100)[2].to_string().contains("too narrow"));
+    assert!(app.status_lines(100)[1].to_string().contains("too narrow"));
 }
 
 #[test]
@@ -2202,7 +2202,7 @@ fn an_empty_chat_says_what_to_do() {
     assert!(text.contains("connecting to the session"));
     show(&mut app, vec![]);
     let text = screen_text(&mut app, 80, 12);
-    assert!(text.contains("message the agent below"), "{text}");
+    assert!(text.contains("enter send  ·  / commands"), "{text}");
     assert!(text.contains("> message the agent · / for commands"));
 }
 
@@ -2213,7 +2213,7 @@ fn the_editor_grows_and_wraps_up_to_eight_rows() {
     let rows = screen(&mut app, 60, 24);
     // The rows between the rule above the editor and the status lines.
     let rule = rows.iter().position(|l| l.starts_with("───")).unwrap();
-    let status = rows.iter().position(|l| l.starts_with("~/site")).unwrap();
+    let status = rows.iter().position(|l| l.starts_with("site ·")).unwrap();
     let editor_rows = status - rule - 1;
     assert_eq!(editor_rows, 8, "{rows:#?}");
     // The status lines stay at the bottom.
@@ -2306,7 +2306,7 @@ fn the_cursor_sits_in_the_editor() {
     let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
     terminal.draw(|f| app.draw(f)).unwrap();
     let pos = terminal.get_cursor_position().unwrap();
-    assert_eq!((pos.x, pos.y), (2 + 5, 20 - 3 - 1));
+    assert_eq!((pos.x, pos.y), (2 + 5, 20 - 2 - 1));
 }
 
 #[test]

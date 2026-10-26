@@ -13,11 +13,11 @@ It is sunny in Berlin.
 
 
 
+
 esc back · ↑/↓ pgup/pgdn scroll · ctrl-o full results · ctrl-t thoughts
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 > message the agent · / for commands
-~/site · neo
-
+site · neo
 ? ask before acting (shift+tab to cycle)
 ● main · neo
 ○ neo · deepseek-v4-flash  search tools: weather                                1m 12s · 3.4k tokens

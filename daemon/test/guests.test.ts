@@ -611,8 +611,6 @@ describe("settings", () => {
     expect(daemon.commands.run(session, "/mode fake plan")).rejects.toThrow(
       "Fake has no mode setting",
     );
-    const view = daemon.views.get(session).snapshot().items;
-    expect(view.some((i) => JSON.stringify(i.component).includes("fake model: large"))).toBe(true);
   });
 
   test("/model guest without a value offers its models; the pick applies", async () => {

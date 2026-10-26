@@ -230,9 +230,21 @@ impl FilesState {
         self.status.as_ref().map(GitStatus::branch_label)
     }
 
-    /// Whether the panel has anything to list.
-    pub(crate) fn has_any(&self) -> bool {
-        !self.entries.is_empty()
+    /// Whether the list is worth a column: something besides untracked files no agent touched
+    /// (a `.claude/` lying around is not news).
+    pub(crate) fn worth_showing(&self) -> bool {
+        self.entries
+            .iter()
+            .any(|e| e.mark != Mark::Untracked || !e.tags.is_empty())
+    }
+
+    /// Cells the widest row takes.
+    pub(crate) fn natural_width(&self, palette: &Palette) -> usize {
+        self.rows
+            .iter()
+            .map(|r| row_width(r, &self.entries, palette))
+            .max()
+            .unwrap_or(0)
     }
 
     /// Lines the whole panel (without its title) takes.
@@ -508,15 +520,13 @@ fn file_name(e: &FileEntry) -> String {
     }
 }
 
-fn tree_row(
-    r: &TreeRow,
-    entries: &[FileEntry],
-    w: usize,
-    selected: bool,
-    palette: &Palette,
-) -> Line<'static> {
+/// A row's pieces before fitting: the lead (indent and glyph), the name and its style, the tag
+/// after it and the line counts.
+type Pieces = (Span<'static>, String, Style, String, Option<LineCount>);
+
+fn pieces(r: &TreeRow, entries: &[FileEntry], palette: &Palette) -> Option<Pieces> {
     let indent = "  ".repeat(r.depth);
-    let (lead, text, style, tag, lines) = match &r.kind {
+    Some(match &r.kind {
         RowKind::Dir {
             name,
             collapsed,
@@ -536,9 +546,7 @@ fn tree_row(
             (lead, name.clone(), Style::new(), tag, lines)
         }
         RowKind::File(i) => {
-            let Some(e) = entries.get(*i) else {
-                return Line::default();
-            };
+            let e = entries.get(*i)?;
             let style = e.mark.style(palette);
             let lead = Span::styled(format!("{indent}{} ", e.mark.glyph()), style);
             let tag = if e.tags.is_empty() {
@@ -548,6 +556,30 @@ fn tree_row(
             };
             (lead, file_name(e), style, tag, e.lines)
         }
+    })
+}
+
+/// Cells a row takes when nothing is cut.
+fn row_width(r: &TreeRow, entries: &[FileEntry], palette: &Palette) -> usize {
+    let Some((lead, text, _, tag, lines)) = pieces(r, entries, palette) else {
+        return 0;
+    };
+    let counts: usize = line_counts(lines, palette)
+        .iter()
+        .map(|s| width(&s.content))
+        .sum();
+    width(&lead.content) + width(&text) + width(&tag) + if counts > 0 { counts + 1 } else { 0 }
+}
+
+fn tree_row(
+    r: &TreeRow,
+    entries: &[FileEntry],
+    w: usize,
+    selected: bool,
+    palette: &Palette,
+) -> Line<'static> {
+    let Some((lead, text, style, tag, lines)) = pieces(r, entries, palette) else {
+        return Line::default();
     };
     // The counts sit at the right edge, a space away from the name.
     let lead_w = width(&lead.content);
@@ -648,6 +680,35 @@ mod tests {
             text(&f.render(24, 10, false, &p))[0],
             "▸ src/ 1 file     +12 −3"
         );
+    }
+
+    #[test]
+    fn untracked_files_alone_are_not_worth_a_column_and_rows_say_how_wide_they_are() {
+        let mut f = FilesState::default();
+        let p = Palette::default();
+        f.set_status(Some(status(vec![
+            entry(".claude/", Change::Untracked),
+            entry(".serena/", Change::Untracked),
+        ])));
+        assert!(!f.worth_showing());
+        // An agent touching one makes it news.
+        f.touch(".claude/settings.json", "claude", true);
+        assert!(f.worth_showing());
+        assert_eq!(f.natural_width(&p), "? .claude/ (claude)".len());
+
+        let mut s = status(vec![entry("src/a.rs", Change::Modified)]);
+        s.lines.insert(
+            "src/a.rs".into(),
+            LineCount {
+                added: 12,
+                removed: 3,
+            },
+        );
+        let mut f = FilesState::default();
+        f.set_status(Some(s));
+        assert!(f.worth_showing());
+        // "  M a.rs +12 −3", the counts a space after the name.
+        assert_eq!(f.natural_width(&p), 15);
     }
 
     #[test]

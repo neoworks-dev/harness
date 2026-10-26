@@ -366,6 +366,20 @@ describe("session view", () => {
     expect(view.snapshot().items).toEqual([]);
   });
 
+  test("settings show once a prompt was sent; before, they are how the session starts", () => {
+    const { view } = feed([
+      { type: "setting_changed", harness: "daemon", option: "harness", value: "claude" },
+      { type: "setting_changed", harness: "claude", option: "model", value: "opus" },
+      { type: "user_message", app: "cli", text: "hi" },
+      { type: "setting_changed", harness: "claude", option: "effort", value: "high" },
+    ]);
+    const shown = view.snapshot().items.map((i) => JSON.stringify(i.component));
+    expect(shown).toEqual([
+      expect.stringContaining("hi"),
+      expect.stringContaining("claude effort: high"),
+    ]);
+  });
+
   test("apps coming and going share one line until something else is said", () => {
     const { view } = feed([
       { type: "app_disconnected", app: "terminal-2" },

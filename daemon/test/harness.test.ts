@@ -165,11 +165,8 @@ describe("/harness", () => {
     expect(events(daemon, session).filter((e) => e.type === "setting_changed")).toEqual([
       { type: "setting_changed", harness: "daemon", option: "harness", value: "fake" },
     ]);
-    // Unlike the approvals mode this one shows in the chat.
-    const items = daemon.views.get(session).snapshot().items;
-    expect(items.map((i) => JSON.stringify(i.component))).toEqual([
-      expect.stringContaining("harness: fake"),
-    ]);
+    // Before the first prompt the status shows it, not the chat.
+    expect(daemon.views.get(session).snapshot().items).toEqual([]);
     expect(daemon.commands.run(session, "/harness nope")).rejects.toThrow(
       "usage: /harness [main|fake|other]",
     );

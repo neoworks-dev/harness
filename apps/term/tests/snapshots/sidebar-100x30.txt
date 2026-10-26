@@ -23,8 +23,8 @@ Done. The header now uses `position: sticky`.                      │ ◐ wire 
                                                                    │
                                                                    │
                                                                    │
+                                                                   │
 ────────────────────────────────────────────────────────────────── │
 > message the agent · / for commands                               │
-~/site · neo                                                       │
-                                                                   │
+site · neo                                                         │
 ? ask before acting (shift+tab to cycle)                           │

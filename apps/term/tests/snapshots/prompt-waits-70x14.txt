@@ -6,9 +6,9 @@
 
 
 
+
 ──────────────────────────────────────────────────────────────────────
 permission needed — waiting until you stop typing
 > draft
-~/site · neo
-
+site · neo
 ? ask before acting (shift+tab to cycle)

@@ -280,11 +280,11 @@ fn haystack(s: &SessionInfo) -> String {
     format!("{} {} {}", s.title.as_deref().unwrap_or(""), s.cwd, s.id).to_lowercase()
 }
 
-/// The session's title on one line, else "session " and the start of its id.
+/// The session's title on one line, else "New Session" (a title comes with the first prompt).
 pub fn session_title(s: &SessionInfo) -> String {
     match s.title.as_deref().filter(|t| !t.trim().is_empty()) {
         Some(t) => t.split_whitespace().collect::<Vec<_>>().join(" "),
-        None => format!("session {}", s.id.chars().take(8).collect::<String>()),
+        None => "New Session".to_string(),
     }
 }
 
@@ -437,7 +437,7 @@ mod tests {
         i.state = SessionState::Running;
         i.queued = 2;
         let (name, rest) = session_label(&i, Some("/home/me"), 5 * 60_000);
-        assert_eq!(name, "session abcdef12");
+        assert_eq!(name, "New Session");
         assert_eq!(rest, "~/site  5m ago  running  +2 queued");
     }
 }

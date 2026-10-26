@@ -1,9 +1,9 @@
-//! The three status lines under the prompt.
+//! The two status lines under the prompt.
 
 use ratatui::text::{Line, Span};
 
 use crate::style::Styles;
-use crate::util::{fit_line, split_line};
+use crate::util::{fit_line, split_line, width};
 
 /// What the daemon asks before the agent acts (`/approvals`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -76,7 +76,7 @@ pub fn record_setting(all: &mut Vec<HarnessSettings>, harness: &str, option: &st
 }
 
 pub struct Status<'a> {
-    /// The working directory, already shortened with `~`.
+    /// The working directory, as its last segment (the project).
     pub cwd: &'a str,
     pub branch: Option<&'a str>,
     pub settings: &'a [HarnessSettings],
@@ -101,12 +101,12 @@ pub struct Status<'a> {
 }
 
 impl Status<'_> {
-    pub fn lines(&self, width: usize) -> [Line<'static>; 3] {
-        [self.line1(width), self.line2(width), self.line3(width)]
+    pub fn lines(&self, width: usize) -> [Line<'static>; 2] {
+        [self.line1(width), self.line2(width)]
     }
 
-    /// `~/site · main ↑1 · neo · model sonnet · in photo-editor`: the harness is always named,
-    /// with only its own settings.
+    /// `site · main ↑1 · neo · model sonnet · in photo-editor`: the harness is always named,
+    /// with only its own settings; it and their values stand out, the rest is muted.
     fn line1(&self, width: usize) -> Line<'static> {
         let s = self.styles;
         let sep = || Span::styled(" · ", s.muted);
@@ -120,7 +120,8 @@ impl Status<'_> {
         for h in self.settings.iter().filter(|h| h.harness == self.harness) {
             for (option, value) in &h.values {
                 spans.push(sep());
-                spans.push(Span::styled(format!("{option} {value}"), s.muted));
+                spans.push(Span::styled(format!("{option} "), s.muted));
+                spans.push(Span::raw(value.clone()));
             }
         }
         if let Some(app) = self.agent_in {
@@ -130,22 +131,29 @@ impl Status<'_> {
         fit_line(Line::from(spans), width)
     }
 
-    /// `ctx 35% · $0.18 · ◐ working 12s · 2 queued`, or the lost connection.
-    fn line2(&self, width: usize) -> Line<'static> {
+    /// The approvals mode, then `ctx 35% · $0.18 · ◐ working 12s · 2 queued` or the lost
+    /// connection; a notice on the right, else `ctrl-p use the buttons above` when there is a doc
+    /// to use. The mode is `? ask before acting`, `⏵ review each edit`, `⏵⏵ accept edits on` or
+    /// `⏵⏵ auto mode on`, with `(shift+tab to cycle)` when nothing else is said and it fits.
+    fn line2(&self, cols: usize) -> Line<'static> {
         let s = self.styles;
-        let mut spans: Vec<Span<'static>> = Vec::new();
-        let push = |spans: &mut Vec<Span<'static>>, part: Vec<Span<'static>>| {
-            if !spans.is_empty() {
-                spans.push(Span::styled(" · ", s.muted));
-            }
-            spans.extend(part);
+        let (mode, mode_style) = match self.approvals {
+            Approvals::Auto => ("⏵⏵ auto mode on", s.danger),
+            Approvals::Review => ("⏵ review each edit", s.accent),
+            Approvals::Edits => ("⏵⏵ accept edits on", s.accent),
+            Approvals::Ask => ("? ask before acting", s.muted),
+        };
+        let mut rest: Vec<Span<'static>> = Vec::new();
+        let push = |rest: &mut Vec<Span<'static>>, part: Vec<Span<'static>>| {
+            rest.push(Span::styled(" · ", s.muted));
+            rest.extend(part);
         };
         if let Some(usage) = &self.usage {
-            push(&mut spans, usage.spans.clone());
+            push(&mut rest, usage.spans.clone());
         }
         if let Some(secs) = self.working_secs {
             push(
-                &mut spans,
+                &mut rest,
                 vec![Span::styled(
                     format!("{} working {}", self.spinner, duration(secs)),
                     s.accent,
@@ -154,36 +162,22 @@ impl Status<'_> {
         }
         if self.queued > 0 {
             push(
-                &mut spans,
+                &mut rest,
                 vec![Span::styled(format!("{} queued", self.queued), s.muted)],
             );
         }
         if self.stashed {
             push(
-                &mut spans,
+                &mut rest,
                 vec![Span::styled("draft put aside (ctrl-s)", s.muted)],
             );
         }
         if !self.connected {
             push(
-                &mut spans,
+                &mut rest,
                 vec![Span::styled("disconnected — reconnecting", s.danger)],
             );
         }
-        fit_line(Line::from(spans), width)
-    }
-
-    /// `⏵ review each edit (shift+tab to cycle)`, `⏵⏵ accept edits on …`, `⏵⏵ auto mode on …` or
-    /// `? ask before acting …`, a notice on the right, else `ctrl-p use the buttons above` when
-    /// there is a doc to use (the hint in parentheses goes first when they don't both fit).
-    fn line3(&self, width: usize) -> Line<'static> {
-        let s = self.styles;
-        let (text, style) = match self.approvals {
-            Approvals::Auto => ("⏵⏵ auto mode on", s.danger),
-            Approvals::Review => ("⏵ review each edit", s.accent),
-            Approvals::Edits => ("⏵⏵ accept edits on", s.accent),
-            Approvals::Ask => ("? ask before acting", s.muted),
-        };
         let right = match self.notice {
             Some((text, error)) => Some(Line::from(Span::styled(
                 text.to_string(),
@@ -196,14 +190,21 @@ impl Status<'_> {
             None => None,
         };
         let hint = " (shift+tab to cycle)";
-        let long = text.chars().count() + hint.chars().count();
         let room = right.as_ref().map_or(0, |r| r.width() + 2);
-        let left = if long + room <= width {
-            Line::from(vec![Span::styled(text, style), Span::styled(hint, s.muted)])
-        } else {
-            Line::from(Span::styled(text, style))
-        };
-        split_line(left, right, width)
+        let mut left = vec![Span::styled(mode, mode_style)];
+        if rest.is_empty() && width(mode) + width(hint) + room <= cols {
+            left.push(Span::styled(hint, s.muted));
+        }
+        left.extend(rest);
+        // A notice is said now: what is left of it gives way.
+        let mut left = Line::from(left);
+        if let Some(r) = &right
+            && left.width() + 2 + r.width() > cols
+            && cols >= width(mode) + 2 + r.width()
+        {
+            left = fit_line(left, cols - 2 - r.width());
+        }
+        split_line(left, right, cols)
     }
 }
 
@@ -222,7 +223,7 @@ mod tests {
 
     fn status<'a>(styles: &'a Styles, settings: &'a [HarnessSettings]) -> Status<'a> {
         Status {
-            cwd: "~/site",
+            cwd: "site",
             branch: Some("main ↑1"),
             settings,
             harness: "neo",
@@ -245,25 +246,25 @@ mod tests {
         let styles = Styles::new(&Palette::default(), false);
         let mut settings = Vec::new();
         let s = status(&styles, &settings);
-        assert_eq!(s.lines(80)[0].to_string(), "~/site · main ↑1 · neo");
+        assert_eq!(s.lines(80)[0].to_string(), "site · main ↑1 · neo");
         record_setting(&mut settings, "neo", "model", "sonnet");
         record_setting(&mut settings, "daemon", "approvals", "auto");
         let mut s = status(&styles, &settings);
         assert_eq!(
             s.lines(80)[0].to_string(),
-            "~/site · main ↑1 · neo · model sonnet"
+            "site · main ↑1 · neo · model sonnet"
         );
         s.agent_in = Some("photo-editor");
         s.branch = None;
         assert_eq!(
             s.lines(80)[0].to_string(),
-            "~/site · neo · model sonnet · in photo-editor"
+            "site · neo · model sonnet · in photo-editor"
         );
         record_setting(&mut settings, "neo", "effort", "high");
         record_setting(&mut settings, "neo", "model", "opus");
         assert_eq!(
             status(&styles, &settings).lines(80)[0].to_string(),
-            "~/site · main ↑1 · neo · model opus · effort high"
+            "site · main ↑1 · neo · model opus · effort high"
         );
         assert_eq!(status(&styles, &settings).lines(20)[0].width(), 20);
         // Another harness's settings stay out of sight until it is the session's.
@@ -273,26 +274,29 @@ mod tests {
         s.harness = "claude";
         assert_eq!(
             s.lines(80)[0].to_string(),
-            "~/site · main ↑1 · claude · model opus-4"
+            "site · main ↑1 · claude · model opus-4"
         );
     }
 
     #[test]
-    fn line_two_has_usage_turn_state_queue_and_connection() {
+    fn line_two_has_the_mode_usage_turn_state_queue_and_connection() {
         let styles = Styles::new(&Palette::default(), false);
         let none: [HarnessSettings; 0] = [];
         let mut s = status(&styles, &none);
-        assert_eq!(s.lines(80)[1].to_string(), "");
+        assert_eq!(
+            s.lines(80)[1].to_string(),
+            "? ask before acting (shift+tab to cycle)"
+        );
         s.usage = Some(Line::from("ctx 35% · $0.18"));
         s.working_secs = Some(12);
         s.queued = 2;
         assert_eq!(
             s.lines(80)[1].to_string(),
-            "ctx 35% · $0.18 · ◐ working 12s · 2 queued"
+            "? ask before acting · ctx 35% · $0.18 · ◐ working 12s · 2 queued"
         );
         s.working_secs = Some(75);
         s.connected = false;
-        let line = &s.lines(80)[1];
+        let line = &s.lines(120)[1];
         assert!(
             line.to_string()
                 .ends_with("1m15s · 2 queued · disconnected — reconnecting")
@@ -302,46 +306,51 @@ mod tests {
     }
 
     #[test]
-    fn line_three_is_the_approvals_mode() {
+    fn the_mode_leads_line_two_in_its_color() {
         let styles = Styles::new(&Palette::default(), false);
         let none: [HarnessSettings; 0] = [];
         let mut s = status(&styles, &none);
-        let l = &s.lines(60)[2];
-        assert_eq!(l.to_string(), "? ask before acting (shift+tab to cycle)");
+        let l = &s.lines(60)[1];
         assert_eq!(l.spans[0].style, styles.muted);
         assert_eq!(l.spans[1].style, styles.muted);
         s.approvals = Approvals::Review;
-        let l = &s.lines(60)[2];
+        let l = &s.lines(60)[1];
         assert_eq!(l.to_string(), "⏵ review each edit (shift+tab to cycle)");
         assert_eq!(l.spans[0].style, styles.accent);
         s.approvals = Approvals::Edits;
-        let l = &s.lines(60)[2];
+        let l = &s.lines(60)[1];
         assert_eq!(l.to_string(), "⏵⏵ accept edits on (shift+tab to cycle)");
         assert_eq!(l.spans[0].style, styles.accent);
         s.approvals = Approvals::Auto;
-        let l = &s.lines(60)[2];
+        let l = &s.lines(60)[1];
         assert_eq!(l.to_string(), "⏵⏵ auto mode on (shift+tab to cycle)");
         assert_eq!(l.spans[0].style, styles.danger);
         s.notice = Some(("press ctrl-c again to quit", false));
-        let l = &s.lines(70)[2];
+        let l = &s.lines(70)[1];
         assert!(l.to_string().starts_with("⏵⏵ auto mode on (shift+tab"));
         assert!(l.to_string().ends_with("press ctrl-c again to quit"));
         assert_eq!(l.width(), 70);
         // Narrower: the notice wins over the hint.
-        let l = &s.lines(48)[2];
+        let l = &s.lines(48)[1];
         assert_eq!(
             l.to_string(),
             "⏵⏵ auto mode on       press ctrl-c again to quit"
         );
+        // And over the usage, which is cut for it.
+        s.usage = Some(Line::from("ctx 35% · $0.18 · 120k tokens"));
+        let l = &s.lines(60)[1];
+        assert!(l.to_string().starts_with("⏵⏵ auto mode on · ctx"));
+        assert!(l.to_string().ends_with("press ctrl-c again to quit"));
+        assert!(l.width() <= 60);
     }
 
     #[test]
-    fn line_three_says_how_to_reach_the_buttons_above_unless_a_notice_is_up() {
+    fn line_two_says_how_to_reach_the_buttons_above_unless_a_notice_is_up() {
         let styles = Styles::new(&Palette::default(), false);
         let none: [HarnessSettings; 0] = [];
         let mut s = status(&styles, &none);
         s.ui_hint = true;
-        let l = &s.lines(70)[2];
+        let l = &s.lines(70)[1];
         assert!(l.to_string().starts_with("? ask before acting (shift+tab"));
         assert!(l.to_string().ends_with("ctrl-p use the buttons above"));
         assert!(
@@ -350,7 +359,7 @@ mod tests {
                 .any(|sp| sp.content == "ctrl-p" && sp.style == styles.accent)
         );
         s.notice = Some(("copied", false));
-        let l = &s.lines(70)[2];
+        let l = &s.lines(70)[1];
         assert!(l.to_string().ends_with("copied"));
         assert!(!l.to_string().contains("ctrl-p"));
     }

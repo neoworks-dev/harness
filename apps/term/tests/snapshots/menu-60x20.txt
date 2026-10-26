@@ -9,12 +9,12 @@ Done. The header now uses `position: sticky`.
 
 
 
+
 ────────────────────────────────────────────────────────────
 › /clear           start a new conversation in this directo…
   /claude <task>   give a task to Claude Code
   /codex <task>    give a task to Codex
 ────────────────────────────────────────────────────────────
 > /c
-~/site · neo
-◐ working 12s
-⏵⏵ auto mode on (shift+tab to cycle)
+site · neo
+⏵⏵ auto mode on · ◐ working 12s

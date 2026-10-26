@@ -23,8 +23,8 @@ Done. The header now uses `position: sticky`.
 
 
 
+
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 > message the agent · / for commands
-~/site · neo · model sonnet
-
+site · neo · model sonnet
 ? ask before acting (shift+tab to cycle)

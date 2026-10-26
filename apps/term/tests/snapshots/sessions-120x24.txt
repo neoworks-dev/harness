@@ -1,13 +1,14 @@
-Sessions · 3                 │ › make the header sticky
+ Sessions · 3                │ › make the header sticky
  site ───────────────────────│
-▎  Sticky header             │ Done. The header now uses `position: sticky`.
-▎  Done. The header now … now│
+▎  Sticky header          now│ Done. The header now uses `position: sticky`.
+▎  Done. The header now uses…│
                              │
- ◐ Fix the login form  +12 −3│
-   Looking at the validat… 1m│
+ ◐ Fix the login form      1m│
+   Looking at the val… +12 −3│
                              │
-   Docs                      │
-                           1h│
+   Docs                    1h│
+                             │
+                             │
                              │
                              │
                              │
@@ -19,6 +20,5 @@ Sessions · 3                 │ › make the header sticky
                              │
                              │ ─────────────────────────────────────────────────────────────────────────────────────────
                              │ > message the agent · / for commands
-                             │ ~/site · neo
-                             │
+                             │ site · neo
                              │ ? ask before acting (shift+tab to cycle)

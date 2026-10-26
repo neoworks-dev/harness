@@ -21,8 +21,15 @@ use crate::menu::session_title;
 use crate::style::Styles;
 use crate::util::{fit_line, truncate, width};
 
-/// Columns of the sidebar including its border and the gap after it.
+/// Columns of the sidebar including its border and the gap after it: the narrowest, and the
+/// widest a wide terminal gives it.
 pub const SIDEBAR_WIDTH: u16 = 31;
+const SIDEBAR_MAX_WIDTH: u16 = 44;
+
+/// The sidebar's width in a terminal `total` columns wide: a fifth of it, so titles get room.
+pub fn sidebar_width(total: u16) -> u16 {
+    (total / 5).clamp(SIDEBAR_WIDTH, SIDEBAR_MAX_WIDTH)
+}
 /// Rows a PgUp / PgDn moves.
 const PAGE: usize = 5;
 /// Idle longer than this, a session is drawn faded and folds into its group's older row.
@@ -120,8 +127,13 @@ enum Entry {
     Cluster(String),
     /// A worktree of the cluster above.
     Group(String),
-    /// A session: index into the list, and whether it is drawn as a child of the one above.
-    Session { index: usize, child: bool },
+    /// A session: index into the list, whether it is drawn as a child of the one above, and
+    /// whether it has a second row (a preview, a queue or changed lines).
+    Session {
+        index: usize,
+        child: bool,
+        tall: bool,
+    },
     /// The group's sessions idle for over a day: how many, and whether they are shown (after it).
     Older {
         group: String,
@@ -134,7 +146,8 @@ impl Entry {
     fn height(&self) -> usize {
         match self {
             // Title, preview and a blank row, so sessions read apart.
-            Entry::Session { .. } => 3,
+            Entry::Session { tall: true, .. } => 3,
+            Entry::Session { .. } => 2,
             Entry::Older { .. } => 2,
             _ => 1,
         }
@@ -198,6 +211,23 @@ impl Sessions {
 
     pub fn get(&self, id: &str) -> Option<&SessionInfo> {
         self.list.iter().find(|s| s.id == id)
+    }
+
+    /// The latest sessions working where `cwd` does (the same repository), but not `except`.
+    pub fn recent_at(&mut self, cwd: &str, except: &str, n: usize) -> Vec<SessionInfo> {
+        let repo = self
+            .places
+            .entry(cwd.to_string())
+            .or_insert_with(|| place_of(cwd))
+            .repo
+            .clone();
+        self.list
+            .iter()
+            .filter(|s| s.id != except)
+            .filter(|s| self.places.get(&s.cwd).is_some_and(|p| p.repo == repo))
+            .take(n)
+            .cloned()
+            .collect()
     }
 
     /// Whether any session is working (the spinner needs frames).
@@ -309,13 +339,25 @@ impl Sessions {
                 return;
             }
             starts.push(visual.len());
-            let (old, recent): (Vec<_>, Vec<_>) = self
+            let (old, mut recent): (Vec<_>, Vec<_>) = self
                 .family(group)
                 .into_iter()
                 .partition(|&(index, _)| folds(&self.list[index]));
+            // Folding one session saves nothing: it shows.
+            let old = if old.len() < 2 {
+                recent.extend(old);
+                Vec::new()
+            } else {
+                old
+            };
+            let session = |index: usize, child: bool| Entry::Session {
+                index,
+                child,
+                tall: tall(&self.list[index]),
+            };
             for (index, child) in recent {
                 visual.push(Pick::Session(self.list[index].id.clone()));
-                entries.push(Entry::Session { index, child });
+                entries.push(session(index, child));
             }
             if old.is_empty() {
                 return;
@@ -330,7 +372,7 @@ impl Sessions {
             if open {
                 for (index, child) in old {
                     visual.push(Pick::Session(self.list[index].id.clone()));
-                    entries.push(Entry::Session { index, child });
+                    entries.push(session(index, child));
                 }
             }
         };
@@ -507,6 +549,7 @@ impl Sessions {
             styles.muted
         };
         let mut header = vec![
+            Span::raw(" "),
             Span::styled("Sessions", header_style),
             Span::styled(format!(" · {}", self.list.len()), styles.muted),
         ];
@@ -555,10 +598,10 @@ impl Sessions {
                     ]));
                 }
                 Entry::Group(name) => {
-                    out.push(Line::from(Span::styled(
-                        format!("   ⎇ {}", truncate(name, w.saturating_sub(5))),
-                        styles.muted,
-                    )));
+                    out.push(Line::from(vec![
+                        Span::styled("   worktree ", styles.muted),
+                        Span::raw(truncate(name, w.saturating_sub(12))),
+                    ]));
                 }
                 Entry::Older { group, count, open } => {
                     let selected =
@@ -578,7 +621,7 @@ impl Sessions {
                     out.push(line);
                     out.push(Line::default());
                 }
-                Entry::Session { index, child } => {
+                Entry::Session { index, child, .. } => {
                     let info = &self.list[*index];
                     let selected =
                         focused && self.selected.as_ref() == Some(&Pick::Session(info.id.clone()));
@@ -617,10 +660,20 @@ enum Mark {
     None,
 }
 
-/// Title and changed lines, then the preview and how long ago it was active. The shown session
-/// has a bar in the margin and a bold accent title; a running one has the spinner; one that
-/// finished unseen a green dot and a bold title; one delegated to by another a `↳` before the
-/// title.
+/// Whether a session has a second row: something waiting, a preview or changed lines.
+fn tall(info: &SessionInfo) -> bool {
+    let preview = info
+        .preview
+        .as_deref()
+        .is_some_and(|p| !p.trim().is_empty());
+    let changed = info.added.unwrap_or(0) > 0 || info.removed.unwrap_or(0) > 0;
+    info.queued > 0 || preview || changed
+}
+
+/// Title and how long ago it was active, then (when there is any) what is queued, the preview
+/// and the changed lines. The shown session has a bar in the margin and a bold accent title; a
+/// running one has the spinner; one that finished unseen a green dot and a bold title; one
+/// delegated to by another a `↳` before the title.
 fn row(
     info: &SessionInfo,
     mark: Mark,
@@ -628,7 +681,7 @@ fn row(
     w: usize,
     look: &Look,
     styles: &Styles,
-) -> [Line<'static>; 2] {
+) -> Vec<Line<'static>> {
     let current = mark == Mark::Current;
     let bar = Span::styled(if current { "▎" } else { " " }, styles.accent);
     let state = if info.state == SessionState::Running {
@@ -640,43 +693,46 @@ fn row(
     };
     let lead = |second: Span<'static>| vec![bar.clone(), second, Span::raw(" ")];
     let room = w.saturating_sub(3);
-
-    let stat = changed(info, styles);
-    let stat_w: usize = stat.iter().map(|s| width(&s.content)).sum();
     let marker_w = if child { 2 } else { 0 };
-    let title_room = if stat_w > 0 {
-        room.saturating_sub(stat_w + 1)
-    } else {
-        room
-    }
-    .saturating_sub(marker_w);
-    let title = truncate(&session_title(info), title_room);
     // Sessions idle for over a day fade, so the ones in use stand out.
     let stale = mark == Mark::None
         && info.state != SessionState::Running
         && look.now_ms - info.last_activity > STALE_MS;
+
+    let age = age(info.last_activity, look.now_ms);
+    let age_w = width(&age);
+    let left = room.saturating_sub(marker_w);
+    let (title_room, age) = if age_w + 2 <= left {
+        (left - age_w - 1, Some(age))
+    } else {
+        (left, None)
+    };
+    let title = truncate(&session_title(info), title_room);
     let title_style = match mark {
         Mark::Current => styles.accent.add_modifier(Modifier::BOLD),
         Mark::Finished => Style::new().add_modifier(Modifier::BOLD),
         Mark::None if stale => styles.muted,
         Mark::None => Style::new(),
     };
-    let pad = room.saturating_sub(width(&title) + stat_w + marker_w);
     let mut first = lead(state);
     if child {
         first.push(Span::styled("↳ ", styles.muted));
     }
+    let title_w = width(&title);
     first.push(Span::styled(title, title_style));
-    if stat_w > 0 {
-        first.push(Span::raw(" ".repeat(pad)));
-        first.extend(stat);
+    if let Some(age) = age {
+        first.push(Span::raw(" ".repeat(left - title_w - age_w)));
+        first.push(Span::styled(age, styles.muted));
+    }
+    if !tall(info) {
+        return vec![Line::from(first)];
     }
 
     let mut second = lead(Span::raw(" "));
     if child {
         second.push(Span::raw("  "));
     }
-    let mut left = room.saturating_sub(marker_w);
+    let mut left = left;
     if info.queued > 0 {
         let queued = format!("{} queued", info.queued);
         if width(&queued) + 1 < left {
@@ -685,26 +741,26 @@ fn row(
             second.push(Span::styled(" · ", styles.muted));
         }
     }
-    let age = age(info.last_activity, look.now_ms);
-    let age_w = width(&age);
+    let stat = changed(info, styles);
+    let stat_w: usize = stat.iter().map(|s| width(&s.content)).sum();
     let preview = info.preview.as_deref().unwrap_or("");
     let preview = preview.split_whitespace().collect::<Vec<_>>().join(" ");
-    if age_w + 2 <= left {
-        let preview = truncate(&preview, left - age_w - 1);
-        let pad = left - width(&preview) - age_w;
+    if stat_w > 0 && stat_w + 2 <= left {
+        let preview = truncate(&preview, left - stat_w - 1);
+        let pad = left - width(&preview) - stat_w;
         second.push(Span::styled(preview, styles.muted));
         second.push(Span::raw(" ".repeat(pad)));
-        second.push(Span::styled(age, styles.muted));
+        second.extend(stat);
     } else {
         second.push(Span::styled(truncate(&preview, left), styles.muted));
     }
-    // A stale title is muted (above); its preview fades further, so the title stays readable.
+    // A stale title is muted (above); its second row fades further, so the title stays readable.
     if stale {
         for span in &mut second {
             span.style = span.style.add_modifier(Modifier::DIM);
         }
     }
-    [Line::from(first), Line::from(second)]
+    vec![Line::from(first), Line::from(second)]
 }
 
 /// How long ago, short: now, 5m, 3h, 2d.
@@ -823,23 +879,23 @@ mod tests {
         assert_eq!(
             got,
             [
-                "Sessions · 3",
+                " Sessions · 3",
                 " w ──────────────────────────",
-                " ◐ Fix the login form  +12 −3",
-                "   2 queued · Looking at… now",
+                " ◐ Fix the login form     now",
+                "   2 queued · Looking… +12 −3",
                 "",
-                "▎  session b               +7",
-                "▎  Done. I changed the f… now",
+                "▎  New Session            now",
+                "▎  Done. I changed the fo… +7",
                 "",
-                "   Docs                   −40",
-                "                          now",
+                "   Docs                   now",
+                "                          −40",
                 "",
             ]
         );
         // Green and red for the changed lines, the spinner in the accent color.
         let st = styles();
-        let spans = &lines[2].spans;
-        assert_eq!(spans[1].style, st.accent);
+        assert_eq!(lines[2].spans[1].style, st.accent);
+        let spans = &lines[3].spans;
         assert_eq!(
             spans.iter().find(|s| s.content == "+12").unwrap().style,
             st.success
@@ -900,9 +956,12 @@ mod tests {
                 .iter()
                 .map(|l| l.trim().trim_start_matches('▎').trim().to_string())
                 .filter(|l| !l.is_empty() && !l.starts_with("Sessions") && !l.ends_with('─'))
-                // The second rows: only an age.
-                .filter(|l| {
-                    l != "now" && !l.trim_end_matches('d').chars().all(|c| c.is_ascii_digit())
+                // Without the age.
+                .map(|l| {
+                    l.trim_end_matches(|c: char| c.is_ascii_digit() || c == 'd')
+                        .trim_end_matches("now")
+                        .trim_end()
+                        .to_string()
                 })
                 .collect::<Vec<_>>()
         };
@@ -947,7 +1006,7 @@ mod tests {
         s.upsert(a);
         assert!(s.is_finished("a"));
         let lines = s.render(29, 9, &look("b", false), &styles());
-        assert_eq!(lines[0].to_string(), "Sessions · 2 · 1 done");
+        assert_eq!(lines[0].to_string(), " Sessions · 2 · 1 done");
         assert_eq!(lines[2].spans[1].content, "●");
         assert_eq!(lines[2].spans[1].style, styles().success);
         assert!(
@@ -966,7 +1025,7 @@ mod tests {
         b.state = SessionState::Idle;
         s.upsert(b);
         let lines = s.render(29, 9, &look("b", false), &styles());
-        assert_eq!(lines[0].to_string(), "Sessions · 2");
+        assert_eq!(lines[0].to_string(), " Sessions · 2");
     }
 
     #[test]
@@ -1008,7 +1067,10 @@ mod tests {
         let mut s = Sessions::default();
         s.set_all(
             (0..10)
-                .map(|i| info(&format!("s{i}"), &format!("title {i}"), 100 - i))
+                .map(|i| SessionInfo {
+                    preview: Some("said".into()),
+                    ..info(&format!("s{i}"), &format!("title {i}"), 100 - i)
+                })
                 .collect(),
         );
         // Room for 3 sessions: header, the group's name and 9 rows.
@@ -1016,7 +1078,10 @@ mod tests {
             text(&s.render(29, 11, &look(current, focused), &styles()))
                 .iter()
                 .filter(|l| l.contains("title"))
-                .map(|l| l.trim().trim_start_matches('▎').trim().to_string())
+                .map(|l| {
+                    let l = l.trim().trim_start_matches('▎').trim();
+                    l.trim_end_matches("now").trim().to_string()
+                })
                 .collect::<Vec<_>>()
         };
         assert_eq!(
@@ -1041,7 +1106,9 @@ mod tests {
     #[test]
     fn the_selected_row_is_reversed_only_while_focused() {
         let mut s = Sessions::default();
-        s.set_all(vec![info("a", "one", 30), info("b", "two", 20)]);
+        let mut b = info("b", "two", 20);
+        b.preview = Some("said".into());
+        s.set_all(vec![info("a", "one", 30), b]);
         s.focus("b");
         let reversed = |lines: &[Line<'_>]| {
             lines
@@ -1111,28 +1178,23 @@ mod tests {
         assert_eq!(
             got,
             [
-                "Sessions · 6",
+                " Sessions · 6",
                 " site ───────────────────────",
-                "   Docs",
-                "                          now",
+                "   Docs                   now",
                 "",
-                "▎  Plan the release",
-                "▎                         now",
+                "▎  Plan the release       now",
                 "",
-                "   ⎇ fix-login",
-                " ◐ Fix the login",
-                "   Editing the form       now",
+                "   worktree fix-login",
+                " ◐ Fix the login          now",
+                "   Editing the form",
                 "",
-                "   ↳ Write tests",
-                "                          now",
+                "   ↳ Write tests          now",
                 "",
-                "   ⎇ dark",
-                "   Dark mode",
-                "                          now",
+                "   worktree dark",
+                "   Dark mode              now",
                 "",
                 " notes ──────────────────────",
-                "   Scratch",
-                "                          now",
+                "   Scratch                now",
                 "",
             ]
         );
@@ -1218,14 +1280,12 @@ mod tests {
         assert_eq!(
             got,
             [
-                "Sessions · 2",
+                " Sessions · 2",
                 " site ───────────────────────",
-                "▎  Main chat",
-                "▎                         now",
+                "▎  Main chat              now",
                 "",
-                "   ⎇ ci",
-                "   ↳ Run the build",
-                "                          now",
+                "   worktree ci",
+                "   ↳ Run the build        now",
                 "",
             ]
         );
@@ -1235,23 +1295,22 @@ mod tests {
     fn the_list_scrolls_to_show_the_selected_sessions_group_header() {
         let mut s = grouped();
         s.focus("e");
-        // 5 lines: a group header and one session at a time fit with the cluster before.
-        let got = text(&s.render(29, 5, &look("a", true), &styles()));
+        // 4 lines: a group header and one session at a time fit with the cluster before.
+        let got = text(&s.render(29, 4, &look("a", true), &styles()));
         let got: Vec<_> = got.iter().map(|l| l.trim_end().to_string()).collect();
         assert_eq!(
             got,
             [
-                "Sessions · 6",
-                "   ⎇ dark",
-                "   Dark mode",
-                "                          now",
+                " Sessions · 6",
+                "   worktree dark",
+                "   Dark mode              now",
                 ""
             ]
         );
         s.focus("f");
-        let got = text(&s.render(29, 5, &look("a", true), &styles()));
+        let got = text(&s.render(29, 4, &look("a", true), &styles()));
         assert_eq!(got[1].trim_end(), " notes ──────────────────────");
-        assert_eq!(got[2].trim_end(), "   Scratch");
+        assert_eq!(got[2].trim_end(), "   Scratch                now");
     }
 
     #[test]

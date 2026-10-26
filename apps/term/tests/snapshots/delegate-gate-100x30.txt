@@ -9,6 +9,7 @@ claude: Start a subagent? · answer below
 
 
 
+
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 ▎ claude: Start a subagent?
 ▎   Harness    neo
@@ -25,6 +26,5 @@ claude: Start a subagent? · answer below
 ▎
 ▎   [1 Start neo]  [2 Allow neo for this session]  [3 Reject]
 ▎ enter start neo · ←/→ choose · tab add a note · esc dismiss
-~/site · neo
-
+site · neo
 ? ask before acting (shift+tab to cycle)

@@ -221,7 +221,17 @@ impl Widgets {
     /// Whether the side column is worth showing at this terminal width (there is a plan or
     /// changed files, and it fits).
     pub fn wants_sidebar(&self, width: u16) -> bool {
-        width >= SIDEBAR_MIN_WIDTH && (self.plan.has_any() || self.files.has_any())
+        width >= SIDEBAR_MIN_WIDTH && (self.plan.has_any() || self.files.worth_showing())
+    }
+
+    /// Columns the side column wants (border and margins included): `max` with a plan, whose
+    /// text wraps; else as wide as the widest file row, at least `min`.
+    pub fn sidebar_width(&self, min: u16, max: u16) -> u16 {
+        if self.plan.has_any() {
+            return max;
+        }
+        let rows = self.files.natural_width(&self.palette);
+        u16::try_from(rows + 3).unwrap_or(max).clamp(min, max)
     }
 
     /// Draws the side column (plan above files) into `area`; `focus` highlights a panel.
@@ -241,7 +251,7 @@ impl Widgets {
         let w = area.width - 3;
         let height = area.height as usize;
         let has_plan = self.plan.has_any();
-        let has_files = self.files.has_any();
+        let has_files = self.files.worth_showing();
         let plan_need = 1 + self.plan.natural_height(w as usize, p);
         let files_need = 1 + self.files.natural_height();
         let (plan_h, files_h) = match (has_plan, has_files) {

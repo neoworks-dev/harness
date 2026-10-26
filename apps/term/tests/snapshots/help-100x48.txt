@@ -41,8 +41,8 @@ commands
   /sessions                           switch to another session
   /sidebar                            show or hide the sessions sidebar (ctrl-g focuses it)
   /expand                             toggle full tool results (ctrl-o)
+  /thoughts                           show or hide the agent's thoughts (ctrl-t)
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 > message the agent · / for commands
-~/site · neo
-
+site · neo
 ? ask before acting (shift+tab to cycle)

@@ -209,6 +209,8 @@ export class SessionView {
   /** The line of app news that is last in the chat, and what it says per app. */
   private appNews: { ref: string; parts: Map<string, string> } | undefined;
   private seq = 0;
+  /** A prompt was sent: settings changed from here on show in the chat. */
+  private prompted = false;
   /** Inside `replay`, and the streams whose text has grown since they were parsed. */
   private replaying = false;
   private readonly unparsed = new Set<string>();
@@ -296,6 +298,7 @@ export class SessionView {
       case "agent_message":
         return [this.messageOp(event, seq)];
       case "user_message": {
+        this.prompted = true;
         // The turn that messages from other agents start: their rows are what the chat shows.
         if (event.app === MESSAGES_APP) return [];
         const children = userParts(event.shown ?? event.text, event.images ?? []);
@@ -342,6 +345,8 @@ export class SessionView {
       case "setting_changed":
         // The approvals mode shows in the panes' status, not in the chat.
         if (event.option === "approvals") return [];
+        // Before the first prompt a setting is how the session starts, which the status says.
+        if (!this.prompted) return [];
         if (event.option === "title_model") {
           return [this.notice(`n${seq}`, `title model: ${event.value}`)];
         }
