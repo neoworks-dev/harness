@@ -166,6 +166,8 @@ pub(crate) struct DiffView {
     message: Option<String>,
     /// `e` asked for the file in the editor, at this line.
     edit: Option<(PathBuf, Option<usize>)>,
+    /// Long lines wrap at the edge (`w` switches to cutting them and scrolling sideways).
+    wrap: bool,
 }
 
 impl DiffView {
@@ -229,6 +231,7 @@ impl DiffView {
             pattern: None,
             message: None,
             edit: None,
+            wrap: true,
         }
     }
 
@@ -349,13 +352,30 @@ impl DiffView {
         }
     }
 
+    /// The last top row: the one from which the rest just fills the screen (wrapped rows
+    /// counted as the lines they take).
     fn max_scroll(&self) -> usize {
         let v = self.view.get();
-        self.len(v.split).saturating_sub(v.rows.max(1))
+        let len = self.len(v.split);
+        if !self.wrap {
+            return len.saturating_sub(v.rows.max(1));
+        }
+        let (mut top, mut used) = (len, 0);
+        while top > 0 {
+            used += self.height(top - 1, v.split);
+            if used > v.rows.max(1) {
+                break;
+            }
+            top -= 1;
+        }
+        top.min(len.saturating_sub(1))
     }
 
     fn max_hscroll(&self) -> usize {
         let v = self.view.get();
+        if self.wrap {
+            return 0;
+        }
         let widest = if v.split {
             self.aligned.max_w
         } else {
@@ -486,6 +506,10 @@ impl DiffView {
             (KeyCode::Char('$'), false) => self.hscroll = self.max_hscroll(),
             (KeyCode::Char('/'), false) => self.typing = Some(String::new()),
             (KeyCode::Char('s'), false) => self.force = Some(!v.split),
+            (KeyCode::Char('w'), false) => {
+                self.wrap = !self.wrap;
+                self.hscroll = 0;
+            }
             (KeyCode::Char('f'), false) => self.toggle_full(),
             (KeyCode::Char('e'), false) => match &self.req {
                 Some(req) => self.edit = Some((self.cwd.join(&req.rel), self.top_new_line())),
@@ -653,10 +677,9 @@ impl DiffView {
         }
         self.view.set(View { rows, col_w, split });
         let n = self.len(split);
-        let first = self.scroll.get().min(n.saturating_sub(rows.max(1)));
+        let first = self.scroll.get().min(self.max_scroll());
         let hscroll = self.hscroll.min(self.max_hscroll());
 
-        let shown = n.saturating_sub(first).min(rows);
         // Highlighted: what is on screen, and a screen above and below it for scrolling.
         let lazy = if split {
             &self.lit_split
@@ -666,14 +689,15 @@ impl DiffView {
         if let Some(lazy) = lazy {
             lazy.want(first.saturating_sub(rows), first + 2 * rows.max(1));
         }
-        let title = self.title_line(w, first, shown, n, &look);
-        let mut lines = vec![title];
-        if let Some(g) = geom {
-            lines.push(self.column_header(&g, &look));
-            lines.extend(self.split_lines(&g, first, rows, hscroll, &look));
-        } else {
-            lines.extend(self.unified_lines(w, first, rows, hscroll, &look));
+        let (body, shown) = match &geom {
+            Some(g) => self.split_lines(g, first, rows, hscroll, &look),
+            None => self.unified_lines(w, first, rows, hscroll, &look),
+        };
+        let mut lines = vec![self.title_line(w, first, shown, n, &look)];
+        if let Some(g) = &geom {
+            lines.push(self.column_header(g, &look));
         }
+        lines.extend(body);
         lines.truncate(area.height as usize);
         frame.render_widget(Paragraph::new(lines), area);
     }
@@ -765,7 +789,8 @@ impl DiffView {
         ])
     }
 
-    /// `rows` lines of the split view from row `first`, each exactly as wide as the overlay.
+    /// `rows` screen lines of the split view from row `first`, each exactly as wide as the
+    /// overlay, and how many rows they show (a wrapped row takes several lines).
     fn split_lines(
         &self,
         g: &Geom,
@@ -773,20 +798,27 @@ impl DiffView {
         rows: usize,
         hscroll: usize,
         look: &Look,
-    ) -> Vec<Line<'static>> {
+    ) -> (Vec<Line<'static>>, usize) {
         let total = g.left + 1 + g.right;
         let mut out = Vec::with_capacity(rows);
-        for (index, row) in self.aligned.rows.iter().enumerate().skip(first).take(rows) {
-            let spans = match row {
+        let mut shown = 0;
+        for (index, row) in self.aligned.rows.iter().enumerate().skip(first) {
+            if out.len() >= rows {
+                break;
+            }
+            shown += 1;
+            match row {
                 Row::Hunk(text) => {
                     let style = with_bg(look.muted, look.band);
                     let text = format!("⋯ {text}");
                     let chars = text.chars().map(|c| (c, 0));
-                    windowed(chars, width(&text), 0, total, &[style; 3], true)
+                    let spans = windowed(chars, width(&text), 0, total, &[style; 3], true);
+                    out.push(Line::from(spans));
                 }
                 Row::Note(text) => {
                     let chars = text.chars().map(|c| (c, 0));
-                    windowed(chars, width(text), 0, total, &[look.muted; 3], true)
+                    let spans = windowed(chars, width(text), 0, total, &[look.muted; 3], true);
+                    out.push(Line::from(spans));
                 }
                 Row::Line {
                     left,
@@ -802,23 +834,27 @@ impl DiffView {
                     } else {
                         (Tone::Ctx, Tone::Ctx)
                     };
-                    let mut spans =
-                        side_spans(left.as_ref(), lc, lt, g.gutter, g.left, hscroll, look);
-                    spans.push(Span::styled("│", look.border));
-                    spans.extend(side_spans(
-                        right.as_ref(),
-                        rc,
-                        rt,
-                        g.gutter,
-                        g.right,
-                        hscroll,
-                        look,
-                    ));
-                    spans
+                    let (gut, wrap) = (g.gutter, self.wrap);
+                    let l = side_rows(left.as_ref(), lc, lt, gut, g.left, hscroll, wrap, look);
+                    let r = side_rows(right.as_ref(), rc, rt, gut, g.right, hscroll, wrap, look);
+                    // The shorter side goes on blank, in its tint, as long as the other wraps.
+                    for i in 0..l.len().max(r.len()) {
+                        let mut spans = l
+                            .get(i)
+                            .cloned()
+                            .unwrap_or_else(|| side_filler(left.is_some(), lt, g.left, look));
+                        spans.push(Span::styled("│", look.border));
+                        spans.extend(
+                            r.get(i)
+                                .cloned()
+                                .unwrap_or_else(|| side_filler(right.is_some(), rt, g.right, look)),
+                        );
+                        out.push(Line::from(spans));
+                    }
                 }
-            };
-            out.push(Line::from(spans));
+            }
         }
+        out.truncate(rows);
         // Below the last row the columns go on.
         while out.len() < rows {
             out.push(Line::from(vec![
@@ -827,7 +863,7 @@ impl DiffView {
                 Span::raw(" ".repeat(g.right)),
             ]));
         }
-        out
+        (out, shown)
     }
 
     /// Cells the line numbers of the unified view take, with the space after them; none when
@@ -841,7 +877,8 @@ impl DiffView {
         }
     }
 
-    /// `rows` lines of the unified view from line `first`.
+    /// `rows` screen lines of the unified view from line `first`, and how many lines they show
+    /// (a wrapped line takes several rows).
     fn unified_lines(
         &self,
         w: usize,
@@ -849,73 +886,117 @@ impl DiffView {
         rows: usize,
         hscroll: usize,
         look: &Look,
+    ) -> (Vec<Line<'static>>, usize) {
+        let mut out = Vec::with_capacity(rows);
+        let mut shown = 0;
+        for (index, l) in self.lines.iter().enumerate().skip(first) {
+            if out.len() >= rows {
+                break;
+            }
+            shown += 1;
+            out.extend(self.unified_rows(index, l, w, hscroll, look));
+        }
+        out.truncate(rows);
+        (out, shown)
+    }
+
+    /// The screen rows of unified line `index`: one, or more when it wraps.
+    fn unified_rows(
+        &self,
+        index: usize,
+        l: &DiffLine,
+        w: usize,
+        hscroll: usize,
+        look: &Look,
     ) -> Vec<Line<'static>> {
-        self.lines
-            .iter()
+        let style = match l.kind {
+            Kind::Add => Style::new().fg(look.success),
+            Kind::Del => Style::new().fg(look.danger),
+            Kind::Hunk | Kind::Header | Kind::Note => look.muted,
+            Kind::Context => Style::new(),
+        };
+        // The +/-/space stays put when scrolling sideways.
+        let (mark, body) = match l.kind {
+            Kind::Add | Kind::Del | Kind::Context => l
+                .text
+                .split_at(l.text.chars().next().map_or(0, char::len_utf8)),
+            _ => ("", l.text.as_str()),
+        };
+        let gutter = self.uni_gutter(w);
+        let avail = w.saturating_sub(width(mark) + gutter);
+        // A removed line is the old version's; the rest the new one's.
+        let classes = match self.lit_uni.as_ref().and_then(|l| l.get(index)) {
+            Some((old, _)) if l.kind == Kind::Del => old.as_slice(),
+            Some((_, new)) => new.as_slice(),
+            None => &[][..],
+        };
+        // Highlighted code keeps the change's color as a background tint.
+        let tone = match l.kind {
+            Kind::Add => Tone::Add,
+            Kind::Del => Tone::Del,
+            _ => Tone::Ctx,
+        };
+        let lit = !classes.is_empty() && look.syntax.is_some();
+        let base = if lit {
+            with_bg(Style::new(), look.bg(tone))
+        } else {
+            style
+        };
+        let mut styles = vec![base, base, base];
+        let chars: Vec<(char, usize)> = body
+            .chars()
             .enumerate()
-            .skip(first)
-            .take(rows)
-            .map(|(index, l)| {
-                let style = match l.kind {
-                    Kind::Add => Style::new().fg(look.success),
-                    Kind::Del => Style::new().fg(look.danger),
-                    Kind::Hunk | Kind::Header | Kind::Note => look.muted,
-                    Kind::Context => Style::new(),
-                };
-                // The +/-/space stays put when scrolling sideways.
-                let (mark, body) = match l.kind {
-                    Kind::Add | Kind::Del | Kind::Context => l
-                        .text
-                        .split_at(l.text.chars().next().map_or(0, char::len_utf8)),
-                    _ => ("", l.text.as_str()),
-                };
-                let gutter = self.uni_gutter(w);
+            .map(|(i, c)| match look.code(classes.get(i).copied()) {
+                Some(code) => (c, style_id(&mut styles, base.patch(code))),
+                None => (c, 0),
+            })
+            .collect();
+        let pad = lit && tone != Tone::Ctx;
+        let text = fitted(chars, width(body), hscroll, avail, &styles, pad, self.wrap);
+        text.into_iter()
+            .enumerate()
+            .map(|(i, text)| {
+                // The number and the sign on the first row; under them the line goes on.
                 let mut spans = Vec::new();
-                if gutter > 0 {
-                    let no = self.numbers.get(index).copied().flatten();
-                    let no = no.map_or_else(String::new, |n| n.to_string());
-                    spans.push(Span::styled(format!("{no:>0$} ", gutter - 1), look.muted));
-                }
-                spans.push(Span::styled(mark.to_string(), style));
-                let avail = w.saturating_sub(width(mark) + gutter);
-                // A removed line is the old version's; the rest the new one's.
-                let classes = match self.lit_uni.as_ref().and_then(|l| l.get(index)) {
-                    Some((old, _)) if l.kind == Kind::Del => old.as_slice(),
-                    Some((_, new)) => new.as_slice(),
-                    None => &[][..],
-                };
-                // Highlighted code keeps the change's color as a background tint.
-                let tone = match l.kind {
-                    Kind::Add => Tone::Add,
-                    Kind::Del => Tone::Del,
-                    _ => Tone::Ctx,
-                };
-                let lit = !classes.is_empty() && look.syntax.is_some();
-                let base = if lit {
-                    with_bg(Style::new(), look.bg(tone))
+                if i == 0 {
+                    if gutter > 0 {
+                        let no = self.numbers.get(index).copied().flatten();
+                        let no = no.map_or_else(String::new, |n| n.to_string());
+                        spans.push(Span::styled(format!("{no:>0$} ", gutter - 1), look.muted));
+                    }
+                    spans.push(Span::styled(mark.to_string(), style));
                 } else {
-                    style
-                };
-                let mut styles = vec![base, base, base];
-                let chars: Vec<(char, usize)> = body
-                    .chars()
-                    .enumerate()
-                    .map(|(i, c)| match look.code(classes.get(i).copied()) {
-                        Some(code) => (c, style_id(&mut styles, base.patch(code))),
-                        None => (c, 0),
-                    })
-                    .collect();
-                spans.extend(windowed(
-                    chars.into_iter(),
-                    width(body),
-                    hscroll,
-                    avail,
-                    &styles,
-                    lit && tone != Tone::Ctx,
-                ));
+                    spans.push(Span::styled(" ".repeat(gutter + width(mark)), base));
+                }
+                spans.extend(text);
                 Line::from(spans)
             })
             .collect()
+    }
+
+    /// Screen rows row `i` of the shown mode takes: one, or more when it wraps.
+    fn height(&self, i: usize, split: bool) -> usize {
+        let v = self.view.get();
+        if !self.wrap {
+            return 1;
+        }
+        if split {
+            return match self.aligned.rows.get(i) {
+                Some(Row::Line { left, right, .. }) => {
+                    let side = |s: &Option<Side>| {
+                        s.as_ref().map_or(1, |s| {
+                            let eol = if s.no_eol { width(NO_EOL) } else { 0 };
+                            wrapped_rows(width(&s.text) + eol, v.col_w)
+                        })
+                    };
+                    side(left).max(side(right))
+                }
+                _ => 1,
+            };
+        }
+        self.lines.get(i).map_or(1, |l| {
+            wrapped_rows(width(&l.text).saturating_sub(1), v.col_w)
+        })
     }
 }
 
@@ -1092,22 +1173,67 @@ fn fit(s: &str, n: usize) -> String {
     out
 }
 
-/// One column of a split row, exactly `col` cells: the line number, a sign, the text from cell
-/// `skip` on (or a blank filler when this side has no line).
-fn side_spans(
+/// Cells a text takes as rows of `avail` cells when wrapped (at least one).
+fn wrapped_rows(cells: usize, avail: usize) -> usize {
+    cells.div_ceil(avail.max(1)).max(1)
+}
+
+/// A line of `(char, style index)` as screen rows of exactly `avail` cells when `pad`: wrapped
+/// at the edge when `wrap` (a wide character that doesn't fit goes to the next row), else one
+/// row from cell `skip` on, cut with a `…`.
+fn fitted(
+    chars: Vec<(char, usize)>,
+    total: usize,
+    skip: usize,
+    avail: usize,
+    styles: &[Style],
+    pad: bool,
+    wrap: bool,
+) -> Vec<Vec<Span<'static>>> {
+    if !wrap || avail == 0 {
+        return vec![windowed(chars.into_iter(), total, skip, avail, styles, pad)];
+    }
+    let mut rows: Vec<Vec<(char, usize)>> = vec![Vec::new()];
+    let mut used = 0;
+    for (c, id) in chars {
+        let w = c.width().unwrap_or(0);
+        if used + w > avail && used > 0 {
+            rows.push(Vec::new());
+            used = 0;
+        }
+        rows.last_mut().expect("never empty").push((c, id));
+        used += w;
+    }
+    rows.into_iter()
+        .map(|row| {
+            let w = row.iter().map(|(c, _)| c.width().unwrap_or(0)).sum();
+            windowed(row.into_iter(), w, 0, avail, styles, pad)
+        })
+        .collect()
+}
+
+/// A column of a split row where its side has no more to show, `col` cells: the row's tint, or
+/// the band when the side has no line at all.
+fn side_filler(present: bool, tone: Tone, col: usize, look: &Look) -> Vec<Span<'static>> {
+    let bg = if present { look.bg(tone) } else { look.band };
+    vec![Span::styled(" ".repeat(col), with_bg(Style::new(), bg))]
+}
+
+/// One column of a split row, each screen row exactly `col` cells: the line number, a sign, the
+/// text (wrapped, or from cell `skip` on); a blank filler when this side has no line.
+#[allow(clippy::too_many_arguments)]
+fn side_rows(
     side: Option<&Side>,
     classes: &[Class],
     tone: Tone,
     gutter: usize,
     col: usize,
     skip: usize,
+    wrap: bool,
     look: &Look,
-) -> Vec<Span<'static>> {
+) -> Vec<Vec<Span<'static>>> {
     let Some(side) = side else {
-        return vec![Span::styled(
-            " ".repeat(col),
-            with_bg(Style::new(), look.band),
-        )];
+        return vec![side_filler(false, tone, col, look)];
     };
     let base = look.base(tone);
     let bg = with_bg(Style::new(), look.bg(tone));
@@ -1116,11 +1242,6 @@ fn side_spans(
         Tone::Del => "-",
         Tone::Add => "+",
     };
-    let mut spans = vec![
-        Span::styled(format!("{:>gutter$} ", side.no), bg.patch(look.muted)),
-        Span::styled(sign, base),
-        Span::styled(" ", bg),
-    ];
     let avail = col.saturating_sub(gutter + 3);
     let hl = side.hl.filter(|_| tone != Tone::Ctx);
     // Highlighted code keeps the change's color as a background tint.
@@ -1147,15 +1268,25 @@ fn side_spans(
         .into_iter()
         .flat_map(str::chars);
     let total = width(&side.text) + if side.no_eol { width(NO_EOL) } else { 0 };
-    spans.extend(windowed(
-        chars.into_iter().chain(eol.map(|c| (c, 2))),
-        total,
-        skip,
-        avail,
-        &styles,
-        true,
-    ));
-    spans
+    let chars = chars.into_iter().chain(eol.map(|c| (c, 2))).collect();
+    fitted(chars, total, skip, avail, &styles, true, wrap)
+        .into_iter()
+        .enumerate()
+        .map(|(i, text)| {
+            // The number and the sign on the first row; under them the text goes on.
+            let mut spans = if i == 0 {
+                vec![
+                    Span::styled(format!("{:>gutter$} ", side.no), bg.patch(look.muted)),
+                    Span::styled(sign, base),
+                    Span::styled(" ", bg),
+                ]
+            } else {
+                vec![Span::styled(" ".repeat(gutter + 3), bg)]
+            };
+            spans.extend(text);
+            spans
+        })
+        .collect()
 }
 
 /// The index of `style` in `styles`, added when it isn't there yet.
@@ -1872,8 +2003,50 @@ index 1111111..2222222 100644
     }
 
     #[test]
+    fn long_lines_wrap_under_their_number_and_w_cuts_them_instead() {
+        let line = "0123456789abcdefghijklmnopqrstuvwxyz";
+        let mut v = DiffView::from_text("f", &format!("@@ -1,2 +1,2 @@\n+{line}\n ok\n"));
+        let mut t = Terminal::new(TestBackend::new(20, 6)).unwrap();
+        let out = draw_to(&v, &mut t);
+        let rows: Vec<&str> = out.lines().collect();
+        // The gutter is 4 cells, the sign 1: 15 cells of text a row.
+        assert_eq!(rows[2], "  1 +0123456789abcde");
+        assert_eq!(rows[3], "     fghijklmnopqrst");
+        assert_eq!(rows[4], "     uvwxyz");
+        assert_eq!(rows[5], "  2  ok");
+        // The title counts lines of the diff, not rows of the screen.
+        assert!(rows[0].ends_with("1–3/3"), "{}", rows[0]);
+        // Nothing to scroll sideways while wrapping; `w` cuts again.
+        ch(&mut v, 'l');
+        assert_eq!(v.hscroll, 0);
+        ch(&mut v, 'w');
+        let cut = draw_to(&v, &mut t);
+        assert_eq!(cut.lines().nth(2).unwrap(), "  1 +0123456789abcd…");
+    }
+
+    #[test]
+    fn wrapped_rows_still_let_the_end_fill_the_screen() {
+        let mut text = String::from("@@ -1,20 +1,20 @@\n");
+        for i in 0..20 {
+            text.push_str(&format!(" {i:02} {}\n", "x".repeat(30)));
+        }
+        let mut v = DiffView::from_text("f", &text);
+        let mut t = Terminal::new(TestBackend::new(24, 9)).unwrap();
+        draw_to(&v, &mut t);
+        ch(&mut v, 'G');
+        let out = draw_to(&v, &mut t);
+        // Each line takes two rows: the last four lines fill the 8 rows.
+        assert!(out.lines().nth(1).unwrap().contains(" 16 "), "{out}");
+        assert!(
+            out.lines().last().unwrap().trim_start().starts_with('x'),
+            "{out}"
+        );
+    }
+
+    #[test]
     fn draws_the_unified_view_when_narrow() {
-        let v = DiffView::from_text("src/a.ts", SAMPLE);
+        let mut v = DiffView::from_text("src/a.ts", SAMPLE);
+        v.wrap = false;
         let mut t = Terminal::new(TestBackend::new(24, 8)).unwrap();
         let out = draw_to(&v, &mut t);
         let first = out.lines().next().unwrap();
@@ -1893,6 +2066,7 @@ index 1111111..2222222 100644
     #[test]
     fn unified_view_scrolls_sideways_with_the_mark_in_place() {
         let mut v = DiffView::from_text("f", "@@ -1 +1 @@\n+0123456789abcdef\n");
+        v.wrap = false;
         let mut t = Terminal::new(TestBackend::new(10, 4)).unwrap();
         assert_eq!(draw_to(&v, &mut t).lines().nth(2).unwrap(), "+01234567…");
         ch(&mut v, 'l');
@@ -2340,6 +2514,7 @@ index 1111111..2222222 100644
     #[test]
     fn scrolls_both_sides_sideways() {
         let mut v = DiffView::from_text("src/app.ts", BIG);
+        v.wrap = false;
         let mut t = Terminal::new(TestBackend::new(100, 30)).unwrap();
         let out = draw_to(&v, &mut t);
         let at = |out: &str, needle: &str| out.lines().position(|l| l.contains(needle)).unwrap();
@@ -2424,8 +2599,12 @@ index 1111111..2222222 100644
         let mut v = DiffView::from_text("日本語/パス/名前/とても/長い/ファイル名.rs", &text);
         let p = Palette::default();
         let look = Look::new(&p);
-        for force in [None, Some(true), Some(false)] {
+        for (force, wrap) in [None, Some(true), Some(false)]
+            .into_iter()
+            .flat_map(|f| [(f, true), (f, false)])
+        {
             v.force = force;
+            v.wrap = wrap;
             for w in 1..=140usize {
                 for h in [1u16, 3, 9] {
                     for hscroll in [0, 3, 21] {
@@ -2433,13 +2612,14 @@ index 1111111..2222222 100644
                         // The rows themselves.
                         match v.split_geom(w) {
                             Some(g) => {
-                                let rows = v.split_lines(&g, 0, 12, hscroll, &look);
+                                let (rows, _) = v.split_lines(&g, 0, 12, hscroll, &look);
                                 for l in rows {
                                     assert_eq!(l.width(), w, "split {w} {hscroll}: {l:?}");
                                 }
                             }
                             None => {
-                                for l in v.unified_lines(w, 0, 12, hscroll, &look) {
+                                let (rows, _) = v.unified_lines(w, 0, 12, hscroll, &look);
+                                for l in rows {
                                     assert!(l.width() <= w, "unified {w} {hscroll}: {l:?}");
                                 }
                             }

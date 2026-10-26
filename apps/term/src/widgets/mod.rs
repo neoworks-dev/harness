@@ -35,8 +35,10 @@
 //!   Up/Down/j/k, Ctrl-E/Ctrl-Y a line, Ctrl-D/Ctrl-U half a page, PgUp/PgDn, Space/b and
 //!   Ctrl-F/Ctrl-B a page, g/G the ends; a count first repeats (`5j`) or names a line (`120G`);
 //!   n/p or }/{ the next / previous hunk; `/` searches (smart case, Enter jumps, Esc gives up),
-//!   then n/N the next / previous match; Left/Right/h/l scroll sideways by 8 cells, 0 and $ to
-//!   the edges; s switches split and unified; f reloads with the whole file as context (and
+//!   then n/N the next / previous match; long lines wrap under their line number (each side of
+//!   the split view on its own, the shorter one going on blank in its tint), and w switches to
+//!   cutting them with a `…` instead, when Left/Right/h/l scroll sideways by 8 cells and 0 and $
+//!   go to the edges; s switches split and unified; f reloads with the whole file as context (and
 //!   back); e asks for the file in the editor at the top line ([`Widgets::take_edit`]); Esc or q
 //!   close it. Closing returns `Redraw`, so focus stays on the files panel (to pick the next
 //!   file); a second Esc there returns `Leave`.

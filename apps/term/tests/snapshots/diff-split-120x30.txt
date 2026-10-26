@@ -21,10 +21,10 @@ src/app.ts  +10 −6                                                            
                                                            │ 43 +     copyFile(path, path + ".bak");
                                                            │ 44 +     log("saved");
  41   }                                                    │ 45   }
- 42 - export const long = "a very long line that does not …│ 46 + export const long = "a very long line that does not f…
+ 42 - export const long = "a very long line that does not f│ 46 + export const long = "a very long line that does not fi
+      it into a column of the split view, so it is cut and │      t into a column of the split view, so it is cut and ca
+      can be scrolled sideways";                           │      n be scrolled sideways!";
  43 - last  [no newline at EOF]                            │ 47 + last line  [no newline at EOF]
-                                                           │
-                                                           │
                                                            │
                                                            │
                                                            │
