@@ -763,8 +763,11 @@ impl<'a> Cx<'a> {
             } else {
                 code
             };
-            let colors = syntax::block_colors(&self.p);
-            let spans = syntax::highlight_spans(&code, syntax, &colors, st);
+            let spans = if self.o.plain_code {
+                vec![Span::styled(code.into_owned(), st)]
+            } else {
+                syntax::highlight_spans(&code, syntax, &syntax::block_colors(&self.p), st)
+            };
             return hard_wrap_spans(&spans, inner)
                 .into_iter()
                 .map(|mut line| {
@@ -927,7 +930,9 @@ impl<'a> Cx<'a> {
         let colors = code_colors(&self.p);
         let mut hl = path
             .as_deref()
-            .filter(|_| colors.is_some() && v.lines.len() <= syntax::MAX_LINES)
+            .filter(|_| {
+                !self.o.plain_code && colors.is_some() && v.lines.len() <= syntax::MAX_LINES
+            })
             .and_then(syntax_for)
             .map(|s| (Highlighter::new(s), Highlighter::new(s)));
         for dl in &v.lines {

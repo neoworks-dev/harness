@@ -109,6 +109,8 @@ struct Cached {
     lines: Rc<Vec<Line<'static>>>,
     slots: Rc<Vec<ImageSlot>>,
     focus: Option<usize>,
+    /// Its code has its syntax colors (else it is plain, from the layout).
+    lit: bool,
 }
 
 struct Entry {
@@ -120,6 +122,8 @@ struct Entry {
     /// The line of an OpenUI target that has focus.
     focus: Option<usize>,
     offset: usize,
+    /// Done: its code has its colors, or it has none to get (a folded run, a turn's changes).
+    lit: bool,
 }
 
 /// The inputs of the flat layout; when none changed it is reused.
@@ -415,6 +419,7 @@ impl Chat {
         };
         if self.layout_key.as_ref() == Some(&key) {
             self.apply_reveal();
+            self.light_visible();
             return;
         }
         let was_total = self.total;
@@ -467,6 +472,7 @@ impl Chat {
                     slots: Rc::new(Vec::new()),
                     focus: None,
                     offset,
+                    lit: true,
                 });
                 offset += len;
                 after_tool = false;
@@ -497,6 +503,7 @@ impl Chat {
                         slots: Rc::new(Vec::new()),
                         focus: None,
                         offset,
+                        lit: true,
                     });
                     offset += 1;
                     after_tool = true;
@@ -530,7 +537,7 @@ impl Chat {
                     .contains_key(r)
                     .then(|| opts.ui.get(r).cloned().unwrap_or_default()),
             };
-            let (lines, slots, focus) = match self.cache.get(r) {
+            let (lines, slots, focus, lit) = match self.cache.get(r) {
                 // Ctrl-O (everything in full) keeps the whole card, e.g. a long diff.
                 _ if opts.in_panel
                     && active.is_some()
@@ -541,12 +548,14 @@ impl Chat {
                         Rc::new(vec![panel_stub(item, opts)]),
                         Rc::new(Vec::new()),
                         None,
+                        true,
                     )
                 }
-                Some(c) if c.key == ckey => (c.lines.clone(), c.slots.clone(), c.focus),
+                Some(c) if c.key == ckey => (c.lines.clone(), c.slots.clone(), c.focus, c.lit),
+                // Without syntax colors: they are worked out for what comes into view.
                 _ => {
-                    let (lines, slots, focus) =
-                        render(item, width, &ckey, self.app.as_deref(), self.cwd.as_deref());
+                    let (app, cwd) = (self.app.as_deref(), self.cwd.as_deref());
+                    let (lines, slots, focus) = render(item, width, &ckey, app, cwd, false);
                     let (lines, slots) = (Rc::new(lines), Rc::new(slots));
                     self.cache.insert(
                         r.clone(),
@@ -555,9 +564,10 @@ impl Chat {
                             lines: lines.clone(),
                             slots: slots.clone(),
                             focus,
+                            lit: false,
                         },
                     );
-                    (lines, slots, focus)
+                    (lines, slots, focus, false)
                 }
             };
             if lines.is_empty() {
@@ -582,6 +592,7 @@ impl Chat {
                 slots,
                 focus,
                 offset,
+                lit,
             });
             offset += len;
         }
@@ -606,6 +617,43 @@ impl Chat {
             self.top = Some(top.min(self.max_top()));
         }
         self.apply_reveal();
+        self.light_visible();
+    }
+
+    /// Gives the code of the entries in view (and a screen above and below) its syntax colors.
+    /// The lines stay where they are: colors don't change where a line wraps. Highlighting a
+    /// whole long conversation at once (Ctrl-O) took a noticeable moment.
+    fn light_visible(&mut self) {
+        let (top, height) = (self.top(), self.height.max(1));
+        let (from, to) = (top.saturating_sub(height), top + 2 * height);
+        let first = self
+            .entries
+            .partition_point(|e| e.offset + e.lines.len() <= from);
+        let (app, cwd) = (self.app.as_deref(), self.cwd.as_deref());
+        for e in &mut self.entries[first..] {
+            if e.offset >= to {
+                break;
+            }
+            if e.lit {
+                continue;
+            }
+            e.lit = true;
+            let item = self.state.items.iter().rev().find(|i| i.r#ref == e.r#ref);
+            let (Some(item), Some(c)) = (item, self.cache.get_mut(&e.r#ref)) else {
+                continue;
+            };
+            if c.lit {
+                (e.lines, e.slots, e.focus) = (c.lines.clone(), c.slots.clone(), c.focus);
+                continue;
+            }
+            let (lines, slots, focus) = render(item, c.key.width, &c.key, app, cwd, true);
+            // Should colors ever move a line, the plain lines stay: the layout counted them.
+            if lines.len() != e.lines.len() {
+                continue;
+            }
+            (c.lines, c.slots, c.focus, c.lit) = (Rc::new(lines), Rc::new(slots), focus, true);
+            (e.lines, e.slots, e.focus) = (c.lines.clone(), c.slots.clone(), c.focus);
+        }
     }
 
     pub fn total_lines(&self) -> usize {
@@ -1057,8 +1105,10 @@ fn render(
     key: &CacheKey,
     app: Option<&str>,
     cwd: Option<&str>,
+    lit: bool,
 ) -> (Vec<Line<'static>>, Vec<ImageSlot>, Option<usize>) {
     let opts = Options {
+        plain_code: !lit,
         expanded: key.expanded,
         show_thoughts: key.thoughts,
         focused_button: key.focused,
@@ -1131,6 +1181,7 @@ pub fn panel_lines(
         app: None,
         file_icons: false,
         cwd: None,
+        plain_code: false,
     };
     neo_renderer_ratatui::render_item(item, width.saturating_sub(2).max(1), &opts)
         .into_iter()
@@ -1480,6 +1531,159 @@ mod tests {
         assert_eq!(shown[at + 4], "› again");
     }
 
+    /// A long session: prose with code, commands with output, edits with diffs.
+    fn long_session(turns: usize) -> Vec<ViewItem> {
+        let code: String = (0..40)
+            .map(|i| format!("fn f{i}(x: u32) -> u32 {{ x * {i} }} // note {i}\n"))
+            .collect();
+        let mut items = Vec::new();
+        for t in 0..turns {
+            items.push(item(&format!("u{t}"), "user", "do the next thing"));
+            items.push(
+                serde_json::from_value(json!({
+                    "ref": format!("a{t}"), "kind": "agent",
+                    "component": {"type":"text","blocks":[
+                        {"type":"paragraph","spans":[{"text":"Here is the plan, with some code."}]},
+                        {"type":"code","language":"rust","code": code}]}
+                }))
+                .unwrap(),
+            );
+            items.push(
+                serde_json::from_value(json!({
+                    "ref": format!("c{t}"), "kind": "tool", "label": "bash: cargo test",
+                    "command": "cargo test -p neo-term 2>&1 | tail -40", "state": "done",
+                    "component": {"type":"code","code": code}
+                }))
+                .unwrap(),
+            );
+            let lines: Vec<serde_json::Value> = (0..80)
+                .map(|i| {
+                    json!({"kind": if i % 3 == 0 {"add"} else {"context"},
+                                "text": format!("    let x{i} = \"s\".len() + {i};")})
+                })
+                .collect();
+            items.push(
+                serde_json::from_value(json!({
+                    "ref": format!("e{t}"), "kind": "tool", "label": "edit src/a.rs", "state": "done",
+                    "component": {"type":"diff","path":"src/a.rs","lines": lines}
+                }))
+                .unwrap(),
+            );
+        }
+        items
+    }
+
+    #[test]
+    fn code_gets_its_colors_as_it_comes_into_view() {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(long_session(30)));
+        let mut o = opts();
+        o.palette.fg = ratatui::style::Color::Rgb(220, 220, 220);
+        o.palette.bg = ratatui::style::Color::Rgb(20, 20, 20);
+        o.expanded = true;
+        c.layout(120, 40, &o);
+        // The tail is in view and lit; the top of the conversation isn't yet.
+        let lit = |c: &Chat, r: &str| c.entries.iter().find(|e| e.r#ref == r).unwrap().lit;
+        assert!(lit(&c, "e29"));
+        assert!(!lit(&c, "e0"));
+        let plain_lines = c
+            .entries
+            .iter()
+            .find(|e| e.r#ref == "e0")
+            .unwrap()
+            .lines
+            .len();
+        c.to_top();
+        c.layout(120, 40, &o);
+        assert!(lit(&c, "e0"));
+        assert_eq!(
+            c.entries
+                .iter()
+                .find(|e| e.r#ref == "e0")
+                .unwrap()
+                .lines
+                .len(),
+            plain_lines,
+            "the same lines, colored"
+        );
+        // And colored indeed: some code span has a true color.
+        let colored = c.visible().iter().flat_map(|l| l.spans.iter()).any(|s| {
+            matches!(s.style.fg, Some(ratatui::style::Color::Rgb(..)))
+                && s.style.fg != Some(o.palette.fg)
+        });
+        assert!(colored);
+    }
+
+    #[test]
+    #[ignore = "a timing: cargo test --release -p neo-term ctrl_o_timing -- --ignored --nocapture"]
+    fn ctrl_o_timing() {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(long_session(100)));
+        let mut true_color = opts();
+        true_color.palette.fg = ratatui::style::Color::Rgb(220, 220, 220);
+        true_color.palette.bg = ratatui::style::Color::Rgb(20, 20, 20);
+        let t = std::time::Instant::now();
+        c.layout(120, 40, &true_color);
+        eprintln!("first layout: {:?}", t.elapsed());
+        let expanded = ChatOpts {
+            expanded: true,
+            ..true_color.clone()
+        };
+        let t = std::time::Instant::now();
+        c.layout(120, 40, &expanded);
+        eprintln!("ctrl-o: {:?} ({} lines)", t.elapsed(), c.total_lines());
+        let t = std::time::Instant::now();
+        c.layout(120, 40, &true_color);
+        eprintln!("ctrl-o back: {:?}", t.elapsed());
+        // Each kind of item on its own, expanded.
+        let key = CacheKey {
+            rev: 0,
+            width: 120,
+            expanded: true,
+            thoughts: false,
+            icons: false,
+            focused: None,
+            palette: expanded.palette,
+            marker: Style::new(),
+            images: None,
+            ui: None,
+        };
+        for kind in ["u", "a", "c", "e"] {
+            let t = std::time::Instant::now();
+            for it in long_session(100)
+                .iter()
+                .filter(|i| i.r#ref.starts_with(kind))
+            {
+                render(it, 120, &key, None, None, true);
+            }
+            eprintln!("  {kind}: {:?}", t.elapsed());
+        }
+        let no_path: Vec<ViewItem> = long_session(100)
+            .into_iter()
+            .filter(|i| i.r#ref.starts_with('e'))
+            .map(|mut i| {
+                if let neo_protocol::Component::DiffComponent(d) = &mut i.component {
+                    d.path = None;
+                }
+                i
+            })
+            .collect();
+        let t = std::time::Instant::now();
+        for it in &no_path {
+            render(it, 120, &key, None, None, true);
+        }
+        eprintln!("  e without a grammar: {:?}", t.elapsed());
+        let rust = neo_renderer_ratatui::syntax::syntax_for("a.rs").unwrap();
+        let t = std::time::Instant::now();
+        for _ in 0..100 {
+            let mut h = neo_renderer_ratatui::syntax::Highlighter::new(rust);
+            for i in 0..80 {
+                h.line(&format!("    let x{i} = \"s\".len() + {i};"));
+            }
+        }
+        eprintln!("  syntect alone, 8000 lines: {:?}", t.elapsed());
+    }
+
     #[test]
     fn paths_in_the_session_directory_lose_its_prefix() {
         let mut c = Chat::new().in_dir("/w/site");
@@ -1789,12 +1993,13 @@ mod tests {
         assert_eq!((c.placements()[0].cols, size(&c)), (16, 8));
         // The picture's status changing leaves the text items' lines alone.
         c.layout(60, 30, &opts());
-        let first_again = Rc::as_ptr(&c.entries[0].lines);
-        let pic = Rc::as_ptr(&c.entries[1].lines);
+        // (Held on to, so a new allocation can't take the same address.)
+        let first_again = c.entries[0].lines.clone();
+        let pic = c.entries[1].lines.clone();
         c.set_images(known(&[("/tmp/p.png", ready(400, 200))]));
         c.layout(60, 30, &opts());
-        assert_eq!(Rc::as_ptr(&c.entries[0].lines), first_again);
-        assert_ne!(Rc::as_ptr(&c.entries[1].lines), pic);
+        assert!(Rc::ptr_eq(&c.entries[0].lines, &first_again));
+        assert!(!Rc::ptr_eq(&c.entries[1].lines, &pic));
         assert_eq!((c.placements()[0].cols, size(&c)), (40, 10));
     }
 

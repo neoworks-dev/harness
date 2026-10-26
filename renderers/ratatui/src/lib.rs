@@ -70,6 +70,9 @@ pub struct Options {
     pub file_icons: bool,
     /// The session's directory: paths in it (a diff's, a tool's label) are shown relative to it.
     pub cwd: Option<String>,
+    /// Code blocks and diffs without syntax colors: the same lines, much quicker. An app lays a
+    /// long conversation out with this and highlights only what comes into view.
+    pub plain_code: bool,
 }
 
 /// `path` relative to `cwd` when it is inside it, else as it is.
