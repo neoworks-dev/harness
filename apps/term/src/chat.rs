@@ -151,6 +151,8 @@ pub struct Chat {
     layout_key: Option<LayoutKey>,
     total: usize,
     height: usize,
+    /// Cells across, as laid out last.
+    width: usize,
     /// First visible line while scrolled up; None follows the tail.
     top: Option<usize>,
     /// Output arrived while scrolled up.
@@ -394,6 +396,7 @@ impl Chat {
     /// Lays the items out for `width` x `height`; reuses rendered lines of untouched items.
     pub fn layout(&mut self, width: u16, height: u16, opts: &ChatOpts) {
         self.height = usize::from(height);
+        self.width = usize::from(width);
         let key = LayoutKey {
             width,
             opts: opts.clone(),
@@ -648,7 +651,7 @@ impl Chat {
                 }
                 match now_ms {
                     Some(now) if e.thinking => out.push(thinking_line(line, now, &self.palette)),
-                    _ if picked == Some(at) => out.push(picked_line(line, &self.palette)),
+                    _ if picked == Some(at) => out.push(picked_line(line, self.width)),
                     _ => out.push(line.clone()),
                 }
                 at += 1;
@@ -893,11 +896,15 @@ fn changes_lines(changed: &[Changed], width_cells: usize, opts: &ChatOpts) -> Ve
     out
 }
 
-/// The picked file's line: on the surface color and bold, like the files panel's selection.
-fn picked_line(line: &Line<'static>, p: &Palette) -> Line<'static> {
+/// The picked file's line: reversed and bold across the whole pane, so it can't be missed
+/// whatever the colors (`NO_COLOR` too).
+fn picked_line(line: &Line<'static>, width_cells: usize) -> Line<'static> {
     let mut line = line.clone();
+    let used: usize = line.spans.iter().map(|s| width(&s.content)).sum();
+    line.spans
+        .push(Span::raw(" ".repeat(width_cells.saturating_sub(used))));
     for s in &mut line.spans {
-        s.style = s.style.bg(p.surface).add_modifier(Modifier::BOLD);
+        s.style = s.style.add_modifier(Modifier::REVERSED | Modifier::BOLD);
     }
     line
 }

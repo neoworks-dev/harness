@@ -1344,11 +1344,14 @@ fn waiting_inputs_show_above_the_editor_until_the_turn_takes_them() {
         app.handle_paste(text);
         app.handle_key(key(KeyCode::Enter));
     }
-    let shown = screen(&mut app, 60, 20).join("\n");
-    assert!(shown.contains("› first"), "{shown}");
-    assert!(shown.contains("› second …"), "{shown}");
+    let shown = screen(&mut app, 60, 20);
+    // Not drawn like a sent message: their own marker, and a tag on the first.
+    let first = shown.iter().find(|l| l.contains("◷ first")).expect("first");
+    assert!(first.ends_with("queued · ↑ edits"), "{first}");
+    let shown = shown.join("\n");
+    assert!(shown.contains("◷ second …"), "{shown}");
     assert!(shown.contains("… +2 more queued"), "{shown}");
-    assert!(!shown.contains("› third"), "{shown}");
+    assert!(!shown.contains("◷ third"), "{shown}");
 
     // The running turn took the first in: it is the chat's now.
     app.handle_event(record(
@@ -1363,8 +1366,8 @@ fn waiting_inputs_show_above_the_editor_until_the_turn_takes_them() {
         }),
     ));
     let shown = screen(&mut app, 60, 20).join("\n");
-    assert!(!shown.contains("› first"), "{shown}");
-    assert!(shown.contains("› third"), "{shown}");
+    assert!(!shown.contains("◷ first"), "{shown}");
+    assert!(shown.contains("◷ third"), "{shown}");
     assert!(app.status_lines(100)[1].to_string().contains("3 queued"));
 }
 

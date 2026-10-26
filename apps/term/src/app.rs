@@ -39,7 +39,7 @@ use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction, sidebar_wid
 use crate::status::{Approvals, HarnessSettings, Status, record_setting};
 use crate::style::{Styles, plain_palette};
 use crate::theme::{Prefs, Theme};
-use crate::util::{fit_line, relative_time, shorten_home, truncate, width};
+use crate::util::{fit_line, relative_time, shorten_home, split_line, truncate, width};
 use crate::widgets::{Panel, WidgetAction, Widgets};
 
 /// How long a second Ctrl-C quits.
@@ -2966,8 +2966,9 @@ impl App {
         }
     }
 
-    /// The inputs waiting behind the running turn, one muted row each (their first line), the
-    /// last row counting those that don't fit.
+    /// The inputs waiting behind the running turn, one muted italic `◷` row each (their first
+    /// line; not the `›` of a message that was sent), the first with a `queued` tag at the right
+    /// edge, the last row counting those that don't fit.
     fn draw_waiting(&self, frame: &mut Frame, area: Rect) {
         let rows = usize::from(area.height);
         let w = usize::from(area.width);
@@ -2976,15 +2977,17 @@ impl App {
         } else {
             rows
         };
+        let row = self.styles.muted.add_modifier(Modifier::ITALIC);
         let mut lines: Vec<Line> = self.waiting[..shown]
             .iter()
-            .map(|input| {
+            .enumerate()
+            .map(|(i, input)| {
                 let first = input
                     .text
                     .lines()
                     .find(|l| !l.trim().is_empty())
                     .unwrap_or("");
-                let mut text = format!("› {}", first.trim());
+                let mut text = format!("◷ {}", first.trim());
                 if input.text.trim().lines().nth(1).is_some() {
                     text.push_str(" …");
                 }
@@ -2993,7 +2996,16 @@ impl App {
                     1 => text.push_str("  [image]"),
                     n => text.push_str(&format!("  [{n} images]")),
                 }
-                Line::from(Span::styled(truncate(&text, w), self.styles.muted))
+                let tag = (i == 0).then(|| {
+                    let mut spans = vec![Span::styled("queued", self.styles.accent)];
+                    if self.waiting.iter().any(|w| w.app == self.app_id) {
+                        spans.push(Span::styled(" · ↑ edits", self.styles.muted));
+                    }
+                    Line::from(spans)
+                });
+                let room = w.saturating_sub(tag.as_ref().map_or(0, |t| t.width() + 2));
+                let left = Line::from(Span::styled(truncate(&text, room.max(1)), row));
+                split_line(left, tag, w)
             })
             .collect();
         if shown < self.waiting.len() {
