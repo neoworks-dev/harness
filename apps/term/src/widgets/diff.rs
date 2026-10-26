@@ -155,6 +155,8 @@ pub(crate) struct DiffView {
     force: Option<bool>,
     /// The new-side line to scroll back to when a reload (`f`) arrives.
     anchor: Option<usize>,
+    /// Just loaded whole: the next draw scrolls to the first change.
+    to_change: Cell<bool>,
     view: Cell<View>,
     /// Digits typed before a key, vim's count (`5j`, `120G`).
     count: Option<usize>,
@@ -228,6 +230,7 @@ impl DiffView {
             hscroll: 0,
             force: None,
             anchor: None,
+            to_change: Cell::new(false),
             view: Cell::new(View {
                 rows: 20,
                 col_w: 40,
@@ -265,6 +268,7 @@ impl DiffView {
                 0,
             )
         };
+        let first = !self.loaded;
         let (lines, adds, dels) = match result {
             Ok(text) if text.trim().is_empty() => note("no changes".into()),
             Ok(text) => {
@@ -294,7 +298,25 @@ impl DiffView {
                 .iter()
                 .position(|r| matches!(r, Row::Line { right: Some(s), .. } if s.no >= line));
             self.set_position(at.unwrap_or(0));
+        } else if first && self.full && self.req.is_some() {
+            // A file opened whole starts at its first change (the draw knows the mode).
+            self.to_change.set(true);
         }
+    }
+
+    /// The first changed row in the mode's rows, a few lines above it.
+    fn change_position(&self, split: bool) -> Option<usize> {
+        let at = if split {
+            self.aligned
+                .rows
+                .iter()
+                .position(|r| matches!(r, Row::Line { changed: true, .. }))
+        } else {
+            self.lines
+                .iter()
+                .position(|l| matches!(l.kind, Kind::Add | Kind::Del))
+        };
+        at.map(|at| at.saturating_sub(CONTEXT as usize))
     }
 
     /// Picks up the loaded diff, or its highlighting. True when something arrived.
@@ -676,6 +698,12 @@ impl DiffView {
         let col_w = geom.map_or(w.saturating_sub(1 + self.uni_gutter(w)), |g| {
             g.left - g.gutter - 3
         });
+        if self.to_change.take()
+            && let Some(at) = self.change_position(split)
+        {
+            self.scroll.set(at);
+            self.scroll_split.set(split);
+        }
         // A resize (or `s`) changed the mode: land on the same hunk.
         if self.scroll_split.get() != split {
             let pos = self.convert(self.scroll.get(), self.scroll_split.get());
@@ -2776,6 +2804,21 @@ index 1111111..2222222 100644
             out.lines().nth(2).unwrap().starts_with("⋯ @@ -25,11"),
             "{out}"
         );
+
+        // Opened whole (from the files view), it starts five lines above the change.
+        let req = DiffRequest {
+            rel: "f.txt".into(),
+            orig: None,
+            mark: Mark::Modified,
+            in_repo: true,
+        };
+        let mut v = DiffView::open_file(dir.clone(), req);
+        wait(&mut v);
+        let out = draw_to(&v, &mut t);
+        // Unified: one header row.
+        let first = out.lines().nth(1).unwrap();
+        assert!(first.contains("line 25"), "{out}");
+        assert!(out.contains("THIRTY"), "{out}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
