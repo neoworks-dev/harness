@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use neo_renderer_ratatui::Palette;
+use neo_renderer_ratatui::{Palette, file_icon};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -98,6 +98,8 @@ pub(crate) struct FilesState {
     /// Folders opened by hand that would start folded (more than `FOLD_FILES` in them).
     opened: HashSet<String>,
     selected: usize,
+    /// Rows show the file type icon.
+    pub(crate) icons: bool,
 }
 
 impl FilesState {
@@ -209,7 +211,6 @@ impl FilesState {
         self.rows = rows;
     }
 
-    #[cfg(test)]
     pub(crate) fn entries(&self) -> &[FileEntry] {
         &self.entries
     }
@@ -242,7 +243,7 @@ impl FilesState {
     pub(crate) fn natural_width(&self, palette: &Palette) -> usize {
         self.rows
             .iter()
-            .map(|r| row_width(r, &self.entries, palette))
+            .map(|r| row_width(r, &self.entries, palette, self.icons))
             .max()
             .unwrap_or(0)
     }
@@ -342,7 +343,14 @@ impl FilesState {
         };
         for (i, r) in self.rows.iter().enumerate().skip(offset).take(visible) {
             let selected = focused && i == self.selected;
-            out.push(tree_row(r, &self.entries, width_cells, selected, palette));
+            out.push(tree_row(
+                r,
+                &self.entries,
+                width_cells,
+                selected,
+                palette,
+                self.icons,
+            ));
         }
         if more {
             out.push(Line::from(Span::styled(
@@ -520,11 +528,24 @@ fn file_name(e: &FileEntry) -> String {
     }
 }
 
-/// A row's pieces before fitting: the lead (indent and glyph), the name and its style, the tag
-/// after it and the line counts.
-type Pieces = (Span<'static>, String, Style, String, Option<LineCount>);
+/// A row's pieces before fitting: the lead (indent, glyph and the file type icon), the name and
+/// its style, the tag after it and the line counts.
+type Pieces = (Vec<Span<'static>>, String, Style, String, Option<LineCount>);
 
-fn pieces(r: &TreeRow, entries: &[FileEntry], palette: &Palette) -> Option<Pieces> {
+fn pieces(r: &TreeRow, entries: &[FileEntry], palette: &Palette, icons: bool) -> Option<Pieces> {
+    let (mut lead, text, style, tag, lines) = plain_pieces(r, entries, palette)?;
+    if icons {
+        let path = match &r.kind {
+            RowKind::Dir { path, .. } => path.as_str(),
+            RowKind::File(i) => entries.get(*i).map_or("", |e| e.rel.as_str()),
+        };
+        lead.push(file_icon(path, palette));
+        lead.push(Span::raw(" "));
+    }
+    Some((lead, text, style, tag, lines))
+}
+
+fn plain_pieces(r: &TreeRow, entries: &[FileEntry], palette: &Palette) -> Option<Pieces> {
     let indent = "  ".repeat(r.depth);
     Some(match &r.kind {
         RowKind::Dir {
@@ -543,7 +564,7 @@ fn pieces(r: &TreeRow, entries: &[FileEntry], palette: &Palette) -> Option<Piece
                 String::new()
             };
             let lead = Span::styled(format!("{indent}{arrow}"), Style::new().fg(palette.muted));
-            (lead, name.clone(), Style::new(), tag, lines)
+            (vec![lead], name.clone(), Style::new(), tag, lines)
         }
         RowKind::File(i) => {
             let e = entries.get(*i)?;
@@ -554,21 +575,22 @@ fn pieces(r: &TreeRow, entries: &[FileEntry], palette: &Palette) -> Option<Piece
             } else {
                 format!(" ({})", e.tags.join(", "))
             };
-            (lead, file_name(e), style, tag, e.lines)
+            (vec![lead], file_name(e), style, tag, e.lines)
         }
     })
 }
 
+fn spans_width(spans: &[Span<'_>]) -> usize {
+    spans.iter().map(|s| width(&s.content)).sum()
+}
+
 /// Cells a row takes when nothing is cut.
-fn row_width(r: &TreeRow, entries: &[FileEntry], palette: &Palette) -> usize {
-    let Some((lead, text, _, tag, lines)) = pieces(r, entries, palette) else {
+fn row_width(r: &TreeRow, entries: &[FileEntry], palette: &Palette, icons: bool) -> usize {
+    let Some((lead, text, _, tag, lines)) = pieces(r, entries, palette, icons) else {
         return 0;
     };
-    let counts: usize = line_counts(lines, palette)
-        .iter()
-        .map(|s| width(&s.content))
-        .sum();
-    width(&lead.content) + width(&text) + width(&tag) + if counts > 0 { counts + 1 } else { 0 }
+    let counts = spans_width(&line_counts(lines, palette));
+    spans_width(&lead) + width(&text) + width(&tag) + if counts > 0 { counts + 1 } else { 0 }
 }
 
 fn tree_row(
@@ -577,12 +599,13 @@ fn tree_row(
     w: usize,
     selected: bool,
     palette: &Palette,
+    icons: bool,
 ) -> Line<'static> {
-    let Some((lead, text, style, tag, lines)) = pieces(r, entries, palette) else {
+    let Some((lead, text, style, tag, lines)) = pieces(r, entries, palette, icons) else {
         return Line::default();
     };
     // The counts sit at the right edge, a space away from the name.
-    let lead_w = width(&lead.content);
+    let lead_w = spans_width(&lead);
     let mut counts = line_counts(lines, palette);
     let mut counts_w: usize = counts.iter().map(|s| width(&s.content)).sum();
     if counts_w > 0 && w.saturating_sub(lead_w + counts_w + 1) < MIN_NAME {
@@ -590,7 +613,7 @@ fn tree_row(
         counts_w = 0;
     }
     let avail = w.saturating_sub(lead_w + if counts_w > 0 { counts_w + 1 } else { 0 });
-    let mut spans = vec![lead];
+    let mut spans = lead;
     if width(&text) + width(&tag) <= avail {
         spans.push(Span::styled(text, style));
         if !tag.is_empty() {
@@ -835,6 +858,22 @@ mod tests {
         f.set_status(Some(s));
         let rels: Vec<_> = f.entries().iter().map(|e| e.rel.as_str()).collect();
         assert_eq!(rels, ["x.rs", "../top.md"]);
+    }
+
+    #[test]
+    fn rows_can_carry_file_type_icons() {
+        let p = Palette::default();
+        let mut f = FilesState::default();
+        f.touch("src/a.rs", "agent", false);
+        let plain = text(&f.render(40, 5, false, &p));
+        f.icons = true;
+        let rs = file_icon("a.rs", &p).content.to_string();
+        let dir = file_icon("src/", &p).content.to_string();
+        assert_eq!(
+            text(&f.render(40, 5, false, &p)),
+            [format!("▾ {dir} src/"), format!("  M {rs} a.rs (agent)")]
+        );
+        assert_eq!(plain, ["▾ src/", "  M a.rs (agent)"]);
     }
 
     #[test]

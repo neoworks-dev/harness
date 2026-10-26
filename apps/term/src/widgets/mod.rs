@@ -47,6 +47,8 @@ mod terminal;
 mod text;
 mod usage;
 
+pub(crate) use text::truncate_start;
+
 #[cfg(test)]
 mod testutil;
 
@@ -135,8 +137,15 @@ impl Widgets {
 
     /// Another session (or directory) is shown now: forget everything and start over.
     pub fn reset(&mut self, cwd: PathBuf) {
+        let icons = self.files.icons;
         // A run still going for the old directory finds its channel closed and ends quietly.
         *self = Widgets::build(cwd, self.palette, self.runner.is_some());
+        self.files.icons = icons;
+    }
+
+    /// File type icons in the files panel.
+    pub fn set_icons(&mut self, on: bool) {
+        self.files.icons = on;
     }
 
     pub fn set_palette(&mut self, palette: Palette) {
@@ -391,6 +400,20 @@ impl Widgets {
             };
             self.diff = Some(DiffView::open_file(self.cwd.clone(), req));
         }
+    }
+
+    /// Opens the diff overlay on `path` (as a tool's diff names it), as the files panel would;
+    /// a file the panel doesn't list counts as modified.
+    pub fn open_path(&mut self, path: &str) {
+        let rel = relativize(&self.cwd, path);
+        let entry = self.files.entries().iter().find(|e| e.rel == rel);
+        let req = DiffRequest {
+            orig: entry.and_then(|e| e.orig.clone()),
+            mark: entry.map_or(files::Mark::Modified, |e| e.mark),
+            in_repo: self.files.in_repo(),
+            rel,
+        };
+        self.diff = Some(DiffView::open_file(self.cwd.clone(), req));
     }
 }
 

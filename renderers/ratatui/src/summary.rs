@@ -140,8 +140,18 @@ impl Cx<'_> {
         (lines, total)
     }
 
-    /// `path  +3 −1`
+    /// `path  +3 −1`, with the file's icon before it when icons are on.
     fn diff_line(&self, v: &pb::DiffComponent, w: usize) -> Line<'static> {
+        let icon = v
+            .path
+            .as_deref()
+            .filter(|p| self.o.file_icons && !p.is_empty())
+            .map(|p| crate::file_icon(p, &self.p));
+        let w = if icon.is_some() {
+            w.saturating_sub(2)
+        } else {
+            w
+        };
         let count = |kind| v.lines.iter().filter(|l| l.kind == kind).count();
         let (added, removed) = (
             count(pb::DiffLineKind::Add),
@@ -157,13 +167,18 @@ impl Cx<'_> {
             .unwrap_or_else(|| "diff".to_string());
         let counts_w = width(&adds) + 1 + width(&removes);
         let path = truncate(&path, w.saturating_sub(counts_w + 2).max(1));
-        Line::from(vec![
+        let mut spans = match icon {
+            Some(icon) => vec![icon, Span::raw(" ")],
+            None => Vec::new(),
+        };
+        spans.extend([
             Span::raw(path),
             Span::raw("  "),
             Span::styled(adds, Style::new().fg(self.p.success)),
             Span::raw(" "),
             Span::styled(removes, Style::new().fg(self.p.danger)),
-        ])
+        ]);
+        Line::from(spans)
     }
 
     /// `key: value · key: value`

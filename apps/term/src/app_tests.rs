@@ -2629,3 +2629,30 @@ fn a_filtered_list_scrolls_to_the_focused_match() {
     assert!(s.contains("enter model-019"), "{s}");
     assert_eq!(picked(&app.handle_key(key(KeyCode::Enter))), "m19");
 }
+
+#[test]
+fn tab_reaches_the_files_in_the_chat_and_enter_opens_one() {
+    let mut app = app();
+    let edit: ViewItem = serde_json::from_value(json!({
+        "ref": "e1", "kind": "tool", "label": "edit src/a.rs", "state": "done",
+        "component": {"type":"diff","path":"src/a.rs","lines":[{"kind":"add","text":"x"}]}
+    }))
+    .unwrap();
+    show(
+        &mut app,
+        vec![item("u1", "user", "go"), edit, item("a1", "agent", "Done.")],
+    );
+    let s = screen_text(&mut app, 80, 24);
+    assert!(s.contains("1 file changed  +1 −0"), "{s}");
+    app.handle_key(key(KeyCode::Tab));
+    assert_eq!(app.focus, Some(Focus::Chat));
+    assert_eq!(app.chat.picked_file(), Some("src/a.rs"));
+    app.handle_key(key(KeyCode::Enter));
+    assert!(app.widgets().overlay_open());
+    // The diff takes the keys until it closes; then the chat has them again.
+    app.handle_key(key(KeyCode::Esc));
+    assert!(!app.widgets().overlay_open());
+    assert_eq!(app.focus, Some(Focus::Chat));
+    app.handle_key(key(KeyCode::Esc));
+    assert_eq!(app.focus, None);
+}

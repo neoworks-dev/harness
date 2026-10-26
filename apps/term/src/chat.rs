@@ -5,11 +5,16 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use neo_protocol::{ItemKind, ItemState, ViewItem, ViewPatch, ViewSnapshot};
+use neo_protocol::{
+    Component, DiffLineKind, ItemKind, ItemState, ViewItem, ViewPatch, ViewSnapshot,
+};
 use neo_renderer_ratatui::{
     ButtonRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiDocInfo, UiState, buttons,
-    image_sources, openui_docs, render_item_images,
+    file_icon, image_sources, openui_docs, render_item_images,
 };
+
+use crate::util::width;
+use crate::widgets::truncate_start;
 use neo_sdk::ViewState;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -60,6 +65,27 @@ pub struct ChatOpts {
     pub marker: Style,
     /// The visual state of OpenUI docs (focus, tabs, edit buffers), per item and doc.
     pub ui: HashMap<String, HashMap<String, UiState>>,
+    /// File paths start with their file type icon.
+    pub icons: bool,
+    /// The last turn is still going: its changed files aren't summed up yet.
+    pub running: bool,
+}
+
+/// A file a turn changed, as the tools' diffs name it, and the lines added and removed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Changed {
+    pub path: String,
+    pub added: usize,
+    pub removed: usize,
+}
+
+/// A line in the chat that stands for a file: an edit's row or a line of a turn's changes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FileTarget {
+    /// The entry the line is in.
+    r#ref: String,
+    path: String,
+    line: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,6 +94,7 @@ struct CacheKey {
     width: u16,
     expanded: bool,
     thoughts: bool,
+    icons: bool,
     focused: Option<usize>,
     palette: Palette,
     marker: Style,
@@ -134,6 +161,12 @@ pub struct Chat {
     palette: Palette,
     /// This app's name: the user's messages from it are drawn without their tag.
     app: Option<String>,
+    /// The lines that stand for files, top to bottom, as laid out last.
+    files: Vec<FileTarget>,
+    /// The file picked with the keys: its entry and path.
+    selected: Option<(String, String)>,
+    /// The picked file's line is drawn highlighted (the chat has the keys).
+    highlight: bool,
 }
 
 impl Chat {
@@ -389,11 +422,45 @@ impl Chat {
             })
             .collect();
         let mut entries: Vec<Entry> = Vec::with_capacity(shown.len());
+        let mut files: Vec<FileTarget> = Vec::new();
+        let mut summaries = turn_changes(items, opts.running).into_iter().peekable();
         let mut offset = 0;
         // Tool rows follow each other without a blank line; prose and questions get one.
         let mut after_tool = false;
         let mut k = 0;
-        while k < shown.len() {
+        loop {
+            // A finished turn's changed files go after its last item.
+            let next = shown.get(k).map(|&(index, _)| index);
+            while let Some((end, changed)) =
+                summaries.next_if(|(end, _)| next.is_none_or(|n| *end < n))
+            {
+                if !entries.is_empty() {
+                    offset += 1;
+                }
+                let r = format!("{}#changes", items[end].r#ref);
+                let lines = changes_lines(&changed, usize::from(width), opts);
+                for (j, c) in changed.iter().enumerate() {
+                    files.push(FileTarget {
+                        r#ref: r.clone(),
+                        path: c.path.clone(),
+                        line: offset + 1 + j,
+                    });
+                }
+                let len = lines.len();
+                entries.push(Entry {
+                    r#ref: r,
+                    thinking: false,
+                    lines: Rc::new(lines),
+                    slots: Rc::new(Vec::new()),
+                    focus: None,
+                    offset,
+                });
+                offset += len;
+                after_tool = false;
+            }
+            if k >= shown.len() {
+                break;
+            }
             let (index, thinking) = shown[k];
             let item = &items[index];
             let r = &item.r#ref;
@@ -436,6 +503,7 @@ impl Chat {
                 width,
                 expanded: opts.expanded,
                 thoughts: opts.show_thoughts,
+                icons: opts.icons,
                 focused: active,
                 palette: opts.palette,
                 marker: opts.marker,
@@ -485,6 +553,13 @@ impl Chat {
                 offset += 1;
             }
             after_tool = tool_row;
+            if tool_row && let Some(first) = changed_files(item).into_iter().next() {
+                files.push(FileTarget {
+                    r#ref: r.clone(),
+                    path: first.path,
+                    line: offset,
+                });
+            }
             let len = lines.len();
             entries.push(Entry {
                 r#ref: r.clone(),
@@ -503,6 +578,10 @@ impl Chat {
                 .retain(|r, _| items.iter().any(|i| &i.r#ref == r));
         }
         self.entries = entries;
+        self.files = files;
+        if self.selected_index().is_none() {
+            self.selected = None;
+        }
         self.palette = opts.palette;
         self.total = offset;
         self.layout_key = Some(key);
@@ -549,6 +628,10 @@ impl Chat {
         let first = self
             .entries
             .partition_point(|e| e.offset + e.lines.len() <= top);
+        let picked = self
+            .selected_index()
+            .filter(|_| self.highlight)
+            .map(|i| self.files[i].line);
         let mut at = top;
         for e in &self.entries[first..] {
             if e.offset >= bottom {
@@ -565,6 +648,7 @@ impl Chat {
                 }
                 match now_ms {
                     Some(now) if e.thinking => out.push(thinking_line(line, now, &self.palette)),
+                    _ if picked == Some(at) => out.push(picked_line(line, &self.palette)),
                     _ => out.push(line.clone()),
                 }
                 at += 1;
@@ -641,10 +725,185 @@ impl Chat {
             self.top = Some(0);
         }
     }
+
+    /// Brings a line into view (with one line of room under it when there is).
+    fn reveal_line(&mut self, line: usize) {
+        let (top, height) = (self.top(), self.height.max(1));
+        if line < top {
+            self.top = Some(line.min(self.max_top()));
+        } else if line + 1 >= top + height {
+            self.top = Some((line + 2).saturating_sub(height).min(self.max_top()));
+        } else {
+            return;
+        }
+        if self.top == Some(self.max_top()) {
+            self.follow();
+        }
+    }
+
+    // ---- files ----
+
+    /// Whether any line stands for a file (an edit, a turn's changes).
+    pub fn has_files(&self) -> bool {
+        !self.files.is_empty()
+    }
+
+    fn selected_index(&self) -> Option<usize> {
+        let (r, path) = self.selected.as_ref()?;
+        self.files
+            .iter()
+            .position(|f| &f.r#ref == r && &f.path == path)
+    }
+
+    /// Whether the picked file's line is drawn highlighted.
+    pub fn set_highlight(&mut self, on: bool) {
+        self.highlight = on;
+    }
+
+    /// Picks the n-th file line (counted from the end when negative) and scrolls to it.
+    pub fn pick_file(&mut self, n: isize) {
+        let len = self.files.len() as isize;
+        if len == 0 {
+            return;
+        }
+        let i = if n < 0 { len + n } else { n }.clamp(0, len - 1) as usize;
+        let f = &self.files[i];
+        self.selected = Some((f.r#ref.clone(), f.path.clone()));
+        self.reveal_line(f.line);
+    }
+
+    /// Moves the pick by `by` file lines; with none picked, starts from the last.
+    pub fn move_file(&mut self, by: isize) {
+        match self.selected_index() {
+            Some(i) => self.pick_file((i as isize + by).max(0)),
+            None => self.pick_file(-1),
+        }
+    }
+
+    /// The path of the picked file.
+    pub fn picked_file(&self) -> Option<&str> {
+        self.selected_index().map(|i| self.files[i].path.as_str())
+    }
+}
+
+/// The diffs in an item's result, in order (a path twice is summed).
+fn changed_files(item: &ViewItem) -> Vec<Changed> {
+    fn walk(c: &Component, out: &mut Vec<Changed>) {
+        match c {
+            Component::CardComponent(v) => v.children.iter().for_each(|c| walk(c, out)),
+            Component::RowComponent(v) => v.children.iter().for_each(|c| walk(c, out)),
+            Component::StackComponent(v) => v.children.iter().for_each(|c| walk(c, out)),
+            Component::DiffComponent(v) => {
+                let Some(path) = v.path.as_deref().filter(|p| !p.is_empty()) else {
+                    return;
+                };
+                let count = |kind| v.lines.iter().filter(|l| l.kind == kind).count();
+                add_changed(
+                    out,
+                    Changed {
+                        path: path.to_string(),
+                        added: count(DiffLineKind::Add),
+                        removed: count(DiffLineKind::Remove),
+                    },
+                );
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    walk(&item.component, &mut out);
+    out
+}
+
+fn add_changed(all: &mut Vec<Changed>, c: Changed) {
+    match all.iter_mut().find(|x| x.path == c.path) {
+        Some(x) => {
+            x.added += c.added;
+            x.removed += c.removed;
+        }
+        None => all.push(c),
+    }
+}
+
+/// An edit the agent made: a tool call that ran, with a diff, that isn't a question.
+fn is_edit(item: &ViewItem) -> bool {
+    item.kind == ItemKind::Tool
+        && item.state == Some(ItemState::Done)
+        && !item.r#ref.starts_with("p-")
+        && !item.r#ref.starts_with("q-")
+        && !changed_files(item).is_empty()
+}
+
+/// Each finished turn that changed files: the index of its last item and the files, summed per
+/// path. A turn ends where the next user message starts; the last one once it isn't running.
+fn turn_changes(items: &[ViewItem], running: bool) -> Vec<(usize, Vec<Changed>)> {
+    let mut out = Vec::new();
+    let mut turn: Vec<Changed> = Vec::new();
+    for (i, item) in items.iter().enumerate() {
+        if item.kind == ItemKind::User && i > 0 && !turn.is_empty() {
+            out.push((i - 1, std::mem::take(&mut turn)));
+        }
+        if is_edit(item) {
+            for c in changed_files(item) {
+                add_changed(&mut turn, c);
+            }
+        }
+    }
+    if !running && !turn.is_empty() {
+        out.push((items.len() - 1, turn));
+    }
+    out
+}
+
+/// A turn's changes: `3 files changed  +40 −12`, then each file with its icon and counts.
+fn changes_lines(changed: &[Changed], width_cells: usize, opts: &ChatOpts) -> Vec<Line<'static>> {
+    let p = &opts.palette;
+    let muted = Style::new().fg(p.muted);
+    let counts = |added: usize, removed: usize| {
+        vec![
+            Span::styled(format!("+{added}"), Style::new().fg(p.success)),
+            Span::raw(" "),
+            Span::styled(format!("−{removed}"), Style::new().fg(p.danger)),
+        ]
+    };
+    let (added, removed) = changed
+        .iter()
+        .fold((0, 0), |(a, r), c| (a + c.added, r + c.removed));
+    let n = changed.len();
+    let mut head = vec![Span::styled(
+        format!("{n} file{} changed  ", if n == 1 { "" } else { "s" }),
+        muted,
+    )];
+    head.extend(counts(added, removed));
+    let mut out = vec![Line::from(head)];
+    for c in changed {
+        let mut spans = vec![Span::raw("  ")];
+        if opts.icons {
+            spans.push(file_icon(&c.path, p));
+            spans.push(Span::raw(" "));
+        }
+        let tail = counts(c.added, c.removed);
+        let used: usize = spans.iter().chain(&tail).map(|s| width(&s.content)).sum();
+        let room = width_cells.saturating_sub(used + 2).max(1);
+        spans.push(Span::raw(truncate_start(&c.path, room)));
+        spans.push(Span::raw("  "));
+        spans.extend(tail);
+        out.push(Line::from(spans));
+    }
+    out
+}
+
+/// The picked file's line: on the surface color and bold, like the files panel's selection.
+fn picked_line(line: &Line<'static>, p: &Palette) -> Line<'static> {
+    let mut line = line.clone();
+    for s in &mut line.spans {
+        s.style = s.style.bg(p.surface).add_modifier(Modifier::BOLD);
+    }
+    line
 }
 
 /// A tool call that can fold into a run: finished, not a question (`p-`/`q-`, which say what was
-/// answered).
+/// answered), and not an edit (what was written stays in sight).
 fn foldable(
     item: &ViewItem,
     buttons: &HashMap<String, Vec<ButtonRef>>,
@@ -658,6 +917,7 @@ fn foldable(
             .is_some_and(|d| d.iter().any(|d| d.interactive))
         && !item.r#ref.starts_with("p-")
         && !item.r#ref.starts_with("q-")
+        && changed_files(item).is_empty()
 }
 
 /// A folded run: `15 tool calls · 7 fetch, 5 bash, 3 search · 1 failed`, or `12 bash` when all
@@ -792,6 +1052,7 @@ fn render(
         }),
         openui: key.ui.clone().unwrap_or_default(),
         app: app.map(str::to_string),
+        file_icons: key.icons,
     };
     if key.focused.is_none() {
         let out = render_item_images(item, width, &opts);
@@ -842,6 +1103,7 @@ pub fn panel_lines(
         images: None,
         openui: HashMap::new(),
         app: None,
+        file_icons: false,
     };
     neo_renderer_ratatui::render_item(item, width.saturating_sub(2).max(1), &opts)
         .into_iter()
@@ -949,6 +1211,8 @@ mod tests {
             in_panel: false,
             marker: Style::new(),
             ui: Default::default(),
+            icons: false,
+            running: false,
         }
     }
 
@@ -1123,6 +1387,102 @@ mod tests {
         ]));
         c.layout(80, 20, &opts());
         assert_eq!(texts(&c)[0], "fetch https://a");
+    }
+
+    fn edit(r: &str, path: &str, added: usize, removed: usize) -> ViewItem {
+        let mut lines: Vec<serde_json::Value> = Vec::new();
+        lines.extend((0..removed).map(|_| json!({"kind":"remove","text":"old"})));
+        lines.extend((0..added).map(|_| json!({"kind":"add","text":"new"})));
+        serde_json::from_value(json!({
+            "ref": r, "kind": "tool", "label": format!("edit {path}"), "state": "done",
+            "component": {"type":"diff","path": path,"lines": lines}
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn edits_stay_in_sight_and_a_finished_turn_sums_up_its_files() {
+        let mut c = Chat::new();
+        let items = vec![
+            item("u1", "user", "go"),
+            call("t1", "read a", "done"),
+            edit("e1", "src/a.rs", 3, 1),
+            call("t2", "read b", "done"),
+            call("t3", "read c", "done"),
+            call("t4", "read d", "done"),
+            edit("e2", "src/b.rs", 2, 0),
+            edit("e3", "src/a.rs", 1, 1),
+            item("a1", "agent", "Done."),
+        ];
+        c.apply_snapshot(snapshot(items.clone()));
+        let running = ChatOpts {
+            running: true,
+            ..opts()
+        };
+        c.layout(80, 40, &running);
+        let shown = texts(&c);
+        // The reads around the edits fold; the edits don't.
+        assert!(shown.contains(&"3 read".to_string()), "{shown:#?}");
+        assert!(shown.contains(&"edit src/a.rs".to_string()));
+        assert!(shown.contains(&"edit src/b.rs".to_string()));
+        assert!(
+            !shown.iter().any(|l| l.contains("changed")),
+            "not while it runs"
+        );
+
+        c.layout(80, 40, &opts());
+        let shown = texts(&c);
+        let at = shown
+            .iter()
+            .position(|l| l == "2 files changed  +6 −2")
+            .unwrap();
+        assert_eq!(shown[at - 2], "Done.");
+        assert_eq!(shown[at + 1], "  src/a.rs  +4 −2");
+        assert_eq!(shown[at + 2], "  src/b.rs  +2 −0");
+
+        // A turn the next message ended is summed up even while a later one runs.
+        let mut more = items.clone();
+        more.push(item("u2", "user", "again"));
+        c.apply_snapshot(snapshot(more));
+        c.layout(80, 40, &running);
+        let shown = texts(&c);
+        let at = shown
+            .iter()
+            .position(|l| l == "2 files changed  +6 −2")
+            .unwrap();
+        assert_eq!(shown[at + 4], "› again");
+    }
+
+    #[test]
+    fn file_lines_are_picked_with_the_keys() {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(vec![
+            item("u1", "user", "go"),
+            edit("e1", "src/a.rs", 1, 0),
+            edit("e2", "src/b.rs", 1, 0),
+            item("a1", "agent", "Done."),
+        ]));
+        c.layout(80, 40, &opts());
+        assert!(c.has_files());
+        // The two edits, then the two lines of the turn's changes.
+        c.pick_file(-1);
+        assert_eq!(c.picked_file(), Some("src/b.rs"));
+        c.move_file(-1);
+        assert_eq!(c.picked_file(), Some("src/a.rs"));
+        c.move_file(-1);
+        assert_eq!(c.picked_file(), Some("src/b.rs"));
+        c.pick_file(0);
+        assert_eq!(c.picked_file(), Some("src/a.rs"));
+        c.move_file(-1);
+        assert_eq!(c.picked_file(), Some("src/a.rs"), "stays at the first");
+
+        // Only drawn picked while the chat has the keys.
+        let plain = c.visible();
+        c.set_highlight(true);
+        let lit = c.visible();
+        let differ: Vec<usize> = (0..plain.len()).filter(|&i| plain[i] != lit[i]).collect();
+        assert_eq!(differ.len(), 1);
+        assert_eq!(plain_text(&lit[differ[0]..=differ[0]]), ["edit src/a.rs"]);
     }
 
     #[test]

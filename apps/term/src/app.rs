@@ -171,6 +171,8 @@ enum Overlay {
 /// What has the keyboard besides the editor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Focus {
+    /// The chat's file lines: the edits and each turn's changed files.
+    Chat,
     Sessions,
     Panel(Panel),
     /// The subagents list under the prompt bar.
@@ -282,6 +284,8 @@ pub struct App {
     chat: Chat,
     /// Pictures in the chat; None shows the `[image …]` placeholder.
     images: Option<Images>,
+    /// File type icons in the chat and the files panel (`NEO_TERM_ICONS=off`: none).
+    icons: bool,
     editor: Editor,
     /// Images pasted into the draft: the number of the `[image N]` marker that places each, and
     /// its path. One whose marker is deleted is not sent.
@@ -375,6 +379,7 @@ impl App {
             no_color: config.no_color,
             chat,
             images: None,
+            icons: false,
             editor: Editor::default(),
             attachments: Vec::new(),
             stash: None,
@@ -462,6 +467,13 @@ impl App {
     /// Shows images in the chat (the runtime hands this over once it knows the terminal).
     pub fn set_images(&mut self, images: Images) {
         self.images = Some(images);
+        self.dirty = true;
+    }
+
+    /// File type icons (Nerd Font glyphs) in the chat and the files panel.
+    pub fn set_icons(&mut self, on: bool) {
+        self.icons = on;
+        self.widgets.set_icons(on);
         self.dirty = true;
     }
 
@@ -1540,7 +1552,25 @@ impl App {
                     }
                 },
                 Focus::Agents => self.agents_key(key, fx),
+                Focus::Chat => self.chat_files_key(key),
             },
+        }
+    }
+
+    /// Keys while the chat's file lines have focus: move between them, open one's diff.
+    fn chat_files_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => self.focus = None,
+            KeyCode::Up | KeyCode::Char('k') => self.chat.move_file(-1),
+            KeyCode::Down | KeyCode::Char('j') => self.chat.move_file(1),
+            KeyCode::Home | KeyCode::Char('g') => self.chat.pick_file(0),
+            KeyCode::End | KeyCode::Char('G') => self.chat.pick_file(-1),
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                if let Some(path) = self.chat.picked_file().map(str::to_string) {
+                    self.widgets.open_path(&path);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -1616,9 +1646,11 @@ impl App {
         }
     }
 
-    /// Tab: editor, sessions, terminal, plan, files (the ones on screen), editor.
+    /// Tab: editor, the chat's files, sessions, terminal, plan, files (the ones on screen),
+    /// editor.
     fn cycle_focus(&mut self) {
         let order = [
+            (self.chat.has_files(), Focus::Chat),
             (self.sessions_shown, Focus::Sessions),
             (self.terminal_area.is_some(), Focus::Panel(Panel::Terminal)),
             (self.sidebar_shown, Focus::Panel(Panel::Plan)),
@@ -1652,8 +1684,12 @@ impl App {
     }
 
     fn enter_focus(&mut self) {
-        if self.focus == Some(Focus::Sessions) {
-            self.sessions.focus(&self.session);
+        match self.focus {
+            Some(Focus::Sessions) => self.sessions.focus(&self.session),
+            // The latest file, unless one is picked already.
+            Some(Focus::Chat) if self.chat.picked_file().is_none() => self.chat.pick_file(-1),
+            Some(Focus::Chat) => self.chat.move_file(0),
+            _ => {}
         }
     }
 
@@ -2414,9 +2450,11 @@ impl App {
             }
             Some(Focus::Sessions) if !self.sessions_shown => self.focus = None,
             Some(Focus::Agents) if !self.agents.visible(self.now_ms) => self.focus = None,
+            Some(Focus::Chat) if !self.chat.has_files() => self.focus = None,
             _ => {}
         }
         self.sync_prompt();
+        self.chat.set_highlight(self.focus == Some(Focus::Chat));
 
         if self.github.is_open() {
             self.github
@@ -2432,6 +2470,9 @@ impl App {
                 in_panel: false,
                 marker: self.styles.accent,
                 ui: Default::default(),
+                icons: self.icons,
+                // A subagent's work has no turns to sum up.
+                running: true,
             };
             if let Some(t) = self.transcript.as_mut() {
                 t.draw(frame, areas.chat, &opts, &self.styles);
@@ -2536,6 +2577,8 @@ impl App {
             in_panel: self.prompt.engaged && self.active_form().is_none(),
             marker: self.styles.accent,
             ui: self.forms.all().clone(),
+            icons: self.icons,
+            running: self.running,
         }
     }
 
@@ -3132,7 +3175,10 @@ impl App {
             key("esc", "close menu, dismiss prompt, cancel the running turn"),
             key("ctrl-c", "clear input; twice to quit"),
             key("shift-tab", "approvals: ask / review / accept edits / auto"),
-            key("tab", "complete command, note on a prompt, next panel"),
+            key(
+                "tab",
+                "complete command, note on a prompt, next panel (the chat's files first)",
+            ),
             key("ctrl-s", "put the draft aside / bring it back"),
             key("ctrl-g", "sessions sidebar: focus (up/down, enter, esc)"),
             key("ctrl-r", "GitHub issues and pull requests (/github)"),

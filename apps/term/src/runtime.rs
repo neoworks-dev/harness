@@ -61,7 +61,7 @@ pub fn main() -> ExitCode {
         prefs: crate::theme::Prefs::in_data_dir(),
         args,
     });
-    let started = match started {
+    let mut started = match started {
         Ok(started) => started,
         Err(StartError::DaemonDown) => {
             eprintln!("daemon not running: run neo (or neo up)");
@@ -72,6 +72,10 @@ pub fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // File type icons are Nerd Font glyphs; without such a font they are boxes.
+    started
+        .app
+        .set_icons(std::env::var("NEO_TERM_ICONS").map_or(true, |v| v != "off"));
     match run(started.app, started.driver) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {

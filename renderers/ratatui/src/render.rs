@@ -896,8 +896,20 @@ impl<'a> Cx<'a> {
         let mut out = Vec::new();
         let path = v.path.as_deref().map(one_line).filter(|p| !p.is_empty());
         if let Some(path) = &path {
-            for l in hard_wrap(path, w) {
-                out.push(sline(l, Style::new().add_modifier(Modifier::BOLD)));
+            let icon = self.o.file_icons && w > 2;
+            for (i, l) in hard_wrap(path, if icon { w - 2 } else { w })
+                .into_iter()
+                .enumerate()
+            {
+                let mut line = sline(l, Style::new().add_modifier(Modifier::BOLD));
+                if icon {
+                    let lead = match i {
+                        0 => crate::file_icon(path, &self.p),
+                        _ => Span::raw(" "),
+                    };
+                    line.spans.splice(0..0, [lead, Span::raw(" ")]);
+                }
+                out.push(line);
             }
         }
         let colors = code_colors(&self.p);

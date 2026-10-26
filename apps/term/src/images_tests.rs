@@ -69,6 +69,8 @@ fn opts() -> ChatOpts {
         in_panel: false,
         marker: Style::new(),
         ui: Default::default(),
+        icons: false,
+        running: false,
     }
 }
 

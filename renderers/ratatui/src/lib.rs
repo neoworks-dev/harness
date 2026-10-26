@@ -15,6 +15,7 @@
 //! assert_eq!(lines.len(), 1);
 //! ```
 
+mod icons;
 mod openui;
 mod palette;
 mod render;
@@ -30,6 +31,7 @@ use neo_protocol as pb;
 use neo_protocol::ViewItem;
 use ratatui::text::Line;
 
+pub use icons::file_icon;
 pub use openui::{
     UiDocInfo, UiEdit, UiKind, UiOption, UiState, UiTarget, is_date, openui_docs, openui_targets,
 };
@@ -64,6 +66,8 @@ pub struct Options {
     /// The app drawing the chat: the user's messages from it (or another of its instances,
     /// `terminal-2`) leave out their `· app` tag. None: every message has it.
     pub app: Option<String>,
+    /// A diff's path starts with its file type icon (a Nerd Font glyph, see [`file_icon`]).
+    pub file_icons: bool,
 }
 
 /// What the app knows about an image source (`src` of an image component).
