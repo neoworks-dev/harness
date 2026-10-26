@@ -1,7 +1,8 @@
 //! The background commands under the prompt bar: one row per command the agent runs in the
 //! background (and a few seconds after it ends), with its last line of output and how long it
 //! has run. Down from an empty editor (past the subagents) selects one, which the terminal panel
-//! then shows on its own as it writes; Enter gives the panel the keys, to scroll it.
+//! then shows on its own as it writes; Enter gives the panel the keys, to scroll it; `x` stops
+//! it.
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::style::Modifier;
@@ -26,6 +27,8 @@ pub enum JobsAction {
     Leave,
     /// Give the terminal panel the keys, showing this one (Enter).
     Open(String),
+    /// Stop this one (`x`, while it runs).
+    Stop(String),
     Redraw,
 }
 
@@ -84,6 +87,9 @@ impl Jobs {
             KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
                 return JobsAction::Open(rows[at].id.clone());
             }
+            KeyCode::Char('x') if rows[at].ended_ms.is_none() => {
+                return JobsAction::Stop(rows[at].id.clone());
+            }
             _ => return JobsAction::Redraw,
         };
         if to == at {
@@ -132,7 +138,7 @@ impl Jobs {
         }
         if focused {
             out.push(Line::from(Span::styled(
-                "↑/↓ select · enter scroll its output · esc back",
+                "↑/↓ select · enter scroll its output · x stop · esc back",
                 styles.muted,
             )));
         }

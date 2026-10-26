@@ -322,6 +322,11 @@ impl Widgets {
         self.terminal.jobs(now_ms)
     }
 
+    /// Stops a running background command (see [`TerminalState::stop_job`]).
+    pub fn stop_job(&self, id: &str) -> Result<usize, String> {
+        self.terminal.stop_job(id)
+    }
+
     /// Shows one background command in the terminal panel on its own, or (None) all commands.
     pub fn show_job(&mut self, id: Option<String>) {
         self.terminal.set_view(id);

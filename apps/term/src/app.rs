@@ -1638,6 +1638,11 @@ impl App {
                 self.widgets.show_job(None);
                 self.focus = None;
             }
+            // It ends (and leaves the list) once its file says so.
+            JobsAction::Stop(id) => match self.widgets.stop_job(&id) {
+                Ok(_) => self.notify("stopping…", false),
+                Err(why) => self.notify(format!("can't stop it: {why}"), true),
+            },
             JobsAction::Open(id) => {
                 self.widgets.show_job(Some(id));
                 if self.terminal_area.is_some() {

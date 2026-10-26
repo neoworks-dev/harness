@@ -288,6 +288,30 @@ impl TerminalState {
             .collect()
     }
 
+    /// Stops a running background command: SIGTERM to the process groups writing its file
+    /// (Claude Code runs each in a group of its own and then ends the file with the exit
+    /// code). The number of groups signalled, or why there was none.
+    pub(crate) fn stop_job(&self, id: &str) -> Result<usize, String> {
+        let job = self
+            .runs
+            .iter()
+            .find(|r| r.id == id)
+            .and_then(|r| r.job.as_ref())
+            .filter(|j| j.exit.is_none())
+            .ok_or("it has ended")?;
+        let groups = writers(&job.path)?;
+        if groups.is_empty() {
+            return Err("no process writes its output".into());
+        }
+        for pgid in &groups {
+            std::process::Command::new("kill")
+                .args(["-TERM", "--", &format!("-{pgid}")])
+                .status()
+                .map_err(|e| format!("kill: {e}"))?;
+        }
+        Ok(groups.len())
+    }
+
     /// Shows one background command on its own (`Some(id)`), or all commands.
     pub(crate) fn set_view(&mut self, id: Option<String>) {
         if self.view != id {
@@ -360,6 +384,39 @@ fn background_output(text: &str) -> Option<PathBuf> {
     let (_, rest) = text.split_once("Output is being written to: ")?;
     let path = rest.split_whitespace().next()?.trim_end_matches('.');
     path.starts_with('/').then(|| PathBuf::from(path))
+}
+
+/// The process groups of the processes whose output (fd 1 or 2) goes to `path`, found in
+/// `/proc`; never this app's own group.
+fn writers(path: &std::path::Path) -> Result<Vec<i64>, String> {
+    let procs = std::fs::read_dir("/proc").map_err(|_| "no /proc to find its process in")?;
+    let own = pgid_of("self");
+    let mut groups = Vec::new();
+    for entry in procs.flatten() {
+        let name = entry.file_name();
+        let Some(pid) = name
+            .to_str()
+            .filter(|n| n.bytes().all(|b| b.is_ascii_digit()))
+        else {
+            continue;
+        };
+        let writes = ["1", "2"].iter().any(|fd| {
+            std::fs::read_link(format!("/proc/{pid}/fd/{fd}")).is_ok_and(|target| target == path)
+        });
+        if let Some(pgid) = pgid_of(pid).filter(|&g| writes && g > 1 && Some(g) != own)
+            && !groups.contains(&pgid)
+        {
+            groups.push(pgid);
+        }
+    }
+    Ok(groups)
+}
+
+/// A process's group, from `/proc/<pid>/stat` (its fifth field, after the name in parens).
+fn pgid_of(pid: &str) -> Option<i64> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let (_, rest) = stat.rsplit_once(')')?;
+    rest.split_whitespace().nth(2)?.parse().ok()
 }
 
 /// `[exited with code 0]`: the code.
@@ -761,6 +818,32 @@ mod tests {
         );
         // It lingers a moment, then leaves the list.
         assert!(t.jobs(1_750 + JOB_LINGER_MS).is_empty());
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn stopping_signals_the_group_that_writes_the_file() {
+        use std::os::unix::process::CommandExt;
+        let path = temp("stop.output");
+        let out = std::fs::File::create(&path).unwrap();
+        // Like Claude Code: a group of its own, its output into the file.
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", "echo up; sleep 30"])
+            .stdout(out)
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let mut t = TerminalState::default();
+        t.on_call(&call("1", "execute", "sleep 30"));
+        t.on_update(
+            &update("1", Some("completed"), &backgrounded(&path), None),
+            0,
+        );
+        assert_eq!(t.stop_job("1"), Ok(1));
+        let status = child.wait().unwrap();
+        assert!(!status.success(), "{status:?}");
+        assert!(t.stop_job("nope").is_err());
         std::fs::remove_file(&path).unwrap();
     }
 
