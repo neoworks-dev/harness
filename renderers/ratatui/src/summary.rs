@@ -36,7 +36,36 @@ fn leaves<'c>(c: &'c pb::Component, out: &mut Vec<Leaf<'c>>) {
     }
 }
 
+/// The diff a result is, when it is nothing else (a card or stack around it is fine).
+pub(crate) fn lone_diff(c: &pb::Component) -> Option<&pb::DiffComponent> {
+    let mut all = Vec::new();
+    leaves(c, &mut all);
+    match all.as_slice() {
+        [Leaf::Comp(pb::Component::DiffComponent(v))] => Some(v),
+        _ => None,
+    }
+}
+
 impl Cx<'_> {
+    /// `verb path  +3 −1` on one line, when `label` is the verb and then the diff's path:
+    /// an edit's header and its result in one.
+    pub(crate) fn edit_line(
+        &self,
+        label: &str,
+        v: &pb::DiffComponent,
+        w: usize,
+    ) -> Option<Line<'static>> {
+        let path = crate::relative_path(v.path.as_deref()?, self.o.cwd.as_deref());
+        let verb = label.strip_suffix(path)?;
+        if path.is_empty() || !verb.ends_with(' ') || verb.trim().contains(' ') {
+            return None;
+        }
+        let bold = Style::new().add_modifier(Modifier::BOLD);
+        let mut spans = vec![Span::styled(verb.to_string(), bold)];
+        spans.extend(self.diff_line(v, w.saturating_sub(width(verb)).max(1)).spans);
+        Some(Line::from(spans))
+    }
+
     /// The result in `w` columns, ready to sit after `  ⎿ `.
     pub(crate) fn summary(&mut self, c: &pb::Component, w: usize) -> Lines {
         let mut all = Vec::new();

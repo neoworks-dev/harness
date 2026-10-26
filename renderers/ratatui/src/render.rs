@@ -215,6 +215,13 @@ impl<'a> Cx<'a> {
             }
             (label, _) => label,
         };
+        // A finished edit is one line, its counts after its path: `edit src/a.rs  +3 −1`.
+        if cut && !failed && it.command.is_none() {
+            let edit = label.as_deref().zip(crate::summary::lone_diff(&it.component));
+            if let Some(line) = edit.and_then(|(l, d)| self.edit_line(l, d, w)) {
+                return vec![line];
+            }
+        }
         let mut head = match &label {
             Some(label) => wrap(&self.tool_label(label), hw),
             None => Vec::new(),
