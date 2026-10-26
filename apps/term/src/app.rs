@@ -2595,8 +2595,10 @@ impl App {
             width: w,
             height: area.height,
         });
+        // Past the prompt (or the input box's bar), and its right margin with fills.
+        let margin = u16::from(self.styles.fills());
         self.editor
-            .set_width(usize::from(main.width.saturating_sub(2)).max(1));
+            .set_width(usize::from(main.width.saturating_sub(2 + margin)).max(1));
         // The subagents list sits under the status lines.
         let agents_h = self.agents_rows(main.height);
         let jobs_h = self.jobs_rows(main.height - agents_h);
@@ -2605,17 +2607,11 @@ impl App {
         let rule_h = h.saturating_sub(status_h).min(1);
         let room = h - status_h - rule_h;
         // An engaged prompt takes the editor's place; a waiting one adds a hint row above it.
+        let box_w = main.width.saturating_sub(3 * margin);
         let panel = if let Some(secret) = &self.secret {
-            secret.lines(
-                usize::from(main.width),
-                self.styles.accent,
-                self.styles.muted,
-            )
+            secret.lines(usize::from(box_w), self.styles.accent, self.styles.muted)
         } else if self.prompt.engaged {
-            self.panel_lines(
-                main.width,
-                usize::from(room.saturating_sub(1).min(PANEL_ROWS)),
-            )
+            self.panel_lines(box_w, usize::from(room.saturating_sub(1).min(PANEL_ROWS)))
         } else {
             Vec::new()
         };
@@ -2656,14 +2652,28 @@ impl App {
         };
         let above = hint_h + waiting_h + attached_h;
         let top = chat_h + rule_h;
+        // With fills, the rule's row, the editor and the first status line are one raised box
+        // with the accent bar on its left; what is in it starts past the bar.
+        let inset = |r: Rect| {
+            if self.styles.fills() {
+                Rect {
+                    x: r.x + 2,
+                    width: r.width.saturating_sub(3),
+                    ..r
+                }
+            } else {
+                r
+            }
+        };
         Areas {
             chat: at(0, chat_h),
             rule: at(chat_h, rule_h),
-            hint: at(top, hint_h),
-            waiting: at(top + hint_h, waiting_h),
-            attached: at(top + hint_h + waiting_h, attached_h),
+            hint: inset(at(top, hint_h)),
+            waiting: inset(at(top + hint_h, waiting_h)),
+            attached: inset(at(top + hint_h + waiting_h, attached_h)),
             editor: at(chat_h + rule_h + above, editor_h - above),
             panel,
+            input: at(chat_h, rule_h + editor_h + status_h.min(1)),
             status: at(chat_h + rule_h + editor_h, status_h),
             agents: at(h, agents_h),
             jobs: at(h + agents_h, jobs_h),
@@ -2810,7 +2820,10 @@ impl App {
             };
             self.widgets.draw_sidebar(frame, side, panel);
         }
-        if areas.rule.height > 0 {
+        let fills = self.styles.fills();
+        if fills {
+            crate::style::fill(frame.buffer_mut(), areas.input, self.styles.raised);
+        } else if areas.rule.height > 0 {
             let rule = "─".repeat(usize::from(areas.rule.width));
             frame.render_widget(
                 Paragraph::new(Span::styled(rule, self.styles.border)),
@@ -2839,10 +2852,26 @@ impl App {
         }
         if areas.panel.is_empty() {
             self.draw_editor(frame, areas.editor);
+        } else if fills {
+            let at = Rect {
+                x: areas.editor.x + 2,
+                width: areas.editor.width.saturating_sub(3),
+                ..areas.editor
+            };
+            frame.render_widget(Paragraph::new(areas.panel), at);
         } else {
             frame.render_widget(Paragraph::new(areas.panel), areas.editor);
         }
         self.draw_status(frame, areas.status);
+        if fills {
+            // The bar down the input box's left edge.
+            let bar = self.styles.accent.bg(self.styles.raised);
+            for y in areas.input.top()..areas.input.bottom() {
+                frame.buffer_mut()[(areas.input.x, y)]
+                    .set_symbol("┃")
+                    .set_style(bar);
+            }
+        }
         self.draw_agents(frame, areas.agents);
         self.draw_jobs(frame, areas.jobs);
         if !self.no_color && self.theme.paints() {
@@ -2853,6 +2882,14 @@ impl App {
     /// The sessions on the left: the list, then a border and a gap before the chat.
     fn draw_sessions(&mut self, frame: &mut Frame, area: Rect) {
         let inner = area.width.saturating_sub(2);
+        crate::style::fill(
+            frame.buffer_mut(),
+            Rect {
+                width: inner + 1,
+                ..area
+            },
+            self.styles.panel,
+        );
         // The shown session's details at the foot, while the list keeps a dozen rows.
         let dir = shorten_home(&self.cwd, self.home.as_deref());
         let details = crate::details::lines(
@@ -2870,9 +2907,12 @@ impl App {
         } else {
             0
         };
+        // A row of the fill above the list.
+        let top = u16::from(self.styles.fills() && area.height - details_h > 4);
         let list = Rect {
+            y: area.y + top,
             width: inner,
-            height: area.height - details_h,
+            height: area.height - details_h - top,
             ..area
         };
         if details_h > 0 {
@@ -2897,11 +2937,7 @@ impl App {
             &self.styles,
         );
         frame.render_widget(Paragraph::new(lines), list);
-        for y in area.y..area.bottom() {
-            frame.buffer_mut()[(area.x + inner, y)]
-                .set_symbol("│")
-                .set_style(self.styles.border);
-        }
+        crate::style::pane_edge(frame.buffer_mut(), area.x + inner, area, &self.palette);
     }
 
     fn chat_opts(&self) -> ChatOpts {
@@ -2987,6 +3023,17 @@ impl App {
                 area.width
             },
             ..area
+        };
+        // With fills, in from the edge as far as the input box's text.
+        let content = if self.styles.fills() && content.width >= 20 && content.height > 4 {
+            Rect {
+                x: content.x + 2,
+                y: content.y + 1,
+                width: content.width - 2,
+                height: content.height - 1,
+            }
+        } else {
+            content
         };
         let opts = self.chat_opts();
         if let Some(images) = self.images.as_mut() {
@@ -3288,7 +3335,12 @@ impl App {
         if area.height == 0 || area.width == 0 {
             return;
         }
-        let prompt = Span::styled("> ", self.styles.accent);
+        // In the input box its bar takes the prompt's place.
+        let prompt = if self.styles.fills() {
+            Span::raw("  ")
+        } else {
+            Span::styled("> ", self.styles.accent)
+        };
         if self.editor.is_empty() {
             let hint = truncate(
                 "message the agent · / for commands",
@@ -3536,7 +3588,18 @@ impl App {
         .lines(width)
     }
 
+    /// The status lines; with fills both start past the input box's bar, the first inside the
+    /// box and the second under it.
     fn draw_status(&self, frame: &mut Frame, area: Rect) {
+        let area = if self.styles.fills() {
+            Rect {
+                x: area.x + 2,
+                width: area.width.saturating_sub(3),
+                ..area
+            }
+        } else {
+            area
+        };
         let lines = self.status_lines(usize::from(area.width));
         frame.render_widget(Paragraph::new(lines.to_vec()), area);
     }
@@ -3707,6 +3770,8 @@ struct Areas {
     editor: Rect,
     /// The prompt's lines when it has taken the editor's place.
     panel: Vec<Line<'static>>,
+    /// The input box: the rule's row to the first status line.
+    input: Rect,
     status: Rect,
     /// The subagents list under the status lines.
     agents: Rect,

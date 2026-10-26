@@ -890,7 +890,7 @@ fn ctrl_r_opens_the_view_over_the_chat() {
         "{s}"
     );
     // The editor and the status lines stay where they are.
-    assert!(s.contains("> "));
+    assert!(s.contains("┃ "));
     // Typing goes to the view, not the editor.
     type_app(&mut app, "zz");
     assert_eq!(app.editor_text(), "");

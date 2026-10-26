@@ -668,7 +668,14 @@ fn page_keys_scroll_the_chat_and_new_output_leaves_the_view_alone() {
     assert!(!before.iter().any(|l| l.contains("message number 39")));
     patch(&mut app, item("new", "agent", "fresh output"));
     let after = screen(&mut app, 80, 24);
-    assert_eq!(before[..18], after[..18], "the chat area did not move");
+    // The scrollbar's thumb moves: there is more to scroll.
+    let text = |rows: &[String]| -> Vec<String> {
+        rows[..18]
+            .iter()
+            .map(|l| l.trim_end_matches('│').trim_end().to_string())
+            .collect()
+    };
+    assert_eq!(text(&before), text(&after), "the chat area did not move");
     assert!(
         after.iter().any(|l| l.contains("↓ new output (End)")),
         "{after:#?}"
@@ -895,7 +902,7 @@ fn a_prompt_waits_while_the_user_types_and_takes_over_after_a_pause() {
         "{text}"
     );
     assert!(
-        text.contains("> draft"),
+        text.contains("┃ draft"),
         "the editor stays meanwhile: {text}"
     );
     snapshot("prompt-waits-70x14", &text);
@@ -919,7 +926,7 @@ fn a_prompt_waits_while_the_user_types_and_takes_over_after_a_pause() {
     // The draft is untouched behind it and comes back once the prompt is gone.
     assert_eq!(app.editor_text(), "draft2!");
     app.handle_key(key(KeyCode::Char('1')));
-    assert!(screen_text(&mut app, 70, 14).contains("> draft2!"));
+    assert!(screen_text(&mut app, 70, 14).contains("┃ draft2!"));
 }
 
 #[test]
@@ -2206,7 +2213,7 @@ fn an_empty_chat_says_what_to_do() {
     show(&mut app, vec![]);
     let text = screen_text(&mut app, 80, 12);
     assert!(text.contains("enter send  ·  / commands"), "{text}");
-    assert!(text.contains("> message the agent · / for commands"));
+    assert!(text.contains("┃ message the agent · / for commands"));
 }
 
 #[test]
@@ -2214,10 +2221,10 @@ fn the_editor_grows_and_wraps_up_to_eight_rows() {
     let mut app = scenario();
     app.handle_paste(&"line\n".repeat(12));
     let rows = screen(&mut app, 60, 24);
-    // The rows between the rule above the editor and the status lines.
-    let rule = rows.iter().position(|l| l.starts_with("───")).unwrap();
-    let status = rows.iter().position(|l| l.starts_with("site ·")).unwrap();
-    let editor_rows = status - rule - 1;
+    // The rows between the input box's top row and the status line in it.
+    let top = rows.iter().position(|l| l == "┃").unwrap();
+    let status = rows.iter().position(|l| l.starts_with("┃ site ·")).unwrap();
+    let editor_rows = status - top - 1;
     assert_eq!(editor_rows, 8, "{rows:#?}");
     // The status lines stay at the bottom.
     assert!(rows[23].contains("shift+tab"), "{rows:#?}");
@@ -2668,4 +2675,73 @@ fn tab_reaches_the_files_in_the_chat_and_enter_opens_one() {
     assert_eq!(app.focus, Some(Focus::Chat));
     app.handle_key(key(KeyCode::Esc));
     assert_eq!(app.focus, None);
+}
+
+/// Not a test: writes a frame of a busy session as HTML to `$PREVIEW_HTML` (in the theme
+/// `$PREVIEW_THEME`, dark by default), to look at the design in a browser.
+/// `PREVIEW_HTML=/tmp/term.html cargo test -p neo-term preview -- --ignored`
+#[test]
+#[ignore]
+fn preview() {
+    let Some(path) = std::env::var_os("PREVIEW_HTML") else {
+        return;
+    };
+    let mut app = overview();
+    if let Ok(theme) = std::env::var("PREVIEW_THEME") {
+        type_str(&mut app, &format!("/theme {theme}"));
+        app.handle_key(key(KeyCode::Enter));
+    }
+    app.handle_event(Event::Session(
+        serde_json::from_value(json!({"session": "s1", "seq": 9, "ts": NOW, "event": {
+        "type": "todos", "items": [
+            {"id": "t1", "text": "Make the header sticky", "done": true, "by": "claude"},
+            {"id": "t2", "text": "Check the login form on a phone", "done": false}
+        ]}}))
+        .unwrap(),
+    ));
+    type_str(&mut app, "and the footer too");
+    let (w, h) = (140, 36);
+    let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+    terminal.draw(|f| app.draw(f)).unwrap();
+    let buf = terminal.backend().buffer();
+    let css = |c: ratatui::style::Color, or: &str| match c {
+        ratatui::style::Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+        _ => or.to_string(),
+    };
+    let mut html = String::from(
+        "<html><body style=\"margin:0;background:#000\"><pre style=\"margin:0;font:15px/1.3 'JetBrains Mono',monospace\">",
+    );
+    for y in 0..h {
+        for x in 0..w {
+            let cell = &buf[(x, y)];
+            let m = cell.modifier;
+            let (mut fg, mut bg) = (css(cell.fg, "#ccc"), css(cell.bg, "#000"));
+            if m.contains(Modifier::REVERSED) {
+                std::mem::swap(&mut fg, &mut bg);
+            }
+            let mut style = format!("color:{fg};background:{bg}");
+            if m.contains(Modifier::BOLD) {
+                style.push_str(";font-weight:bold");
+            }
+            if m.contains(Modifier::ITALIC) {
+                style.push_str(";font-style:italic");
+            }
+            if m.contains(Modifier::DIM) {
+                style.push_str(";opacity:.6");
+            }
+            if m.contains(Modifier::CROSSED_OUT) {
+                style.push_str(";text-decoration:line-through");
+            }
+            let sym = match cell.symbol() {
+                "<" => "&lt;",
+                ">" => "&gt;",
+                "&" => "&amp;",
+                s => s,
+            };
+            html.push_str(&format!("<span style=\"{style}\">{sym}</span>"));
+        }
+        html.push('\n');
+    }
+    html.push_str("</pre></body></html>");
+    std::fs::write(path, html).unwrap();
 }

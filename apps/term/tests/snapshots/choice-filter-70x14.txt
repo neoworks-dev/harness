@@ -1,14 +1,14 @@
-message number 0
-
-message number 1
-
-message number 2
-
-Model · answer below
-──────────────────────────────────────────────────────────────────────
-▎ Model
-▎ filter › OPENROUTER sonnet
-▎   [Sonnet 4.5 · openrouter]
-▎ enter sonnet 4.5 · openrouter · tab add a note · esc clear
-site · neo
-? ask before acting (shift+tab to cycle)
+                                                                     │
+                                                                     │
+  message number 1                                                   │
+                                                                     │
+  message number 2                                                   │
+                                                                     │
+  Model · answer below                                               │
+┃
+┃ ▎ Model
+┃ ▎ filter › OPENROUTER sonnet
+┃ ▎   [Sonnet 4.5 · openrouter]
+┃ ▎ enter sonnet 4.5 · openrouter · tab add a note · esc clear
+┃ site · neo
+  ? ask before acting (shift+tab to cycle)

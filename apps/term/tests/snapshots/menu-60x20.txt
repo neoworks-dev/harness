@@ -1,9 +1,9 @@
-› make the header sticky
 
-Done. The header now uses `position: sticky`.
+  ┃
+  ┃ make the header sticky
+  ┃
 
-
-
+  Done. The header now uses `position: sticky`.
 
 
 
@@ -14,7 +14,7 @@ Done. The header now uses `position: sticky`.
 › /clear           start a new conversation in this directo…
   /claude <task>   give a task to Claude Code
   /codex <task>    give a task to Codex
-────────────────────────────────────────────────────────────
-> /c
-site · neo
-⏵⏵ auto mode on · ◐ working 12s
+┃
+┃ /c
+┃ site · neo
+  ⏵⏵ auto mode on · ◐ working 12s

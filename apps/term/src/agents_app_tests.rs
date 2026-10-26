@@ -149,8 +149,8 @@ fn the_list_sits_under_the_status_lines_while_subagents_run() {
     snapshot("agents-100x24", &text);
     let lines: Vec<&str> = text.lines().collect();
     let at = lines.iter().position(|l| l.starts_with("● main")).unwrap();
-    // The two status lines come right before it.
-    assert!(lines[at - 2].starts_with("site ·"), "{text}");
+    // The two status lines come right before it, the first in the input box.
+    assert!(lines[at - 2].starts_with("┃ site ·"), "{text}");
     assert!(lines[at + 1].starts_with("○ neo · deepseek-v4-flash  search tools: weather"));
     assert!(lines[at + 1].ends_with("1m 12s · 3.4k tokens"));
     assert!(lines[at + 2].starts_with("○ claude · sonnet ⎇ fix-login  starting…"));
@@ -324,7 +324,7 @@ fn enter_opens_the_transcript_of_the_selected_subagent_and_esc_closes_it() {
         }]
     );
     assert!(app.transcript.is_none());
-    assert!(screen_text(&mut app, 100, 24).contains("> message the agent"));
+    assert!(screen_text(&mut app, 100, 24).contains("┃ message the agent"));
 }
 
 #[test]

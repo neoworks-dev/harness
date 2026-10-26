@@ -130,19 +130,27 @@ impl<'a> Cx<'a> {
                 _ => body.push(sline(truncate(&tag, inner), self.p.muted_style())),
             }
         }
-        let lead = vec![
-            Span::styled(
-                "›",
-                Style::new().fg(self.p.accent).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-        ];
+        // A theme with raised boxes: one, a row taller each way, with the accent bar down its
+        // left like the input's.
+        let raised = self.p.raised != Color::Reset;
+        let accent = Style::new().fg(self.p.accent).add_modifier(Modifier::BOLD);
+        let bar = || vec![Span::styled("┃", accent), Span::raw(" ")];
+        let lead = if raised {
+            bar()
+        } else {
+            vec![Span::styled("›", accent), Span::raw(" ")]
+        };
+        let rest = if raised { bar() } else { vec![Span::raw("  ")] };
         let mut lines = if body.is_empty() {
             vec![Line::from(lead)]
         } else {
-            prefixed(body, lead, vec![Span::raw("  ")])
+            prefixed(body, lead, rest)
         };
-        let band = self.p.band();
+        if raised {
+            lines.insert(0, Line::from(bar()));
+            lines.push(Line::from(bar()));
+        }
+        let band = if raised { self.p.raised } else { self.p.band() };
         for line in &mut lines {
             let pad = w.saturating_sub(line.width());
             if pad > 0 {
@@ -1001,7 +1009,12 @@ impl<'a> Cx<'a> {
     }
 
     /// A diff line's text as spans: highlighted by `classes` (one per char) over `st`.
-    fn diff_spans(&self, text: String, classes: Vec<syntax::Class>, st: Style) -> Vec<Span<'static>> {
+    fn diff_spans(
+        &self,
+        text: String,
+        classes: Vec<syntax::Class>,
+        st: Style,
+    ) -> Vec<Span<'static>> {
         let Some(colors) = code_colors(&self.p).filter(|_| !classes.is_empty()) else {
             return vec![Span::styled(text, st)];
         };

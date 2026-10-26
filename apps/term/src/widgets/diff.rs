@@ -2286,6 +2286,8 @@ index 1111111..2222222 100644
             fg: Color::Reset,
             bg: Color::Reset,
             surface: Color::Reset,
+            panel: Color::Reset,
+            raised: Color::Reset,
             border: Color::Reset,
             accent: Color::Reset,
             muted: Color::Reset,

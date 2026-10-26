@@ -283,12 +283,7 @@ impl Widgets {
             return;
         }
         let p = &self.palette;
-        let border = Style::new().fg(p.border);
-        for y in area.y..area.bottom() {
-            frame.buffer_mut()[(area.x, y)]
-                .set_symbol("│")
-                .set_style(border);
-        }
+        let area = pane(frame, area, p);
         let x = area.x + 2;
         let w = area.width - 3;
         let has_plan = self.plan.has_any();
@@ -399,12 +394,7 @@ impl Widgets {
             return;
         }
         let p = &self.palette;
-        let border = Style::new().fg(p.border);
-        for y in area.y..area.bottom() {
-            frame.buffer_mut()[(area.x, y)]
-                .set_symbol("│")
-                .set_style(border);
-        }
+        let area = pane(frame, area, p);
         let inner = Rect {
             x: area.x + 2,
             y: area.y,
@@ -533,9 +523,32 @@ impl Widgets {
     }
 }
 
+/// A pane at the right: its first column a gap (a border without fills), the rest filled.
+/// Returns where its content goes: a row down from the top when filled.
+fn pane(frame: &mut Frame, area: Rect, palette: &Palette) -> Rect {
+    let buf = frame.buffer_mut();
+    crate::style::pane_edge(buf, area.x, area, palette);
+    let filled = Rect {
+        x: area.x + 1,
+        width: area.width.saturating_sub(1),
+        ..area
+    };
+    crate::style::fill(buf, filled, palette.panel);
+    let top = u16::from(palette.panel != ratatui::style::Color::Reset && area.height > 4);
+    Rect {
+        y: area.y + top,
+        height: area.height - top,
+        ..area
+    }
+}
+
+/// A section's heading: bold where panes are filled, muted on a border's side; the accent when
+/// the section has the keys.
 fn title_line(title: &'static str, focused: bool, palette: &Palette) -> Line<'static> {
     let style = if focused {
         Style::new().fg(palette.accent).add_modifier(Modifier::BOLD)
+    } else if palette.panel != ratatui::style::Color::Reset {
+        Style::new().add_modifier(Modifier::BOLD)
     } else {
         Style::new().fg(palette.muted)
     };

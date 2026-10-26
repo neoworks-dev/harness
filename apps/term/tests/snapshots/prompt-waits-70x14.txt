@@ -1,14 +1,14 @@
-▎ claude: run ls?
-▎   [1 Yes]  [2 No]
+
+  ▎ claude: run ls?
+  ▎   [1 Yes]  [2 No]
 
 
 
 
 
 
-
-──────────────────────────────────────────────────────────────────────
-permission needed — waiting until you stop typing
-> draft
-site · neo
-? ask before acting (shift+tab to cycle)
+┃
+┃ permission needed — waiting until you stop typing
+┃ draft
+┃ site · neo
+  ? ask before acting (shift+tab to cycle)

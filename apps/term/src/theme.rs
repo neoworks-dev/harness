@@ -48,6 +48,7 @@ impl Theme {
         match self {
             Theme::Dark => DARK,
             Theme::Light => LIGHT,
+            // Without panes: they would be painted on the terminal's own background.
             Theme::Terminal => *daemon,
         }
     }
@@ -58,13 +59,15 @@ impl Theme {
     }
 }
 
-/// The tokens' dark roles: canvas, text, text-muted, sunken (code), line, success, danger. The
-/// accent is pine-11, not the accent role's pine-9: that one is made to be filled, and as text on
-/// the canvas it is about 3:1.
+/// The tokens' dark roles: canvas, text, text-muted, sunken (code), surface (panes), hover (the
+/// input), line, success, danger. The accent is pine-11, not the accent role's pine-9: that one
+/// is made to be filled, and as text on the canvas it is about 3:1.
 const DARK: Palette = Palette {
     fg: Color::Rgb(0xf1, 0xf0, 0xed),
     bg: Color::Rgb(0x0f, 0x0e, 0x0c),
     surface: Color::Rgb(0x1e, 0x1d, 0x1b),
+    panel: Color::Rgb(0x15, 0x15, 0x13),
+    raised: Color::Rgb(0x25, 0x25, 0x22),
     border: Color::Rgb(0x36, 0x35, 0x33),
     accent: Color::Rgb(0x9f, 0xc9, 0xb1),
     muted: Color::Rgb(0xbb, 0xbb, 0xb8),
@@ -72,11 +75,14 @@ const DARK: Palette = Palette {
     danger: Color::Rgb(0xff, 0xa1, 0x89),
 };
 
-/// The tokens' light roles, the same ones.
+/// The tokens' light roles, the same ones but the panes: those are sunken, as the raised
+/// surface is the input.
 const LIGHT: Palette = Palette {
     fg: Color::Rgb(0x17, 0x17, 0x15),
     bg: Color::Rgb(0xf2, 0xf1, 0xee),
     surface: Color::Rgb(0xe9, 0xe8, 0xe6),
+    panel: Color::Rgb(0xe9, 0xe8, 0xe6),
+    raised: Color::Rgb(0xfd, 0xfd, 0xfc),
     border: Color::Rgb(0xd0, 0xcf, 0xcc),
     accent: Color::Rgb(0x34, 0x67, 0x4d),
     muted: Color::Rgb(0x64, 0x63, 0x61),

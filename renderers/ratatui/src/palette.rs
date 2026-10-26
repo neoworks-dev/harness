@@ -14,6 +14,11 @@ pub struct Palette {
     pub bg: Color,
     /// Code backgrounds.
     pub surface: Color,
+    /// Panes beside the chat (sidebars, a side column): a step off the background. `Reset`
+    /// (the protocol's themes) paints none; the panes are told apart by borders then.
+    pub panel: Color,
+    /// Raised boxes, like the input: a step further.
+    pub raised: Color,
     pub border: Color,
     pub accent: Color,
     pub muted: Color,
@@ -30,6 +35,8 @@ impl Palette {
             fg: hex(&c.fg).unwrap_or(d.fg),
             bg: hex(&c.bg).unwrap_or(d.bg),
             surface: hex(&c.surface).unwrap_or(d.surface),
+            panel: d.panel,
+            raised: d.raised,
             border: hex(&c.border).unwrap_or(d.border),
             accent: hex(&c.accent).unwrap_or(d.accent),
             muted: hex(&c.muted).unwrap_or(d.muted),
@@ -102,6 +109,9 @@ impl Default for Palette {
             fg: Color::Rgb(0xe6, 0xe6, 0xe6),
             bg: Color::Rgb(0x16, 0x18, 0x1d),
             surface: Color::Rgb(0x1f, 0x22, 0x29),
+            // The protocol's themes have neither.
+            panel: Color::Reset,
+            raised: Color::Reset,
             border: Color::Rgb(0x34, 0x38, 0x44),
             accent: Color::Rgb(0x7a, 0xa2, 0xf7),
             muted: Color::Rgb(0x8a, 0x8f, 0x9c),

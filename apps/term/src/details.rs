@@ -4,7 +4,7 @@
 //! up.
 
 use neo_protocol::{ConnectorInfo, ConnectorKind, Usage};
-use ratatui::style::Modifier;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::style::Styles;
@@ -32,8 +32,14 @@ pub fn grouped(n: i64) -> String {
     if n < 0 { format!("-{out}") } else { out }
 }
 
-/// A heading with a rule to the edge: ` Session ───────`.
+/// A heading: bold on a filled pane, else with a rule to the edge: ` Session ───────`.
 fn heading(name: &str, w: usize, styles: &Styles) -> Line<'static> {
+    if styles.fills() {
+        return Line::from(Span::styled(
+            format!(" {name}"),
+            Style::new().add_modifier(Modifier::BOLD),
+        ));
+    }
     let rule = "─".repeat(w.saturating_sub(width(name) + 2));
     Line::from(vec![
         Span::styled(

@@ -1,30 +1,30 @@
-› make the header sticky                                           │ Plan
-                                                                   │ ✓ crop the logo
-Done. The header now uses `position: sticky`.                      │ ◐ wire it into the header
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-                                                                   │
-────────────────────────────────────────────────────────────────── │
-> message the agent · / for commands                               │
-site · neo                                                         │
-? ask before acting (shift+tab to cycle)                           │
+
+  ┃                                                                  Plan
+  ┃ make the header sticky                                           ✓ crop the logo
+  ┃                                                                  ◐ wire it into the header
+
+  Done. The header now uses `position: sticky`.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┃
+┃ message the agent · / for commands
+┃ site · neo
+  ? ask before acting (shift+tab to cycle)

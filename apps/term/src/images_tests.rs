@@ -543,7 +543,7 @@ fn a_pasted_image_is_drawn_above_the_editor() {
     let text = screen_text(&buf);
     let label = text
         .iter()
-        .position(|l| l.trim_start().starts_with("[image 1]"))
+        .position(|l| l.trim_start_matches(['┃', ' ']).starts_with("[image 1]"))
         .unwrap();
     let placeholders = (0..buf.area.width)
         .filter(|x| {

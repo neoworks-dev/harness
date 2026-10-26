@@ -1,14 +1,14 @@
 Edited src/a.ts — keep it? · answer below
 
 
-──────────────────────────────────────────────────────────────────────
-▎ Edited src/a.ts — keep it?
-▎   src/a.ts
-▎   @@ -3,2 +3,2 @@
-▎   -  return a - b;
-▎   +  return a + b;
-▎
-▎   [1 Keep]  [2 Revert]
-▎ enter keep · ←/→ choose · tab add a note · esc dismiss
-site · neo
-? ask before acting (shift+tab to cycle)
+┃
+┃ ▎ Edited src/a.ts — keep it?
+┃ ▎   src/a.ts
+┃ ▎   @@ -3,2 +3,2 @@
+┃ ▎   -  return a - b;
+┃ ▎   +  return a + b;
+┃ ▎
+┃ ▎   [1 Keep]  [2 Revert]
+┃ ▎ enter keep · ←/→ choose · tab add a note · esc dismiss
+┃ site · neo
+  ? ask before acting (shift+tab to cycle)
