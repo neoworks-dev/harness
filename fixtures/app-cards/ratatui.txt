@@ -1,4 +1,4 @@
-● browser.tabs
+browser.tabs
   ╭ Site preview
   │ http://localhost:5173/
   │ Pinned

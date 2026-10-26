@@ -1,20 +1,19 @@
-● The deploy is halfway:
+The deploy is halfway:
 
-  ✓ Build  2m 10s
-  ● Canary  5% of traffic
-  ○ Rollout
-  410           ⣀⣀⠤⠤⠒⠒⠉⠉⠉⠒⠒⠒⠒⠤⠤⠤⢄⣀⣀⡀
-      ⠒⠒⠒⠒⠊⠉⠉⠉⠉⠉                   ⠈⠉⠉⠑⠒
+✓ Build  2m 10s
+● Canary  5% of traffic
+○ Rollout
+410           ⢀⣀⡠⠤⠤⠒⠒⠉⠉⠉⠑⠒⠒⠒⠢⠤⠤⠤⣀⣀⣀
+    ⠒⠒⠒⠒⠊⠉⠉⠉⠉⠉⠁                    ⠉⠉⠉⠒⠒
 
 
 
-  117 ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⠤⠤⠤⠤⠤⠤⠤⠤⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀
-      10:00 10:05    10:10   10:15 10:20
-  ━ p50  ━ p99
-  ▸ Canary hosts
-  ▾ Warnings
-    ┃ Latency
-    ┃ p99 rose 18% during the canary.
+117 ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⡠⠤⠤⠤⠤⠤⠤⠤⠤⢄⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀
+    10:00  10:05    10:10   10:15  10:20
+━ p50  ━ p99
+▸ Canary hosts
+▾ Warnings
+  ┃ Latency
+  ┃ p99 rose 18% during the canary.
 
-  I'll continue once the canary is
-  clean.
+I'll continue once the canary is clean.

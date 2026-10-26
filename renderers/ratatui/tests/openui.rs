@@ -2040,11 +2040,11 @@ fn hostile_text_is_cleaned() {
 fn openui_blocks_sit_in_the_text_of_an_item() {
     let it = fixture("openui-chat");
     let out = lines(&it, 60);
-    assert_eq!(out[0], "● The deploy is halfway:");
+    assert_eq!(out[0], "The deploy is halfway:");
     assert!(out.iter().any(|l| l.contains("✓ Build")));
     assert_eq!(
         out.last().unwrap(),
-        "  I'll continue once the canary is clean."
+        "I'll continue once the canary is clean."
     );
 }
 

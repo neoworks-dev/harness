@@ -5,15 +5,15 @@ photo-editor connected (v3): crop, export · now in overlay
 
 ∴ Crop first, then edit Header.tsx.
 
-● I'll crop the image to 512×512 first.
+I'll crop the image to 512×512 first.
 
-● photo-editor.crop
+photo-editor.crop
   ╭ Cropped image
   │ [image asset://img-7f3 · 512×512]
   │ 512×512
   │ [c Copy handle]
 
-● edit src/Header.tsx
+edit src/Header.tsx
     Applied 1 edit(s) to src/Header.tsx.
   src/Header.tsx
   @@ -1,3 +1,4 @@
@@ -22,7 +22,7 @@ photo-editor connected (v3): crop, export · now in overlay
      <h1>Site</h1>
    </header>
 
-● bash: npm run build
+bash: npm run build
     vite v6.0.0 building for production...
 
 Rate limited by the provider; try again in a minute.

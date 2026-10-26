@@ -1,6 +1,6 @@
 › make the header sticky                                           │ Plan
                                                                    │ ✓ crop the logo
-● Done. The header now uses `position: sticky`.                    │ ◐ wire it into the header
+Done. The header now uses `position: sticky`.                      │ ◐ wire it into the header
                                                                    │
                                                                    │
                                                                    │

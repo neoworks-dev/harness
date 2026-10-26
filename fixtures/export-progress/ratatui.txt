@@ -1,2 +1,2 @@
-● photo-editor.export
+photo-editor.export
   ⎿ Exporting logo  … +4 lines

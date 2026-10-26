@@ -1,2 +1,2 @@
-● bash: npm test
+bash: npm test
   ⎿ > site@1.0.0 test  … +8 lines

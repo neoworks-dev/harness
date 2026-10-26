@@ -811,7 +811,7 @@ fn the_form_is_drawn_into_the_chat_on_a_wide_screen() {
     tabs(&mut app, 1);
     typed(&mut app, "ops@");
     let screen = screen(&mut app, 80, 34).join("\n");
-    assert!(screen.contains("▎   Service *"), "{screen}");
+    assert!(screen.contains("▎ Service *"), "{screen}");
     // Only the chat's margin bar marks the form being answered.
     assert!(screen.contains("▎ "), "{screen}");
     assert!(

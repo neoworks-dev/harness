@@ -1,12 +1,12 @@
 › run the tests
 
-● claude: run ls? · answer below
+claude: run ls? · answer below
 
 
 
 
 ──────────────────────────────────────────────────────────────────────
-▎ ● claude: run ls?
+▎ claude: run ls?
 ▎   [1 Allow once]  [2 Always allow]  [3 Reject]
 ▎ enter always allow · ←/→ choose · tab add a note · esc dismiss
 ~/site · neo

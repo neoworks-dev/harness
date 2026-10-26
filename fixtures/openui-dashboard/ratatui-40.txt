@@ -1,2 +1,2 @@
-● analytics.revenue
+analytics.revenue
   ⎿ Revenue  … +17 lines

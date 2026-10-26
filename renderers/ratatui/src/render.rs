@@ -149,8 +149,7 @@ impl<'a> Cx<'a> {
         lines
     }
 
-    /// `● text`, the text indented under the bullet; a guest agent's gets a small header with
-    /// its name.
+    /// The text as it is; a guest agent's gets a small header with its name.
     fn agent(&mut self, it: &pb::ViewItem, label: Option<String>, w: usize) -> Lines {
         let mut out = Vec::new();
         if let Some(label) = label {
@@ -159,23 +158,7 @@ impl<'a> Cx<'a> {
                 Style::new().fg(self.p.accent).add_modifier(Modifier::BOLD),
             ));
         }
-        // Prose gets the bullet; anything else the agent shows (cards, tables…) is drawn as is.
-        if !matches!(it.component, pb::Component::TextComponent(_)) {
-            out.extend(self.comp(&it.component, w));
-            return out;
-        }
-        let body = self.comp(&it.component, w.saturating_sub(2).max(1));
-        if !body.is_empty() {
-            // A form or chart is not a sentence to bullet: it only takes the indent.
-            let opens_with_ui = matches!(&it.component, pb::Component::TextComponent(t)
-                if matches!(t.blocks.first(), Some(pb::Block::OpenUiBlock(_))));
-            let bullet = if opens_with_ui {
-                vec![Span::raw("  ")]
-            } else {
-                vec![Span::styled("● ", Style::new().fg(self.p.fg))]
-            };
-            out.extend(prefixed(body, bullet, vec![Span::raw("  ")]));
-        }
+        out.extend(self.comp(&it.component, w));
         out
     }
 
@@ -211,18 +194,11 @@ impl<'a> Cx<'a> {
         body
     }
 
-    /// A header line (`● label`, the bullet colored by state), then the result: summarized
-    /// under `⎿` in muted, or in full when expanded. Items with buttons are always shown in
-    /// full: the buttons are what the item is for.
+    /// A header (the label, red when the call failed), then the result: summarized under `⎿`
+    /// in muted, or in full when expanded. Items with buttons are always shown in full: the
+    /// buttons are what the item is for.
     fn tool(&mut self, it: &pb::ViewItem, label: Option<String>, w: usize) -> Lines {
-        // The bullet's color tells a call from the agent's prose (whose bullet is the text color).
-        let color = match it.state {
-            Some(pb::ItemState::Running) => self.p.accent,
-            Some(pb::ItemState::Done) => self.p.success,
-            Some(pb::ItemState::Failed) => self.p.danger,
-            Some(pb::ItemState::Pending) | None => self.p.muted,
-        };
-        let bullet = vec![Span::styled("● ", Style::new().fg(color))];
+        let failed = it.state == Some(pb::ItemState::Failed);
         // A doc with fields or buttons is a form to fill in; one that holds focus is in use.
         let prompt = has_buttons(&it.component)
             || crate::openui::interactive(&it.component)
@@ -231,7 +207,7 @@ impl<'a> Cx<'a> {
         // expanded.
         let finished = matches!(it.state, Some(pb::ItemState::Done | pb::ItemState::Failed));
         let cut = finished && !prompt && !self.o.expanded;
-        let hw = w.saturating_sub(2).max(1);
+        let hw = w;
         let mut head = match &label {
             Some(label) => wrap(&self.tool_label(label), hw),
             None => Vec::new(),
@@ -267,11 +243,11 @@ impl<'a> Cx<'a> {
         } else if cut {
             cut_rows(&mut head, LABEL_ROWS, hw);
         }
-        let mut out = if head.is_empty() {
-            vec![Line::from(bullet)]
-        } else {
-            prefixed(head, bullet, vec![Span::raw("  ")])
-        };
+        if failed {
+            let danger = self.p.danger;
+            restyle(&mut head, |st| st.fg(danger));
+        }
+        let mut out = head;
         if self.o.expanded || prompt {
             self.budget = self.o.preview_lines.filter(|_| prompt && !self.o.expanded);
             let body = self.comp(&it.component, w.saturating_sub(2).max(1));

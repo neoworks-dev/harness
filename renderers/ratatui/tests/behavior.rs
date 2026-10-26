@@ -96,15 +96,15 @@ fn user_text_hangs_under_the_prompt_and_the_label_moves_when_it_does_not_fit() {
 }
 
 #[test]
-fn agent_text_hangs_under_a_bullet_with_a_header_for_guests() {
+fn agent_text_is_drawn_as_it_is_with_a_header_for_guests() {
     let main = item_of("agent", "", &text("hello there"));
-    assert_eq!(lines(&main, 40), ["● hello there"]);
-    assert_eq!(lines(&main, 9), ["● hello", "  there"]);
+    assert_eq!(lines(&main, 40), ["hello there"]);
+    assert_eq!(lines(&main, 9), ["hello", "there"]);
     let guest = item_of("agent", r#""label":"claude","#, &text("hello there"));
-    assert_eq!(lines(&guest, 40), ["claude", "● hello there"]);
+    assert_eq!(lines(&guest, 40), ["claude", "hello there"]);
     // Other components are drawn as they are.
     let card = r#"{"type":"card","title":"T","children":[]}"#;
-    assert!(!lines(&item_of("agent", "", card), 40)[0].starts_with('●'));
+    assert!(lines(&item_of("agent", "", card), 40)[0].starts_with('╭'));
     let head = &render_item(&guest, 40, &Options::default())[0];
     assert_eq!(head.spans[0].style.fg, Some(pal().accent));
 }
@@ -141,20 +141,14 @@ fn notices_are_one_dim_line_and_red_when_failed() {
 // ---- tool items ----
 
 #[test]
-fn tool_bullets_show_the_state() {
-    for (state, color) in [
-        ("pending", pal().muted),
-        ("running", pal().accent),
-        // A colored bullet tells a call from the agent's prose.
-        ("done", pal().success),
-        ("failed", pal().danger),
-    ] {
+fn only_a_failed_call_is_colored() {
+    for state in ["pending", "running", "done", "failed"] {
         let it = tool(state, &code("x"));
         let head = &render_item(&it, 40, &Options::default())[0];
-        assert_eq!(head.spans[0].content, "● ");
-        assert_eq!(head.spans[0].style.fg, Some(color), "{state}");
-        let label: String = head.spans[1..].iter().map(|s| s.content.as_ref()).collect();
+        let label: String = head.spans.iter().map(|s| s.content.as_ref()).collect();
         assert_eq!(label, "bash: ls");
+        let red = head.spans.iter().all(|s| s.style.fg == Some(pal().danger));
+        assert_eq!(red, state == "failed", "{state}");
     }
 }
 
@@ -172,7 +166,7 @@ fn the_verb_is_bold_and_the_summary_muted() {
             &code("out"),
         );
         let lines = render_item(&it, 60, &Options::default());
-        let head = &lines[0].spans[1..];
+        let head = &lines[0].spans[..];
         assert_eq!((head[0].content.as_ref(), bold(&head[0])), (verb, true));
         if !rest.is_empty() {
             assert_eq!((head[1].content.as_ref(), bold(&head[1])), (rest, false));
@@ -245,16 +239,16 @@ fn a_command_to_approve_is_highlighted_and_broken_at_its_operators() {
 #[test]
 fn compact_code_shows_the_first_line_and_how_many_are_cut() {
     let out = tool("done", &code("a\nb\nc\nd\ne\n"));
-    assert_eq!(lines(&out, 40), ["● bash: ls", "  ⎿ a  … +4 lines"]);
+    assert_eq!(lines(&out, 40), ["bash: ls", "  ⎿ a  … +4 lines"]);
     let one = tool("done", &code("a"));
-    assert_eq!(lines(&one, 40), ["● bash: ls", "  ⎿ a"]);
+    assert_eq!(lines(&one, 40), ["bash: ls", "  ⎿ a"]);
     let long_line = tool("done", &code("0123456789abcdef"));
-    assert_eq!(lines(&long_line, 12), ["● bash: ls", "  ⎿ 0123456…"]);
+    assert_eq!(lines(&long_line, 12), ["bash: ls", "  ⎿ 0123456…"]);
     // The count keeps its room: the line is cut for it.
     let long = tool("done", &code("0123456789abcdefghij\nx"));
-    assert_eq!(lines(&long, 24), ["● bash: ls", "  ⎿ 0123456…  … +1 lines"]);
+    assert_eq!(lines(&long, 24), ["bash: ls", "  ⎿ 0123456…  … +1 lines"]);
     let empty = tool("done", &code("\n"));
-    assert_eq!(lines(&empty, 40), ["● bash: ls"]);
+    assert_eq!(lines(&empty, 40), ["bash: ls"]);
 }
 
 #[test]
@@ -266,7 +260,7 @@ fn compact_results_count_the_leaves_left_out() {
     );
     assert_eq!(
         lines(&tool("failed", &stack), 40),
-        ["● bash: ls", "  ⎿ 1  … +6 lines"]
+        ["bash: ls", "  ⎿ 1  … +6 lines"]
     );
 }
 
@@ -286,19 +280,19 @@ fn a_command_is_highlighted_and_broken_at_its_operators() {
     assert_eq!(
         lines(&item(None, "running"), 80),
         [
-            "● cd /work/site &&",
-            "    cargo build --release 2>&1 | grep -E 'error|warning' | head -40;",
-            "    echo done",
+            "cd /work/site &&",
+            "  cargo build --release 2>&1 | grep -E 'error|warning' | head -40;",
+            "  echo done",
             "  ⎿ ok"
         ]
     );
     assert_eq!(
         lines(&item(None, "running"), 40),
         [
-            "● cd /work/site &&",
-            "    cargo build --release 2>&1 |",
-            "    grep -E 'error|warning' |",
-            "    head -40;…",
+            "cd /work/site &&",
+            "  cargo build --release 2>&1 |",
+            "  grep -E 'error|warning' |",
+            "  head -40;…",
             "  ⎿ ok"
         ]
     );
@@ -335,8 +329,8 @@ fn a_command_is_highlighted_and_broken_at_its_operators() {
     assert_eq!(
         done,
         [
-            "● cd /work/site &&",
-            "    cargo build --release 2>&1 |…",
+            "cd /work/site &&",
+            "  cargo build --release 2>&1 |…",
             "  ⎿ ok"
         ]
     );
@@ -344,9 +338,9 @@ fn a_command_is_highlighted_and_broken_at_its_operators() {
     assert_eq!(
         described,
         [
-            "● Build the site",
-            "  cd /work/site &&",
-            "    cargo build --release 2>&1 |…",
+            "Build the site",
+            "cd /work/site &&",
+            "  cargo build --release 2>&1 |…",
             "  ⎿ ok"
         ]
     );
@@ -370,11 +364,11 @@ fn a_running_command_takes_four_rows_unless_asked_about_or_expanded() {
     assert_eq!(
         shown,
         [
-            "● Run the steps",
-            "  step-1 &&",
-            "    step-2 &&",
-            "    step-3 &&",
-            "    step-4 &&…"
+            "Run the steps",
+            "step-1 &&",
+            "  step-2 &&",
+            "  step-3 &&",
+            "  step-4 &&…"
         ],
         "and no result line while there is no output"
     );
@@ -399,8 +393,8 @@ fn a_long_label_is_cut_once_the_call_has_run() {
     assert_eq!(
         &done[..2],
         [
-            "● cd /very/long/path && cd",
-            "  /very/long/path && cd /very/long/path…"
+            "cd /very/long/path && cd /very/long/path",
+            "&& cd /very/long/path && cd…"
         ]
     );
     assert_eq!(done[2], "  ⎿ ok");
@@ -415,7 +409,7 @@ fn a_long_label_is_cut_once_the_call_has_run() {
     // A label that fits is left alone.
     assert_eq!(
         lines(&tool("done", &code("ok")), 40),
-        ["● bash: ls", "  ⎿ ok"]
+        ["bash: ls", "  ⎿ ok"]
     );
 }
 
@@ -427,7 +421,7 @@ fn compact_summaries_by_component() {
         {"kind":"add","text":"y"},{"kind":"add","text":"z"},{"kind":"add","text":"w"},
         {"kind":"remove","text":"q"}]}"#;
     let it = tool("done", diff);
-    assert_eq!(lines(&it, 40), ["● bash: ls", "  ⎿ src/a.ts  +3 −1"]);
+    assert_eq!(lines(&it, 40), ["bash: ls", "  ⎿ src/a.ts  +3 −1"]);
     let l = &render_item(&it, 40, &Options::default())[1];
     let plus = l.spans.iter().find(|s| s.content == "+3").unwrap();
     let minus = l.spans.iter().find(|s| s.content == "−1").unwrap();
@@ -448,7 +442,7 @@ fn compact_summaries_by_component() {
     let card = r#"{"type":"card","title":"Cropped","children":[{"type":"link","url":"http://x"}]}"#;
     assert_eq!(
         lines(&tool("done", card), 40),
-        ["● bash: ls", "  ⎿ Cropped  … +1 lines"]
+        ["bash: ls", "  ⎿ Cropped  … +1 lines"]
     );
 
     let table = r#"{"type":"table","columns":["a","b"],"rows":[["1","2"],["3","4"]]}"#;
@@ -461,7 +455,7 @@ fn compact_summaries_by_component() {
     assert_eq!(
         lines(&long, 14),
         // Too narrow for the count beside it.
-        ["● bash: ls", "  ⎿ one two", "    … +5 lines"]
+        ["bash: ls", "  ⎿ one two", "    … +5 lines"]
     );
 }
 
@@ -473,7 +467,7 @@ fn expanded_tools_draw_the_whole_component_indented() {
         ..Options::default()
     };
     let got = lines_of(&it, 20, &opts);
-    assert_eq!(got[0], "● bash: ls");
+    assert_eq!(got[0], "bash: ls");
     assert_eq!(&got[1..], ["    a", "    b", "    c", "    d", "    e"]);
 }
 
@@ -487,14 +481,11 @@ fn tools_with_buttons_are_always_drawn_in_full() {
         r#""label":"claude: run rm","state":"pending","#,
         row,
     );
-    assert_eq!(
-        lines(&it, 60),
-        ["● claude: run rm", "  [y Allow]  [2 Deny]"]
-    );
+    assert_eq!(lines(&it, 60), ["claude: run rm", "  [y Allow]  [2 Deny]"]);
     // Too narrow for one line: stacked.
     assert_eq!(
         lines(&it, 14),
-        ["● claude: run", "  rm", "  [y Allow]", "  [2 Deny]"]
+        ["claude: run rm", "  [y Allow]", "  [2 Deny]"]
     );
 }
 
@@ -537,7 +528,7 @@ fn a_permission_shows_its_diff_colored_and_the_buttons_below_a_gap() {
     assert_eq!(
         lines(&it, 60),
         [
-            "● Edit src/app.ts",
+            "Edit src/app.ts",
             "  src/app.ts",
             "  @@ -1,3 +1,3 @@",
             "  -line 0",
@@ -715,7 +706,7 @@ fn a_review_card_offers_keep_and_reverts_as_buttons() {
     assert_eq!(
         lines(&it, 50),
         [
-            "● The agent changed 2 files: keep them?",
+            "The agent changed 2 files: keep them?",
             "  [1 Keep]",
             "  [2 Revert all]",
             "  [3 Revert a.ts]",
@@ -825,7 +816,7 @@ fn button_text_is_key_and_label() {
     let it = two_buttons();
     assert_eq!(
         lines(&it, 60),
-        ["● t", "  ╭ C", "  │ [1 Open]  [c Copy]", "  │ [3 Three]"]
+        ["t", "  ╭ C", "  │ [1 Open]  [c Copy]", "  │ [3 Three]"]
     );
 }
 
@@ -1099,7 +1090,7 @@ fn terminal_escapes_in_text_never_reach_the_output() {
     for line in lines(&it, 40) {
         assert!(!line.chars().any(char::is_control), "{line:?}");
     }
-    assert_eq!(lines(&it, 40), ["● x[2Jy", "  ⎿ a]0;titleb  c"]);
+    assert_eq!(lines(&it, 40), ["x[2Jy", "  ⎿ a]0;titleb  c"]);
 }
 
 #[test]
@@ -1262,7 +1253,7 @@ fn slots_follow_the_indent_of_where_the_image_sits() {
     // Collapsed: under the elbow.
     let out = render_item_images(&it, 40, &opts);
     let rows = plain_text(&out.lines);
-    assert_eq!(rows[0], "● bash: ls");
+    assert_eq!(rows[0], "bash: ls");
     assert_eq!((out.images[0].line, out.images[0].x), (1, 4));
     assert_eq!(rows[1], "  ⎿");
     assert_eq!(rows.last().unwrap(), "    a cat · 200×100");

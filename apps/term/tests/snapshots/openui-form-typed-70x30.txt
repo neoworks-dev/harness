@@ -1,23 +1,23 @@
 › deploy it
 
-▎ ● Fill this in:
+▎ Fill this in:
 ▎
-▎   Service *
-▎   [ API                                    ▾ ]
-▎   Email
-▎   [ ops@x.io                                 ]
-▎   Environment
-▎   ( ) Staging  (•) Production
-▎   Notes
-▎   [                                          ]
-▎   [                                          ]
-▎   [                                          ]
-▎   Canary
-▎   ━━━━━━●─────────────────────── 10  (0–50)
-▎   ○ off Post to #deploys
-▎   [ ] I checked
+▎ Service *
+▎ [ API                                    ▾ ]
+▎ Email
+▎ [ ops@x.io                                 ]
+▎ Environment
+▎ ( ) Staging  (•) Production
+▎ Notes
+▎ [                                          ]
+▎ [                                          ]
+▎ [                                          ]
+▎ Canary
+▎ ━━━━━━●─────────────────────── 10  (0–50)
+▎ ○ off Post to #deploys
+▎ [ ] I checked
 ▎
-▎    Deploy    Runbook ↗    Copy id ⧉
+▎  Deploy    Runbook ↗    Copy id ⧉
 
 
 

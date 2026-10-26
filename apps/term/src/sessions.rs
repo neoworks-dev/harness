@@ -5,7 +5,9 @@
 //! are ordered by their latest activity, sessions in a group too; a session that another one
 //! delegated to (`parent`) is indented under its parent when they share a group. Fed by
 //! `list_sessions` at start and `session.changed` events afterwards. A session that finished a
-//! turn while another one was shown stays marked until it is shown.
+//! turn while another one was shown stays marked until it is shown. Sessions idle for over a day
+//! fold into a `▸ N older` row at the end of their group, which Enter opens and closes; the
+//! shown session, a running one and one that finished unseen never fold.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -23,7 +25,7 @@ use crate::util::{fit_line, truncate, width};
 pub const SIDEBAR_WIDTH: u16 = 31;
 /// Rows a PgUp / PgDn moves.
 const PAGE: usize = 5;
-/// Idle longer than this, a session is drawn faded.
+/// Idle longer than this, a session is drawn faded and folds into its group's older row.
 const STALE_MS: i64 = 24 * 3600 * 1000;
 
 /// What a key in the focused sidebar asks the app to do.
@@ -120,6 +122,12 @@ enum Entry {
     Group(String),
     /// A session: index into the list, and whether it is drawn as a child of the one above.
     Session { index: usize, child: bool },
+    /// The group's sessions idle for over a day: how many, and whether they are shown (after it).
+    Older {
+        group: String,
+        count: usize,
+        open: bool,
+    },
 }
 
 impl Entry {
@@ -127,9 +135,22 @@ impl Entry {
         match self {
             // Title, preview and a blank row, so sessions read apart.
             Entry::Session { .. } => 3,
+            Entry::Older { .. } => 2,
             _ => 1,
         }
     }
+
+    /// A row the keys can be on.
+    fn pickable(&self) -> bool {
+        matches!(self, Entry::Session { .. } | Entry::Older { .. })
+    }
+}
+
+/// A row the keys can be on: a session (its id) or a group's older row (the group's key).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Pick {
+    Session(String),
+    Older(String),
 }
 
 #[derive(Debug, Default)]
@@ -140,11 +161,16 @@ pub struct Sessions {
     places: HashMap<String, Place>,
     /// The list as drawn: headers and sessions in order.
     entries: Vec<Entry>,
-    /// The sessions in drawn order, and the positions in it where a group starts.
-    visual: Vec<usize>,
+    /// The rows the keys move over in drawn order, and the positions in it where a group starts.
+    visual: Vec<Pick>,
     group_starts: Vec<usize>,
     /// The row the keys are on while the sidebar has focus.
-    selected: Option<String>,
+    selected: Option<Pick>,
+    /// The groups whose older sessions are shown.
+    opened: HashSet<String>,
+    /// What the folding was worked out for: the shown session, and the minute.
+    current: String,
+    minute: i64,
     /// First entry drawn.
     top: usize,
     /// Finished a turn since it was last shown.
@@ -202,7 +228,7 @@ impl Sessions {
     pub fn remove(&mut self, id: &str) {
         self.list.retain(|s| s.id != id);
         self.finished.remove(id);
-        if self.selected.as_deref() == Some(id) {
+        if self.selected == Some(Pick::Session(id.to_string())) {
             self.selected = None;
         }
         self.sort();
@@ -267,27 +293,55 @@ impl Sessions {
         }
         let mut ordered: Vec<_> = clusters.into_iter().collect();
         ordered.sort_by(|a, b| b.1.latest.cmp(&a.1.latest).then_with(|| a.0.cmp(b.0)));
+        let now = self.minute * 60_000;
+        // Idle for over a day, and nothing to see on it: it folds.
+        let folds = |info: &SessionInfo| {
+            now - info.last_activity > STALE_MS
+                && info.id != self.current
+                && info.state != SessionState::Running
+                && !self.finished.contains(&info.id)
+        };
         let mut entries = Vec::new();
         let mut starts = Vec::new();
         let mut visual = Vec::new();
-        let mut put = |group: &Group, entries: &mut Vec<Entry>| {
+        let mut put = |key: String, group: &Group, entries: &mut Vec<Entry>| {
             if group.is_empty() {
                 return;
             }
             starts.push(visual.len());
-            for (index, child) in self.family(group) {
-                visual.push(index);
+            let (old, recent): (Vec<_>, Vec<_>) = self
+                .family(group)
+                .into_iter()
+                .partition(|&(index, _)| folds(&self.list[index]));
+            for (index, child) in recent {
+                visual.push(Pick::Session(self.list[index].id.clone()));
                 entries.push(Entry::Session { index, child });
+            }
+            if old.is_empty() {
+                return;
+            }
+            let open = self.opened.contains(&key);
+            visual.push(Pick::Older(key.clone()));
+            entries.push(Entry::Older {
+                group: key,
+                count: old.len(),
+                open,
+            });
+            if open {
+                for (index, child) in old {
+                    visual.push(Pick::Session(self.list[index].id.clone()));
+                    entries.push(Entry::Session { index, child });
+                }
             }
         };
         for (repo, cluster) in ordered {
             entries.push(Entry::Cluster(base(repo).to_string()));
-            put(&cluster.main, &mut entries);
+            put(repo.to_string(), &cluster.main, &mut entries);
             let mut trees: Vec<_> = cluster.worktrees.into_iter().collect();
             trees.sort_by(|a, b| b.1.0.cmp(&a.1.0).then_with(|| a.0.cmp(b.0)));
             for (name, (_, group)) in trees {
                 entries.push(Entry::Group(name.to_string()));
-                put(&group, &mut entries);
+                put(format!("{repo}\0{name}"), &group, &mut entries);
             }
         }
         self.entries = entries;
@@ -319,22 +373,22 @@ impl Sessions {
         out
     }
 
-    fn visual_pos(&self, id: Option<&str>) -> Option<usize> {
-        let id = id?;
-        self.visual.iter().position(|&i| self.list[i].id == id)
+    fn visual_pos(&self, pick: Option<&Pick>) -> Option<usize> {
+        let pick = pick?;
+        self.visual.iter().position(|p| p == pick)
     }
 
     /// The sidebar gets focus: the keys start on the shown session.
     pub fn focus(&mut self, current: &str) {
         let at = self
-            .visual_pos(Some(current))
+            .visual_pos(Some(&Pick::Session(current.to_string())))
             .or((!self.visual.is_empty()).then_some(0));
-        self.selected = at.map(|p| self.list[self.visual[p]].id.clone());
+        self.selected = at.map(|p| self.visual[p].clone());
     }
 
     fn move_to(&mut self, pos: usize) {
-        if let Some(&i) = self.visual.get(pos) {
-            self.selected = Some(self.list[i].id.clone());
+        if let Some(pick) = self.visual.get(pos) {
+            self.selected = Some(pick.clone());
         }
     }
 
@@ -342,14 +396,14 @@ impl Sessions {
         if self.visual.is_empty() {
             return;
         }
-        let at = self.visual_pos(self.selected.as_deref()).unwrap_or(0) as isize;
+        let at = self.visual_pos(self.selected.as_ref()).unwrap_or(0) as isize;
         let last = self.visual.len() as isize - 1;
         self.move_to((at + delta).clamp(0, last) as usize);
     }
 
     /// To the first session of the previous or next group (`[` and `]`).
     fn jump_group(&mut self, delta: isize) {
-        let at = self.visual_pos(self.selected.as_deref()).unwrap_or(0);
+        let at = self.visual_pos(self.selected.as_ref()).unwrap_or(0);
         let current = self
             .group_starts
             .iter()
@@ -382,12 +436,21 @@ impl Sessions {
             KeyCode::PageDown => self.move_by(PAGE as isize),
             KeyCode::Home | KeyCode::Char('g') => self.move_to(0),
             KeyCode::End | KeyCode::Char('G') => self.move_to(self.visual.len().saturating_sub(1)),
-            KeyCode::Enter => {
-                if let Some(p) = self.visual_pos(self.selected.as_deref()) {
-                    return SessionsAction::Open(Box::new(self.list[self.visual[p]].clone()));
+            KeyCode::Enter => match self.selected.clone() {
+                Some(Pick::Session(id)) => {
+                    if let Some(info) = self.get(&id) {
+                        return SessionsAction::Open(Box::new(info.clone()));
+                    }
+                    return SessionsAction::Leave;
                 }
-                return SessionsAction::Leave;
-            }
+                Some(Pick::Older(group)) => {
+                    if !self.opened.remove(&group) {
+                        self.opened.insert(group);
+                    }
+                    self.build();
+                }
+                None => return SessionsAction::Leave,
+            },
             KeyCode::Esc | KeyCode::Char('q') | KeyCode::Left | KeyCode::Char('h') => {
                 return SessionsAction::Leave;
             }
@@ -400,7 +463,7 @@ impl Sessions {
     /// its group) is inside `rows` lines.
     fn scroll_to(&mut self, anchor: usize, rows: usize) {
         let mut from = anchor;
-        while from > 0 && !matches!(self.entries[from - 1], Entry::Session { .. }) {
+        while from > 0 && !self.entries[from - 1].pickable() {
             from -= 1;
         }
         if from < self.top || self.top > anchor {
@@ -428,6 +491,13 @@ impl Sessions {
             current, focused, ..
         } = *look;
         self.finished.remove(current);
+        // Which sessions fold depends on the shown one and the time.
+        let minute = look.now_ms / 60_000;
+        if current != self.current || minute != self.minute {
+            self.current = current.to_string();
+            self.minute = minute;
+            self.build();
+        }
         if w < 8 || h == 0 {
             return Vec::new();
         }
@@ -448,14 +518,19 @@ impl Sessions {
         }
         let mut out = vec![Line::from(header)];
         let rows = (h - 1).max(2);
-        let anchor_id = if focused {
-            self.selected.as_deref()
+        let shown = Pick::Session(current.to_string());
+        let anchor_pick = if focused {
+            self.selected.as_ref()
         } else {
-            Some(current)
+            Some(&shown)
         };
-        let anchor = self.entries.iter().position(|e| match e {
-            Entry::Session { index, .. } => Some(self.list[*index].id.as_str()) == anchor_id,
-            _ => false,
+        let anchor = self.entries.iter().position(|e| {
+            let pick = match e {
+                Entry::Session { index, .. } => Pick::Session(self.list[*index].id.clone()),
+                Entry::Older { group, .. } => Pick::Older(group.clone()),
+                _ => return false,
+            };
+            Some(&pick) == anchor_pick
         });
         if let Some(a) = anchor {
             self.scroll_to(a, rows);
@@ -485,9 +560,28 @@ impl Sessions {
                         styles.muted,
                     )));
                 }
+                Entry::Older { group, count, open } => {
+                    let selected =
+                        focused && self.selected.as_ref() == Some(&Pick::Older(group.clone()));
+                    let fold = if *open { "▾" } else { "▸" };
+                    let mut line = Line::from(vec![
+                        Span::raw("   "),
+                        Span::styled(format!("{fold} {count} older"), styles.muted),
+                    ]);
+                    if selected {
+                        let pad = w.saturating_sub(line.width());
+                        line.spans.push(Span::raw(" ".repeat(pad)));
+                        for span in &mut line.spans {
+                            span.style = span.style.add_modifier(Modifier::REVERSED);
+                        }
+                    }
+                    out.push(line);
+                    out.push(Line::default());
+                }
                 Entry::Session { index, child } => {
                     let info = &self.list[*index];
-                    let selected = focused && self.selected.as_deref() == Some(info.id.as_str());
+                    let selected =
+                        focused && self.selected.as_ref() == Some(&Pick::Session(info.id.clone()));
                     let mark = if info.id == current {
                         Mark::Current
                     } else if self.finished.contains(&info.id) {
@@ -769,6 +863,9 @@ mod tests {
         s.set_all(vec![info("new", "Fresh", 10 * day), old]);
         let mut l = look("x", false);
         l.now_ms = 10 * day + 1000;
+        s.render(29, 20, &l, &styles());
+        s.opened.insert("/w".into());
+        s.build();
         let lines = s.render(29, 20, &l, &styles());
         let title = |text: &str| {
             lines
@@ -781,6 +878,53 @@ mod tests {
         assert!(!title("Fresh").add_modifier.contains(Modifier::DIM));
         assert_eq!(title("Stale"), styles().muted);
         assert!(title("said long ago").add_modifier.contains(Modifier::DIM));
+    }
+
+    #[test]
+    fn sessions_idle_for_over_a_day_fold_into_an_older_row_that_enter_opens() {
+        let mut s = Sessions::default();
+        let day = 24 * 3600 * 1000;
+        let mut running = info("run", "Busy", day);
+        running.state = SessionState::Running;
+        s.set_all(vec![
+            info("new", "Fresh", 10 * day),
+            info("old", "Stale", 2 * day),
+            info("older", "Staler", day),
+            info("shown", "Shown", day),
+            running,
+        ]);
+        let mut l = look("shown", false);
+        l.now_ms = 10 * day + 1000;
+        let rows = |s: &mut Sessions, l: &Look| {
+            text(&s.render(29, 40, l, &styles()))
+                .iter()
+                .map(|l| l.trim().trim_start_matches('▎').trim().to_string())
+                .filter(|l| !l.is_empty() && !l.starts_with("Sessions") && !l.ends_with('─'))
+                // The second rows: only an age.
+                .filter(|l| {
+                    l != "now" && !l.trim_end_matches('d').chars().all(|c| c.is_ascii_digit())
+                })
+                .collect::<Vec<_>>()
+        };
+        // The shown and the running session stay; the two idle ones fold.
+        assert_eq!(rows(&mut s, &l), ["Fresh", "◐ Busy", "Shown", "▸ 2 older"]);
+        l.focused = true;
+        s.focus("shown");
+        s.key(press(KeyCode::Down));
+        assert_eq!(s.selected, Some(Pick::Older("/w".into())));
+        assert_eq!(s.key(press(KeyCode::Enter)), SessionsAction::Redraw);
+        assert_eq!(
+            rows(&mut s, &l),
+            ["Fresh", "◐ Busy", "Shown", "▾ 2 older", "Stale", "Staler"]
+        );
+        s.key(press(KeyCode::Down));
+        match s.key(press(KeyCode::Enter)) {
+            SessionsAction::Open(i) => assert_eq!(i.id, "old"),
+            other => panic!("{other:?}"),
+        }
+        s.key(press(KeyCode::Up));
+        s.key(press(KeyCode::Enter));
+        assert_eq!(rows(&mut s, &l), ["Fresh", "◐ Busy", "Shown", "▸ 2 older"]);
     }
 
     #[test]
@@ -1007,7 +1151,7 @@ mod tests {
                 .filter_map(|e| match e {
                     Entry::Cluster(n) => Some(n.clone()),
                     Entry::Group(n) => Some(format!("  {n}")),
-                    Entry::Session { .. } => None,
+                    Entry::Session { .. } | Entry::Older { .. } => None,
                 })
                 .collect::<Vec<_>>()
         };
@@ -1024,7 +1168,10 @@ mod tests {
     fn keys_skip_headers_and_jump_between_groups() {
         let mut s = grouped();
         s.focus("b");
-        let selected = |s: &Sessions| s.selected.clone().unwrap();
+        let selected = |s: &Sessions| match s.selected.clone().unwrap() {
+            Pick::Session(id) => id,
+            Pick::Older(group) => group,
+        };
         let mut walk = vec![selected(&s)];
         for _ in 0..5 {
             s.key(press(KeyCode::Down));

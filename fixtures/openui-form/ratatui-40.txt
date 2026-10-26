@@ -1,21 +1,21 @@
-  Service *
-  [ API                              ▾ ]
-  Notify email *
-  [ ops@                               ]
-  Please enter a valid email
-  We send the report here
-  Environment
-  (•) Staging  ( ) Production
-  Notes
-  [ Anything the reviewers should know ]
-  [                                    ]
-  [                                    ]
-  Date
-  [ 2026-10-21                         ]
-  Canary traffic
-  ━━━━━●───────────────────── 10  (0–50)
-  ● on  Post to #deploys
-  [ ] I checked the migration *
-  This field is required
+Service *
+[ API                                ▾ ]
+Notify email *
+[ ops@                                 ]
+Please enter a valid email
+We send the report here
+Environment
+(•) Staging  ( ) Production
+Notes
+[ Anything the reviewers should know   ]
+[                                      ]
+[                                      ]
+Date
+[ 2026-10-21                           ]
+Canary traffic
+━━━━━━●────────────────────── 10  (0–50)
+● on  Post to #deploys
+[ ] I checked the migration *
+This field is required
 
-   Deploy    Runbook ↗
+ Deploy    Runbook ↗

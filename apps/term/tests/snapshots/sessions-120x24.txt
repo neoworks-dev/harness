@@ -1,6 +1,6 @@
 Sessions · 3                 │ › make the header sticky
  site ───────────────────────│
-▎  Sticky header             │ ● Done. The header now uses `position: sticky`.
+▎  Sticky header             │ Done. The header now uses `position: sticky`.
 ▎  Done. The header now … now│
                              │
  ◐ Fix the login form  +12 −3│

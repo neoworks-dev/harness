@@ -1,11 +1,11 @@
                                                                      │
-● message number 1                                                   │
+message number 1                                                     │
                                                                      │
-● message number 2                                                   │
+message number 2                                                     │
                                                                      │
-● Model · answer below                                               │
+Model · answer below                                                 │
 ──────────────────────────────────────────────────────────────────────
-▎ ● Model
+▎ Model
 ▎ filter › zzz
 ▎ no match
 ▎ esc clear

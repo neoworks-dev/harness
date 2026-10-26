@@ -1,4 +1,4 @@
-● analytics.revenue
+analytics.revenue
   ╭─ Revenue ──────────────────────────────────────────────────────────────────╮
   │ Monthly revenue  Last 6 months                                             │
   │ $25k +19%  │  412 +12    │  2.1% +0.4pt                                    │

@@ -306,7 +306,8 @@ impl FilesState {
         FileKey::Handled
     }
 
-    /// At most `height` lines: the branch, the tree, `… N more` when it doesn't fit.
+    /// At most `height` lines: the tree, `… N more` when it doesn't fit (the branch is in the
+    /// status line).
     pub(crate) fn render(
         &self,
         width_cells: usize,
@@ -315,17 +316,7 @@ impl FilesState {
         palette: &Palette,
     ) -> Vec<Line<'static>> {
         let mut out = Vec::new();
-        let mut rows = height;
-        if let Some(status) = &self.status {
-            if height == 0 {
-                return out;
-            }
-            out.push(Line::from(Span::styled(
-                truncate_start(&clean_line(&status.branch_label()), width_cells),
-                Style::new().fg(palette.muted),
-            )));
-            rows -= 1;
-        }
+        let rows = height;
         let total = self.rows.len();
         let (visible, more) = if total > rows && rows >= 2 {
             (rows - 1, true)
@@ -640,22 +631,21 @@ mod tests {
         assert_eq!(
             text(&f.render(24, 10, false, &p)),
             [
-                "main ↑1",
                 "▾ src/",
                 "  M a.rs          +12 −3",
                 "D gone.rs            −40",
                 "A logo.png",
             ]
         );
-        let line = f.render(24, 10, false, &p).remove(2);
+        let line = f.render(24, 10, false, &p).remove(1);
         let plus = line.spans.iter().find(|s| s.content == "+12").unwrap();
         assert_eq!(plus.style.fg, Some(p.success));
         // Too narrow for both: the name stays, the counts go.
-        assert_eq!(text(&f.render(14, 10, false, &p))[2], "  M a.rs");
+        assert_eq!(text(&f.render(14, 10, false, &p))[1], "  M a.rs");
         // A folded folder carries the counts of what is in it.
         f.key(KeyEvent::from(KeyCode::Enter));
         assert_eq!(
-            text(&f.render(24, 10, false, &p))[1],
+            text(&f.render(24, 10, false, &p))[0],
             "▸ src/ 1 file     +12 −3"
         );
     }
@@ -669,14 +659,11 @@ mod tests {
         entries.push(entry("src/a.rs", Change::Modified));
         f.set_status(Some(status(entries)));
         let shown = |f: &FilesState| text(&f.render(40, 20, false, &Palette::default()));
-        assert_eq!(
-            shown(&f)[1..],
-            ["▸ fixtures/t/ 6 files", "▾ src/", "  M a.rs"]
-        );
+        assert_eq!(shown(&f), ["▸ fixtures/t/ 6 files", "▾ src/", "  M a.rs"]);
         f.key(KeyEvent::from(KeyCode::Enter));
-        assert_eq!(shown(&f).len(), 10, "opened by hand it stays open");
+        assert_eq!(shown(&f).len(), 9, "opened by hand it stays open");
         f.key(KeyEvent::from(KeyCode::Enter));
-        assert_eq!(shown(&f)[1], "▸ fixtures/t/ 6 files");
+        assert_eq!(shown(&f)[0], "▸ fixtures/t/ 6 files");
     }
 
     #[test]
@@ -693,7 +680,6 @@ mod tests {
         assert_eq!(
             text(&f.render(30, 10, false, &p)),
             [
-                "main ↑1",
                 "▾ apps/term/",
                 "  ▾ src/",
                 "    M app.rs",
@@ -707,7 +693,7 @@ mod tests {
         assert!(f.selected().is_none(), "apps/term/ is a folder");
         assert_eq!(f.key(key(KeyCode::Enter)), FileKey::Handled);
         assert_eq!(
-            text(&f.render(30, 10, false, &p))[1..],
+            text(&f.render(30, 10, false, &p)),
             ["▸ apps/term/ 3 files", "M Cargo.lock"]
         );
         f.key(key(KeyCode::Right)); // opens apps/term/
@@ -717,7 +703,7 @@ mod tests {
         // Left goes up to the folder, then folds it; Enter on a file opens it.
         f.key(key(KeyCode::Left));
         f.key(key(KeyCode::Left));
-        assert_eq!(text(&f.render(30, 10, false, &p))[2], "  ▸ src/ 2 files");
+        assert_eq!(text(&f.render(30, 10, false, &p))[1], "  ▸ src/ 2 files");
         f.key(key(KeyCode::Char('G')));
         assert_eq!(f.key(key(KeyCode::Enter)), FileKey::Open);
         // The fold survives a refresh.
@@ -725,7 +711,7 @@ mod tests {
             s.ahead = 2;
             s
         }));
-        assert_eq!(text(&f.render(30, 10, false, &p))[2], "  ▸ src/ 2 files");
+        assert_eq!(text(&f.render(30, 10, false, &p))[1], "  ▸ src/ 2 files");
     }
 
     fn text(lines: &[Line]) -> Vec<String> {
@@ -810,7 +796,6 @@ mod tests {
         assert_eq!(
             text(&lines),
             [
-                "main ↑1",
                 "M a.ts (agent)",
                 "A b.ts",
                 "D c.ts",
@@ -819,25 +804,25 @@ mod tests {
                 "R old.rs → new name.rs",
             ]
         );
-        assert_eq!(lines[1].spans[1].style.fg, Some(p.accent));
-        assert_eq!(lines[1].spans[2].style.fg, Some(p.muted));
-        assert_eq!(lines[2].spans[1].style.fg, Some(p.success));
-        assert_eq!(lines[3].spans[1].style.fg, Some(p.danger));
-        assert_eq!(lines[4].spans[1].style.fg, Some(p.muted));
-        assert_eq!(lines[5].spans[1].style.fg, Some(p.danger));
+        assert_eq!(lines[0].spans[1].style.fg, Some(p.accent));
+        assert_eq!(lines[0].spans[2].style.fg, Some(p.muted));
+        assert_eq!(lines[1].spans[1].style.fg, Some(p.success));
+        assert_eq!(lines[2].spans[1].style.fg, Some(p.danger));
+        assert_eq!(lines[3].spans[1].style.fg, Some(p.muted));
+        assert_eq!(lines[4].spans[1].style.fg, Some(p.danger));
         assert!(
-            lines[5].spans[1]
+            lines[4].spans[1]
                 .style
                 .add_modifier
                 .contains(Modifier::BOLD)
         );
         // Cap.
         let capped = text(&f.render(30, 4, false, &p));
-        assert_eq!(capped, ["main ↑1", "M a.ts (agent)", "A b.ts", "… 4 more"]);
+        assert_eq!(capped, ["M a.ts (agent)", "A b.ts", "D c.ts", "… 3 more"]);
         // Too narrow: tag first, then the front of the path.
         let narrow = text(&f.render(12, 20, false, &p));
-        assert_eq!(narrow[1], "M a.ts");
-        assert_eq!(narrow[6], "R …w name.rs");
+        assert_eq!(narrow[0], "M a.ts");
+        assert_eq!(narrow[5], "R …w name.rs");
     }
 
     #[test]
@@ -867,11 +852,11 @@ mod tests {
             .iter()
             .map(|l| l.trim_end().to_string())
             .collect();
-        assert_eq!(trimmed, ["main ↑1", "M f4", "M f5", "… 4 more"]);
+        assert_eq!(trimmed, ["M f3", "M f4", "M f5", "… 3 more"]);
         let selected = &lines[2].spans;
         assert_eq!(selected[0].style.bg, Some(p.surface));
         assert_eq!(lines[1].spans[0].style.bg, None);
-        assert_eq!(text(&f.render(10, 4, false, &p))[1], "M f0");
+        assert_eq!(text(&f.render(10, 4, false, &p))[0], "M f0");
         f.key(key(KeyCode::Char('g')));
         assert_eq!(f.key(key(KeyCode::Enter)), FileKey::Open);
         assert_eq!(f.key(key(KeyCode::Esc)), FileKey::Leave);

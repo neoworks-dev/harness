@@ -1,6 +1,6 @@
 › make the header sticky
 
-● Done. The header now uses `position: sticky`.
+Done. The header now uses `position: sticky`.
 
 
 

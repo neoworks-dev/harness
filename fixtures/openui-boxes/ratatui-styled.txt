@@ -1,25 +1,32 @@
-  A ⟦bold|swatch row⟧, a timeline and some shapes, built from ⟦fg bg:surface|Box⟧ and ⟦fg bg:surface|Shape⟧
-  ⟦accent bg:#2C364C|╭────────────────╮⟧  ⟦muted bg:#2F3238|┌────────────────┐⟧  ⟦bg:#33402D| ⟧⟦bg:#33402D|success⟧⟦bg:#33402D|          ⟧  ⟦danger|┌────────────────┐⟧
-  ⟦accent bg:#2C364C|│⟧⟦bg:#2C364C| ⟧⟦bg:#2C364C|accent⟧⟦bg:#2C364C|         ⟧⟦accent bg:#2C364C|│⟧  ⟦muted bg:#2F3238|│⟧⟦bg:#2F3238| ⟧⟦bg:#2F3238|muted⟧⟦bg:#2F3238|          ⟧⟦muted bg:#2F3238|│⟧                      ⟦danger|│⟧ danger         ⟦danger|│⟧
-  ⟦accent bg:#2C364C|╰────────────────╯⟧  ⟦muted bg:#2F3238|└────────────────┘⟧                      ⟦danger|└────────────────┘⟧
-  ⟦muted|╭────────────────────────────────────────────────────────────────────────────╮⟧
-  ⟦muted|│⟧ Design          ⟦accent|████████████████████▌⟧                                      ⟦muted|│⟧
-  ⟦muted|│⟧                 ⟦accent|████████████████████▌⟧                                      ⟦muted|│⟧
-  ⟦muted|│⟧ Build                            ⟦success|▐████████████████████████████▌⟧            ⟦muted|│⟧
-  ⟦muted|│⟧                                  ⟦success|▐████████████████████████████▌⟧            ⟦muted|│⟧
-  ⟦muted|│⟧ Ship                                                       ⟦danger|▐⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⢹⟧    ⟦muted|│⟧
-  ⟦muted|│⟧                                                            ⟦danger|⢹⣉⣉⣉⣉⣉⣉⣉⣉⣉⣉⣹⟧    ⟦muted|│⟧
-  ⟦muted|╰────────────────────────────────────────────────────────────────────────────╯⟧
-       ⟦muted|⢀⣠⠤⠤⟧⟦accent|▄▄▄⣀⟧                ⟦danger|⢀⡄⟧
-     ⟦muted|⡠⠞⠁⟧   ⟦accent|█████⣦⡀⟧            ⟦danger|⢀⣾█⡄⟧                           ⟦success|⣄⟧
-   ⟦muted|⢀⠞⟧      ⟦accent|███████⣆⟧          ⟦danger|⢀⣾███⡄⟧                         ⟦success|⡜⠈⢆⟧
-   ⟦muted|⡜⟧       ⟦accent|████████⡄⟧        ⟦danger|⢀⣾█████⡄⟧                       ⟦success|⢰⠁⟧ ⟦success|⠈⢆⟧       ⟦success|⢀⠎⟧
-   ⟦muted|▌⟧    ⟦accent|⢀⣀⣀████████▌⟧       ⟦danger|⢀⣾███████⡄⟧            ⟦success|⢠⡀⟧       ⟦success|⢠⠃⟧   ⟦success|⠈⢆⟧     ⟦success|⢠⠊⟧
-   ⟦accent|⢷⣶⣶█████████████⠇⟧      ⟦danger|⢀⣾█████████⡄⟧          ⟦success|⢠⠃⠑⢄⟧      ⟦success|⡎⟧     ⟦success|⠈⢆⟧   ⟦success|⡠⠃⟧
-   ⟦accent|⠘██████████████⡟⟧      ⟦danger|⢀⣾███████████⡄⟧         ⟦success|⡎⟧  ⟦success|⠈⢢⟧    ⟦success|⡜⟧       ⟦success|⠈⢆⟧ ⟦success|⡔⠁⟧
-    ⟦accent|⠈⠻██████████⡿⠋⟧      ⟦danger|⢀⣾█████████████⡄⟧       ⟦success|⡜⟧     ⟦success|⠱⡀⟧ ⟦success|⢰⠁⟧        ⟦success|⠈⠞⟧
-      ⟦accent|⠈⠙▀⠿⠿⠿⠿⠟▀⠉⟧        ⟦danger|⠚▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀⟧      ⟦success|⢰⠁⟧      ⟦success|⠈⢦⠃⟧
-                                             ⟦success|⢠⠃⟧
+A ⟦bold|swatch row⟧, a timeline and some shapes, built from ⟦fg bg:surface|Box⟧ and ⟦fg bg:surface|Shape⟧
+⟦accent bg:#2C364C|╭──────────────────────────────────────────────────────────────────────────────╮⟧
+⟦accent bg:#2C364C|│⟧⟦bg:#2C364C| ⟧⟦bg:#2C364C|accent⟧⟦bg:#2C364C|                                                                       ⟧⟦accent bg:#2C364C|│⟧
+⟦accent bg:#2C364C|╰──────────────────────────────────────────────────────────────────────────────╯⟧
+⟦muted bg:#2F3238|┌──────────────────────────────────────────────────────────────────────────────┐⟧
+⟦muted bg:#2F3238|│⟧⟦bg:#2F3238| ⟧⟦bg:#2F3238|muted⟧⟦bg:#2F3238|                                                                        ⟧⟦muted bg:#2F3238|│⟧
+⟦muted bg:#2F3238|└──────────────────────────────────────────────────────────────────────────────┘⟧
+⟦bg:#33402D| ⟧⟦bg:#33402D|success⟧⟦bg:#33402D|                                                                        ⟧
+⟦danger|┌──────────────────────────────────────────────────────────────────────────────┐⟧
+⟦danger|│⟧ danger                                                                       ⟦danger|│⟧
+⟦danger|└──────────────────────────────────────────────────────────────────────────────┘⟧
+⟦muted|╭──────────────────────────────────────────────────────────────────────────────╮⟧
+⟦muted|│⟧ Design           ⟦accent|████████████████████▌⟧                                       ⟦muted|│⟧
+⟦muted|│⟧                  ⟦accent|████████████████████▌⟧                                       ⟦muted|│⟧
+⟦muted|│⟧ Build                             ⟦success|▐█████████████████████████████⟧             ⟦muted|│⟧
+⟦muted|│⟧                                   ⟦success|▐█████████████████████████████⟧             ⟦muted|│⟧
+⟦muted|│⟧ Ship                                                         ⟦danger|▐⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⢹⟧    ⟦muted|│⟧
+⟦muted|│⟧                                                              ⟦danger|⢹⣉⣉⣉⣉⣉⣉⣉⣉⣉⣉⣹⟧    ⟦muted|│⟧
+⟦muted|╰──────────────────────────────────────────────────────────────────────────────╯⟧
+       ⟦muted|⢀⣀⟧⟦accent|⣀⣀⣀⟧                   ⟦danger|⢠⟧
+    ⟦muted|⡠⠖⠉⠁⟧ ⟦accent|▐███⣷⣦⡀⟧              ⟦danger|⢠█⣧⟧                            ⟦success|⢠⡀⟧
+  ⟦muted|⣠⠊⟧     ⟦accent|▐██████⣦⡀⟧           ⟦danger|⢠███⣧⟧                          ⟦success|⢠⠃⠱⡀⟧
+ ⟦muted|⢰⠃⟧      ⟦accent|▐███████⣷⟧          ⟦danger|⢠█████⣇⟧                         ⟦success|⡎⟧  ⟦success|⠱⡀⟧       ⟦success|⢀⠎⟧
+ ⟦muted|▌⟧       ⟦accent|▐████████▌⟧        ⟦danger|⢠███████⣆⟧              ⟦success|⣄⟧        ⟦success|⡜⟧    ⟦success|⠱⡀⟧     ⟦success|⡠⠃⟧
+ ⟦accent|▌⣀⣀⣠▄▄⣶⣶⣾████████▌⟧       ⟦danger|⢠█████████⣆⟧            ⟦success|⡜⠈⠢⡀⟧     ⟦success|⢰⠁⟧     ⟦success|⠱⡀⟧   ⟦success|⡔⠁⟧
+ ⟦accent|⢹████████████████⠁⟧      ⟦danger|⢠███████████⡆⟧          ⟦success|⡰⠁⟧  ⟦success|⠑⡄⟧   ⟦success|⢠⠃⟧       ⟦success|⠱⡀⢀⠎⟧
+  ⟦accent|⠻█████████████⡿⠃⟧      ⟦danger|⢠█████████████⡄⟧        ⟦success|⢰⠁⟧    ⟦success|⠈⢆⟧  ⟦success|⡎⟧         ⟦success|⠱⠃⟧
+   ⟦accent|⠈⠻█████████⡿▀⠁⟧      ⟦danger|⢠███████████████⡄⟧      ⟦success|⢠⠃⟧       ⟦success|⠱⡜⟧
+      ⟦accent|⠉⠙▀▀▀▀⠉⠁⟧         ⟦danger|▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀⟧     ⟦success|⢀⠎⟧
                                              ⟦success|⡎⟧
                                             ⟦success|⡜⟧
 

@@ -5,18 +5,18 @@ photo-editor connected (v3): crop, export · now in overlay
 
 ∴ thinking
 
-● I'll crop the image to 512×512 first.
+I'll crop the image to 512×512 first.
 
-● photo-editor.crop
+photo-editor.crop
   ╭ Cropped image
   │ [image asset://img-7f3 · 512×512]
   │ 512×512
   │ [c Copy handle]
 
-● edit src/Header.tsx
+edit src/Header.tsx
   ⎿ Applied 1 edit(s) to src/Header.tsx.  … +1 lines
 
-● bash: npm run build
+bash: npm run build
   ⎿ vite v6.0.0 building for production...
 
 Rate limited by the provider; try again in a minute.

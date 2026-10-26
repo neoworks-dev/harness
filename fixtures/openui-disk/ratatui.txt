@@ -1,36 +1,36 @@
-● Here's your disk usage:
+Here's your disk usage:
 
-  ╭─ Disk / ────────────────────────────╮ ╭─ Where the space goes (home) ──────╮
-  │ Disk usage                          │ │ Top directories  Home, GB          │
-  │ /dev/nvme0n1p3 · mounted on / and … │ │ Documents ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄ 355 │
-  │ 820 GB of 896 GB  │  72 GB          │ │ .cache    ▄▄▄▖ 65                  │
-  │ Used              │  Free           │ │ .config   ▄▄▄▖ 62                  │
-  │ ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱ 92% used │ │ .local    ▄▄▄▖ 60                  │
-  │ /home/moritz alone holds 756 GB of  │ │ Games     ▄▄▖ 48                   │
-  │ that.                               │ │ Pictures  ▄▖ 25                    │
-  │                                     │ │ vms       ▄ 21                     │
-  │                                     │ │ Downloads ▄ 17                     │
-  │                                     │ │ Other     ▄▄▄▄▄▄ 103               │
-  ╰─────────────────────────────────────╯ ╰────────────────────────────────────╯
-  ╭─ Documents breakdown ───────────────╮ ╭─ Cache — the cheap reclaim ────────╮
-  │ Path        │ Size   │ Share of D…  │ │ .cache                             │
-  │ ────────────┼────────┼────────────  │ │ 65 GB total, mostly regenerable    │
-  │ neoworks    │ 210 GB │ 59%          │ │ Cache       │ Size   │ Safe to de… │
-  │ clients     │ 45 GB  │ 13%          │ │ ────────────┼────────┼──────────── │
-  │ playingwit… │ 19 GB  │ 5%           │ │ uv          │ 18 GB  │ Yes         │
-  │ curseforge  │ 18 GB  │ 5%           │ │ latent      │ 8.1 GB │ Probably    │
-  │ personal    │ 16 GB  │ 5%           │ │ go-build    │ 7.6 GB │ Yes         │
-  │ other (6+ … │ 47 GB  │ 13%          │ │ ms-playwri… │ 3.2 GB │ Yes (re-do… │
-  │                                     │ │ huggingface │ 3.2 GB │ Yes (re-do… │
-  │                                     │ │ spotify     │ 3.0 GB │ Yes         │
-  │                                     │ │ yay         │ 2.9 GB │ Yes         │
-  │                                     │ │ puppeteer   │ 2.0 GB │ Yes (re-do… │
-  │                                     │ │ zen         │ 1.9 GB │ Partly      │
-  │                                     │ │ deno        │ 1.8 GB │ Yes         │
-  │                                     │ │ rest        │ 13 GB  │             │
-  │                                     │ │ ┃ Note                             │
-  │                                     │ │ ┃ Deleting .cache content is safe  │
-  │                                     │ │ ┃ — it's rebuilt on demand.        │
-  │                                     │ │ ┃ Startup and first builds will be │
-  │                                     │ │ ┃ slower once.                     │
-  ╰─────────────────────────────────────╯ ╰────────────────────────────────────╯
+╭─ Disk / ─────────────────────────────╮ ╭─ Where the space goes (home) ───────╮
+│ Disk usage                           │ │ Top directories  Home, GB           │
+│ /dev/nvme0n1p3 · mounted on / and /… │ │ Documents ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄ 355 │
+│ 820 GB of 896 GB  │  72 GB           │ │ .cache    ▄▄▄▄ 65                   │
+│ Used              │  Free            │ │ .config   ▄▄▄▖ 62                   │
+│ ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱ 92% used │ │ .local    ▄▄▄▖ 60                   │
+│ /home/moritz alone holds 756 GB of   │ │ Games     ▄▄▄ 48                    │
+│ that.                                │ │ Pictures  ▄▖ 25                     │
+│                                      │ │ vms       ▄ 21                      │
+│                                      │ │ Downloads ▄ 17                      │
+│                                      │ │ Other     ▄▄▄▄▄▄ 103                │
+╰──────────────────────────────────────╯ ╰─────────────────────────────────────╯
+╭─ Documents breakdown ────────────────╮ ╭─ Cache — the cheap reclaim ─────────╮
+│ Path         │ Size   │ Share of Do… │ │ .cache                              │
+│ ─────────────┼────────┼───────────── │ │ 65 GB total, mostly regenerable     │
+│ neoworks     │ 210 GB │ 59%          │ │ Cache       │ Size   │ Safe to de…  │
+│ clients      │ 45 GB  │ 13%          │ │ ────────────┼────────┼────────────  │
+│ playingwith… │ 19 GB  │ 5%           │ │ uv          │ 18 GB  │ Yes          │
+│ curseforge   │ 18 GB  │ 5%           │ │ latent      │ 8.1 GB │ Probably     │
+│ personal     │ 16 GB  │ 5%           │ │ go-build    │ 7.6 GB │ Yes          │
+│ other (6+ d… │ 47 GB  │ 13%          │ │ ms-playwri… │ 3.2 GB │ Yes (re-do…  │
+│                                      │ │ huggingface │ 3.2 GB │ Yes (re-do…  │
+│                                      │ │ spotify     │ 3.0 GB │ Yes          │
+│                                      │ │ yay         │ 2.9 GB │ Yes          │
+│                                      │ │ puppeteer   │ 2.0 GB │ Yes (re-do…  │
+│                                      │ │ zen         │ 1.9 GB │ Partly       │
+│                                      │ │ deno        │ 1.8 GB │ Yes          │
+│                                      │ │ rest        │ 13 GB  │              │
+│                                      │ │ ┃ Note                              │
+│                                      │ │ ┃ Deleting .cache content is safe — │
+│                                      │ │ ┃ it's rebuilt on demand. Startup   │
+│                                      │ │ ┃ and first builds will be slower   │
+│                                      │ │ ┃ once.                             │
+╰──────────────────────────────────────╯ ╰─────────────────────────────────────╯

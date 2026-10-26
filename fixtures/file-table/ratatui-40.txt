@@ -1,2 +1,2 @@
-● files.list
+files.list
   ⎿ ~/site/public  … +2 lines

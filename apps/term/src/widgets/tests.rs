@@ -189,13 +189,13 @@ fn sidebar_snapshot_plan_above_files() {
 │ ○ review
 │
 │ Files
-│ main ↑1
 │ ▾ src/
 │   M a.ts (agent)
 │   A b.ts
 │ U lock.json
 │ ? notes.md
-│ D old.txt";
+│ D old.txt
+│";
     assert_eq!(sidebar(&w, 26, 17, None), expected);
     // Squeezed: the plan keeps its in-progress entry, the files are capped.
     let squeezed = "\
@@ -206,11 +206,11 @@ fn sidebar_snapshot_plan_above_files() {
 │ … 2 more
 │
 │ Files
-│ main ↑1
 │ ▾ src/
 │   M a.ts (agent)
 │   A b.ts
-│ … 3 more";
+│ U lock.json
+│ … 2 more";
     assert_eq!(sidebar(&w, 26, 12, None), squeezed);
 }
 
@@ -236,8 +236,8 @@ fn sidebar_titles_and_selection_follow_focus() {
     assert!(!plan[(2, 3)].modifier.contains(Modifier::BOLD)); // the Files title
     let files = render(Some(Panel::Files));
     assert!(files[(2, 3)].modifier.contains(Modifier::BOLD));
-    assert_eq!(files[(2, 5)].bg, p.surface); // the selected row
-    assert_ne!(none[(2, 5)].bg, p.surface);
+    assert_eq!(files[(2, 4)].bg, p.surface); // the selected row
+    assert_ne!(none[(2, 4)].bg, p.surface);
 }
 
 #[test]

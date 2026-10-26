@@ -660,8 +660,8 @@ fn foldable(
         && !item.r#ref.starts_with("q-")
 }
 
-/// A folded run: `● 15 tool calls · 7 fetch, 5 bash, 3 search · 1 failed`, all muted but the
-/// failures.
+/// A folded run: `15 tool calls · 7 fetch, 5 bash, 3 search · 1 failed`, or `12 bash` when all
+/// are one tool; all muted but the failures.
 fn folded_line(run: &[&ViewItem], width: usize, p: &Palette) -> Line<'static> {
     let mut verbs: Vec<(String, usize)> = Vec::new();
     for item in run {
@@ -690,9 +690,12 @@ fn folded_line(run: &[&ViewItem], width: usize, p: &Palette) -> Line<'static> {
         .filter(|i| i.state == Some(ItemState::Failed))
         .count();
     let muted = Style::new().fg(p.muted);
-    let mut text = format!("{} tool calls · {}", run.len(), counts.join(", "));
+    let mut text = match counts.as_slice() {
+        [one] => one.clone(),
+        _ => format!("{} tool calls · {}", run.len(), counts.join(", ")),
+    };
     let tail = (failed > 0).then(|| format!(" · {failed} failed"));
-    let room = width.saturating_sub(2 + tail.as_ref().map_or(0, |t| t.chars().count()));
+    let room = width.saturating_sub(tail.as_ref().map_or(0, |t| t.chars().count()));
     if text.chars().count() > room {
         text = text
             .chars()
@@ -700,11 +703,7 @@ fn folded_line(run: &[&ViewItem], width: usize, p: &Palette) -> Line<'static> {
             .collect::<String>()
             + "…";
     }
-    let bullet = if failed > 0 { p.danger } else { p.success };
-    let mut spans = vec![
-        Span::styled("● ", Style::new().fg(bullet)),
-        Span::styled(text, muted),
-    ];
+    let mut spans = vec![Span::styled(text, muted)];
     if let Some(tail) = tail {
         spans.push(Span::styled(tail, Style::new().fg(p.danger)));
     }
@@ -901,7 +900,6 @@ fn input_line(lead: &str, hint: &str, text: &str, width: usize, accent: Style) -
 fn panel_stub(item: &ViewItem, opts: &ChatOpts) -> Line<'static> {
     let label = item.label.as_deref().unwrap_or("a question");
     Line::from(vec![
-        Span::styled("● ", opts.marker),
         Span::styled(label.to_string(), Style::new().add_modifier(Modifier::BOLD)),
         Span::styled(" · answer below", Style::new().fg(opts.palette.muted)),
     ])
@@ -1013,11 +1011,11 @@ mod tests {
     fn items_are_separated_by_a_blank_line_and_follow_the_tail() {
         let c = many(3);
         assert_eq!(c.total_lines(), 5);
-        assert_eq!(texts(&c), ["● line 0", "", "● line 1", "", "● line 2"]);
+        assert_eq!(texts(&c), ["line 0", "", "line 1", "", "line 2"]);
         let c = many(10);
         assert_eq!(c.total_lines(), 19);
         assert!(c.following());
-        assert_eq!(texts(&c).last().unwrap(), "● line 9");
+        assert_eq!(texts(&c).last().unwrap(), "line 9");
         assert_eq!(texts(&c).len(), 10);
     }
 
@@ -1039,12 +1037,12 @@ mod tests {
         ]));
         c.layout(40, 20, &opts());
         let t = texts(&c);
-        assert_eq!(t[..4], ["● read a", "  ⎿ out", "● read b", "  ⎿ out"]);
+        assert_eq!(t[..4], ["read a", "  ⎿ out", "read b", "  ⎿ out"]);
         assert_eq!(t[4], "", "a question gets room");
     }
 
     #[test]
-    fn a_folded_command_counts_as_bash_and_the_bullet_says_how_the_run_went() {
+    fn a_folded_command_counts_as_bash_and_only_failures_are_red() {
         let mut command: ViewItem = serde_json::from_value(json!({
             "ref": "t3", "kind": "tool", "command": "ls -la", "state": "done",
             "component": {"type":"code","code":"out"}
@@ -1059,15 +1057,23 @@ mod tests {
         ];
         c.apply_snapshot(snapshot(items.clone()));
         c.layout(80, 20, &opts());
-        assert_eq!(texts(&c)[0], "● 3 tool calls · 2 read, 1 bash");
-        let bullet = |c: &Chat| c.visible()[0].spans[0].style.fg;
-        assert_eq!(bullet(&c), Some(Palette::default().success));
+        assert_eq!(texts(&c)[0], "3 tool calls · 2 read, 1 bash");
+        let last = |c: &Chat| c.visible()[0].spans.last().unwrap().style.fg;
+        assert_eq!(last(&c), Some(Palette::default().muted));
 
         command.state = Some(ItemState::Failed);
         items[2] = command;
+        c.apply_snapshot(snapshot(items.clone()));
+        c.layout(80, 20, &opts());
+        assert_eq!(texts(&c)[0], "3 tool calls · 2 read, 1 bash · 1 failed");
+        assert_eq!(last(&c), Some(Palette::default().danger));
+
+        // Calls of one tool only say how many.
+        items[0] = call("t1", "bash: pwd", "done");
+        items[1] = call("t2", "bash: ls", "done");
         c.apply_snapshot(snapshot(items));
         c.layout(80, 20, &opts());
-        assert_eq!(bullet(&c), Some(Palette::default().danger));
+        assert_eq!(texts(&c)[0], "3 bash · 1 failed");
     }
 
     #[test]
@@ -1093,9 +1099,9 @@ mod tests {
         assert_eq!(
             texts(&c),
             [
-                "● 4 tool calls · 2 fetch, 1 bash, 1 search · 1 failed",
+                "4 tool calls · 2 fetch, 1 bash, 1 search · 1 failed",
                 "",
-                "● Done."
+                "Done."
             ]
         );
         // Ctrl-O shows every call.
@@ -1107,7 +1113,7 @@ mod tests {
                 ..opts()
             },
         );
-        assert!(texts(&c).contains(&"● bash: ls".to_string()));
+        assert!(texts(&c).contains(&"bash: ls".to_string()));
 
         // Two are not worth folding.
         c.apply_snapshot(snapshot(vec![
@@ -1116,7 +1122,7 @@ mod tests {
             items[4].clone(),
         ]));
         c.layout(80, 20, &opts());
-        assert_eq!(texts(&c)[0], "● fetch https://a");
+        assert_eq!(texts(&c)[0], "fetch https://a");
     }
 
     #[test]
@@ -1137,7 +1143,7 @@ mod tests {
         c.scroll_down(1000);
         assert!(c.following());
         assert!(!c.has_unseen());
-        assert_eq!(texts(&c).last().unwrap(), "● fresh");
+        assert_eq!(texts(&c).last().unwrap(), "fresh");
     }
 
     #[test]
@@ -1147,7 +1153,7 @@ mod tests {
             c.page_up();
         }
         assert_eq!(c.top(), 0);
-        assert_eq!(texts(&c)[0], "● line 0");
+        assert_eq!(texts(&c)[0], "line 0");
         c.half_page_down();
         assert_eq!(c.top(), 5);
         c.to_top();
@@ -1189,7 +1195,7 @@ mod tests {
         });
         c.layout(40, 10, &opts());
         assert_eq!(Rc::as_ptr(&c.entries[0].lines), first);
-        assert_eq!(texts(&c).last().unwrap(), "● changed");
+        assert_eq!(texts(&c).last().unwrap(), "changed");
         // A new width re-renders everything.
         c.layout(30, 10, &opts());
         assert_ne!(Rc::as_ptr(&c.entries[0].lines), first);

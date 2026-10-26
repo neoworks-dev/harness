@@ -1,4 +1,4 @@
-● files.list
+files.list
   ~/site/public
   name                                               │ size   │ modified
   ───────────────────────────────────────────────────┼────────┼─────────────────

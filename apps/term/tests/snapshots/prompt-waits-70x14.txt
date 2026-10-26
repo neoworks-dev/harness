@@ -1,4 +1,4 @@
-▎ ● claude: run ls?
+▎ claude: run ls?
 ▎   [1 Yes]  [2 No]
 
 

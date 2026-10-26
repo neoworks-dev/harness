@@ -1,2 +1,2 @@
-⟦success|● ⟧⟦bold|edit ⟧src/Header.tsx
+⟦bold|edit ⟧src/Header.tsx
 ⟦muted|  ⎿ ⟧⟦muted|src/Header.tsx⟧⟦muted|  ⟧⟦success|+1⟧⟦muted| ⟧⟦danger|−0⟧

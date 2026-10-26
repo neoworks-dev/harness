@@ -1,2 +1,2 @@
-⟦accent|● ⟧⟦bold|photo-editor.export⟧
+⟦bold|photo-editor.export⟧
 ⟦muted|  ⎿ ⟧⟦accent bold|Exporting logo⟧⟦muted|  … +4 lines⟧

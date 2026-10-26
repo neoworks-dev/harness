@@ -2342,7 +2342,7 @@ fn a_prompt_answered_below_the_chat_leaves_one_line_in_the_chat_and_starts_on_th
     );
     assert!(
         rows.iter()
-            .any(|l| l.contains("● Claude Code model (now: haiku) · answer below")),
+            .any(|l| l.contains("Claude Code model (now: haiku) · answer below")),
         "{rows:#?}"
     );
     assert_eq!(

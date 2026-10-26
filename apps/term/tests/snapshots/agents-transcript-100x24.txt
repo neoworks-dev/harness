@@ -1,10 +1,10 @@
 ◂ neo · deepseek-v4-flash  Find the weather
 › Find the weather  · task
 
-● search tools: weather
+search tools: weather
   ⎿ weather.forecast  … +1 lines
 
-● It is sunny in Berlin.
+It is sunny in Berlin.
 
 
 
