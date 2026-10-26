@@ -343,9 +343,12 @@ impl Widgets {
             height: inner.height - 1,
             ..inner
         };
-        let lines = self
-            .terminal
-            .render(usize::from(body.width), usize::from(body.height), p);
+        let lines = self.terminal.render(
+            usize::from(body.width),
+            usize::from(body.height),
+            self.cwd.to_str(),
+            p,
+        );
         frame.render_widget(Paragraph::new(lines), body);
     }
 

@@ -5,7 +5,7 @@ use std::cell::Cell;
 use std::collections::HashSet;
 
 use neo_protocol::{ToolCall, ToolCallContent, ToolCallStatus, ToolCallUpdate, ToolKind};
-use neo_renderer_ratatui::{Palette, highlight_shell};
+use neo_renderer_ratatui::{Palette, highlight_shell, strip_cd};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -16,6 +16,8 @@ use super::text::clean_line;
 /// Commands kept, and lines of output kept per command (the end of it).
 const RUNS: usize = 50;
 const OUTPUT_LINES: usize = 400;
+/// Rows a command takes at most once it is no longer waiting for approval.
+const COMMAND_ROWS: usize = 4;
 
 #[derive(Debug, Clone)]
 struct Run {
@@ -104,17 +106,27 @@ impl TerminalState {
         }
     }
 
-    /// The last `height` lines (or as far up as scrolled), `width` cells wide.
-    pub(crate) fn render(&self, width: usize, height: usize, p: &Palette) -> Vec<Line<'static>> {
+    /// The last `height` lines (or as far up as scrolled), `width` cells wide; a `cd` into `cwd`
+    /// left out of the commands.
+    pub(crate) fn render(
+        &self,
+        width: usize,
+        height: usize,
+        cwd: Option<&str>,
+        p: &Palette,
+    ) -> Vec<Line<'static>> {
         let want = height + self.back.unwrap_or(0);
-        // From the newest run back, only as many as fill the view.
+        // From the newest run back, only as many as fill the view; a rule between runs.
         let mut blocks: Vec<Vec<Line<'static>>> = Vec::new();
         let mut have = 0;
         let mut complete = true;
         for (i, run) in self.runs.iter().enumerate().rev() {
-            let mut lines = run_lines(run, width, p);
+            let mut lines = run_lines(run, width, cwd, p);
             if i + 1 < self.runs.len() {
-                lines.push(Line::default());
+                lines.push(Line::from(Span::styled(
+                    "─".repeat(width),
+                    Style::new().fg(p.border),
+                )));
             }
             have += lines.len();
             blocks.push(lines);
@@ -229,9 +241,9 @@ fn strip_escapes(text: &str) -> String {
     out
 }
 
-/// `$ command` (highlighted, continuation lines under it), the output, and a muted
-/// `exit 1` (danger) or `running…` line.
-fn run_lines(run: &Run, width: usize, p: &Palette) -> Vec<Line<'static>> {
+/// `$ command` (highlighted, continuation lines under it, at most [`COMMAND_ROWS`] once it
+/// started), the output, and a muted `exit 1` (danger) or `running…` line.
+fn run_lines(run: &Run, width: usize, cwd: Option<&str>, p: &Palette) -> Vec<Line<'static>> {
     let mut out = Vec::new();
     let mut lead = Vec::new();
     if let Some(agent) = &run.agent {
@@ -243,11 +255,21 @@ fn run_lines(run: &Run, width: usize, p: &Palette) -> Vec<Line<'static>> {
     ));
     let mut spans = lead;
     spans.extend(highlight_shell(
-        &clean_command(&run.command),
+        &clean_command(strip_cd(&run.command, cwd)),
         p,
         Style::new(),
     ));
-    out.extend(wrap_spans(spans, width));
+    let mut command = wrap_spans(spans, width);
+    // What waits for approval is read in full; after that the output is what matters.
+    if run.status != ToolCallStatus::Pending && command.len() > COMMAND_ROWS {
+        let more = command.len() - (COMMAND_ROWS - 1);
+        command.truncate(COMMAND_ROWS - 1);
+        command.push(Line::from(Span::styled(
+            format!("… +{more} lines"),
+            Style::new().fg(p.muted),
+        )));
+    }
+    out.extend(command);
     for line in &run.output {
         out.extend(wrap_spans(vec![Span::raw(line.clone())], width));
     }
@@ -340,7 +362,41 @@ mod tests {
     }
 
     fn shown(t: &TerminalState, w: usize, h: usize) -> Vec<String> {
-        plain_text(&t.render(w, h, &Palette::default()))
+        plain_text(&t.render(w, h, Some("/w/site"), &Palette::default()))
+    }
+
+    #[test]
+    fn a_cd_home_is_left_out_and_a_long_command_cut_once_it_ran() {
+        let mut t = TerminalState::default();
+        let mut c = call(
+            "1",
+            "execute",
+            "cd /w/site && gh issue create --body 'a\nb\nc\nd\ne'",
+        );
+        c.status = ToolCallStatus::Pending;
+        t.on_call(&c);
+        assert_eq!(
+            shown(&t, 60, 10),
+            [
+                "$ gh issue create --body 'a",
+                "b",
+                "c",
+                "d",
+                "e'",
+                "waiting for approval…"
+            ]
+        );
+        t.on_update(&update("1", Some("completed"), "https://x/42", None));
+        assert_eq!(
+            shown(&t, 60, 10),
+            [
+                "$ gh issue create --body 'a",
+                "b",
+                "c",
+                "… +2 lines",
+                "https://x/42"
+            ]
+        );
     }
 
     #[test]
@@ -365,7 +421,7 @@ mod tests {
                 "ok 1",
                 "boom",
                 "exit 101",
-                "",
+                "─".repeat(40).as_str(),
                 "$ ls",
                 "100%"
             ]
