@@ -43,6 +43,8 @@ pub enum SessionsAction {
     Leave,
     /// Show this session (Enter).
     Open(Box<SessionInfo>),
+    /// Start a new chat (Enter on `+ New chat`, or n).
+    New,
 }
 
 /// Where a session works: the repository (or, outside one, the directory itself) and the
@@ -160,9 +162,11 @@ impl Entry {
     }
 }
 
-/// A row the keys can be on: a session (its id) or a group's older row (the group's key).
+/// A row the keys can be on: `+ New chat`, a session (its id) or a group's older row (the
+/// group's key).
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Pick {
+    New,
     Session(String),
     Older(String),
 }
@@ -334,7 +338,8 @@ impl Sessions {
         };
         let mut entries = Vec::new();
         let mut starts = Vec::new();
-        let mut visual = Vec::new();
+        // `+ New chat`, pinned under the header, comes first.
+        let mut visual = vec![Pick::New];
         let mut put = |key: String, group: &Group, entries: &mut Vec<Entry>| {
             if group.is_empty() {
                 return;
@@ -448,11 +453,12 @@ impl Sessions {
     /// To the first session of the previous or next group (`[` and `]`).
     fn jump_group(&mut self, delta: isize) {
         let at = self.visual_pos(self.selected.as_ref()).unwrap_or(0);
+        // On `+ New chat`, before the first group.
         let current = self
             .group_starts
             .iter()
             .rposition(|&s| s <= at)
-            .unwrap_or(0) as isize;
+            .map_or(-1, |g| g as isize);
         let target = (current + delta).clamp(0, self.group_starts.len() as isize - 1);
         if let Some(&start) = self.group_starts.get(target as usize) {
             self.move_to(start);
@@ -480,7 +486,9 @@ impl Sessions {
             KeyCode::PageDown => self.move_by(PAGE as isize),
             KeyCode::Home | KeyCode::Char('g') => self.move_to(0),
             KeyCode::End | KeyCode::Char('G') => self.move_to(self.visual.len().saturating_sub(1)),
+            KeyCode::Char('n') => return SessionsAction::New,
             KeyCode::Enter => match self.selected.clone() {
+                Some(Pick::New) => return SessionsAction::New,
                 Some(Pick::Session(id)) => {
                     if let Some(info) = self.get(&id) {
                         return SessionsAction::Open(Box::new(info.clone()));
@@ -562,7 +570,22 @@ impl Sessions {
             ));
         }
         let mut out = vec![Line::from(header)];
-        let rows = (h - 1).max(2);
+        // `+ New chat` under the header, where scrolling doesn't take it.
+        if h >= 4 {
+            let mut new = Line::from(vec![
+                Span::raw("   "),
+                Span::styled("+ New chat", styles.accent),
+            ]);
+            if focused && self.selected == Some(Pick::New) {
+                let pad = w.saturating_sub(new.width());
+                new.spans.push(Span::raw(" ".repeat(pad)));
+                for span in &mut new.spans {
+                    span.style = span.style.add_modifier(Modifier::REVERSED);
+                }
+            }
+            out.push(new);
+        }
+        let rows = (h - out.len()).max(2);
         for entry in &mut self.entries {
             if let Entry::Session {
                 index,
@@ -594,6 +617,8 @@ impl Sessions {
         });
         if let Some(a) = anchor {
             self.scroll_to(a, rows);
+        } else if anchor_pick == Some(&Pick::New) {
+            self.top = 0;
         }
         let mut used = 0;
         for entry in self.entries.iter().skip(self.top) {
@@ -946,6 +971,7 @@ mod tests {
             got,
             [
                 " Sessions · 2",
+                "   + New chat",
                 " w ──────────────────────────",
                 "▎  Term TUI highlighting, now",
                 "▎  icons and polish",
@@ -981,6 +1007,7 @@ mod tests {
             got,
             [
                 " Sessions · 3",
+                "   + New chat",
                 " w ──────────────────────────",
                 " ◐ Fix the login form     now",
                 "   2 queued · Looking… +12 −3",
@@ -995,8 +1022,8 @@ mod tests {
         );
         // Green and red for the changed lines, the spinner in the accent color.
         let st = styles();
-        assert_eq!(lines[2].spans[1].style, st.accent);
-        let spans = &lines[3].spans;
+        assert_eq!(lines[3].spans[1].style, st.accent);
+        let spans = &lines[4].spans;
         assert_eq!(
             spans.iter().find(|s| s.content == "+12").unwrap().style,
             st.success
@@ -1006,7 +1033,7 @@ mod tests {
             st.danger
         );
         assert_eq!(
-            lines[5].spans[0].content, "▎",
+            lines[6].spans[0].content, "▎",
             "the shown session has a bar"
         );
     }
@@ -1056,7 +1083,12 @@ mod tests {
             text(&s.render(29, 40, l, &styles()))
                 .iter()
                 .map(|l| l.trim().trim_start_matches('▎').trim().to_string())
-                .filter(|l| !l.is_empty() && !l.starts_with("Sessions") && !l.ends_with('─'))
+                .filter(|l| {
+                    !l.is_empty()
+                        && !l.starts_with("Sessions")
+                        && !l.starts_with('+')
+                        && !l.ends_with('─')
+                })
                 // Without the age.
                 .map(|l| {
                     l.trim_end_matches(|c: char| c.is_ascii_digit() || c == 'd')
@@ -1108,10 +1140,10 @@ mod tests {
         assert!(s.is_finished("a"));
         let lines = s.render(29, 9, &look("b", false), &styles());
         assert_eq!(lines[0].to_string(), " Sessions · 2 · 1 done");
-        assert_eq!(lines[2].spans[1].content, "●");
-        assert_eq!(lines[2].spans[1].style, styles().success);
+        assert_eq!(lines[3].spans[1].content, "●");
+        assert_eq!(lines[3].spans[1].style, styles().success);
         assert!(
-            lines[2].spans[3]
+            lines[3].spans[3]
                 .style
                 .add_modifier
                 .contains(Modifier::BOLD)
@@ -1148,10 +1180,17 @@ mod tests {
             SessionsAction::Open(i) => assert_eq!(i.id, "c", "stops at the end"),
             other => panic!("{other:?}"),
         }
+        // `+ New chat` comes first.
         s.key(press(KeyCode::Char('g')));
         s.key(press(KeyCode::Char('k')));
+        assert_eq!(
+            s.key(press(KeyCode::Enter)),
+            SessionsAction::New,
+            "stops at the start"
+        );
+        s.key(press(KeyCode::Char('j')));
         match s.key(press(KeyCode::Enter)) {
-            SessionsAction::Open(i) => assert_eq!(i.id, "a", "stops at the start"),
+            SessionsAction::Open(i) => assert_eq!(i.id, "a"),
             other => panic!("{other:?}"),
         }
         s.key(press(KeyCode::Char('G')));
@@ -1159,6 +1198,7 @@ mod tests {
             SessionsAction::Open(i) => assert_eq!(i.id, "c"),
             other => panic!("{other:?}"),
         }
+        assert_eq!(s.key(press(KeyCode::Char('n'))), SessionsAction::New);
         assert_eq!(s.key(press(KeyCode::Esc)), SessionsAction::Leave);
         assert_eq!(s.key(press(KeyCode::Char('x'))), SessionsAction::Redraw);
     }
@@ -1174,9 +1214,9 @@ mod tests {
                 })
                 .collect(),
         );
-        // Room for 3 sessions: header, the group's name and 9 rows.
+        // Room for 3 sessions: header, `+ New chat`, the group's name and 9 rows.
         let shown = |s: &mut Sessions, current: &str, focused: bool| {
-            text(&s.render(29, 11, &look(current, focused), &styles()))
+            text(&s.render(29, 12, &look(current, focused), &styles()))
                 .iter()
                 .filter(|l| l.contains("title"))
                 .map(|l| {
@@ -1280,6 +1320,7 @@ mod tests {
             got,
             [
                 " Sessions · 6",
+                "   + New chat",
                 " site ───────────────────────",
                 "   Docs                   now",
                 "",
@@ -1334,6 +1375,7 @@ mod tests {
         let selected = |s: &Sessions| match s.selected.clone().unwrap() {
             Pick::Session(id) => id,
             Pick::Older(group) => group,
+            Pick::New => "new".into(),
         };
         let mut walk = vec![selected(&s)];
         for _ in 0..5 {
@@ -1382,6 +1424,7 @@ mod tests {
             got,
             [
                 " Sessions · 2",
+                "   + New chat",
                 " site ───────────────────────",
                 "▎  Main chat              now",
                 "",
@@ -1396,22 +1439,23 @@ mod tests {
     fn the_list_scrolls_to_show_the_selected_sessions_group_header() {
         let mut s = grouped();
         s.focus("e");
-        // 4 lines: a group header and one session at a time fit with the cluster before.
-        let got = text(&s.render(29, 4, &look("a", true), &styles()));
+        // 5 lines: a group header and one session at a time fit under `+ New chat`.
+        let got = text(&s.render(29, 5, &look("a", true), &styles()));
         let got: Vec<_> = got.iter().map(|l| l.trim_end().to_string()).collect();
         assert_eq!(
             got,
             [
                 " Sessions · 6",
+                "   + New chat",
                 "   worktree dark",
                 "   Dark mode              now",
                 ""
             ]
         );
         s.focus("f");
-        let got = text(&s.render(29, 4, &look("a", true), &styles()));
-        assert_eq!(got[1].trim_end(), " notes ──────────────────────");
-        assert_eq!(got[2].trim_end(), "   Scratch                now");
+        let got = text(&s.render(29, 5, &look("a", true), &styles()));
+        assert_eq!(got[2].trim_end(), " notes ──────────────────────");
+        assert_eq!(got[3].trim_end(), "   Scratch                now");
     }
 
     #[test]

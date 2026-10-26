@@ -1,9 +1,10 @@
 
  Sessions · 3                    ┃
- site                            ┃ make the header sticky
-▎  Sticky header          now    ┃
-▎  Done. The header now uses…
-                                 Done. The header now uses `position: sticky`.
+   + New chat                    ┃ make the header sticky
+ site                            ┃
+▎  Sticky header          now
+▎  Done. The header now uses…    Done. The header now uses `position: sticky`.
+
  ◐ Fix the login form      1m
    Looking at the val… +12 −3
 
@@ -18,7 +19,6 @@
 
 
 
-                               ┃
                                ┃ message the agent · / for commands
  Session                       ┃ site · neo
  ~/site                          ? ask before acting (shift+tab to cycle)

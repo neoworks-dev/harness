@@ -6,7 +6,7 @@
 
 
 
-┃
+
 ┃ ▎ claude: run ls?
 ┃ ▎   [1 Yes]  [2 No]
 ┃ ▎ enter yes · ←/→ choose · tab add a note · esc dismiss

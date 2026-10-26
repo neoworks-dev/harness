@@ -10,7 +10,7 @@
 
 
 
-┃
+
 ┃ ▎ claude: Start a subagent?
 ┃ ▎   Harness    neo
 ┃ ▎   Model      deepseek/deepseek-v4-flash

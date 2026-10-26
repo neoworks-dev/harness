@@ -1,7 +1,7 @@
 Edited src/a.ts — keep it? · answer below
 
 
-┃
+
 ┃ ▎ Edited src/a.ts — keep it?
 ┃ ▎   src/a.ts
 ┃ ▎   @@ -3,2 +3,2 @@

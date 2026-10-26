@@ -1674,6 +1674,12 @@ impl App {
                         self.focus = None;
                         self.open_session(*info, fx);
                     }
+                    SessionsAction::New => {
+                        self.focus = None;
+                        fx.push(Effect::CreateSession {
+                            cwd: self.cwd.clone(),
+                        });
+                    }
                 },
                 Focus::Agents => self.agents_key(key, fx),
                 Focus::Jobs => self.jobs_key(key),
@@ -2652,8 +2658,9 @@ impl App {
         };
         let above = hint_h + waiting_h + attached_h;
         let top = chat_h + rule_h;
-        // With fills, the rule's row, the editor and the first status line are one raised box
-        // with the accent bar on its left; what is in it starts past the bar.
+        // With fills, the editor and the first status line are one raised box with the accent bar
+        // on its left, and the rule's row is the gap between it and the chat; what is in the box
+        // starts past the bar.
         let inset = |r: Rect| {
             if self.styles.fills() {
                 Rect {
@@ -2673,7 +2680,7 @@ impl App {
             attached: inset(at(top + hint_h + waiting_h, attached_h)),
             editor: at(chat_h + rule_h + above, editor_h - above),
             panel,
-            input: at(chat_h, rule_h + editor_h + status_h.min(1)),
+            input: at(top, editor_h + status_h.min(1)),
             status: at(chat_h + rule_h + editor_h, status_h),
             agents: at(h, agents_h),
             jobs: at(h + agents_h, jobs_h),
@@ -3643,7 +3650,7 @@ impl App {
                 "complete command, note on a prompt, next panel (the chat's files first)",
             ),
             key("ctrl-s", "put the draft aside / bring it back"),
-            key("ctrl-g", "sessions sidebar: focus (up/down, enter, esc)"),
+            key("ctrl-g", "sessions sidebar: focus (up/down, enter, n new chat, esc)"),
             key("ctrl-r", "GitHub issues and pull requests (/github)"),
             key(
                 "ctrl-x, down",
@@ -3770,7 +3777,7 @@ struct Areas {
     editor: Rect,
     /// The prompt's lines when it has taken the editor's place.
     panel: Vec<Line<'static>>,
-    /// The input box: the rule's row to the first status line.
+    /// The input box: the editor (and what sits above it) to the first status line.
     input: Rect,
     status: Rect,
     /// The subagents list under the status lines.

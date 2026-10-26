@@ -15,7 +15,7 @@
 
 
 
-┃
+
 ┃ message the agent · / for commands
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

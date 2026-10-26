@@ -24,7 +24,7 @@
 
 
 
-┃
+
 ┃ message the agent · / for commands
 ┃ site · neo · model sonnet
   ? ask before acting (shift+tab to cycle)
