@@ -31,6 +31,8 @@ struct Run {
     id: String,
     agent: Option<String>,
     command: String,
+    /// What the agent said it is for.
+    description: Option<String>,
     /// Cleaned lines, the last [`OUTPUT_LINES`].
     output: Vec<String>,
     status: ToolCallStatus,
@@ -106,8 +108,10 @@ impl TerminalState {
                 .unwrap_or(&call.title)
                 .to_string()
         });
+        let description = description_of(call.raw_input.as_ref());
         if let Some(run) = self.runs.iter_mut().find(|r| r.id == call.tool_call_id) {
             run.command = command;
+            run.description = description.or(run.description.take());
             run.status = call.status;
             return;
         }
@@ -115,6 +119,7 @@ impl TerminalState {
             id: call.tool_call_id.clone(),
             agent: call.agent.clone(),
             command,
+            description,
             output: Vec::new(),
             status: call.status,
             exit: None,
@@ -137,6 +142,9 @@ impl TerminalState {
         };
         if let Some(command) = command_of(update.raw_input.as_ref()) {
             run.command = command;
+        }
+        if let Some(description) = description_of(update.raw_input.as_ref()) {
+            run.description = Some(description);
         }
         if let Some(status) = update.status {
             run.status = status;
@@ -428,6 +436,14 @@ fn exit_code(line: &str) -> Option<i64> {
         .ok()
 }
 
+/// `rawInput.description`: what the agent said the command is for (Claude Code's Bash), on one
+/// line.
+fn description_of(input: Option<&serde_json::Value>) -> Option<String> {
+    let text = input?.get("description")?.as_str()?;
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!text.is_empty()).then_some(text)
+}
+
 /// `rawInput.command`, a string or (Codex) a list of words.
 fn command_of(input: Option<&serde_json::Value>) -> Option<String> {
     let command = input?.get("command")?;
@@ -524,6 +540,13 @@ fn command_lines(run: &Run, width: usize, cwd: Option<&str>, p: &Palette) -> Vec
     let mut lead = Vec::new();
     if let Some(agent) = &run.agent {
         lead.push(Span::styled(format!("{agent} "), Style::new().fg(p.muted)));
+    }
+    // What it is for, in front of it: `Build term  $ cargo build`.
+    if let Some(description) = &run.description {
+        lead.push(Span::styled(
+            format!("{description}  "),
+            Style::new().fg(p.muted).add_modifier(Modifier::ITALIC),
+        ));
     }
     lead.push(Span::styled(
         "$ ",
@@ -634,6 +657,15 @@ mod tests {
             "status": "in_progress", "rawInput": {"command": command}
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn the_agents_description_goes_in_front_of_the_command() {
+        let mut t = TerminalState::default();
+        let mut c = call("1", "execute", "cargo build");
+        c.raw_input = Some(json!({"command": "cargo build", "description": "Build\n  term"}));
+        t.on_call(&c);
+        assert_eq!(shown(&t, 60, 10), ["Build term  $ cargo build", "running…"]);
     }
 
     fn update(id: &str, status: Option<&str>, text: &str, exit: Option<i64>) -> ToolCallUpdate {
