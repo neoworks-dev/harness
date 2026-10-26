@@ -356,6 +356,29 @@ describe("agent sessions", () => {
       "turn_ended",
     ]);
   });
+
+  test("recoverInterruptedTurns drops questions nobody can answer any more", () => {
+    const store = new SessionStore(":memory:");
+    store.createSession({ id: "s", cwd: "/" });
+    const options = [{ id: "a", name: "A" }];
+    store.append("s", { type: "choice", id: "c_open", title: "Settings", options });
+    store.append("s", { type: "choice", id: "c_done", title: "Model", options });
+    store.append("s", { type: "choice_made", id: "c_done", option: "a" });
+    store.append("s", {
+      type: "permission_request",
+      id: "p_open",
+      agent: "claude",
+      title: "Run ls",
+      options: [{ id: "allow", name: "Allow", kind: "allow_once" }],
+    });
+    const { sessions } = setup(store);
+    sessions.recoverInterruptedTurns();
+    sessions.recoverInterruptedTurns(); // idempotent
+    expect(store.read("s", 5).map((r) => r.event)).toEqual([
+      { type: "choice_made", id: "c_open" },
+      { type: "permission_resolved", id: "p_open" },
+    ]);
+  });
 });
 
 describe("pending context events", () => {

@@ -478,7 +478,8 @@ export class SessionManager {
 
   /**
    * After a crash the log can end inside a turn. Close those turns so views and the next prompt
-   * see a consistent log; the agent repairs its own context on load.
+   * see a consistent log; the agent repairs its own context on load. Questions left open are
+   * dropped too: nothing waits for their answer any more, and a pane would offer them forever.
    */
   recoverInterruptedTurns(): void {
     for (const row of this.store.listSessions()) {
@@ -508,6 +509,22 @@ export class SessionManager {
           error: "Interrupted: the daemon stopped.",
         });
       }
+      // Answered with no option, as Asker.dropAll does on a clean stop.
+      const asked = new Map<string, "choice_made" | "permission_resolved">();
+      for (const { event } of this.store.readTypes(row.id, [
+        "choice",
+        "choice_made",
+        "permission_request",
+        "permission_resolved",
+      ])) {
+        if (event.type === "choice") asked.set(event.id, "choice_made");
+        else if (event.type === "permission_request") asked.set(event.id, "permission_resolved");
+        else if (event.type === "choice_made" || event.type === "permission_resolved") {
+          asked.delete(event.id);
+        }
+      }
+      for (const [id, type] of asked) this.store.append(row.id, { type, id });
+      if (asked.size > 0) this.options.log.info(`dropped ${asked.size} open questions in ${row.id}`);
     }
   }
 
