@@ -560,3 +560,40 @@ fn an_at_lists_files_to_mention_and_tab_puts_one_in() {
     assert!(!app.mention_visible());
     std::fs::remove_dir_all(&root).unwrap();
 }
+
+#[test]
+fn ctrl_brackets_widen_and_narrow_the_terminal_panel() {
+    let mut app = app_without_agents();
+    app.handle_event(event(
+        "s1",
+        1,
+        NOW,
+        json!({"type": "tool_call", "toolCallId": "c1", "title": "ls", "kind": "execute",
+               "status": "completed", "rawInput": {"command": "ls"}}),
+    ));
+    let column = |app: &mut App| {
+        let text = screen_text(app, 160, 30);
+        let line = text
+            .lines()
+            .find(|l| l.contains("Terminal"))
+            .unwrap()
+            .to_string();
+        line[..line.find("Terminal").unwrap()].chars().count()
+    };
+    let at = column(&mut app);
+    app.handle_key(ctrl(']'));
+    assert_eq!(column(&mut app), at - 4, "wider by four");
+    app.handle_key(ctrl('['));
+    app.handle_key(ctrl('['));
+    assert_eq!(column(&mut app), at + 4);
+    // Not narrower than its least.
+    for _ in 0..30 {
+        app.handle_key(ctrl('['));
+    }
+    let least = column(&mut app);
+    // 40 columns: the border and a space, then the title.
+    assert_eq!(160 - least, 40 - 2, "{least}");
+    // Presses past the edge don't pile up: one press back moves it.
+    app.handle_key(ctrl(']'));
+    assert_eq!(column(&mut app), least - 4);
+}

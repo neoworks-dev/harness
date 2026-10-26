@@ -76,6 +76,8 @@ const EMPTY_RECENT: usize = 5;
 /// The terminal panel's width: two fifths of what the chat would have, within these.
 const TERMINAL_MIN_WIDTH: u16 = 40;
 const TERMINAL_MAX_WIDTH: u16 = 100;
+/// Columns Ctrl-] / Ctrl-[ widen or narrow a pane by.
+const RESIZE_STEP: i16 = 4;
 /// Most rows a prompt takes where the editor is (its question, preview, buttons and hint).
 const PANEL_ROWS: u16 = 16;
 /// How long the editor must have been idle before a prompt takes its place.
@@ -186,6 +188,28 @@ enum Focus {
     Agents,
     /// The background commands under the prompt bar (and the subagents).
     Jobs,
+}
+
+/// A pane Ctrl-] / Ctrl-[ resize.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pane {
+    Sessions,
+    Terminal,
+    Side,
+}
+
+/// Columns each pane was widened (or, negative, narrowed) by with Ctrl-] / Ctrl-[.
+#[derive(Debug, Clone, Copy, Default)]
+struct Resized {
+    sessions: i16,
+    terminal: i16,
+    side: i16,
+}
+
+/// `width` changed by `delta`, within `min` and `max` (`max` wins when they cross).
+fn resized(width: u16, delta: i16, min: u16, max: u16) -> u16 {
+    let w = (i32::from(width) + i32::from(delta)).clamp(0, i32::from(u16::MAX)) as u16;
+    w.max(min).min(max)
 }
 
 #[derive(Debug, Clone)]
@@ -301,6 +325,8 @@ pub struct App {
     icons: bool,
     /// `/diff split`: diffs side by side, in the chat and the file view.
     split_diffs: bool,
+    /// What Ctrl-] / Ctrl-[ did to the panes' widths.
+    resized: Resized,
     editor: Editor,
     /// Images pasted into the draft: the number of the `[image N]` marker that places each, and
     /// its path. One whose marker is deleted is not sent.
@@ -406,6 +432,7 @@ impl App {
             images: None,
             icons: false,
             split_diffs,
+            resized: Resized::default(),
             editor: Editor::default(),
             attachments: Vec::new(),
             stash: None,
@@ -635,6 +662,26 @@ impl App {
             Ok(()) => self.notify(format!("theme: {}", theme.name()), false),
             Err(why) => self.notify(format!("theme: {} (not kept: {why})", theme.name()), true),
         }
+    }
+
+    /// Ctrl-] / Ctrl-[: the focused pane (else the terminal panel, else the sessions sidebar)
+    /// gets `by` columns more or less, within what leaves the chat its room.
+    fn resize_pane(&mut self, by: i16) {
+        let pane = match self.focus {
+            Some(Focus::Sessions) => Pane::Sessions,
+            Some(Focus::Panel(Panel::Terminal)) | Some(Focus::Jobs) => Pane::Terminal,
+            Some(Focus::Panel(Panel::Plan | Panel::Files)) => Pane::Side,
+            _ if self.terminal_area.is_some() => Pane::Terminal,
+            _ if self.sessions_shown => Pane::Sessions,
+            _ if self.sidebar_shown => Pane::Side,
+            _ => return self.notify("no pane to resize", false),
+        };
+        let delta = match pane {
+            Pane::Sessions => &mut self.resized.sessions,
+            Pane::Terminal => &mut self.resized.terminal,
+            Pane::Side => &mut self.resized.side,
+        };
+        *delta = delta.saturating_add(by);
     }
 
     /// `/diff [inline|split]`; nothing: the other one.
@@ -1414,6 +1461,14 @@ impl App {
         }
         if self.transcript.is_some() {
             self.transcript_key(key, &mut fx);
+            return fx;
+        }
+        // Ctrl-] / Ctrl-[ widen / narrow the focused pane (legacy terminals send Ctrl-] as
+        // Ctrl-5 and Ctrl-[ as Esc).
+        if key.modifiers.contains(KeyModifiers::CONTROL)
+            && let KeyCode::Char(c @ (']' | '5' | '[')) = key.code
+        {
+            self.resize_pane(if c == '[' { -RESIZE_STEP } else { RESIZE_STEP });
             return fx;
         }
         let ctrl_c =
@@ -2457,15 +2512,32 @@ impl App {
 
     fn areas(&mut self, area: Rect) -> Areas {
         // The plan / files column: as wide as its files need, up to a third of the terminal.
-        let side_w = self
+        let side_base = self
             .widgets
             .sidebar_width(SIDE_MIN_WIDTH, (area.width / 3).clamp(32, 40));
+        let side_w = resized(
+            side_base,
+            self.resized.side,
+            SIDE_MIN_WIDTH,
+            area.width.saturating_sub(1 + CHAT_MIN_WIDTH),
+        );
         let side = (area.width >= side_w + 1 + 40 && self.widgets.wants_sidebar(area.width))
             .then_some(side_w);
+        if side.is_some() {
+            self.resized.side = side_w as i16 - side_base as i16;
+        }
         let right_w = side.map_or(0, |w| w + 1);
         // The sessions sidebar yields to the plan / files column, and to the chat's width.
-        let left_w =
-            sidebar_width(area.width).min(area.width.saturating_sub(right_w + CHAT_MIN_WIDTH));
+        let left_base = sidebar_width(area.width);
+        let left_w = resized(
+            left_base,
+            self.resized.sessions,
+            SIDEBAR_WIDTH,
+            area.width.saturating_sub(right_w + CHAT_MIN_WIDTH),
+        );
+        if left_w >= SIDEBAR_WIDTH {
+            self.resized.sessions = left_w as i16 - left_base as i16;
+        }
         let left = (self.sessions_on && !self.sessions.is_empty() && left_w >= SIDEBAR_WIDTH)
             .then_some(Rect {
                 width: left_w,
@@ -2482,9 +2554,14 @@ impl App {
             && self.widgets.has_commands()
             && main.width >= CHAT_MIN_WIDTH + 1 + TERMINAL_MIN_WIDTH)
             .then(|| {
-                let w = (main.width * 2 / 5)
-                    .clamp(TERMINAL_MIN_WIDTH, TERMINAL_MAX_WIDTH)
-                    .min(main.width - CHAT_MIN_WIDTH - 1);
+                let base = (main.width * 2 / 5).clamp(TERMINAL_MIN_WIDTH, TERMINAL_MAX_WIDTH);
+                let w = resized(
+                    base,
+                    self.resized.terminal,
+                    TERMINAL_MIN_WIDTH,
+                    main.width - CHAT_MIN_WIDTH - 1,
+                );
+                self.resized.terminal = w as i16 - base as i16;
                 main.width -= w + 1;
                 Rect {
                     x: main.x + main.width + 1,
