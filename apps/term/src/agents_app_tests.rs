@@ -562,6 +562,35 @@ fn an_at_lists_files_to_mention_and_tab_puts_one_in() {
 }
 
 #[test]
+fn cd_completes_folders_and_enter_runs_it_once_one_is_named() {
+    let root = std::env::temp_dir().join(format!("neo-term-app-cd-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("site/src")).unwrap();
+    std::fs::write(root.join("site/sketch.txt"), "").unwrap();
+    let mut app = app();
+    app.cwd = root.join("site").display().to_string();
+    for c in "/cd s".chars() {
+        app.handle_key(key(KeyCode::Char(c)));
+    }
+    // Folders only, no `@`.
+    let text = screen_text(&mut app, 100, 24);
+    assert!(
+        text.contains("› src/") && !text.contains("sketch"),
+        "{text}"
+    );
+    // Enter picks while a name is being typed…
+    assert!(app.handle_key(key(KeyCode::Enter)).is_empty());
+    assert_eq!(app.editor.text(), "/cd src/");
+    // …and runs the command once the path names a folder.
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert!(
+        matches!(&fx[..], [Effect::Input { text, .. }] if text == "/cd src/"),
+        "{fx:?}"
+    );
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
 fn ctrl_brackets_widen_and_narrow_the_terminal_panel() {
     let mut app = app_without_agents();
     app.handle_event(event(

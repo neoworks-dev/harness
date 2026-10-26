@@ -4,6 +4,9 @@
 //! last `/` is matched loosely against every file and folder under that directory (`@ap` finds
 //! `src/app.rs`). Picking a folder keeps the list open in it; picking a file ends the word.
 //!
+//! `/cd ` completes its argument the same way, with folders only and no `@`; `~/` starts at
+//! home there.
+//!
 //! The tree is walked once per directory and kept for a few seconds: hidden entries, `.git`,
 //! `node_modules`, `target` and the like are left out, and the walk stops after
 //! [`MAX_ENTRIES`].
@@ -33,16 +36,40 @@ const SKIP: [&str; 9] = [
     "coverage",
 ];
 
-/// The `@word` the cursor is in: where its `@` is, and what follows it up to the cursor.
+/// The `@word` the cursor is in: where its `@` is, and what follows it up to the cursor; or
+/// `/cd`'s argument up to the cursor, which completes to folders only.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mention {
     pub start: usize,
     pub query: String,
+    /// `/cd`'s argument: folders only, and no `@` in front.
+    pub cd: bool,
 }
 
-/// The `@word` ending at `cursor` (a byte offset), when the `@` starts a word.
+impl Mention {
+    /// What goes before a picked path: `@`, or nothing for `/cd`.
+    pub fn sigil(&self) -> &'static str {
+        if self.cd { "" } else { "@" }
+    }
+
+    /// A `/cd` argument that names a folder already (`src/`, `..`, nothing): Enter runs the
+    /// command rather than picking.
+    pub fn complete(&self) -> bool {
+        self.cd && split(&self.query).1.is_empty()
+    }
+}
+
+/// The `@word` ending at `cursor` (a byte offset), when the `@` starts a word; or the argument
+/// of a `/cd ` the text starts with, spaces and all.
 pub fn at_cursor(text: &str, cursor: usize) -> Option<Mention> {
     let before = text.get(..cursor)?;
+    if let Some(arg) = before.strip_prefix("/cd ") {
+        return Some(Mention {
+            start: "/cd ".len(),
+            query: arg.to_string(),
+            cd: true,
+        });
+    }
     let start = before.rfind(|c: char| c.is_whitespace()).map_or(0, |i| {
         i + before[i..].chars().next().map_or(1, char::len_utf8)
     });
@@ -55,6 +82,7 @@ pub fn at_cursor(text: &str, cursor: usize) -> Option<Mention> {
     Some(Mention {
         start,
         query: query.to_string(),
+        cd: false,
     })
 }
 
@@ -69,8 +97,8 @@ pub struct Candidate {
 /// The query split into the directory it is in (as typed, ending in `/` unless empty) and
 /// what to match there.
 fn split(query: &str) -> (String, &str) {
-    // `..` and `../..` are directories without their last `/`.
-    if query == ".." || query.ends_with("/..") {
+    // `..`, `../..` and `~` are directories without their last `/`.
+    if query == ".." || query.ends_with("/..") || query == "~" {
         return (format!("{query}/"), "");
     }
     match query.rfind('/') {
@@ -86,16 +114,20 @@ pub struct Mentions {
 }
 
 impl Mentions {
-    /// What to offer for `query` in a session working in `cwd`.
-    pub fn candidates(&self, cwd: &Path, query: &str) -> Vec<Candidate> {
-        let (dir, name) = split(query);
-        let base = if dir.starts_with('/') {
-            PathBuf::from(&dir)
-        } else {
-            cwd.join(&dir)
+    /// What to offer for `m` in a session working in `cwd`, with `home` for `~/`.
+    pub fn candidates(&self, cwd: &Path, home: Option<&Path>, m: &Mention) -> Vec<Candidate> {
+        let (dir, name) = split(&m.query);
+        let base = match (dir.strip_prefix("~/"), home) {
+            (Some(rest), Some(home)) => home.join(rest),
+            _ if dir.starts_with('/') => PathBuf::from(&dir),
+            _ => cwd.join(&dir),
         };
         if name.is_empty() {
-            return list(&base, &dir);
+            let mut listed = list(&base, &dir);
+            if m.cd {
+                listed.retain(|c| c.dir);
+            }
+            return listed;
         }
         let mut walks = self.walks.borrow_mut();
         let fresh = walks.get(&base).is_some_and(|(at, _)| at.elapsed() < FRESH);
@@ -105,6 +137,7 @@ impl Mentions {
         let entries = &walks[&base].1;
         let mut scored: Vec<(i64, &String)> = entries
             .iter()
+            .filter(|e| !m.cd || e.ends_with('/'))
             .filter_map(|e| score(e, name).map(|s| (s, e)))
             .collect();
         scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(b.1)));
@@ -235,7 +268,8 @@ mod tests {
             at_cursor("look at @src/ap", 15),
             Some(Mention {
                 start: 8,
-                query: "src/ap".into()
+                query: "src/ap".into(),
+                cd: false,
             })
         );
         assert_eq!(at_cursor("@", 1).map(|m| m.query), Some(String::new()));
@@ -243,6 +277,19 @@ mod tests {
         assert_eq!(at_cursor("mail me@x.de", 12), None);
         assert_eq!(at_cursor("@a done", 7), None, "the cursor left the word");
         assert_eq!(at_cursor("ü @a", 5).map(|m| m.start), Some(3));
+    }
+
+    #[test]
+    fn a_cd_argument_completes_and_names_a_folder_once_it_ends_in_one() {
+        let m = at_cursor("/cd my docs/sr", 14).unwrap();
+        assert_eq!((m.start, m.query.as_str(), m.cd), (4, "my docs/sr", true));
+        assert_eq!(m.sigil(), "");
+        assert!(!m.complete(), "a name is still being typed");
+        for done in ["/cd ", "/cd src/", "/cd ..", "/cd ~"] {
+            assert!(at_cursor(done, done.len()).unwrap().complete(), "{done}");
+        }
+        assert!(!at_cursor("@src/", 5).unwrap().complete());
+        assert_eq!(at_cursor("/cdx", 4), None);
     }
 
     #[test]
@@ -276,11 +323,45 @@ mod tests {
         c.into_iter().map(|c| c.path).collect()
     }
 
+    /// Mentions::candidates for an `@query`, without a home.
+    struct Ask(Mentions);
+
+    impl Ask {
+        fn candidates(&self, cwd: &Path, query: &str) -> Vec<Candidate> {
+            let m = Mention {
+                start: 0,
+                query: query.into(),
+                cd: false,
+            };
+            self.0.candidates(cwd, None, &m)
+        }
+    }
+
+    #[test]
+    fn cd_offers_folders_only_and_home_with_a_tilde() {
+        let root = tree();
+        let site = root.join("site");
+        let m = Mentions::default();
+        let cd = |query: &str, home: Option<&Path>| {
+            let at = Mention {
+                start: 0,
+                query: query.into(),
+                cd: true,
+            };
+            paths(m.candidates(&site, home, &at))
+        };
+        assert_eq!(cd("", None), ["../", "node_modules/", "src/"]);
+        assert_eq!(cd("s", None), ["src/"]);
+        assert_eq!(cd("~/", Some(&root)), ["~/other/", "~/site/"]);
+        assert_eq!(cd("~", Some(&root)), ["~/other/", "~/site/"]);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
     #[test]
     fn listing_goes_up_with_dots_and_matching_looks_under_it() {
         let root = tree();
         let site = root.join("site");
-        let m = Mentions::default();
+        let m = Ask(Mentions::default());
         assert_eq!(
             paths(m.candidates(&site, "")),
             ["../", "node_modules/", "src/", "README.md"]

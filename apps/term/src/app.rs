@@ -2095,11 +2095,19 @@ impl App {
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         let empty = self.editor.is_empty();
-        // The `@` file list takes the arrows, Tab, Enter and Esc while it is open.
+        // The `@` file list (or `/cd`'s folders) takes the arrows, Tab, Enter and Esc while it
+        // is open. Enter on a `/cd` that names a folder already runs it, unless the arrows picked
+        // one.
+        let runs_cd = || {
+            self.mention_sel == 0
+                && mention::at_cursor(self.editor.text(), self.editor.cursor())
+                    .is_some_and(|m| m.complete())
+        };
         if !ctrl && !alt && !shift && self.mention_visible() {
             match key.code {
                 KeyCode::Up => return self.move_mention(-1),
                 KeyCode::Down => return self.move_mention(1),
+                KeyCode::Enter if runs_cd() => {}
                 KeyCode::Tab | KeyCode::Enter => {
                     self.accept_mention();
                     self.prompt.typed_ms = self.now_ms;
@@ -2370,8 +2378,9 @@ impl App {
         let Some(m) = mention::at_cursor(text, self.editor.cursor()) else {
             return Vec::new();
         };
+        let home = self.home.as_deref().map(std::path::Path::new);
         self.mentions
-            .candidates(std::path::Path::new(&self.cwd), &m.query)
+            .candidates(std::path::Path::new(&self.cwd), home, &m)
     }
 
     fn mention_visible(&self) -> bool {
@@ -2397,7 +2406,12 @@ impl App {
         let Some(m) = mention::at_cursor(&text, cursor) else {
             return;
         };
-        let word = format!("@{}{}", pick.path, if pick.dir { "" } else { " " });
+        let word = format!(
+            "{}{}{}",
+            m.sigil(),
+            pick.path,
+            if pick.dir { "" } else { " " }
+        );
         let after = &text[cursor..];
         let new = format!("{}{word}{after}", &text[..m.start]);
         self.editor.set_text(&new);
@@ -3123,6 +3137,8 @@ impl App {
         }
         let start = (self.mention_sel + 1).saturating_sub(rows);
         let w = usize::from(chat.width);
+        let sigil =
+            mention::at_cursor(self.editor.text(), self.editor.cursor()).map_or("@", |m| m.sigil());
         let lines = matches
             .iter()
             .enumerate()
@@ -3141,7 +3157,7 @@ impl App {
                     spans.push(neo_renderer_ratatui::file_icon(&c.path, &self.palette));
                     spans.push(Span::raw(" "));
                 }
-                spans.push(Span::styled(format!("@{}", c.path), style));
+                spans.push(Span::styled(format!("{sigil}{}", c.path), style));
                 fit_line(Line::from(spans), w)
             });
         let rule = Line::from(Span::styled("─".repeat(w), self.styles.border));
