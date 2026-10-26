@@ -348,9 +348,10 @@ func isExecutable(path string) bool {
 	return err == nil && st.Mode().IsRegular() && st.Mode().Perm()&0o111 != 0
 }
 
-// runTerm is plain `neo` on a terminal: start the daemon if needed (saying
-// so only then), then replace this process with the terminal app.
-func runTerm(ctx context.Context, e cliEnv) int {
+// runTerm is plain `neo` (or `neo DIR`) on a terminal: start the daemon if
+// needed (saying so only then), then replace this process with the terminal
+// app, given args.
+func runTerm(ctx context.Context, args []string, e cliEnv) int {
 	exe := ""
 	if e.Executable != nil {
 		exe, _ = e.Executable()
@@ -380,7 +381,7 @@ func runTerm(ctx context.Context, e cliEnv) int {
 	if execFn == nil {
 		execFn = execReplace
 	}
-	err = execFn(term, []string{term}, e.environ())
+	err = execFn(term, append([]string{term}, args...), e.environ())
 	fmt.Fprintf(e.Stderr, "neo: cannot run %s: %v\n", term, err)
 	return 1
 }

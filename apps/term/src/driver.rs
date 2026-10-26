@@ -24,16 +24,18 @@ pub struct Args {
     pub session: Option<String>,
     /// `--new`
     pub new: bool,
+    /// `DIR`: the directory to work in instead of the current one.
+    pub dir: Option<String>,
 }
 
-pub const USAGE: &str = "usage: neo-term [--session ID|PREFIX] [--new]
+pub const USAGE: &str = "usage: neo-term [--session ID|PREFIX] [--new] [DIR]
 
 Neo's full-screen terminal app: the shared conversation, plan, files and usage.
-Without flags it shows the agent's current session if it works in this directory, else the
-latest session here, else a new one.
+Without flags it shows the agent's current session if it works in DIR (default: the current
+directory), else the latest session there, else a new one.
 
   --session ID|PREFIX   show this session
-  --new                 start a new session in the current directory
+  --new                 start a new session in DIR
   -h, --help            this text";
 
 pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Option<Args>, String> {
@@ -48,7 +50,11 @@ pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<Option<Args
             }
             other => match other.strip_prefix("--session=") {
                 Some(id) => out.session = Some(id.to_string()),
-                None => return Err(format!("unknown argument {other:?}")),
+                None if other.starts_with('-') => {
+                    return Err(format!("unknown argument {other:?}"));
+                }
+                None if out.dir.is_some() => return Err("only one directory".into()),
+                None => out.dir = Some(other.to_string()),
             },
         }
     }
@@ -489,6 +495,15 @@ pub fn current_dir() -> Result<String, String> {
     Ok(Path::new(&dir).to_string_lossy().into_owned())
 }
 
+/// `dir` made absolute, which must be a directory.
+pub fn work_dir(dir: &str) -> Result<String, String> {
+    let path = std::fs::canonicalize(dir).map_err(|e| format!("{dir}: {e}"))?;
+    if !path.is_dir() {
+        return Err(format!("{dir}: not a directory"));
+    }
+    Ok(path.to_string_lossy().into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -526,6 +541,7 @@ mod tests {
         Args {
             session: session.map(Into::into),
             new,
+            dir: None,
         }
     }
 
@@ -540,6 +556,21 @@ mod tests {
         assert!(p(&["--session"]).is_err());
         assert!(p(&["--bogus"]).is_err());
         assert!(p(&["--new", "--session", "x"]).is_err());
+        let in_dir = Args {
+            dir: Some("../site".into()),
+            ..args(None, true)
+        };
+        assert_eq!(p(&["--new", "../site"]), Ok(Some(in_dir)));
+        assert!(p(&["a", "b"]).is_err());
+    }
+
+    #[test]
+    fn work_dir_is_absolute_and_a_directory() {
+        let here = std::env::current_dir().unwrap();
+        let parent = here.parent().unwrap().canonicalize().unwrap();
+        assert_eq!(work_dir(".."), Ok(parent.to_string_lossy().into_owned()));
+        assert!(work_dir("Cargo.toml").is_err());
+        assert!(work_dir("no/such/dir").is_err());
     }
 
     #[test]

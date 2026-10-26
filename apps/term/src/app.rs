@@ -48,6 +48,9 @@ const QUIT_WINDOW_MS: i64 = 1500;
 const NOTICE_MS: i64 = 4000;
 /// How often a running turn's session info is refreshed (queue length, stuck turns).
 const POLL_MS: i64 = 2000;
+/// Idle this long, a session's prompt cache is gone with Anthropic (5 minutes, 1 hour with long
+/// retention) and OpenAI (5 minutes to an hour); DeepSeek's disk cache may outlast it.
+const CACHE_COLD_MS: i64 = 60 * 60 * 1000;
 /// Rows of the slash menu.
 const MENU_ROWS: usize = 8;
 /// Chat lines one wheel notch scrolls.
@@ -327,6 +330,8 @@ pub struct App {
     awaiting: Option<(String, i64)>,
 
     notice: Option<Notice>,
+    /// The session's last turn is more than `CACHE_COLD_MS` ago: the next one starts uncached.
+    cache_cold: bool,
     quit_armed_until: i64,
     now_ms: i64,
     last_poll_ms: i64,
@@ -400,6 +405,7 @@ impl App {
             agent_app: None,
             awaiting: Some((session, now + 3000)),
             notice: None,
+            cache_cold: false,
             quit_armed_until: 0,
             now_ms: now,
             last_poll_ms: now,
@@ -517,6 +523,17 @@ impl App {
         }
         if self.notice.as_ref().is_some_and(|n| n.until <= now_ms) {
             self.notice = None;
+            self.dirty = true;
+        }
+        // The session's last event marks its last turn; one nothing was said in has no cache.
+        let cold = !self.running
+            && !self.chat.items().is_empty()
+            && self
+                .sessions
+                .get(&self.session)
+                .is_some_and(|s| now_ms - s.last_activity > CACHE_COLD_MS);
+        if cold != self.cache_cold {
+            self.cache_cold = cold;
             self.dirty = true;
         }
         self.update_engaged();
@@ -3061,6 +3078,7 @@ impl App {
             spinner: SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()],
             queued: self.waiting.len(),
             stashed: self.stash.is_some(),
+            cache_cold: self.cache_cold,
             connected: self.connected,
             approvals: self.approvals,
             notice,

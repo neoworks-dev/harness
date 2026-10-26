@@ -36,13 +36,22 @@ pub fn main() -> ExitCode {
         eprintln!("neo-term needs a terminal (use `neo attach` in scripts)");
         return ExitCode::FAILURE;
     }
-    let cwd = match driver::current_dir() {
+    let cwd = match args
+        .dir
+        .as_deref()
+        .map_or_else(driver::current_dir, driver::work_dir)
+    {
         Ok(cwd) => cwd,
         Err(why) => {
             eprintln!("neo-term: {why}");
             return ExitCode::FAILURE;
         }
     };
+    // What term starts itself (the shell panel, git) runs there too.
+    if let Err(err) = std::env::set_current_dir(&cwd) {
+        eprintln!("neo-term: {cwd}: {err}");
+        return ExitCode::FAILURE;
+    }
     let started = driver::start(StartOptions {
         socket: None,
         cwd,

@@ -42,9 +42,10 @@ type cliEnv struct {
 }
 
 const usage = `usage: neo [command] [flags]
+       neo [DIR]
 
 With no command on a terminal, neo starts the daemon if needed and opens the
-terminal app (neo-term).
+terminal app (neo-term) in DIR, default the current directory.
 
 commands:
   gui [--session ID | --new]    open the desktop app (neo-gui) on the agent's
@@ -76,7 +77,7 @@ that has buttons; /help lists them
 func run(ctx context.Context, args []string, e cliEnv) int {
 	if len(args) == 0 {
 		if isTerminal(e.Stdin) && e.StdoutTTY {
-			return runTerm(ctx, e)
+			return runTerm(ctx, nil, e)
 		}
 		fmt.Fprint(e.Stderr, usage)
 		return 2
@@ -104,6 +105,10 @@ func run(ctx context.Context, args []string, e cliEnv) int {
 	case "help", "-h", "--help":
 		fmt.Fprint(e.Stdout, usage)
 		return 0
+	}
+	// `neo DIR`: the terminal app in that directory.
+	if st, err := os.Stat(cmd); err == nil && st.IsDir() && len(args) == 0 {
+		return runTerm(ctx, []string{cmd}, e)
 	}
 	fmt.Fprintf(e.Stderr, "neo: unknown command %q\n\n%s", cmd, usage)
 	return 2

@@ -267,6 +267,16 @@ func TestNoArgsTerminalExecsTermApp(t *testing.T) {
 		t.Errorf("a running daemon should be silent, got %q", u.stdout.String())
 	}
 
+	// `neo DIR` hands the directory on; a name that is neither command nor directory is not.
+	dir := t.TempDir()
+	run(context.Background(), []string{dir}, e)
+	if !slices.Equal(gotArgv, []string{term, dir}) {
+		t.Errorf("argv %q", gotArgv)
+	}
+	if code := run(context.Background(), []string{filepath.Join(dir, "nope")}, e); code != 2 {
+		t.Errorf("code %d for a missing directory", code)
+	}
+
 	// Exec failing reports why.
 	u.stderr.Reset()
 	e.Exec = func(string, []string, []string) error { return errors.New("exec format error") }

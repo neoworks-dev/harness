@@ -91,6 +91,8 @@ pub struct Status<'a> {
     pub queued: usize,
     /// A draft is put aside (Ctrl-S).
     pub stashed: bool,
+    /// The last turn was over an hour ago: the provider's prompt cache is gone.
+    pub cache_cold: bool,
     pub connected: bool,
     pub approvals: Approvals,
     /// A transient message and whether it is an error.
@@ -172,6 +174,9 @@ impl Status<'_> {
                 vec![Span::styled("draft put aside (ctrl-s)", s.muted)],
             );
         }
+        if self.cache_cold {
+            push(&mut rest, vec![Span::styled("cache expired", s.muted)]);
+        }
         if !self.connected {
             push(
                 &mut rest,
@@ -233,6 +238,7 @@ mod tests {
             spinner: '◐',
             queued: 0,
             stashed: false,
+            cache_cold: false,
             connected: true,
             approvals: Approvals::Ask,
             notice: None,
@@ -303,6 +309,14 @@ mod tests {
         );
         let last = line.spans.last().unwrap();
         assert_eq!(last.style, styles.danger);
+        s.working_secs = None;
+        s.queued = 0;
+        s.connected = true;
+        s.cache_cold = true;
+        assert_eq!(
+            s.lines(80)[1].to_string(),
+            "? ask before acting · ctx 35% · $0.18 · cache expired"
+        );
     }
 
     #[test]

@@ -328,8 +328,8 @@ fn a_second_terminal_registers_under_its_own_name_and_resumes_the_session() {
     let third = Ui::new(daemon.open(
         &cwd,
         Args {
-            session: None,
             new: true,
+            ..Args::default()
         },
     ));
     assert_ne!(third.app.session(), first.app.session());

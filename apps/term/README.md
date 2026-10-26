@@ -7,11 +7,12 @@ It is only a client. The conversation lives in the daemon, so closing the app ne
 ```sh
 task build                      # bin/neo-term (next to bin/neo)
 neo                           # opens it (NEO_TERM overrides which binary)
+neo ~/site                    # the same in another directory (neo-term ~/site)
 neo-term --new                # a new session in this directory
 neo-term --session 3fa9       # a session by id or unique prefix
 ```
 
-Without flags it shows the agent's current session if that works in this directory, else the most recently active session here, else creates one. The daemon not running prints `daemon not running: run neo (or neo up)` and exits 1 before the screen is touched. Alternate screen, raw mode and bracketed paste are restored on exit and on panic. There is no mouse capture, so tmux (or the terminal) selects text as usual.
+Without flags it shows the agent's current session if that works in this directory (or the one given), else the most recently active session there, else creates one. When the session's last turn is over an hour old, the status line says `cache expired`: the next turn sends the whole conversation uncached. The daemon not running prints `daemon not running: run neo (or neo up)` and exits 1 before the screen is touched. Alternate screen, raw mode and bracketed paste are restored on exit and on panic. There is no mouse capture, so tmux (or the terminal) selects text as usual.
 
 ## Layout
 
