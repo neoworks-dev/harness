@@ -68,6 +68,22 @@ pub struct Options {
     pub app: Option<String>,
     /// A diff's path starts with its file type icon (a Nerd Font glyph, see [`file_icon`]).
     pub file_icons: bool,
+    /// The session's directory: paths in it (a diff's, a tool's label) are shown relative to it.
+    pub cwd: Option<String>,
+}
+
+/// `path` relative to `cwd` when it is inside it, else as it is.
+pub fn relative_path<'a>(path: &'a str, cwd: Option<&str>) -> &'a str {
+    let Some(cwd) = cwd
+        .map(|c| c.trim_end_matches('/'))
+        .filter(|c| !c.is_empty())
+    else {
+        return path;
+    };
+    path.strip_prefix(cwd)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .filter(|rest| !rest.is_empty())
+        .unwrap_or(path)
 }
 
 /// What the app knows about an image source (`src` of an image component).

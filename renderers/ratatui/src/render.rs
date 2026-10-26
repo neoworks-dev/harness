@@ -208,6 +208,13 @@ impl<'a> Cx<'a> {
         let finished = matches!(it.state, Some(pb::ItemState::Done | pb::ItemState::Failed));
         let cut = finished && !prompt && !self.o.expanded;
         let hw = w;
+        // `edit /home/me/site/src/a.rs` says `edit src/a.rs` in the session's directory.
+        let label = match (label, self.o.cwd.as_deref()) {
+            (Some(label), Some(cwd)) if !cwd.trim_end_matches('/').is_empty() => {
+                Some(label.replace(&format!("{}/", cwd.trim_end_matches('/')), ""))
+            }
+            (label, _) => label,
+        };
         let mut head = match &label {
             Some(label) => wrap(&self.tool_label(label), hw),
             None => Vec::new(),
@@ -744,19 +751,20 @@ impl<'a> Cx<'a> {
     }
 
     /// Monospace on the surface color, indented 2, hard-wrapped, the band filling the width.
-    /// Shell is highlighted; with `reflow` (a command to approve, not code the model wrote in
-    /// its reply) long lines also break after `&&`, `|` and `;`.
+    /// Highlighted by the grammar for its language; a shell command with `reflow` (one to
+    /// approve, not code the model wrote in its reply) also breaks after `&&`, `|` and `;`.
     pub(crate) fn code(&self, code: &str, language: Option<&str>, reflow: bool, w: usize) -> Lines {
         let st = self.p.code_style();
-        if crate::shell::is_shell(language) {
+        if let Some(syntax) = language.and_then(syntax::syntax_for_language) {
             let inner = w.saturating_sub(2).max(1);
             let code = clean(code);
-            let code = if reflow {
+            let code = if reflow && crate::shell::is_shell(language) {
                 crate::shell::reflow(&code, inner).into()
             } else {
                 code
             };
-            let spans = crate::shell::highlight(&code, &self.p, st);
+            let colors = syntax::block_colors(&self.p);
+            let spans = syntax::highlight_spans(&code, syntax, &colors, st);
             return hard_wrap_spans(&spans, inner)
                 .into_iter()
                 .map(|mut line| {
@@ -894,7 +902,11 @@ impl<'a> Cx<'a> {
     /// tinted across the width; without, a changed line is just green or red.
     fn diff(&self, v: &pb::DiffComponent, w: usize) -> Lines {
         let mut out = Vec::new();
-        let path = v.path.as_deref().map(one_line).filter(|p| !p.is_empty());
+        let path = v
+            .path
+            .as_deref()
+            .map(|p| one_line(crate::relative_path(p, self.o.cwd.as_deref())))
+            .filter(|p| !p.is_empty());
         if let Some(path) = &path {
             let icon = self.o.file_icons && w > 2;
             for (i, l) in hard_wrap(path, if icon { w - 2 } else { w })

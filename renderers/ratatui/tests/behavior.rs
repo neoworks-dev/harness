@@ -3,6 +3,7 @@
 mod common;
 
 use common::*;
+use neo_renderer_ratatui::syntax::Class;
 use ratatui::style::{Color, Modifier};
 use ratatui::text::Line;
 use serde_json::json;
@@ -233,7 +234,12 @@ fn a_command_to_approve_is_highlighted_and_broken_at_its_operators() {
         .iter()
         .find(|s| s.content == "cargo")
         .unwrap();
-    assert_eq!(cargo.style.fg, Some(pal().accent), "the command name");
+    assert_eq!(cargo.style.fg, code_fg(Class::Function), "the command name");
+}
+
+/// The color code of a class is drawn in (true colors).
+fn code_fg(class: Class) -> Option<ratatui::style::Color> {
+    neo_renderer_ratatui::syntax::code_colors(&pal()).unwrap()[class as usize].fg
 }
 
 #[test]
@@ -310,7 +316,7 @@ fn a_command_is_highlighted_and_broken_at_its_operators() {
         span("--release").fg,
         "commands and flags differ"
     );
-    assert_eq!(span("'error|warning'").fg, Some(pal().success));
+    assert_eq!(span("'error|warning'").fg, code_fg(Class::String));
 
     // Once it has run it is muted.
     let done = render_item(&item(None, "done"), 40, &Options::default());
@@ -1498,8 +1504,7 @@ fn bash_rows_and_shell_code_are_highlighted() {
         .iter()
         .find(|s| s.content == "ls")
         .unwrap();
-    assert_eq!(ls.style.fg, Some(pal().accent));
-    assert!(ls.style.add_modifier.contains(Modifier::BOLD));
+    assert_eq!(ls.style.fg, code_fg(Class::Function));
 
     let block = json!({"type": "code", "language": "bash", "code": "echo \"hi there\" | wc -c"});
     let it = item_of("notice", "", &block.to_string());
@@ -1516,6 +1521,17 @@ fn bash_rows_and_shell_code_are_highlighted() {
         .flat_map(|l| l.spans.iter())
         .find(|s| s.content.contains("\"hi"))
         .unwrap();
-    assert_eq!(string.style.fg, Some(pal().success));
+    assert_eq!(string.style.fg, code_fg(Class::String));
     assert_eq!(string.style.bg, Some(pal().surface));
+
+    // Any language its grammar knows, not only shell.
+    let block = json!({"type": "code", "language": "rust", "code": "fn main() {}"});
+    let it = item_of("notice", "", &block.to_string());
+    let rendered = render_item(&it, 40, &Options::default());
+    let main = rendered[0]
+        .spans
+        .iter()
+        .find(|s| s.content == "main")
+        .unwrap();
+    assert_eq!(main.style.fg, code_fg(Class::Function));
 }

@@ -16,11 +16,13 @@ use unicode_width::UnicodeWidthChar;
 
 use super::files::Mark;
 use super::git::git;
+use super::lit::{Lazy, Step};
 use super::text::{clean_line, truncate, truncate_start, width};
-use neo_renderer_ratatui::syntax::{self, Class, Highlighter, code_colors, syntax_for};
+use neo_renderer_ratatui::syntax::{self, Class, SyntaxReference, code_colors, syntax_for};
 
-/// More lines than this are dropped (a generated file diff can be megabytes).
-const MAX_LINES: usize = 20_000;
+/// More lines than this are dropped (a generated file diff can be hundreds of megabytes).
+/// Highlighting doesn't mind: it only looks at what is on screen.
+const MAX_LINES: usize = 1_000_000;
 /// Lines of context around a change, and "the whole file" (`f`).
 const CONTEXT: u32 = 5;
 const FULL_CONTEXT: u32 = 99_999;
@@ -138,11 +140,10 @@ pub(crate) struct DiffView {
     aligned: Aligned,
     /// The widest unified line, in cells.
     uni_w: usize,
-    /// What each char of the code is, for colors: per unified line (its text after the sign)
-    /// and per split row (left, right). Empty: not highlighted (yet).
-    syntax: Highlights,
-    /// The highlighting being worked out on a thread; the code shows plain until it arrives.
-    syntax_rx: Option<Receiver<Highlights>>,
+    /// What each char of the code is, for colors, per unified line and per split row: worked
+    /// out on a thread for the rows on screen (plain until it arrives). None: no grammar.
+    lit_uni: Option<Lazy>,
+    lit_split: Option<Lazy>,
     adds: usize,
     dels: usize,
     loaded: bool,
@@ -155,6 +156,16 @@ pub(crate) struct DiffView {
     /// The new-side line to scroll back to when a reload (`f`) arrives.
     anchor: Option<usize>,
     view: Cell<View>,
+    /// Digits typed before a key, vim's count (`5j`, `120G`).
+    count: Option<usize>,
+    /// `/` is being typed: the pattern so far.
+    typing: Option<String>,
+    /// The last search, for `n` / `N`.
+    pattern: Option<String>,
+    /// Said in the title line until the next key (`no match`).
+    message: Option<String>,
+    /// `e` asked for the file in the editor, at this line.
+    edit: Option<(PathBuf, Option<usize>)>,
 }
 
 impl DiffView {
@@ -198,8 +209,8 @@ impl DiffView {
             numbers: Vec::new(),
             aligned: Aligned::default(),
             uni_w: 0,
-            syntax: Highlights::default(),
-            syntax_rx: None,
+            lit_uni: None,
+            lit_split: None,
             adds: 0,
             dels: 0,
             loaded: false,
@@ -213,6 +224,11 @@ impl DiffView {
                 col_w: 40,
                 split: false,
             }),
+            count: None,
+            typing: None,
+            pattern: None,
+            message: None,
+            edit: None,
         }
     }
 
@@ -251,14 +267,10 @@ impl DiffView {
             self.aligned = Aligned::default();
         }
         self.uni_w = lines.iter().map(|l| width(&l.text)).max().unwrap_or(0);
-        let path = self.req.as_ref().map(|r| r.rel.clone());
-        self.syntax = Highlights::default();
-        let (tx, rx) = mpsc::channel();
-        let (copy, aligned) = (lines.clone(), self.aligned.clone());
-        std::thread::spawn(move || {
-            let _ = tx.send(highlight(path.as_deref(), &copy, &aligned));
-        });
-        self.syntax_rx = Some(rx);
+        let path = self.req.as_ref().map(|r| r.rel.as_str());
+        let (grammar, uni, split) = steps(path, &lines, &self.aligned);
+        self.lit_uni = Lazy::start(grammar, uni);
+        self.lit_split = Lazy::start(grammar, split);
         self.numbers = line_numbers(&lines);
         self.lines = lines;
         self.adds = adds;
@@ -277,11 +289,14 @@ impl DiffView {
 
     /// Picks up the loaded diff, or its highlighting. True when something arrived.
     pub(crate) fn poll(&mut self) -> bool {
-        if let Some(rx) = &self.syntax_rx
-            && let Ok(syntax) = rx.try_recv()
+        let mut lit = false;
+        for lazy in [&mut self.lit_uni, &mut self.lit_split]
+            .into_iter()
+            .flatten()
         {
-            self.syntax = syntax;
-            self.syntax_rx = None;
+            lit |= lazy.poll();
+        }
+        if lit {
             return true;
         }
         let Some(rx) = &self.rx else {
@@ -396,8 +411,17 @@ impl DiffView {
         self.loaded = false;
     }
 
-    /// Scrolls; true when the key closes the overlay (Esc, q).
+    /// Scrolls, searches, asks for the editor; true when the key closes the overlay (Esc, q).
+    /// Vim's keys: a count before a key repeats it (`5j`) or names a line (`120G`); `/` searches
+    /// (smart case), `n` / `N` go to the next / previous match (without a search, `n` / `p`
+    /// go between hunks, as `}` / `{` always do); Ctrl-D/U half a page, Ctrl-F/B a page,
+    /// Ctrl-E/Y a line; `$` to the right end; `e` opens the file in the editor.
     pub(crate) fn key(&mut self, key: KeyEvent) -> bool {
+        self.message = None;
+        if self.typing.is_some() {
+            self.search_key(key);
+            return false;
+        }
         let v = self.view.get();
         let rows = v.rows.max(1);
         let page = rows.saturating_sub(1).max(1);
@@ -405,38 +429,185 @@ impl DiffView {
         let max = self.max_scroll();
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let mut s = self.scroll.get().min(max);
+        if let (KeyCode::Char(c @ '0'..='9'), false) = (key.code, ctrl)
+            && (c != '0' || self.count.is_some())
+        {
+            let digit = c.to_digit(10).unwrap_or(0) as usize;
+            self.count = Some(self.count.unwrap_or(0).saturating_mul(10) + digit);
+            return false;
+        }
+        let count = self.count.take();
+        let n = count.unwrap_or(1);
         match (key.code, ctrl) {
             (KeyCode::Esc, _) | (KeyCode::Char('q'), false) => return true,
-            (KeyCode::Up | KeyCode::Char('k'), _) => s = s.saturating_sub(1),
-            (KeyCode::Down | KeyCode::Char('j'), _) => s = (s + 1).min(max),
-            (KeyCode::PageUp | KeyCode::Char('b'), _) => s = s.saturating_sub(page),
-            (KeyCode::PageDown | KeyCode::Char(' '), _) => s = (s + page).min(max),
-            (KeyCode::Char('u'), true) => s = s.saturating_sub(half),
-            (KeyCode::Char('d'), true) => s = (s + half).min(max),
+            (KeyCode::Up | KeyCode::Char('k'), false) | (KeyCode::Char('y'), true) => {
+                s = s.saturating_sub(n);
+            }
+            (KeyCode::Down | KeyCode::Char('j'), false) | (KeyCode::Char('e'), true) => {
+                s = (s + n).min(max);
+            }
+            (KeyCode::PageUp | KeyCode::Char('b'), _) => s = s.saturating_sub(page * n),
+            (KeyCode::PageDown | KeyCode::Char(' '), false) | (KeyCode::Char('f'), true) => {
+                s = (s + page * n).min(max);
+            }
+            (KeyCode::Char('u'), true) => s = s.saturating_sub(half * n),
+            (KeyCode::Char('d'), true) => s = (s + half * n).min(max),
             (KeyCode::Home | KeyCode::Char('g'), _) => s = 0,
-            (KeyCode::End | KeyCode::Char('G'), _) => s = max,
-            (KeyCode::Char('n'), false) => {
-                if let Some(h) = self.hunk_starts(v.split).into_iter().find(|&h| h > s) {
+            (KeyCode::End | KeyCode::Char('G'), _) => {
+                s = match count {
+                    Some(line) => self.row_of_line(line, v.split).min(max),
+                    None => max,
+                };
+            }
+            (KeyCode::Char('n'), false) if self.pattern.is_some() => s = self.find(s, true, n),
+            (KeyCode::Char('N'), false) => s = self.find(s, false, n),
+            (KeyCode::Char('n' | '}'), false) => {
+                let after = self.hunk_starts(v.split).into_iter().filter(|&h| h > s);
+                if let Some(h) = after.take(n).last() {
                     s = h.min(max);
                 }
             }
-            (KeyCode::Char('p'), false) => {
-                let before = self.hunk_starts(v.split).into_iter().rfind(|&h| h < s);
-                s = before.unwrap_or(0);
+            (KeyCode::Char('p' | '{'), false) => {
+                let mut before: Vec<usize> = self
+                    .hunk_starts(v.split)
+                    .into_iter()
+                    .filter(|&h| h < s)
+                    .collect();
+                before.reverse();
+                s = before.get(n - 1).copied().unwrap_or(0);
             }
             (KeyCode::Left | KeyCode::Char('h'), _) => {
-                self.hscroll = self.hscroll.saturating_sub(HSTEP);
+                self.hscroll = self.hscroll.saturating_sub(HSTEP * n);
             }
             (KeyCode::Right | KeyCode::Char('l'), _) => {
-                self.hscroll = (self.hscroll + HSTEP).min(self.max_hscroll());
+                self.hscroll = (self.hscroll + HSTEP * n).min(self.max_hscroll());
             }
             (KeyCode::Char('0'), false) => self.hscroll = 0,
+            (KeyCode::Char('$'), false) => self.hscroll = self.max_hscroll(),
+            (KeyCode::Char('/'), false) => self.typing = Some(String::new()),
             (KeyCode::Char('s'), false) => self.force = Some(!v.split),
             (KeyCode::Char('f'), false) => self.toggle_full(),
+            (KeyCode::Char('e'), false) => match &self.req {
+                Some(req) => self.edit = Some((self.cwd.join(&req.rel), self.top_new_line())),
+                None => self.message = Some("not a file here".into()),
+            },
             _ => {}
         }
         self.scroll.set(s);
         false
+    }
+
+    /// A key while `/` is typed: Enter searches, Esc gives up.
+    fn search_key(&mut self, key: KeyEvent) {
+        let Some(text) = self.typing.as_mut() else {
+            return;
+        };
+        match key.code {
+            KeyCode::Esc => self.typing = None,
+            KeyCode::Backspace if text.is_empty() => self.typing = None,
+            KeyCode::Backspace => {
+                text.pop();
+            }
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => text.clear(),
+            KeyCode::Char(c) => text.push(c),
+            KeyCode::Enter => {
+                let text = self.typing.take().unwrap_or_default();
+                if !text.is_empty() {
+                    self.pattern = Some(text);
+                }
+                let max = self.max_scroll();
+                // From the top row on: a match already in view at the top counts.
+                let top = self.scroll.get().min(max);
+                let s = self.find(top.saturating_sub(1), true, 1);
+                if self.message.is_none() {
+                    self.scroll.set(s);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The row of the `n`-th match of the search after (or before) row `from`, wrapping around;
+    /// `from` itself when there is none (and the title says so).
+    fn find(&mut self, from: usize, forward: bool, n: usize) -> usize {
+        let Some(pattern) = self.pattern.clone() else {
+            return from;
+        };
+        // Smart case: an upper-case letter makes it exact.
+        let exact = pattern.chars().any(char::is_uppercase);
+        let needle = if exact {
+            pattern.clone()
+        } else {
+            pattern.to_lowercase()
+        };
+        let split = self.view.get().split;
+        let len = self.len(split);
+        let hit = |i: usize| {
+            let text = self.row_text(i, split);
+            if exact {
+                text.contains(&needle)
+            } else {
+                text.to_lowercase().contains(&needle)
+            }
+        };
+        let mut at = from;
+        for _ in 0..n {
+            let order: Box<dyn Iterator<Item = usize>> = if forward {
+                Box::new((at + 1..len).chain(0..=at.min(len.saturating_sub(1))))
+            } else {
+                Box::new((0..at).rev().chain((at..len).rev()))
+            };
+            match order.into_iter().find(|&i| hit(i)) {
+                Some(i) => at = i,
+                None => {
+                    self.message = Some(format!("no match for {pattern}"));
+                    return from;
+                }
+            }
+        }
+        at
+    }
+
+    /// The text of row `i` of the shown mode, for searching.
+    fn row_text(&self, i: usize, split: bool) -> String {
+        if !split {
+            return self
+                .lines
+                .get(i)
+                .map_or_else(String::new, |l| l.text.clone());
+        }
+        match self.aligned.rows.get(i) {
+            Some(Row::Line { left, right, .. }) => {
+                fn side(s: &Option<Side>) -> &str {
+                    s.as_ref().map_or("", |s| s.text.as_str())
+                }
+                format!("{}\n{}", side(left), side(right))
+            }
+            Some(Row::Hunk(t) | Row::Note(t)) => t.clone(),
+            None => String::new(),
+        }
+    }
+
+    /// The row where line `line` of the file (the new version's) is, or the nearest after it.
+    fn row_of_line(&self, line: usize, split: bool) -> usize {
+        if split {
+            return self
+                .aligned
+                .rows
+                .iter()
+                .position(|r| matches!(r, Row::Line { right: Some(s), .. } if s.no >= line))
+                .unwrap_or(self.aligned.rows.len().saturating_sub(1));
+        }
+        (0..self.lines.len())
+            .find(|&i| {
+                self.lines[i].kind != Kind::Del && self.numbers[i].is_some_and(|no| no >= line)
+            })
+            .unwrap_or(self.lines.len().saturating_sub(1))
+    }
+
+    /// The file `e` asked to edit, and the line, once.
+    pub(crate) fn take_edit(&mut self) -> Option<(PathBuf, Option<usize>)> {
+        self.edit.take()
     }
 
     /// The columns of the split view at this width, None when the unified view is shown.
@@ -486,6 +657,15 @@ impl DiffView {
         let hscroll = self.hscroll.min(self.max_hscroll());
 
         let shown = n.saturating_sub(first).min(rows);
+        // Highlighted: what is on screen, and a screen above and below it for scrolling.
+        let lazy = if split {
+            &self.lit_split
+        } else {
+            &self.lit_uni
+        };
+        if let Some(lazy) = lazy {
+            lazy.want(first.saturating_sub(rows), first + 2 * rows.max(1));
+        }
         let title = self.title_line(w, first, shown, n, &look);
         let mut lines = vec![title];
         if let Some(g) = geom {
@@ -508,10 +688,25 @@ impl DiffView {
         look: &Look,
     ) -> Line<'static> {
         let muted = look.muted;
+        // A search being typed takes the line.
+        if let Some(text) = &self.typing {
+            let shown = truncate_start(text, w.saturating_sub(2).max(1));
+            return Line::from(vec![
+                Span::styled("/", Style::new().fg(look.accent)),
+                Span::raw(shown),
+                Span::styled(" ", Style::new().add_modifier(Modifier::REVERSED)),
+            ]);
+        }
         let mut title = vec![Span::styled(
             truncate_start(&self.title, w.saturating_sub(14).max(1)),
             Style::new().add_modifier(Modifier::BOLD),
         )];
+        if let Some(message) = &self.message {
+            title.push(Span::styled(
+                format!("  {message}"),
+                Style::new().fg(look.danger),
+            ));
+        }
         if !self.loaded {
             title.push(Span::styled("  …", muted));
         } else if self.adds + self.dels > 0 {
@@ -598,7 +793,7 @@ impl DiffView {
                     right,
                     changed,
                 } => {
-                    let (lc, rc) = match self.syntax.split.get(index) {
+                    let (lc, rc) = match self.lit_split.as_ref().and_then(|l| l.get(index)) {
                         Some((l, r)) => (l.as_slice(), r.as_slice()),
                         None => (&[][..], &[][..]),
                     };
@@ -683,11 +878,12 @@ impl DiffView {
                 }
                 spans.push(Span::styled(mark.to_string(), style));
                 let avail = w.saturating_sub(width(mark) + gutter);
-                let classes = self
-                    .syntax
-                    .unified
-                    .get(index)
-                    .map_or(&[][..], Vec::as_slice);
+                // A removed line is the old version's; the rest the new one's.
+                let classes = match self.lit_uni.as_ref().and_then(|l| l.get(index)) {
+                    Some((old, _)) if l.kind == Kind::Del => old.as_slice(),
+                    Some((_, new)) => new.as_slice(),
+                    None => &[][..],
+                };
                 // Highlighted code keeps the change's color as a background tint.
                 let tone = match l.kind {
                     Kind::Add => Tone::Add,
@@ -742,6 +938,7 @@ enum Tone {
 /// The colors of the split view, mixed from the palette (none without colors).
 struct Look {
     muted: Style,
+    accent: Color,
     border: Style,
     success: Color,
     danger: Color,
@@ -752,13 +949,14 @@ struct Look {
     /// The blank half of an uneven run, and the bands (hunk separators, column headers).
     band: Option<Color>,
     /// The colors of code, by class; None without true colors (code stays plain).
-    syntax: Option<[Style; 7]>,
+    syntax: Option<[Style; syntax::CLASSES]>,
 }
 
 impl Look {
     fn new(p: &Palette) -> Look {
         Look {
             muted: Style::new().fg(p.muted),
+            accent: p.accent,
             border: Style::new().fg(p.border),
             success: p.success,
             danger: p.danger,
@@ -808,93 +1006,67 @@ impl Look {
     }
 }
 
-/// What each char of a diff is, per unified line and per split row (left, right).
-#[derive(Debug, Default)]
-struct Highlights {
-    unified: Vec<Vec<Class>>,
-    split: Vec<(Vec<Class>, Vec<Class>)>,
-}
-
-/// Highlights the diff's lines with the grammar for `path` (a pull request's diff: the path in
-/// each file's `+++ b/` header). Old and new lines are parsed apart, each in order, and a hunk
-/// starts the parse over.
-fn highlight(path: Option<&str>, lines: &[DiffLine], aligned: &Aligned) -> Highlights {
-    let mut out = Highlights::default();
-    if lines.len() > syntax::MAX_LINES {
-        return out;
-    }
+/// What the highlighting worker parses, for the unified lines and for the split rows, and the
+/// grammar it starts with: the one for `path` (a pull request's diff: the path in each file's
+/// `+++ b/` header). Old and new lines are parsed apart, each in order, and a hunk starts the
+/// parse over.
+fn steps(
+    path: Option<&str>,
+    lines: &[DiffLine],
+    aligned: &Aligned,
+) -> (Option<&'static SyntaxReference>, Vec<Step>, Vec<Step>) {
     let header_path = |l: &DiffLine| l.text.strip_prefix("+++ b/").map(str::to_string);
     let first = path
         .map(str::to_string)
         .or_else(|| lines.iter().find_map(header_path));
-    let pair = |path: Option<&str>| {
-        path.and_then(syntax_for)
-            .map(|s| (Highlighter::new(s), Highlighter::new(s)))
-    };
-    let mut hl = pair(first.as_deref());
-    for l in lines {
-        let body = l
-            .text
-            .get(l.text.chars().next().map_or(0, char::len_utf8)..)
-            .unwrap_or("");
-        let classes = match (l.kind, hl.as_mut()) {
-            (Kind::Header, _) => {
-                if path.is_none()
-                    && let Some(p) = header_path(l)
-                {
-                    hl = pair(Some(&p));
-                }
-                Vec::new()
+    let grammar = first.as_deref().and_then(syntax_for);
+    let mut current = grammar;
+    let uni = lines
+        .iter()
+        .map(|l| {
+            let body = l
+                .text
+                .get(l.text.chars().next().map_or(0, char::len_utf8)..)
+                .unwrap_or("")
+                .to_string();
+            match l.kind {
+                Kind::Header => match header_path(l).filter(|_| path.is_none()) {
+                    Some(p) => {
+                        current = syntax_for(&p);
+                        Step::Reset(current)
+                    }
+                    None => Step::Skip,
+                },
+                Kind::Hunk => Step::Reset(current),
+                Kind::Context => Step::Line {
+                    old: Some(body.clone()),
+                    new: Some(body),
+                },
+                Kind::Add => Step::Line {
+                    old: None,
+                    new: Some(body),
+                },
+                Kind::Del => Step::Line {
+                    old: Some(body),
+                    new: None,
+                },
+                Kind::Note => Step::Skip,
             }
-            (Kind::Hunk, Some((old, new))) => {
-                old.reset();
-                new.reset();
-                Vec::new()
-            }
-            (Kind::Context, Some((old, new))) => {
-                old.line(body);
-                new.line(body)
-            }
-            (Kind::Add, Some((_, new))) => new.line(body),
-            (Kind::Del, Some((old, _))) => old.line(body),
-            _ => Vec::new(),
-        };
-        out.unified.push(classes);
-    }
-    let Some((mut old, mut new)) = pair(first.as_deref()) else {
-        return out;
-    };
-    for row in &aligned.rows {
-        let classes = match row {
-            Row::Hunk(_) => {
-                old.reset();
-                new.reset();
-                (Vec::new(), Vec::new())
-            }
-            Row::Line {
-                left,
-                right,
-                changed: false,
-            } => {
-                let l = left.as_ref().map(|s| old.line(&s.text)).unwrap_or_default();
-                let r = right
-                    .as_ref()
-                    .map(|s| new.line(&s.text))
-                    .unwrap_or_default();
-                (l, r)
-            }
-            Row::Line { left, right, .. } => (
-                left.as_ref().map(|s| old.line(&s.text)).unwrap_or_default(),
-                right
-                    .as_ref()
-                    .map(|s| new.line(&s.text))
-                    .unwrap_or_default(),
-            ),
-            Row::Note(_) => (Vec::new(), Vec::new()),
-        };
-        out.split.push(classes);
-    }
-    out
+        })
+        .collect();
+    let split = aligned
+        .rows
+        .iter()
+        .map(|row| match row {
+            Row::Hunk(_) => Step::Reset(grammar),
+            Row::Line { left, right, .. } => Step::Line {
+                old: left.as_ref().map(|s| s.text.clone()),
+                new: right.as_ref().map(|s| s.text.clone()),
+            },
+            Row::Note(_) => Step::Skip,
+        })
+        .collect();
+    (grammar, uni, split)
 }
 
 fn with_bg(style: Style, bg: Option<Color>) -> Style {
@@ -1798,9 +1970,13 @@ index 1111111..2222222 100644
     }
 
     impl DiffView {
-        fn wait_for_syntax(&mut self) {
-            if let Some(rx) = self.syntax_rx.take() {
-                self.syntax = rx.recv().unwrap();
+        /// Waits until rows `from..to` of both views are highlighted.
+        fn wait_for_syntax(&mut self, from: usize, to: usize) {
+            for lazy in [&mut self.lit_uni, &mut self.lit_split]
+                .into_iter()
+                .flatten()
+            {
+                lazy.wait(from, to);
             }
         }
     }
@@ -1821,7 +1997,7 @@ index 1111111..2222222 100644
     fn code_is_colored_by_its_grammar_on_the_change_tint() {
         let diff = "--- a/src/m.rs\n+++ b/src/m.rs\n@@ -1,2 +1,2 @@\n fn keep() {}\n-let a = \"x\";\n+let a = \"y\";\n";
         let mut v = DiffView::from_text("src/m.rs", diff);
-        v.wait_for_syntax();
+        v.wait_for_syntax(0, 10);
         let mut t = Terminal::new(TestBackend::new(60, 8)).unwrap();
         draw_to(&v, &mut t);
         let buf = t.backend().buffer();
@@ -1847,23 +2023,29 @@ index 1111111..2222222 100644
     }
 
     #[test]
-    fn a_big_file_is_highlighted_quickly() {
-        let mut text = String::from("--- a/big.rs\n+++ b/big.rs\n@@ -1,5000 +1,5000 @@\n");
-        for i in 0..5000 {
+    fn a_huge_file_is_highlighted_where_it_is_looked_at() {
+        let n = 200_000;
+        let mut text = format!("--- a/big.rs\n+++ b/big.rs\n@@ -1,{n} +1,{n} @@\n");
+        for i in 0..n {
             text.push_str(&format!(
                 " fn f{i}(x: u32) -> u32 {{ x * {i} + \"s\".len() as u32 }} // {i}\n"
             ));
         }
-        let started = std::time::Instant::now();
         let mut v = DiffView::from_text("big.rs", &text);
-        // The text is there right away; the colors follow.
-        assert!(started.elapsed() < std::time::Duration::from_millis(500));
-        assert!(v.syntax.unified.is_empty());
-        v.wait_for_syntax();
+        assert_eq!(v.lines.len(), n + 3, "nothing cut");
+        let mut t = Terminal::new(TestBackend::new(70, 12)).unwrap();
+        draw_to(&v, &mut t);
+        // The end, far from where any parse is.
+        ch(&mut v, 'G');
+        draw_to(&v, &mut t);
+        let started = std::time::Instant::now();
+        v.wait_for_syntax(n - 10, n + 3);
         let took = started.elapsed();
-        assert_eq!(v.syntax.unified.len(), v.lines.len());
-        eprintln!("5000 lines highlighted in {took:?}");
-        assert!(took < std::time::Duration::from_secs(60), "{took:?}");
+        eprintln!("the end of {n} lines highlighted in {took:?}");
+        assert!(took < std::time::Duration::from_secs(5), "{took:?}");
+        let lazy = v.lit_uni.as_ref().unwrap();
+        assert!(lazy.get(n).unwrap().1.contains(&Class::Keyword));
+        assert!(lazy.get(n / 2).is_none(), "the middle was never looked at");
     }
 
     #[test]
@@ -1985,6 +2167,115 @@ index 1111111..2222222 100644
             }
         }
         DiffView::from_text("f", &text)
+    }
+
+    fn ctrl(v: &mut DiffView, c: char) -> bool {
+        v.key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL))
+    }
+
+    #[test]
+    fn vim_keys_counts_and_line_jumps() {
+        let mut v = spread();
+        let mut t = Terminal::new(TestBackend::new(60, 10)).unwrap(); // unified, 9 rows
+        draw_to(&v, &mut t);
+        assert!(!v.view.get().split);
+        ch(&mut v, '5');
+        ch(&mut v, 'j');
+        assert_eq!(v.scroll.get(), 5);
+        ctrl(&mut v, 'e');
+        assert_eq!(v.scroll.get(), 6);
+        ctrl(&mut v, 'y');
+        ctrl(&mut v, 'y');
+        assert_eq!(v.scroll.get(), 4);
+        ctrl(&mut v, 'd');
+        assert_eq!(v.scroll.get(), 8);
+        ctrl(&mut v, 'u');
+        assert_eq!(v.scroll.get(), 4);
+        ctrl(&mut v, 'f');
+        assert_eq!(v.scroll.get(), 12);
+        ctrl(&mut v, 'b');
+        assert_eq!(v.scroll.get(), 4);
+        // `}` / `{` between hunks (each 13 unified rows: its `@@` and 12 lines); a count goes
+        // further.
+        assert_eq!(v.hunk_starts(false), [0, 13, 26]);
+        ch(&mut v, '}');
+        assert_eq!(v.scroll.get(), 13);
+        ch(&mut v, 'g');
+        ch(&mut v, '2');
+        ch(&mut v, '}');
+        assert_eq!(v.scroll.get(), 26);
+        ch(&mut v, '{');
+        assert_eq!(v.scroll.get(), 13);
+        // `23G`: the row of the file's line 23 (in the second hunk, which starts at line 21).
+        ch(&mut v, '2');
+        ch(&mut v, '3');
+        ch(&mut v, 'G');
+        assert_eq!(v.numbers[v.scroll.get()], Some(23));
+        // `0` alone still goes back to the left edge; `$` to the right one.
+        ch(&mut v, '$');
+        assert_eq!(v.hscroll, v.max_hscroll());
+        ch(&mut v, '0');
+        assert_eq!(v.hscroll, 0);
+    }
+
+    #[test]
+    fn slash_searches_and_n_goes_on_with_smart_case() {
+        let mut v = spread();
+        let mut t = Terminal::new(TestBackend::new(60, 10)).unwrap();
+        draw_to(&v, &mut t);
+        ch(&mut v, '/');
+        for c in "new".chars() {
+            ch(&mut v, c);
+        }
+        assert!(draw_to(&v, &mut t).starts_with("/new"));
+        press(&mut v, KeyCode::Enter);
+        let at = v.scroll.get();
+        assert!(v.lines[at].text.contains("new 0"), "{}", v.lines[at].text);
+        ch(&mut v, 'n');
+        assert!(v.lines[v.scroll.get()].text.contains("new 1"));
+        ch(&mut v, 'N');
+        assert!(v.lines[v.scroll.get()].text.contains("new 0"));
+        // Upper case makes it exact: nothing, and the title says so.
+        ch(&mut v, '/');
+        for c in "NEW".chars() {
+            ch(&mut v, c);
+        }
+        press(&mut v, KeyCode::Enter);
+        assert!(v.lines[v.scroll.get()].text.contains("new 0"));
+        assert!(
+            draw_to(&v, &mut t)
+                .lines()
+                .next()
+                .unwrap()
+                .contains("no match for NEW")
+        );
+        // Esc while typing gives up without closing.
+        ch(&mut v, '/');
+        assert!(!press(&mut v, KeyCode::Esc));
+        assert!(v.typing.is_none());
+    }
+
+    #[test]
+    fn e_asks_for_the_file_in_the_editor_at_the_line_in_view() {
+        let dir = std::env::temp_dir();
+        let req = DiffRequest {
+            rel: "src/a.rs".into(),
+            orig: None,
+            mark: Mark::Modified,
+            in_repo: true,
+        };
+        let mut v = DiffView::blank("src/a.rs".into());
+        v.cwd = dir.clone();
+        v.req = Some(req);
+        v.finish(Ok("@@ -10,3 +10,3 @@\n a\n-b\n+B\n c\n".into()));
+        ch(&mut v, 'e');
+        assert_eq!(v.take_edit(), Some((dir.join("src/a.rs"), Some(10))));
+        assert_eq!(v.take_edit(), None);
+        // A pull request's diff has no file here.
+        let mut pr = DiffView::from_text("pr", "@@ -1 +1 @@\n-a\n+b\n");
+        ch(&mut pr, 'e');
+        assert_eq!(pr.take_edit(), None);
+        assert_eq!(pr.message.as_deref(), Some("not a file here"));
     }
 
     #[test]

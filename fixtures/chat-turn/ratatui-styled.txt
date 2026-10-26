@@ -16,7 +16,7 @@ I'll crop the image to ⟦bold|512×512⟧ first.
 ⟦bold|edit ⟧src/Header.tsx
 ⟦muted|  ⎿ ⟧⟦muted|Applied 1 edit(s) to src/Header.tsx.⟧⟦muted|  … +1 lines⟧
 
-⟦bold|bash: ⟧⟦accent bold|npm⟧ run build
+⟦bold|bash: ⟧⟦#82AAFF|npm⟧⟦fg| run build⟧
 ⟦muted|  ⎿ ⟧⟦muted|vite v6.0.0 building for production...⟧
 
 ⟦danger|Rate limited by the provider; try again in a minute.⟧

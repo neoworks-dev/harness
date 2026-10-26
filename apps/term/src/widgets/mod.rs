@@ -22,26 +22,31 @@
 //! - **File view**: Enter on a file opens the diff overlay with the whole file as context and
 //!   unified (its changes marked in place); a file git sees no change in shows as it is.
 //! - **Syntax highlighting** (the renderer's `syntax` module, shared with the chat's diffs): the
-//!   diff and file view color code by syntect's grammar for the file name (`+++ b/` headers for
-//!   a pull request's diff), worked out on a
-//!   thread once the text is in (the code shows plain until then), old and new lines parsed
-//!   apart and each hunk starting over. The colors are picked for a dark or light background,
-//!   not the theme's few; changed lines keep their tint behind them and the sign its color.
-//!   Without true colors, and past 20,000 lines, code stays plain.
-//! - **Diff overlay**: `git diff HEAD -- path` (the whole file for untracked ones) loaded in the
-//!   background and drawn over the chat, side by side from 90 columns on. While it is open it
-//!   takes every key whatever panel is focused: Up/Down/j/k, PgUp/PgDn, g/G, Ctrl-U/Ctrl-D
-//!   scroll; n/p jump to the next / previous hunk; Left/Right/h/l scroll sideways by 8 cells and
-//!   0 returns to the left edge; s switches split and unified; f reloads with the whole file as
-//!   context (and back; it no longer pages); Esc or q close it. Closing
-//!   returns `Redraw`, so focus stays on the files panel (to pick the next file); a second Esc
-//!   there returns `Leave`.
+//!   diff and file view color code by bat's grammar for the file name (`+++ b/` headers for a
+//!   pull request's diff), old and new lines parsed apart and each hunk starting over. Only
+//!   what is on screen (and a screen above and below) is worked out, on a thread (`lit`): the
+//!   code shows plain until it arrives. A far jump into a long hunk starts a fresh parse a little
+//!   above the view, a guess that an exact parse replaces when it passes by. The colors are
+//!   picked for a dark or light background, not the theme's few; changed lines keep their tint
+//!   behind them and the sign its color. Without true colors code stays plain.
+//! - **Diff overlay**: `git diff HEAD -- path` (the whole file for untracked ones; at most a
+//!   million lines) loaded in the background and drawn over the chat, side by side from 90
+//!   columns on. While it is open it takes every key whatever panel is focused, vim's way:
+//!   Up/Down/j/k, Ctrl-E/Ctrl-Y a line, Ctrl-D/Ctrl-U half a page, PgUp/PgDn, Space/b and
+//!   Ctrl-F/Ctrl-B a page, g/G the ends; a count first repeats (`5j`) or names a line (`120G`);
+//!   n/p or }/{ the next / previous hunk; `/` searches (smart case, Enter jumps, Esc gives up),
+//!   then n/N the next / previous match; Left/Right/h/l scroll sideways by 8 cells, 0 and $ to
+//!   the edges; s switches split and unified; f reloads with the whole file as context (and
+//!   back); e asks for the file in the editor at the top line ([`Widgets::take_edit`]); Esc or q
+//!   close it. Closing returns `Redraw`, so focus stays on the files panel (to pick the next
+//!   file); a second Esc there returns `Leave`.
 //! - The GitHub view (`crate::github`) reuses the diff view for a pull request's diff.
 //! - Keys the panels don't use return `Redraw` (harmless). Esc and q in a panel return `Leave`.
 
 mod diff;
 mod files;
 mod git;
+mod lit;
 mod plan;
 mod terminal;
 mod text;
@@ -357,6 +362,11 @@ impl Widgets {
     /// Whether a diff overlay is open (it takes the keys then).
     pub fn overlay_open(&self) -> bool {
         self.diff.is_some()
+    }
+
+    /// The file `e` in the diff overlay asked to open in the editor, and the line.
+    pub fn take_edit(&mut self) -> Option<(PathBuf, Option<usize>)> {
+        self.diff.as_mut()?.take_edit()
     }
 
     /// A key while a panel (or the diff overlay) has focus.

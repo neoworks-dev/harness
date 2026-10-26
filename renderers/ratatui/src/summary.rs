@@ -162,7 +162,7 @@ impl Cx<'_> {
         let path = v
             .path
             .as_deref()
-            .map(one_line)
+            .map(|p| one_line(crate::relative_path(p, self.o.cwd.as_deref())))
             .filter(|p| !p.is_empty())
             .unwrap_or_else(|| "diff".to_string());
         let counts_w = width(&adds) + 1 + width(&removes);

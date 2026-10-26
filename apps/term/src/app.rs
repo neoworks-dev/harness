@@ -141,6 +141,11 @@ pub enum Effect {
     },
     /// Open a link of an OpenUI button in the browser (xdg-open).
     OpenUrl(String),
+    /// Open a file in the user's editor at a line, the screen handed over until it exits.
+    Edit {
+        path: std::path::PathBuf,
+        line: Option<usize>,
+    },
     Quit,
 }
 
@@ -360,7 +365,7 @@ impl App {
         };
         let now = crate::util::now_ms();
         let session = config.session.clone();
-        let chat = Chat::for_app(&config.app_id);
+        let chat = Chat::for_app(&config.app_id).in_dir(&config.cwd);
         App {
             widgets: Widgets::new(PathBuf::from(&config.cwd), palette),
             github: Github::new(PathBuf::from(&config.cwd), palette),
@@ -873,7 +878,7 @@ impl App {
     fn begin_session(&mut self, id: &str, cwd: &str) {
         self.session = id.to_string();
         self.cwd = cwd.to_string();
-        self.chat = Chat::for_app(&self.app_id);
+        self.chat = Chat::for_app(&self.app_id).in_dir(cwd);
         self.running = false;
         self.turn_started_ms = self.now_ms;
         self.waiting.clear();
@@ -1350,6 +1355,9 @@ impl App {
         }
         if self.widgets.overlay_open() {
             self.widgets.handle_key(Panel::Files, key);
+            if let Some((path, line)) = self.widgets.take_edit() {
+                fx.push(Effect::Edit { path, line });
+            }
             return fx;
         }
         if self.github.is_open() {

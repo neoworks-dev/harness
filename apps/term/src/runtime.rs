@@ -72,6 +72,8 @@ pub fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // Some 220 grammars take a moment to load: not on the first code block's draw.
+    std::thread::spawn(neo_renderer_ratatui::syntax::warm_up);
     // File type icons are Nerd Font glyphs; without such a font they are boxes.
     started
         .app
@@ -119,6 +121,71 @@ impl Screen {
         io::stdout().flush()?;
         Ok(Screen { terminal, picker })
     }
+}
+
+impl Screen {
+    /// Hands the terminal to `f` (an editor) as the shell would have it, then takes it back.
+    fn suspended<T>(&mut self, f: impl FnOnce() -> T) -> io::Result<T> {
+        let _ = plain_keys();
+        execute!(io::stdout(), DisableBracketedPaste, DisableMouseCapture)?;
+        ratatui::restore();
+        let out = f();
+        ratatui::crossterm::terminal::enable_raw_mode()?;
+        execute!(
+            io::stdout(),
+            ratatui::crossterm::terminal::EnterAlternateScreen,
+            EnableBracketedPaste,
+            EnableMouseCapture,
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        )?;
+        write!(io::stdout(), "{MODIFY_OTHER_KEYS_ON}")?;
+        io::stdout().flush()?;
+        self.terminal.clear()?;
+        Ok(out)
+    }
+}
+
+/// Runs `$VISUAL` (else `$EDITOR`, else `vi`) on `path` at `line`, and waits for it.
+fn edit(path: &std::path::Path, line: Option<usize>) -> Result<(), String> {
+    let editor = std::env::var("VISUAL")
+        .ok()
+        .filter(|e| !e.trim().is_empty())
+        .or_else(|| {
+            std::env::var("EDITOR")
+                .ok()
+                .filter(|e| !e.trim().is_empty())
+        })
+        .unwrap_or_else(|| "vi".into());
+    let argv = editor_argv(&editor, &path.to_string_lossy(), line);
+    let (program, args) = argv.split_first().ok_or("no editor")?;
+    let status = std::process::Command::new(program)
+        .args(args)
+        .status()
+        .map_err(|e| format!("{program}: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("{program} exited with {status}"))
+    }
+}
+
+/// The editor's command line for a file at a line: `+N file` for vi, vim, nano, emacs and
+/// most terminal editors, `file:N` for Helix, Zed and Sublime, `-g file:N` for VS Code's kind.
+pub(crate) fn editor_argv(editor: &str, path: &str, line: Option<usize>) -> Vec<String> {
+    let mut argv: Vec<String> = editor.split_whitespace().map(str::to_string).collect();
+    let name = argv
+        .first()
+        .map(|p| p.rsplit('/').next().unwrap_or(p).to_string())
+        .unwrap_or_default();
+    match (line, name.as_str()) {
+        (None, _) => argv.push(path.to_string()),
+        (Some(n), "code" | "codium" | "code-insiders" | "cursor" | "windsurf") => {
+            argv.extend(["-g".to_string(), format!("{path}:{n}")]);
+        }
+        (Some(n), "hx" | "helix" | "zed" | "zeditor" | "subl") => argv.push(format!("{path}:{n}")),
+        (Some(n), _) => argv.extend([format!("+{n}"), path.to_string()]),
+    }
+    argv
 }
 
 /// xterm's modifyOtherKeys, level 2, and back to the terminal's default.
@@ -184,6 +251,13 @@ fn run(mut app: crate::app::App, driver: Driver) -> io::Result<()> {
                 let out = driver.run(fx);
                 quit |= out.quit;
                 copy_to_clipboard(&out.copy)?;
+                if let Some((path, line)) = out.edit {
+                    if let Err(why) = screen.suspended(|| edit(&path, line))? {
+                        app.handle_msg(crate::app::Msg::Notice(why));
+                    }
+                    app.mark_dirty();
+                    break;
+                }
                 if !event::poll(Duration::ZERO)? {
                     break;
                 }
@@ -212,4 +286,25 @@ fn copy_to_clipboard(texts: &[String]) -> io::Result<()> {
         out.write_all(osc52(text).as_bytes())?;
     }
     out.flush()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::editor_argv;
+
+    #[test]
+    fn each_editor_is_told_the_line_its_way() {
+        let argv = |e: &str, line| editor_argv(e, "/w/a.rs", line);
+        assert_eq!(argv("nvim", Some(12)), ["nvim", "+12", "/w/a.rs"]);
+        assert_eq!(
+            argv("/usr/bin/vim", Some(3)),
+            ["/usr/bin/vim", "+3", "/w/a.rs"]
+        );
+        assert_eq!(argv("hx", Some(12)), ["hx", "/w/a.rs:12"]);
+        assert_eq!(
+            argv("code --wait", Some(7)),
+            ["code", "--wait", "-g", "/w/a.rs:7"]
+        );
+        assert_eq!(argv("nano", None), ["nano", "/w/a.rs"]);
+    }
 }

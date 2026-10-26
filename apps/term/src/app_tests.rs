@@ -2652,6 +2652,16 @@ fn tab_reaches_the_files_in_the_chat_and_enter_opens_one() {
     assert_eq!(app.chat.picked_file(), Some("src/a.rs"));
     app.handle_key(key(KeyCode::Enter));
     assert!(app.widgets().overlay_open());
+    // Ctrl-D reaches the diff, not the editor; `e` hands the file to the editor.
+    assert!(app.handle_key(ctrl('d')).is_empty());
+    assert!(app.widgets().overlay_open());
+    assert_eq!(
+        app.handle_key(key(KeyCode::Char('e'))),
+        [Effect::Edit {
+            path: "/home/me/site/src/a.rs".into(),
+            line: None,
+        }]
+    );
     // The diff takes the keys until it closes; then the chat has them again.
     app.handle_key(key(KeyCode::Esc));
     assert!(!app.widgets().overlay_open());

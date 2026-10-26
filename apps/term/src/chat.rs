@@ -10,7 +10,7 @@ use neo_protocol::{
 };
 use neo_renderer_ratatui::{
     ButtonRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiDocInfo, UiState, buttons,
-    file_icon, image_sources, openui_docs, render_item_images,
+    file_icon, image_sources, openui_docs, relative_path, render_item_images,
 };
 
 use crate::util::width;
@@ -163,6 +163,8 @@ pub struct Chat {
     palette: Palette,
     /// This app's name: the user's messages from it are drawn without their tag.
     app: Option<String>,
+    /// The session's directory: paths in it are shown relative to it.
+    cwd: Option<String>,
     /// The lines that stand for files, top to bottom, as laid out last.
     files: Vec<FileTarget>,
     /// The file picked with the keys: its entry and path.
@@ -181,6 +183,14 @@ impl Chat {
         Chat {
             app: Some(app.to_string()),
             ..Chat::default()
+        }
+    }
+
+    /// Paths in `cwd` (the session's directory) are shown relative to it.
+    pub fn in_dir(self, cwd: &str) -> Chat {
+        Chat {
+            cwd: Some(cwd.to_string()),
+            ..self
         }
     }
 
@@ -441,7 +451,7 @@ impl Chat {
                     offset += 1;
                 }
                 let r = format!("{}#changes", items[end].r#ref);
-                let lines = changes_lines(&changed, usize::from(width), opts);
+                let lines = changes_lines(&changed, usize::from(width), opts, self.cwd.as_deref());
                 for (j, c) in changed.iter().enumerate() {
                     files.push(FileTarget {
                         r#ref: r.clone(),
@@ -535,7 +545,8 @@ impl Chat {
                 }
                 Some(c) if c.key == ckey => (c.lines.clone(), c.slots.clone(), c.focus),
                 _ => {
-                    let (lines, slots, focus) = render(item, width, &ckey, self.app.as_deref());
+                    let (lines, slots, focus) =
+                        render(item, width, &ckey, self.app.as_deref(), self.cwd.as_deref());
                     let (lines, slots) = (Rc::new(lines), Rc::new(slots));
                     self.cache.insert(
                         r.clone(),
@@ -858,8 +869,14 @@ fn turn_changes(items: &[ViewItem], running: bool) -> Vec<(usize, Vec<Changed>)>
     out
 }
 
-/// A turn's changes: `3 files changed  +40 −12`, then each file with its icon and counts.
-fn changes_lines(changed: &[Changed], width_cells: usize, opts: &ChatOpts) -> Vec<Line<'static>> {
+/// A turn's changes: `3 files changed  +40 −12`, then each file with its icon and counts, its
+/// path relative to `cwd` when it is in there.
+fn changes_lines(
+    changed: &[Changed],
+    width_cells: usize,
+    opts: &ChatOpts,
+    cwd: Option<&str>,
+) -> Vec<Line<'static>> {
     let p = &opts.palette;
     let muted = Style::new().fg(p.muted);
     let counts = |added: usize, removed: usize| {
@@ -888,7 +905,7 @@ fn changes_lines(changed: &[Changed], width_cells: usize, opts: &ChatOpts) -> Ve
         let tail = counts(c.added, c.removed);
         let used: usize = spans.iter().chain(&tail).map(|s| width(&s.content)).sum();
         let room = width_cells.saturating_sub(used + 2).max(1);
-        spans.push(Span::raw(truncate_start(&c.path, room)));
+        spans.push(Span::raw(truncate_start(relative_path(&c.path, cwd), room)));
         spans.push(Span::raw("  "));
         spans.extend(tail);
         out.push(Line::from(spans));
@@ -1039,6 +1056,7 @@ fn render(
     width: u16,
     key: &CacheKey,
     app: Option<&str>,
+    cwd: Option<&str>,
 ) -> (Vec<Line<'static>>, Vec<ImageSlot>, Option<usize>) {
     let opts = Options {
         expanded: key.expanded,
@@ -1060,6 +1078,7 @@ fn render(
         openui: key.ui.clone().unwrap_or_default(),
         app: app.map(str::to_string),
         file_icons: key.icons,
+        cwd: cwd.map(str::to_string),
     };
     if key.focused.is_none() {
         let out = render_item_images(item, width, &opts);
@@ -1111,6 +1130,7 @@ pub fn panel_lines(
         openui: HashMap::new(),
         app: None,
         file_icons: false,
+        cwd: None,
     };
     neo_renderer_ratatui::render_item(item, width.saturating_sub(2).max(1), &opts)
         .into_iter()
@@ -1458,6 +1478,29 @@ mod tests {
             .position(|l| l == "2 files changed  +6 −2")
             .unwrap();
         assert_eq!(shown[at + 4], "› again");
+    }
+
+    #[test]
+    fn paths_in_the_session_directory_lose_its_prefix() {
+        let mut c = Chat::new().in_dir("/w/site");
+        c.apply_snapshot(snapshot(vec![
+            item("u1", "user", "go"),
+            edit("e1", "/w/site/src/a.rs", 1, 0),
+            edit("e2", "/elsewhere/b.rs", 1, 0),
+            item("a1", "agent", "Done."),
+        ]));
+        c.layout(80, 40, &opts());
+        let shown = texts(&c);
+        for line in ["edit src/a.rs", "  ⎿ src/a.rs  +1 −0", "  src/a.rs  +1 −0"] {
+            assert!(shown.contains(&line.to_string()), "{line}: {shown:#?}");
+        }
+        assert!(
+            shown.contains(&"  /elsewhere/b.rs  +1 −0".to_string()),
+            "{shown:#?}"
+        );
+        // What is opened is still the whole path.
+        c.pick_file(1);
+        assert_eq!(c.picked_file(), Some("/elsewhere/b.rs"));
     }
 
     #[test]

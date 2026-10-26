@@ -3,9 +3,9 @@
 ⟦border bg:surface|╰──────────────────────────────────────╯⟧ ⟦accent bg:surface|╰─────────────────────────────────────╯⟧
                                    ⟦muted|‹⟧⟦muted| 1–2/3 ⟧⟦accent bold|›⟧
 ⟦border|────────────────────────────────────────────────────────────────────────────────⟧
-⟦fg bg:surface|  fn main() {                                                                   ⟧
-⟦fg bg:surface|      println!("hi");                                                           ⟧
-⟦fg bg:surface|  }                                                                             ⟧
+⟦fg bg:surface|  ⟧⟦#C792EA bg:surface|fn⟧⟦fg bg:surface| ⟧⟦#82AAFF bg:surface|main⟧⟦fg bg:surface|() {⟧⟦fg bg:surface|                                                                   ⟧
+⟦fg bg:surface|  ⟧⟦fg bg:surface|    println!(⟧⟦#C3E88D bg:surface|"hi"⟧⟦fg bg:surface|);⟧⟦fg bg:surface|                                                           ⟧
+⟦fg bg:surface|  ⟧⟦fg bg:surface|}⟧⟦fg bg:surface|                                                                             ⟧
 ⟦muted|Branch⟧  main
 ⟦muted|Status⟧  ⟦success bold|clean⟧
 ⟦bold|Ada Lovelace⟧  ⟦muted|analyst⟧  ⟦accent bg:#2C364C| admin ⟧

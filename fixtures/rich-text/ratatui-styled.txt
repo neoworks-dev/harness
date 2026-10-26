@@ -13,7 +13,7 @@ I copied the image to ⟦fg bg:surface|public/logo.png⟧ and used it in ⟦bold
 
 ⟦muted|│ ⟧⟦muted|The image is 512×512; browsers scale it down.⟧
 
-⟦fg bg:surface|  <img src="/logo.png" alt="Logo" />                                            ⟧
+⟦fg bg:surface|  ⟧⟦fg bg:surface|<⟧⟦#C792EA bg:surface|img⟧⟦fg bg:surface| ⟧⟦#FFCB6B bg:surface|src⟧⟦fg bg:surface|=⟧⟦#C3E88D bg:surface|"/logo.png"⟧⟦fg bg:surface| ⟧⟦#FFCB6B bg:surface|alt⟧⟦fg bg:surface|=⟧⟦#C3E88D bg:surface|"Logo"⟧⟦fg bg:surface| />⟧⟦fg bg:surface|                                            ⟧
 
 ⟦border|┌─────────────────┬────────┬─────────┐⟧
 ⟦border|│ ⟧⟦bold|File⟧           ⟦border| │ ⟧⟦bold|Change⟧⟦border| │ ⟧  ⟦bold|Lines⟧⟦border| │⟧

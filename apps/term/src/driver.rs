@@ -160,6 +160,8 @@ pub struct Driver {
 pub struct Outcome {
     pub copy: Vec<String>,
     pub quit: bool,
+    /// A file to open in the editor, and the line.
+    pub edit: Option<(std::path::PathBuf, Option<usize>)>,
 }
 
 impl Driver {
@@ -193,6 +195,7 @@ impl Driver {
             match effect {
                 Effect::Copy(text) => out.copy.push(text),
                 Effect::Quit => out.quit = true,
+                Effect::Edit { path, line } => out.edit = Some((path, line)),
                 other => {
                     if let Some(jobs) = &self.jobs {
                         let _ = jobs.send(Job::Effect(other));
@@ -224,6 +227,9 @@ impl Driver {
 fn merge(into: &mut Outcome, from: Outcome) {
     into.copy.extend(from.copy);
     into.quit |= from.quit;
+    if from.edit.is_some() {
+        into.edit = from.edit;
+    }
 }
 
 impl Drop for Driver {
@@ -335,7 +341,7 @@ fn work(client: &Client, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sen
                 let path = attach::paste_image().map(|p| p.to_string_lossy().into_owned());
                 let _ = msgs.send(Msg::Pasted(path));
             }
-            Effect::Copy(_) | Effect::Quit => {}
+            Effect::Copy(_) | Effect::Quit | Effect::Edit { .. } => {}
         }
     }
 }
