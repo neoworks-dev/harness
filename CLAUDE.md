@@ -38,3 +38,5 @@ Area is a label, exactly one of:
 Two areas is fine when an issue genuinely spans them; three means split it.
 
 `ai-found` is not a third axis — the QA harness adds it to everything it files, so a model's findings can be told apart from a person's. Nothing else uses it.
+
+Use Edit, Read and Write instead of sed/awk/python.
