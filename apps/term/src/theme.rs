@@ -1,4 +1,4 @@
-//! The app's colors (`/theme`): `dark` paints the screen near-black, `light` white, `terminal` leaves
+//! The app's colors (`/theme`): `dark` paints the screen near-black, `light` off-white, `terminal` leaves
 //! the terminal's own background and text color. The choice is kept in `<data dir>/term.json`.
 //!
 //! Painting happens once a frame is drawn: every cell still on the terminal's default color gets
@@ -42,17 +42,11 @@ impl Theme {
         }
     }
 
-    /// The colors to draw with. Dark is the daemon's theme on a near-black background (code a
-    /// shade lighter, so it still stands out) with a green accent; light has colors of its own,
-    /// as the daemon's are made for a dark background.
+    /// The colors to draw with: dark and light are the Neoworks design tokens
+    /// (`@neoworks-dev/ui`), terminal the daemon's theme.
     pub fn palette(self, daemon: &Palette) -> Palette {
         match self {
-            Theme::Dark => Palette {
-                bg: Color::Rgb(28, 29, 32),
-                surface: Color::Rgb(38, 40, 45),
-                accent: Color::Rgb(92, 191, 140),
-                ..*daemon
-            },
+            Theme::Dark => DARK,
             Theme::Light => LIGHT,
             Theme::Terminal => *daemon,
         }
@@ -64,18 +58,30 @@ impl Theme {
     }
 }
 
-/// High contrast on white: text near black, every color at least 7:1 but the borders.
+/// The tokens' dark roles: canvas, text, text-muted, sunken (code), line, success, danger. The
+/// accent is pine-11, not the accent role's pine-9: that one is made to be filled, and as text on
+/// the canvas it is about 3:1.
+const DARK: Palette = Palette {
+    fg: Color::Rgb(0xf1, 0xf0, 0xed),
+    bg: Color::Rgb(0x0f, 0x0e, 0x0c),
+    surface: Color::Rgb(0x1e, 0x1d, 0x1b),
+    border: Color::Rgb(0x36, 0x35, 0x33),
+    accent: Color::Rgb(0x9f, 0xc9, 0xb1),
+    muted: Color::Rgb(0xbb, 0xbb, 0xb8),
+    success: Color::Rgb(0x9f, 0xc9, 0xb1),
+    danger: Color::Rgb(0xff, 0xa1, 0x89),
+};
+
+/// The tokens' light roles, the same ones.
 const LIGHT: Palette = Palette {
-    fg: Color::Rgb(0x0b, 0x0d, 0x10),
-    bg: Color::Rgb(0xff, 0xff, 0xff),
-    // A shade darker than the background, for code.
-    surface: Color::Rgb(0xf0, 0xf1, 0xf3),
-    border: Color::Rgb(0xb4, 0xb9, 0xc1),
-    // The dark theme's green, deep enough for 7:1.
-    accent: Color::Rgb(0x0a, 0x5c, 0x3c),
-    muted: Color::Rgb(0x45, 0x4a, 0x52),
-    success: Color::Rgb(0x0f, 0x5e, 0x22),
-    danger: Color::Rgb(0xa1, 0x12, 0x1c),
+    fg: Color::Rgb(0x17, 0x17, 0x15),
+    bg: Color::Rgb(0xf2, 0xf1, 0xee),
+    surface: Color::Rgb(0xe9, 0xe8, 0xe6),
+    border: Color::Rgb(0xd0, 0xcf, 0xcc),
+    accent: Color::Rgb(0x34, 0x67, 0x4d),
+    muted: Color::Rgb(0x64, 0x63, 0x61),
+    success: Color::Rgb(0x22, 0x4f, 0x39),
+    danger: Color::Rgb(0x97, 0x37, 0x1f),
 };
 
 /// Gives every cell left on the terminal's default colors the palette's.

@@ -2281,14 +2281,14 @@ fn theme_paints_the_whole_screen_and_switches() {
     let mut app = scenario();
     // Dark by default: near-black where nothing else is painted, the theme's text color.
     let (seen, fg) = backgrounds(&mut app);
-    assert!(seen.contains(&Color::Rgb(28, 29, 32)));
+    assert!(seen.contains(&Color::Rgb(0x0f, 0x0e, 0x0c)));
     assert!(!seen.contains(&Color::Reset));
     assert_ne!(fg, Color::Reset);
 
     type_str(&mut app, "/theme light");
     app.handle_key(key(KeyCode::Enter));
     let (seen, _) = backgrounds(&mut app);
-    assert!(seen.contains(&Color::Rgb(255, 255, 255)));
+    assert!(seen.contains(&Color::Rgb(0xf2, 0xf1, 0xee)));
     assert!(!seen.contains(&Color::Reset));
 
     // No name: the next one, which leaves the terminal's own colors.
