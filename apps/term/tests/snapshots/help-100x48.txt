@@ -41,8 +41,8 @@ commands
   /plugin [install|enable|…]          plugins for neo: list, search, install, uninstall, enable, di…
   /sessions                           switch to another session
   /sidebar                            show or hide the sessions sidebar (ctrl-g focuses it)
-  /expand                             toggle full tool results (ctrl-o)
 
+┃
 ┃ message the agent · / for commands
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

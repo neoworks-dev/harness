@@ -599,6 +599,60 @@ fn ctrl_brackets_widen_and_narrow_the_terminal_panel() {
 }
 
 #[test]
+fn the_files_sit_above_the_terminal_in_one_column() {
+    let mut app = app_without_agents();
+    app.handle_event(event(
+        "s1",
+        1,
+        NOW,
+        json!({"type": "tool_call", "toolCallId": "c1", "title": "Edit a.rs", "kind": "edit",
+               "status": "in_progress"}),
+    ));
+    app.handle_event(event(
+        "s1",
+        2,
+        NOW,
+        json!({"type": "tool_call_update", "toolCallId": "c1", "status": "completed",
+               "content": [{"type": "diff", "path": "/w/a.rs", "oldText": "a", "newText": "b"}]}),
+    ));
+    app.handle_event(event(
+        "s1",
+        3,
+        NOW,
+        json!({"type": "tool_call", "toolCallId": "c2", "title": "ls", "kind": "execute",
+               "status": "completed", "rawInput": {"command": "ls"}}),
+    ));
+    let text = screen_text(&mut app, 160, 30);
+    let lines: Vec<&str> = text.lines().collect();
+    let find = |title: &str| {
+        lines
+            .iter()
+            .enumerate()
+            .find_map(|(y, l)| l.find(title).map(|x| (y, l[..x].chars().count())))
+            .unwrap_or_else(|| panic!("no {title}\n{text}"))
+    };
+    let (files_y, files_x) = find("Files");
+    let (terminal_y, terminal_x) = find("Terminal");
+    assert_eq!(files_x, terminal_x, "one column\n{text}");
+    assert!(files_y < terminal_y, "files on top\n{text}");
+    assert!(app.sidebar_shown && app.terminal_area.is_some());
+    // Tab walks the column top to bottom: the files, then the terminal.
+    let mut seen = Vec::new();
+    for _ in 0..3 {
+        app.handle_key(key(KeyCode::Tab));
+        seen.push(app.focus);
+    }
+    assert_eq!(
+        seen,
+        [
+            Some(Focus::Panel(Panel::Plan)),
+            Some(Focus::Panel(Panel::Files)),
+            Some(Focus::Panel(Panel::Terminal)),
+        ]
+    );
+}
+
+#[test]
 fn the_shared_todos_show_in_the_side_column_and_the_keys_change_them() {
     let mut app = app_without_agents();
     app.handle_event(event(

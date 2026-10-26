@@ -194,7 +194,6 @@ enum Focus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pane {
     Sessions,
-    Terminal,
     Side,
 }
 
@@ -202,7 +201,6 @@ enum Pane {
 #[derive(Debug, Clone, Copy, Default)]
 struct Resized {
     sessions: i16,
-    terminal: i16,
     side: i16,
 }
 
@@ -686,21 +684,20 @@ impl App {
         self.change_todos(serde_json::json!({ "action": "add", "text": item }), fx);
     }
 
-    /// Ctrl-] / Ctrl-[: the focused pane (else the terminal panel, else the sessions sidebar)
-    /// gets `by` columns more or less, within what leaves the chat its room.
+    /// Ctrl-] / Ctrl-[: the focused pane (else the side column while it holds the terminal panel,
+    /// else the sessions sidebar) gets `by` columns more or less, within what leaves the chat its
+    /// room.
     fn resize_pane(&mut self, by: i16) {
         let pane = match self.focus {
             Some(Focus::Sessions) => Pane::Sessions,
-            Some(Focus::Panel(Panel::Terminal)) | Some(Focus::Jobs) => Pane::Terminal,
-            Some(Focus::Panel(Panel::Todos | Panel::Plan | Panel::Files)) => Pane::Side,
-            _ if self.terminal_area.is_some() => Pane::Terminal,
+            Some(Focus::Panel(_)) | Some(Focus::Jobs) => Pane::Side,
+            _ if self.terminal_area.is_some() => Pane::Side,
             _ if self.sessions_shown => Pane::Sessions,
             _ if self.sidebar_shown => Pane::Side,
             _ => return self.notify("no pane to resize", false),
         };
         let delta = match pane {
             Pane::Sessions => &mut self.resized.sessions,
-            Pane::Terminal => &mut self.resized.terminal,
             Pane::Side => &mut self.resized.side,
         };
         *delta = delta.saturating_add(by);
@@ -1521,7 +1518,7 @@ impl App {
             t.wheel(down);
         } else if self
             .terminal_area
-            .is_some_and(|a| (a.x..a.right()).contains(&mouse.column))
+            .is_some_and(|a| a.contains(ratatui::layout::Position::new(mouse.column, mouse.row)))
         {
             let code = if down { KeyCode::Down } else { KeyCode::Up };
             for _ in 0..WHEEL_LINES {
@@ -1835,13 +1832,14 @@ impl App {
         let order = [
             (self.chat.has_files(), Focus::Chat),
             (self.sessions_shown, Focus::Sessions),
-            (self.terminal_area.is_some(), Focus::Panel(Panel::Terminal)),
+            // The side column top to bottom.
             (
                 self.sidebar_shown && self.widgets.has_todos(),
                 Focus::Panel(Panel::Todos),
             ),
             (self.sidebar_shown, Focus::Panel(Panel::Plan)),
             (self.sidebar_shown, Focus::Panel(Panel::Files)),
+            (self.terminal_area.is_some(), Focus::Panel(Panel::Terminal)),
         ];
         let mut on_screen = order.iter().filter(|(shown, _)| *shown).map(|(_, f)| *f);
         self.focus = match self.focus {
@@ -2536,18 +2534,30 @@ impl App {
     // ---- drawing ----
 
     fn areas(&mut self, area: Rect) -> Areas {
-        // The plan / files column: as wide as its files need, up to a third of the terminal.
-        let side_base = self
+        // The side column: the todos, plan and files as wide as the files need, up to a third of
+        // the terminal; with the agent's commands under them, two fifths, as the commands want
+        // room.
+        let terminal = self.terminal_on
+            && self.widgets.has_commands()
+            && area.width >= CHAT_MIN_WIDTH + 1 + TERMINAL_MIN_WIDTH;
+        let panels_base = self
             .widgets
             .sidebar_width(SIDE_MIN_WIDTH, (area.width / 3).clamp(32, 40));
+        let (side_base, side_min) = if terminal {
+            let base = (area.width * 2 / 5).clamp(TERMINAL_MIN_WIDTH, TERMINAL_MAX_WIDTH);
+            (base.max(panels_base), TERMINAL_MIN_WIDTH)
+        } else {
+            (panels_base, SIDE_MIN_WIDTH)
+        };
         let side_w = resized(
             side_base,
             self.resized.side,
-            SIDE_MIN_WIDTH,
+            side_min,
             area.width.saturating_sub(1 + CHAT_MIN_WIDTH),
         );
-        let side = (area.width >= side_w + 1 + 40 && self.widgets.wants_sidebar(area.width))
-            .then_some(side_w);
+        let side = (area.width >= side_w + 1 + 40
+            && (terminal || self.widgets.wants_sidebar(area.width)))
+        .then_some(side_w);
         if side.is_some() {
             self.resized.side = side_w as i16 - side_base as i16;
         }
@@ -2569,32 +2579,12 @@ impl App {
                 ..area
             });
         let left_w = left.map_or(0, |r| r.width);
-        let mut main = Rect {
+        let main = Rect {
             x: area.x + left_w,
             width: area.width - left_w - right_w,
             ..area
         };
-        // The agent's commands to the right of the chat, when the chat keeps its room.
-        let terminal = (self.terminal_on
-            && self.widgets.has_commands()
-            && main.width >= CHAT_MIN_WIDTH + 1 + TERMINAL_MIN_WIDTH)
-            .then(|| {
-                let base = (main.width * 2 / 5).clamp(TERMINAL_MIN_WIDTH, TERMINAL_MAX_WIDTH);
-                let w = resized(
-                    base,
-                    self.resized.terminal,
-                    TERMINAL_MIN_WIDTH,
-                    main.width - CHAT_MIN_WIDTH - 1,
-                );
-                self.resized.terminal = w as i16 - base as i16;
-                main.width -= w + 1;
-                Rect {
-                    x: main.x + main.width + 1,
-                    y: area.y,
-                    width: w,
-                    height: area.height,
-                }
-            });
+        let terminal = terminal && side.is_some();
         let side = side.map(|w| Rect {
             x: area.x + area.width - w,
             y: area.y,
@@ -2658,9 +2648,10 @@ impl App {
         };
         let above = hint_h + waiting_h + attached_h;
         let top = chat_h + rule_h;
-        // With fills, the editor and the first status line are one raised box with the accent bar
-        // on its left, and the rule's row is the gap between it and the chat; what is in the box
+        // With fills, the rule's row, the editor and the first status line are one raised box
+        // with the accent bar on its left, a row of the chat's above it; what is in the box
         // starts past the bar.
+        let gap = u16::from(self.styles.fills() && chat_h > 1);
         let inset = |r: Rect| {
             if self.styles.fills() {
                 Rect {
@@ -2673,14 +2664,14 @@ impl App {
             }
         };
         Areas {
-            chat: at(0, chat_h),
+            chat: at(0, chat_h - gap),
             rule: at(chat_h, rule_h),
             hint: inset(at(top, hint_h)),
             waiting: inset(at(top + hint_h, waiting_h)),
             attached: inset(at(top + hint_h + waiting_h, attached_h)),
             editor: at(chat_h + rule_h + above, editor_h - above),
             panel,
-            input: at(top, editor_h + status_h.min(1)),
+            input: at(chat_h, rule_h + editor_h + status_h.min(1)),
             status: at(chat_h + rule_h + editor_h, status_h),
             agents: at(h, agents_h),
             jobs: at(h + agents_h, jobs_h),
@@ -2748,8 +2739,10 @@ impl App {
         let area = frame.area();
         self.size = (area.width, area.height);
         let areas = self.areas(area);
-        self.sidebar_shown = areas.side.is_some();
-        self.terminal_area = areas.terminal;
+        self.sidebar_shown = areas.side.is_some() && self.widgets.has_panels();
+        self.terminal_area = areas
+            .side
+            .and_then(|side| self.widgets.side_terminal(side, areas.terminal));
         self.sessions_shown = areas.left.is_some();
         if std::mem::take(&mut self.sessions_wanted) {
             if self.sessions_shown {
@@ -2816,16 +2809,13 @@ impl App {
         if let Some(left) = areas.left {
             self.draw_sessions(frame, left);
         }
-        if let Some(terminal) = areas.terminal {
-            let focused = self.focus == Some(Focus::Panel(Panel::Terminal));
-            self.widgets.draw_terminal(frame, terminal, focused);
-        }
         if let Some(side) = areas.side {
             let panel = match self.focus {
                 Some(Focus::Panel(panel)) => Some(panel),
                 _ => None,
             };
-            self.widgets.draw_sidebar(frame, side, panel);
+            self.widgets
+                .draw_sidebar(frame, side, panel, areas.terminal);
         }
         let fills = self.styles.fills();
         if fills {
@@ -3650,7 +3640,10 @@ impl App {
                 "complete command, note on a prompt, next panel (the chat's files first)",
             ),
             key("ctrl-s", "put the draft aside / bring it back"),
-            key("ctrl-g", "sessions sidebar: focus (up/down, enter, n new chat, esc)"),
+            key(
+                "ctrl-g",
+                "sessions sidebar: focus (up/down, enter, n new chat, esc)",
+            ),
             key("ctrl-r", "GitHub issues and pull requests (/github)"),
             key(
                 "ctrl-x, down",
@@ -3777,7 +3770,7 @@ struct Areas {
     editor: Rect,
     /// The prompt's lines when it has taken the editor's place.
     panel: Vec<Line<'static>>,
-    /// The input box: the editor (and what sits above it) to the first status line.
+    /// The input box: the rule's row to the first status line.
     input: Rect,
     status: Rect,
     /// The subagents list under the status lines.
@@ -3785,8 +3778,8 @@ struct Areas {
     /// The background commands under the subagents.
     jobs: Rect,
     side: Option<Rect>,
-    /// The terminal panel, between the chat and the side column.
-    terminal: Option<Rect>,
+    /// Whether the side column holds the terminal panel, under its other panels.
+    terminal: bool,
     /// The sessions sidebar.
     left: Option<Rect>,
 }

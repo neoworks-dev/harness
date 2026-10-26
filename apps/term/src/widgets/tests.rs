@@ -76,7 +76,8 @@ fn text(line: &Line) -> String {
 
 fn sidebar(w: &Widgets, cols: u16, rows: u16, focus: Option<Panel>) -> String {
     let mut t = Terminal::new(TestBackend::new(cols, rows)).unwrap();
-    t.draw(|f| w.draw_sidebar(f, f.area(), focus)).unwrap();
+    t.draw(|f| w.draw_sidebar(f, f.area(), focus, false))
+        .unwrap();
     dump(t.backend().buffer())
 }
 
@@ -223,7 +224,8 @@ fn sidebar_titles_and_selection_follow_focus() {
     let p = Palette::default();
     let render = |focus| {
         let mut t = Terminal::new(TestBackend::new(20, 8)).unwrap();
-        t.draw(|f| w.draw_sidebar(f, f.area(), focus)).unwrap();
+        t.draw(|f| w.draw_sidebar(f, f.area(), focus, false))
+            .unwrap();
         t.backend().buffer().clone()
     };
     let none = render(None);
@@ -536,7 +538,7 @@ fn area_offsets_are_respected() {
     let mut w = widgets();
     w.on_session_event(&plan_event(None, &[("a", "pending")]));
     let mut t = Terminal::new(TestBackend::new(20, 4)).unwrap();
-    t.draw(|f| w.draw_sidebar(f, Rect::new(10, 1, 10, 3), None))
+    t.draw(|f| w.draw_sidebar(f, Rect::new(10, 1, 10, 3), None, false))
         .unwrap();
     assert_eq!(
         dump(t.backend().buffer()),

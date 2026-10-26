@@ -1,7 +1,7 @@
 The agent changed 2 files: keep them? · answer below
 
 
-
+┃
 ┃ ▎ The agent changed 2 files: keep them?
 ┃ ▎   [1 Keep]
 ┃ ▎   [2 Revert all]

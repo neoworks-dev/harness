@@ -1,11 +1,11 @@
-                                                                     │
-                                                                     │
+
   message number 1                                                   │
                                                                      │
   message number 2                                                   │
                                                                      │
   Model · answer below                                               │
 
+┃
 ┃ ▎ Model
 ┃ ▎ filter › OPENROUTER sonnet
 ┃ ▎   [Sonnet 4.5 · openrouter]

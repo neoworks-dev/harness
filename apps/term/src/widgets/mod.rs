@@ -262,8 +262,13 @@ impl Widgets {
     /// Whether the side column is worth showing at this terminal width (there is a plan or
     /// changed files, and it fits).
     pub fn wants_sidebar(&self, width: u16) -> bool {
-        width >= SIDEBAR_MIN_WIDTH
-            && (self.plan.has_any() || self.files.worth_showing() || self.todos.has_any())
+        width >= SIDEBAR_MIN_WIDTH && self.has_panels()
+    }
+
+    /// Whether the side column has todos, a plan or changed files to show (else at most the
+    /// agent's commands).
+    pub fn has_panels(&self) -> bool {
+        self.plan.has_any() || self.files.worth_showing() || self.todos.has_any()
     }
 
     /// Columns the side column wants (border and margins included): `max` with a plan, whose
@@ -276,16 +281,95 @@ impl Widgets {
         u16::try_from(rows + 3).unwrap_or(max).clamp(min, max)
     }
 
-    /// Draws the side column (plan above files) into `area`; `focus` highlights a panel.
-    pub fn draw_sidebar(&self, frame: &mut Frame, area: Rect, focus: Option<Panel>) {
+    /// Where the side column in `area` puts its panels (todos, plan, files) and, with `terminal`,
+    /// the agent's commands under them: the panels take what they need, up to half, a blank row
+    /// parts them, and the commands get the rest. Both are inside the border and margins.
+    fn side_split(&self, area: Rect, terminal: bool) -> (Option<Rect>, Option<Rect>) {
         // A thin border, a space, the content, a space.
         if area.width < 6 || area.height == 0 {
+            return (None, None);
+        }
+        let area = pane_content(area, &self.palette);
+        let area = Rect {
+            x: area.x + 2,
+            width: area.width - 3,
+            ..area
+        };
+        let panels = self.has_panels();
+        if !terminal || area.height < 2 {
+            return (Some(area), None);
+        }
+        if !panels || area.height < 6 {
+            return (None, Some(area));
+        }
+        let need = self.panels_height(usize::from(area.width));
+        let top = u16::try_from(need).unwrap_or(u16::MAX).min(area.height / 2);
+        let below = Rect {
+            y: area.y + top + 1,
+            height: area.height - top - 1,
+            ..area
+        };
+        (
+            Some(Rect {
+                height: top,
+                ..area
+            }),
+            Some(below),
+        )
+    }
+
+    /// Rows the todos, plan and files would fill `w` columns wide, their titles and the blank
+    /// rows between them included.
+    fn panels_height(&self, w: usize) -> usize {
+        let p = &self.palette;
+        let mut parts = Vec::new();
+        if self.todos.has_any() {
+            parts.push(1 + self.todos.natural_height(w, p));
+        }
+        if self.plan.has_any() {
+            parts.push(1 + self.plan.natural_height(w, p));
+        }
+        if self.files.worth_showing() {
+            parts.push(1 + self.files.natural_height());
+        }
+        parts.iter().sum::<usize>() + parts.len().saturating_sub(1)
+    }
+
+    /// Where [`Widgets::draw_sidebar`] puts the agent's commands in `area`, if anywhere.
+    pub fn side_terminal(&self, area: Rect, terminal: bool) -> Option<Rect> {
+        self.side_split(area, terminal).1
+    }
+
+    /// Draws the side column into `area`: the todos, plan and files, and with `terminal` the
+    /// agent's commands under them; `focus` highlights a panel.
+    pub fn draw_sidebar(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        focus: Option<Panel>,
+        terminal: bool,
+    ) {
+        let (panels, commands) = self.side_split(area, terminal);
+        if panels.is_none() && commands.is_none() {
+            return;
+        }
+        pane(frame, area, &self.palette);
+        if let Some(at) = panels {
+            self.draw_panels(frame, at, focus);
+        }
+        if let Some(at) = commands {
+            self.draw_terminal(frame, at, focus == Some(Panel::Terminal));
+        }
+    }
+
+    /// The todos on top, then the plan above the files, in `area` (inside the margins).
+    fn draw_panels(&self, frame: &mut Frame, area: Rect, focus: Option<Panel>) {
+        if area.height == 0 {
             return;
         }
         let p = &self.palette;
-        let area = pane(frame, area, p);
-        let x = area.x + 2;
-        let w = area.width - 3;
+        let x = area.x;
+        let w = area.width;
         let has_plan = self.plan.has_any();
         let has_files = self.files.worth_showing();
         // The shared todos on top while there are any: what they need, up to a third; the plan
@@ -388,19 +472,12 @@ impl Widgets {
         self.terminal.has_any()
     }
 
-    /// Draws the terminal panel into `area`: a border on its left, a title, the commands.
-    pub fn draw_terminal(&self, frame: &mut Frame, area: Rect, focused: bool) {
-        if area.width < 6 || area.height < 2 {
+    /// Draws the terminal panel into `inner` (inside the margins): a title, the commands.
+    fn draw_terminal(&self, frame: &mut Frame, inner: Rect, focused: bool) {
+        if inner.width == 0 || inner.height < 2 {
             return;
         }
         let p = &self.palette;
-        let area = pane(frame, area, p);
-        let inner = Rect {
-            x: area.x + 2,
-            y: area.y,
-            width: area.width - 3,
-            height: area.height,
-        };
         let mut title = title_line("Terminal", focused, p);
         if self.terminal.view().is_some() {
             title.spans.push(Span::styled(
@@ -524,8 +601,7 @@ impl Widgets {
 }
 
 /// A pane at the right: its first column a gap (a border without fills), the rest filled.
-/// Returns where its content goes: a row down from the top when filled.
-fn pane(frame: &mut Frame, area: Rect, palette: &Palette) -> Rect {
+fn pane(frame: &mut Frame, area: Rect, palette: &Palette) {
     let buf = frame.buffer_mut();
     crate::style::pane_edge(buf, area.x, area, palette);
     let filled = Rect {
@@ -534,6 +610,10 @@ fn pane(frame: &mut Frame, area: Rect, palette: &Palette) -> Rect {
         ..area
     };
     crate::style::fill(buf, filled, palette.panel);
+}
+
+/// Where a pane's content goes: a row down from the top when filled.
+fn pane_content(area: Rect, palette: &Palette) -> Rect {
     let top = u16::from(palette.panel != ratatui::style::Color::Reset && area.height > 4);
     Rect {
         y: area.y + top,

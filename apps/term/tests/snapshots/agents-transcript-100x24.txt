@@ -13,9 +13,9 @@ It is sunny in Berlin.
 
 
 
-
 esc back · ↑/↓ pgup/pgdn scroll · ctrl-o full results · ctrl-t thoughts
 
+┃
 ┃ message the agent · / for commands
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

@@ -2240,10 +2240,10 @@ fn the_editor_grows_and_wraps_up_to_eight_rows() {
     let mut app = scenario();
     app.handle_paste(&"line\n".repeat(12));
     let rows = screen(&mut app, 60, 24);
-    // The input box's rows above the status line in it.
-    let top = rows.iter().position(|l| l.starts_with("┃ ")).unwrap();
+    // The rows between the input box's top row and the status line in it.
+    let top = rows.iter().position(|l| l == "┃").unwrap();
     let status = rows.iter().position(|l| l.starts_with("┃ site ·")).unwrap();
-    let editor_rows = status - top;
+    let editor_rows = status - top - 1;
     assert_eq!(editor_rows, 8, "{rows:#?}");
     // The status lines stay at the bottom.
     assert!(rows[23].contains("shift+tab"), "{rows:#?}");
