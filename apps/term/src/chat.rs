@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use neo_protocol::{
-    Component, DiffComponent, DiffLineKind, ItemKind, ItemState, ViewItem, ViewPatch, ViewSnapshot,
+    Component, DiffLineKind, ItemKind, ItemState, ViewItem, ViewPatch, ViewSnapshot,
 };
 use neo_renderer_ratatui::{
     ButtonRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiDocInfo, UiState, buttons,
@@ -69,6 +69,8 @@ pub struct ChatOpts {
     pub icons: bool,
     /// The last turn is still going: its changed files aren't summed up yet.
     pub running: bool,
+    /// Diffs side by side where they fit (`/diff split`).
+    pub split_diffs: bool,
 }
 
 /// A file a turn changed, as the tools' diffs name it, and the lines added and removed.
@@ -95,6 +97,7 @@ struct CacheKey {
     expanded: bool,
     thoughts: bool,
     icons: bool,
+    split_diffs: bool,
     focused: Option<usize>,
     palette: Palette,
     marker: Style,
@@ -524,6 +527,7 @@ impl Chat {
                 expanded: opts.expanded,
                 thoughts: opts.show_thoughts,
                 icons: opts.icons,
+                split_diffs: opts.split_diffs,
                 focused: active,
                 palette: opts.palette,
                 marker: opts.marker,
@@ -537,56 +541,38 @@ impl Chat {
                     .contains_key(r)
                     .then(|| opts.ui.get(r).cloned().unwrap_or_default()),
             };
-            // Edits to one file in a row are one line, their changes summed (Ctrl-O shows each).
-            let edits = (!opts.expanded)
-                .then(|| edit_run(items, &shown[k - 1..]))
-                .flatten();
-            let (lines, slots, focus, lit) = match (edits, self.cache.get(r)) {
-                (Some((n, merged)), _) => {
-                    let (app, cwd) = (self.app.as_deref(), self.cwd.as_deref());
-                    let (mut lines, slots, focus) = render(&merged, width, &ckey, app, cwd, true);
-                    if let Some(first) = lines.first_mut() {
-                        first.spans.push(Span::styled(
-                            format!("  · {n} edits"),
-                            Style::new().fg(opts.palette.muted),
-                        ));
-                    }
-                    k += n - 1;
-                    (Rc::new(lines), Rc::new(slots), focus, true)
+            let (lines, slots, focus, lit) = match self.cache.get(r) {
+                // Ctrl-O (everything in full) keeps the whole card, e.g. a long diff.
+                _ if opts.in_panel
+                    && active.is_some()
+                    && !opts.expanded
+                    && !self.docs.contains_key(r) =>
+                {
+                    (
+                        Rc::new(vec![panel_stub(item, opts)]),
+                        Rc::new(Vec::new()),
+                        None,
+                        true,
+                    )
                 }
-                (None, cached) => match cached {
-                    // Ctrl-O (everything in full) keeps the whole card, e.g. a long diff.
-                    _ if opts.in_panel
-                        && active.is_some()
-                        && !opts.expanded
-                        && !self.docs.contains_key(r) =>
-                    {
-                        (
-                            Rc::new(vec![panel_stub(item, opts)]),
-                            Rc::new(Vec::new()),
-                            None,
-                            true,
-                        )
-                    }
-                    Some(c) if c.key == ckey => (c.lines.clone(), c.slots.clone(), c.focus, c.lit),
-                    // Without syntax colors: they are worked out for what comes into view.
-                    _ => {
-                        let (app, cwd) = (self.app.as_deref(), self.cwd.as_deref());
-                        let (lines, slots, focus) = render(item, width, &ckey, app, cwd, false);
-                        let (lines, slots) = (Rc::new(lines), Rc::new(slots));
-                        self.cache.insert(
-                            r.clone(),
-                            Cached {
-                                key: ckey,
-                                lines: lines.clone(),
-                                slots: slots.clone(),
-                                focus,
-                                lit: false,
-                            },
-                        );
-                        (lines, slots, focus, false)
-                    }
-                },
+                Some(c) if c.key == ckey => (c.lines.clone(), c.slots.clone(), c.focus, c.lit),
+                // Without syntax colors: they are worked out for what comes into view.
+                _ => {
+                    let (app, cwd) = (self.app.as_deref(), self.cwd.as_deref());
+                    let (lines, slots, focus) = render(item, width, &ckey, app, cwd, false);
+                    let (lines, slots) = (Rc::new(lines), Rc::new(slots));
+                    self.cache.insert(
+                        r.clone(),
+                        Cached {
+                            key: ckey,
+                            lines: lines.clone(),
+                            slots: slots.clone(),
+                            focus,
+                            lit: false,
+                        },
+                    );
+                    (lines, slots, focus, false)
+                }
             };
             if lines.is_empty() {
                 continue;
@@ -914,43 +900,6 @@ fn is_edit(item: &ViewItem) -> bool {
         && !changed_files(item).is_empty()
 }
 
-/// The diff of an edit that changed one file, and nothing else.
-fn lone_diff(item: &ViewItem) -> Option<&DiffComponent> {
-    fn walk(c: &Component) -> Option<&DiffComponent> {
-        match c {
-            Component::DiffComponent(v) => Some(v),
-            Component::CardComponent(v) => v.children.iter().find_map(walk),
-            Component::StackComponent(v) => v.children.iter().find_map(walk),
-            Component::RowComponent(v) => v.children.iter().find_map(walk),
-            _ => None,
-        }
-    }
-    if !is_edit(item) || changed_files(item).len() != 1 {
-        return None;
-    }
-    walk(&item.component).filter(|d| d.path.is_some())
-}
-
-/// Two or more edits to one file at the start of `shown`, with nothing between them: how many,
-/// and the first one with all their diff lines, as one edit.
-fn edit_run(items: &[ViewItem], shown: &[(usize, bool)]) -> Option<(usize, ViewItem)> {
-    let first = &items[shown.first()?.0];
-    let diff = lone_diff(first)?;
-    let diffs: Vec<&DiffComponent> = shown
-        .iter()
-        .map_while(|&(i, _)| lone_diff(&items[i]).filter(|d| d.path == diff.path))
-        .collect();
-    if diffs.len() < 2 {
-        return None;
-    }
-    let mut merged = first.clone();
-    merged.component = Component::DiffComponent(DiffComponent {
-        path: diff.path.clone(),
-        lines: diffs.iter().flat_map(|d| d.lines.iter().cloned()).collect(),
-    });
-    Some((diffs.len(), merged))
-}
-
 /// Each finished turn that changed files: the index of its last item and the files, summed per
 /// path. A turn ends where the next user message starts; the last one once it isn't running.
 fn turn_changes(items: &[ViewItem], running: bool) -> Vec<(usize, Vec<Changed>)> {
@@ -1164,6 +1113,9 @@ fn render(
 ) -> (Vec<Line<'static>>, Vec<ImageSlot>, Option<usize>) {
     let opts = Options {
         plain_code: !lit,
+        split_diffs: key.split_diffs,
+        // Edits show what they changed.
+        open_edits: true,
         expanded: key.expanded,
         show_thoughts: key.thoughts,
         focused_button: key.focused,
@@ -1237,6 +1189,8 @@ pub fn panel_lines(
         file_icons: false,
         cwd: None,
         plain_code: false,
+        split_diffs: false,
+        open_edits: false,
     };
     neo_renderer_ratatui::render_item(item, width.saturating_sub(2).max(1), &opts)
         .into_iter()
@@ -1346,6 +1300,7 @@ mod tests {
             ui: Default::default(),
             icons: false,
             running: false,
+            split_diffs: false,
         }
     }
 
@@ -1696,6 +1651,7 @@ mod tests {
             width: 120,
             expanded: true,
             thoughts: false,
+            split_diffs: false,
             icons: false,
             focused: None,
             palette: expanded.palette,
@@ -1798,42 +1754,22 @@ mod tests {
     }
 
     #[test]
-    fn edits_to_one_file_in_a_row_are_one_line() {
+    fn edits_show_what_they_changed_inline_or_side_by_side() {
         let mut c = Chat::new();
         c.apply_snapshot(snapshot(vec![
             item("u1", "user", "go"),
-            edit("e1", "src/a.rs", 3, 1),
-            edit("e2", "src/a.rs", 1, 1),
-            edit("e3", "src/a.rs", 0, 2),
-            edit("e4", "src/b.rs", 1, 0),
-            edit("e5", "src/a.rs", 1, 0),
+            edit("e1", "src/a.rs", 1, 1),
             item("a1", "agent", "Done."),
         ]));
-        c.layout(80, 40, &opts());
-        assert_eq!(
-            texts(&c)[2..5],
-            [
-                "edit src/a.rs  +4 −4  · 3 edits",
-                "edit src/b.rs  +1 −0",
-                "edit src/a.rs  +1 −0"
-            ]
-        );
-        // The merged line opens its file like one edit does.
-        c.pick_file(0);
-        assert_eq!(c.picked_file(), Some("src/a.rs"));
-        c.move_file(1);
-        assert_eq!(c.picked_file(), Some("src/b.rs"));
-        // Ctrl-O shows each.
-        let expanded = ChatOpts {
-            expanded: true,
+        c.layout(100, 40, &opts());
+        assert_eq!(texts(&c)[2..5], ["edit src/a.rs  +1 −1", "-old", "+new"]);
+        let split = ChatOpts {
+            split_diffs: true,
             ..opts()
         };
-        c.layout(80, 40, &expanded);
-        let n = texts(&c)
-            .iter()
-            .filter(|l| l.starts_with("edit src/a.rs"))
-            .count();
-        assert_eq!(n, 4);
+        c.layout(100, 40, &split);
+        let row = &texts(&c)[3];
+        assert!(row.starts_with("-old") && row.contains("│+new"), "{row}");
     }
 
     #[test]

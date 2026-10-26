@@ -106,25 +106,50 @@ impl Prefs {
         Prefs::new(crate::util::data_dir().map(|d| d.join("term.json")))
     }
 
-    /// The kept theme; dark when there is none or the file can't be read.
-    pub fn theme(&self) -> Theme {
+    /// What the file holds: an object, else an empty one.
+    fn read(&self) -> serde_json::Map<String, serde_json::Value> {
         self.file
             .as_ref()
             .and_then(|f| std::fs::read_to_string(f).ok())
             .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-            .and_then(|v| v.get("theme")?.as_str().and_then(Theme::parse))
+            .and_then(|v| v.as_object().cloned())
             .unwrap_or_default()
     }
 
-    pub fn set_theme(&self, theme: Theme) -> std::io::Result<()> {
+    /// Sets one key, keeping the others.
+    fn write(&self, key: &str, value: &str) -> std::io::Result<()> {
         let Some(file) = &self.file else {
             return Ok(());
         };
         if let Some(dir) = file.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let text = serde_json::json!({ "theme": theme.name() }).to_string();
+        let mut all = self.read();
+        all.insert(key.into(), value.into());
+        let text = serde_json::Value::Object(all).to_string();
         std::fs::write(file, format!("{text}\n"))
+    }
+
+    /// The kept theme; dark when there is none or the file can't be read.
+    pub fn theme(&self) -> Theme {
+        self.read()
+            .get("theme")
+            .and_then(|v| v.as_str())
+            .and_then(Theme::parse)
+            .unwrap_or_default()
+    }
+
+    pub fn set_theme(&self, theme: Theme) -> std::io::Result<()> {
+        self.write("theme", theme.name())
+    }
+
+    /// Diffs side by side (`"diff": "split"`), else unified (the default).
+    pub fn split_diffs(&self) -> bool {
+        self.read().get("diff").and_then(|v| v.as_str()) == Some("split")
+    }
+
+    pub fn set_split_diffs(&self, split: bool) -> std::io::Result<()> {
+        self.write("diff", if split { "split" } else { "inline" })
     }
 }
 
@@ -159,6 +184,11 @@ mod tests {
         let prefs = Prefs::new(Some(dir.join("term.json")));
         assert_eq!(prefs.theme(), Theme::Dark);
         prefs.set_theme(Theme::Light).unwrap();
+        assert_eq!(prefs.theme(), Theme::Light);
+        // The diff layout beside it, each kept when the other is set.
+        assert!(!prefs.split_diffs());
+        prefs.set_split_diffs(true).unwrap();
+        assert!(prefs.split_diffs());
         assert_eq!(prefs.theme(), Theme::Light);
         std::fs::write(dir.join("term.json"), "not json").unwrap();
         assert_eq!(prefs.theme(), Theme::Dark);

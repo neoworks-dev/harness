@@ -116,6 +116,8 @@ pub struct Widgets {
     terminal: TerminalState,
     /// When the background commands' files were last read.
     jobs_polled_ms: i64,
+    /// `/diff split`: files open side by side where they fit.
+    split_diffs: bool,
     diff: Option<DiffView>,
     /// toolCallId -> the guest that made the call (None: the session's own agent).
     tool_agents: HashMap<String, Option<String>>,
@@ -142,6 +144,7 @@ impl Widgets {
             files: FilesState::default(),
             terminal: TerminalState::default(),
             jobs_polled_ms: 0,
+            split_diffs: false,
             diff: None,
             tool_agents: HashMap::new(),
             runner,
@@ -150,10 +153,11 @@ impl Widgets {
 
     /// Another session (or directory) is shown now: forget everything and start over.
     pub fn reset(&mut self, cwd: PathBuf) {
-        let icons = self.files.icons;
+        let (icons, split) = (self.files.icons, self.split_diffs);
         // A run still going for the old directory finds its channel closed and ends quietly.
         *self = Widgets::build(cwd, self.palette, self.runner.is_some());
         self.files.icons = icons;
+        self.split_diffs = split;
     }
 
     /// File type icons in the files panel.
@@ -446,8 +450,14 @@ impl Widgets {
                 mark: e.mark,
                 in_repo: self.files.in_repo(),
             };
-            self.diff = Some(DiffView::open_file(self.cwd.clone(), req));
+            self.diff =
+                Some(DiffView::open_file(self.cwd.clone(), req).with_split(self.split_diffs));
         }
+    }
+
+    /// `/diff`: whether files open side by side (where they fit) or unified.
+    pub fn set_split_diffs(&mut self, split: bool) {
+        self.split_diffs = split;
     }
 
     /// Opens the diff overlay on `path` (as a tool's diff names it), as the files panel would;
@@ -461,7 +471,7 @@ impl Widgets {
             in_repo: self.files.in_repo(),
             rel,
         };
-        self.diff = Some(DiffView::open_file(self.cwd.clone(), req));
+        self.diff = Some(DiffView::open_file(self.cwd.clone(), req).with_split(self.split_diffs));
     }
 }
 

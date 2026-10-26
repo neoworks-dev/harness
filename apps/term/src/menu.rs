@@ -112,6 +112,13 @@ pub const COMMANDS: &[Command] = &[
         args: "[dark|light|terminal]",
         ..local("theme", "dark or light background, or the terminal's own")
     },
+    Command {
+        args: "[inline|split]",
+        ..local(
+            "diff",
+            "edits and the file view: unified, or old and new side by side",
+        )
+    },
     local("quit", "leave; the session keeps running"),
 ];
 

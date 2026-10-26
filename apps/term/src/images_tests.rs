@@ -71,6 +71,7 @@ fn opts() -> ChatOpts {
         ui: Default::default(),
         icons: false,
         running: false,
+        split_diffs: false,
     }
 }
 

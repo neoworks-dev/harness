@@ -193,6 +193,13 @@ impl DiffView {
     }
 
     /// The whole file with its changes marked, unified: what Enter on a file opens.
+    /// `/diff`'s choice to start with: split where it fits (the width decides), or always
+    /// unified. `s` still switches.
+    pub(crate) fn with_split(mut self, split: bool) -> DiffView {
+        self.force = (!split).then_some(false);
+        self
+    }
+
     pub(crate) fn open_file(cwd: PathBuf, req: DiffRequest) -> DiffView {
         DiffView {
             force: Some(false),

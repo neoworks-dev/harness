@@ -299,6 +299,8 @@ pub struct App {
     images: Option<Images>,
     /// File type icons in the chat and the files panel (`NEO_TERM_ICONS=off`: none).
     icons: bool,
+    /// `/diff split`: diffs side by side, in the chat and the file view.
+    split_diffs: bool,
     editor: Editor,
     /// Images pasted into the draft: the number of the `[image N]` marker that places each, and
     /// its path. One whose marker is deleted is not sent.
@@ -370,16 +372,19 @@ pub struct App {
 impl App {
     pub fn new(config: Config) -> App {
         let theme = config.prefs.theme();
+        let split_diffs = config.prefs.split_diffs();
         let palette = if config.no_color {
             plain_palette()
         } else {
             theme.palette(&Palette::default())
         };
+        let mut widgets = Widgets::new(PathBuf::from(&config.cwd), palette);
+        widgets.set_split_diffs(split_diffs);
         let now = crate::util::now_ms();
         let session = config.session.clone();
         let chat = Chat::for_app(&config.app_id).in_dir(&config.cwd);
         App {
-            widgets: Widgets::new(PathBuf::from(&config.cwd), palette),
+            widgets,
             github: Github::new(PathBuf::from(&config.cwd), palette),
             agents: Agents::default(),
             jobs: Jobs::default(),
@@ -400,6 +405,7 @@ impl App {
             chat,
             images: None,
             icons: false,
+            split_diffs,
             editor: Editor::default(),
             attachments: Vec::new(),
             stash: None,
@@ -628,6 +634,23 @@ impl App {
             }
             Ok(()) => self.notify(format!("theme: {}", theme.name()), false),
             Err(why) => self.notify(format!("theme: {} (not kept: {why})", theme.name()), true),
+        }
+    }
+
+    /// `/diff [inline|split]`; nothing: the other one.
+    fn switch_diffs(&mut self, text: &str) {
+        let split = match text.split_whitespace().nth(1) {
+            None => !self.split_diffs,
+            Some("split") => true,
+            Some("inline") => false,
+            Some(_) => return self.notify("usage: /diff [inline|split]", true),
+        };
+        self.split_diffs = split;
+        self.widgets.set_split_diffs(split);
+        let name = if split { "split" } else { "inline" };
+        match self.prefs.set_split_diffs(split) {
+            Ok(()) => self.notify(format!("diffs: {name}"), false),
+            Err(why) => self.notify(format!("diffs: {name} (not kept: {why})"), true),
         }
     }
 
@@ -2361,6 +2384,7 @@ impl App {
             "help" => self.overlay = Overlay::Help,
             "github" => self.github.open(),
             "theme" => self.switch_theme(text),
+            "diff" => self.switch_diffs(text),
             "files" => self.focus_files(),
             "terminal" => self.toggle_terminal(),
             "quit" => fx.push(Effect::Quit),
@@ -2658,6 +2682,7 @@ impl App {
                 icons: self.icons,
                 // A subagent's work has no turns to sum up.
                 running: true,
+                split_diffs: self.split_diffs,
             };
             if let Some(t) = self.transcript.as_mut() {
                 t.draw(frame, areas.chat, &opts, &self.styles);
@@ -2766,6 +2791,7 @@ impl App {
             ui: self.forms.all().clone(),
             icons: self.icons,
             running: self.running,
+            split_diffs: self.split_diffs,
         }
     }
 
