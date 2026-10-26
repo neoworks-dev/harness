@@ -389,7 +389,7 @@ fn run(dir: &std::path::Path, args: &[&str]) {
 fn wait_until(w: &mut Widgets, what: &str, mut done: impl FnMut(&Widgets) -> bool) {
     let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
-        w.tick();
+        w.tick(0);
         if done(w) {
             return;
         }
@@ -506,7 +506,7 @@ fn real_git_end_to_end() {
     std::fs::write(plain.join("f.txt"), "hello\n").unwrap();
     std::thread::sleep(Duration::from_millis(300));
     for _ in 0..20 {
-        p.tick();
+        p.tick(0);
         std::thread::sleep(Duration::from_millis(10));
     }
     assert!(p.branch().is_none());

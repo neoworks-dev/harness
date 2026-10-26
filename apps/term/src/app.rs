@@ -33,6 +33,7 @@ use crate::forms::{Forms, Outcome, Pending};
 use crate::github::{Github, Outgoing};
 use crate::history::{Histories, HistoryStore};
 use crate::images::Images;
+use crate::jobs::{Jobs, JobsAction};
 use crate::menu::{self, Entry, Item, Switcher, session_title};
 use crate::secret::{self, Secret, SecretValue};
 use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction, sidebar_width};
@@ -182,6 +183,8 @@ enum Focus {
     Panel(Panel),
     /// The subagents list under the prompt bar.
     Agents,
+    /// The background commands under the prompt bar (and the subagents).
+    Jobs,
 }
 
 #[derive(Debug, Clone)]
@@ -283,6 +286,10 @@ pub struct App {
     github: Github,
     /// The subagents running (or just ended) under the prompt bar, and the transcript of one.
     agents: Agents,
+    jobs: Jobs,
+    /// Background commands listed at the last tick, and its time: a change redraws.
+    jobs_shown: usize,
+    last_tick_ms: i64,
     transcript: Option<Transcript>,
     /// Last whole second the agents list was painted for (its clocks run).
     agents_tick: i64,
@@ -370,6 +377,9 @@ impl App {
             widgets: Widgets::new(PathBuf::from(&config.cwd), palette),
             github: Github::new(PathBuf::from(&config.cwd), palette),
             agents: Agents::default(),
+            jobs: Jobs::default(),
+            jobs_shown: 0,
+            last_tick_ms: 0,
             transcript: None,
             agents_tick: 0,
             styles: Styles::new(&palette, config.no_color),
@@ -516,7 +526,12 @@ impl App {
     pub fn tick(&mut self, now_ms: i64) -> Vec<Effect> {
         self.now_ms = now_ms;
         let mut fx = Vec::new();
-        if self.widgets.tick() {
+        // Background commands' output, their seconds counting up, one leaving the list.
+        let tick_s = now_ms / 1000 != self.last_tick_ms / 1000;
+        self.last_tick_ms = now_ms;
+        let jobs = self.widgets.jobs(now_ms).len();
+        if self.widgets.tick(now_ms) || tick_s && jobs > 0 || jobs != self.jobs_shown {
+            self.jobs_shown = jobs;
             self.dirty = true;
         }
         if let Some(images) = self.images.as_mut() {
@@ -1560,6 +1575,7 @@ impl App {
                     }
                 },
                 Focus::Agents => self.agents_key(key, fx),
+                Focus::Jobs => self.jobs_key(key),
                 Focus::Chat => self.chat_files_key(key),
             },
         }
@@ -1594,7 +1610,54 @@ impl App {
         }
     }
 
+    // ---- background commands ----
+
+    /// Down past the editor (and the subagents): the keys go to the background commands, and
+    /// the terminal panel shows the selected one.
+    fn focus_jobs(&mut self) {
+        let rows = self.widgets.jobs(self.now_ms);
+        let id = self.jobs.focus(&rows);
+        if id.is_some() {
+            self.terminal_on = true;
+            self.widgets.show_job(id);
+            self.focus = Some(Focus::Jobs);
+        }
+    }
+
+    fn jobs_key(&mut self, key: KeyEvent) {
+        let rows = self.widgets.jobs(self.now_ms);
+        match self.jobs.key(key, &rows) {
+            JobsAction::Redraw => {}
+            JobsAction::Show(id) => self.widgets.show_job(Some(id)),
+            JobsAction::Up if self.agents.visible(self.now_ms) => {
+                self.widgets.show_job(None);
+                self.agents.focus(self.now_ms);
+                self.focus = Some(Focus::Agents);
+            }
+            JobsAction::Up | JobsAction::Leave => {
+                self.widgets.show_job(None);
+                self.focus = None;
+            }
+            JobsAction::Open(id) => {
+                self.widgets.show_job(Some(id));
+                if self.terminal_area.is_some() {
+                    self.focus = Some(Focus::Panel(Panel::Terminal));
+                } else {
+                    self.notify("too narrow for the terminal panel", false);
+                }
+            }
+        }
+    }
+
     fn agents_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
+        // Down from the last subagent goes on to the background commands.
+        if matches!(key.code, KeyCode::Down | KeyCode::Char('j'))
+            && self.agents.on_last(self.now_ms)
+            && !self.widgets.jobs(self.now_ms).is_empty()
+        {
+            self.focus_jobs();
+            return;
+        }
         match self.agents.key(key, self.now_ms) {
             AgentsAction::Redraw => {}
             AgentsAction::Leave => self.focus = None,
@@ -1999,12 +2062,13 @@ impl App {
                 if self.menu_visible() {
                     self.move_menu(1);
                 } else if !self.editor.down() {
-                    // Past the end of an empty draft, Down goes on to the subagents list.
-                    if empty
-                        && !self.histories.of(&self.session).browsing()
-                        && self.agents.visible(self.now_ms)
-                    {
+                    // Past the end of an empty draft, Down goes on to the subagents list, then
+                    // the background commands.
+                    let below = empty && !self.histories.of(&self.session).browsing();
+                    if below && self.agents.visible(self.now_ms) {
                         self.focus_agents();
+                    } else if below && !self.widgets.jobs(self.now_ms).is_empty() {
+                        self.focus_jobs();
                     } else {
                         self.history_next();
                     }
@@ -2333,7 +2397,8 @@ impl App {
             .set_width(usize::from(main.width.saturating_sub(2)).max(1));
         // The subagents list sits under the status lines.
         let agents_h = self.agents_rows(main.height);
-        let h = main.height - agents_h;
+        let jobs_h = self.jobs_rows(main.height - agents_h);
+        let h = main.height - agents_h - jobs_h;
         let status_h = h.saturating_sub(3).min(2);
         let rule_h = h.saturating_sub(status_h).min(1);
         let room = h - status_h - rule_h;
@@ -2399,6 +2464,7 @@ impl App {
             panel,
             status: at(chat_h + rule_h + editor_h, status_h),
             agents: at(h, agents_h),
+            jobs: at(h + agents_h, jobs_h),
             side,
             terminal,
             left,
@@ -2414,6 +2480,31 @@ impl App {
             .agents
             .height(self.now_ms, self.focus == Some(Focus::Agents));
         u16::try_from(want).unwrap_or(u16::MAX).min(total / 3)
+    }
+
+    /// Rows the background commands take of what is left of a pane `total` rows tall.
+    fn jobs_rows(&self, total: u16) -> u16 {
+        if total < 12 {
+            return 0;
+        }
+        let rows = self.widgets.jobs(self.now_ms);
+        let want = Jobs::height(&rows, self.focus == Some(Focus::Jobs));
+        u16::try_from(want).unwrap_or(u16::MAX).min(total / 4)
+    }
+
+    fn draw_jobs(&self, frame: &mut Frame, area: Rect) {
+        if area.height == 0 {
+            return;
+        }
+        let rows = self.widgets.jobs(self.now_ms);
+        let lines = self.jobs.lines(
+            &rows,
+            usize::from(area.width),
+            self.now_ms,
+            self.focus == Some(Focus::Jobs),
+            &self.styles,
+        );
+        frame.render_widget(Paragraph::new(lines), area);
     }
 
     fn draw_agents(&self, frame: &mut Frame, area: Rect) {
@@ -2458,6 +2549,10 @@ impl App {
             }
             Some(Focus::Sessions) if !self.sessions_shown => self.focus = None,
             Some(Focus::Agents) if !self.agents.visible(self.now_ms) => self.focus = None,
+            Some(Focus::Jobs) if self.widgets.jobs(self.now_ms).is_empty() => {
+                self.widgets.show_job(None);
+                self.focus = None;
+            }
             Some(Focus::Chat) if !self.chat.has_files() => self.focus = None,
             _ => {}
         }
@@ -2541,6 +2636,7 @@ impl App {
         }
         self.draw_status(frame, areas.status);
         self.draw_agents(frame, areas.agents);
+        self.draw_jobs(frame, areas.jobs);
         if !self.no_color && self.theme.paints() {
             crate::theme::paint(frame.buffer_mut(), &self.palette);
         }
@@ -3330,6 +3426,8 @@ struct Areas {
     status: Rect,
     /// The subagents list under the status lines.
     agents: Rect,
+    /// The background commands under the subagents.
+    jobs: Rect,
     side: Option<Rect>,
     /// The terminal panel, between the chat and the side column.
     terminal: Option<Rect>,

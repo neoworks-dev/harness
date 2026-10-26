@@ -484,3 +484,49 @@ fn another_session_has_no_agents_of_the_old_one() {
     app.handle_key(ctrl('x'));
     assert_eq!(app.focus, None);
 }
+
+#[test]
+fn down_lists_a_background_command_and_the_terminal_panel_shows_it() {
+    let dir = std::env::temp_dir().join(format!("neo-term-app-jobs-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("b1.output");
+    std::fs::write(&path, "tick 1\ntick 2\n").unwrap();
+    let mut app = app_without_agents();
+    app.handle_event(event(
+        "s1",
+        1,
+        NOW,
+        json!({"type": "tool_call", "toolCallId": "c1", "title": "sleep 120", "kind": "execute",
+               "status": "in_progress", "rawInput": {"command": "sleep 120"}}),
+    ));
+    app.handle_event(event(
+        "s1",
+        2,
+        NOW,
+        json!({"type": "tool_call_update", "toolCallId": "c1", "status": "completed",
+               "content": [{"type": "text", "text": format!(
+                   "Command running in background with ID: b1. Output is being written to: {}.",
+                   path.display())}]}),
+    ));
+    app.tick(NOW + 1_000);
+    let text = screen_text(&mut app, 140, 30);
+    assert!(text.contains("⏵ background · 1 running"), "{text}");
+    assert!(text.contains("○ sleep 120  tick 2"), "{text}");
+
+    app.handle_key(key(KeyCode::Down));
+    assert_eq!(app.focus, Some(Focus::Jobs));
+    let text = screen_text(&mut app, 140, 30);
+    assert!(
+        text.contains("background command · esc all commands"),
+        "{text}"
+    );
+    assert!(text.contains("enter scroll its output"), "{text}");
+    // Enter gives the panel the keys; Esc there shows all commands again.
+    app.handle_key(key(KeyCode::Enter));
+    assert_eq!(app.focus, Some(Focus::Panel(Panel::Terminal)));
+    app.handle_key(key(KeyCode::Esc));
+    assert_eq!(app.focus, None);
+    let text = screen_text(&mut app, 140, 30);
+    assert!(!text.contains("esc all commands"), "{text}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}

@@ -13,6 +13,7 @@ pub mod forms;
 pub mod github;
 pub mod history;
 pub mod images;
+pub mod jobs;
 pub mod menu;
 pub mod runtime;
 pub mod secret;

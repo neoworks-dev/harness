@@ -286,6 +286,12 @@ impl Agents {
             .map(|a| a.id.clone());
     }
 
+    /// Whether the keys are on the last row (Down goes on from there).
+    pub fn on_last(&self, now_ms: i64) -> bool {
+        let shown = self.shown(now_ms);
+        shown.last().map(|a| &a.id) == self.selected.as_ref()
+    }
+
     fn move_by(&mut self, delta: isize, now_ms: i64) {
         let ids: Vec<String> = self.shown(now_ms).iter().map(|a| a.id.clone()).collect();
         if ids.is_empty() {

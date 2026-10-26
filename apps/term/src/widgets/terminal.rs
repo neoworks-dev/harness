@@ -1,8 +1,15 @@
 //! The terminal panel: the commands the agent and its guests ran (`execute` tool calls), as
 //! a shell would show them: `$ command`, its output as it comes, and how it ended.
+//!
+//! A command Claude Code runs in the background ends its call at once, with where its output
+//! goes (`Output is being written to: /tmp/…/<id>.output`); that file is tailed here as the
+//! command's output, until the line `[exited with code N]` it ends with. The panel shows all the
+//! commands, or one background command on its own.
 
 use std::cell::Cell;
 use std::collections::HashSet;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::PathBuf;
 
 use neo_protocol::{ToolCall, ToolCallContent, ToolCallStatus, ToolCallUpdate, ToolKind};
 use neo_renderer_ratatui::{Palette, highlight_shell, strip_cd};
@@ -28,11 +35,53 @@ struct Run {
     output: Vec<String>,
     status: ToolCallStatus,
     exit: Option<i64>,
+    /// Running in the background: its output comes from a file.
+    job: Option<Job>,
 }
+
+/// A background command's output file and what has been read of it.
+#[derive(Debug, Clone)]
+struct Job {
+    path: PathBuf,
+    /// Bytes read so far, and the start of a line not ended yet.
+    offset: u64,
+    partial: Vec<u8>,
+    /// Cleaned lines, the last [`OUTPUT_LINES`].
+    output: Vec<String>,
+    started_ms: i64,
+    /// From the file's last line; None while it runs.
+    exit: Option<i64>,
+    ended_ms: Option<i64>,
+    /// Read while it was still running: it ended while this app looked on. A command replayed
+    /// with the session's history is found ended at once and isn't listed.
+    seen_running: bool,
+    /// The file isn't there (cleaned up, or on another machine).
+    gone: bool,
+}
+
+/// A background command, as the list under the prompt shows it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct JobRow {
+    pub id: String,
+    pub agent: Option<String>,
+    pub command: String,
+    pub started_ms: i64,
+    pub ended_ms: Option<i64>,
+    pub exit: Option<i64>,
+    /// Its last line of output.
+    pub last: Option<String>,
+}
+
+/// How long a finished background command stays in the list.
+pub const JOB_LINGER_MS: i64 = 5000;
+/// Bytes read from an output file at a time, so a flood doesn't stall a frame.
+const READ_CHUNK: u64 = 256 * 1024;
 
 #[derive(Debug, Default)]
 pub(crate) struct TerminalState {
     runs: Vec<Run>,
+    /// The background command shown on its own (its run's id); None shows all commands.
+    view: Option<String>,
     /// toolCallIds of calls that are not commands, so their updates are passed over cheaply.
     others: HashSet<String>,
     /// Lines scrolled up from the end; None follows the output.
@@ -69,14 +118,17 @@ impl TerminalState {
             output: Vec::new(),
             status: call.status,
             exit: None,
+            job: None,
         });
         if self.runs.len() > RUNS {
             self.runs.remove(0);
         }
     }
 
-    /// Output replaces what was there (a running command's updates carry the tail so far).
-    pub(crate) fn on_update(&mut self, update: &ToolCallUpdate) {
+    /// Output replaces what was there (a running command's updates carry the tail so far). A
+    /// result that says the command went to the background starts tailing its file; `ts` is
+    /// when (the event's time).
+    pub(crate) fn on_update(&mut self, update: &ToolCallUpdate, ts: i64) {
         if self.others.contains(&update.tool_call_id) {
             return;
         }
@@ -97,7 +149,23 @@ impl TerminalState {
                     _ => None,
                 })
                 .collect();
-            run.output = output_lines(&text.join("\n"));
+            let text = text.join("\n");
+            if run.job.is_none()
+                && let Some(path) = background_output(&text)
+            {
+                run.job = Some(Job {
+                    path,
+                    offset: 0,
+                    partial: Vec::new(),
+                    output: Vec::new(),
+                    started_ms: ts,
+                    exit: None,
+                    ended_ms: None,
+                    seen_running: false,
+                    gone: false,
+                });
+            }
+            run.output = output_lines(&text);
         }
         if let Some(out) = update.raw_output.as_ref().and_then(|o| o.as_object()) {
             run.exit = ["exitCode", "exit_code"]
@@ -116,6 +184,17 @@ impl TerminalState {
         p: &Palette,
     ) -> Vec<Line<'static>> {
         let want = height + self.back.unwrap_or(0);
+        if let Some(run) = self
+            .view()
+            .and_then(|id| self.runs.iter().find(|r| r.id == id))
+        {
+            let all = job_lines(run, width, cwd, p);
+            let max = all.len().saturating_sub(height);
+            self.max_back.set(max);
+            let back = self.back.unwrap_or(0).min(max);
+            let end = all.len() - back;
+            return all[end.saturating_sub(height)..end].to_vec();
+        }
         // From the newest run back, only as many as fill the view; a rule between runs.
         let mut blocks: Vec<Vec<Line<'static>>> = Vec::new();
         let mut have = 0;
@@ -167,6 +246,129 @@ impl TerminalState {
     pub(crate) fn following(&self) -> bool {
         self.back.is_none()
     }
+
+    /// Reads what the running background commands wrote since the last time; true when any
+    /// wrote something or ended.
+    pub(crate) fn poll_jobs(&mut self, now_ms: i64) -> bool {
+        let mut changed = false;
+        for job in self.runs.iter_mut().filter_map(|r| r.job.as_mut()) {
+            if job.exit.is_none() && !job.gone {
+                changed |= job.poll(now_ms);
+            }
+        }
+        changed
+    }
+
+    /// The background commands to list: those running, and those that ended a moment ago.
+    pub(crate) fn jobs(&self, now_ms: i64) -> Vec<JobRow> {
+        self.runs
+            .iter()
+            .filter_map(|r| r.job.as_ref().map(|j| (r, j)))
+            .filter(|(_, j)| {
+                // Listed once read and found running (not before the first read: a replayed
+                // one may have ended long ago).
+                !j.gone
+                    && j.seen_running
+                    && j.ended_ms.is_none_or(|end| now_ms - end < JOB_LINGER_MS)
+            })
+            .map(|(r, j)| JobRow {
+                id: r.id.clone(),
+                agent: r.agent.clone(),
+                command: r.command.clone(),
+                started_ms: j.started_ms,
+                ended_ms: j.ended_ms,
+                exit: j.exit,
+                last: j
+                    .output
+                    .iter()
+                    .rev()
+                    .find(|l| !l.trim().is_empty())
+                    .cloned(),
+            })
+            .collect()
+    }
+
+    /// Shows one background command on its own (`Some(id)`), or all commands.
+    pub(crate) fn set_view(&mut self, id: Option<String>) {
+        if self.view != id {
+            self.view = id;
+            self.back = None;
+        }
+    }
+
+    /// The background command shown on its own, while it is still there.
+    pub(crate) fn view(&self) -> Option<&str> {
+        self.view
+            .as_deref()
+            .filter(|id| self.runs.iter().any(|r| r.id == *id && r.job.is_some()))
+    }
+}
+
+impl Job {
+    /// Reads the file from where the last read ended; true when there was something new.
+    fn poll(&mut self, now_ms: i64) -> bool {
+        let mut file = match std::fs::File::open(&self.path) {
+            Ok(f) => f,
+            // Not written yet, or gone: gone for good once something was read, or after a while.
+            Err(_) => {
+                if self.offset > 0 || now_ms - self.started_ms > 10_000 {
+                    self.gone = true;
+                }
+                return false;
+            }
+        };
+        if file.seek(SeekFrom::Start(self.offset)).is_err() {
+            return false;
+        }
+        let mut bytes = Vec::new();
+        let _ = file.take(READ_CHUNK).read_to_end(&mut bytes);
+        self.offset += bytes.len() as u64;
+        self.partial.extend(bytes);
+        let Some(end) = self.partial.iter().rposition(|&b| b == b'\n') else {
+            // No line ended: it runs on.
+            self.seen_running = true;
+            return false;
+        };
+        let done: Vec<u8> = self.partial.drain(..=end).collect();
+        let text = String::from_utf8_lossy(&done);
+        let mut lines = output_lines(&text);
+        // `[exited with code N]` ends the file, after a blank line.
+        match lines.last().and_then(|l| exit_code(l)) {
+            Some(code) => {
+                lines.pop();
+                if lines.last().is_some_and(|l| l.is_empty()) {
+                    lines.pop();
+                }
+                self.exit = Some(code);
+                self.ended_ms = Some(now_ms);
+            }
+            None => self.seen_running = true,
+        }
+        self.output.extend(lines);
+        let skip = self.output.len().saturating_sub(OUTPUT_LINES);
+        self.output.drain(..skip);
+        true
+    }
+}
+
+/// The output file a background command's result names: Claude Code's `Command running in
+/// background with ID: … Output is being written to: <path>.`
+fn background_output(text: &str) -> Option<PathBuf> {
+    if !text.contains("running in background") {
+        return None;
+    }
+    let (_, rest) = text.split_once("Output is being written to: ")?;
+    let path = rest.split_whitespace().next()?.trim_end_matches('.');
+    path.starts_with('/').then(|| PathBuf::from(path))
+}
+
+/// `[exited with code 0]`: the code.
+fn exit_code(line: &str) -> Option<i64> {
+    line.trim()
+        .strip_prefix("[exited with code ")?
+        .strip_suffix(']')?
+        .parse()
+        .ok()
 }
 
 /// `rawInput.command`, a string or (Codex) a list of words.
@@ -241,10 +443,27 @@ fn strip_escapes(text: &str) -> String {
     out
 }
 
-/// `$ command` (highlighted, continuation lines under it, at most [`COMMAND_ROWS`] once it
-/// started), the output, and a muted `exit 1` (danger) or `running…` line.
-fn run_lines(run: &Run, width: usize, cwd: Option<&str>, p: &Palette) -> Vec<Line<'static>> {
-    let mut out = Vec::new();
+/// A background command on its own: `$ command`, what it wrote to its file, and `running…`,
+/// `exit 0` or a red `exit 1`.
+fn job_lines(run: &Run, width: usize, cwd: Option<&str>, p: &Palette) -> Vec<Line<'static>> {
+    let mut out = command_lines(run, width, cwd, p);
+    let Some(job) = &run.job else {
+        return out;
+    };
+    for line in &job.output {
+        out.extend(wrap_spans(vec![Span::raw(line.clone())], width));
+    }
+    let (text, style) = match job.exit {
+        None => ("running…".to_string(), Style::new().fg(p.muted)),
+        Some(0) => ("exit 0".to_string(), Style::new().fg(p.muted)),
+        Some(code) => (format!("exit {code}"), Style::new().fg(p.danger)),
+    };
+    out.push(Line::from(Span::styled(text, style)));
+    out
+}
+
+/// `$ command`, highlighted, at most [`COMMAND_ROWS`] once it started.
+fn command_lines(run: &Run, width: usize, cwd: Option<&str>, p: &Palette) -> Vec<Line<'static>> {
     let mut lead = Vec::new();
     if let Some(agent) = &run.agent {
         lead.push(Span::styled(format!("{agent} "), Style::new().fg(p.muted)));
@@ -269,7 +488,17 @@ fn run_lines(run: &Run, width: usize, cwd: Option<&str>, p: &Palette) -> Vec<Lin
             Style::new().fg(p.muted),
         )));
     }
-    out.extend(command);
+    command
+}
+
+/// `$ command` (highlighted, continuation lines under it, at most [`COMMAND_ROWS`] once it
+/// started), the output, and a muted `exit 1` (danger) or `running…` line.
+/// A background command shows what its file holds instead of its call's result.
+fn run_lines(run: &Run, width: usize, cwd: Option<&str>, p: &Palette) -> Vec<Line<'static>> {
+    if run.job.as_ref().is_some_and(|j| !j.gone) {
+        return job_lines(run, width, cwd, p);
+    }
+    let mut out = command_lines(run, width, cwd, p);
     for line in &run.output {
         out.extend(wrap_spans(vec![Span::raw(line.clone())], width));
     }
@@ -386,7 +615,7 @@ mod tests {
                 "waiting for approval…"
             ]
         );
-        t.on_update(&update("1", Some("completed"), "https://x/42", None));
+        t.on_update(&update("1", Some("completed"), "https://x/42", None), 0);
         assert_eq!(
             shown(&t, 60, 10),
             [
@@ -405,14 +634,14 @@ mod tests {
         t.on_call(&call("a", "read", "x"));
         assert!(!t.has_any(), "only commands");
         t.on_call(&call("1", "execute", "cargo test\n  --all"));
-        t.on_update(&update("1", None, "\u{1b}[32mok\u{1b}[0m 1", None));
+        t.on_update(&update("1", None, "\u{1b}[32mok\u{1b}[0m 1", None), 0);
         assert_eq!(
             shown(&t, 40, 10),
             ["$ cargo test", "  --all", "ok 1", "running…"]
         );
-        t.on_update(&update("1", Some("failed"), "ok 1\nboom\n", Some(101)));
+        t.on_update(&update("1", Some("failed"), "ok 1\nboom\n", Some(101)), 0);
         t.on_call(&call("2", "execute", "ls"));
-        t.on_update(&update("2", Some("completed"), "50%\r100%", None));
+        t.on_update(&update("2", Some("completed"), "50%\r100%", None), 0);
         assert_eq!(
             shown(&t, 40, 10),
             [
@@ -433,7 +662,10 @@ mod tests {
         let mut t = TerminalState::default();
         t.on_call(&call("1", "execute", "seq 20"));
         let numbers: Vec<String> = (1..=20).map(|n| n.to_string()).collect();
-        t.on_update(&update("1", Some("completed"), &numbers.join("\n"), None));
+        t.on_update(
+            &update("1", Some("completed"), &numbers.join("\n"), None),
+            0,
+        );
         assert_eq!(shown(&t, 20, 3), ["18", "19", "20"]);
         t.key(KeyEvent::from(KeyCode::PageUp), 3);
         assert!(!t.following());
@@ -451,15 +683,109 @@ mod tests {
         let mut c = call("1", "execute", "echo");
         c.agent = Some("claude".into());
         t.on_call(&c);
-        t.on_update(&update(
-            "1",
-            Some("completed"),
-            "```\nabcdefghij\n```",
-            None,
-        ));
+        t.on_update(
+            &update("1", Some("completed"), "```\nabcdefghij\n```", None),
+            0,
+        );
         assert_eq!(
             shown(&t, 6, 10),
             ["claude", " $ ech", "o", "abcdef", "ghij"]
         );
+    }
+
+    /// Claude Code's result for a command it runs in the background.
+    fn backgrounded(path: &std::path::Path) -> String {
+        format!(
+            "Command running in background with ID: b1. Output is being written to: {}. You \
+             will be notified when it completes.",
+            path.display()
+        )
+    }
+
+    fn temp(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("neo-term-jobs-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join(name)
+    }
+
+    #[test]
+    fn a_background_commands_file_is_tailed_until_it_ends() {
+        let path = temp("live.output");
+        std::fs::write(&path, "tick 1\n").unwrap();
+        let mut t = TerminalState::default();
+        t.on_call(&call("1", "execute", "for i in 1 2; do echo tick $i; done"));
+        t.on_update(
+            &update("1", Some("completed"), &backgrounded(&path), None),
+            1_000,
+        );
+        assert!(t.jobs(1_000).is_empty(), "not before its file was read");
+        assert!(t.poll_jobs(1_250));
+        let jobs = t.jobs(1_250);
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(
+            (jobs[0].exit, jobs[0].last.as_deref()),
+            (None, Some("tick 1"))
+        );
+        // Among all commands it shows what its file holds.
+        assert_eq!(
+            shown(&t, 60, 10),
+            [
+                "$ for i in 1 2; do echo tick $i; done",
+                "tick 1",
+                "running…"
+            ]
+        );
+
+        // A half-written line waits for its end.
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
+        use std::io::Write;
+        write!(f, "tick").unwrap();
+        assert!(!t.poll_jobs(1_500));
+        write!(f, " 2\n\n[exited with code 3]\n").unwrap();
+        assert!(t.poll_jobs(1_750));
+        let jobs = t.jobs(1_750);
+        assert_eq!((jobs[0].exit, jobs[0].ended_ms), (Some(3), Some(1_750)));
+        t.set_view(Some("1".into()));
+        assert_eq!(t.view(), Some("1"));
+        assert_eq!(
+            shown(&t, 60, 10),
+            [
+                "$ for i in 1 2; do echo tick $i; done",
+                "tick 1",
+                "tick 2",
+                "exit 3"
+            ]
+        );
+        // It lingers a moment, then leaves the list.
+        assert!(t.jobs(1_750 + JOB_LINGER_MS).is_empty());
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn a_replayed_background_command_that_ended_is_not_listed() {
+        let ended = temp("ended.output");
+        std::fs::write(&ended, "ok\n\n[exited with code 0]\n").unwrap();
+        let mut t = TerminalState::default();
+        t.on_call(&call("1", "execute", "make"));
+        t.on_update(
+            &update("1", Some("completed"), &backgrounded(&ended), None),
+            0,
+        );
+        // And one whose file was cleaned up.
+        t.on_call(&call("2", "execute", "make again"));
+        let gone = temp("gone.output");
+        t.on_update(
+            &update("2", Some("completed"), &backgrounded(&gone), None),
+            0,
+        );
+        t.poll_jobs(60_000);
+        assert!(t.jobs(60_000).is_empty());
+        // Among all commands it still shows what its file held.
+        let all = shown(&t, 200, 20);
+        assert_eq!(all[..3], ["$ make", "ok", "exit 0"]);
+        std::fs::remove_file(&ended).unwrap();
     }
 }

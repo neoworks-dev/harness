@@ -78,10 +78,13 @@ use files::{FileKey, FilesState};
 use git::Runner;
 use plan::PlanState;
 use terminal::TerminalState;
+pub use terminal::{JOB_LINGER_MS, JobRow};
 use usage::UsageState;
 
 /// Lines PgUp/PgDn move in the terminal panel.
 const TERMINAL_PAGE: usize = 10;
+/// How often background commands' output files are read.
+const JOBS_POLL_MS: i64 = 250;
 
 /// The side column is only worth its width from here on.
 const SIDEBAR_MIN_WIDTH: u16 = 100;
@@ -111,6 +114,8 @@ pub struct Widgets {
     usage: UsageState,
     files: FilesState,
     terminal: TerminalState,
+    /// When the background commands' files were last read.
+    jobs_polled_ms: i64,
     diff: Option<DiffView>,
     /// toolCallId -> the guest that made the call (None: the session's own agent).
     tool_agents: HashMap<String, Option<String>>,
@@ -136,6 +141,7 @@ impl Widgets {
             usage: UsageState::default(),
             files: FilesState::default(),
             terminal: TerminalState::default(),
+            jobs_polled_ms: 0,
             diff: None,
             tool_agents: HashMap::new(),
             runner,
@@ -171,7 +177,7 @@ impl Widgets {
                 self.terminal.on_call(call);
             }
             SessionEvent::ToolCallUpdate(update) => {
-                self.terminal.on_update(update);
+                self.terminal.on_update(update, record.ts);
                 let mut changed = false;
                 for content in update.content.iter().flatten() {
                     let ToolCallContent::DiffContent(d) = content else {
@@ -208,10 +214,14 @@ impl Widgets {
         }
     }
 
-    /// Called on every loop iteration (about 20×/s): picks up finished background work.
-    /// Returns true when something visible changed.
-    pub fn tick(&mut self) -> bool {
+    /// Called on every loop iteration (about 20×/s): picks up finished background work and
+    /// what background commands wrote. Returns true when something visible changed.
+    pub fn tick(&mut self, now_ms: i64) -> bool {
         let mut changed = false;
+        if now_ms - self.jobs_polled_ms >= JOBS_POLL_MS {
+            self.jobs_polled_ms = now_ms;
+            changed |= self.terminal.poll_jobs(now_ms);
+        }
         if let Some(runner) = &mut self.runner
             && let Some(status) = runner.poll(Instant::now())
         {
@@ -307,6 +317,16 @@ impl Widgets {
         }
     }
 
+    /// The background commands to list under the prompt.
+    pub fn jobs(&self, now_ms: i64) -> Vec<JobRow> {
+        self.terminal.jobs(now_ms)
+    }
+
+    /// Shows one background command in the terminal panel on its own, or (None) all commands.
+    pub fn show_job(&mut self, id: Option<String>) {
+        self.terminal.set_view(id);
+    }
+
     /// Whether there is a command to show in the terminal panel.
     pub fn has_commands(&self) -> bool {
         self.terminal.has_any()
@@ -331,6 +351,12 @@ impl Widgets {
             height: area.height,
         };
         let mut title = title_line("Terminal", focused, p);
+        if self.terminal.view().is_some() {
+            title.spans.push(Span::styled(
+                " · background command · esc all commands",
+                Style::new().fg(p.muted),
+            ));
+        }
         if !self.terminal.following() {
             title.spans.push(Span::styled(
                 "  scrolled · G follows",
@@ -396,8 +422,10 @@ impl Widgets {
                 FileKey::Open => self.open_diff(),
                 FileKey::Handled => {}
             },
+            // Leaving it shows all commands again.
             Panel::Terminal => {
                 if self.terminal.key(key, TERMINAL_PAGE) {
+                    self.terminal.set_view(None);
                     return WidgetAction::Leave;
                 }
             }
