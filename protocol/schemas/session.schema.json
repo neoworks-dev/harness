@@ -112,6 +112,9 @@
         },
         {
           "$ref": "#/$defs/CommandsAvailable"
+        },
+        {
+          "$ref": "#/$defs/Todos"
         }
       ],
       "discriminator": {
@@ -1089,6 +1092,49 @@
         }
       },
       "required": ["content", "status"],
+      "additionalProperties": false
+    },
+    "Todos": {
+      "description": "The session's shared todo list, which the user (from any app) and every agent read and change; unlike a plan, nobody owns it. Each event carries the whole list after one change, the newest is current. Not part of the model's context: agents read it with the todos tool.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "todos"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TodoItem"
+          }
+        },
+        "by": {
+          "type": "string",
+          "description": "Who made the change: `user`, or the agent (`neo`, `claude`, a subagent's name)."
+        }
+      },
+      "required": ["type", "items"],
+      "additionalProperties": false
+    },
+    "TodoItem": {
+      "description": "One entry of the shared todo list.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable for the item's life, so a change names what it changes."
+        },
+        "text": {
+          "type": "string"
+        },
+        "done": {
+          "type": "boolean"
+        },
+        "by": {
+          "type": "string",
+          "description": "Who added it: `user` or the agent's name."
+        }
+      },
+      "required": ["id", "text", "done"],
       "additionalProperties": false
     },
     "PlanEntryStatus": {

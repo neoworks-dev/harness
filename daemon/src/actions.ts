@@ -11,6 +11,7 @@ import type { Asker } from "./asker.ts";
 import type { SessionManager } from "./sessions.ts";
 import type { SessionStore } from "./store.ts";
 import type { ViewManager } from "./view/views.ts";
+import { parseTodoArgs, type Todos } from "./todos.ts";
 
 export interface Parts {
   store: SessionStore;
@@ -21,6 +22,8 @@ export interface Parts {
   asker?: Asker;
   /** Stops one running subagent of the session (neo.cancel_agent {id}). */
   cancelAgent?: (session: string, id: string) => boolean;
+  /** The shared todo list the user changes from an app (neo.todos {action, text?, id?}). */
+  todos?: Todos;
 }
 
 /**
@@ -158,6 +161,18 @@ export class ActionRunner {
       if (!this.parts.cancelAgent(session, id)) {
         throw new BadRequestError(`${id} isn't a running subagent of this session`);
       }
+      return;
+    }
+    if (action === "neo.todos") {
+      const fields: Record<string, unknown> = Object.assign({}, args);
+      const change = parseTodoArgs(fields);
+      if (!this.parts.todos || change === undefined || typeof change === "string") {
+        throw new BadRequestError(
+          typeof change === "string" ? change : "neo.todos needs args {action, text?, id?}",
+        );
+      }
+      const result = this.parts.todos.change(session, change, "user");
+      if (typeof result === "string") throw new BadRequestError(`todos: ${result}`);
       return;
     }
     const { connectors, sessions, views } = this.parts;

@@ -7,6 +7,7 @@ import type { Agent, McpServer } from "@neoworks-dev/neo/agent";
 import type { SlashCommand, Theme } from "@neoworks-dev/neo-protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
 import { ActionRunner, openUiTools } from "./actions.ts";
+import { Todos, todosTool } from "./todos.ts";
 import { AssetStore } from "./assets.ts";
 import { FocusManager } from "./focus.ts";
 import { ViewManager } from "./view/views.ts";
@@ -312,8 +313,11 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   sessions.onCancel((session) => {
     delegate.stopBackground(session);
   });
+  const todos = new Todos(store);
   const gateway = new Gateway(connectors, {
     log,
+    // A subagent changes the list as itself, the session's agent as its harness.
+    todos: (session, guest, args) => todosTool(todos, session, guest ?? harnessOf(session), args),
     resolveAsset: (handle) => assets.resolve(handle),
     recordResult: (session, result) => {
       store.append(session, result);
@@ -347,6 +351,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     views,
     asker,
     cancelAgent: delegate.cancel,
+    todos,
   });
   const notice = (session: string, text: string, tone?: "muted" | "danger"): void => {
     store.append(

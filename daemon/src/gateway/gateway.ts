@@ -39,6 +39,12 @@ export interface GatewayOptions {
   recordResult?: (session: string, result: ToolResult) => void;
   /** The file behind an asset:// handle, named in results for guests. */
   resolveAsset?: (handle: string) => string | undefined;
+  /** The session's shared todo list (the todos tool); `guest` names a subagent. */
+  todos?: (
+    session: string,
+    guest: string | undefined,
+    args: Record<string, unknown>,
+  ) => CallToolResult;
 }
 
 const ASSET_HANDLES = /asset:\/\/[a-z]+-[0-9a-f]+/g;
@@ -233,6 +239,11 @@ export class Gateway {
         return this.options.messages.send(session, guest, args as unknown as SendMessageArgs);
       case "ui_library":
         return text(uiLibraryText(this.registry.componentsOf(), this.registry.openApps()));
+      case "todos":
+        if (!this.options.todos || session === undefined) {
+          return text("There is no shared todo list here.", true);
+        }
+        return this.options.todos(session, guest, args);
       case "wait": {
         const names: unknown = args.for;
         if (

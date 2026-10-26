@@ -419,6 +419,22 @@ export const examples: Record<string, Envelope> = {
       },
     },
   },
+  "event-todos": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 17,
+      ts: 1760565601500,
+      event: {
+        type: "todos",
+        items: [
+          { id: "t1", text: "Make the header sticky", done: true, by: "user" },
+          { id: "t2", text: "Check the login form on mobile", done: false, by: "claude" },
+        ],
+        by: "claude",
+      },
+    },
+  },
   "event-subagent-started": {
     topic: "session.events",
     payload: {

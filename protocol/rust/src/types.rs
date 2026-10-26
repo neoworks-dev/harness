@@ -1489,6 +1489,7 @@ pub enum SessionEvent {
     SubagentEnded(SubagentEnded),
     AgentMessage(AgentMessage),
     CommandsAvailable(CommandsAvailable),
+    Todos(Todos),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -1596,6 +1597,7 @@ impl Serialize for SessionEvent {
                 "commands_available",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            SessionEvent::Todos(v) => ("todos", serde_json::to_value(v).map_err(S::Error::custom)?),
             SessionEvent::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -1690,6 +1692,9 @@ impl<'de> Deserialize<'de> for SessionEvent {
                 .map_err(D::Error::custom),
             "commands_available" => serde_json::from_value(value)
                 .map(SessionEvent::CommandsAvailable)
+                .map_err(D::Error::custom),
+            "todos" => serde_json::from_value(value)
+                .map(SessionEvent::Todos)
                 .map_err(D::Error::custom),
             _ => Ok(SessionEvent::Unknown(value)),
         }
@@ -1855,6 +1860,12 @@ impl From<AgentMessage> for SessionEvent {
 impl From<CommandsAvailable> for SessionEvent {
     fn from(v: CommandsAvailable) -> Self {
         SessionEvent::CommandsAvailable(v)
+    }
+}
+
+impl From<Todos> for SessionEvent {
+    fn from(v: Todos) -> Self {
+        SessionEvent::Todos(v)
     }
 }
 
@@ -2616,6 +2627,32 @@ pub struct PlanEntry {
     pub status: PlanEntryStatus,
     #[serde(rename = "priority", default, skip_serializing_if = "Option::is_none")]
     pub priority: Option<PlanEntryPriority>,
+}
+
+/// The session's shared todo list, which the user (from any app) and every agent read and change; unlike a plan, nobody owns it. Each event carries the whole list after one change, the newest is current. Not part of the model's context: agents read it with the todos tool.
+/// Tagged `type: "todos"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Todos {
+    #[serde(rename = "items")]
+    pub items: Vec<TodoItem>,
+    /// Who made the change: `user`, or the agent (`neo`, `claude`, a subagent's name).
+    #[serde(rename = "by", default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+}
+
+/// One entry of the shared todo list.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TodoItem {
+    /// Stable for the item's life, so a change names what it changes.
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "text")]
+    pub text: String,
+    #[serde(rename = "done")]
+    pub done: bool,
+    /// Who added it: `user` or the agent's name.
+    #[serde(rename = "by", default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

@@ -27,6 +27,7 @@ const LABELS: Record<CoreToolName, string> = {
   models: "Models",
   send_message: "Send message",
   wait: "Wait",
+  todos: "Todos",
   ui_library: "UI library",
 };
 

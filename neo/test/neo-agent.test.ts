@@ -424,6 +424,7 @@ test("the system prompt and tools are sent unchanged on every request", async ()
       "models",
       "send_message",
       "wait",
+      "todos",
       "ui_library",
     ],
   });

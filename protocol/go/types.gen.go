@@ -1277,7 +1277,7 @@ type SessionEventRecord struct {
 }
 
 // SessionEvent: Everything that happens in a session. Views must ignore types they don't know.
-// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, ShowDontTell, Notice, SubagentStarted, SubagentEnded, AgentMessage, CommandsAvailable, UnknownSessionEvent.
+// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, ShowDontTell, Notice, SubagentStarted, SubagentEnded, AgentMessage, CommandsAvailable, Todos, UnknownSessionEvent.
 type SessionEvent struct {
 	Value SessionEventVariant
 }
@@ -1478,6 +1478,12 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "commands_available":
 		var v CommandsAvailable
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "todos":
+		var v Todos
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -2308,6 +2314,34 @@ type PlanEntry struct {
 	Content  string             `json:"content"`
 	Status   PlanEntryStatus    `json:"status"`
 	Priority *PlanEntryPriority `json:"priority,omitempty"`
+}
+
+// Todos: The session's shared todo list, which the user (from any app) and every agent read and change; unlike a plan, nobody owns it. Each event carries the whole list after one change, the newest is current. Not part of the model's context: agents read it with the todos tool.
+type Todos struct {
+	Items []TodoItem `json:"items"`
+	// Who made the change: `user`, or the agent (`neo`, `claude`, a subagent's name).
+	By *string `json:"by,omitempty"`
+}
+
+func (Todos) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v Todos) MarshalJSON() ([]byte, error) {
+	type plain Todos
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"todos", plain(v)})
+}
+
+// TodoItem: One entry of the shared todo list.
+type TodoItem struct {
+	// Stable for the item's life, so a change names what it changes.
+	ID   string `json:"id"`
+	Text string `json:"text"`
+	Done bool   `json:"done"`
+	// Who added it: `user` or the agent's name.
+	By *string `json:"by,omitempty"`
 }
 
 type PlanEntryStatus string

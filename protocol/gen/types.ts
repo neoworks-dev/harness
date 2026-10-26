@@ -628,7 +628,8 @@ export type SessionEvent =
   | SubagentStarted
   | SubagentEnded
   | AgentMessage
-  | CommandsAvailable;
+  | CommandsAvailable
+  | Todos;
 
 export type SessionEventTag = SessionEvent["type"];
 
@@ -1041,6 +1042,24 @@ export interface PlanEntry {
   content: string;
   status: PlanEntryStatus;
   priority?: PlanEntryPriority;
+}
+
+/** The session's shared todo list, which the user (from any app) and every agent read and change; unlike a plan, nobody owns it. Each event carries the whole list after one change, the newest is current. Not part of the model's context: agents read it with the todos tool. */
+export interface Todos {
+  type: "todos";
+  items: TodoItem[];
+  /** Who made the change: `user`, or the agent (`neo`, `claude`, a subagent's name). */
+  by?: string;
+}
+
+/** One entry of the shared todo list. */
+export interface TodoItem {
+  /** Stable for the item's life, so a change names what it changes. */
+  id: string;
+  text: string;
+  done: boolean;
+  /** Who added it: `user` or the agent's name. */
+  by?: string;
 }
 
 export type PlanEntryStatus = "pending" | "in_progress" | "completed";

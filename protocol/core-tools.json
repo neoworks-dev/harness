@@ -168,6 +168,29 @@
       }
     },
     {
+      "name": "todos",
+      "description": "The session's shared todo list, which the user and every agent of the session read and change (the user from a pane in their app). Not your own task plan: use it for what the user and you keep track of together. list returns every item as `t3 [ ] text (who added it)`; add puts one at the end; done / undone check one off or open it again; edit changes its text; remove deletes it. Items are named by their id (t3). Look at it when the user mentions their todos, and check off what you finished.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["list", "add", "edit", "done", "undone", "remove"],
+            "description": "Default list."
+          },
+          "text": {
+            "type": "string",
+            "description": "For add and edit: the item, as a short line."
+          },
+          "id": {
+            "type": "string",
+            "description": "For edit, done, undone and remove: the item's id (t3)."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "ui_library",
       "description": "How to show UI: write a ```neoui block in your reply. Returns what you need to write one: when UI beats prose, the neoui language, every library component with its attributes, and the components the connected apps add (their signatures and what each is for). Call it before your first neoui block in a conversation, and again when an app announces components= you haven't read.",
       "inputSchema": {
