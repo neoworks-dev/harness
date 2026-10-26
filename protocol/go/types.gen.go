@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionUnqueue, SessionUnqueued, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetFetchMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, SessionRemovedMessage, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionUnqueue, SessionUnqueued, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UserSettingsMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetFetchMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, SessionRemovedMessage, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -221,6 +221,12 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "theme":
 		var v ThemeMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "user.settings":
+		var v UserSettingsMessage
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -916,6 +922,30 @@ func (v ThemeMessage) MarshalJSON() ([]byte, error) {
 		Tag string `json:"topic"`
 		plain
 	}{"theme", plain(v)})
+}
+
+// UserSettingsMessage: Daemon → every client after bus.welcome and whenever the user flips a /settings toggle: the toggles' values, for every session.
+type UserSettingsMessage struct {
+	Payload UserSettings `json:"payload"`
+}
+
+func (UserSettingsMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v UserSettingsMessage) MarshalJSON() ([]byte, error) {
+	type plain UserSettingsMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"user.settings", plain(v)})
+}
+
+// UserSettings: The user's on/off settings (/settings), the same for every session and app.
+type UserSettings struct {
+	// Show, don't tell.: agents answer with UI more than text.
+	ShowDontTell bool `json:"showDontTell"`
+	// Diffs are drawn side by side (old left, new right) where they fit, else unified.
+	SplitDiffs bool `json:"splitDiffs"`
 }
 
 // UiActionMessage: Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon.

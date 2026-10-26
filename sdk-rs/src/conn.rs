@@ -338,6 +338,9 @@ impl Io {
                 self.emit(Event::Connectors(message.payload.connectors));
             }
             Envelope::ThemeMessage(message) => self.emit(Event::Theme(message.payload)),
+            Envelope::UserSettingsMessage(message) => {
+                self.emit(Event::UserSettings(message.payload));
+            }
             Envelope::FileChangedMessage(message) => self.emit(Event::FileChanged(message.payload)),
             Envelope::SessionChangedMessage(message) => {
                 self.emit(Event::SessionChanged(message.payload));

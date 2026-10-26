@@ -323,7 +323,7 @@ pub struct App {
     images: Option<Images>,
     /// File type icons in the chat and the files panel (`NEO_TERM_ICONS=off`: none).
     icons: bool,
-    /// `/diff split`: diffs side by side, in the chat and the file view.
+    /// `/settings split-diffs`: diffs side by side, in the chat and the file view.
     split_diffs: bool,
     /// What Ctrl-] / Ctrl-[ did to the panes' widths.
     resized: Resized,
@@ -400,14 +400,12 @@ pub struct App {
 impl App {
     pub fn new(config: Config) -> App {
         let theme = config.prefs.theme();
-        let split_diffs = config.prefs.split_diffs();
         let palette = if config.no_color {
             plain_palette()
         } else {
             theme.palette(&Palette::default())
         };
-        let mut widgets = Widgets::new(PathBuf::from(&config.cwd), palette);
-        widgets.set_split_diffs(split_diffs);
+        let widgets = Widgets::new(PathBuf::from(&config.cwd), palette);
         let now = crate::util::now_ms();
         let session = config.session.clone();
         let chat = Chat::for_app(&config.app_id).in_dir(&config.cwd);
@@ -433,7 +431,8 @@ impl App {
             chat,
             images: None,
             icons: false,
-            split_diffs,
+            // Until the daemon's user.settings says otherwise.
+            split_diffs: false,
             resized: Resized::default(),
             connectors: Vec::new(),
             editor: Editor::default(),
@@ -687,23 +686,6 @@ impl App {
         *delta = delta.saturating_add(by);
     }
 
-    /// `/diff [inline|split]`; nothing: the other one.
-    fn switch_diffs(&mut self, text: &str) {
-        let split = match text.split_whitespace().nth(1) {
-            None => !self.split_diffs,
-            Some("split") => true,
-            Some("inline") => false,
-            Some(_) => return self.notify("usage: /diff [inline|split]", true),
-        };
-        self.split_diffs = split;
-        self.widgets.set_split_diffs(split);
-        let name = if split { "split" } else { "inline" };
-        match self.prefs.set_split_diffs(split) {
-            Ok(()) => self.notify(format!("diffs: {name}"), false),
-            Err(why) => self.notify(format!("diffs: {name} (not kept: {why})"), true),
-        }
-    }
-
     fn notify(&mut self, text: impl Into<String>, error: bool) {
         self.notice = Some(Notice {
             text: text.into(),
@@ -719,6 +701,11 @@ impl App {
         match event {
             Event::Focus(focus) => self.on_focus(focus, &mut fx),
             Event::Connectors(connectors) => self.connectors = connectors,
+            // `/settings`' side-by-side diffs, for the chat and the file view.
+            Event::UserSettings(settings) => {
+                self.split_diffs = settings.split_diffs;
+                self.widgets.set_split_diffs(settings.split_diffs);
+            }
             Event::SessionChanged(info) => {
                 if info.id == self.session {
                     self.sync_info(&info);
@@ -2442,7 +2429,6 @@ impl App {
             "help" => self.overlay = Overlay::Help,
             "github" => self.github.open(),
             "theme" => self.switch_theme(text),
-            "diff" => self.switch_diffs(text),
             "files" => self.focus_files(),
             "terminal" => self.toggle_terminal(),
             "quit" => fx.push(Effect::Quit),

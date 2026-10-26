@@ -50,6 +50,7 @@ pub enum Envelope {
     ViewSnapshotMessage(ViewSnapshotMessage),
     ViewPatchMessage(ViewPatchMessage),
     ThemeMessage(ThemeMessage),
+    UserSettingsMessage(UserSettingsMessage),
     UiActionMessage(UiActionMessage),
     SecretRequestMessage(SecretRequestMessage),
     SecretAnswerMessage(SecretAnswerMessage),
@@ -183,6 +184,10 @@ impl Serialize for Envelope {
             Envelope::ThemeMessage(v) => {
                 ("theme", serde_json::to_value(v).map_err(S::Error::custom)?)
             }
+            Envelope::UserSettingsMessage(v) => (
+                "user.settings",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             Envelope::UiActionMessage(v) => (
                 "ui.action",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
@@ -327,6 +332,9 @@ impl<'de> Deserialize<'de> for Envelope {
                 .map_err(D::Error::custom),
             "theme" => serde_json::from_value(value)
                 .map(Envelope::ThemeMessage)
+                .map_err(D::Error::custom),
+            "user.settings" => serde_json::from_value(value)
+                .map(Envelope::UserSettingsMessage)
                 .map_err(D::Error::custom),
             "ui.action" => serde_json::from_value(value)
                 .map(Envelope::UiActionMessage)
@@ -537,6 +545,12 @@ impl From<ViewPatchMessage> for Envelope {
 impl From<ThemeMessage> for Envelope {
     fn from(v: ThemeMessage) -> Self {
         Envelope::ThemeMessage(v)
+    }
+}
+
+impl From<UserSettingsMessage> for Envelope {
+    fn from(v: UserSettingsMessage) -> Self {
+        Envelope::UserSettingsMessage(v)
     }
 }
 
@@ -1083,6 +1097,25 @@ pub struct ViewPatchMessage {
 pub struct ThemeMessage {
     #[serde(rename = "payload")]
     pub payload: Theme,
+}
+
+/// Daemon → every client after bus.welcome and whenever the user flips a /settings toggle: the toggles' values, for every session.
+/// Tagged `topic: "user.settings"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserSettingsMessage {
+    #[serde(rename = "payload")]
+    pub payload: UserSettings,
+}
+
+/// The user's on/off settings (/settings), the same for every session and app.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserSettings {
+    /// Show, don't tell.: agents answer with UI more than text.
+    #[serde(rename = "showDontTell")]
+    pub show_dont_tell: bool,
+    /// Diffs are drawn side by side (old left, new right) where they fit, else unified.
+    #[serde(rename = "splitDiffs")]
+    pub split_diffs: bool,
 }
 
 /// Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon.

@@ -407,6 +407,10 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       focus,
       views,
       theme: options.theme ?? defaultTheme,
+      userSettings: {
+        get: () => settings.userSettings(),
+        onChange: (listener) => settings.onToggle(listener),
+      },
       assets,
       action: (action, from) => actions.run(action, from),
       command: (session, text, context) => commands.run(session, text, context),

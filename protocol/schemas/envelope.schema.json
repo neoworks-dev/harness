@@ -95,6 +95,9 @@
           "$ref": "#/$defs/ThemeMessage"
         },
         {
+          "$ref": "#/$defs/UserSettingsMessage"
+        },
+        {
           "$ref": "#/$defs/UiActionMessage"
         },
         {
@@ -874,6 +877,36 @@
         }
       },
       "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "UserSettingsMessage": {
+      "description": "Daemon → every client after bus.welcome and whenever the user flips a /settings toggle: the toggles' values, for every session.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "user.settings"
+        },
+        "payload": {
+          "$ref": "#/$defs/UserSettings"
+        }
+      },
+      "required": ["topic", "payload"],
+      "additionalProperties": false
+    },
+    "UserSettings": {
+      "description": "The user's on/off settings (/settings), the same for every session and app.",
+      "type": "object",
+      "properties": {
+        "showDontTell": {
+          "type": "boolean",
+          "description": "Show, don't tell.: agents answer with UI more than text."
+        },
+        "splitDiffs": {
+          "type": "boolean",
+          "description": "Diffs are drawn side by side (old left, new right) where they fit, else unified."
+        }
+      },
+      "required": ["showDontTell", "splitDiffs"],
       "additionalProperties": false
     },
     "UiActionMessage": {

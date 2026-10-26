@@ -30,6 +30,7 @@ export type Envelope =
   | ViewSnapshotMessage
   | ViewPatchMessage
   | ThemeMessage
+  | UserSettingsMessage
   | UiActionMessage
   | SecretRequestMessage
   | SecretAnswerMessage
@@ -350,6 +351,20 @@ export interface ViewPatchMessage {
 export interface ThemeMessage {
   topic: "theme";
   payload: Theme;
+}
+
+/** Daemon → every client after bus.welcome and whenever the user flips a /settings toggle: the toggles' values, for every session. */
+export interface UserSettingsMessage {
+  topic: "user.settings";
+  payload: UserSettings;
+}
+
+/** The user's on/off settings (/settings), the same for every session and app. */
+export interface UserSettings {
+  /** Show, don't tell.: agents answer with UI more than text. */
+  showDontTell: boolean;
+  /** Diffs are drawn side by side (old left, new right) where they fit, else unified. */
+  splitDiffs: boolean;
 }
 
 /** Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon. */

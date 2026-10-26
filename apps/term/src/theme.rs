@@ -142,15 +142,6 @@ impl Prefs {
     pub fn set_theme(&self, theme: Theme) -> std::io::Result<()> {
         self.write("theme", theme.name())
     }
-
-    /// Diffs side by side (`"diff": "split"`), else unified (the default).
-    pub fn split_diffs(&self) -> bool {
-        self.read().get("diff").and_then(|v| v.as_str()) == Some("split")
-    }
-
-    pub fn set_split_diffs(&self, split: bool) -> std::io::Result<()> {
-        self.write("diff", if split { "split" } else { "inline" })
-    }
 }
 
 #[cfg(test)]
@@ -184,11 +175,6 @@ mod tests {
         let prefs = Prefs::new(Some(dir.join("term.json")));
         assert_eq!(prefs.theme(), Theme::Dark);
         prefs.set_theme(Theme::Light).unwrap();
-        assert_eq!(prefs.theme(), Theme::Light);
-        // The diff layout beside it, each kept when the other is set.
-        assert!(!prefs.split_diffs());
-        prefs.set_split_diffs(true).unwrap();
-        assert!(prefs.split_diffs());
         assert_eq!(prefs.theme(), Theme::Light);
         std::fs::write(dir.join("term.json"), "not json").unwrap();
         assert_eq!(prefs.theme(), Theme::Dark);

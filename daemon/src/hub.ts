@@ -8,6 +8,7 @@ import type {
   SessionEventRecord,
   Theme,
   UiAction,
+  UserSettings,
 } from "@neoworks-dev/neo-protocol/types";
 import { validateEnvelope } from "@neoworks-dev/neo-protocol/validate";
 import type { AssetStore } from "./assets.ts";
@@ -34,6 +35,11 @@ export interface HubParts {
   focus?: FocusManager;
   views?: ViewManager;
   theme?: Theme;
+  /** The /settings toggles: sent after welcome and to every client when one flips. */
+  userSettings?: {
+    get: () => UserSettings;
+    onChange: (listener: (settings: UserSettings) => void) => void;
+  };
   assets?: AssetStore;
   /** Runs a ui.action; rejects with NotFoundError/BadRequestError for impossible ones. */
   action?: (action: UiAction, from: string) => Promise<void>;
@@ -120,6 +126,9 @@ export class Hub {
       }
     });
     focus?.onChange((payload) => this.broadcastAll({ topic: "agent.focus", payload }));
+    parts.userSettings?.onChange((payload) => {
+      this.broadcastAll({ topic: "user.settings", payload });
+    });
     focus?.onLeave((session) => this.releaseIfUnused(session));
     sessions.onRemove((id) => this.sessionRemoved(id));
     // Coalesce bursts (an app registering, then listing its tools) into one broadcast.
@@ -375,6 +384,9 @@ export class Hub {
           this.send(client, { topic: "agent.focus", payload: this.parts.focus.current() });
         }
         if (this.parts.theme) this.send(client, { topic: "theme", payload: this.parts.theme });
+        if (this.parts.userSettings) {
+          this.send(client, { topic: "user.settings", payload: this.parts.userSettings.get() });
+        }
         return;
       case "session.create":
         this.send(client, {
@@ -595,6 +607,7 @@ export class Hub {
       case "view.patch":
       case "secret.request":
       case "theme":
+      case "user.settings":
         this.fail(
           client,
           "id" in msg ? msg.id : undefined,

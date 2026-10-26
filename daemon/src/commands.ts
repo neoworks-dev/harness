@@ -7,8 +7,8 @@
 //   /title                                    write the session's title again, with a model
 //   /title-model [harness] [model|default]    the model that writes titles (for every session)
 //   /safesearch [strict|moderate|off]         what neo's web search may return, for every session
-//   /settings [toggle [on|off]]               the user's toggles ("Show, don't tell."), for every
-//                                             session; no toggle: pick one to flip
+//   /settings [toggle [on|off]]               the user's toggles ("Show, don't tell.", side-by-side
+//                                             diffs), for every session; no toggle: pick one
 //   /login [provider | key [provider]]        add an API key or an account (login.ts)
 //   /logout [provider], /accounts             remove a login; list what is logged in
 //   /plugin …                                 marketplaces and plugins (plugins.ts)
@@ -95,6 +95,8 @@ interface Toggle {
   description: string;
   get: () => boolean;
   set: (on: boolean) => void;
+  /** The agents are told of it (it changes how they answer), not only the apps. */
+  agents: boolean;
 }
 
 function when(iso: string | undefined): string | undefined {
@@ -356,6 +358,17 @@ export class Commands {
           "describing them. They get neo's UI library with their next prompt.",
         get: () => settings.showDontTell(),
         set: (on) => settings.setShowDontTell(on),
+        agents: true,
+      },
+      {
+        id: "split-diffs",
+        name: "Side-by-side diffs",
+        description:
+          "Apps draw diffs with the old lines on the left and the new on the right where both " +
+          "fit (term's edits and file view), else one after the other.",
+        get: () => settings.splitDiffs(),
+        set: (on) => settings.setSplitDiffs(on),
+        agents: false,
       },
     ];
   }
@@ -376,7 +389,7 @@ export class Commands {
     const set = (t: Toggle, on: boolean): void => {
       t.set(on);
       let text = `${t.name} ${on ? "on" : "off"}, for every session.`;
-      if (on) text += " Agents hear of it with their next prompt.";
+      if (on && t.agents) text += " Agents hear of it with their next prompt.";
       this.parts.notice(session, text);
     };
     if (toggle !== undefined) {

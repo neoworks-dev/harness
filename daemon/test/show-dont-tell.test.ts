@@ -71,13 +71,30 @@ test("/settings without a toggle shows them with their state, and picking one fl
   await daemon.commands.run(session, "/settings");
   const choice = events(daemon, session).find((e) => e.type === "choice");
   if (choice?.type !== "choice") throw new Error("no choice was shown");
-  expect(choice.options.map((o) => o.name)).toEqual(["Show, don't tell. · off"]);
+  expect(choice.options.map((o) => o.name)).toEqual([
+    "Show, don't tell. · off",
+    "Side-by-side diffs · off",
+  ]);
   expect(choice.options[0]?.description).toContain("UI more than text");
 
   const args = { id: choice.id, option: "show-dont-tell" };
   await daemon.actions.run({ session, ref: "x", action: "neo.choose", args }, "test");
   await Bun.sleep(10);
   expect((await turn(daemon, agent, session)).map((e) => e.on)).toEqual([true]);
+});
+
+test("side-by-side diffs is a toggle for the apps: they hear of it, the agents don't", async () => {
+  const { daemon, agent } = await setup();
+  const session = daemon.sessions.create({}).id;
+  const heard: unknown[] = [];
+  daemon.settings.onToggle((settings) => heard.push(settings));
+  await daemon.commands.run(session, "/settings split-diffs on");
+  expect(heard).toEqual([{ showDontTell: false, splitDiffs: true }]);
+  expect(daemon.settings.userSettings().splitDiffs).toBe(true);
+  const notices: string[] = [];
+  for (const e of events(daemon, session)) if (e.type === "notice") notices.push(e.text);
+  expect(notices).toEqual(["Side-by-side diffs on, for every session."]);
+  expect(await turn(daemon, agent, session)).toEqual([]);
 });
 
 test("/settings rejects what it doesn't know", async () => {

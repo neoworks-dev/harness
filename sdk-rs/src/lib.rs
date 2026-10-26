@@ -27,8 +27,8 @@ use neo_protocol::{
     SessionCreate, SessionCreateParams, SessionEventRecord, SessionInfo, SessionInput,
     SessionInputMessage, SessionList, SessionRef, SessionSubscribe, SessionUnqueue,
     SessionUnqueueParams, SessionUnsubscribe, SubscribeParams, SubscribedPayload, Theme, UiAction,
-    UiActionMessage, ViewPatch, ViewRef, ViewSnapshot, ViewSubscribe, ViewUnsubscribe,
-    WaitingInput,
+    UiActionMessage, UserSettings, ViewPatch, ViewRef, ViewSnapshot, ViewSubscribe,
+    ViewUnsubscribe, WaitingInput,
 };
 pub use socket::default_socket_path;
 pub use view::ViewState;
@@ -123,6 +123,8 @@ pub enum Event {
     Connection(bool),
     /// `theme`: sent after every hello and when it changes.
     Theme(Theme),
+    /// `user.settings`: the user's /settings toggles, after every hello and on each change.
+    UserSettings(UserSettings),
     /// The full view of a followed session: after [`Client::subscribe_view`] and again after
     /// each reconnect. Replace what you have.
     ViewSnapshot(ViewSnapshot),

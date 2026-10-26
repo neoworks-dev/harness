@@ -7,7 +7,7 @@
 // are the toggles /settings lists ("Show, don't tell.").
 // Nothing is set that the user didn't choose: each harness keeps its own defaults.
 import type { ConfigCategory, SafeSearch } from "@neoworks-dev/neo/agent";
-import type { SettingName } from "@neoworks-dev/neo-protocol/types";
+import type { SettingName, UserSettings } from "@neoworks-dev/neo-protocol/types";
 import type { SessionStore } from "./store.ts";
 
 /** The settings that belong to a harness (approvals and harness are neo's own). */
@@ -70,6 +70,8 @@ export function parseSafeSearch(value: string): SafeSearch | undefined {
 }
 
 export class Settings {
+  private readonly toggleListeners: ((settings: UserSettings) => void)[] = [];
+
   /** `main`: the harness a session runs on until the user picks another (the daemon's agent). */
   constructor(
     private readonly store: SessionStore,
@@ -202,6 +204,32 @@ export class Settings {
   /** For every session: each agent is told with its next prompt (see told.ts). */
   setShowDontTell(on: boolean): void {
     this.store.setMeta(metaKey("daemon", "show_dont_tell"), on ? "on" : "off");
+    this.togglesChanged();
+  }
+
+  /** Whether apps draw diffs side by side (off until the user turns it on). */
+  splitDiffs(): boolean {
+    return this.store.getMeta(metaKey("daemon", "split_diffs")) === "on";
+  }
+
+  setSplitDiffs(on: boolean): void {
+    this.store.setMeta(metaKey("daemon", "split_diffs"), on ? "on" : "off");
+    this.togglesChanged();
+  }
+
+  /** The /settings toggles, as apps get them (user.settings). */
+  userSettings(): UserSettings {
+    return { showDontTell: this.showDontTell(), splitDiffs: this.splitDiffs() };
+  }
+
+  /** Calls `listener` with the toggles after each change. */
+  onToggle(listener: (settings: UserSettings) => void): void {
+    this.toggleListeners.push(listener);
+  }
+
+  private togglesChanged(): void {
+    const settings = this.userSettings();
+    for (const listener of this.toggleListeners) listener(settings);
   }
 
   setApprovals(session: string, value: Approvals): void {
