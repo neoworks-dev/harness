@@ -75,6 +75,11 @@ pub const COMMANDS: &[Command] = &[
         "how much adult content web search may return",
     ),
     daemon(
+        "settings",
+        "[toggle [on|off]]",
+        "turn settings on or off, like Show, don't tell. (UI over text)",
+    ),
+    daemon(
         "login",
         "[provider]",
         "add an API key or an account (ChatGPT, Copilot, Claude Pro/Max)",

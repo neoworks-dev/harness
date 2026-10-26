@@ -34,6 +34,7 @@ commands
   /harness [neo|claude|codex]         switch this session's agent: neo (based on pi), claude, codex
   /approvals [ask|review|edits|auto]  ask, review each edit, accept edits, or auto (no value: next)
   /safesearch [strict|moderate|off]   how much adult content web search may return
+  /settings [toggle [on|off]]         turn settings on or off, like Show, don't tell. (UI over text)
   /login [provider]                   add an API key or an account (ChatGPT, Copilot, Claude Pro/Ma…
   /logout [provider]                  remove a stored API key or account
   /accounts                           list the API keys and accounts in use
@@ -41,7 +42,6 @@ commands
   /sessions                           switch to another session
   /sidebar                            show or hide the sessions sidebar (ctrl-g focuses it)
   /expand                             toggle full tool results (ctrl-o)
-  /thoughts                           show or hide the agent's thoughts (ctrl-t)
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 > message the agent · / for commands
 site · neo

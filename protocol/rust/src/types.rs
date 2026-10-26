@@ -1483,6 +1483,7 @@ pub enum SessionEvent {
     Usage(Usage),
     EditsReverted(EditsReverted),
     UserNote(UserNote),
+    ShowDontTell(ShowDontTell),
     Notice(Notice),
     SubagentStarted(SubagentStarted),
     SubagentEnded(SubagentEnded),
@@ -1570,6 +1571,10 @@ impl Serialize for SessionEvent {
             ),
             SessionEvent::UserNote(v) => (
                 "user_note",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            SessionEvent::ShowDontTell(v) => (
+                "show_dont_tell",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
             SessionEvent::Notice(v) => {
@@ -1667,6 +1672,9 @@ impl<'de> Deserialize<'de> for SessionEvent {
                 .map_err(D::Error::custom),
             "user_note" => serde_json::from_value(value)
                 .map(SessionEvent::UserNote)
+                .map_err(D::Error::custom),
+            "show_dont_tell" => serde_json::from_value(value)
+                .map(SessionEvent::ShowDontTell)
                 .map_err(D::Error::custom),
             "notice" => serde_json::from_value(value)
                 .map(SessionEvent::Notice)
@@ -1811,6 +1819,12 @@ impl From<EditsReverted> for SessionEvent {
 impl From<UserNote> for SessionEvent {
     fn from(v: UserNote) -> Self {
         SessionEvent::UserNote(v)
+    }
+}
+
+impl From<ShowDontTell> for SessionEvent {
+    fn from(v: ShowDontTell) -> Self {
+        SessionEvent::ShowDontTell(v)
     }
 }
 
@@ -2304,6 +2318,17 @@ pub struct UserNote {
     /// What was answered: the question's title and the picked option.
     #[serde(rename = "about", default, skip_serializing_if = "Option::is_none")]
     pub about: Option<String>,
+}
+
+/// The user's "Show, don't tell." setting (/settings) is not what this session's agent was last told: on, it is asked to answer with UI more than text and given the UI library; off, to answer in text again. Logged before the prompt it goes with, when it changed since; rendered to the agent as <show-dont-tell on="…">…</show-dont-tell>. Not shown in the chat.
+/// Tagged `type: "show_dont_tell"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ShowDontTell {
+    #[serde(rename = "on")]
+    pub on: bool,
+    /// What ui_library returns, when on: the language, the components and the open apps' own.
+    #[serde(rename = "library", default, skip_serializing_if = "Option::is_none")]
+    pub library: Option<String>,
 }
 
 /// A line for the user in the chat, from the daemon: the outcome of /login, /logout and /accounts, a login URL to open. Never a secret. Not a context event: the agent doesn't see it.

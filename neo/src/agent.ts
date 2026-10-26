@@ -16,6 +16,7 @@ import type {
   Notice,
   Plan,
   SessionEvent,
+  ShowDontTell,
   StopReason,
   ToolCall,
   ToolCallContent,
@@ -44,9 +45,18 @@ export type AgentUpdate =
   | HarnessMessage
   | Notice;
 
-/** Connector events (and what guests did on their own) that get prepended to the next user message. */
+/**
+ * Connector events (and what guests did on their own, the user's notes and settings that change
+ * how the agent answers) that get prepended to the next user message.
+ */
 export type ContextEvent =
-  AppConnected | AppDisconnected | FocusChanged | GuestTurn | EditsReverted | UserNote;
+  | AppConnected
+  | AppDisconnected
+  | FocusChanged
+  | GuestTurn
+  | EditsReverted
+  | UserNote
+  | ShowDontTell;
 
 /** An MCP server for the agent (ACP's McpServerHttp shape). */
 export interface McpServer {

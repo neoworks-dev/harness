@@ -3,7 +3,8 @@
 // setting_changed events in the session's log; the last harness settings and the last harness
 // choice are kept as the defaults for new sessions (approvals is not: a new session asks). The
 // model that writes session titles (/title-model) is the user's last choice, for every session.
-// Safe search (/safesearch) is the user's, not a session's: one value for every session.
+// Safe search (/safesearch) is the user's, not a session's: one value for every session, and so
+// are the toggles /settings lists ("Show, don't tell.").
 // Nothing is set that the user didn't choose: each harness keeps its own defaults.
 import type { ConfigCategory, SafeSearch } from "@neoworks-dev/neo/agent";
 import type { SettingName } from "@neoworks-dev/neo-protocol/types";
@@ -191,6 +192,16 @@ export class Settings {
   /** For every session, from their next search on. Not logged in a session: it isn't one's. */
   setSafeSearch(value: SafeSearch): void {
     this.store.setMeta(metaKey("daemon", "safesearch"), value);
+  }
+
+  /** Whether the user asked for "Show, don't tell." (off until they turn it on). */
+  showDontTell(): boolean {
+    return this.store.getMeta(metaKey("daemon", "show_dont_tell")) === "on";
+  }
+
+  /** For every session: each agent is told with its next prompt (see told.ts). */
+  setShowDontTell(on: boolean): void {
+    this.store.setMeta(metaKey("daemon", "show_dont_tell"), on ? "on" : "off");
   }
 
   setApprovals(session: string, value: Approvals): void {

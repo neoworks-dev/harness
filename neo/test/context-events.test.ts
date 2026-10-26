@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ContextEvent } from "../src/agent.ts";
-import { formatPrompt } from "../src/context-events.ts";
+import { formatPrompt, SHOW_DONT_TELL_OFF, SHOW_DONT_TELL_ON } from "../src/context-events.ts";
 import { SYSTEM_PROMPT } from "../src/system-prompt.ts";
 
 test("no events leaves the text unchanged", () => {
@@ -177,6 +177,17 @@ test("an app's UI components are in its announcement, and an update says the lis
     '<app updated="maps" v="3" components=""/>',
     "go",
   ]);
+});
+
+test("Show, don't tell. asks for UI and hands over the library, or takes it back", () => {
+  const on = formatPrompt("go", [{ type: "show_dont_tell", on: true, library: "LIBRARY" }]);
+  const lines = on.split("\n");
+  expect(lines[0]).toBe('<show-dont-tell on="true">');
+  expect(on).toContain(SHOW_DONT_TELL_ON);
+  expect(on).toContain("\n\nLIBRARY\n</show-dont-tell>\ngo");
+  expect(formatPrompt("go", [{ type: "show_dont_tell", on: false }])).toBe(
+    `<show-dont-tell on="false">\n${SHOW_DONT_TELL_OFF}\n</show-dont-tell>\ngo`,
+  );
 });
 
 test("every harness is told to call ui_library before its first neoui block", () => {

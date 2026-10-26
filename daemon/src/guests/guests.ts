@@ -44,7 +44,7 @@ import type { Logger } from "../log.ts";
 import { NotFoundError } from "../sessions.ts";
 import { type Guard, RUN_TITLE, type Touches } from "../permissions.ts";
 import type { Approvals, HarnessSettings } from "../settings.ts";
-import { type FocusTarget, ToldState } from "../told.ts";
+import { type FocusTarget, type ShowDontTellSetting, ToldState } from "../told.ts";
 import { AcpConnection, AcpError } from "./acp.ts";
 import { CLAUDE_AGENT_TOOLS } from "./config.ts";
 import type { GuestAccounts, Route, RouteKind } from "./accounts.ts";
@@ -86,6 +86,8 @@ export interface GuestManagerOptions {
   mcpServers: (session: string, role: GatewayRole) => McpServer[];
   connectors: () => ConnectorSnapshot[];
   focus: (session: string) => FocusTarget | undefined;
+  /** The user's "Show, don't tell." setting, told to each adapter when it changed. */
+  showDontTell?: () => ShowDontTellSetting;
   /** What the user chose for this harness in this session (model, effort, mode). */
   settings: (session: string, harness: string) => HarnessSettings;
   /** Asks the user (permission requests). */
@@ -472,6 +474,7 @@ export class GuestManager {
       connectors: options.connectors,
       focus: options.focus,
     };
+    if (options.showDontTell) subagents.showDontTell = options.showDontTell;
     if (options.resolveAsset) subagents.resolveAsset = options.resolveAsset;
     if (requestPermission)
       subagents.requestPermission = (session) => requestPermission(session, NEO);
@@ -1159,7 +1162,11 @@ export class GuestManager {
     const events: ContextEvent[] = [];
     if (!command) {
       events.push(
-        ...guest.told.changes(this.options.connectors(), this.options.focus(guest.session)),
+        ...guest.told.changes(
+          this.options.connectors(),
+          this.options.focus(guest.session),
+          this.options.showDontTell?.(),
+        ),
       );
       for (const event of events) guest.told.apply(event);
       events.push(...said);

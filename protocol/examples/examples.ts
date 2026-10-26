@@ -381,6 +381,19 @@ export const examples: Record<string, Envelope> = {
       },
     },
   },
+  "event-show-dont-tell": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 14,
+      ts: 1760565601200,
+      event: {
+        type: "show_dont_tell",
+        on: true,
+        library: "You can show UI by writing a ```neoui block…",
+      },
+    },
+  },
   "event-notice": {
     topic: "session.events",
     payload: {

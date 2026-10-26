@@ -1277,7 +1277,7 @@ type SessionEventRecord struct {
 }
 
 // SessionEvent: Everything that happens in a session. Views must ignore types they don't know.
-// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, Notice, SubagentStarted, SubagentEnded, AgentMessage, CommandsAvailable, UnknownSessionEvent.
+// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, ShowDontTell, Notice, SubagentStarted, SubagentEnded, AgentMessage, CommandsAvailable, UnknownSessionEvent.
 type SessionEvent struct {
 	Value SessionEventVariant
 }
@@ -1442,6 +1442,12 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "user_note":
 		var v UserNote
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "show_dont_tell":
+		var v ShowDontTell
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -1989,6 +1995,24 @@ func (v UserNote) MarshalJSON() ([]byte, error) {
 		Tag string `json:"type"`
 		plain
 	}{"user_note", plain(v)})
+}
+
+// ShowDontTell: The user's "Show, don't tell." setting (/settings) is not what this session's agent was last told: on, it is asked to answer with UI more than text and given the UI library; off, to answer in text again. Logged before the prompt it goes with, when it changed since; rendered to the agent as <show-dont-tell on="…">…</show-dont-tell>. Not shown in the chat.
+type ShowDontTell struct {
+	On bool `json:"on"`
+	// What ui_library returns, when on: the language, the components and the open apps' own.
+	Library *string `json:"library,omitempty"`
+}
+
+func (ShowDontTell) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v ShowDontTell) MarshalJSON() ([]byte, error) {
+	type plain ShowDontTell
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"show_dont_tell", plain(v)})
 }
 
 // Notice: A line for the user in the chat, from the daemon: the outcome of /login, /logout and /accounts, a login URL to open. Never a secret. Not a context event: the agent doesn't see it.

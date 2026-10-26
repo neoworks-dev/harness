@@ -623,6 +623,7 @@ export type SessionEvent =
   | Usage
   | EditsReverted
   | UserNote
+  | ShowDontTell
   | Notice
   | SubagentStarted
   | SubagentEnded
@@ -868,6 +869,14 @@ export interface UserNote {
   note: string;
   /** What was answered: the question's title and the picked option. */
   about?: string;
+}
+
+/** The user's "Show, don't tell." setting (/settings) is not what this session's agent was last told: on, it is asked to answer with UI more than text and given the UI library; off, to answer in text again. Logged before the prompt it goes with, when it changed since; rendered to the agent as <show-dont-tell on="…">…</show-dont-tell>. Not shown in the chat. */
+export interface ShowDontTell {
+  type: "show_dont_tell";
+  on: boolean;
+  /** What ui_library returns, when on: the language, the components and the open apps' own. */
+  library?: string;
 }
 
 /** A line for the user in the chat, from the daemon: the outcome of /login, /logout and /accounts, a login URL to open. Never a secret. Not a context event: the agent doesn't see it. */

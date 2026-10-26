@@ -27,7 +27,7 @@ import { handoffSummary } from "./handoff.ts";
 import type { Logger } from "./log.ts";
 import { MESSAGES_APP } from "./messages.ts";
 import type { SessionRow, SessionStore } from "./store.ts";
-import { type FocusTarget, ToldState } from "./told.ts";
+import { type FocusTarget, type ShowDontTellSetting, ToldState } from "./told.ts";
 
 export type { FocusTarget } from "./told.ts";
 
@@ -75,6 +75,7 @@ const CONTEXT_TYPES = new Set<SessionEvent["type"]>([
   "guest_turn",
   "edits_reverted",
   "user_note",
+  "show_dont_tell",
 ]);
 
 function isContextEvent(event: SessionEvent): event is ContextEvent {
@@ -153,6 +154,8 @@ export interface SessionManagerOptions {
   connectors?: () => ConnectorSnapshot[];
   /** Where the agent is, if `sessionId` is the current session; announced as focus_changed. */
   focus?: (sessionId: string) => FocusTarget | undefined;
+  /** The user's "Show, don't tell." setting; announced as show_dont_tell when it changed. */
+  showDontTell?: () => ShowDontTellSetting;
   /** MCP servers handed to the agent for a session (the gateway). */
   mcpServers?: (sessionId: string) => McpServer[];
   /** Resolves asset://… handles for the agent's file tools. */
@@ -519,7 +522,12 @@ export class SessionManager {
       .map((r) => r.event)
       .filter(isContextEvent);
     const told = new ToldState();
-    const types: SessionEvent["type"][] = ["app_connected", "app_disconnected", "focus_changed"];
+    const types: SessionEvent["type"][] = [
+      "app_connected",
+      "app_disconnected",
+      "focus_changed",
+      "show_dont_tell",
+    ];
     for (const r of this.store.readTypes(sessionId, types)) told.apply(r.event);
     const rt: Runtime = {
       queue: [],
@@ -703,7 +711,8 @@ export class SessionManager {
     const current = this.options.connectors?.();
     if (!current) return;
     // Appending applies each event to rt.told (see the onAppend hook).
-    for (const event of rt.told.changes(current, this.options.focus?.(sessionId))) {
+    const focus = this.options.focus?.(sessionId);
+    for (const event of rt.told.changes(current, focus, this.options.showDontTell?.())) {
       this.store.append(sessionId, event);
     }
   }

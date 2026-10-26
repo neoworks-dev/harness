@@ -55,6 +55,7 @@ describe("protocol examples", () => {
       usage: true,
       edits_reverted: true,
       user_note: true,
+      show_dont_tell: true,
       notice: true,
       subagent_started: true,
       subagent_ended: true,

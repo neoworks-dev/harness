@@ -19,6 +19,12 @@ function sameFocus(a: FocusTarget | undefined, b: FocusTarget | undefined): bool
   return a?.app === b?.app && JSON.stringify(a?.context ?? {}) === JSON.stringify(b?.context ?? {});
 }
 
+/** The user's "Show, don't tell." setting, and the UI library to give the agent when it is on. */
+export interface ShowDontTellSetting {
+  on: boolean;
+  library: () => string;
+}
+
 export class ToldState {
   /** What the agent thinks is open: app → version it was told about. */
   private readonly told = new Map<string, number>();
@@ -26,10 +32,14 @@ export class ToldState {
   private readonly seen = new Map<string, { v: number; tools: string[]; components: string[] }>();
   /** The last focus it was told. */
   private focus?: FocusTarget;
+  /** Whether it was last asked to show, not tell (never asked: it wasn't). */
+  private showDontTell = false;
 
   /** Records an event the agent was (or will be) told. */
   apply(event: SessionEvent): void {
-    if (event.type === "app_connected") {
+    if (event.type === "show_dont_tell") {
+      this.showDontTell = event.on;
+    } else if (event.type === "app_connected") {
       this.told.set(event.app, event.v);
       // An event that does not say keeps what it knew.
       let components = event.components;
@@ -44,11 +54,24 @@ export class ToldState {
   }
 
   /**
-   * app_connected / app_disconnected for whatever changed since the agent was last told (by
-   * version), then focus_changed if its app or that app's context changed. Doesn't apply them.
+   * show_dont_tell when the user's setting isn't what the agent was last told (with the UI
+   * library when it is on), app_connected / app_disconnected for whatever changed since the
+   * agent was last told (by version), then focus_changed if its app or that app's context
+   * changed. Doesn't apply them.
    */
-  changes(current: ConnectorSnapshot[], focus: FocusTarget | undefined): ContextEvent[] {
+  changes(
+    current: ConnectorSnapshot[],
+    focus: FocusTarget | undefined,
+    showDontTell?: ShowDontTellSetting,
+  ): ContextEvent[] {
     const events: ContextEvent[] = [];
+    if (showDontTell && showDontTell.on !== this.showDontTell) {
+      events.push(
+        showDontTell.on
+          ? { type: "show_dont_tell", on: true, library: showDontTell.library() }
+          : { type: "show_dont_tell", on: false },
+      );
+    }
     const open = new Set(current.map((c) => c.app));
     for (const c of current) {
       if (this.told.get(c.app) === c.v) continue;

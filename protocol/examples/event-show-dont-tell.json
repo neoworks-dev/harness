@@ -1,0 +1,13 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 14,
+    "ts": 1760565601200,
+    "event": {
+      "type": "show_dont_tell",
+      "on": true,
+      "library": "You can show UI by writing a ```neoui block…"
+    }
+  }
+}

@@ -16,7 +16,7 @@ import type {
 import type { ConnectorSnapshot } from "../gateway/registry.ts";
 import type { Logger } from "../log.ts";
 import type { HarnessSettings } from "../settings.ts";
-import { type FocusTarget, ToldState } from "../told.ts";
+import { type FocusTarget, type ShowDontTellSetting, ToldState } from "../told.ts";
 import type { GuestRunResult, RunOptions } from "./run.ts";
 
 export const NEO = "neo";
@@ -33,6 +33,8 @@ export interface SubagentOptions {
   settings: (session: string) => HarnessSettings;
   connectors: () => ConnectorSnapshot[];
   focus: (session: string) => FocusTarget | undefined;
+  /** The user's "Show, don't tell." setting, told to each subagent when it changed. */
+  showDontTell?: () => ShowDontTellSetting;
 }
 
 interface Subagent {
@@ -149,7 +151,11 @@ export class NeoSubagents {
     if (opts.signal?.aborted) return { stopReason: "cancelled", text: "" };
     const restore = await this.apply(agentSession, opts);
     if (typeof restore === "string") return { stopReason: "error", error: restore, text: "" };
-    const events = agent.told.changes(this.options.connectors(), this.options.focus(session));
+    const events = agent.told.changes(
+      this.options.connectors(),
+      this.options.focus(session),
+      this.options.showDontTell?.(),
+    );
     for (const event of events) agent.told.apply(event);
     const onAbort = (): void => agentSession.cancel();
     opts.signal?.addEventListener("abort", onAbort);

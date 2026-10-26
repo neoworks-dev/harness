@@ -96,6 +96,9 @@
           "$ref": "#/$defs/UserNote"
         },
         {
+          "$ref": "#/$defs/ShowDontTell"
+        },
+        {
           "$ref": "#/$defs/Notice"
         },
         {
@@ -672,6 +675,24 @@
         }
       },
       "required": ["type", "note"],
+      "additionalProperties": false
+    },
+    "ShowDontTell": {
+      "description": "The user's \"Show, don't tell.\" setting (/settings) is not what this session's agent was last told: on, it is asked to answer with UI more than text and given the UI library; off, to answer in text again. Logged before the prompt it goes with, when it changed since; rendered to the agent as <show-dont-tell on=\"…\">…</show-dont-tell>. Not shown in the chat.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "show_dont_tell"
+        },
+        "on": {
+          "type": "boolean"
+        },
+        "library": {
+          "type": "string",
+          "description": "What ui_library returns, when on: the language, the components and the open apps' own."
+        }
+      },
+      "required": ["type", "on"],
       "additionalProperties": false
     },
     "Notice": {

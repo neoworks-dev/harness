@@ -7,6 +7,8 @@
 //   /title                                    write the session's title again, with a model
 //   /title-model [harness] [model|default]    the model that writes titles (for every session)
 //   /safesearch [strict|moderate|off]         what neo's web search may return, for every session
+//   /settings [toggle [on|off]]               the user's toggles ("Show, don't tell."), for every
+//                                             session; no toggle: pick one to flip
 //   /login [provider | key [provider]]        add an API key or an account (login.ts)
 //   /logout [provider], /accounts             remove a login; list what is logged in
 //   /plugin …                                 marketplaces and plugins (plugins.ts)
@@ -47,6 +49,7 @@ export const DAEMON_COMMANDS: readonly string[] = [
   "resume",
   "approvals",
   "safesearch",
+  "settings",
   "harness",
   "title",
   "title-model",
@@ -84,6 +87,16 @@ export interface CommandParts {
   settingsTimeoutMs?: number | undefined;
 }
 
+/** An on/off setting of the user's, for every session (see /settings). */
+interface Toggle {
+  /** What /settings takes: `show-dont-tell`. */
+  id: string;
+  name: string;
+  description: string;
+  get: () => boolean;
+  set: (on: boolean) => void;
+}
+
 function when(iso: string | undefined): string | undefined {
   if (iso === undefined) return undefined;
   const date = new Date(iso);
@@ -103,6 +116,7 @@ export class Commands {
     if (name === "resume") return this.resume(session, args);
     if (name === "approvals") return this.approvals(session, args);
     if (name === "safesearch") return this.safeSearch(session, args);
+    if (name === "settings") return this.toggleCommand(session, args);
     if (name === "harness") return this.harness(session, args);
     if (name === "title") return this.titleCommand(session, args);
     if (name === "title-model") return this.titleModel(session, args);
@@ -327,6 +341,65 @@ export class Commands {
         if (chosen !== undefined) set(chosen);
       })
       .catch((err: unknown) => this.parts.log.warn(`/safesearch: ${String(err)}`));
+    return Promise.resolve();
+  }
+
+  /** The user's on/off settings, as /settings lists them. */
+  private toggles(): Toggle[] {
+    const { settings } = this.parts;
+    return [
+      {
+        id: "show-dont-tell",
+        name: "Show, don't tell.",
+        description:
+          "Agents answer with UI more than text: cards, tables, lists and forms instead of " +
+          "describing them. They get neo's UI library with their next prompt.",
+        get: () => settings.showDontTell(),
+        set: (on) => settings.setShowDontTell(on),
+      },
+    ];
+  }
+
+  /** /settings: a card of the toggles to flip one; /settings <toggle> [on|off] sets it. */
+  private toggleCommand(session: string, args: string[]): Promise<void> {
+    const toggles = this.toggles();
+    const [id, value] = args;
+    const usage = `usage: /settings [${toggles.map((t) => t.id).join("|")} [on|off]]`;
+    const toggle = id === undefined ? undefined : toggles.find((t) => t.id === id);
+    if (
+      args.length > 2 ||
+      (id !== undefined && toggle === undefined) ||
+      (value !== undefined && value !== "on" && value !== "off")
+    ) {
+      return Promise.reject(new BadRequestError(usage));
+    }
+    const set = (t: Toggle, on: boolean): void => {
+      t.set(on);
+      let text = `${t.name} ${on ? "on" : "off"}, for every session.`;
+      if (on) text += " Agents hear of it with their next prompt.";
+      this.parts.notice(session, text);
+    };
+    if (toggle !== undefined) {
+      set(toggle, value === undefined ? !toggle.get() : value === "on");
+      return Promise.resolve();
+    }
+    const choice: Omit<Choice, "id"> = {
+      type: "choice",
+      title: "Settings (pick one to turn it on or off)",
+      options: toggles.map((t) => ({
+        id: t.id,
+        name: `${t.name} · ${t.get() ? "on" : "off"}`,
+        description: t.description,
+      })),
+    };
+    // The answer comes later, from a button; the command is done once the choice is shown.
+    void this.parts.asker
+      .ask(session, choice)
+      .then((picked) => {
+        const t = toggles.find((x) => x.id === picked);
+        if (t) set(t, !t.get());
+      })
+      .catch((err: unknown) => this.parts.log.warn(`/settings: ${String(err)}`));
     return Promise.resolve();
   }
 

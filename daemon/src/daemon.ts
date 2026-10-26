@@ -14,6 +14,7 @@ import { Gateway } from "./gateway/gateway.ts";
 import { mcpHandler } from "./gateway/mcp-server.ts";
 import { McpServers, type McpServersOptions } from "./gateway/mcp-servers.ts";
 import { ConnectorRegistry } from "./gateway/registry.ts";
+import { uiLibraryText } from "./gateway/ui-library.ts";
 import { createGuestAccounts } from "./guests/accounts.ts";
 import { createDelegate } from "./guests/delegate.ts";
 import { type GatewayRole, type GuestConfig, GuestManager } from "./guests/guests.ts";
@@ -40,6 +41,7 @@ import type { DaemonPaths } from "./paths.ts";
 import { type BusServer, type DaemonInfoFile, startServer } from "./server.ts";
 import { SessionManager } from "./sessions.ts";
 import { SessionStore } from "./store.ts";
+import type { ShowDontTellSetting } from "./told.ts";
 import { Titles } from "./titles.ts";
 
 import { VERSION } from "./version.ts";
@@ -170,6 +172,12 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     const name = settings.harness(session);
     return name === agent.name || guests.has(name) ? name : agent.name;
   };
+  // "Show, don't tell." (/settings): each agent is told with its next prompt, and given the UI
+  // library as ui_library would return it then.
+  const showDontTell = (): ShowDontTellSetting => ({
+    on: settings.showDontTell(),
+    library: () => uiLibraryText(connectors.componentsOf(), connectors.openApps()),
+  });
   const authPath = options.accounts?.authPath ?? join(paths.dataDir, "auth.json");
   const piAuthPath = options.accounts?.piAuthPath ?? join(paths.dataDir, "pi-auth.json");
   const guests = new GuestManager({
@@ -183,6 +191,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     mcpServers,
     connectors: () => connectors.snapshot(),
     focus: (session) => focus?.focusOf(session),
+    showDontTell,
     settings: (session, guest) => settings.get(session, guest),
     asker,
     approvals: (session) => settings.approvals(session),
@@ -242,6 +251,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     log,
     connectors: () => connectors.snapshot(),
     focus: (sessionId) => focus?.focusOf(sessionId),
+    showDontTell,
     mcpServers: (sessionId) => mcpServers(sessionId),
     guest: (sessionId, name) => guests.turnSession(sessionId, name),
     harness: harnessOf,
