@@ -98,6 +98,8 @@ struct CacheKey {
     thoughts: bool,
     icons: bool,
     split_diffs: bool,
+    /// The newest edit: it shows what it changed, the others are one line.
+    open_edit: bool,
     focused: Option<usize>,
     palette: Palette,
     marker: Style,
@@ -445,6 +447,8 @@ impl Chat {
         let mut entries: Vec<Entry> = Vec::with_capacity(shown.len());
         let mut files: Vec<FileTarget> = Vec::new();
         let mut summaries = turn_changes(items, opts.running).into_iter().peekable();
+        // Only the newest edit shows what it changed (Ctrl-O opens them all).
+        let last_edit = items.iter().rposition(is_edit);
         let mut offset = 0;
         // Tool rows follow each other without a blank line; prose and questions get one.
         let mut after_tool = false;
@@ -528,6 +532,7 @@ impl Chat {
                 thoughts: opts.show_thoughts,
                 icons: opts.icons,
                 split_diffs: opts.split_diffs,
+                open_edit: Some(index) == last_edit,
                 focused: active,
                 palette: opts.palette,
                 marker: opts.marker,
@@ -1114,8 +1119,7 @@ fn render(
     let opts = Options {
         plain_code: !lit,
         split_diffs: key.split_diffs,
-        // Edits show what they changed.
-        open_edits: true,
+        open_edits: key.open_edit,
         expanded: key.expanded,
         show_thoughts: key.thoughts,
         focused_button: key.focused,
@@ -1652,6 +1656,7 @@ mod tests {
             expanded: true,
             thoughts: false,
             split_diffs: false,
+            open_edit: false,
             icons: false,
             focused: None,
             palette: expanded.palette,
@@ -1758,17 +1763,27 @@ mod tests {
         let mut c = Chat::new();
         c.apply_snapshot(snapshot(vec![
             item("u1", "user", "go"),
-            edit("e1", "src/a.rs", 1, 1),
+            edit("e1", "src/b.rs", 2, 0),
+            edit("e2", "src/a.rs", 1, 1),
             item("a1", "agent", "Done."),
         ]));
         c.layout(100, 40, &opts());
-        assert_eq!(texts(&c)[2..5], ["edit src/a.rs  +1 −1", "-old", "+new"]);
+        // Only the newest edit is open.
+        assert_eq!(
+            texts(&c)[2..6],
+            [
+                "edit src/b.rs  +2 −0",
+                "edit src/a.rs  +1 −1",
+                "-old",
+                "+new"
+            ]
+        );
         let split = ChatOpts {
             split_diffs: true,
             ..opts()
         };
         c.layout(100, 40, &split);
-        let row = &texts(&c)[3];
+        let row = &texts(&c)[4];
         assert!(row.starts_with("-old") && row.contains("│+new"), "{row}");
     }
 
