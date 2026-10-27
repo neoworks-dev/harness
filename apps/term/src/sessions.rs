@@ -639,14 +639,9 @@ impl Sessions {
             used += entry.height();
             match entry {
                 Entry::Cluster(name) => {
-                    // The repository's name, then a rule to the edge (on a filled pane the
-                    // bold name is heading enough).
+                    // The repository's name, then a rule to the edge: it parts the projects.
                     let name = truncate(name, w.saturating_sub(3));
-                    let rule = if styles.fills() {
-                        String::new()
-                    } else {
-                        "─".repeat(w.saturating_sub(width(&name) + 2))
-                    };
+                    let rule = "─".repeat(w.saturating_sub(width(&name) + 2));
                     out.push(Line::from(vec![
                         Span::styled(
                             format!(" {name} "),

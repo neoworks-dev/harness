@@ -1,7 +1,7 @@
 
  Sessions · 3                    ┃
    + New chat                    ┃ make the header sticky
- site                            ┃
+ site ───────────────────────    ┃
 ▎  Sticky header          now
 ▎  Done. The header now uses…    Done. The header now uses `position: sticky`.
 
