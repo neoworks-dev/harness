@@ -301,8 +301,10 @@ mod tests {
         assert_eq!(split("../src/ma"), ("../src/".into(), "ma"));
     }
 
-    fn tree() -> PathBuf {
-        let root = std::env::temp_dir().join(format!("neo-term-mention-{}", std::process::id()));
+    /// A tree of its own for the test `name`: tests run side by side.
+    fn tree(name: &str) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("neo-term-mention-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         for dir in ["site/src", "site/node_modules/x", "site/.git", "other"] {
             std::fs::create_dir_all(root.join(dir)).unwrap();
@@ -339,7 +341,7 @@ mod tests {
 
     #[test]
     fn cd_offers_folders_only_and_home_with_a_tilde() {
-        let root = tree();
+        let root = tree("cd");
         let site = root.join("site");
         let m = Mentions::default();
         let cd = |query: &str, home: Option<&Path>| {
@@ -359,7 +361,7 @@ mod tests {
 
     #[test]
     fn listing_goes_up_with_dots_and_matching_looks_under_it() {
-        let root = tree();
+        let root = tree("listing");
         let site = root.join("site");
         let m = Ask(Mentions::default());
         assert_eq!(
