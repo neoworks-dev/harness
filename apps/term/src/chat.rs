@@ -1005,7 +1005,8 @@ fn picked_line(line: &Line<'static>, width_cells: usize) -> Line<'static> {
 }
 
 /// A tool call that can fold into a run: finished, not a question (`p-`/`q-`, which say what was
-/// answered), and not an edit (what was written stays in sight).
+/// answered), not an edit (what was written stays in sight) and not a command (each says what it
+/// was for, on a line of its own).
 fn foldable(
     item: &ViewItem,
     buttons: &HashMap<String, Vec<ButtonRef>>,
@@ -1019,21 +1020,19 @@ fn foldable(
             .is_some_and(|d| d.iter().any(|d| d.interactive))
         && !item.r#ref.starts_with("p-")
         && !item.r#ref.starts_with("q-")
+        && item.command.is_none()
         && changed_files(item).is_empty()
 }
 
-/// A folded run: `15 tool calls · 7 fetch, 5 bash, 3 search · 1 failed`, or `12 bash` when all
+/// A folded run: `15 tool calls · 7 fetch, 5 read, 3 search · 1 failed`, or `12 read` when all
 /// are one tool; all muted but the failures.
 fn folded_line(run: &[&ViewItem], width: usize, p: &Palette) -> Line<'static> {
     let mut verbs: Vec<(String, usize)> = Vec::new();
     for item in run {
-        // A command's call (its label gave way to the command) counts as bash, like neo's.
-        let label = match (&item.label, &item.command) {
-            (Some(label), _) => label.as_str(),
-            (None, Some(_)) => "bash",
-            (None, None) => "tool",
-        };
-        let verb = label
+        let verb = item
+            .label
+            .as_deref()
+            .unwrap_or("tool")
             .split_whitespace()
             .next()
             .unwrap_or("tool")
@@ -1419,38 +1418,47 @@ mod tests {
     }
 
     #[test]
-    fn a_folded_command_counts_as_bash_and_only_failures_are_red() {
-        let mut command: ViewItem = serde_json::from_value(json!({
-            "ref": "t3", "kind": "tool", "command": "ls -la", "state": "done",
-            "component": {"type":"code","code":"out"}
-        }))
-        .unwrap();
+    fn commands_never_fold_and_say_what_they_were_for() {
+        let command = |r: &str, description: &str| -> ViewItem {
+            serde_json::from_value(json!({
+                "ref": r, "kind": "tool", "command": "cargo test", "description": description,
+                "state": "done", "component": {"type":"code","code":"out"}
+            }))
+            .unwrap()
+        };
         let mut c = Chat::new();
         let mut items = vec![
-            call("t1", "read a", "done"),
-            call("t2", "read b", "done"),
-            command.clone(),
+            command("c1", "Run the tests"),
+            command("c2", "Lint"),
+            command("c3", "Format"),
             item("a1", "agent", "Done."),
         ];
         c.apply_snapshot(snapshot(items.clone()));
         c.layout(80, 20, &opts());
-        assert_eq!(texts(&c)[0], "3 tool calls · 2 read, 1 bash");
-        let last = |c: &Chat| c.visible()[0].spans.last().unwrap().style.fg;
-        assert_eq!(last(&c), Some(Palette::default().muted));
+        assert_eq!(texts(&c)[..3], ["Run the tests", "Lint", "Format"]);
 
-        command.state = Some(ItemState::Failed);
-        items[2] = command;
+        // Other calls still fold, and only the failures are red.
+        items[..3].clone_from_slice(&[
+            call("t1", "read a", "done"),
+            call("t2", "read b", "done"),
+            call("t3", "search x", "done"),
+        ]);
         c.apply_snapshot(snapshot(items.clone()));
         c.layout(80, 20, &opts());
-        assert_eq!(texts(&c)[0], "3 tool calls · 2 read, 1 bash · 1 failed");
+        assert_eq!(texts(&c)[0], "3 tool calls · 2 read, 1 search");
+        let last = |c: &Chat| c.visible()[0].spans.last().unwrap().style.fg;
+        assert_eq!(last(&c), Some(Palette::default().muted));
+        items[2] = call("t3", "search x", "failed");
+        c.apply_snapshot(snapshot(items.clone()));
+        c.layout(80, 20, &opts());
+        assert_eq!(texts(&c)[0], "3 tool calls · 2 read, 1 search · 1 failed");
         assert_eq!(last(&c), Some(Palette::default().danger));
 
         // Calls of one tool only say how many.
-        items[0] = call("t1", "bash: pwd", "done");
-        items[1] = call("t2", "bash: ls", "done");
+        items[2] = call("t3", "read c", "failed");
         c.apply_snapshot(snapshot(items));
         c.layout(80, 20, &opts());
-        assert_eq!(texts(&c)[0], "3 bash · 1 failed");
+        assert_eq!(texts(&c)[0], "3 read · 1 failed");
     }
 
     #[test]

@@ -414,7 +414,8 @@ fn a_command_that_ran_reads_as_what_it_was_for() {
             &code("ok"),
         )
     };
-    assert_eq!(lines(&item("done"), 40), ["Run the tests", "  ⎿ ok"]);
+    assert_eq!(lines(&item("done"), 40), ["Run the tests"]);
+    assert_eq!(lines(&item("failed"), 40), ["Run the tests"]);
     // Running, or expanded, the command shows.
     assert_eq!(lines(&item("running"), 40)[0], "cargo test -q 2>&1 | tail");
     let expanded = Options {

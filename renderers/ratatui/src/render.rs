@@ -256,8 +256,8 @@ impl<'a> Cx<'a> {
             Some(label) => wrap(&self.tool_label(label), hw),
             None => Vec::new(),
         };
-        // A command that has run and says what it was for reads as that; the command itself is
-        // in the expanded view.
+        // A command that has run and says what it was for reads as that, on its own; the command
+        // and its output are in the expanded view.
         let described = it
             .description
             .as_deref()
@@ -307,6 +307,9 @@ impl<'a> Cx<'a> {
             restyle(&mut head, |st| st.fg(danger));
         }
         let mut out = head;
+        if described.is_some() {
+            return out;
+        }
         if self.o.expanded || prompt {
             self.budget = self.o.preview_lines.filter(|_| prompt && !self.o.expanded);
             let body = self.comp(&it.component, w.saturating_sub(2).max(1));
