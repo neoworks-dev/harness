@@ -217,9 +217,23 @@ export class Settings {
     this.togglesChanged();
   }
 
+  /** Whether apps that show images draw charts as pictures (off until the user turns it on). */
+  chartImages(): boolean {
+    return this.store.getMeta(metaKey("daemon", "chart_images")) === "on";
+  }
+
+  setChartImages(on: boolean): void {
+    this.store.setMeta(metaKey("daemon", "chart_images"), on ? "on" : "off");
+    this.togglesChanged();
+  }
+
   /** The /settings toggles, as apps get them (user.settings). */
   userSettings(): UserSettings {
-    return { showDontTell: this.showDontTell(), splitDiffs: this.splitDiffs() };
+    return {
+      showDontTell: this.showDontTell(),
+      splitDiffs: this.splitDiffs(),
+      chartImages: this.chartImages(),
+    };
   }
 
   /** Calls `listener` with the toggles after each change. */

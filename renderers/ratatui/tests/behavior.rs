@@ -1250,6 +1250,7 @@ fn with_images(rows: u16, status: &[(&str, ImageStatus)]) -> Options {
                     .map(|(s, st)| (s.to_string(), st.clone()))
                     .collect::<HashMap<_, _>>(),
             ),
+            charts: false,
         }),
         ..Options::default()
     }

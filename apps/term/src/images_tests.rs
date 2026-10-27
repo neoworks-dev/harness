@@ -506,6 +506,49 @@ fn every_protocol_encodes_and_draws_into_the_buffer() {
 }
 
 #[test]
+fn a_chart_is_drawn_from_its_spec_without_a_file() {
+    use neo_renderer_ratatui::{ChartKind, ChartSpec, SpecSeries};
+    let dir = Dir::new("chart");
+    let spec = ChartSpec {
+        kind: ChartKind::Line,
+        cols: 10,
+        rows: 5,
+        series: vec![SpecSeries {
+            color: [200, 100, 50],
+            values: vec![1.0, 3.0, 2.0],
+        }],
+        lo: 1.0,
+        hi: 3.0,
+        group: 0,
+        bar: 0,
+        stacked: false,
+        donut: false,
+        axis: [90, 90, 90],
+    };
+    let mut picker = Picker::halfblocks();
+    assert!(!Images::new(picker.clone(), dir.0.clone(), None).draws_charts());
+    picker.set_protocol_type(ProtocolType::Kitty);
+    let mut images = Images::new(picker, dir.0.clone(), None);
+    assert!(images.draws_charts());
+    let area = Rect::new(0, 0, 40, 12);
+    let at = Placement {
+        src: spec.src(),
+        x: 2,
+        y: 1,
+        cols: 10,
+        rows: 5,
+    };
+    // Nothing to probe: the first draw asks for it to be encoded.
+    images.draw(&mut Buffer::empty(area), area, &at, Style::new());
+    wait(&mut images, |i| {
+        matches!(i.protos.values().next(), Some(Proto::Ready(_)))
+    });
+    let mut buf = Buffer::empty(area);
+    images.draw(&mut buf, area, &at, Style::new());
+    assert!(non_blank(&buf, Rect::new(2, 1, 10, 5)) > 0, "drew nothing");
+}
+
+#[test]
 fn kitty_and_ghostty_under_tmux_get_kitty_graphics() {
     assert_eq!(
         outer_protocol("kitty(0.48.2)|xterm-kitty"),

@@ -38,6 +38,8 @@ const IMAGE_ROWS_EXPANDED: u16 = 30;
 pub struct ChatImages {
     pub cell: (u16, u16),
     pub status: Arc<HashMap<String, ImageStatus>>,
+    /// Charts are pictures (`/settings` charts as images, and a terminal that draws them).
+    pub charts: bool,
 }
 
 /// An image to draw: its source and the cells it covers, relative to the pane's top left. `y`
@@ -1155,6 +1157,7 @@ fn render(
             },
             cell: i.cell,
             status: i.status.clone(),
+            charts: i.charts,
         }),
         openui: key.ui.clone().unwrap_or_default(),
         app: app.map(str::to_string),
@@ -1956,6 +1959,7 @@ mod tests {
                     .map(|(s, st)| (s.to_string(), st.clone()))
                     .collect(),
             ),
+            charts: false,
         })
     }
 

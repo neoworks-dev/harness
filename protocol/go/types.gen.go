@@ -946,6 +946,8 @@ type UserSettings struct {
 	ShowDontTell bool `json:"showDontTell"`
 	// Diffs are drawn side by side (old left, new right) where they fit, else unified.
 	SplitDiffs bool `json:"splitDiffs"`
+	// Apps that can show images draw neoui charts as pictures (labels stay text); else with characters. Absent: off.
+	ChartImages *bool `json:"chartImages,omitempty"`
 }
 
 // UiActionMessage: Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon.

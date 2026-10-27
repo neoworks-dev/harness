@@ -904,6 +904,10 @@
         "splitDiffs": {
           "type": "boolean",
           "description": "Diffs are drawn side by side (old left, new right) where they fit, else unified."
+        },
+        "chartImages": {
+          "type": "boolean",
+          "description": "Apps that can show images draw neoui charts as pictures (labels stay text); else with characters. Absent: off."
         }
       },
       "required": ["showDontTell", "splitDiffs"],

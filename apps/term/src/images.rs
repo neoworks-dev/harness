@@ -15,7 +15,7 @@ use std::thread;
 use std::time::Duration;
 
 use image::DynamicImage;
-use neo_renderer_ratatui::ImageStatus;
+use neo_renderer_ratatui::{ChartSpec, ImageStatus, draw_chart};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Rect, Size};
 use ratatui::style::Style;
@@ -162,6 +162,19 @@ fn decode(path: &Path) -> Result<DynamicImage, String> {
     })
 }
 
+/// The chart drawn over `cols` x `rows` cells of the terminal's font, transparent around it.
+fn chart(spec: &ChartSpec, picker: &Picker, cols: u16, rows: u16) -> Result<DynamicImage, String> {
+    let font = picker.font_size();
+    let (w, h) = (
+        u32::from(cols) * u32::from(font.width),
+        u32::from(rows) * u32::from(font.height),
+    );
+    let pixels = draw_chart(spec, w, h).ok_or("the chart has no room")?;
+    image::RgbaImage::from_raw(w, h, pixels)
+        .map(DynamicImage::ImageRgba8)
+        .ok_or_else(|| "the chart drew the wrong size".to_string())
+}
+
 /// (source, columns, rows): one encoding.
 type Key = (String, u16, u16);
 
@@ -173,7 +186,14 @@ enum Proto {
 
 struct EncodeJob {
     key: Key,
-    path: PathBuf,
+    source: Source,
+}
+
+/// What an encoding is of: a file, or a chart the renderer laid out (drawn here at the size
+/// of its cells).
+enum Source {
+    File(PathBuf),
+    Chart(Box<ChartSpec>),
 }
 
 enum Done {
@@ -236,7 +256,14 @@ impl Images {
         ChatImages {
             cell: (font.width, font.height),
             status: self.status.clone(),
+            charts: false,
         }
+    }
+
+    /// Whether the terminal draws pictures well enough for charts: half blocks are too coarse
+    /// and have no transparency.
+    pub fn draws_charts(&self) -> bool {
+        self.picker.protocol_type() != ProtocolType::Halfblocks
     }
 
     pub fn protocol(&self) -> ProtocolType {
@@ -300,13 +327,17 @@ impl Images {
             }
             Some(Proto::Pending) => {}
             None => {
-                let Some(path) = self.paths.get(&at.src).cloned() else {
-                    return;
+                let source = match ChartSpec::from_src(&at.src) {
+                    Some(spec) => Source::Chart(Box::new(spec)),
+                    None => match self.paths.get(&at.src) {
+                        Some(path) => Source::File(path.clone()),
+                        None => return,
+                    },
                 };
                 self.protos.insert(key.clone(), Proto::Pending);
                 self.recent.push_back(key.clone());
                 self.forget_old();
-                let _ = self.encode_tx.send(EncodeJob { key, path });
+                let _ = self.encode_tx.send(EncodeJob { key, source });
             }
         }
         if at.y >= 0 && at.y < i32::from(area.height) {
@@ -343,18 +374,21 @@ impl Images {
 fn encode_loop(picker: &Picker, jobs: &mpsc::Receiver<EncodeJob>, done: &mpsc::Sender<Done>) {
     let mut decoded: Vec<(PathBuf, Arc<DynamicImage>)> = Vec::new();
     while let Ok(job) = jobs.recv() {
-        let image = match decoded.iter().position(|(p, _)| *p == job.path) {
-            Some(at) => Ok(decoded[at].1.clone()),
-            None => decode(&job.path).map(|img| {
-                let img = Arc::new(img);
-                decoded.push((job.path.clone(), img.clone()));
-                if decoded.len() > KEEP_DECODED {
-                    decoded.remove(0);
-                }
-                img
-            }),
-        };
         let (_, cols, rows) = &job.key;
+        let image = match job.source {
+            Source::Chart(spec) => chart(&spec, picker, *cols, *rows).map(Arc::new),
+            Source::File(path) => match decoded.iter().position(|(p, _)| *p == path) {
+                Some(at) => Ok(decoded[at].1.clone()),
+                None => decode(&path).map(|img| {
+                    let img = Arc::new(img);
+                    decoded.push((path.clone(), img.clone()));
+                    if decoded.len() > KEEP_DECODED {
+                        decoded.remove(0);
+                    }
+                    img
+                }),
+            },
+        };
         let result = image.and_then(|img| {
             SlicedProtocol::new_with_resize(
                 picker,

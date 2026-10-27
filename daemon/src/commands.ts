@@ -10,7 +10,8 @@
 //   /title-model [harness] [model|default]    the model that writes titles (for every session)
 //   /safesearch [strict|moderate|off]         what neo's web search may return, for every session
 //   /settings [toggle [on|off]]               the user's toggles ("Show, don't tell.", side-by-side
-//                                             diffs), for every session; no toggle: pick one
+//                                             diffs, charts as images), for every session; no
+//                                             toggle: pick one
 //   /login [provider | key [provider]]        add an API key or an account (login.ts)
 //   /logout [provider], /accounts             remove a login; list what is logged in
 //   /plugin …                                 marketplaces and plugins (plugins.ts)
@@ -378,6 +379,16 @@ export class Commands {
           "fit (term's edits and file view), else one after the other.",
         get: () => settings.splitDiffs(),
         set: (on) => settings.setSplitDiffs(on),
+        agents: false,
+      },
+      {
+        id: "chart-images",
+        name: "Charts as images",
+        description:
+          "Apps that can show images (term in kitty, Ghostty, WezTerm or iTerm2) draw charts as " +
+          "pictures, their labels as text; else charts are drawn with characters.",
+        get: () => settings.chartImages(),
+        set: (on) => settings.setChartImages(on),
         agents: false,
       },
     ];

@@ -3766,8 +3766,10 @@ dependencies = [
  "devicons",
  "neo-protocol",
  "ratatui",
+ "serde",
  "serde_json",
  "syntect",
+ "tiny-skia",
  "two-face",
  "unicode-width",
 ]

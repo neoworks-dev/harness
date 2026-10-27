@@ -15,6 +15,7 @@
 //! assert_eq!(lines.len(), 1);
 //! ```
 
+mod chart_image;
 mod icons;
 mod openui;
 mod palette;
@@ -31,6 +32,7 @@ use neo_protocol as pb;
 use neo_protocol::ViewItem;
 use ratatui::text::Line;
 
+pub use chart_image::{CHART_SCHEME, ChartKind, ChartSpec, SpecSeries, draw_chart};
 pub use icons::file_icon;
 pub use openui::{
     UiDocInfo, UiEdit, UiKind, UiOption, UiState, UiTarget, is_date, openui_docs, openui_targets,
@@ -146,6 +148,10 @@ pub struct ImageOptions {
     pub cell: (u16, u16),
     /// Per source; one that is missing counts as [`ImageStatus::Loading`].
     pub status: Arc<HashMap<String, ImageStatus>>,
+    /// Charts are pictures: room under a `chart:` source ([`ChartSpec`]) that the app draws
+    /// with [`draw_chart`]; their labels stay text. Needs a true-color theme; else, and while
+    /// a doc streams in, charts are characters.
+    pub charts: bool,
 }
 
 /// Where an item's lines hold room for an image: the app draws it there. Only images that are

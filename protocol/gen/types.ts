@@ -365,6 +365,8 @@ export interface UserSettings {
   showDontTell: boolean;
   /** Diffs are drawn side by side (old left, new right) where they fit, else unified. */
   splitDiffs: boolean;
+  /** Apps that can show images draw neoui charts as pictures (labels stay text); else with characters. Absent: off. */
+  chartImages?: boolean;
 }
 
 /** Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon. */

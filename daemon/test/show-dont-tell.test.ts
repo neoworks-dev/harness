@@ -74,6 +74,7 @@ test("/settings without a toggle shows them with their state, and picking one fl
   expect(choice.options.map((o) => o.name)).toEqual([
     "Show, don't tell. · off",
     "Side-by-side diffs · off",
+    "Charts as images · off",
   ]);
   expect(choice.options[0]?.description).toContain("UI more than text");
 
@@ -89,11 +90,16 @@ test("side-by-side diffs is a toggle for the apps: they hear of it, the agents d
   const heard: unknown[] = [];
   daemon.settings.onToggle((settings) => heard.push(settings));
   await daemon.commands.run(session, "/settings split-diffs on");
-  expect(heard).toEqual([{ showDontTell: false, splitDiffs: true }]);
+  expect(heard).toEqual([{ showDontTell: false, splitDiffs: true, chartImages: false }]);
   expect(daemon.settings.userSettings().splitDiffs).toBe(true);
+  await daemon.commands.run(session, "/settings chart-images on");
+  expect(daemon.settings.userSettings().chartImages).toBe(true);
   const notices: string[] = [];
   for (const e of events(daemon, session)) if (e.type === "notice") notices.push(e.text);
-  expect(notices).toEqual(["Side-by-side diffs on, for every session."]);
+  expect(notices).toEqual([
+    "Side-by-side diffs on, for every session.",
+    "Charts as images on, for every session.",
+  ]);
   expect(await turn(daemon, agent, session)).toEqual([]);
 });
 

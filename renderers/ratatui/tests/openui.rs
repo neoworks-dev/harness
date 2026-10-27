@@ -9,8 +9,9 @@ use std::sync::Arc;
 use common::*;
 use neo_protocol::ViewItem;
 use neo_renderer_ratatui::{
-    ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiEdit, UiKind, UiState, image_sources,
-    openui_docs, openui_targets, plain_text, render_item, render_item_images,
+    ChartKind, ChartSpec, ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiEdit, UiKind,
+    UiState, draw_chart, image_sources, openui_docs, openui_targets, plain_text, render_item,
+    render_item_images,
 };
 use ratatui::style::{Color, Modifier};
 use serde_json::{Value, json};
@@ -580,6 +581,122 @@ fn code_images_and_links_reuse_the_existing_drawing() {
 
 fn series(name: &str, values: &[f64]) -> Value {
     node("Series", json!({"name": name, "values": values}))
+}
+
+/// Charts as pictures, in 10x20 pixel cells.
+fn chart_pictures() -> Options {
+    Options {
+        images: Some(ImageOptions {
+            max_rows: 20,
+            cell: (10, 20),
+            status: Arc::new(HashMap::new()),
+            charts: true,
+        }),
+        ..Options::default()
+    }
+}
+
+#[test]
+fn a_line_chart_as_a_picture_keeps_its_axis_labels_and_legend_as_text() {
+    let it = doc(node(
+        "LineChart",
+        json!({"labels": ["Jan", "Feb", "Mar"], "series": [series("a", &[1.0, 4.0, 2.0]), series("b", &[3.0, 2.0, 1.0])]}),
+    ));
+    let out = render_item_images(&it, 40, &chart_pictures());
+    let text = plain_text(&out.lines);
+    // The axis beside 8 rows of picture, the labels and the legend under it.
+    assert_eq!(text.len(), 10, "{text:?}");
+    assert_eq!(text[0].trim_end(), "4");
+    assert_eq!(text[7].trim_end(), "1");
+    assert!(
+        text[8].contains("Jan") && text[8].contains("Mar"),
+        "{text:?}"
+    );
+    assert!(
+        text[9].contains("━ a") && text[9].contains("━ b"),
+        "{text:?}"
+    );
+    let [slot] = &out.images[..] else {
+        panic!("{:?}", out.images)
+    };
+    assert_eq!((slot.line, slot.x, slot.rows), (0, 2, 8));
+    let spec = ChartSpec::from_src(&slot.src).unwrap();
+    assert_eq!(spec.kind, ChartKind::Line);
+    assert_eq!((spec.cols, spec.lo, spec.hi), (slot.cols, 1.0, 4.0));
+    assert_eq!(spec.series.len(), 2);
+    // The picture draws.
+    let px = draw_chart(&spec, u32::from(spec.cols) * 10, 8 * 20).unwrap();
+    assert!(px.chunks(4).any(|p| p[3] > 0));
+}
+
+#[test]
+fn columns_and_a_pie_as_pictures_line_up_with_their_labels() {
+    let bars = doc(node(
+        "BarChart",
+        json!({"labels": ["a", "b"], "series": [series("n", &[2.0, 4.0])]}),
+    ));
+    let out = render_item_images(&bars, 40, &chart_pictures());
+    let text = plain_text(&out.lines);
+    let spec = ChartSpec::from_src(&out.images[0].src).unwrap();
+    assert_eq!((spec.kind, spec.hi, spec.bar), (ChartKind::Columns, 4.0, 3));
+    // The labels sit under the middle of each group of `group` cells, past the axis.
+    let x = usize::from(out.images[0].x);
+    assert_eq!(x, 2);
+    let label = &text[8];
+    let group = usize::from(spec.group);
+    assert_eq!(
+        label.find('a'),
+        Some(x + group / 2 - usize::from(group % 2 == 0))
+    );
+    assert_eq!(usize::from(spec.cols), 2 * group + 1);
+
+    let pie = doc(node(
+        "PieChart",
+        json!({"slices": [
+            node("Slice", json!({"label": "Rent", "value": 3})),
+            node("Slice", json!({"label": "Food", "value": 1})),
+        ], "donut": true}),
+    ));
+    let out = render_item_images(&pie, 60, &chart_pictures());
+    let text = plain_text(&out.lines);
+    let slot = &out.images[0];
+    let spec = ChartSpec::from_src(&slot.src).unwrap();
+    assert_eq!(
+        (spec.kind, spec.donut, slot.rows),
+        (ChartKind::Pie, true, 5)
+    );
+    // Round in 10x20 cells: twice as many columns as rows.
+    assert_eq!(slot.cols, 10);
+    // The legend beside it, in the middle rows.
+    assert!(
+        text[1].contains("■ Rent") && text[1].contains("75%"),
+        "{text:?}"
+    );
+    assert!(
+        text[2].contains("■ Food") && text[2].contains("25%"),
+        "{text:?}"
+    );
+}
+
+#[test]
+fn without_true_colors_or_while_streaming_charts_stay_characters() {
+    let chart = node(
+        "LineChart",
+        json!({"labels": ["a", "b"], "series": [series("a", &[1.0, 2.0])]}),
+    );
+    let mut plain = chart_pictures();
+    plain.theme.accent = Color::Indexed(2);
+    assert!(
+        render_item_images(&doc(chart.clone()), 40, &plain)
+            .images
+            .is_empty()
+    );
+    let streaming = doc_with(chart, true);
+    assert!(
+        render_item_images(&streaming, 40, &chart_pictures())
+            .images
+            .is_empty()
+    );
 }
 
 #[test]
@@ -1180,6 +1297,7 @@ fn pictures(ready: &[usize], rows: u16) -> Options {
             max_rows: rows,
             cell: (10, 20),
             status: Arc::new(status),
+            charts: false,
         }),
         ..Options::default()
     }

@@ -6,6 +6,7 @@ use ratatui::text::{Line, Span};
 use serde_json::Value;
 
 use super::{N, number};
+use crate::chart_image::{ChartKind, ChartSpec, SpecSeries};
 use crate::palette::blend;
 use crate::render::{Cx, Lines};
 use crate::text::{push_text, truncate, width, wrap};
@@ -14,6 +15,8 @@ use crate::text::{push_text, truncate, width, wrap};
 const UP: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 /// Rows of a column chart and of a line chart's canvas.
 const ROWS: usize = 6;
+/// Rows of a chart drawn as a picture: the finer drawing takes a little more room.
+const IMAGE_ROWS: usize = 8;
 /// The most cells a bar, a canvas or a stacked bar takes.
 const MAX_BAR: usize = 48;
 const MAX_CANVAS: usize = 60;
@@ -48,6 +51,26 @@ fn labels_of(n: N<'_>) -> Vec<String> {
         .and_then(Value::as_array)
         .map(|a| a.iter().map(super::scalar).collect())
         .unwrap_or_default()
+}
+
+/// A true color as its bytes.
+fn rgb(color: Color) -> Option<[u8; 3]> {
+    match color {
+        Color::Rgb(r, g, b) => Some([r, g, b]),
+        _ => None,
+    }
+}
+
+/// The series of a chart picture, in their colors.
+fn spec_series(series: &[Series], colors: &[[u8; 3]]) -> Vec<SpecSeries> {
+    series
+        .iter()
+        .zip(colors)
+        .map(|(s, &color)| SpecSeries {
+            color,
+            values: s.values.clone(),
+        })
+        .collect()
 }
 
 /// `value` out of `max` as a count of `of` units; a value above zero is at least one.
@@ -137,7 +160,7 @@ impl<'a> Cx<'a> {
 
     /// None when the columns and their labels don't fit the width.
     fn columns_chart(
-        &self,
+        &mut self,
         series: &[Series],
         labels: &[String],
         stacked: bool,
@@ -156,9 +179,41 @@ impl<'a> Cx<'a> {
             .chain([(1, label_w.min(3))])
             .find(|&(b, l)| fits(b, l))?;
         let group = (bar * k).max(label_w);
+        let mut out: Lines = Vec::new();
+        if let Some((colors, axis_color)) = self.chart_colors(series.len()) {
+            let cols = (count * group + count - 1) as u16;
+            let spec = ChartSpec {
+                kind: ChartKind::Columns,
+                cols,
+                rows: IMAGE_ROWS as u16,
+                series: spec_series(series, &colors),
+                lo: 0.0,
+                hi: max,
+                group: group as u16,
+                bar: bar as u16,
+                stacked,
+                donut: false,
+                axis: axis_color,
+            };
+            let room = self.reserve_cells(&spec.src(), cols, IMAGE_ROWS as u16);
+            for (r, line) in room.into_iter().enumerate() {
+                let text = match r {
+                    0 => number(max),
+                    _ if r == IMAGE_ROWS - 1 => "0".to_string(),
+                    _ => String::new(),
+                };
+                let mut spans = vec![Span::styled(
+                    format!("{text:>axis$} "),
+                    self.p.muted_style(),
+                )];
+                spans.extend(line.spans);
+                out.push(Line::from(spans));
+            }
+            out.push(self.column_labels(labels, axis, group));
+            return Some(out);
+        }
         let unit = ROWS * 8;
         let value = |s: usize, i: usize| series[s].values.get(i).copied().unwrap_or(0.0).max(0.0);
-        let mut out: Lines = Vec::new();
         let eighths = |v: f64| scaled(v, max, unit);
         for r in 0..ROWS {
             let from_bottom = ROWS - 1 - r;
@@ -232,6 +287,12 @@ impl<'a> Cx<'a> {
             }
             out.push(Line::from(spans));
         }
+        out.push(self.column_labels(labels, axis, group));
+        Some(out)
+    }
+
+    /// Each label in the middle of its group of `group` cells, a cell between groups.
+    fn column_labels(&self, labels: &[String], axis: usize, group: usize) -> Line<'static> {
         let mut spans = vec![Span::raw(" ".repeat(axis + 1))];
         for (i, label) in labels.iter().enumerate() {
             if i > 0 {
@@ -245,8 +306,7 @@ impl<'a> Cx<'a> {
                 self.p.muted_style(),
             ));
         }
-        out.push(Line::from(spans));
-        Some(out)
+        Line::from(spans)
     }
 
     /// One row per bar: `label ▄▄▄▄▖ 12`; stacked, one row per label with the segments.
@@ -349,8 +409,7 @@ impl<'a> Cx<'a> {
         }
         let axis = width(&number(hi)).max(width(&number(lo)));
         let cells = w.saturating_sub(axis + 1).clamp(1, MAX_CANVAS);
-        let (gw, gh) = (cells * 2, ROWS * 4);
-        let mut grid = Braille::new(cells, ROWS);
+        let gw = cells * 2;
         let at = |i: usize| -> usize {
             if count == 1 {
                 gw / 2
@@ -358,6 +417,75 @@ impl<'a> Cx<'a> {
                 (i * (gw - 1) + (count - 1) / 2) / (count - 1)
             }
         };
+        let (rows, plot) = match self.chart_colors(series.len()) {
+            Some((colors, axis_color)) => {
+                let spec = ChartSpec {
+                    kind: if area {
+                        ChartKind::Area
+                    } else {
+                        ChartKind::Line
+                    },
+                    cols: cells as u16,
+                    rows: IMAGE_ROWS as u16,
+                    series: spec_series(&series, &colors),
+                    lo,
+                    hi,
+                    group: 0,
+                    bar: 0,
+                    stacked: false,
+                    donut: false,
+                    axis: axis_color,
+                };
+                let room = self.reserve_cells(&spec.src(), cells as u16, IMAGE_ROWS as u16);
+                (IMAGE_ROWS, room.into_iter().map(|l| l.spans).collect())
+            }
+            None => (ROWS, self.braille_plot(&series, area, (lo, hi), cells, &at)),
+        };
+        let mut out: Lines = Vec::new();
+        for (r, row) in plot.into_iter().enumerate() {
+            let text = if r == 0 {
+                number(hi)
+            } else if r == rows - 1 {
+                number(lo)
+            } else {
+                String::new()
+            };
+            let mut spans = vec![Span::styled(
+                format!("{text:>axis$} "),
+                self.p.muted_style(),
+            )];
+            spans.extend(row);
+            out.push(Line::from(spans));
+        }
+        self.x_labels(&mut out, &labels, count, axis, cells, &at);
+        out.extend(self.series_legend(&series, "━", w));
+        out
+    }
+
+    /// Whether charts are pictures here ([`crate::ImageOptions::charts`], not while the doc
+    /// streams in), and then the colors of `n` series and of the base line.
+    fn chart_colors(&self, n: usize) -> Option<(Vec<[u8; 3]>, [u8; 3])> {
+        let on = self.o.images.as_ref().is_some_and(|i| i.charts) && !self.ui.streaming;
+        if !on {
+            return None;
+        }
+        let colors = (0..n)
+            .map(|i| rgb(self.series_color(i)))
+            .collect::<Option<Vec<_>>>()?;
+        Some((colors, rgb(self.p.border)?))
+    }
+
+    /// The lines (or areas) on a braille canvas `cells` wide, [`ROWS`] high.
+    fn braille_plot(
+        &self,
+        series: &[Series],
+        area: bool,
+        (lo, hi): (f64, f64),
+        cells: usize,
+        at: &dyn Fn(usize) -> usize,
+    ) -> Vec<Vec<Span<'static>>> {
+        let (gw, gh) = (cells * 2, ROWS * 4);
+        let mut grid = Braille::new(cells, ROWS);
         let level = |v: f64| -> usize {
             let t = ((v - lo) / (hi - lo)).clamp(0.0, 1.0);
             gh - 1 - (t * (gh - 1) as f64).round() as usize
@@ -407,22 +535,20 @@ impl<'a> Cx<'a> {
                 }
             }
         }
-        let mut out: Lines = Vec::new();
-        for (r, row) in grid.rows().into_iter().enumerate() {
-            let text = if r == 0 {
-                number(hi)
-            } else if r == ROWS - 1 {
-                number(lo)
-            } else {
-                String::new()
-            };
-            let mut spans = vec![Span::styled(
-                format!("{text:>axis$} "),
-                self.p.muted_style(),
-            )];
-            spans.extend(row);
-            out.push(Line::from(spans));
-        }
+        grid.rows()
+    }
+
+    /// The labels under a canvas `cells` wide past the axis: the first and the last, then those
+    /// in between that fit, each under its value.
+    fn x_labels(
+        &self,
+        out: &mut Lines,
+        labels: &[String],
+        count: usize,
+        axis: usize,
+        cells: usize,
+        at: &dyn Fn(usize) -> usize,
+    ) {
         if labels.iter().any(|l| !l.is_empty()) {
             let xs: Vec<usize> = (0..labels.len().min(count)).map(|i| at(i) / 2).collect();
             let mut row = vec![' '; cells];
@@ -464,8 +590,6 @@ impl<'a> Cx<'a> {
                 Span::styled(text, self.p.muted_style()),
             ]));
         }
-        out.extend(self.series_legend(&series, "━", w));
-        out
     }
 
     /// One stacked bar of the slices, then `■ label   42%` for each.
@@ -486,6 +610,9 @@ impl<'a> Cx<'a> {
         let total: f64 = slices.iter().map(|s| s.1).sum();
         if slices.is_empty() || total <= 0.0 {
             return Vec::new();
+        }
+        if let Some(out) = self.pie_picture(n, &slices, total, w) {
+            return out;
         }
         let bar_w = w.min(MAX_BAR);
         // Largest remainder; every slice with something in it gets a cell.
@@ -540,6 +667,79 @@ impl<'a> Cx<'a> {
             ]));
         }
         out
+    }
+
+    /// The pie as a round picture, `■ label  42%` beside it for each slice (middled against
+    /// it); None when charts are characters or the legend has no room.
+    fn pie_picture(
+        &mut self,
+        n: N<'_>,
+        slices: &[(String, f64)],
+        total: f64,
+        w: usize,
+    ) -> Option<Lines> {
+        let (colors, axis_color) = self.chart_colors(slices.len())?;
+        let (cw, ch) = self.o.images.as_ref()?.cell;
+        let rows = slices.len().clamp(5, IMAGE_ROWS);
+        // As many cells across as make it round.
+        let cols = ((rows * usize::from(ch.max(1))) as f64 / f64::from(cw.max(1))).round() as usize;
+        let label_w = slices.iter().map(|s| width(&s.0)).max().unwrap_or(0);
+        let label_w = label_w.min(w.saturating_sub(cols + 2 + 8));
+        if label_w == 0 {
+            return None;
+        }
+        let spec = ChartSpec {
+            kind: ChartKind::Pie,
+            cols: cols as u16,
+            rows: rows as u16,
+            series: colors
+                .iter()
+                .zip(slices)
+                .map(|(&color, s)| SpecSeries {
+                    color,
+                    values: vec![s.1],
+                })
+                .collect(),
+            lo: 0.0,
+            hi: 0.0,
+            group: 0,
+            bar: 0,
+            stacked: false,
+            donut: n.bool("donut") == Some(true),
+            axis: axis_color,
+        };
+        let entry = |i: usize| -> Vec<Span<'static>> {
+            let (label, value) = &slices[i];
+            let pct = format!("{:>3}%", (value / total * 100.0).round() as u32);
+            let text = truncate(label, label_w);
+            let pad = " ".repeat(label_w - width(&text));
+            vec![
+                Span::raw("  "),
+                Span::styled("■ ", Style::new().fg(self.series_color(i))),
+                Span::raw(format!("{text}{pad}  ")),
+                Span::styled(pct, self.p.muted_style()),
+            ]
+        };
+        let entries: Vec<Vec<Span<'static>>> = (0..slices.len()).map(entry).collect();
+        let entry = |i: usize| entries[i].clone();
+        let first = rows.saturating_sub(slices.len()) / 2;
+        let room = self.reserve_cells(&spec.src(), cols as u16, rows as u16);
+        let mut out: Lines = Vec::new();
+        for (r, line) in room.into_iter().enumerate() {
+            let mut spans = line.spans;
+            if let Some(i) = r.checked_sub(first).filter(|&i| i < slices.len()) {
+                spans.push(Span::raw(" ".repeat(cols)));
+                spans.extend(entry(i));
+            }
+            out.push(Line::from(spans));
+        }
+        // More slices than rows: the rest under the picture, in the legend's column.
+        for i in rows.min(slices.len())..slices.len() {
+            let mut spans = vec![Span::raw(" ".repeat(cols))];
+            spans.extend(entry(i));
+            out.push(Line::from(spans));
+        }
+        Some(out)
     }
 
     /// `label ▁▂▃▅▇█ 25`: the shape of the values and the last one.

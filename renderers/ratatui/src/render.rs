@@ -933,12 +933,18 @@ impl<'a> Cx<'a> {
         max_rows: u16,
     ) -> (Lines, (u16, u16)) {
         let (cols, rows) = image_cells(iw, ih, images.cell, max_cols, max_rows);
+        (self.reserve_cells(src, cols, rows), (cols, rows))
+    }
+
+    /// Room for a picture of `cols` x `rows` cells: the marked first line and the empty lines
+    /// under it (what is put before the mark moves the picture right).
+    pub(crate) fn reserve_cells(&mut self, src: &str, cols: u16, rows: u16) -> Lines {
         if !self.ui.drawing_to_measure() {
             self.rooms.push((cols, rows, src.to_string()));
         }
         let mut out = vec![Line::from(Span::raw(SLOT_MARK))];
         out.resize(usize::from(rows), Line::default());
-        (out, (cols, rows))
+        out
     }
 
     fn file(&self, v: &pb::FileComponent, w: usize) -> Lines {

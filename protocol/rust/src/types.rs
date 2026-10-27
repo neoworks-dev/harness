@@ -1116,6 +1116,13 @@ pub struct UserSettings {
     /// Diffs are drawn side by side (old left, new right) where they fit, else unified.
     #[serde(rename = "splitDiffs")]
     pub split_diffs: bool,
+    /// Apps that can show images draw neoui charts as pictures (labels stay text); else with characters. Absent: off.
+    #[serde(
+        rename = "chartImages",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub chart_images: Option<bool>,
 }
 
 /// Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon.
