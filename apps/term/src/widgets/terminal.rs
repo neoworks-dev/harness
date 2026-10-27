@@ -19,12 +19,11 @@ use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthChar;
 
 use super::text::clean_line;
+use crate::util::fit_line;
 
 /// Commands kept, and lines of output kept per command (the end of it).
 const RUNS: usize = 50;
 const OUTPUT_LINES: usize = 400;
-/// Rows a command takes at most once it is no longer waiting for approval.
-const COMMAND_ROWS: usize = 4;
 
 #[derive(Debug, Clone)]
 struct Run {
@@ -535,7 +534,7 @@ fn job_lines(run: &Run, width: usize, cwd: Option<&str>, p: &Palette) -> Vec<Lin
     out
 }
 
-/// `$ command`, highlighted, at most [`COMMAND_ROWS`] once it started.
+/// `$ command`, highlighted; one row once it started.
 fn command_lines(run: &Run, width: usize, cwd: Option<&str>, p: &Palette) -> Vec<Line<'static>> {
     let mut lead = Vec::new();
     if let Some(agent) = &run.agent {
@@ -558,21 +557,24 @@ fn command_lines(run: &Run, width: usize, cwd: Option<&str>, p: &Palette) -> Vec
         p,
         Style::new(),
     ));
-    let mut command = wrap_spans(spans, width);
-    // What waits for approval is read in full; after that the output is what matters.
-    if run.status != ToolCallStatus::Pending && command.len() > COMMAND_ROWS {
-        let more = command.len() - (COMMAND_ROWS - 1);
-        command.truncate(COMMAND_ROWS - 1);
-        command.push(Line::from(Span::styled(
-            format!("… +{more} lines"),
-            Style::new().fg(p.muted),
-        )));
+    // What waits for approval is read in full; after that the output is what matters, and the
+    // command is one row: its first line, cut at the edge.
+    if run.status == ToolCallStatus::Pending {
+        return wrap_spans(spans, width);
     }
-    command
+    let mut lines = wrap_spans(spans, usize::MAX);
+    let more = lines.len() > 1;
+    let mut first = lines.swap_remove(0);
+    if more {
+        first
+            .spans
+            .push(Span::styled(" …", Style::new().fg(p.muted)));
+    }
+    vec![fit_line(first, width)]
 }
 
-/// `$ command` (highlighted, continuation lines under it, at most [`COMMAND_ROWS`] once it
-/// started), the output, and a muted `exit 1` (danger) or `running…` line.
+/// `$ command` (highlighted, continuation lines under it while it waits for approval, one row
+/// once it started), the output, and a muted `exit 1` (danger) or `running…` line.
 /// A background command shows what its file holds instead of its call's result.
 fn run_lines(run: &Run, width: usize, cwd: Option<&str>, p: &Palette) -> Vec<Line<'static>> {
     if run.job.as_ref().is_some_and(|j| !j.gone) {
@@ -707,13 +709,7 @@ mod tests {
         t.on_update(&update("1", Some("completed"), "https://x/42", None), 0);
         assert_eq!(
             shown(&t, 60, 10),
-            [
-                "$ gh issue create --body 'a",
-                "b",
-                "c",
-                "… +2 lines",
-                "https://x/42"
-            ]
+            ["$ gh issue create --body 'a …", "https://x/42"]
         );
     }
 
@@ -724,18 +720,14 @@ mod tests {
         assert!(!t.has_any(), "only commands");
         t.on_call(&call("1", "execute", "cargo test\n  --all"));
         t.on_update(&update("1", None, "\u{1b}[32mok\u{1b}[0m 1", None), 0);
-        assert_eq!(
-            shown(&t, 40, 10),
-            ["$ cargo test", "  --all", "ok 1", "running…"]
-        );
+        assert_eq!(shown(&t, 40, 10), ["$ cargo test …", "ok 1", "running…"]);
         t.on_update(&update("1", Some("failed"), "ok 1\nboom\n", Some(101)), 0);
         t.on_call(&call("2", "execute", "ls"));
         t.on_update(&update("2", Some("completed"), "50%\r100%", None), 0);
         assert_eq!(
             shown(&t, 40, 10),
             [
-                "$ cargo test",
-                "  --all",
+                "$ cargo test …",
                 "ok 1",
                 "boom",
                 "exit 101",
@@ -776,10 +768,9 @@ mod tests {
             &update("1", Some("completed"), "```\nabcdefghij\n```", None),
             0,
         );
-        assert_eq!(
-            shown(&t, 6, 10),
-            ["claude", " $ ech", "o", "abcdef", "ghij"]
-        );
+        // The output wraps; the command that ran is cut to a row.
+        assert_eq!(shown(&t, 6, 10), ["claud…", "abcdef", "ghij"]);
+        assert_eq!(shown(&t, 20, 10), ["claude $ echo", "abcdefghij"]);
     }
 
     /// Claude Code's result for a command it runs in the background.
