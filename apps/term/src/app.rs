@@ -3340,16 +3340,15 @@ impl App {
         // The question, then the filter field, then the options.
         let head = 1 + usize::from(filtering);
         let budget = max_rows.saturating_sub(1).max(1);
+        let look = chat::PanelLook {
+            palette: self.palette,
+            icons: self.icons,
+            split_diffs: self.split_diffs,
+            cwd: Some(&self.cwd),
+        };
         let compose = |preview: usize| {
-            let mut body = chat::panel_lines(
-                item,
-                width,
-                focused,
-                preview,
-                filtering,
-                self.palette,
-                marker,
-            );
+            let mut body =
+                chat::panel_lines(item, width, focused, preview, filtering, &look, marker);
             if filtering {
                 let field = chat::filter_line(&self.prompt.filter, w.saturating_sub(2), accent);
                 body.insert(1.min(body.len()), chat::barred(field, marker));
@@ -3375,8 +3374,7 @@ impl App {
             let rows = budget.saturating_sub(head);
             let mut rest = body.split_off(head.min(body.len()));
             // The focused button is on the first line that differs from a drawing without one.
-            let unfocused =
-                chat::panel_lines(item, width, usize::MAX, 0, filtering, self.palette, marker);
+            let unfocused = chat::panel_lines(item, width, usize::MAX, 0, filtering, &look, marker);
             let at = rest
                 .iter()
                 .zip(unfocused.iter().skip(1))

@@ -604,29 +604,29 @@ fn permission(diff_lines: usize) -> neo_protocol::ViewItem {
 #[test]
 fn a_permission_shows_its_diff_colored_and_the_buttons_below_a_gap() {
     let it = permission(2);
+    // As the edit will look once made: its counts after its path, the diff under it.
     assert_eq!(
         lines(&it, 60),
         [
-            "Edit src/app.ts",
-            "  src/app.ts",
-            "  @@ -1,3 +1,3 @@",
-            "  -line 0",
-            "  +line 1",
+            "Edit src/app.ts  +1 −1",
+            "@@ -1,3 +1,3 @@",
+            "-line 0",
+            "+line 1",
             "",
             "  [1 Allow once]  [2 Always allow]  [3 Reject]",
         ]
     );
     let rendered = render_item(&it, 60, &Options::default());
     assert_eq!(
-        rendered[3].spans.last().unwrap().style.fg,
+        rendered[2].spans.last().unwrap().style.fg,
         Some(pal().danger)
     );
     assert_eq!(
-        rendered[4].spans.last().unwrap().style.fg,
+        rendered[3].spans.last().unwrap().style.fg,
         Some(pal().success)
     );
     assert_eq!(
-        rendered[2].spans.last().unwrap().style.fg,
+        rendered[1].spans.last().unwrap().style.fg,
         Some(pal().muted)
     );
     let keys: Vec<_> = buttons(&it).iter().map(|b| b.key.clone()).collect();
@@ -723,25 +723,24 @@ fn a_long_diff_is_cut_before_the_buttons_unless_expanded() {
         ..Options::default()
     };
     let got = lines_of(&it, 60, &opts);
-    // The limit counts the path line: title, 6 lines of diff, the count, a gap, the buttons.
+    // The edit's line, 6 lines of diff, the count, a gap, the buttons.
     assert_eq!(got.len(), 1 + 6 + 1 + 1 + 1, "{got:#?}");
-    assert_eq!(got[2], "  @@ -1,3 +1,3 @@");
-    assert_eq!(got[6], "  +line 3");
-    assert_eq!(got[7], "  … 36 more lines (expand to see all)");
+    assert_eq!(got[1], "@@ -1,3 +1,3 @@");
+    assert_eq!(got[6], "-line 4");
+    assert_eq!(got[7], "… 35 more lines (expand to see all)");
     assert_eq!(got[8], "");
     assert!(got[9].starts_with("  [1 Allow once]"));
-    // Expanded, or without a limit, it is all there.
+    // Without a limit it is all there; expanded, the whole card as it is.
     let all = |opts: &Options| lines_of(&it, 60, opts).len();
-    let full = 1 + 42 + 1 + 1;
+    assert_eq!(all(&Options::default()), 1 + 41 + 1 + 1);
     let expanded = Options {
         expanded: true,
         ..opts.clone()
     };
-    assert_eq!(all(&expanded), full);
-    assert_eq!(all(&Options::default()), full);
+    assert_eq!(all(&expanded), 1 + 42 + 1 + 1);
     // One line over the limit is shown rather than replaced by a hint that takes the same room.
-    assert_eq!(lines_of(&permission(5), 60, &opts).len(), 1 + 7 + 1 + 1);
-    assert_eq!(lines_of(&permission(6), 60, &opts).len(), 1 + 6 + 1 + 1 + 1);
+    assert_eq!(lines_of(&permission(6), 60, &opts).len(), 1 + 7 + 1 + 1);
+    assert_eq!(lines_of(&permission(7), 60, &opts).len(), 1 + 6 + 1 + 1 + 1);
 }
 
 #[test]

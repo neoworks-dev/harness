@@ -46,6 +46,26 @@ pub(crate) fn lone_diff(c: &pb::Component) -> Option<&pb::DiffComponent> {
     }
 }
 
+/// The diff a question is about, when besides its buttons it holds nothing else.
+pub(crate) fn asked_diff(c: &pb::Component) -> Option<&pb::DiffComponent> {
+    let mut all = Vec::new();
+    leaves(c, &mut all);
+    let mut diffs = all.iter().filter_map(|leaf| match leaf {
+        Leaf::Comp(pb::Component::DiffComponent(v)) => Some(v),
+        _ => None,
+    });
+    let only = all.iter().all(|leaf| {
+        matches!(
+            leaf,
+            Leaf::Comp(pb::Component::DiffComponent(_) | pb::Component::ButtonComponent(_))
+        )
+    });
+    match (diffs.next(), diffs.next()) {
+        (Some(v), None) if only => Some(v),
+        _ => None,
+    }
+}
+
 impl Cx<'_> {
     /// `verb path  +3 −1` on one line, when `label` is the verb and then the diff's path:
     /// an edit's header and its result in one.

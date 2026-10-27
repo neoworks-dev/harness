@@ -54,6 +54,8 @@ pub(crate) struct Cx<'a> {
     pub(crate) next_button: usize,
     /// Lines of diffs and code still allowed in the item being drawn (None: no limit).
     budget: Option<usize>,
+    /// Diffs are left out: drawn already, as the edit they will be (see `tool`).
+    skip_diffs: bool,
     /// Rooms reserved for images so far, top to bottom: (cols, rows, src).
     rooms: Vec<(u16, u16, String)>,
     /// Where those rooms ended up, once the item is laid out.
@@ -69,6 +71,7 @@ impl<'a> Cx<'a> {
             p: o.theme,
             next_button: 0,
             budget: None,
+            skip_diffs: false,
             rooms: Vec::new(),
             slots: Vec::new(),
             ui: Default::default(),
@@ -269,6 +272,27 @@ impl<'a> Cx<'a> {
                 return out;
             }
         }
+        // A question about an edit shows it as it will look once made, `edit src/a.rs  +3 −1`
+        // over its diff, and then the buttons.
+        if prompt && !self.o.expanded && !failed {
+            let edit = label
+                .as_deref()
+                .zip(crate::summary::asked_diff(&it.component));
+            if let Some((line, d)) = edit.and_then(|(l, d)| Some((self.edit_line(l, d, w)?, d))) {
+                self.budget = self.o.preview_lines;
+                let rows = self.diff_rows(d.path.as_deref(), &d.lines, w);
+                let mut out = vec![line];
+                out.extend(self.preview(rows));
+                self.skip_diffs = true;
+                let rest = self.comp(&it.component, w.saturating_sub(2).max(1));
+                self.skip_diffs = false;
+                if !rest.is_empty() {
+                    out.push(Line::default());
+                    out.extend(indented(rest, 2));
+                }
+                return out;
+            }
+        }
         let mut head = match &label {
             Some(label) => wrap(&self.tool_label(label), hw),
             None => Vec::new(),
@@ -391,6 +415,7 @@ impl<'a> Cx<'a> {
                 let lines = self.code(&v.code, v.language.as_deref(), true, w);
                 self.preview(lines)
             }
+            pb::Component::DiffComponent(_) if self.skip_diffs => Vec::new(),
             pb::Component::DiffComponent(v) => {
                 let lines = self.diff(v, w);
                 self.preview(lines)

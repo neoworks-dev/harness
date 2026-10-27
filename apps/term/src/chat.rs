@@ -1236,6 +1236,17 @@ pub fn barred(line: Line<'static>, marker: Option<Style>) -> Line<'static> {
     Line::from(spans)
 }
 
+/// How the chat draws, for a prompt drawn in the input area to look the same: an edit asked
+/// about reads like the edit once made.
+#[derive(Debug, Clone, Copy)]
+pub struct PanelLook<'a> {
+    pub palette: Palette,
+    pub icons: bool,
+    pub split_diffs: bool,
+    /// Paths in it are shown relative to it.
+    pub cwd: Option<&'a str>,
+}
+
 /// The prompt as the input area shows it: the item with the n-th button focused and at most
 /// `preview` lines of any diff or code, each line with the bar in the margin (none without a
 /// marker). `hide_keys` draws the buttons without their keys.
@@ -1245,7 +1256,7 @@ pub fn panel_lines(
     focused: usize,
     preview: usize,
     hide_keys: bool,
-    palette: Palette,
+    look: &PanelLook<'_>,
     marker: Option<Style>,
 ) -> Vec<Line<'static>> {
     let opts = Options {
@@ -1255,14 +1266,14 @@ pub fn panel_lines(
         hide_keys,
         prose_width: Some(PROSE_WIDTH),
         preview_lines: Some(preview),
-        theme: palette,
+        theme: look.palette,
         images: None,
         openui: HashMap::new(),
         app: None,
-        file_icons: false,
-        cwd: None,
+        file_icons: look.icons,
+        cwd: look.cwd.map(str::to_string),
         plain_code: false,
-        split_diffs: false,
+        split_diffs: look.split_diffs,
         open_edits: false,
     };
     let bar = if marker.is_some() { 2 } else { 0 };
