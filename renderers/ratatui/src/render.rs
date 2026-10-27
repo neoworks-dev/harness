@@ -256,15 +256,16 @@ impl<'a> Cx<'a> {
             Some(label) => wrap(&self.tool_label(label), hw),
             None => Vec::new(),
         };
-        // A command that has run and says what it was for reads as that, on its own; the command
-        // and its output are in the expanded view.
+        // A command that has run is one line without its output: what it was for when it says,
+        // else the command. The output (and the whole command) are in the expanded view.
         let described = it
             .description
             .as_deref()
             .filter(|d| cut && it.command.is_some() && !d.trim().is_empty());
+        let mut alone = described.is_some();
         // A shell command is highlighted while it runs or waits, muted once it has run, and
         // broken after its `&&`, `||` and `;` when long (pipelines stay whole). Unless it is a
-        // question or everything is expanded, it takes a few rows while it runs and two after.
+        // question or everything is expanded, it takes a few rows while it runs and one after.
         // A `cd` into the session's directory is left out.
         if let Some(description) = described {
             head.extend(wrap(&self.tool_label(description), hw));
@@ -275,7 +276,12 @@ impl<'a> Cx<'a> {
             .map(|c| crate::strip_cd(c, self.o.cwd.as_deref()))
             .filter(|c| !c.trim().is_empty())
         {
-            let code = crate::shell::reflow_lists(clean(command.trim_end()).as_ref(), hw);
+            // Cut to its first row, it reads on as far as that goes.
+            let code = if cut {
+                clean(command.trim_end()).into_owned()
+            } else {
+                crate::shell::reflow_lists(clean(command.trim_end()).as_ref(), hw)
+            };
             let spans = crate::shell::highlight(&code, &self.p, Style::new());
             let mut lines: Lines = hard_wrap_spans(&spans, hw)
                 .into_iter()
@@ -289,14 +295,11 @@ impl<'a> Cx<'a> {
                 });
             }
             if !prompt && !self.o.expanded {
-                cut_rows(
-                    &mut lines,
-                    if finished { LABEL_ROWS } else { RUNNING_ROWS },
-                    hw,
-                );
+                cut_rows(&mut lines, if finished { 1 } else { RUNNING_ROWS }, hw);
             }
             if cut {
                 cut_rows(&mut head, LABEL_ROWS, hw);
+                alone = true;
             }
             head.extend(lines);
         } else if cut {
@@ -307,7 +310,7 @@ impl<'a> Cx<'a> {
             restyle(&mut head, |st| st.fg(danger));
         }
         let mut out = head;
-        if described.is_some() {
+        if alone {
             return out;
         }
         if self.o.expanded || prompt {

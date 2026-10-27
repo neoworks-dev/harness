@@ -348,24 +348,19 @@ fn a_command_is_highlighted_and_broken_at_its_operators() {
         "{:?}",
         done[0]
     );
-    // Once it has run, two rows; under a label (a description, or whose call it is) too.
+    // Once it has run, one row as far as it goes, without its output; under a label (whose call
+    // it is) too.
     let done = lines(&item(None, "done"), 60);
     assert_eq!(
         done,
-        [
-            "cd /work/site &&",
-            "  cargo build --release 2>&1 |…",
-            "  ⎿ ok"
-        ]
+        ["cd /work/site && cargo build --release 2>&1 | grep -E 'erro…"]
     );
-    let described = lines(&item(Some("Build the site"), "done"), 60);
+    let labelled = lines(&item(Some("claude"), "done"), 60);
     assert_eq!(
-        described,
+        labelled,
         [
-            "Build the site",
-            "cd /work/site &&",
-            "  cargo build --release 2>&1 |…",
-            "  ⎿ ok"
+            "claude",
+            "cd /work/site && cargo build --release 2>&1 | grep -E 'erro…"
         ]
     );
 }
@@ -383,11 +378,7 @@ fn a_cd_into_the_sessions_directory_goes_without_saying() {
         "  cd /work/site/ ;\ncargo build",
     ] {
         let it = item(&format!(r#""command":{},"state":"done","#, json!(command)));
-        assert_eq!(
-            lines_of(&it, 60, &in_site),
-            ["cargo build", "  ⎿ ok"],
-            "{command}"
-        );
+        assert_eq!(lines_of(&it, 60, &in_site), ["cargo build"], "{command}");
     }
     // neo's label carries its command.
     let it = item(r#""label":"bash: cd /work/site && ls","state":"done","#);
