@@ -41,6 +41,19 @@ describe("shutdown", () => {
 });
 
 describe("turn queue", () => {
+  test("a command the running turn waits for can be sent to the background", async () => {
+    const { agent, sessions } = setup();
+    const { id } = sessions.create({});
+    expect(sessions.background(id, "t1")).toBe(false);
+    sessions.input(id, "term", "build it");
+    await agent.started(1);
+    expect(sessions.background(id, "t1")).toBe(true);
+    expect(agent.backgrounded).toEqual(["t1"]);
+    agent.release();
+    await sessions.idle(id);
+    expect(sessions.background(id, "t1")).toBe(false);
+  });
+
   test("unless the user lets it, what is sent waits for the turn, steerable or not", async () => {
     const { agent, sessions } = setup();
     agent.steerable = true;

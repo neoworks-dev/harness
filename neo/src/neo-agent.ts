@@ -69,6 +69,7 @@ import {
 } from "./session-hooks.ts";
 import { loadSkills } from "./skills.ts";
 import { systemPrompt } from "./system-prompt.ts";
+import { BackgroundCalls } from "./tools/bash.ts";
 import { createCoreTools } from "./tools/core.ts";
 import type { WebToolsOptions } from "./tools/web.ts";
 import { connectGateway, type GatewayConnection } from "./tools/gateway.ts";
@@ -362,6 +363,8 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
         }
         return answer;
       });
+    // Its running commands the user can send to the background.
+    const background = new BackgroundCalls();
     const agent = new Agent({
       initialState: {
         systemPrompt: definition ? agentPrompt(basePrompt, definition) : basePrompt,
@@ -373,6 +376,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
           requestPermission,
           webToolsFor(params),
           skills,
+          background,
         ).filter((tool) => !definition || toolFilter(definition)(tool.name)),
         messages,
         thinkingLevel: initial.thinkingLevel,
@@ -630,6 +634,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
         agent.abort();
       },
       close: (reason) => sessionHooks.end(reason),
+      background: (toolCallId) => background.move(toolCallId),
       configOptions,
       setConfigOption,
       followUp,

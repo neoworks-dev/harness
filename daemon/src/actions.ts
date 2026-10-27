@@ -163,6 +163,18 @@ export class ActionRunner {
       }
       return;
     }
+    if (action === "neo.background") {
+      // Sends a running command of the session's agent to the background: args {toolCallId}.
+      const fields: Record<string, unknown> = Object.assign({}, args);
+      const { toolCallId } = fields;
+      if (typeof toolCallId !== "string") {
+        throw new BadRequestError("neo.background needs args {toolCallId}");
+      }
+      if (!this.parts.sessions.background(session, toolCallId)) {
+        throw new BadRequestError("only neo's own commands can be sent to the background");
+      }
+      return;
+    }
     if (action === "neo.todos") {
       const fields: Record<string, unknown> = Object.assign({}, args);
       const change = parseTodoArgs(fields);

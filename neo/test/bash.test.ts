@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createBashTool } from "../src/tools/bash.ts";
+import { BackgroundCalls, createBashTool } from "../src/tools/bash.ts";
 import { errorMessage, resultText, tempDir } from "./helpers.ts";
 
 async function run(cwd: string, command: string, timeout?: number): Promise<string> {
@@ -114,4 +115,37 @@ test("a background process holding the pipes does not hang the call", async () =
   const text = await run(await tempDir(), "(sleep 3 &) ; echo done");
   expect(text).toBe("done");
   expect(Date.now() - started).toBeLessThan(2000);
+});
+
+test("sent to the background, the call ends at once and the command runs on into its file", async () => {
+  const cwd = await tempDir();
+  const background = new BackgroundCalls();
+  const aborter = new AbortController();
+  const call = createBashTool(cwd, undefined, undefined, background).execute(
+    "t1",
+    { command: "echo first; sleep 0.4; echo second; exit 4", description: "test" },
+    aborter.signal,
+  );
+  await Bun.sleep(150);
+  expect(background.move("nope")).toBe(false);
+  expect(background.move("t1")).toBe(true);
+  const text = resultText(await call);
+  const path = /Output is being written to: (\S+)/.exec(text)?.[1] ?? "";
+  // The words term looks for to tail the file as a background command.
+  expect(text).toContain("running in background");
+  expect(text).toContain("first");
+  // A cancelled turn no longer stops it; it ends its file with how it ended.
+  aborter.abort();
+  await Bun.sleep(600);
+  expect(readFileSync(path, "utf8")).toBe("first\nsecond\n\n[exited with code 4]\n");
+  // Only while it runs.
+  expect(background.move("t1")).toBe(false);
+});
+
+test("a command run to its end leaves no output file behind", async () => {
+  const cwd = await tempDir();
+  const before = new Set(readdirSync(tmpdir()).filter((f) => f.startsWith("neo-bash-")));
+  expect(await run(cwd, "echo hi")).toBe("hi");
+  const after = readdirSync(tmpdir()).filter((f) => f.startsWith("neo-bash-") && !before.has(f));
+  expect(after).toEqual([]);
 });

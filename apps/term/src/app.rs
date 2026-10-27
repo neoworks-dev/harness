@@ -54,6 +54,8 @@ const POLL_MS: i64 = 2000;
 /// Idle this long, a session's prompt cache is gone with Anthropic (5 minutes, 1 hour with long
 /// retention) and OpenAI (5 minutes to an hour); DeepSeek's disk cache may outlast it.
 const CACHE_COLD_MS: i64 = 60 * 60 * 1000;
+/// How long a command runs before Ctrl-B offers to send it to the background.
+const BACKGROUND_AFTER_MS: i64 = 3000;
 /// An event older than this when it arrives is history (a replay), not news for a card.
 const TOAST_FRESH_MS: i64 = 10_000;
 /// Rows of the slash menu.
@@ -2304,6 +2306,17 @@ impl App {
                 fx.push(Effect::PasteImage);
                 return false;
             }
+            // While a command offers it (see backgroundable); else the cursor goes left.
+            'b' if let Some(id) = self.backgroundable() => {
+                fx.push(Effect::Action {
+                    session: self.session.clone(),
+                    item: format!("c-{id}"),
+                    action: "neo.background".into(),
+                    args: Some(serde_json::json!({ "toolCallId": id })),
+                });
+                self.notify("sent to the background: it runs on under the prompt", false);
+                return false;
+            }
             's' => self.swap_stash(),
             'r' => {
                 self.github.open();
@@ -2844,6 +2857,8 @@ impl App {
         }
         self.sync_prompt();
         self.chat.set_highlight(self.focus == Some(Focus::Chat));
+        let hint = self.backgroundable().map(|id| format!("c-{id}"));
+        self.chat.set_background_hint(hint);
 
         if self.github.is_open() {
             self.github
@@ -3622,6 +3637,20 @@ impl App {
             && self.transcript.is_none()
     }
 
+    /// The command Ctrl-B sends to the background: the newest the running turn waits for that has
+    /// run [`BACKGROUND_AFTER_MS`]. Only neo's: other harnesses have no way to let go of one.
+    fn backgroundable(&self) -> Option<String> {
+        if !self.running || self.harness != DEFAULT_HARNESS {
+            return None;
+        }
+        self.widgets
+            .foreground_commands()
+            .into_iter()
+            .rev()
+            .find(|(_, started)| self.now_ms - started >= BACKGROUND_AFTER_MS)
+            .map(|(id, _)| id)
+    }
+
     /// A card for each background command that has just ended, once.
     fn toast_jobs(&mut self, rows: &[crate::widgets::JobRow], now_ms: i64) {
         let one_line = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -3810,6 +3839,7 @@ impl App {
             key("ctrl-o", "full tool results"),
             key("ctrl-t", "show thoughts"),
             key("esc", "close menu, dismiss prompt, cancel the running turn"),
+            key("ctrl-b", "a command running a while: on in the background"),
             key("ctrl-c", "clear input; twice to quit"),
             key("shift-tab", "approvals: ask / review / accept edits / auto"),
             key(

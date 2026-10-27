@@ -1,7 +1,17 @@
 import { spawn } from "node:child_process";
-import { createWriteStream, existsSync, type WriteStream } from "node:fs";
-import { tmpdir } from "node:os";
+import {
+  appendFileSync,
+  closeSync,
+  createWriteStream,
+  existsSync,
+  openSync,
+  readSync,
+  rmSync,
+  type WriteStream,
+} from "node:fs";
+import { constants, tmpdir } from "node:os";
 import { join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import type { AgentTool } from "../loop/index.ts";
 import { Type } from "typebox";
 import { MAX_BYTES, MAX_LINES, truncateTail } from "./truncate.ts";
@@ -10,9 +20,8 @@ import { type AssetResolver, resolveAssetsInCommand } from "./paths.ts";
 import { askToProceed, withNote } from "./permission.ts";
 
 const UPDATE_INTERVAL_MS = 200;
-// How long to wait for output pipes to close after the shell exits (a background process may
-// keep them open forever).
-const PIPE_GRACE_MS = 100;
+/** How often the output file is read while the command runs. */
+const READ_INTERVAL_MS = 50;
 
 const parameters = Type.Object({
   command: Type.String({ description: "The bash command to run." }),
@@ -81,6 +90,53 @@ class Output {
   }
 }
 
+/**
+ * The bash calls running in a session that the user can send to the background (Ctrl-B in
+ * term): the call ends at once with where the output goes, and the command runs on.
+ */
+export class BackgroundCalls {
+  private readonly calls = new Map<string, () => void>();
+
+  /** While a call runs; the returned function forgets it. */
+  add(toolCallId: string, move: () => void): () => void {
+    this.calls.set(toolCallId, move);
+    return () => {
+      if (this.calls.get(toolCallId) === move) this.calls.delete(toolCallId);
+    };
+  }
+
+  /** Sends the call to the background; false when no such call runs. */
+  move(toolCallId: string): boolean {
+    const move = this.calls.get(toolCallId);
+    if (!move) return false;
+    this.calls.delete(toolCallId);
+    move();
+    return true;
+  }
+}
+
+/**
+ * Reads what the command wrote to its output file, from where it last stopped. The command
+ * writes the file itself, so the processes behind a background command can be found by it.
+ */
+class Tail {
+  private offset = 0;
+  private readonly decoder = new StringDecoder("utf8");
+
+  constructor(private readonly fd: number) {}
+
+  read(): string {
+    const buffer = Buffer.alloc(64 * 1024);
+    let text = "";
+    for (;;) {
+      const n = readSync(this.fd, buffer, 0, buffer.length, this.offset);
+      if (n === 0) return text;
+      this.offset += n;
+      text += this.decoder.write(buffer.subarray(0, n));
+    }
+  }
+}
+
 function killGroup(pid: number | undefined): void {
   if (pid === undefined) return;
   try {
@@ -94,6 +150,7 @@ export function createBashTool(
   cwd: string,
   assets?: AssetResolver,
   ask?: RequestPermission,
+  background?: BackgroundCalls,
 ): AgentTool<typeof parameters, BashDetails> {
   return {
     name: "bash",
@@ -120,11 +177,23 @@ export function createBashTool(
         signal,
       );
       const shell = existsSync("/bin/bash") ? "/bin/bash" : "sh";
-      const child = spawn(shell, ["-c", resolveAssetsInCommand(command, assets)], {
-        cwd,
-        detached: true, // own process group, so abort and timeout can kill the whole tree
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+      // The command writes its output to a file, read here as it grows: sent to the background
+      // it goes on writing there, and that is how the processes behind it are found to stop
+      // them (term's background commands).
+      const outputPath = join(tmpdir(), `neo-bash-${crypto.randomUUID()}.output`);
+      const writeFd = openSync(outputPath, "w");
+      let child: ReturnType<typeof spawn>;
+      try {
+        child = spawn(shell, ["-c", resolveAssetsInCommand(command, assets)], {
+          cwd,
+          detached: true, // own process group, so abort and timeout can kill the whole tree
+          stdio: ["ignore", writeFd, writeFd],
+        });
+      } finally {
+        closeSync(writeFd);
+      }
+      const readFd = openSync(outputPath, "r");
+      const tail = new Tail(readFd);
 
       const output = new Output();
       let lastUpdate = 0;
@@ -142,10 +211,17 @@ export function createBashTool(
         if (wait <= 0) sendUpdate();
         else updateTimer = setTimeout(sendUpdate, wait);
       };
-      child.stdout.setEncoding("utf8");
-      child.stderr.setEncoding("utf8");
-      child.stdout.on("data", onData);
-      child.stderr.on("data", onData);
+      const pump = (): void => {
+        const text = tail.read();
+        if (text !== "") onData(text);
+      };
+      const reader = setInterval(pump, READ_INTERVAL_MS);
+
+      let moveToBackground = (): void => undefined;
+      const backgrounded = new Promise<"background">((resolve) => {
+        moveToBackground = () => resolve("background");
+      });
+      const forget = background?.add(toolCallId, moveToBackground);
 
       let aborted = false;
       let timedOut = false;
@@ -161,28 +237,40 @@ export function createBashTool(
           }, timeout * 1000)
         : undefined;
 
-      let exitCode: number | null;
-      let exitSignal: NodeJS.Signals | null;
+      const exited = new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
+        child.on("error", reject);
+        child.on("exit", (code, sig) => resolve([code, sig]));
+      });
+      let outcome: [number | null, NodeJS.Signals | null] | "background";
       try {
-        [exitCode, exitSignal] = await new Promise<[number | null, NodeJS.Signals | null]>(
-          (resolve, reject) => {
-            child.on("error", reject);
-            child.on("exit", (code, sig) => {
-              setTimeout(() => {
-                child.stdout.destroy();
-                child.stderr.destroy();
-                resolve([code, sig]);
-              }, PIPE_GRACE_MS);
-              child.on("close", () => resolve([code, sig]));
-            });
-          },
-        );
+        outcome = await Promise.race([exited, backgrounded]);
       } finally {
-        clearTimeout(timeoutTimer);
+        forget?.();
+        clearInterval(reader);
         clearTimeout(updateTimer);
+        // Sent to the background it is the user's now: a cancelled turn doesn't stop it.
         signal?.removeEventListener("abort", onAbort);
+        pump();
+        closeSync(readFd);
         await output.close();
       }
+
+      if (outcome === "background") {
+        clearTimeout(timeoutTimer);
+        // The file ends with how the command ended, as Claude Code's background commands do.
+        const end = (code: number): void => {
+          appendFileSync(outputPath, `\n[exited with code ${code}]\n`);
+        };
+        exited.then(
+          ([code, sig]) => end(code ?? 128 + (sig ? (constants.signals[sig] ?? 0) : 0)),
+          () => end(1),
+        );
+        const so = `Command running in background (the user moved it there). Output is being written to: ${outputPath}\n\nSo far:\n${output.render()}`;
+        return { content: [{ type: "text", text: withNote(so, note) }], details: {} };
+      }
+      clearTimeout(timeoutTimer);
+      rmSync(outputPath, { force: true });
+      const [exitCode, exitSignal] = outcome;
 
       const text = output.render();
       if (aborted) throw new Error(`${text}\n\nCommand aborted.`);

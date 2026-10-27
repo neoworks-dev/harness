@@ -38,6 +38,8 @@ struct Run {
     exit: Option<i64>,
     /// Running in the background: its output comes from a file.
     job: Option<Job>,
+    /// When its call was logged (ms).
+    started_ms: i64,
 }
 
 /// A background command's output file and what has been read of it.
@@ -96,6 +98,32 @@ impl TerminalState {
         !self.runs.is_empty()
     }
 
+    /// A call as it is logged at `ts`: a command started then.
+    pub(crate) fn on_call_at(&mut self, call: &ToolCall, ts: i64) {
+        let new = !self.runs.iter().any(|r| r.id == call.tool_call_id);
+        self.on_call(call);
+        if new && let Some(run) = self.runs.iter_mut().find(|r| r.id == call.tool_call_id) {
+            run.started_ms = ts;
+        }
+    }
+
+    /// The commands of the session's own agent that its turn waits for (not a subagent's, not
+    /// one in the background): their call ids and when they started.
+    pub(crate) fn foreground(&self) -> Vec<(String, i64)> {
+        self.runs
+            .iter()
+            .filter(|r| {
+                r.agent.is_none()
+                    && r.job.is_none()
+                    && matches!(
+                        r.status,
+                        ToolCallStatus::Pending | ToolCallStatus::InProgress
+                    )
+            })
+            .map(|r| (r.id.clone(), r.started_ms))
+            .collect()
+    }
+
     pub(crate) fn on_call(&mut self, call: &ToolCall) {
         if call.kind != ToolKind::Execute {
             self.others.insert(call.tool_call_id.clone());
@@ -123,6 +151,7 @@ impl TerminalState {
             status: call.status,
             exit: None,
             job: None,
+            started_ms: 0,
         });
         if self.runs.len() > RUNS {
             self.runs.remove(0);

@@ -767,3 +767,56 @@ fn a_subagent_starting_flies_in_a_card_and_a_replayed_one_does_not() {
     app.tick(NOW + 1000 + crate::toast::LIFE_MS + 100);
     assert!(!screen_text(&mut app, 100, 30).contains("● neo"));
 }
+
+#[test]
+fn a_command_running_a_while_offers_ctrl_b_and_ctrl_b_sends_it_to_the_background() {
+    let mut app = app();
+    app.handle_event(event(
+        "s1",
+        1,
+        NOW,
+        json!({"type": "user_message", "app": "terminal", "text": "build"}),
+    ));
+    app.handle_event(event(
+        "s1",
+        2,
+        NOW,
+        json!({"type": "tool_call", "toolCallId": "t1", "title": "Build the site",
+               "kind": "execute", "status": "in_progress",
+               "rawInput": {"command": "make all", "description": "Build the site"}}),
+    ));
+    app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        agent: None,
+        session: "s1".into(),
+        seq: 2,
+        items: vec![
+            serde_json::from_value::<ViewItem>(json!({
+                "ref": "c-t1", "kind": "tool", "label": "Build the site", "state": "running",
+                "command": "make all",
+                "component": {"type": "stack", "gap": "s", "children": []}
+            }))
+            .unwrap(),
+        ],
+    }));
+    let ctrl_b = KeyEvent {
+        code: KeyCode::Char('b'),
+        modifiers: KeyModifiers::CONTROL,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    };
+    // Not yet: Ctrl-B is the cursor's.
+    app.tick(NOW + 1000);
+    assert!(!screen_text(&mut app, 100, 30).contains("ctrl-b background"));
+    assert!(app.handle_key(ctrl_b).is_empty());
+
+    app.tick(NOW + 3500);
+    let text = screen_text(&mut app, 100, 30);
+    let line = text.lines().find(|l| l.contains("Build the site")).unwrap();
+    assert!(line.contains("ctrl-b background"), "{text}");
+    let fx = app.handle_key(ctrl_b);
+    assert!(
+        matches!(&fx[..], [Effect::Action { item, action, args: Some(args), .. }]
+            if item == "c-t1" && action == "neo.background" && args["toolCallId"] == "t1"),
+        "{fx:?}"
+    );
+}

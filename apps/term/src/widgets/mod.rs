@@ -204,7 +204,7 @@ impl Widgets {
             SessionEvent::ToolCall(call) => {
                 self.tool_agents
                     .insert(call.tool_call_id.clone(), call.agent.clone());
-                self.terminal.on_call(call);
+                self.terminal.on_call_at(call, record.ts);
             }
             SessionEvent::ToolCallUpdate(update) => {
                 self.terminal.on_update(update, record.ts);
@@ -486,6 +486,11 @@ impl Widgets {
     /// Whether the shared todo list has items (its panel is drawn).
     pub fn has_todos(&self) -> bool {
         self.todos.has_any()
+    }
+
+    /// The commands the session's agent's turn waits for: call ids and when they started.
+    pub fn foreground_commands(&self) -> Vec<(String, i64)> {
+        self.terminal.foreground()
     }
 
     /// The background commands to list under the prompt.

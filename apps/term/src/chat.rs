@@ -184,7 +184,12 @@ pub struct Chat {
     selected: Option<(String, String)>,
     /// The picked file's line is drawn highlighted (the chat has the keys).
     highlight: bool,
+    /// The item whose first line says Ctrl-B sends its command to the background.
+    background_hint: Option<String>,
 }
+
+/// What the line of a command Ctrl-B can send to the background ends with.
+const BACKGROUND_HINT: &str = "  ctrl-b background";
 
 impl Chat {
     pub fn new() -> Chat {
@@ -744,7 +749,11 @@ impl Chat {
                 match now_ms {
                     Some(now) if e.thinking => out.push(thinking_line(line, now, &self.palette)),
                     Some(now) if e.running && at == e.offset => {
-                        out.push(sweep(line, now, &self.palette));
+                        let mut lit = sweep(line, now, &self.palette);
+                        if self.background_hint.as_deref() == Some(e.r#ref.as_str()) {
+                            lit = with_hint(lit, self.width, &self.palette);
+                        }
+                        out.push(lit);
                     }
                     _ if picked == Some(at) => out.push(picked_line(line, self.width)),
                     _ => out.push(line.clone()),
@@ -856,6 +865,11 @@ impl Chat {
     /// Whether the picked file's line is drawn highlighted.
     pub fn set_highlight(&mut self, on: bool) {
         self.highlight = on;
+    }
+
+    /// The item (`c-<call id>`) whose command Ctrl-B would send to the background, if any.
+    pub fn set_background_hint(&mut self, r: Option<String>) {
+        self.background_hint = r;
     }
 
     /// Picks the n-th file line (counted from the end when negative) and scrolls to it.
@@ -1110,6 +1124,22 @@ fn thinking_line(line: &Line<'static>, now_ms: i64, p: &Palette) -> Line<'static
         })
         .collect::<Vec<_>>();
     Line::from(spans)
+}
+
+/// The line with [`BACKGROUND_HINT`] at its end, the line cut to make room when it is long.
+fn with_hint(line: Line<'static>, width: usize, p: &Palette) -> Line<'static> {
+    let hint = Span::styled(BACKGROUND_HINT, Style::new().fg(p.muted));
+    let room = width.saturating_sub(hint.width());
+    if room < 10 {
+        return line;
+    }
+    let mut line = if line.width() > room {
+        crate::util::fit_line(line, room)
+    } else {
+        line
+    };
+    line.spans.push(hint);
+    line
 }
 
 /// How far the light of a sweep reaches either side of its center, in columns.

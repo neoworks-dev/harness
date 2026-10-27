@@ -332,6 +332,14 @@ export class SessionManager {
     if (rt.running && this.options.steer?.() === true) void this.steer(sessionId, rt);
   }
 
+  /**
+   * Sends a command the running turn waits for to the background (see AgentSession.background);
+   * false when there is none or its harness can't.
+   */
+  background(sessionId: string, toolCallId: string): boolean {
+    return this.runtimes.get(sessionId)?.active?.background?.(toolCallId) === true;
+  }
+
   /** Starts working off the queue, unless a turn already runs. */
   private kick(sessionId: string, rt: Runtime): void {
     if (rt.running) return;

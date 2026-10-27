@@ -12,6 +12,7 @@ keys (any key closes this)
   ctrl-o                    full tool results
   ctrl-t                    show thoughts
   esc                       close menu, dismiss prompt, cancel the running turn
+  ctrl-b                    a command running a while: on in the background
   ctrl-c                    clear input; twice to quit
   shift-tab                 approvals: ask / review / accept edits / auto
   tab                       complete command, note on a prompt, next panel (the chat's files first)
@@ -40,7 +41,6 @@ commands
   /logout [provider]                  remove a stored API key or account
   /accounts                           list the API keys and accounts in use
   /plugin [install|enable|…]          plugins for neo: list, search, install, uninstall, enable, di…
-  /sessions                           switch to another session
 
 ┃
 ┃ message the agent · / for commands

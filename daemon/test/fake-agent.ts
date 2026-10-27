@@ -24,6 +24,8 @@ export class FakeAgent implements Agent {
   /** Its sessions take steering (as an ACP harness does); what they were steered with. */
   steerable = false;
   readonly steered: { text: string; images?: string[] }[] = [];
+  /** The tool calls its running turns were asked to send to the background. */
+  readonly backgrounded: string[] = [];
   active = 0;
   maxActive = 0;
   private waiting: Pending[] = [];
@@ -75,6 +77,11 @@ export class FakeAgent implements Agent {
         });
       },
       cancel: () => current?.resolve({ stopReason: "cancelled" }),
+      background: (toolCallId) => {
+        const running = current !== undefined && this.waiting.includes(current);
+        if (running) this.backgrounded.push(toolCallId);
+        return running;
+      },
       close: (reason) => {
         this.closed.push(reason);
         return Promise.resolve();

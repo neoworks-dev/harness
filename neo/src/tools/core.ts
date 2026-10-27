@@ -1,5 +1,5 @@
 import type { AgentState } from "../loop/index.ts";
-import { createBashTool } from "./bash.ts";
+import { type BackgroundCalls, createBashTool } from "./bash.ts";
 import { createEditTool } from "./edit.ts";
 import { createReadTool } from "./read.ts";
 import { createSkillTool } from "./skill.ts";
@@ -24,9 +24,10 @@ export function createCoreTools(
   ask?: RequestPermission,
   web?: WebToolsOptions,
   skills: Skill[] = [],
+  background?: BackgroundCalls,
 ): AgentState["tools"] {
   const tools: AgentState["tools"] = [
-    createBashTool(cwd, assets, ask),
+    createBashTool(cwd, assets, ask, background),
     createReadTool(cwd, assets, ask),
     createWriteTool(cwd, ask),
     createEditTool(cwd, ask),

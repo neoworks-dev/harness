@@ -219,6 +219,11 @@ export interface AgentSession {
    * PromptParams.takeInputs).
    */
   steer?(input: { text: string; images?: string[] }): Promise<boolean>;
+  /**
+   * Sends a running command (a bash call) to the background: the call ends at once with where
+   * its output goes, the command runs on. False when no such call runs.
+   */
+  background?(toolCallId: string): boolean;
   /** The options the user can set; absent when the harness has none. */
   configOptions?(): ConfigOption[];
   /** Like configOptions, for a harness that has to look something up first; preferred when set. */
