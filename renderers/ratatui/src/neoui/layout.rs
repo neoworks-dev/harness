@@ -136,6 +136,7 @@ impl<'a> Cx<'a> {
             "KeyValue" => self.ui_key_value(n, w),
             "Tag" => self.ui_tag(n, w),
             "EntityList" => self.ui_entity_list(n, path, w),
+            "ListItem" => self.ui_entities(&[(n, path.to_string())], w),
             "Metric" => self.ui_metric(n, w),
             "MetricIndicator" => self.ui_metric_indicator(n, w),
             "Progress" => self.ui_progress(n, w),
@@ -200,7 +201,7 @@ impl<'a> Cx<'a> {
         while i < kids.len() {
             let name = kids[i].0.name();
             let mut j = i + 1;
-            if matches!(name, "Card" | "Metric" | "Shape") {
+            if matches!(name, "Card" | "Metric" | "Shape" | "ListItem") {
                 while j < kids.len() && kids[j].0.name() == name {
                     j += 1;
                 }
@@ -216,6 +217,7 @@ impl<'a> Cx<'a> {
                     let shapes: Vec<N<'_>> = run.iter().map(|k| k.0).collect();
                     self.ui_canvas(&shapes, w)
                 }
+                ("ListItem", _) => self.ui_entities(run, w),
                 _ => self.ui_sized(run[0].0, &run[0].1, w),
             };
             if !lines.is_empty() {

@@ -6,7 +6,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use serde_json::Value;
 
-use super::layout::columns;
+use super::layout::{Kid, columns, kids_of};
 use super::{N, join, scalar};
 use crate::render::{Cx, Lines, file_name, fit_columns, link, prefixed, tint};
 use crate::text::{clean, line_width, push_text, sline, truncate, truncate_spans, width, wrap};
@@ -303,10 +303,16 @@ impl<'a> Cx<'a> {
     /// `Ada Lovelace  analyst        [admin]`. When the columns do not fit, the subtitle goes
     /// under its title.
     pub(super) fn ui_entity_list(&mut self, n: N<'_>, path: &str, w: usize) -> Lines {
+        self.ui_entities(&kids_of(n, "items", path), w)
+    }
+
+    /// `ListItem`s as the rows of an `EntityList`: its items, or a run of them a model wrote
+    /// without one.
+    pub(super) fn ui_entities(&mut self, items: &[Kid<'_>], w: usize) -> Lines {
         let mut rows: Vec<Entity> = Vec::new();
-        for (i, item) in n.nodes("items").into_iter().enumerate() {
+        for (item, path) in items {
             let trailing = match item.prop("trailing") {
-                Some(v) => self.trailing_spans(v, &join(path, &format!("items.{i}.trailing"))),
+                Some(v) => self.trailing_spans(v, &format!("{path}.trailing")),
                 None => Vec::new(),
             };
             rows.push(Entity {

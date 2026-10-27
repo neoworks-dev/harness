@@ -1995,6 +1995,22 @@ fn an_entity_list_is_columns_of_title_subtitle_and_trailing() {
 }
 
 #[test]
+fn list_items_without_an_entity_list_are_drawn_as_one() {
+    let it = doc(node(
+        "Card",
+        json!({"children": [
+            entity("Ada Lovelace", Some("analyst"), Some(tag("admin"))),
+            entity("Linus", None, None),
+            node("Text", json!({"text": "after"})),
+        ]}),
+    ));
+    let drawn = lines(&it, 60).join("\n");
+    assert!(!drawn.contains("unsupported"), "{drawn}");
+    assert!(drawn.contains("Ada Lovelace  analyst  ▐admin▌"), "{drawn}");
+    assert!(drawn.contains("Linus"), "{drawn}");
+}
+
+#[test]
 fn one_long_title_stacks_the_list_rather_than_squeeze_the_subtitles() {
     let it = doc(node(
         "EntityList",
