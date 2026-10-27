@@ -336,7 +336,7 @@ fn a_command_is_highlighted_and_broken_at_its_operators() {
     );
     assert_eq!(span("'error|warning'").fg, code_fg(Class::String));
 
-    // Once it has run it is muted.
+    // Once it has run it is muted and italic.
     let done = render_item(&item(None, "done"), 40, &Options::default());
     assert!(
         done[0]
@@ -344,7 +344,8 @@ fn a_command_is_highlighted_and_broken_at_its_operators() {
             .iter()
             .skip(1)
             .all(|s| s.style.fg == Some(pal().muted)
-                && !s.style.add_modifier.contains(Modifier::BOLD)),
+                && !s.style.add_modifier.contains(Modifier::BOLD)
+                && s.style.add_modifier.contains(Modifier::ITALIC)),
         "{:?}",
         done[0]
     );

@@ -292,11 +292,14 @@ impl<'a> Cx<'a> {
                 .into_iter()
                 .map(Line::from)
                 .collect();
-            // Once it has run it steps back: the agent's prose is what to read.
+            // Once it has run it steps back, muted and italic like a description: the agent's
+            // prose is what to read.
             if finished {
                 let muted = self.p.muted;
                 restyle(&mut lines, |st| {
-                    st.fg(muted).remove_modifier(Modifier::BOLD)
+                    st.fg(muted)
+                        .remove_modifier(Modifier::BOLD)
+                        .add_modifier(Modifier::ITALIC)
                 });
             }
             if !prompt && !self.o.expanded {
