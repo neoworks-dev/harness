@@ -364,7 +364,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
         return answer;
       });
     // Its running commands the user can send to the background.
-    const background = new BackgroundCalls();
+    const background = new BackgroundCalls(params.backgroundEnded);
     const agent = new Agent({
       initialState: {
         systemPrompt: definition ? agentPrompt(basePrompt, definition) : basePrompt,

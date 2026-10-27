@@ -190,6 +190,8 @@ export interface SessionManagerOptions {
    * that can take it (steering), instead of waiting for the next turn. Default: it waits.
    */
   steer?: () => boolean;
+  /** A command the session's agent ran ended in the background: tell it (see Messenger.tell). */
+  backgroundEnded?: (sessionId: string, text: string) => void;
 }
 
 /** Ends the agent sessions a runtime loaded, also those still loading (their SessionEnd hooks run). */
@@ -783,6 +785,10 @@ export class SessionManager {
       params.requestPermission = this.options.requestPermission(sessionId);
     }
     if (isDefault && this.options.safeSearch) params.safeSearch = this.options.safeSearch;
+    const { backgroundEnded } = this.options;
+    if (isDefault && backgroundEnded) {
+      params.backgroundEnded = (text) => backgroundEnded(sessionId, text);
+    }
     const settings = this.options.settings?.(sessionId, harness);
     if (settings && Object.keys(settings).length > 0) params.settings = settings;
     if (row.lastSeq === 0) return agent.newSession(params);

@@ -148,6 +148,11 @@ export interface NewSessionParams {
    */
   requestPermission?: RequestPermission;
   /**
+   * A command the user sent to the background (see AgentSession.background) ended: `text` says
+   * how, for the agent to hear of it. Absent: nobody is told.
+   */
+  backgroundEnded?: (text: string) => void;
+  /**
    * The user's safe-search choice (/safesearch), read at each web search; undefined: the
    * harness's configured default.
    */

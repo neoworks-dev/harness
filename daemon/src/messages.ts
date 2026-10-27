@@ -167,6 +167,14 @@ export class Messenger implements MessageTools {
     this.post(room, member.id, MAIN, body, { reply: true, wake, agent: member.agent });
   }
 
+  /**
+   * What happened beside `main` (`from`: background, a command it ran there ended), for it to
+   * hear like a message; starts a turn if it is idle. Not counted against the limits.
+   */
+  tell(room: string, from: string, body: string): void {
+    this.post(room, from, MAIN, body, { reply: false, wake: true });
+  }
+
   /** The user wrote again: agents may message each other afresh. */
   newRound(room: string): void {
     this.rooms.get(room)?.sent.clear();

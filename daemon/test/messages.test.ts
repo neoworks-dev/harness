@@ -257,3 +257,15 @@ describe("wait", () => {
     expect(text(await waiting)).toContain("Nothing new");
   });
 });
+
+test("what happened in the background is told to main like a message, and wakes it", () => {
+  const { messenger, log, woken } = setup();
+  messenger.tell(S, "background", "make ended");
+  expect(log).toEqual([
+    { type: "agent_message", from: "background", to: "main", text: "make ended" },
+  ]);
+  expect(woken).toEqual([S]);
+  expect(messenger.take(S, undefined)).toEqual([
+    '<message from="background">\nmake ended\n</message>',
+  ]);
+});

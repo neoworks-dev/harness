@@ -119,7 +119,8 @@ test("a background process holding the pipes does not hang the call", async () =
 
 test("sent to the background, the call ends at once and the command runs on into its file", async () => {
   const cwd = await tempDir();
-  const background = new BackgroundCalls();
+  const told: string[] = [];
+  const background = new BackgroundCalls((text) => told.push(text));
   const aborter = new AbortController();
   const call = createBashTool(cwd, undefined, undefined, background).execute(
     "t1",
@@ -138,6 +139,10 @@ test("sent to the background, the call ends at once and the command runs on into
   aborter.abort();
   await Bun.sleep(600);
   expect(readFileSync(path, "utf8")).toBe("first\nsecond\n\n[exited with code 4]\n");
+  // The agent hears how it ended, with the end of its output.
+  expect(told).toEqual([
+    `The command "test" you ran, which the user sent to the background, exited with code 4. The end of its output:\nfirst\nsecond\n\nAll of it: ${path}`,
+  ]);
   // Only while it runs.
   expect(background.move("t1")).toBe(false);
 });

@@ -4,6 +4,7 @@ import {
   closeSync,
   createWriteStream,
   existsSync,
+  fstatSync,
   openSync,
   readSync,
   rmSync,
@@ -97,6 +98,9 @@ class Output {
 export class BackgroundCalls {
   private readonly calls = new Map<string, () => void>();
 
+  /** `ended`: told how each command sent to the background ended, for the agent. */
+  constructor(readonly ended?: (text: string) => void) {}
+
   /** While a call runs; the returned function forgets it. */
   add(toolCallId: string, move: () => void): () => void {
     this.calls.set(toolCallId, move);
@@ -134,6 +138,23 @@ class Tail {
       this.offset += n;
       text += this.decoder.write(buffer.subarray(0, n));
     }
+  }
+}
+
+/** The last bytes of a file, as text (the whole of a small one); "" when it can't be read. */
+function fileEnd(path: string, bytes = 4 * MAX_BYTES): string {
+  try {
+    const fd = openSync(path, "r");
+    try {
+      const size = fstatSync(fd).size;
+      const buffer = Buffer.alloc(Math.min(size, bytes));
+      readSync(fd, buffer, 0, buffer.length, size - buffer.length);
+      return buffer.toString("utf8");
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return "";
   }
 }
 
@@ -257,9 +278,14 @@ export function createBashTool(
 
       if (outcome === "background") {
         clearTimeout(timeoutTimer);
-        // The file ends with how the command ended, as Claude Code's background commands do.
+        // The file ends with how the command ended, as Claude Code's background commands do,
+        // and the agent hears of it with the end of the output.
         const end = (code: number): void => {
+          const last = truncateTail(fileEnd(outputPath)).text.replace(/\n+$/, "") || "(no output)";
           appendFileSync(outputPath, `\n[exited with code ${code}]\n`);
+          background?.ended?.(
+            `The command "${description.trim() || command}" you ran, which the user sent to the background, exited with code ${code}. The end of its output:\n${last}\n\nAll of it: ${outputPath}`,
+          );
         };
         exited.then(
           ([code, sig]) => end(code ?? 128 + (sig ? (constants.signals[sig] ?? 0) : 0)),
