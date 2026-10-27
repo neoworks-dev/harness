@@ -46,6 +46,18 @@ Lay a dashboard out the way a page is, not as one long column:
 - Several small cards beat one tall one. Cut long tables to the rows that matter (top 5–8,
   then "other").
 
+## Words
+
+UI is read at a glance; the explaining goes in the prose around it. Inside a block:
+
+- A title, label, tag or button is a few words. A Card's title names what it holds.
+- A ListItem's subtitle and an OptionCard's description are one short line: about eight
+  words. Give the detail in the prose, or in an AccordionItem the user can open.
+- A Callout and a Text in a card are a sentence or two.
+- Several rows say what one long line would: split it rather than writing a paragraph.
+
+The app tells you when a block runs long, under the reply it is in.
+
 ## Picking components
 
 - End a reply with \`FollowUpBlock\` when there are obvious next questions: two to four short

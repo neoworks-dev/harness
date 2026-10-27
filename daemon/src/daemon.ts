@@ -33,6 +33,7 @@ import { MESSAGES_APP, Messenger } from "./messages.ts";
 import { handoffSummary } from "./handoff.ts";
 import { Permissions } from "./permissions.ts";
 import { Review } from "./review.ts";
+import { UiLint } from "./ui-lint.ts";
 import { Settings } from "./settings.ts";
 import { SessionSummaries } from "./summaries.ts";
 import { type ConnectUpstream, connectMcp } from "./gateway/upstream.ts";
@@ -442,6 +443,8 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     fileChanged: (path, session) => hub.fileChanged({ path, app: "agent", session }),
     log,
   });
+  // UI that ran long is told to the agent with its next prompt.
+  new UiLint(store);
   try {
     server = await startServer(hub, {
       paths,
