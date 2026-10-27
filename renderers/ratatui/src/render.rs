@@ -491,6 +491,23 @@ impl<'a> Cx<'a> {
 
     /// Side by side when every child is a single line and they all fit, else stacked.
     fn row(&mut self, v: &pb::RowComponent, w: usize) -> Lines {
+        // An option with its description, while the keys go through the options: only the
+        // focused one says what it does.
+        if let (Some(focused), [pb::Component::ButtonComponent(b), rest @ ..]) =
+            (self.o.focused_button, v.children.as_slice())
+            && !rest.is_empty()
+            && rest
+                .iter()
+                .all(|c| matches!(c, pb::Component::TextComponent(_)))
+        {
+            let mine = self.next_button == focused;
+            let mut out = vec![self.button(b, w)];
+            if mine {
+                let detail = self.children(rest, w.saturating_sub(2).max(1));
+                out.extend(indented(stack(detail, v.gap), 2));
+            }
+            return out;
+        }
         let parts = self.children(&v.children, w);
         let sep = match v.gap {
             None | Some(pb::Space::S) => 2,

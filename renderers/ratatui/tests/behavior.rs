@@ -1689,3 +1689,37 @@ fn a_split_diff_puts_the_old_line_beside_the_new_one() {
     let wide = lines_of(&long, 120, &split);
     assert!(wide.iter().any(|l| l.contains("│+new y")), "{wide:#?}");
 }
+
+#[test]
+fn a_choice_says_what_only_its_focused_option_does() {
+    let option = |id: &str, what: &str| {
+        json!({"type":"row","gap":"s","children":[
+            {"type":"button","label":id,"action":"neo.choose","args":{"id":"q","option":id}},
+            {"type":"text","tone":"muted","blocks":[{"type":"paragraph","spans":[{"text":what}]}]}]})
+    };
+    let it = item(
+        &json!({"ref":"q-1","kind":"tool","label":"Settings","state":"pending",
+            "component":{"type":"stack","gap":"s","children":[
+                option("one", "First thing"), option("two", "Second thing")]}})
+        .to_string(),
+    );
+    let focused = |n: usize| Options {
+        focused_button: Some(n),
+        hide_keys: true,
+        ..Options::default()
+    };
+    let got = lines_of(&it, 60, &focused(1)).join("\n");
+    assert!(got.contains("[one]") && got.contains("[two]"), "{got}");
+    assert!(!got.contains("First thing"), "{got}");
+    assert!(got.contains("Second thing"), "{got}");
+    // Under its option.
+    let lines = lines_of(&it, 60, &focused(1));
+    let at = lines.iter().position(|l| l.contains("[two]")).unwrap();
+    assert!(lines[at + 1].contains("Second thing"), "{lines:#?}");
+    // Not being answered: every option says what it does.
+    let all = lines_of(&it, 60, &Options::default()).join("\n");
+    assert!(
+        all.contains("First thing") && all.contains("Second thing"),
+        "{all}"
+    );
+}
