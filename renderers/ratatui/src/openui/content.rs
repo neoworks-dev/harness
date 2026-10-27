@@ -2,7 +2,7 @@
 //! links.
 
 use neo_protocol as pb;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use serde_json::Value;
 
@@ -95,15 +95,30 @@ impl<'a> Cx<'a> {
         self.code(code, language, false, w)
     }
 
-    /// ` label ` on a tint of the tone's color, in that color.
+    /// `label` on a tint of the tone's color, in that color, as a pill: its ends are rounded
+    /// (Nerd Font glyphs) or half blocks in the tint. Without true colors, a space each side.
     fn tag_spans(&self, n: N<'_>) -> Vec<Span<'static>> {
         let label = n.line("label").unwrap_or_default();
         let color = n.tone().map(|t| self.p.tone(t));
-        let mut style = Style::new().bg(self.p.tint(color));
+        let tint = self.p.tint(color);
+        let mut style = Style::new().bg(tint);
         if let Some(c) = color {
             style = style.fg(c);
         }
-        vec![Span::styled(format!(" {label} "), style)]
+        if !matches!(tint, Color::Rgb(..)) {
+            return vec![Span::styled(format!(" {label} "), style)];
+        }
+        let (left, right) = if self.o.file_icons {
+            ("\u{e0b6}", "\u{e0b4}")
+        } else {
+            ("▐", "▌")
+        };
+        let cap = Style::new().fg(tint);
+        vec![
+            Span::styled(left, cap),
+            Span::styled(label, style),
+            Span::styled(right, cap),
+        ]
     }
 
     pub(super) fn ui_tag(&mut self, n: N<'_>, w: usize) -> Lines {

@@ -8,7 +8,7 @@
 ⟦fg bg:surface|  ⟧⟦fg bg:surface|}⟧⟦fg bg:surface|                                                                             ⟧
 ⟦muted|Branch⟧  main
 ⟦muted|Status⟧  ⟦success bold|clean⟧
-⟦bold|Ada Lovelace⟧  ⟦muted|analyst⟧  ⟦accent bg:#2C364C| admin ⟧
+⟦bold|Ada Lovelace⟧  ⟦muted|analyst⟧  ⟦#2C364C|▐⟧⟦accent bg:#2C364C|admin⟧⟦#2C364C|▌⟧
 ⟦bold|Grace Hopper⟧  ⟦muted|admiral⟧       42
 ⟦bold|$1.2M⟧⟦success| ▲ 8%⟧⟦muted| vs last month⟧
 ⟦muted|[image front]⟧

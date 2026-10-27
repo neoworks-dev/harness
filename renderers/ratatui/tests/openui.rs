@@ -111,7 +111,7 @@ fn a_row_puts_children_side_by_side_at_their_own_widths() {
         vec![tag("Revenue"), tag("Customers"), tag("Churn")],
         json!({}),
     ));
-    assert_eq!(lines(&it, 80), [" Revenue     Customers     Churn"]);
+    assert_eq!(lines(&it, 80), ["▐Revenue▌   ▐Customers▌   ▐Churn▌"]);
 }
 
 #[test]
@@ -123,7 +123,7 @@ fn a_row_squeezes_text_before_it_stacks() {
     let out = lines(&it, 30);
     assert!(out.len() >= 2, "{out:?}");
     // The text gave way, the metric kept its width next to it.
-    assert!(out[0].ends_with(" A"), "{out:?}");
+    assert!(out[0].ends_with("▐A▌"), "{out:?}");
     assert!(out.iter().all(|l| l.chars().count() <= 30), "{out:?}");
 }
 
@@ -133,7 +133,7 @@ fn a_row_that_cannot_be_squeezed_stacks() {
         vec![tag("Revenue"), tag("Customers"), tag("Churn")],
         json!({}),
     ));
-    assert_eq!(lines(&it, 12), [" Revenue", " Customers", " Churn"]);
+    assert_eq!(lines(&it, 12), ["▐Revenue▌", "▐Customers▌", "▐Churn▌"]);
 }
 
 #[test]
@@ -147,15 +147,15 @@ fn a_wrapping_row_breaks_into_lines_of_whole_children() {
         ],
         json!({"wrap": true, "gap": "s"}),
     ));
-    assert_eq!(lines(&it, 80), [" alpha    beta    gamma    delta"]);
-    assert_eq!(lines(&it, 20), [" alpha    beta", " gamma    delta"]);
-    assert_eq!(lines(&it, 10), [" alpha", " beta", " gamma", " delta"]);
+    assert_eq!(lines(&it, 80), ["▐alpha▌  ▐beta▌  ▐gamma▌  ▐delta▌"]);
+    assert_eq!(lines(&it, 20), ["▐alpha▌  ▐beta▌", "▐gamma▌  ▐delta▌"]);
+    assert_eq!(lines(&it, 10), ["▐alpha▌", "▐beta▌", "▐gamma▌", "▐delta▌"]);
 }
 
 #[test]
 fn a_row_justifies_between_and_aligns_children_to_the_bottom() {
     let it = doc(row(vec![tag("A"), tag("B")], json!({"justify": "between"})));
-    assert_eq!(lines(&it, 10), [" A      B"]);
+    assert_eq!(lines(&it, 10), ["▐A▌    ▐B▌"]);
     let it = doc(row(
         vec![
             node(
@@ -434,7 +434,7 @@ fn tables_take_node_cells_and_align_numbers_right() {
         [
             "Account │ Plan  │  MRR",
             "────────┼───────┼─────",
-            "Acme    │  Pro  │ 1200",
+            "Acme    │ ▐Pro▌ │ 1200",
             "Globex  │ docs  │  480",
         ]
     );
@@ -442,10 +442,13 @@ fn tables_take_node_cells_and_align_numbers_right() {
     let tag = rendered[2]
         .spans
         .iter()
-        .find(|s| s.content == " Pro ")
+        .find(|s| s.content == "Pro")
         .unwrap();
     assert_eq!(tag.style.fg, Some(pal().accent));
     assert!(tag.style.bg.is_some(), "a tag sits on a tint");
+    // Its ends are half blocks in the tint: a pill.
+    let cap = rendered[2].spans.iter().find(|s| s.content == "▐").unwrap();
+    assert_eq!(cap.style.fg, tag.style.bg);
     assert_fits(&it, &Options::default());
 }
 
@@ -467,7 +470,7 @@ fn lists_key_values_metrics_and_progress() {
         lines(&it, 40),
         [
             "1. web-1",
-            "2.  x",
+            "2. ▐x▌",
             "Region  eu",
             "Errors  3",
             "2.1% +0.4pt",
@@ -1450,7 +1453,7 @@ fn a_metric_indicator_colors_its_change_by_direction_unless_told_otherwise() {
 fn metric_indicators_sit_in_rows_and_table_cells_and_never_overflow() {
     let up = || indicator(json!({"value": "812", "delta": "3%", "direction": "up"}));
     let it = doc(row(vec![up(), tag("live"), up()], json!({})));
-    assert_eq!(lines(&it, 80), ["812 ▲ 3%    live    812 ▲ 3%"]);
+    assert_eq!(lines(&it, 80), ["812 ▲ 3%   ▐live▌   812 ▲ 3%"]);
     let table = doc(node(
         "Table",
         json!({"columns": ["Region", "Orders"], "rows": [["EU", up()], ["US", up()]]}),
@@ -1751,8 +1754,8 @@ fn an_entity_list_is_columns_of_title_subtitle_and_trailing() {
     assert_eq!(
         lines(&it, 80),
         [
-            "Ada Lovelace  analyst                          admin",
-            "Grace Hopper  rear admiral, compiler pioneer   owner",
+            "Ada Lovelace  analyst                         ▐admin▌",
+            "Grace Hopper  rear admiral, compiler pioneer  ▐owner▌",
             "Linus",
         ]
     );
@@ -1795,9 +1798,9 @@ fn a_subtitle_that_would_wrap_stacks_the_list() {
     assert_eq!(
         lines(&it, 40),
         [
-            "Ada Lovelace                      admin",
+            "Ada Lovelace                     ▐admin▌",
             "  analyst",
-            "Grace Hopper                      owner",
+            "Grace Hopper                     ▐owner▌",
             "  rear admiral, compiler pioneer",
             "Linus",
         ]
@@ -1810,9 +1813,9 @@ fn a_narrow_entity_list_puts_the_subtitle_under_the_title() {
     assert_eq!(
         lines(&it, 24),
         [
-            "Ada Lovelace      admin",
+            "Ada Lovelace     ▐admin▌",
             "  analyst",
-            "Grace Hopper      owner",
+            "Grace Hopper     ▐owner▌",
             "  rear admiral, compiler",
             "  pioneer",
             "Linus",

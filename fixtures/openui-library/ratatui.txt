@@ -8,7 +8,7 @@
   }
 Branch  main
 Status  clean
-Ada Lovelace  analyst   admin
+Ada Lovelace  analyst  ▐admin▌
 Grace Hopper  admiral       42
 $1.2M ▲ 8% vs last month
 [image front]
