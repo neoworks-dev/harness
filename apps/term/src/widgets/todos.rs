@@ -22,28 +22,73 @@ pub enum TodoKey {
     Change(serde_json::Value),
 }
 
+/// A row the keys can be on: an item (its index) or the row the finished ones fold into.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Row {
+    Item(usize),
+    Done,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct TodosState {
     items: Vec<TodoItem>,
+    /// Position in [`TodosState::rows`].
     selected: usize,
+    /// The finished items are shown under their row.
+    show_done: bool,
 }
 
 impl TodosState {
     pub(crate) fn apply(&mut self, todos: &Todos) {
         self.items = todos.items.clone();
-        self.selected = self.selected.min(self.items.len().saturating_sub(1));
+        self.selected = self.selected.min(self.rows().len().saturating_sub(1));
     }
 
     pub(crate) fn has_any(&self) -> bool {
         !self.items.is_empty()
     }
 
-    /// One block per item, wrapped in `w` columns after its box.
+    /// The open items, then the row of the finished ones and, opened, those items.
+    fn rows(&self) -> Vec<Row> {
+        let mut rows: Vec<Row> = (0..self.items.len())
+            .filter(|&i| !self.items[i].done)
+            .map(Row::Item)
+            .collect();
+        let done: Vec<usize> = (0..self.items.len())
+            .filter(|&i| self.items[i].done)
+            .collect();
+        if !done.is_empty() {
+            rows.push(Row::Done);
+            if self.show_done {
+                rows.extend(done.into_iter().map(Row::Item));
+            }
+        }
+        rows
+    }
+
+    /// One block per row, wrapped in `w` columns after its box.
     fn blocks(&self, w: usize, focused: bool, p: &Palette) -> Vec<Vec<Line<'static>>> {
-        self.items
-            .iter()
+        let done = self.items.iter().filter(|i| i.done).count();
+        self.rows()
+            .into_iter()
             .enumerate()
-            .map(|(i, item)| {
+            .map(|(at, row)| {
+                let selected = focused && at == self.selected;
+                let i = match row {
+                    Row::Item(i) => i,
+                    Row::Done => {
+                        let arrow = if self.show_done { "▾ " } else { "▸ " };
+                        let mut style = Style::new().fg(p.muted);
+                        if selected {
+                            style = style.add_modifier(Modifier::REVERSED);
+                        }
+                        return vec![Line::from(vec![
+                            Span::styled(arrow, Style::new().fg(p.success)),
+                            Span::styled(format!("{done} done"), style),
+                        ])];
+                    }
+                };
+                let item = &self.items[i];
                 let (mark, style) = if item.done {
                     (
                         "[x] ",
@@ -52,7 +97,6 @@ impl TodosState {
                 } else {
                     ("[ ] ", Style::new())
                 };
-                let selected = focused && i == self.selected;
                 let style = if selected {
                     style.add_modifier(Modifier::REVERSED)
                 } else {
@@ -107,7 +151,12 @@ impl TodosState {
     }
 
     pub(crate) fn key(&mut self, key: KeyEvent) -> TodoKey {
-        let selected = self.items.get(self.selected);
+        let rows = self.rows();
+        let row = rows.get(self.selected).copied();
+        let selected = match row {
+            Some(Row::Item(i)) => self.items.get(i),
+            _ => None,
+        };
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => TodoKey::Leave,
             KeyCode::Up | KeyCode::Char('k') => {
@@ -115,10 +164,15 @@ impl TodosState {
                 TodoKey::Handled
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                self.selected = (self.selected + 1).min(self.items.len().saturating_sub(1));
+                self.selected = (self.selected + 1).min(rows.len().saturating_sub(1));
                 TodoKey::Handled
             }
             KeyCode::Char('a') => TodoKey::Add,
+            // The finished ones open and close.
+            KeyCode::Char(' ') | KeyCode::Enter if row == Some(Row::Done) => {
+                self.show_done = !self.show_done;
+                TodoKey::Handled
+            }
             KeyCode::Char(' ') | KeyCode::Enter => match selected {
                 Some(item) => {
                     let action = if item.done { "undone" } else { "done" };
@@ -157,35 +211,44 @@ mod tests {
         let p = Palette::default();
         assert!(t.render(30, 5, false, &p).is_empty());
         t.apply(&todos());
+        // The open ones first; the finished ones fold into a row under them.
         assert_eq!(
             plain_text(&t.render(20, 5, true, &p)),
-            [
-                "[x] Make the header",
-                "    sticky",
-                "[ ] Check the login",
-                "    form on a phone"
-            ]
+            ["[ ] Check the login", "    form on a phone", "▸ 1 done"]
         );
-        assert_eq!(t.natural_height(20, &p), 4);
+        assert_eq!(t.natural_height(20, &p), 3);
         let key = |c| KeyEvent::from(c);
-        assert_eq!(
-            t.key(key(KeyCode::Char(' '))),
-            TodoKey::Change(json!({"action": "undone", "id": "t1"}))
-        );
-        t.key(key(KeyCode::Down));
         assert_eq!(
             t.key(key(KeyCode::Char(' '))),
             TodoKey::Change(json!({"action": "done", "id": "t2"}))
         );
+        // On the fold, Enter opens it.
+        t.key(key(KeyCode::Down));
+        assert_eq!(t.key(key(KeyCode::Enter)), TodoKey::Handled);
+        assert_eq!(
+            plain_text(&t.render(20, 5, false, &p)),
+            [
+                "[ ] Check the login",
+                "    form on a phone",
+                "▾ 1 done",
+                "[x] Make the header",
+                "    sticky"
+            ]
+        );
+        t.key(key(KeyCode::Down));
+        assert_eq!(
+            t.key(key(KeyCode::Char(' '))),
+            TodoKey::Change(json!({"action": "undone", "id": "t1"}))
+        );
         assert_eq!(
             t.key(key(KeyCode::Char('x'))),
-            TodoKey::Change(json!({"action": "remove", "id": "t2"}))
+            TodoKey::Change(json!({"action": "remove", "id": "t1"}))
         );
         assert_eq!(t.key(key(KeyCode::Char('a'))), TodoKey::Add);
         // Two rows: the selected one stays in sight.
         assert_eq!(
             plain_text(&t.render(20, 2, true, &p)),
-            ["[ ] Check the login", "    form on a phone"]
+            ["[x] Make the header", "    sticky"]
         );
     }
 }
