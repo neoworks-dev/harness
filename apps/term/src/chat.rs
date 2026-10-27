@@ -1151,7 +1151,7 @@ pub fn sweep(line: &Line<'static>, now_ms: i64, p: &Palette) -> Line<'static> {
 }
 
 /// `b` mixed into `a` by `t` (0 to 1); None unless both are true colors.
-fn mix(
+pub fn mix(
     a: ratatui::style::Color,
     b: ratatui::style::Color,
     t: f32,

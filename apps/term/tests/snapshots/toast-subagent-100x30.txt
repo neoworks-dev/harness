@@ -1,0 +1,30 @@
+
+  connecting to the session…                         ╭────────────────────────────────────────────╮
+                                                     │ ● neo started in the background            │
+                                                     │ Find the weather and report it             │
+                                                     ╰────────────────────────────────────────────╯
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┃
+┃ message the agent · / for commands
+┃ site · neo
+  ? ask before acting (shift+tab to cycle)
+● main · neo
+○ codex  starting…                                                                            1m 02s
+○ neo [bg]  starting…                                                                             1s

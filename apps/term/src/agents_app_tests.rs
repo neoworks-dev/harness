@@ -736,3 +736,34 @@ fn the_shared_todos_show_in_the_side_column_and_the_keys_change_them() {
     assert_eq!(app.focus, None);
     assert_eq!(app.editor.text(), "/todo ");
 }
+
+#[test]
+fn a_subagent_starting_flies_in_a_card_and_a_replayed_one_does_not() {
+    let mut app = app();
+    app.handle_event(started("old", "codex", 60_000, json!({})));
+    app.tick(NOW + 1000);
+    assert!(!screen_text(&mut app, 100, 30).contains("started"));
+
+    app.handle_event(started("d1", "neo", -1000, json!({"background": true})));
+    app.tick(NOW + 1050);
+    let entering = screen_text(&mut app, 100, 30);
+    app.tick(NOW + 2000);
+    let settled = screen_text(&mut app, 100, 30);
+    snapshot("toast-subagent-100x30", &settled);
+    let at = |s: &str| s.lines().find_map(|l| l.find("● neo"));
+    assert!(
+        at(&entering).is_none_or(|x| x > at(&settled).unwrap()),
+        "{entering}"
+    );
+    assert!(
+        settled.contains("neo started in the background"),
+        "{settled}"
+    );
+    assert!(
+        settled.contains("Find the weather and report it"),
+        "{settled}"
+    );
+    // Gone once its time is up.
+    app.tick(NOW + 1000 + crate::toast::LIFE_MS + 100);
+    assert!(!screen_text(&mut app, 100, 30).contains("● neo"));
+}

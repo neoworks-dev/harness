@@ -4,7 +4,7 @@
 //! [`Effect`]s for the runtime to carry out against the daemon; [`App::draw`] paints it.
 
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use neo_protocol::{
@@ -41,6 +41,7 @@ use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction, sidebar_wid
 use crate::status::{Approvals, HarnessSettings, Status, record_setting};
 use crate::style::{Styles, plain_palette};
 use crate::theme::{Prefs, Theme};
+use crate::toast::{self, Toasts};
 use crate::util::{fit_line, relative_time, shorten_home, split_line, truncate, width};
 use crate::widgets::{Panel, WidgetAction, Widgets};
 
@@ -53,6 +54,8 @@ const POLL_MS: i64 = 2000;
 /// Idle this long, a session's prompt cache is gone with Anthropic (5 minutes, 1 hour with long
 /// retention) and OpenAI (5 minutes to an hour); DeepSeek's disk cache may outlast it.
 const CACHE_COLD_MS: i64 = 60 * 60 * 1000;
+/// An event older than this when it arrives is history (a replay), not news for a card.
+const TOAST_FRESH_MS: i64 = 10_000;
 /// Rows of the slash menu.
 const MENU_ROWS: usize = 8;
 /// Chat lines one wheel notch scrolls.
@@ -346,6 +349,10 @@ pub struct App {
     sessions_shown: bool,
     /// The working line is drawn over the input box: the status line leaves it out.
     work_shown: bool,
+    /// Event cards in the top right of the chat.
+    toasts: Toasts,
+    /// Background commands whose end got a card already.
+    toasted_jobs: HashSet<String>,
     /// Ctrl-G while the sidebar was hidden: focus it once it is drawn.
     sessions_wanted: bool,
     prompt: PromptState,
@@ -449,6 +456,8 @@ impl App {
             sessions_on: true,
             sessions_shown: false,
             work_shown: false,
+            toasts: Toasts::default(),
+            toasted_jobs: HashSet::new(),
             sessions_wanted: false,
             prompt: PromptState::default(),
             forms: Forms::default(),
@@ -576,7 +585,12 @@ impl App {
         // Background commands' output, their seconds counting up, one leaving the list.
         let tick_s = now_ms / 1000 != self.last_tick_ms / 1000;
         self.last_tick_ms = now_ms;
-        let jobs = self.widgets.jobs(now_ms).len();
+        let rows = self.widgets.jobs(now_ms);
+        self.toast_jobs(&rows, now_ms);
+        let jobs = rows.len();
+        if self.toasts.tick(now_ms) {
+            self.dirty = true;
+        }
         if self.widgets.tick(now_ms) || tick_s && jobs > 0 || jobs != self.jobs_shown {
             self.jobs_shown = jobs;
             self.dirty = true;
@@ -879,7 +893,14 @@ impl App {
 
     fn on_record(&mut self, record: &SessionEventRecord) {
         self.widgets.on_session_event(record);
+        let known = match &record.event {
+            SessionEvent::SubagentStarted(e) => self.agents.get(&e.id).is_some(),
+            _ => true,
+        };
         self.agents.on_record(record);
+        if !known {
+            self.toast_subagent(record);
+        }
         match &record.event {
             SessionEvent::UserMessage(message) => {
                 // A turn starts with it, or the running one took it in.
@@ -2696,8 +2717,9 @@ impl App {
         // with the accent bar on its left, a row of the chat's above it; what is in the box
         // starts past the bar.
         let gap = u16::from(self.styles.fills() && chat_h > 1);
-        // While a turn runs, a row of its own says so, over the input box.
-        let work_h = u16::from(self.running && chat_h >= gap + 6);
+        // While a turn runs, a row of its own says so, over the input box; while idle, that the
+        // cache has gone.
+        let work_h = u16::from((self.running || self.cache_cold) && chat_h >= gap + 6);
         let inset = |r: Rect| {
             if self.styles.fills() {
                 Rect {
@@ -2854,6 +2876,8 @@ impl App {
             self.draw_menu(frame, areas.chat);
             self.draw_mentions(frame, areas.chat);
         }
+        self.toasts
+            .draw(frame.buffer_mut(), areas.chat, self.now_ms, &self.styles);
         if let Some(left) = areas.left {
             self.draw_sessions(frame, left);
         }
@@ -3600,15 +3624,72 @@ impl App {
             && self.transcript.is_none()
     }
 
+    /// A card for each background command that has just ended, once.
+    fn toast_jobs(&mut self, rows: &[crate::widgets::JobRow], now_ms: i64) {
+        let one_line = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+        for job in rows {
+            let Some(ended) = job.ended_ms else {
+                continue;
+            };
+            if now_ms - ended > TOAST_FRESH_MS || !self.toasted_jobs.insert(job.id.clone()) {
+                continue;
+            }
+            let (title, tone) = match job.exit {
+                Some(0) | None => ("Command finished", toast::Tone::Success),
+                Some(_) => ("Command failed", toast::Tone::Danger),
+            };
+            let mut detail = one_line(&job.command);
+            if let Some(code) = job.exit.filter(|c| *c != 0) {
+                detail = format!("exit {code} · {detail}");
+            }
+            self.toasts.push(title, detail, tone, now_ms);
+            self.dirty = true;
+        }
+    }
+
+    /// A card for a subagent that has just started (not one replayed from the log).
+    fn toast_subagent(&mut self, record: &SessionEventRecord) {
+        let SessionEvent::SubagentStarted(e) = &record.event else {
+            return;
+        };
+        if self.now_ms - record.ts > TOAST_FRESH_MS {
+            return;
+        }
+        let who = e.name.as_deref().unwrap_or(&e.agent);
+        let title = if e.background.unwrap_or(false) {
+            format!("{who} started in the background")
+        } else {
+            format!("{who} started")
+        };
+        let task = e.task.split_whitespace().collect::<Vec<_>>().join(" ");
+        self.toasts
+            .push(title, task, toast::Tone::Accent, self.now_ms);
+        self.dirty = true;
+    }
+
     /// Seconds the running turn has taken; None when idle.
     fn working_secs(&self) -> Option<u64> {
         self.running
             .then(|| u64::try_from((self.now_ms - self.turn_started_ms) / 1000).unwrap_or(0))
     }
 
-    /// `◐ working · 1m08s · esc to interrupt` over the input box, a light sweeping across it.
+    /// The row over the input box: `◐ working · 1m08s · esc to interrupt` with a light sweeping
+    /// across it, or while idle a band saying the cache has expired.
     fn draw_work(&self, frame: &mut Frame, area: Rect) {
-        let Some(secs) = self.working_secs().filter(|_| area.height > 0) else {
+        if area.height == 0 {
+            return;
+        }
+        // As far in as the chat's text.
+        let inset = if self.styles.fills() { 2 } else { 0 };
+        let at = Rect {
+            x: area.x + inset,
+            width: area.width.saturating_sub(inset),
+            ..area
+        };
+        let Some(secs) = self.working_secs() else {
+            if self.cache_cold {
+                self.draw_cache_cold(frame, at);
+            }
             return;
         };
         let spinner = SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()];
@@ -3624,14 +3705,31 @@ impl App {
             spans.push(Span::styled(" · esc to interrupt", self.styles.muted));
         }
         let line = chat::sweep(&Line::from(spans), self.now_ms, &self.palette);
-        // As far in as the chat's text.
-        let inset = if self.styles.fills() { 2 } else { 0 };
-        let at = Rect {
-            x: area.x + inset,
-            width: area.width.saturating_sub(inset),
-            ..area
-        };
         frame.render_widget(Paragraph::new(fit_line(line, usize::from(at.width))), at);
+    }
+
+    /// `⚠ cache expired · …` on a band tinted with the danger color, the row's whole width.
+    fn draw_cache_cold(&self, frame: &mut Frame, at: Rect) {
+        let band = chat::mix(self.palette.bg, self.palette.danger, 0.18);
+        let tone = |s: Style| match band {
+            Some(bg) => s.bg(bg),
+            None => s,
+        };
+        let line = Line::from(vec![
+            Span::styled(
+                " ⚠ cache expired ",
+                tone(self.styles.danger.add_modifier(Modifier::BOLD)),
+            ),
+            Span::styled(
+                "· the next message re-reads the whole conversation, slower and at full price ",
+                tone(Style::new()),
+            ),
+        ]);
+        let mut line = fit_line(line, usize::from(at.width));
+        if let Some(bg) = band {
+            line = line.style(Style::new().bg(bg));
+        }
+        frame.render_widget(Paragraph::new(line), at);
     }
 
     fn status_lines(&self, width: usize) -> [Line<'static>; 2] {
@@ -3656,7 +3754,7 @@ impl App {
             spinner: SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()],
             queued: self.waiting.len(),
             stashed: self.stash.is_some(),
-            cache_cold: self.cache_cold,
+            cache_cold: self.cache_cold && !self.work_shown,
             connected: self.connected,
             approvals: self.approvals,
             notice,

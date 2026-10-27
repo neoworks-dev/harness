@@ -23,5 +23,6 @@ pub mod sessions;
 pub mod status;
 pub mod style;
 pub mod theme;
+pub mod toast;
 pub mod util;
 pub mod widgets;

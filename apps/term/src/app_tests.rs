@@ -2782,3 +2782,48 @@ fn preview() {
     html.push_str("</pre></body></html>");
     std::fs::write(path, html).unwrap();
 }
+
+#[test]
+fn an_expired_cache_is_a_band_over_the_input_box() {
+    let mut app = scenario();
+    app.cache_cold = true;
+    let text = screen_text(&mut app, 100, 24);
+    snapshot("cache-cold-100x24", &text);
+    assert!(
+        text.contains("⚠ cache expired · the next message re-reads"),
+        "{text}"
+    );
+    // Said once: the status line leaves it out.
+    assert_eq!(text.matches("cache expired").count(), 1, "{text}");
+}
+
+#[test]
+fn a_background_command_ending_gets_one_card() {
+    let mut app = app();
+    let job = |id: &str, ended: i64, exit: i64| crate::widgets::JobRow {
+        id: id.into(),
+        agent: None,
+        command: "cargo test\n  --all".into(),
+        started_ms: NOW - 60_000,
+        ended_ms: Some(ended),
+        exit: Some(exit),
+        last: None,
+    };
+    app.toast_jobs(&[job("j1", NOW, 0), job("j2", NOW, 101)], NOW);
+    app.toast_jobs(&[job("j1", NOW, 0)], NOW + 100);
+    // One that ended long before it was seen is not news.
+    app.toast_jobs(&[job("j3", NOW - 60_000, 0)], NOW);
+    let cards: Vec<_> = app
+        .toasts
+        .list()
+        .iter()
+        .map(|t| (t.title.as_str(), t.detail.as_str()))
+        .collect();
+    assert_eq!(
+        cards,
+        [
+            ("Command finished", "cargo test --all"),
+            ("Command failed", "exit 101 · cargo test --all"),
+        ]
+    );
+}
