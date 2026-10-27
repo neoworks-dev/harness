@@ -313,7 +313,10 @@ impl<'a> Cx<'a> {
         let muted = self.p.muted_style();
         let gap = if sub_w > 0 { 2 } else { 0 };
         let sub_room = w.saturating_sub(title_w + gap + tail);
-        let columns = title_w + tail <= w && (sub_w == 0 || sub_room >= sub_w.min(12));
+        // Columns while every row fits on one line and the titles leave the subtitles room;
+        // otherwise each row stacks, its subtitle under it across the whole width.
+        let columns =
+            title_w + tail <= w && (sub_w == 0 || (sub_w <= sub_room && title_w <= w * 2 / 5));
         let mut out: Lines = Vec::new();
         for row in rows {
             let right = |trailing: Vec<Span<'static>>| {
@@ -322,20 +325,13 @@ impl<'a> Cx<'a> {
                 spans
             };
             if columns {
-                // A long subtitle wraps in its column; the trailing value stays on the first row.
-                let sub_col = sub_w.min(sub_room);
-                let mut sub = match row.subtitle {
-                    Some(s) => wrap(&[Span::styled(s, muted)], sub_col.max(1)),
-                    None => Vec::new(),
-                }
-                .into_iter();
+                let sub = row.subtitle.unwrap_or_default();
                 let mut spans = vec![Span::styled(row.title.clone(), bold)];
                 spans.push(Span::raw(" ".repeat(title_w - width(&row.title))));
                 if sub_w > 0 {
-                    let first = sub.next().map(|l| l.spans).unwrap_or_default();
-                    let pad = sub_col.saturating_sub(line_width(&first));
+                    let pad = sub_w - width(&sub);
                     spans.push(Span::raw("  "));
-                    spans.extend(first);
+                    spans.push(Span::styled(sub, muted));
                     spans.push(Span::raw(" ".repeat(pad)));
                 }
                 if tail_w > 0 {
@@ -343,15 +339,11 @@ impl<'a> Cx<'a> {
                     spans.extend(right(row.trailing));
                 }
                 out.push(Line::from(spans));
-                for line in sub {
-                    let mut spans = vec![Span::raw(" ".repeat(title_w + 2))];
-                    spans.extend(line.spans);
-                    out.push(Line::from(spans));
-                }
                 continue;
             }
-            // Stacked: the title and the trailing value on one line, the subtitle under.
-            let head_w = w.min(title_w + tail);
+            // Stacked: the title and the trailing value (at the edge) on one line, the subtitle
+            // under.
+            let head_w = w.max(tail);
             let title = truncate(&row.title, head_w.saturating_sub(tail).max(1));
             let pad = head_w.saturating_sub(width(&title) + tail);
             let mut spans = vec![Span::styled(title, bold), Span::raw(" ".repeat(pad))];

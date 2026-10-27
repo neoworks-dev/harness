@@ -1770,14 +1770,35 @@ fn an_entity_list_is_columns_of_title_subtitle_and_trailing() {
 }
 
 #[test]
-fn a_long_subtitle_wraps_in_its_column_before_the_list_stacks() {
+fn one_long_title_stacks_the_list_rather_than_squeeze_the_subtitles() {
+    let it = doc(node(
+        "EntityList",
+        json!({"items": [
+            entity("Background subagents and session answers", Some("stopped"), None),
+            entity("Sessions", Some("kept"), None),
+        ]}),
+    ));
+    assert_eq!(
+        lines(&it, 80),
+        [
+            "Background subagents and session answers",
+            "  stopped",
+            "Sessions",
+            "  kept",
+        ]
+    );
+}
+
+#[test]
+fn a_subtitle_that_would_wrap_stacks_the_list() {
     let it = doc(people());
     assert_eq!(
         lines(&it, 40),
         [
-            "Ada Lovelace  analyst             admin",
-            "Grace Hopper  rear admiral,       owner",
-            "              compiler pioneer",
+            "Ada Lovelace                      admin",
+            "  analyst",
+            "Grace Hopper                      owner",
+            "  rear admiral, compiler pioneer",
             "Linus",
         ]
     );
@@ -1789,9 +1810,9 @@ fn a_narrow_entity_list_puts_the_subtitle_under_the_title() {
     assert_eq!(
         lines(&it, 24),
         [
-            "Ada Lovelace   admin",
+            "Ada Lovelace      admin",
             "  analyst",
-            "Grace Hopper   owner",
+            "Grace Hopper      owner",
             "  rear admiral, compiler",
             "  pioneer",
             "Linus",
