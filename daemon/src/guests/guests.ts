@@ -1352,12 +1352,14 @@ export class GuestManager {
       request.title = this.options.guard.title(guest.session, touches.kind, sensitive);
     }
     if (kind !== undefined) request.kind = kind;
-    if (content?.length) request.content = content;
-    else if (kind === "execute" && touches.command !== undefined) {
-      // The command as code to read, under a plain question.
+    if (kind === "execute" && touches.command !== undefined) {
+      // The command as code to read, under what it is for or a plain question, as neo asks.
+      // (Claude Code sends the description as the content and the command as the title.)
       request.content = [{ type: "text", text: touches.command }];
-      if (sensitive.length === 0) request.title = RUN_TITLE;
-    }
+      const rawDescription = isRecord(call.rawInput) ? str(call.rawInput.description) : undefined;
+      const description = rawDescription?.replace(/\s+/g, " ").trim();
+      if (sensitive.length === 0) request.title = description || RUN_TITLE;
+    } else if (content?.length) request.content = content;
     const toolCallId = str(call.toolCallId);
     if (toolCallId !== undefined) {
       request.toolCallId = `${guest.main ? `${guest.name}-main` : guest.name}:${toolCallId}`;

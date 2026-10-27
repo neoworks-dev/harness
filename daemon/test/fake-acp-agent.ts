@@ -3,7 +3,8 @@
 //   greet <name>  calls greeter.greet through neo's MCP server (the gateway)
 //   ask           asks for permission and reports the answer
 //   ask edit      the same, for a tool call of kind edit with a diff (ask execute: kind execute;
-//                 ask diff: a diff but no kind)
+//                 ask diff: a diff but no kind; ask bash: a command with its description, as
+//                 Claude Code asks)
 //   wait          runs until cancelled
 //   edit          reports a tool call with a diff
 //   readfile <p>  asks to read the file (kind read, locations [p]) and reports the answer
@@ -209,6 +210,15 @@ async function prompt(params: {
     if (what === "edit") Object.assign(toolCall, { kind: "edit", content: [diff] });
     else if (what === "diff") Object.assign(toolCall, { content: [diff] });
     else if (what === "execute") Object.assign(toolCall, { kind: "execute", title: "ls" });
+    else if (what === "bash") {
+      // As Claude Code asks: the command as the title, its description as the content.
+      Object.assign(toolCall, {
+        kind: "execute",
+        title: "ls -la",
+        rawInput: { command: "ls -la", description: "List the files" },
+        content: [{ type: "content", content: { type: "text", text: "List the files" } }],
+      });
+    }
     const answer = (await request("session/request_permission", {
       sessionId,
       toolCall,

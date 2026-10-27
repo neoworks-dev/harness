@@ -774,6 +774,18 @@ describe("/approvals", () => {
     });
   });
 
+  test("a guest's command asks by its description, the command under it", async () => {
+    const { daemon, session } = await setup();
+    daemon.sessions.input(session, "cli", "/fake ask bash");
+    const request = await answer(daemon, session, "permission_request", "yes");
+    expect(request).toMatchObject({
+      title: "List the files",
+      kind: "execute",
+      content: [{ type: "text", text: "ls -la" }],
+    });
+    await daemon.sessions.idle(session);
+  });
+
   test("ask mode: a guest's edit request carries its kind and the diff to preview", async () => {
     const { daemon, session } = await setup();
     daemon.sessions.input(session, "cli", "/fake ask edit");
