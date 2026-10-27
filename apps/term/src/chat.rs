@@ -472,9 +472,8 @@ impl Chat {
         let mut summaries = turn_changes(items, opts.running).into_iter().peekable();
         // Only the newest edit shows what it changed (Ctrl-O opens them all).
         let last_edit = items.iter().rposition(is_edit);
+        // A blank row between entries, tool calls too.
         let mut offset = 0;
-        // Tool rows follow each other without a blank line; prose and questions get one.
-        let mut after_tool = false;
         let mut k = 0;
         loop {
             // A finished turn's changed files go after its last item.
@@ -505,7 +504,6 @@ impl Chat {
                     lit: true,
                 });
                 offset += len;
-                after_tool = false;
             }
             if k >= shown.len() {
                 break;
@@ -523,7 +521,7 @@ impl Chat {
                 if end - k >= FOLD_MIN && end < shown.len() {
                     let run: Vec<&ViewItem> =
                         shown[k..end].iter().map(|&(i, _)| &items[i]).collect();
-                    if !entries.is_empty() && !after_tool {
+                    if !entries.is_empty() {
                         offset += 1;
                     }
                     entries.push(Entry {
@@ -536,7 +534,6 @@ impl Chat {
                         lit: true,
                     });
                     offset += 1;
-                    after_tool = true;
                     k = end;
                     continue;
                 }
@@ -605,10 +602,9 @@ impl Chat {
             if lines.is_empty() {
                 continue;
             }
-            if !entries.is_empty() && !(after_tool && tool_row) {
+            if !entries.is_empty() {
                 offset += 1;
             }
-            after_tool = tool_row;
             if tool_row && let Some(first) = changed_files(item).into_iter().next() {
                 files.push(FileTarget {
                     r#ref: r.clone(),
@@ -1407,7 +1403,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_rows_follow_each_other_without_a_blank_line() {
+    fn tool_rows_have_a_blank_line_between_them() {
         let mut c = Chat::new();
         c.apply_snapshot(snapshot(vec![
             call("t1", "read a", "done"),
@@ -1416,8 +1412,8 @@ mod tests {
         ]));
         c.layout(40, 20, &opts());
         let t = texts(&c);
-        assert_eq!(t[..4], ["read a", "  ⎿ out", "read b", "  ⎿ out"]);
-        assert_eq!(t[4], "", "a question gets room");
+        assert_eq!(t[..5], ["read a", "  ⎿ out", "", "read b", "  ⎿ out"]);
+        assert_eq!(t[5], "", "a question gets room");
     }
 
     #[test]
@@ -1438,7 +1434,7 @@ mod tests {
         ];
         c.apply_snapshot(snapshot(items.clone()));
         c.layout(80, 20, &opts());
-        assert_eq!(texts(&c)[..3], ["Run the tests", "Lint", "Format"]);
+        assert_eq!(texts(&c)[..5], ["Run the tests", "", "Lint", "", "Format"]);
 
         // Other calls still fold, and only the failures are red.
         items[..3].clone_from_slice(&[
@@ -1477,7 +1473,7 @@ mod tests {
         c.layout(80, 20, &opts());
         assert_eq!(
             c.total_lines(),
-            8,
+            11,
             "the tail run is still going: shown in full"
         );
 
@@ -1802,9 +1798,10 @@ mod tests {
         c.layout(100, 40, &opts());
         // Only the newest edit is open.
         assert_eq!(
-            texts(&c)[2..6],
+            texts(&c)[2..7],
             [
                 "edit src/b.rs  +2 −0",
+                "",
                 "edit src/a.rs  +1 −1",
                 "-old",
                 "+new"
@@ -1815,7 +1812,7 @@ mod tests {
             ..opts()
         };
         c.layout(100, 40, &split);
-        let row = &texts(&c)[4];
+        let row = &texts(&c)[5];
         assert!(row.starts_with("-old") && row.contains("│+new"), "{row}");
     }
 
