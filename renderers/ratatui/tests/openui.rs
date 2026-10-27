@@ -1698,7 +1698,7 @@ fn option_cards_sit_side_by_side_as_framed_cards() {
 }
 
 #[test]
-fn the_chosen_card_has_an_accent_frame_and_a_focused_one_a_reversed_title() {
+fn the_chosen_card_has_an_accent_frame_and_fill_and_a_focused_one_a_reversed_marker() {
     let it = doc(plans(Some("pro")));
     let rendered = render_item(&it, 80, &Options::default());
     let edge = |col: usize| {
@@ -1715,17 +1715,46 @@ fn the_chosen_card_has_an_accent_frame_and_a_focused_one_a_reversed_title() {
     // The first card keeps the border color, the chosen one the accent.
     assert_eq!(edge(0), Some(pal().border));
     assert_eq!(edge(27), Some(pal().accent));
+    // The chosen card's inside is washed with the accent, its title in it; the others' aren't.
+    let span = |line: usize, text: &str| {
+        rendered[line]
+            .spans
+            .iter()
+            .find(|s| s.content.contains(text))
+            .unwrap()
+            .clone()
+    };
+    let pro = span(1, "Pro");
+    assert!(pro.style.bg.is_some());
+    assert_eq!(pro.style.fg, Some(pal().accent));
+    assert!(span(2, "Unlimited").style.bg.is_some());
+    assert_eq!(span(1, "Free").style.bg, None);
     let rendered = render_item(&it, 80, &focused("plan"));
-    let title = rendered[1]
-        .spans
-        .iter()
-        .find(|s| s.content.contains("Pro"))
-        .unwrap();
-    assert!(title.style.add_modifier.contains(Modifier::REVERSED));
-    assert!(
-        !rendered[1].spans.iter().any(
-            |s| s.content.contains("Free") && s.style.add_modifier.contains(Modifier::REVERSED)
-        )
+    let reversed = |s: &&ratatui::text::Span| s.style.add_modifier.contains(Modifier::REVERSED);
+    let markers: Vec<_> = rendered[1].spans.iter().filter(|s| reversed(s)).collect();
+    assert_eq!(markers.len(), 1);
+    assert_eq!(markers[0].content, "(•)");
+}
+
+#[test]
+fn a_long_card_title_wraps_under_itself() {
+    let props = json!({"name": "hero", "options": [
+        node("OptionCard", json!({"value": "a", "title": "Your life is kept safe in one place", "description": "Current"})),
+        node("OptionCard", json!({"value": "b", "title": "Short"})),
+    ]});
+    let it = doc(keyed("OptionCards", "hero", props));
+    let out = lines(&it, 52);
+    assert_eq!(
+        out[1],
+        "│ ( ) Your life is kept │ │ ( ) Short             │"
+    );
+    assert_eq!(
+        out[2],
+        "│     safe in one place │ │                       │"
+    );
+    assert_eq!(
+        out[3],
+        "│     Current           │ │                       │"
     );
 }
 

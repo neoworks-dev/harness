@@ -1,6 +1,6 @@
 //! Forms: every input is a focusable field, `Label *` over `[ value or placeholder ]`.
 
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use serde_json::Value;
 use unicode_width::UnicodeWidthChar;
@@ -15,6 +15,8 @@ const FIELD_W: usize = 44;
 /// The narrowest and the widest an option card is drawn.
 const CARD_MIN: usize = 22;
 const CARD_MAX: usize = 34;
+/// Lines an option card's title wraps to before it is cut.
+const TITLE_LINES: usize = 3;
 /// Rows a text area has at least, and at most.
 const AREA_MIN: usize = 3;
 const AREA_MAX: usize = 8;
@@ -457,25 +459,42 @@ impl<'a> Cx<'a> {
                 let at = r * per_row + c;
                 let on = Some(at) == chosen;
                 let accent = Style::new().fg(self.p.accent);
+                let bold = Modifier::BOLD;
                 let (marker, title_style) = match (on, focused) {
                     (true, true) => (
-                        Span::styled("(•)", accent.add_modifier(Modifier::BOLD)),
-                        accent.add_modifier(Modifier::REVERSED | Modifier::BOLD),
+                        Span::styled("(•)", accent.add_modifier(Modifier::REVERSED | bold)),
+                        accent.add_modifier(bold),
                     ),
-                    (true, false) => (
-                        Span::styled("(•)", accent),
-                        Style::new().add_modifier(Modifier::BOLD),
+                    (true, false) => (Span::styled("(•)", accent), accent.add_modifier(bold)),
+                    (false, _) => (
+                        Span::styled("( )", self.p.muted_style()),
+                        Style::new().add_modifier(bold),
                     ),
-                    (false, _) => (Span::styled("( )", self.p.muted_style()), Style::new()),
                 };
-                let title = truncate(&option.label, inner.saturating_sub(4).max(1));
-                let mut head =
-                    Line::from(vec![marker, Span::styled(format!(" {title}"), title_style)]);
+                // The title wraps under itself, up to TITLE_LINES lines.
+                let text_w = inner.saturating_sub(4).max(1);
+                let mut title = wrap(&[Span::styled(option.label.clone(), title_style)], text_w);
+                if title.len() > TITLE_LINES {
+                    title.truncate(TITLE_LINES);
+                    if let Some(last) = title.last_mut() {
+                        let cut: String = last.spans.iter().map(|s| s.content.as_ref()).collect();
+                        *last = Line::from(Span::styled(
+                            truncate(&format!("{cut}…"), text_w),
+                            title_style,
+                        ));
+                    }
+                }
+                let mut title = title.into_iter();
+                let mut head = Line::from(vec![marker, Span::raw(" ")]);
+                if let Some(first) = title.next() {
+                    head.spans.extend(first.spans);
+                }
                 if focused && at == lit && !marked {
                     marked = true;
                     self.mark_focus(&mut head);
                 }
                 let mut body = vec![head];
+                body.extend(indented(title.collect(), 4));
                 if let Some(d) = description {
                     body.extend(indented(
                         wrap(
@@ -502,7 +521,9 @@ impl<'a> Cx<'a> {
                     } else {
                         Style::new().fg(self.p.border)
                     };
-                    frame(body, inner, edge)
+                    // The chosen card is filled with a wash of the accent.
+                    let fill = on.then(|| self.p.tint(Some(self.p.accent)));
+                    frame_filled(body, inner, edge, fill)
                 } else {
                     body
                 };
@@ -932,13 +953,32 @@ fn group_has(value: &Value, item: &str) -> bool {
 
 /// `body` between rounded edges, each line filled to `inner` cells.
 fn frame(body: Lines, inner: usize, edge: Style) -> Lines {
+    frame_filled(body, inner, edge, None)
+}
+
+/// `frame`, with the inside (padding included) on `fill` when there is one.
+fn frame_filled(body: Lines, inner: usize, edge: Style, fill: Option<Color>) -> Lines {
+    let paint = |s: Style| match fill {
+        Some(bg) => s.bg(bg),
+        None => s,
+    };
     let mut out = vec![sline(format!("╭{}╮", "─".repeat(inner + 2)), edge)];
     for line in body {
         let used = line.width();
-        let mut spans = vec![Span::styled("│ ", edge)];
-        spans.extend(line.spans);
-        spans.push(Span::raw(" ".repeat(inner.saturating_sub(used))));
-        spans.push(Span::styled(" │", edge));
+        let mut spans = vec![
+            Span::styled("│", edge),
+            Span::styled(" ", paint(Style::new())),
+        ];
+        spans.extend(
+            line.spans
+                .into_iter()
+                .map(|s| Span::styled(s.content, paint(s.style))),
+        );
+        spans.push(Span::styled(
+            " ".repeat(inner.saturating_sub(used) + 1),
+            paint(Style::new()),
+        ));
+        spans.push(Span::styled("│", edge));
         out.push(Line::from(spans));
     }
     out.push(sline(format!("╰{}╯", "─".repeat(inner + 2)), edge));

@@ -24,8 +24,8 @@
   ⟦muted|Mon                          Tue                         Wed⟧
 ⟦accent|━ ⟧Visits
 ⟦border|╭────────────────────────────────╮⟧ ⟦border|╭────────────────────────────────╮⟧
-⟦border|│ ⟧⟦muted|( )⟧ Free                      ⟦border| │⟧ ⟦border|│ ⟧⟦muted|( )⟧ Pro                       ⟦border| │⟧
-⟦border|│ ⟧    ⟦muted|For trying it out⟧         ⟦border| │⟧ ⟦border|│ ⟧    ⟦muted|For teams⟧                 ⟦border| │⟧
+⟦border|│⟧ ⟦muted|( )⟧ ⟦bold|Free⟧                       ⟦border|│⟧ ⟦border|│⟧ ⟦muted|( )⟧ ⟦bold|Pro⟧                        ⟦border|│⟧
+⟦border|│⟧     ⟦muted|For trying it out⟧          ⟦border|│⟧ ⟦border|│⟧     ⟦muted|For teams⟧                  ⟦border|│⟧
 ⟦border|╰────────────────────────────────╯⟧ ⟦border|╰────────────────────────────────╯⟧
 ⟦success|[x]⟧ Alerts
     ⟦muted|Tell me when it breaks⟧
