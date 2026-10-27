@@ -951,12 +951,8 @@ fn group_has(value: &Value, item: &str) -> bool {
     }
 }
 
-/// `body` between rounded edges, each line filled to `inner` cells.
-fn frame(body: Lines, inner: usize, edge: Style) -> Lines {
-    frame_filled(body, inner, edge, None)
-}
-
-/// `frame`, with the inside (padding included) on `fill` when there is one.
+/// `body` between rounded edges, each line filled to `inner` cells, the inside (padding
+/// included) on `fill` when there is one.
 fn frame_filled(body: Lines, inner: usize, edge: Style, fill: Option<Color>) -> Lines {
     let paint = |s: Style| match fill {
         Some(bg) => s.bg(bg),
