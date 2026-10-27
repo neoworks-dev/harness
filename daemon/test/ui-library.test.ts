@@ -10,6 +10,7 @@ test("the guidance's examples are neoui, and evaluate without errors", () => {
     expect(doc.errors).toBeUndefined();
     expect(repairs).toEqual([]);
   }
+  // Nothing in OpenUI, the language before neoui.
   expect(GUIDANCE).not.toContain("```openui");
 });
 

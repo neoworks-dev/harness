@@ -1,6 +1,6 @@
 // ui.action: a button in a view was pressed. An action naming an open app's tool (app.tool) runs
 // that tool directly, and its result shows in the chat like any tool call (rendered with the
-// app's template). openui.input and openui.press belong to a neoui doc (docs/neoui.md).
+// app's template). neoui.input and neoui.press belong to a neoui doc (docs/neoui.md).
 // Otherwise the agent gets it as input, so it can act on it or explain.
 import type { AssistantMessage, CallTool } from "@neoworks/neoui";
 import type { Component, UiAction } from "@neoworks-dev/neo-protocol/types";
@@ -81,7 +81,7 @@ function toolData(result: { text: string; structured?: unknown }): unknown {
  * The tools a neoui program's Query and Mutation call, for a session. A mutation is something
  * the user did, so it is recorded like a button that runs a tool; a query is a read and is not.
  */
-export function openUiTools(parts: Pick<Parts, "store" | "gateway">, session: string): CallTool {
+export function neoUiTools(parts: Pick<Parts, "store" | "gateway">, session: string): CallTool {
   return async (name, args, kind) => {
     if (kind === "mutation") {
       const result = await runAppTool(parts, session, name, args);
@@ -101,7 +101,7 @@ export function openUiTools(parts: Pick<Parts, "store" | "gateway">, session: st
  * What a button of a neoui doc sends: for the agent, what was pressed with the form's values; for
  * the chat, only the message, as if the user had written it.
  */
-function openUiInput(sent: AssistantMessage): { text: string; shown: string } {
+function neoUiInput(sent: AssistantMessage): { text: string; shown: string } {
   const pressed = `[ui action] The user pressed "${sent.label}"`;
   // A button with no ui-ask sends its label: don't say it twice.
   const lines = [sent.message === sent.label ? `${pressed}.` : `${pressed}: ${sent.message}`];
@@ -148,8 +148,8 @@ export class ActionRunner {
       this.parts.asker.answer(session, kind, id, option, from, added);
       return;
     }
-    if (action === "openui.input" || action === "openui.press") {
-      await this.openUi(session, ref, action, args, from);
+    if (action === "neoui.input" || action === "neoui.press") {
+      await this.neoUi(session, ref, action, args, from);
       return;
     }
     if (action === "neo.cancel_agent") {
@@ -215,10 +215,10 @@ export class ActionRunner {
   }
 
   /**
-   * openui.input {doc, key, value} and openui.press {doc, key}. Actions on a doc that is still
+   * neoui.input {doc, key, value} and neoui.press {doc, key}. Actions on a doc that is still
    * streaming, or on a node it no longer has, change nothing.
    */
-  private async openUi(
+  private async neoUi(
     session: string,
     ref: string,
     action: string,
@@ -230,17 +230,17 @@ export class ActionRunner {
     if (typeof doc !== "string" || typeof key !== "string") {
       throw new BadRequestError(`${action} needs args {doc, key}`);
     }
-    const found = this.parts.views.openUi(session, ref, doc);
+    const found = this.parts.views.neoUi(session, ref, doc);
     if (!found) throw new BadRequestError(`${ref} has no neoui doc ${doc}`);
     const { program, view } = found;
-    if (action === "openui.input") {
+    if (action === "neoui.input") {
       if (program.input(key, value)) view.changed(ref);
       return;
     }
     const result = await program.press(key);
     view.changed(ref);
     for (const sent of result.assistant) {
-      const { text, shown } = openUiInput(sent);
+      const { text, shown } = neoUiInput(sent);
       this.parts.sessions.input(session, from, text, undefined, shown);
     }
   }

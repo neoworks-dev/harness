@@ -1,9 +1,9 @@
-//! OpenUI docs in the chat: which target has focus, what is typed into a field, and the keys
+//! neoui docs in the chat: which target has focus, what is typed into a field, and the keys
 //! that move between targets and change their values (`docs/neoui.md`, "Focus").
 //!
 //! The renderer draws from a [`UiState`] per doc; this keeps those states per item and turns
 //! keys into changes of them. Values the user changes are queued to be sent as
-//! `openui.input` (text after a pause, everything else at once); a press is the app's, which
+//! `neoui.input` (text after a pause, everything else at once); a press is the app's, which
 //! sends what is queued first.
 
 use std::collections::HashMap;

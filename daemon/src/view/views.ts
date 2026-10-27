@@ -60,7 +60,7 @@ export class ViewManager {
    * The running neoui doc `doc` of item `ref` in the session, and the view that has it (an
    * item of the session's own agent is in the session's view, a guest's in its own).
    */
-  openUi(
+  neoUi(
     session: string,
     ref: string,
     doc: string,

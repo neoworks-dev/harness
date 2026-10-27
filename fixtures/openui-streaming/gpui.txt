@@ -1,9 +1,0 @@
-theme default-dark spacing s=4 m=8 l=16
-
-item m-m1 kind=agent
-  body
-    text column gap=4
-      text 14/400 fg=fg
-        "Checking:"
-      text 14/400 fg=muted
-        "[unsupported component: openui]"

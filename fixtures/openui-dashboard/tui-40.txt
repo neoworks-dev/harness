@@ -1,2 +1,0 @@
-✓ analytics.revenue
-  [unsupported component: openui]

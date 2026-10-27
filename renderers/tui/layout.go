@@ -37,8 +37,8 @@ func (r *renderer) component(c protocol.Component, w int) []line {
 		return wrapRuns(r.button(v), w)
 	case protocol.LinkComponent:
 		return wrapRuns(linkRuns(v.URL, v.Text, style{}), w)
-	case protocol.OpenUiComponent:
-		return unsupported("openui", w)
+	case protocol.NeoUiComponent:
+		return unsupported("neoui", w)
 	}
 	return nil // a component from a newer protocol: nothing to draw
 }

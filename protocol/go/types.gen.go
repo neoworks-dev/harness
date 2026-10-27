@@ -2441,7 +2441,7 @@ func (v Usage) MarshalJSON() ([]byte, error) {
 }
 
 // Component: The fixed component set. Apps combine these; they never add new ones.
-// Value is one of: CardComponent, RowComponent, StackComponent, TextComponent, ImageComponent, FileComponent, CodeComponent, DiffComponent, TableComponent, KvComponent, ProgressComponent, ButtonComponent, LinkComponent, OpenUiComponent, UnknownComponent.
+// Value is one of: CardComponent, RowComponent, StackComponent, TextComponent, ImageComponent, FileComponent, CodeComponent, DiffComponent, TableComponent, KvComponent, ProgressComponent, ButtonComponent, LinkComponent, NeoUiComponent, UnknownComponent.
 type Component struct {
 	Value ComponentVariant
 }
@@ -2562,8 +2562,8 @@ func (u *Component) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		u.Value = v
-	case "openui":
-		var v OpenUiComponent
+	case "neoui":
+		var v NeoUiComponent
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -2860,24 +2860,24 @@ func (v LinkComponent) MarshalJSON() ([]byte, error) {
 	}{"link", plain(v)})
 }
 
-// OpenUiComponent: A UI written in neoui (an app's template or a Query result), parsed and evaluated by the daemon (docs/neoui.md). Renderers draw the evaluated tree.
-type OpenUiComponent struct {
+// NeoUiComponent: A UI written in neoui (an app's template or a Query result), parsed and evaluated by the daemon (docs/neoui.md). Renderers draw the evaluated tree.
+type NeoUiComponent struct {
 	UI UiDoc `json:"ui"`
 }
 
-func (OpenUiComponent) isComponent() {}
+func (NeoUiComponent) isComponent() {}
 
 // MarshalJSON adds the "type" tag.
-func (v OpenUiComponent) MarshalJSON() ([]byte, error) {
-	type plain OpenUiComponent
+func (v NeoUiComponent) MarshalJSON() ([]byte, error) {
+	type plain NeoUiComponent
 	return json.Marshal(struct {
 		Tag string `json:"type"`
 		plain
-	}{"openui", plain(v)})
+	}{"neoui", plain(v)})
 }
 
 // Block: A block of parsed markdown.
-// Value is one of: ParagraphBlock, HeadingBlock, ListBlock, CodeBlock, QuoteBlock, RuleBlock, TableBlock, OpenUiBlock, UnknownBlock.
+// Value is one of: ParagraphBlock, HeadingBlock, ListBlock, CodeBlock, QuoteBlock, RuleBlock, TableBlock, NeoUiBlock, UnknownBlock.
 type Block struct {
 	Value BlockVariant
 }
@@ -2962,8 +2962,8 @@ func (u *Block) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		u.Value = v
-	case "openui":
-		var v OpenUiBlock
+	case "neoui":
+		var v NeoUiBlock
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -3093,23 +3093,23 @@ func (v TableBlock) MarshalJSON() ([]byte, error) {
 	}{"table_block", plain(v)})
 }
 
-// OpenUiBlock: A ```neoui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/neoui.md). The block type stays `openui`. Streams like any block.
-type OpenUiBlock struct {
+// NeoUiBlock: A ```neoui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/neoui.md). The block type stays `neoui`. Streams like any block.
+type NeoUiBlock struct {
 	UI UiDoc `json:"ui"`
 }
 
-func (OpenUiBlock) isBlock() {}
+func (NeoUiBlock) isBlock() {}
 
 // MarshalJSON adds the "type" tag.
-func (v OpenUiBlock) MarshalJSON() ([]byte, error) {
-	type plain OpenUiBlock
+func (v NeoUiBlock) MarshalJSON() ([]byte, error) {
+	type plain NeoUiBlock
 	return json.Marshal(struct {
 		Tag string `json:"type"`
 		plain
-	}{"openui", plain(v)})
+	}{"neoui", plain(v)})
 }
 
-// UiDoc: One evaluated neoui program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions.
+// UiDoc: One evaluated neoui program. `id` is unique within the item and addresses the doc in neoui.input / neoui.press actions.
 type UiDoc struct {
 	ID   string  `json:"id"`
 	Root *UiNode `json:"root,omitempty"`
@@ -3122,7 +3122,7 @@ type UiDoc struct {
 type UiNode struct {
 	// Library component name, e.g. Card, Input, BarChart.
 	Component string `json:"component"`
-	// Set on interactive nodes (inputs, buttons): stable within the doc, names the node in openui.input / openui.press.
+	// Set on interactive nodes (inputs, buttons): stable within the doc, names the node in neoui.input / neoui.press.
 	Key *string `json:"key,omitempty"`
 	// Still streaming in.
 	Partial *bool `json:"partial,omitempty"`

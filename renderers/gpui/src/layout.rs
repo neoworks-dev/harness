@@ -599,7 +599,7 @@ impl Layout<'_> {
             Component::ButtonComponent(button) => self.button(button, ctx),
             Component::LinkComponent(link) => self.link(link, ctx),
             // Drawn by the terminal renderer only (docs/neoui.md); the others say so.
-            Component::OpenUiComponent(_) => self.unsupported("openui", ctx),
+            Component::NeoUiComponent(_) => self.unsupported("neoui", ctx),
             Component::Unknown(value) => {
                 let kind = value.get("type").and_then(|t| t.as_str()).unwrap_or("?");
                 self.unsupported(kind, ctx)
@@ -697,7 +697,7 @@ impl Layout<'_> {
             }
             Block::RuleBlock(_) => Node::Rule(theme.border),
             Block::TableBlock(table) => self.table_block(table, ctx, role),
-            Block::OpenUiBlock(_) => self.unsupported("openui", ctx),
+            Block::NeoUiBlock(_) => self.unsupported("neoui", ctx),
             Block::Unknown(_) => return None,
         })
     }

@@ -2790,7 +2790,7 @@ pub enum Component {
     ProgressComponent(ProgressComponent),
     ButtonComponent(ButtonComponent),
     LinkComponent(LinkComponent),
-    OpenUiComponent(OpenUiComponent),
+    NeoUiComponent(NeoUiComponent),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -2836,8 +2836,8 @@ impl Serialize for Component {
             Component::LinkComponent(v) => {
                 ("link", serde_json::to_value(v).map_err(S::Error::custom)?)
             }
-            Component::OpenUiComponent(v) => {
-                ("openui", serde_json::to_value(v).map_err(S::Error::custom)?)
+            Component::NeoUiComponent(v) => {
+                ("neoui", serde_json::to_value(v).map_err(S::Error::custom)?)
             }
             Component::Unknown(v) => return v.serialize(serializer),
         };
@@ -2892,8 +2892,8 @@ impl<'de> Deserialize<'de> for Component {
             "link" => serde_json::from_value(value)
                 .map(Component::LinkComponent)
                 .map_err(D::Error::custom),
-            "openui" => serde_json::from_value(value)
-                .map(Component::OpenUiComponent)
+            "neoui" => serde_json::from_value(value)
+                .map(Component::NeoUiComponent)
                 .map_err(D::Error::custom),
             _ => Ok(Component::Unknown(value)),
         }
@@ -2978,9 +2978,9 @@ impl From<LinkComponent> for Component {
     }
 }
 
-impl From<OpenUiComponent> for Component {
-    fn from(v: OpenUiComponent) -> Self {
-        Component::OpenUiComponent(v)
+impl From<NeoUiComponent> for Component {
+    fn from(v: NeoUiComponent) -> Self {
+        Component::NeoUiComponent(v)
     }
 }
 
@@ -3206,9 +3206,9 @@ pub struct LinkComponent {
 }
 
 /// A UI written in neoui (an app's template or a Query result), parsed and evaluated by the daemon (docs/neoui.md). Renderers draw the evaluated tree.
-/// Tagged `type: "openui"` inside [`Component`].
+/// Tagged `type: "neoui"` inside [`Component`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct OpenUiComponent {
+pub struct NeoUiComponent {
     #[serde(rename = "ui")]
     pub ui: UiDoc,
 }
@@ -3223,7 +3223,7 @@ pub enum Block {
     QuoteBlock(QuoteBlock),
     RuleBlock(RuleBlock),
     TableBlock(TableBlock),
-    OpenUiBlock(OpenUiBlock),
+    NeoUiBlock(NeoUiBlock),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -3250,7 +3250,7 @@ impl Serialize for Block {
                 "table_block",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
-            Block::OpenUiBlock(v) => ("openui", serde_json::to_value(v).map_err(S::Error::custom)?),
+            Block::NeoUiBlock(v) => ("neoui", serde_json::to_value(v).map_err(S::Error::custom)?),
             Block::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -3286,8 +3286,8 @@ impl<'de> Deserialize<'de> for Block {
             "table_block" => serde_json::from_value(value)
                 .map(Block::TableBlock)
                 .map_err(D::Error::custom),
-            "openui" => serde_json::from_value(value)
-                .map(Block::OpenUiBlock)
+            "neoui" => serde_json::from_value(value)
+                .map(Block::NeoUiBlock)
                 .map_err(D::Error::custom),
             _ => Ok(Block::Unknown(value)),
         }
@@ -3336,9 +3336,9 @@ impl From<TableBlock> for Block {
     }
 }
 
-impl From<OpenUiBlock> for Block {
-    fn from(v: OpenUiBlock) -> Self {
-        Block::OpenUiBlock(v)
+impl From<NeoUiBlock> for Block {
+    fn from(v: NeoUiBlock) -> Self {
+        Block::NeoUiBlock(v)
     }
 }
 
@@ -3412,15 +3412,15 @@ pub struct TableBlock {
     pub align: Option<Vec<ColumnAlign>>,
 }
 
-/// A ```neoui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/neoui.md). The block type stays `openui`. Streams like any block.
-/// Tagged `type: "openui"` inside [`Block`].
+/// A ```neoui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/neoui.md). The block type stays `neoui`. Streams like any block.
+/// Tagged `type: "neoui"` inside [`Block`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct OpenUiBlock {
+pub struct NeoUiBlock {
     #[serde(rename = "ui")]
     pub ui: UiDoc,
 }
 
-/// One evaluated neoui program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions.
+/// One evaluated neoui program. `id` is unique within the item and addresses the doc in neoui.input / neoui.press actions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UiDoc {
     #[serde(rename = "id")]
@@ -3440,7 +3440,7 @@ pub struct UiNode {
     /// Library component name, e.g. Card, Input, BarChart.
     #[serde(rename = "component")]
     pub component: String,
-    /// Set on interactive nodes (inputs, buttons): stable within the doc, names the node in openui.input / openui.press.
+    /// Set on interactive nodes (inputs, buttons): stable within the doc, names the node in neoui.input / neoui.press.
     #[serde(rename = "key", default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
     /// Still streaming in.

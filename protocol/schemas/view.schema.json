@@ -48,7 +48,7 @@
           "$ref": "#/$defs/LinkComponent"
         },
         {
-          "$ref": "#/$defs/OpenUiComponent"
+          "$ref": "#/$defs/NeoUiComponent"
         }
       ],
       "discriminator": {
@@ -387,12 +387,12 @@
       "required": ["type", "url"],
       "additionalProperties": false
     },
-    "OpenUiComponent": {
+    "NeoUiComponent": {
       "description": "A UI written in neoui (an app's template or a Query result), parsed and evaluated by the daemon (docs/neoui.md). Renderers draw the evaluated tree.",
       "type": "object",
       "properties": {
         "type": {
-          "const": "openui"
+          "const": "neoui"
         },
         "ui": {
           "$ref": "#/$defs/UiDoc"
@@ -427,7 +427,7 @@
           "$ref": "#/$defs/TableBlock"
         },
         {
-          "$ref": "#/$defs/OpenUiBlock"
+          "$ref": "#/$defs/NeoUiBlock"
         }
       ],
       "discriminator": {
@@ -586,12 +586,12 @@
       "required": ["type", "header", "rows"],
       "additionalProperties": false
     },
-    "OpenUiBlock": {
-      "description": "A ```neoui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/neoui.md). The block type stays `openui`. Streams like any block.",
+    "NeoUiBlock": {
+      "description": "A ```neoui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/neoui.md). The block type stays `neoui`. Streams like any block.",
       "type": "object",
       "properties": {
         "type": {
-          "const": "openui"
+          "const": "neoui"
         },
         "ui": {
           "$ref": "#/$defs/UiDoc"
@@ -601,7 +601,7 @@
       "additionalProperties": false
     },
     "UiDoc": {
-      "description": "One evaluated neoui program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions.",
+      "description": "One evaluated neoui program. `id` is unique within the item and addresses the doc in neoui.input / neoui.press actions.",
       "type": "object",
       "properties": {
         "id": {
@@ -634,7 +634,7 @@
         },
         "key": {
           "type": "string",
-          "description": "Set on interactive nodes (inputs, buttons): stable within the doc, names the node in openui.input / openui.press."
+          "description": "Set on interactive nodes (inputs, buttons): stable within the doc, names the node in neoui.input / neoui.press."
         },
         "partial": {
           "type": "boolean",

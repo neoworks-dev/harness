@@ -791,7 +791,7 @@ export class SessionView {
         if (isNeoUiTemplate(template)) {
           const provided = templateData(result.rawOutput);
           const ui = this.docs.doc(call.ref, "0", template.neoui, false, provided);
-          if (ui.root) return { type: "openui", ui };
+          if (ui.root) return { type: "neoui", ui };
           const why = ui.errors?.[0]?.message ?? "no root";
           this.log.warn(`neoui template for ${result.tool} drew nothing: ${why}`);
           return this.fallback(call);

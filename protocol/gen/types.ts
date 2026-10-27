@@ -1121,7 +1121,7 @@ export type Component =
   | ProgressComponent
   | ButtonComponent
   | LinkComponent
-  | OpenUiComponent;
+  | NeoUiComponent;
 
 export type ComponentTag = Component["type"];
 
@@ -1256,8 +1256,8 @@ export interface LinkComponent {
 }
 
 /** A UI written in neoui (an app's template or a Query result), parsed and evaluated by the daemon (docs/neoui.md). Renderers draw the evaluated tree. */
-export interface OpenUiComponent {
-  type: "openui";
+export interface NeoUiComponent {
+  type: "neoui";
   ui: UiDoc;
 }
 
@@ -1270,7 +1270,7 @@ export type Block =
   | QuoteBlock
   | RuleBlock
   | TableBlock
-  | OpenUiBlock;
+  | NeoUiBlock;
 
 export type BlockTag = Block["type"];
 
@@ -1323,13 +1323,13 @@ export interface TableBlock {
   align?: ColumnAlign[];
 }
 
-/** A ```neoui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/neoui.md). The block type stays `openui`. Streams like any block. */
-export interface OpenUiBlock {
-  type: "openui";
+/** A ```neoui fence in markdown (the agent's message), parsed and evaluated by the daemon (docs/neoui.md). The block type stays `neoui`. Streams like any block. */
+export interface NeoUiBlock {
+  type: "neoui";
   ui: UiDoc;
 }
 
-/** One evaluated neoui program. `id` is unique within the item and addresses the doc in openui.input / openui.press actions. */
+/** One evaluated neoui program. `id` is unique within the item and addresses the doc in neoui.input / neoui.press actions. */
 export interface UiDoc {
   id: string;
   root?: UiNode;
@@ -1342,7 +1342,7 @@ export interface UiDoc {
 export interface UiNode {
   /** Library component name, e.g. Card, Input, BarChart. */
   component: string;
-  /** Set on interactive nodes (inputs, buttons): stable within the doc, names the node in openui.input / openui.press. */
+  /** Set on interactive nodes (inputs, buttons): stable within the doc, names the node in neoui.input / neoui.press. */
   key?: string;
   /** Still streaming in. */
   partial?: boolean;

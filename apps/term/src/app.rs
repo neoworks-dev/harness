@@ -12,7 +12,7 @@ use neo_protocol::{
     SettingName, SlashCommand, WaitingInput,
 };
 use neo_renderer_ratatui::{
-    ButtonRef, ImageStatus, Options, Palette, UiKind, UiTarget, openui_targets,
+    ButtonRef, ImageStatus, Options, Palette, UiKind, UiTarget, neoui_targets,
 };
 use neo_sdk::Event;
 use ratatui::Frame;
@@ -148,7 +148,7 @@ pub enum Effect {
     Unqueue {
         session: String,
     },
-    /// Open a link of an OpenUI button in the browser (xdg-open).
+    /// Open a link of a neoui button in the browser (xdg-open).
     OpenUrl(String),
     /// Open a file in the user's editor at a line, the screen handed over until it exits.
     Edit {
@@ -358,7 +358,7 @@ pub struct App {
     /// Ctrl-G while the sidebar was hidden: focus it once it is drawn.
     sessions_wanted: bool,
     prompt: PromptState,
-    /// The visual state of the OpenUI docs in the chat and the values on their way out.
+    /// The visual state of the neoui docs in the chat and the values on their way out.
     forms: Forms,
     /// The note typed for the focused button's answer (Tab on a card).
     note: Option<Note>,
@@ -1300,23 +1300,23 @@ impl App {
         true
     }
 
-    // ---- OpenUI forms ----
+    // ---- neoui forms ----
 
-    /// The active prompt when it is an OpenUI item: keys move through its targets.
+    /// The active prompt when it is a neoui item: keys move through its targets.
     fn active_form(&self) -> Option<&str> {
         self.active_ref().filter(|r| self.chat.has_targets(r))
     }
 
-    /// The focus targets of an item's OpenUI docs, as drawn with their visual state.
+    /// The focus targets of an item's neoui docs, as drawn with their visual state.
     fn form_targets(&self, r: &str) -> Vec<UiTarget> {
         let Some(item) = self.chat.item(r) else {
             return Vec::new();
         };
         let opts = Options {
-            openui: self.forms.doc_states(r),
+            neoui: self.forms.doc_states(r),
             ..Options::default()
         };
-        openui_targets(item, &opts)
+        neoui_targets(item, &opts)
     }
 
     /// The daemon sent items again: values it has caught up with are not held here any more.
@@ -1334,7 +1334,7 @@ impl App {
         Effect::Action {
             session: self.session.clone(),
             item: p.item,
-            action: "openui.input".into(),
+            action: "neoui.input".into(),
             args: Some(serde_json::json!({"doc": p.doc, "key": p.key, "value": p.value})),
         }
     }
@@ -1349,7 +1349,7 @@ impl App {
         }
     }
 
-    /// Keys while an OpenUI item has the editor's place.
+    /// Keys while a neoui item has the editor's place.
     fn form_key(&mut self, r: &str, key: KeyEvent, fx: &mut Vec<Effect>) {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
@@ -1409,7 +1409,7 @@ impl App {
             fx.push(Effect::Action {
                 session: self.session.clone(),
                 item: r.to_string(),
-                action: "openui.press".into(),
+                action: "neoui.press".into(),
                 args: Some(serde_json::json!({"doc": doc, "key": key})),
             });
         }
@@ -4013,5 +4013,5 @@ mod agents_app_tests;
 mod secret_app_tests;
 
 #[cfg(test)]
-#[path = "openui_app_tests.rs"]
-mod openui_app_tests;
+#[path = "neoui_app_tests.rs"]
+mod neoui_app_tests;

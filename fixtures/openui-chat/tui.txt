@@ -1,5 +1,0 @@
-The deploy is halfway:
-
-[unsupported component: openui]
-
-I'll continue once the canary is clean.

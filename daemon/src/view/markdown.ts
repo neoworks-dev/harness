@@ -150,7 +150,7 @@ function blocks(tokens: Token[], fences?: Fences): Block[] {
         if (fences && token.lang !== undefined && NEOUI_LANG.test(token.lang)) {
           const closed = fenceClosed(token.raw);
           const ui = fences.host(fences.count++, programOf(token as Tokens.Code, closed), closed);
-          out.push({ type: "openui", ui });
+          out.push({ type: "neoui", ui });
           break;
         }
         const code: Block = { type: "code_block", code: token.text };
@@ -176,7 +176,7 @@ function blocks(tokens: Token[], fences?: Fences): Block[] {
 }
 
 /**
- * With `neoui`, the message's top-level neoui fences become `openui` blocks (the daemon's
+ * With `neoui`, the message's top-level neoui fences become `neoui` blocks (the daemon's
  * messages); without it they stay code, as everywhere else (templates, messages between agents).
  */
 export function parseMarkdown(source: string, neoui?: NeoUiHost): Block[] {

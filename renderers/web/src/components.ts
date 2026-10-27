@@ -160,8 +160,8 @@ export function renderBlock(ctx: RenderContext, block: Block): HTMLElement {
       return el(doc, "hr", "neo-rule");
     case "table_block":
       return renderTableBlock(doc, block);
-    case "openui":
-      return renderUnsupported(doc, "openui");
+    case "neoui":
+      return renderUnsupported(doc, "neoui");
   }
 }
 
@@ -375,8 +375,8 @@ export function renderComponent(ctx: RenderContext, component: Component): HTMLE
       return renderButton(ctx, component);
     case "link":
       return renderLink(doc, component);
-    case "openui":
-      return renderUnsupported(doc, "openui");
+    case "neoui":
+      return renderUnsupported(doc, "neoui");
   }
 }
 

@@ -30,7 +30,7 @@ export type MarkdownRow = RowBase &
     | { kind: "heading"; level: number; spans: readonly Span[] }
     | { kind: "code"; code: string; language?: string }
     | { kind: "rule" }
-    | { kind: "openui"; ui: UiDoc }
+    | { kind: "neoui"; ui: UiDoc }
   );
 
 interface Context {
@@ -113,8 +113,8 @@ function flatten(blocks: readonly Block[], context: Context, out: MarkdownRow[])
       case "rule":
         out.push({ ...base, kind: "rule" });
         break;
-      case "openui":
-        out.push({ ...base, kind: "openui", ui: block.ui });
+      case "neoui":
+        out.push({ ...base, kind: "neoui", ui: block.ui });
         break;
       case "table_block":
         out.push({ ...base, kind: "code", code: tableText(block) });

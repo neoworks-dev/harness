@@ -1,3 +1,0 @@
-Checking:
-
-[unsupported component: openui]

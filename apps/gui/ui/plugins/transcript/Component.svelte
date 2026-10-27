@@ -14,7 +14,7 @@
   import CodeBlock from "./CodeBlock.svelte";
   import DiffView from "./DiffView.svelte";
   import ImageView from "./ImageView.svelte";
-  import OpenUi from "./openui/OpenUi.svelte";
+  import NeoUi from "./neoui/NeoUi.svelte";
 
   interface Props {
     component: Component;
@@ -137,8 +137,8 @@
     <Text>{component.label}</Text>
     {#if component.current}<Text style={{ color: p.success }}>✓</Text>{/if}
   </Button>
-{:else if component.type === "openui"}
-  <OpenUi ui={component.ui} {ref} />
+{:else if component.type === "neoui"}
+  <NeoUi ui={component.ui} {ref} />
 {:else if component.type === "link"}
   <Text>
     <Text style={{ color: p.accent, underline: true }}>{component.text || component.url}</Text>{#if component.text && component.text !== component.url}<Text style={{ color: p.muted }}>{` (${component.url})`}</Text>{/if}

@@ -17,7 +17,7 @@
 
 mod chart_image;
 mod icons;
-mod openui;
+mod neoui;
 mod palette;
 mod render;
 mod shell;
@@ -34,8 +34,8 @@ use ratatui::text::Line;
 
 pub use chart_image::{CHART_SCHEME, ChartKind, ChartSpec, SpecSeries, draw_chart};
 pub use icons::file_icon;
-pub use openui::{
-    UiDocInfo, UiEdit, UiKind, UiOption, UiState, UiTarget, is_date, openui_docs, openui_targets,
+pub use neoui::{
+    UiDocInfo, UiEdit, UiKind, UiOption, UiState, UiTarget, is_date, neoui_docs, neoui_targets,
 };
 pub use palette::Palette;
 
@@ -43,7 +43,7 @@ pub use palette::Palette;
 #[derive(Debug, Clone, Default)]
 pub struct Options {
     /// Tool items: the full result under the header instead of a summary of up to three lines.
-    /// Items with buttons, and OpenUI docs with fields or buttons, are always drawn in full.
+    /// Items with buttons, and neoui docs with fields or buttons, are always drawn in full.
     pub expanded: bool,
     /// Thought items: the text (dim italic) instead of one `∴ thinking` line.
     pub show_thoughts: bool,
@@ -63,8 +63,8 @@ pub struct Options {
     /// Reserve rows for images the app can draw itself (see [`ImageOptions`]). None: an image is
     /// a one-line `[image …]` placeholder.
     pub images: Option<ImageOptions>,
-    /// The visual state of the item's OpenUI docs (focus, tabs, edits…), per doc id.
-    pub openui: HashMap<String, UiState>,
+    /// The visual state of the item's neoui docs (focus, tabs, edits…), per doc id.
+    pub neoui: HashMap<String, UiState>,
     /// The app drawing the chat: the user's messages from it (or another of its instances,
     /// `terminal-2`) leave out their `· app` tag. None: every message has it.
     pub app: Option<String>,
@@ -172,7 +172,7 @@ pub struct ImageSlot {
 pub struct Rendered {
     pub lines: Vec<Line<'static>>,
     pub images: Vec<ImageSlot>,
-    /// The first line of the focused OpenUI target, if the state has one in view.
+    /// The first line of the focused neoui target, if the state has one in view.
     pub focus_line: Option<usize>,
 }
 
@@ -292,7 +292,7 @@ fn blocks_text(blocks: &[pb::Block]) -> String {
                 lines.push(row(&b.header));
                 lines.extend(b.rows.iter().map(|r| row(r)));
             }
-            pb::Block::RuleBlock(_) | pb::Block::OpenUiBlock(_) | pb::Block::Unknown(_) => {}
+            pb::Block::RuleBlock(_) | pb::Block::NeoUiBlock(_) | pb::Block::Unknown(_) => {}
         }
     }
     lines.join("\n")

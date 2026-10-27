@@ -1,0 +1,12 @@
+theme default-dark spacing s=4 m=8 l=16
+
+item neoui-dashboard kind=tool state=done
+  frame body-indent=16
+  header
+    icon text 12.6/400 fg=success
+      "✓"
+    text 12.6/400 fg=muted
+      "analytics.revenue"
+  body
+    text 14/400 fg=muted
+      "[unsupported component: neoui]"

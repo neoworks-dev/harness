@@ -60,8 +60,8 @@ pub(crate) struct Cx<'a> {
     rooms: Vec<(u16, u16, String)>,
     /// Where those rooms ended up, once the item is laid out.
     slots: Vec<ImageSlot>,
-    /// What the OpenUI docs drawn so far noted (targets, the focused line).
-    pub(crate) ui: crate::openui::Run,
+    /// What the neoui docs drawn so far noted (targets, the focused line).
+    pub(crate) ui: crate::neoui::Run,
 }
 
 impl<'a> Cx<'a> {
@@ -235,8 +235,8 @@ impl<'a> Cx<'a> {
         let failed = it.state == Some(pb::ItemState::Failed);
         // A doc with fields or buttons is a form to fill in; one that holds focus is in use.
         let prompt = has_buttons(&it.component)
-            || crate::openui::interactive(&it.component)
-            || self.o.openui.values().any(|s| s.focus.is_some());
+            || crate::neoui::interactive(&it.component)
+            || self.o.neoui.values().any(|s| s.focus.is_some());
         // A call that has run is history: a long label or command is cut, unless everything is
         // expanded.
         let finished = matches!(it.state, Some(pb::ItemState::Done | pb::ItemState::Failed));
@@ -424,7 +424,7 @@ impl<'a> Cx<'a> {
             pb::Component::KvComponent(v) => self.kv(v, w),
             pb::Component::ProgressComponent(v) => self.progress(v, w),
             pb::Component::ButtonComponent(v) => vec![self.button(v, w)],
-            pb::Component::OpenUiComponent(v) => self.openui_doc(&v.ui, w),
+            pb::Component::NeoUiComponent(v) => self.neoui_doc(&v.ui, w),
             pb::Component::LinkComponent(v) => {
                 wrap(&link(&v.url, v.text.as_deref(), Style::new(), &self.p), w)
             }
@@ -650,7 +650,7 @@ impl<'a> Cx<'a> {
                 Style::new().fg(self.p.border),
             )],
             pb::Block::TableBlock(v) => self.table_block(v, w),
-            pb::Block::OpenUiBlock(v) => self.openui_doc(&v.ui, w),
+            pb::Block::NeoUiBlock(v) => self.neoui_doc(&v.ui, w),
             pb::Block::Unknown(_) => vec![self.placeholder("[unsupported block]", w)],
         }
     }
@@ -1489,7 +1489,7 @@ pub(crate) fn fit_columns(widths: &mut [usize], avail: usize) {
 }
 
 /// The sources of the images that are drawn in full: not inside a table or the like. Images of
-/// OpenUI docs count too, also those in a text's blocks.
+/// neoui docs count too, also those in a text's blocks.
 pub(crate) fn sources(c: &pb::Component, out: &mut Vec<String>) {
     match c {
         pb::Component::ImageComponent(v) => out.push(v.src.clone()),
@@ -1497,7 +1497,7 @@ pub(crate) fn sources(c: &pb::Component, out: &mut Vec<String>) {
         pb::Component::RowComponent(v) => v.children.iter().for_each(|c| sources(c, out)),
         pb::Component::StackComponent(v) => v.children.iter().for_each(|c| sources(c, out)),
         pb::Component::TextComponent(v) => block_sources(&v.blocks, out),
-        pb::Component::OpenUiComponent(v) => doc_sources(&v.ui, out),
+        pb::Component::NeoUiComponent(v) => doc_sources(&v.ui, out),
         _ => {}
     }
 }
@@ -1505,7 +1505,7 @@ pub(crate) fn sources(c: &pb::Component, out: &mut Vec<String>) {
 fn block_sources(bs: &[pb::Block], out: &mut Vec<String>) {
     for b in bs {
         match b {
-            pb::Block::OpenUiBlock(v) => doc_sources(&v.ui, out),
+            pb::Block::NeoUiBlock(v) => doc_sources(&v.ui, out),
             pb::Block::QuoteBlock(v) => block_sources(&v.blocks, out),
             pb::Block::ListBlock(v) => v.items.iter().for_each(|i| block_sources(&i.blocks, out)),
             _ => {}

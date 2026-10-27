@@ -1,7 +1,7 @@
 // Fixture inputs → resolved view items. Shared by the generator script and the daemon's tests.
 // Two kinds: a template + data (one item), or a list of session events (a whole chat, resolved
 // the way the daemon resolves a live session, templates by tool name). neoui docs in either can
-// then be used: `inputs` are openui.input calls applied in order, `presses` openui.press calls
+// then be used: `inputs` are neoui.input calls applied in order, `presses` neoui.press calls
 // after them.
 import type {
   Component,
@@ -15,16 +15,16 @@ import { isNeoUiTemplate, NeoUiDocs, templateData } from "./neoui.ts";
 import { SessionView } from "./session-view.ts";
 import { resolveTemplate } from "./template.ts";
 
-/** An openui.input (with `value`) or openui.press call on a doc of the fixture. */
-export interface OpenUiCall {
+/** A neoui.input (with `value`) or neoui.press call on a doc of the fixture. */
+export interface NeoUiCall {
   doc: string;
   key: string;
   value?: unknown;
 }
 
 interface Interaction {
-  inputs?: OpenUiCall[];
-  presses?: OpenUiCall[];
+  inputs?: NeoUiCall[];
+  presses?: NeoUiCall[];
 }
 
 export type Fixture = { description: string } & Interaction &
@@ -49,7 +49,7 @@ async function templateComponent(
   await interact(fixture, (doc) => docs.program(name, doc));
   const ui = docs.doc(name, "0", template.neoui, false, provided);
   if (!ui.root) throw new Error(`${name}: the neoui template drew nothing`);
-  return { type: "openui", ui };
+  return { type: "neoui", ui };
 }
 
 async function resolveTemplateFixture(
@@ -74,12 +74,12 @@ async function interact(
   for (const call of fixture.inputs ?? []) {
     const program = find(call.doc);
     if (!program?.input(call.key, call.value)) {
-      throw new Error(`openui.input ${call.doc}/${call.key} was refused`);
+      throw new Error(`neoui.input ${call.doc}/${call.key} was refused`);
     }
   }
   for (const call of fixture.presses ?? []) {
     const program = find(call.doc);
-    if (!program) throw new Error(`openui.press: no doc ${call.doc}`);
+    if (!program) throw new Error(`neoui.press: no doc ${call.doc}`);
     await program.press(call.key);
   }
 }

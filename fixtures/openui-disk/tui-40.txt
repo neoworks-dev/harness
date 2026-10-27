@@ -1,3 +1,0 @@
-Here's your disk usage:
-
-[unsupported component: openui]

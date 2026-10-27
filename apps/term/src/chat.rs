@@ -10,7 +10,7 @@ use neo_protocol::{
 };
 use neo_renderer_ratatui::{
     ButtonRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiDocInfo, UiState, buttons,
-    file_icon, image_sources, openui_docs, relative_path, render_item_images,
+    file_icon, image_sources, neoui_docs, relative_path, render_item_images,
 };
 
 use crate::util::width;
@@ -65,7 +65,7 @@ pub struct ChatOpts {
     /// (the whole card when expanded).
     pub in_panel: bool,
     pub marker: Style,
-    /// The visual state of OpenUI docs (focus, tabs, edit buffers), per item and doc.
+    /// The visual state of neoui docs (focus, tabs, edit buffers), per item and doc.
     pub ui: HashMap<String, HashMap<String, UiState>>,
     /// File paths start with their file type icon.
     pub icons: bool,
@@ -107,7 +107,7 @@ struct CacheKey {
     marker: Style,
     /// Only for items that hold images: they redraw when an image's state changes.
     images: Option<ChatImages>,
-    /// Only for items that hold OpenUI docs.
+    /// Only for items that hold neoui docs.
     ui: Option<HashMap<String, UiState>>,
 }
 
@@ -128,7 +128,7 @@ struct Entry {
     running: bool,
     lines: Rc<Vec<Line<'static>>>,
     slots: Rc<Vec<ImageSlot>>,
-    /// The line of an OpenUI target that has focus.
+    /// The line of a neoui target that has focus.
     focus: Option<usize>,
     offset: usize,
     /// Done: its code has its colors, or it has none to get (a folded run, a turn's changes).
@@ -153,9 +153,9 @@ pub struct Chat {
     generation: u64,
     cache: HashMap<String, Cached>,
     buttons: HashMap<String, Vec<ButtonRef>>,
-    /// The OpenUI docs of the items that have any with something to focus.
+    /// The neoui docs of the items that have any with something to focus.
     docs: HashMap<String, Vec<UiDocInfo>>,
-    /// Scroll to the focused OpenUI target of this item at the next layout.
+    /// Scroll to the focused neoui target of this item at the next layout.
     reveal: Option<String>,
     /// Sources of the images of the items that have any.
     sources: HashMap<String, Vec<String>>,
@@ -305,14 +305,14 @@ impl Chat {
         self.buttons.get(r).map_or(&[], Vec::as_slice)
     }
 
-    /// Whether the item has an OpenUI doc with fields or buttons that can be used now.
+    /// Whether the item has a neoui doc with fields or buttons that can be used now.
     pub fn is_form(&self, r: &str) -> bool {
         self.docs
             .get(r)
             .is_some_and(|d| d.iter().any(|d| d.interactive && !d.streaming))
     }
 
-    /// Whether the item has OpenUI targets that can take focus now (fields, buttons, tabs,
+    /// Whether the item has neoui targets that can take focus now (fields, buttons, tabs,
     /// accordion items).
     pub fn has_targets(&self, r: &str) -> bool {
         self.docs
@@ -320,12 +320,12 @@ impl Chat {
             .is_some_and(|d| d.iter().any(|d| d.focusable && !d.streaming))
     }
 
-    /// Whether keys can answer the item: it has buttons or OpenUI targets.
+    /// Whether keys can answer the item: it has buttons or neoui targets.
     pub fn is_prompt(&self, r: &str) -> bool {
         self.buttons.contains_key(r) || self.has_targets(r)
     }
 
-    /// Refs of items that have buttons or OpenUI targets, oldest first.
+    /// Refs of items that have buttons or neoui targets, oldest first.
     pub fn prompt_refs(&self) -> Vec<&str> {
         self.state
             .items
@@ -335,7 +335,7 @@ impl Chat {
             .collect()
     }
 
-    /// Whether an item since the user last spoke has OpenUI targets: the latest reply has
+    /// Whether an item since the user last spoke has neoui targets: the latest reply has
     /// something to use.
     pub fn latest_has_targets(&self) -> bool {
         self.state
@@ -346,7 +346,7 @@ impl Chat {
             .any(|i| self.has_targets(&i.r#ref))
     }
 
-    /// The items with buttons still waiting for an answer, and the OpenUI forms the user has
+    /// The items with buttons still waiting for an answer, and the neoui forms the user has
     /// not spoken after, oldest first.
     pub fn pending_prompts(&self) -> Vec<&str> {
         let last_user = self
@@ -367,12 +367,12 @@ impl Chat {
             .collect()
     }
 
-    /// Scroll to the item's focused OpenUI target once the next layout knows where it is.
+    /// Scroll to the item's focused neoui target once the next layout knows where it is.
     pub fn reveal_focus(&mut self, r: &str) {
         self.reveal = Some(r.to_string());
     }
 
-    /// Brings the line of the focused OpenUI target (and the one under it) into view.
+    /// Brings the line of the focused neoui target (and the one under it) into view.
     fn apply_reveal(&mut self) {
         let Some(r) = self.reveal.take() else {
             return;
@@ -1196,7 +1196,7 @@ pub fn mix(
 
 /// The docs of an item that have anything to focus.
 fn focusable_docs(item: &ViewItem) -> Vec<UiDocInfo> {
-    openui_docs(item)
+    neoui_docs(item)
         .into_iter()
         .filter(|d| d.focusable)
         .collect()
@@ -1231,7 +1231,7 @@ fn render(
             status: i.status.clone(),
             charts: i.charts,
         }),
-        openui: key.ui.clone().unwrap_or_default(),
+        neoui: key.ui.clone().unwrap_or_default(),
         app: app.map(str::to_string),
         file_icons: key.icons,
         cwd: cwd.map(str::to_string),
@@ -1298,7 +1298,7 @@ pub fn panel_lines(
         preview_lines: Some(preview),
         theme: look.palette,
         images: None,
-        openui: HashMap::new(),
+        neoui: HashMap::new(),
         app: None,
         file_icons: look.icons,
         cwd: look.cwd.map(str::to_string),

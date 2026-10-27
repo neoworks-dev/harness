@@ -2,7 +2,7 @@
 // TypeScript so they can be tested without a window.
 import type { Block, Component, Space, Tone } from "@neoworks-dev/neo-protocol/types";
 import type { Palette } from "../../lib/palette.ts";
-import { isInteractive } from "./openui/focus.ts";
+import { isInteractive } from "./neoui/focus.ts";
 
 /** Whether the component is, or contains, a button: such an item is a question to answer. */
 export function hasButtons(component: Component): boolean {
@@ -18,9 +18,9 @@ export function hasButtons(component: Component): boolean {
   }
 }
 
-/** Whether the component is an OpenUI doc with a field or a button to use. */
+/** Whether the component is a neoui doc with a field or a button to use. */
 export function isForm(component: Component): boolean {
-  return component.type === "openui" && isInteractive(component.ui.root);
+  return component.type === "neoui" && isInteractive(component.ui.root);
 }
 
 /** The last part of a path (the whole of anything else). */
@@ -79,7 +79,7 @@ function blockText(block: Block): string {
       return [block.header, ...block.rows]
         .map((row) => row.map((cell) => cell.spans.map((span) => span.text).join("")).join(" | "))
         .join("\n");
-    case "openui":
+    case "neoui":
       // A drawn UI has no text of its own to copy.
       return "";
   }

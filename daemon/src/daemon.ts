@@ -6,7 +6,7 @@ import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import type { Agent, McpServer } from "@neoworks-dev/neo/agent";
 import type { SlashCommand, Theme } from "@neoworks-dev/neo-protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
-import { ActionRunner, openUiTools } from "./actions.ts";
+import { ActionRunner, neoUiTools } from "./actions.ts";
 import { Todos, todosTool } from "./todos.ts";
 import { AssetStore } from "./assets.ts";
 import { FocusManager } from "./focus.ts";
@@ -356,7 +356,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     store,
     (tool) => connectors.template(tool),
     log,
-    (session) => openUiTools({ store, gateway }, session),
+    (session) => neoUiTools({ store, gateway }, session),
     () => connectors.library(),
   );
   sessions.onRemove((session) => views.forget(session));

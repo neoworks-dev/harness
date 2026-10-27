@@ -1,0 +1,167 @@
+[
+  {
+    "ref": "m-m1",
+    "kind": "agent",
+    "component": {
+      "type": "text",
+      "blocks": [
+        {
+          "type": "neoui",
+          "ui": {
+            "id": "0",
+            "root": {
+              "component": "Form",
+              "props": {
+                "name": "deploy",
+                "children": [
+                  {
+                    "component": "FormControl",
+                    "props": {
+                      "label": "Service",
+                      "input": {
+                        "component": "Select",
+                        "key": "service",
+                        "props": {
+                          "name": "service",
+                          "placeholder": "Pick a service",
+                          "options": [
+                            { "component": "Option", "props": { "value": "api", "label": "API" } },
+                            {
+                              "component": "Option",
+                              "props": { "value": "web", "label": "Web app" }
+                            },
+                            {
+                              "component": "Option",
+                              "props": { "value": "worker", "label": "Worker" }
+                            }
+                          ],
+                          "rules": { "required": true },
+                          "required": true,
+                          "value": "api"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "component": "FormControl",
+                    "props": {
+                      "label": "Notify email",
+                      "hint": "We send the report here",
+                      "input": {
+                        "component": "Input",
+                        "key": "email",
+                        "props": {
+                          "name": "email",
+                          "placeholder": "you@company.com",
+                          "type": "email",
+                          "rules": { "required": true, "email": true },
+                          "required": true,
+                          "value": "ops@",
+                          "error": "Please enter a valid email"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "component": "FormControl",
+                    "props": {
+                      "label": "Environment",
+                      "input": {
+                        "component": "RadioGroup",
+                        "key": "env",
+                        "props": {
+                          "name": "env",
+                          "options": [
+                            {
+                              "component": "Option",
+                              "props": { "value": "staging", "label": "Staging" }
+                            },
+                            {
+                              "component": "Option",
+                              "props": { "value": "prod", "label": "Production" }
+                            }
+                          ],
+                          "value": "staging"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "component": "FormControl",
+                    "props": {
+                      "label": "Notes",
+                      "input": {
+                        "component": "TextArea",
+                        "key": "notes",
+                        "props": {
+                          "name": "notes",
+                          "placeholder": "Anything the reviewers should know"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "component": "FormControl",
+                    "props": {
+                      "label": "Date",
+                      "input": {
+                        "component": "DatePicker",
+                        "key": "when",
+                        "props": { "name": "when", "value": "2026-10-21" }
+                      }
+                    }
+                  },
+                  {
+                    "component": "FormControl",
+                    "props": {
+                      "label": "Canary traffic",
+                      "input": {
+                        "component": "Slider",
+                        "key": "canary",
+                        "props": { "name": "canary", "min": 0, "max": 50, "step": 5, "value": 10 }
+                      }
+                    }
+                  },
+                  {
+                    "component": "Switch",
+                    "key": "notify",
+                    "props": { "name": "notify", "label": "Post to #deploys", "value": true }
+                  },
+                  {
+                    "component": "CheckBox",
+                    "key": "agree",
+                    "props": {
+                      "name": "agree",
+                      "label": "I checked the migration",
+                      "rules": { "required": true },
+                      "required": true,
+                      "value": false,
+                      "error": "This field is required"
+                    }
+                  }
+                ],
+                "buttons": {
+                  "component": "Buttons",
+                  "props": {
+                    "buttons": [
+                      {
+                        "component": "Button",
+                        "key": "deploy",
+                        "props": { "variant": "primary", "label": "Deploy" }
+                      },
+                      {
+                        "component": "Button",
+                        "key": "docs",
+                        "props": { "label": "Runbook", "url": "https://example.com/runbook" }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+]

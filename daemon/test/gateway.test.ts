@@ -696,6 +696,7 @@ describe("ui_library", () => {
       '## photo-editor\n<photo-editor.BrightnessCard asset="string" name?="string"/> — An image with a brightness slider',
     );
     expect(text).not.toContain("NoteCard");
+    // Nothing in OpenUI, the language before neoui.
     expect(text).not.toContain("```openui");
     // Nothing connected adds nothing.
     await registry.presence(photo, { app: "photo-editor", kind: "app", open: false });

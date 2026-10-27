@@ -27,15 +27,15 @@ describe("fixtures", () => {
   }
 
   test("the neoui fixtures are there: a template, a chat, a model's dashboard, a form with inputs and a press, a grid, boxes and shapes, the rest of the library, a stream", () => {
-    expect(names.filter((n) => n.startsWith("openui-"))).toEqual([
-      "openui-boxes",
-      "openui-chat",
-      "openui-dashboard",
-      "openui-disk",
-      "openui-form",
-      "openui-grid",
-      "openui-library",
-      "openui-streaming",
+    expect(names.filter((n) => n.startsWith("neoui-"))).toEqual([
+      "neoui-boxes",
+      "neoui-chat",
+      "neoui-dashboard",
+      "neoui-disk",
+      "neoui-form",
+      "neoui-grid",
+      "neoui-library",
+      "neoui-streaming",
     ]);
   });
 
@@ -50,7 +50,7 @@ describe("fixtures", () => {
         Object.values(value).forEach(visit);
       }
     };
-    for (const name of names.filter((n) => n.startsWith("openui-"))) {
+    for (const name of names.filter((n) => n.startsWith("neoui-"))) {
       visit(read(name, "resolved.json"));
     }
     // The control elements are never drawn.

@@ -24,7 +24,7 @@ const PROGRAM = '<Card title="T"><Header title="Hello"/></Card>';
 const fence = (program: string, lang = "neoui"): string => `\`\`\`${lang}\n${program}\n\`\`\``;
 
 const docs = (blocks: Block[]): UiDoc[] =>
-  blocks.filter((b) => b.type === "openui").map((b) => b.ui);
+  blocks.filter((b) => b.type === "neoui").map((b) => b.ui);
 
 /** The blocks of an item that is text. */
 function blocksOf(item: ViewItem | undefined): Block[] {
@@ -38,16 +38,16 @@ describe("neoui fences in markdown", () => {
     root: { component: "Header", props: { title: `${program.length}${closed ? "c" : "o"}` } },
   });
 
-  test("a top-level fence becomes an openui block among the others; they are numbered in order", () => {
+  test("a top-level fence becomes a neoui block among the others; they are numbered in order", () => {
     const blocks = parseMarkdown(
       `Before.\n\n${fence("<A/>")}\n\nBetween.\n\n${fence("<B/>", "neoui title")}\n\nAfter.`,
       host,
     );
     expect(blocks.map((b) => b.type)).toEqual([
       "paragraph",
-      "openui",
+      "neoui",
       "paragraph",
-      "openui",
+      "neoui",
       "paragraph",
     ]);
     expect(docs(blocks).map((d) => d.id)).toEqual(["0", "1"]);
@@ -73,14 +73,14 @@ describe("neoui fences in markdown", () => {
 
   test("other fences, fences without a host and fences inside lists stay code", () => {
     expect(parseMarkdown(fence("x", "js"), host)[0]?.type).toBe("code_block");
-    // OpenUI programs are not read any more.
+    // Programs in OpenUI, the language before neoui, are not read any more.
     expect(parseMarkdown(fence("root = Card([])", "openui"), host)[0]?.type).toBe("code_block");
     expect(parseMarkdown(fence("root = Card([])", "openui-lang"), host)[0]?.type).toBe(
       "code_block",
     );
     expect(parseMarkdown(fence(PROGRAM))[0]?.type).toBe("code_block");
     const nested = parseMarkdown(`- item\n\n  ${fence("x").replaceAll("\n", "\n  ")}`, host);
-    expect(JSON.stringify(nested)).not.toContain('"type":"openui"');
+    expect(JSON.stringify(nested)).not.toContain('"type":"neoui"');
   });
 });
 
@@ -133,7 +133,7 @@ describe("a streamed message with neoui", () => {
     const { view: v } = view([
       { type: "agent_thought_chunk", messageId: "t1", text: fence(PROGRAM) },
     ]);
-    expect(JSON.stringify(v.snapshot())).not.toContain('"type":"openui"');
+    expect(JSON.stringify(v.snapshot())).not.toContain('"type":"neoui"');
   });
 
   test("a doc with a broken program draws nothing and says why", () => {
@@ -175,8 +175,8 @@ describe("app templates in neoui", () => {
       v.apply({ session: "s", seq: i + 1, ts: 0, event }),
     );
     const component = v.snapshot().items[0]?.component;
-    expect(component?.type).toBe("openui");
-    const root = component?.type === "openui" ? component.ui.root : undefined;
+    expect(component?.type).toBe("neoui");
+    const root = component?.type === "neoui" ? component.ui.root : undefined;
     expect(root?.props.children).toMatchObject([
       { component: "Metric", props: { value: 7 } },
       { component: "Text", props: { text: "**ok**", blocks: [{ type: "paragraph" }] } },
@@ -265,17 +265,17 @@ describe("using a doc", () => {
       daemon.actions.run({ session, ref: "m-m1", action, args }, "test");
 
     // Pressing with the field empty: nothing is sent, the field says why.
-    await act("openui.press", { doc: "0", key: "go" });
+    await act("neoui.press", { doc: "0", key: "go" });
     expect(daemon.store.readTypes(session, ["user_message"])).toHaveLength(0);
     expect(JSON.stringify(doc(daemon, session))).toContain("This field is required");
     const failed = patches.at(-1);
     expect(failed?.ops[0]).toMatchObject({ op: "set", item: { ref: "m-m1" } });
 
-    await act("openui.input", { doc: "0", key: "name", value: "Ada" });
+    await act("neoui.input", { doc: "0", key: "name", value: "Ada" });
     expect(JSON.stringify(doc(daemon, session))).not.toContain("This field is required");
     expect(JSON.stringify(doc(daemon, session))).toContain('"value":"Ada"');
 
-    await act("openui.press", { doc: "0", key: "go" });
+    await act("neoui.press", { doc: "0", key: "go" });
     await daemon.sessions.idle(session);
     const sent = daemon.store.readTypes(session, ["user_message"]).at(-1)?.event;
     expect(sent).toMatchObject({
@@ -289,7 +289,7 @@ describe("using a doc", () => {
     const { daemon, session } = await setup();
     reply(daemon, session, '<Stack><Button id="go">Run cargo clean</Button></Stack>');
     await daemon.actions.run(
-      { session, ref: "m-m1", action: "openui.press", args: { doc: "0", key: "go" } },
+      { session, ref: "m-m1", action: "neoui.press", args: { doc: "0", key: "go" } },
       "test",
     );
     await daemon.sessions.idle(session);
@@ -318,7 +318,7 @@ describe("using a doc", () => {
       ].join("\n"),
     );
     await daemon.actions.run(
-      { session, ref: "m-m1", action: "openui.press", args: { doc: "0", key: "go" } },
+      { session, ref: "m-m1", action: "neoui.press", args: { doc: "0", key: "go" } },
       "test",
     );
     await daemon.sessions.idle(session);
@@ -332,11 +332,11 @@ describe("using a doc", () => {
     daemon.store.append(session, chunk('```neoui\n<Stack><Input name="f"/>\n'));
     const run = (action: string, args: unknown, ref = "m-m1"): Promise<void> =>
       daemon.actions.run({ session, ref, action, args }, "test");
-    await run("openui.input", { doc: "0", key: "f", value: "x" });
+    await run("neoui.input", { doc: "0", key: "f", value: "x" });
     expect(JSON.stringify(doc(daemon, session))).not.toContain('"value"');
-    expect(run("openui.input", { doc: "7", key: "f", value: "x" })).rejects.toThrow("no neoui doc");
-    expect(run("openui.press", { key: "f" })).rejects.toThrow("needs args");
-    expect(run("openui.press", { doc: "0", key: "f" }, "nope")).rejects.toThrow("no neoui doc");
+    expect(run("neoui.input", { doc: "7", key: "f", value: "x" })).rejects.toThrow("no neoui doc");
+    expect(run("neoui.press", { key: "f" })).rejects.toThrow("needs args");
+    expect(run("neoui.press", { doc: "0", key: "f" }, "nope")).rejects.toThrow("no neoui doc");
   });
 
   test("a Query reads through the gateway; a post is recorded like a tool call and the query asks again", async () => {
@@ -367,7 +367,7 @@ describe("using a doc", () => {
     expect(daemon.store.readTypes(session, ["tool_call"])).toHaveLength(0);
 
     await daemon.actions.run(
-      { session, ref: "m-m1", action: "openui.press", args: { doc: "0", key: "go" } },
+      { session, ref: "m-m1", action: "neoui.press", args: { doc: "0", key: "go" } },
       "test",
     );
     // Setting `round` made the query ask again.
@@ -403,7 +403,7 @@ describe("streaming a whole message", () => {
     return items;
   }
 
-  for (const name of ["openui-chat", "openui-form", "openui-streaming"]) {
+  for (const name of ["neoui-chat", "neoui-form", "neoui-streaming"]) {
     for (const size of [1, 3, 11]) {
       test(`${name} in pieces of ${size} characters ends as it would arrive whole`, () => {
         const fixture = JSON.parse(
@@ -553,7 +553,7 @@ describe("app components", () => {
     );
 
     // Moving the first slider asks for the first photo's preview only.
-    await act(daemon, session, "openui.input", { doc: "0", key: "a/level", value: 40 });
+    await act(daemon, session, "neoui.input", { doc: "0", key: "a/level", value: 40 });
     await until(() => JSON.stringify(doc(daemon, session)).includes("asset://one@40"));
     const sliders = JSON.stringify(doc(daemon, session)).match(
       /"component":"Slider"[^}]*"value":(-?\d+)/g,
@@ -568,7 +568,7 @@ describe("app components", () => {
     ).toHaveLength(1);
 
     // Apply runs the first use's mutation with its own level, and is recorded like a tool call.
-    await act(daemon, session, "openui.press", { doc: "0", key: "a/apply" });
+    await act(daemon, session, "neoui.press", { doc: "0", key: "a/apply" });
     await until(() => app.calls.some((c) => c.name === "brightness"));
     expect(app.calls.filter((c) => c.name === "brightness")).toEqual([
       { name: "brightness", args: { asset: "asset://one", amount: 40 } },
@@ -598,7 +598,7 @@ describe("app components", () => {
   test("a registration is never refused: nothing clashes, a bad component is left out", async () => {
     const { daemon, session } = await setup();
     const mine = { description: "x", params: {}, neoui: "<Text>notes</Text>" };
-    const old = { description: "x", params: {}, openui: 'root = Text("old")' };
+    const old = { description: "x", params: {}, neoui: 'root = Text("old")' };
     await daemon.connectors.presence(
       {},
       {
