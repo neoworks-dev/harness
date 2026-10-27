@@ -124,6 +124,8 @@ struct Entry {
     r#ref: String,
     /// The agent is thinking (thoughts hidden): drawn as the animated line instead.
     thinking: bool,
+    /// A tool call that is running: a light sweeps across its first line.
+    running: bool,
     lines: Rc<Vec<Line<'static>>>,
     slots: Rc<Vec<ImageSlot>>,
     /// The line of an OpenUI target that has focus.
@@ -497,6 +499,7 @@ impl Chat {
                 entries.push(Entry {
                     r#ref: r,
                     thinking: false,
+                    running: false,
                     lines: Rc::new(lines),
                     slots: Rc::new(Vec::new()),
                     focus: None,
@@ -527,6 +530,7 @@ impl Chat {
                     entries.push(Entry {
                         r#ref: r.clone(),
                         thinking: false,
+                        running: false,
                         lines: Rc::new(vec![folded_line(&run, usize::from(width), &opts.palette)]),
                         slots: Rc::new(Vec::new()),
                         focus: None,
@@ -616,6 +620,7 @@ impl Chat {
             entries.push(Entry {
                 r#ref: r.clone(),
                 thinking,
+                running: tool_row && item.state == Some(ItemState::Running),
                 lines,
                 slots,
                 focus,
@@ -710,7 +715,7 @@ impl Chat {
         self.visible_at(None)
     }
 
-    /// The lines in view, the thinking line animated for the time `now_ms`.
+    /// The lines in view, the thinking line and running calls animated for the time `now_ms`.
     pub fn visible_at(&self, now_ms: Option<i64>) -> Vec<Line<'static>> {
         let top = self.top();
         let bottom = top + self.height;
@@ -738,6 +743,9 @@ impl Chat {
                 }
                 match now_ms {
                     Some(now) if e.thinking => out.push(thinking_line(line, now, &self.palette)),
+                    Some(now) if e.running && at == e.offset => {
+                        out.push(sweep(line, now, &self.palette));
+                    }
                     _ if picked == Some(at) => out.push(picked_line(line, self.width)),
                     _ => out.push(line.clone()),
                 }
@@ -1104,6 +1112,44 @@ fn thinking_line(line: &Line<'static>, now_ms: i64, p: &Palette) -> Line<'static
     Line::from(spans)
 }
 
+/// How far the light of a sweep reaches either side of its center, in columns.
+const SWEEP_REACH: f32 = 6.0;
+
+/// The line with a soft light breathing across it, left to right: each character keeps its own
+/// style, its color drawn towards the accent where the light is. Without true colors the lit
+/// characters are bold.
+pub fn sweep(line: &Line<'static>, now_ms: i64, p: &Palette) -> Line<'static> {
+    let n = line.width() as f32;
+    let phase = now_ms.rem_euclid(SWEEP_MS) as f32 / SWEEP_MS as f32;
+    let center = -SWEEP_REACH + phase * (n + 2.0 * SWEEP_REACH);
+    let mut col = 0.0;
+    let mut spans = Vec::new();
+    for span in &line.spans {
+        let base = span
+            .style
+            .fg
+            .filter(|c| *c != ratatui::style::Color::Reset)
+            .unwrap_or(p.fg);
+        for c in span.content.chars() {
+            let x = (col - center) / SWEEP_REACH;
+            // A bell, not a cone: the light swells and fades instead of edging along.
+            let light = if x.abs() < 1.0 {
+                (1.0 + (x * std::f32::consts::PI).cos()) / 2.0
+            } else {
+                0.0
+            };
+            let style = match mix(base, p.accent, light) {
+                Some(color) => span.style.fg(color),
+                None if light > 0.5 => span.style.add_modifier(Modifier::BOLD),
+                None => span.style,
+            };
+            spans.push(Span::styled(c.to_string(), style));
+            col += unicode_width::UnicodeWidthChar::width(c).unwrap_or(0) as f32;
+        }
+    }
+    Line::from(spans).style(line.style)
+}
+
 /// `b` mixed into `a` by `t` (0 to 1); None unless both are true colors.
 fn mix(
     a: ratatui::style::Color,
@@ -1405,6 +1451,39 @@ mod tests {
             "component": {"type":"code","code":"out"}
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn a_running_call_has_a_light_sweeping_across_its_first_line() {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(vec![
+            call("t1", "read a long file name here", "done"),
+            call("t2", "read another long file name", "running"),
+        ]));
+        c.layout(60, 20, &opts());
+        let lines = |now: i64| c.visible_at(Some(now));
+        let colors =
+            |line: &Line<'static>| -> Vec<_> { line.spans.iter().map(|s| s.style.fg).collect() };
+        let (early, late) = (lines(SWEEP_MS / 3), lines(SWEEP_MS * 2 / 3));
+        let first = texts(&c)
+            .iter()
+            .position(|l| l.contains("another"))
+            .unwrap();
+        assert_ne!(colors(&early[first]), colors(&late[first]));
+        // Only the running call's first line; the text stays the same.
+        assert_eq!(colors(&early[0]), colors(&late[0]));
+        assert_eq!(plain_text(&early), texts(&c));
+    }
+
+    #[test]
+    fn the_sweep_keeps_each_characters_style_where_the_light_is_not() {
+        let p = Palette::default();
+        let bold = Style::new().fg(p.danger).add_modifier(Modifier::BOLD);
+        let line = Line::from(vec![Span::styled("abc", bold), Span::raw(" ".repeat(40))]);
+        // The light is far right: the start is as it was.
+        let lit = sweep(&line, SWEEP_MS - 1, &p);
+        assert_eq!(lit.spans[0].style, bold);
+        assert_eq!(lit.width(), line.width());
     }
 
     #[test]

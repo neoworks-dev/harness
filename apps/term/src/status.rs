@@ -213,7 +213,7 @@ impl Status<'_> {
     }
 }
 
-fn duration(secs: u64) -> String {
+pub fn duration(secs: u64) -> String {
     if secs < 60 {
         format!("{secs}s")
     } else {

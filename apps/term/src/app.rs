@@ -344,6 +344,8 @@ pub struct App {
     /// The sessions sidebar is switched on (it still needs a wide enough terminal).
     sessions_on: bool,
     sessions_shown: bool,
+    /// The working line is drawn over the input box: the status line leaves it out.
+    work_shown: bool,
     /// Ctrl-G while the sidebar was hidden: focus it once it is drawn.
     sessions_wanted: bool,
     prompt: PromptState,
@@ -446,6 +448,7 @@ impl App {
             sessions: Sessions::default(),
             sessions_on: true,
             sessions_shown: false,
+            work_shown: false,
             sessions_wanted: false,
             prompt: PromptState::default(),
             forms: Forms::default(),
@@ -2693,6 +2696,8 @@ impl App {
         // with the accent bar on its left, a row of the chat's above it; what is in the box
         // starts past the bar.
         let gap = u16::from(self.styles.fills() && chat_h > 1);
+        // While a turn runs, a row of its own says so, over the input box.
+        let work_h = u16::from(self.running && chat_h >= gap + 6);
         let inset = |r: Rect| {
             if self.styles.fills() {
                 Rect {
@@ -2705,7 +2710,8 @@ impl App {
             }
         };
         Areas {
-            chat: at(0, chat_h - gap),
+            chat: at(0, chat_h - gap - work_h),
+            work: at(chat_h - gap - work_h, work_h),
             rule: at(chat_h, rule_h),
             hint: inset(at(top, hint_h)),
             waiting: inset(at(top + hint_h, waiting_h)),
@@ -2785,6 +2791,7 @@ impl App {
             .side
             .and_then(|side| self.widgets.side_terminal(side, areas.terminal));
         self.sessions_shown = areas.left.is_some();
+        self.work_shown = areas.work.height > 0;
         if std::mem::take(&mut self.sessions_wanted) {
             if self.sessions_shown {
                 self.focus = Some(Focus::Sessions);
@@ -2901,6 +2908,7 @@ impl App {
             frame.render_widget(Paragraph::new(areas.panel), areas.editor);
         }
         self.draw_status(frame, areas.status);
+        self.draw_work(frame, areas.work);
         if fills {
             // The bar down the input box's left edge.
             let bar = self.styles.accent.bg(self.styles.raised);
@@ -3592,6 +3600,40 @@ impl App {
             && self.transcript.is_none()
     }
 
+    /// Seconds the running turn has taken; None when idle.
+    fn working_secs(&self) -> Option<u64> {
+        self.running
+            .then(|| u64::try_from((self.now_ms - self.turn_started_ms) / 1000).unwrap_or(0))
+    }
+
+    /// `◐ working · 1m08s · esc to interrupt` over the input box, a light sweeping across it.
+    fn draw_work(&self, frame: &mut Frame, area: Rect) {
+        let Some(secs) = self.working_secs().filter(|_| area.height > 0) else {
+            return;
+        };
+        let spinner = SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()];
+        let bold = self.styles.accent.add_modifier(Modifier::BOLD);
+        let mut spans = vec![
+            Span::styled(format!("{spinner} working"), bold),
+            Span::styled(
+                format!(" · {}", crate::status::duration(secs)),
+                self.styles.muted,
+            ),
+        ];
+        if self.active_ref().is_none() {
+            spans.push(Span::styled(" · esc to interrupt", self.styles.muted));
+        }
+        let line = chat::sweep(&Line::from(spans), self.now_ms, &self.palette);
+        // As far in as the chat's text.
+        let inset = if self.styles.fills() { 2 } else { 0 };
+        let at = Rect {
+            x: area.x + inset,
+            width: area.width.saturating_sub(inset),
+            ..area
+        };
+        frame.render_widget(Paragraph::new(fit_line(line, usize::from(at.width))), at);
+    }
+
     fn status_lines(&self, width: usize) -> [Line<'static>; 2] {
         // The project's name: the terminal's own title or prompt has the whole path.
         let cwd = shorten_home(&self.cwd, self.home.as_deref());
@@ -3610,9 +3652,7 @@ impl App {
             harness: &self.harness,
             agent_in,
             usage: self.widgets.usage_line(),
-            working_secs: self
-                .running
-                .then(|| u64::try_from((self.now_ms - self.turn_started_ms) / 1000).unwrap_or(0)),
+            working_secs: self.working_secs().filter(|_| !self.work_shown),
             spinner: SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()],
             queued: self.waiting.len(),
             stashed: self.stash.is_some(),
@@ -3800,6 +3840,8 @@ fn thumbnail_cols(width: u32, height: u32, rows: u16, cell: (u16, u16)) -> u16 {
 
 struct Areas {
     chat: Rect,
+    /// One row under the chat while a turn runs: the working line.
+    work: Rect,
     rule: Rect,
     /// One row above the editor: a prompt is waiting for the user to stop typing.
     hint: Rect,

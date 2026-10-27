@@ -7,14 +7,14 @@
 
 
 
-
 ────────────────────────────────────────────────────────────
 › /clear           start a new conversation in this directo…
   /cd [dir]        move this session to another directory
   /claude <task>   give a task to Claude Code
   /codex <task>    give a task to Codex
+  ◐ working · 12s · esc to interrupt
 
 ┃
 ┃ /c
 ┃ site · neo
-  ⏵⏵ auto mode on · ◐ working 12s
+  ⏵⏵ auto mode on (shift+tab to cycle)
