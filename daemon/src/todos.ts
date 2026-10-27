@@ -88,7 +88,18 @@ export function parseTodoArgs(args: Record<string, unknown>): TodoChange | undef
   }
 }
 
-/** Runs the todos tool for `by` in `session`: the list after the change, or why not. */
+const DID: Record<TodoChange["op"], string> = {
+  add: "Added",
+  edit: "Changed",
+  done: "Checked off",
+  undone: "Opened again",
+  remove: "Removed",
+};
+
+/**
+ * Runs the todos tool for `by` in `session`: for list the whole list; for a change what it did
+ * to which item and how many are open and done, so a call reads as one line; or why not.
+ */
 export function todosTool(
   todos: Todos,
   session: string,
@@ -101,7 +112,17 @@ export function todosTool(
   });
   const change = parseTodoArgs(args);
   if (typeof change === "string") return fail(change);
-  const items = change === undefined ? todos.list(session) : todos.change(session, change, by);
+  if (change === undefined)
+    return { content: [{ type: "text", text: todosText(todos.list(session)) }] };
+  const before = todos.list(session);
+  const items = todos.change(session, change, by);
   if (typeof items === "string") return fail(`todos: ${items}`);
-  return { content: [{ type: "text", text: todosText(items) }] };
+  const item =
+    change.op === "add"
+      ? items.at(-1)
+      : (items.find((i) => i.id === change.id) ?? before.find((i) => i.id === change.id));
+  const done = items.filter((i) => i.done).length;
+  const counts = `${items.length - done} open, ${done} done.`;
+  const what = item === undefined ? "" : `: ${todosText([item])}`;
+  return { content: [{ type: "text", text: `${DID[change.op]}${what}\n${counts}` }] };
 }

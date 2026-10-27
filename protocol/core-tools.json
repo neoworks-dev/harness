@@ -169,7 +169,7 @@
     },
     {
       "name": "todos",
-      "description": "The session's shared todo list, which the user and every agent of the session read and change (the user from a pane in their app). Not your own task plan: use it for what the user and you keep track of together. list returns every item as `t3 [ ] text (who added it)`; add puts one at the end; done / undone check one off or open it again; edit changes its text; remove deletes it. Items are named by their id (t3). Look at it when the user mentions their todos, and check off what you finished.",
+      "description": "The session's shared todo list, which the user and every agent of the session read and change (the user from a pane in their app). Not your own task plan: use it for what the user and you keep track of together. list returns every item as `t3 [ ] text (who added it)`; add puts one at the end; done / undone check one off or open it again; edit changes its text; remove deletes it. A change answers with the item it changed and how many are open and done. Items are named by their id (t3). Look at it when the user mentions their todos, and check off what you finished.",
       "inputSchema": {
         "type": "object",
         "properties": {

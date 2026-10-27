@@ -26,8 +26,9 @@ describe("the shared todo list", () => {
       daemon.gateway.call("todos", args, undefined, guest ? { session, guest } : { session });
 
     expect(textOf(await tool({}))).toBe("The todo list is empty.");
+    // A change says what it did to which item, and the counts.
     expect(textOf(await tool({ action: "add", text: "Make the header sticky" }))).toBe(
-      "t1 [ ] Make the header sticky (echo)",
+      "Added: t1 [ ] Make the header sticky (echo)\n1 open, 0 done.",
     );
     // The user adds one from an app, silently.
     await daemon.actions.run(
@@ -52,8 +53,13 @@ describe("the shared todo list", () => {
     expect(who).toEqual(["echo", "user", "claude"]);
 
     // Ids stay: removing t1 leaves t2, and the next one is t3.
-    await tool({ action: "remove", id: "t1" });
+    expect(textOf(await tool({ action: "remove", id: "t1" }))).toBe(
+      "Removed: t1 [x] Make the header sticky (echo)\n1 open, 0 done.",
+    );
     expect(textOf(await tool({ action: "add", text: "Ship it" }))).toBe(
+      "Added: t3 [ ] Ship it (echo)\n2 open, 0 done.",
+    );
+    expect(textOf(await tool({ action: "list" }))).toBe(
       "t2 [ ] Check mobile (user)\nt3 [ ] Ship it (echo)",
     );
   });
