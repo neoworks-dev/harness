@@ -496,6 +496,24 @@ fn real_git_end_to_end() {
     });
     assert_eq!(sub.diff.as_ref().unwrap().counts(), (1, 1));
 
+    // What an agent changed stays once committed, marked so; its diff is the commit's.
+    w.files.touch("src/a.txt", "agent", false);
+    run(&dir, &["add", "-A"]);
+    run(&dir, &["commit", "-q", "-m", "change"]);
+    w.on_file_changed("src/a.txt");
+    wait_until(&mut w, "the commit", |w| w.files.entries().len() == 1);
+    let e = &w.files.entries()[0];
+    assert_eq!((e.rel.as_str(), e.mark), ("src/a.txt", Mark::Committed));
+    w.handle_key(Panel::Files, key(KeyCode::Char('G')));
+    w.handle_key(Panel::Files, key(KeyCode::Enter));
+    wait_until(&mut w, "the committed diff", |w| {
+        w.diff.as_ref().is_some_and(DiffView::is_loaded)
+    });
+    let d = w.diff.as_ref().unwrap();
+    assert_eq!(d.counts(), (1, 1));
+    assert!(d.lines().iter().any(|l| l.text == "+changed"));
+    w.handle_key(Panel::Files, key(KeyCode::Esc));
+
     // Not a repository: git fails, only the agent's files show.
     let plain = std::env::temp_dir().join(format!("neo-term-plain-{}-{nanos}", std::process::id()));
     std::fs::create_dir_all(&plain).unwrap();

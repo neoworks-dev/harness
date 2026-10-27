@@ -1691,6 +1691,26 @@ fn load(cwd: &Path, req: &DiffRequest, full: bool) -> Result<String, String> {
     if !req.in_repo {
         return Err("no diff outside a git repository".into());
     }
+    if req.mark == Mark::Committed {
+        // What the last commit that touched it changed.
+        let log = [
+            "log",
+            "-1",
+            "--format=",
+            "-p",
+            "--no-color",
+            "--no-ext-diff",
+        ];
+        let out = run(
+            git(cwd).args(log).arg(&context).arg("--").arg(&req.rel),
+            false,
+        )?;
+        return if out.trim().is_empty() {
+            Err("no change left: it was changed back".into())
+        } else {
+            Ok(out)
+        };
+    }
     let mut paths = vec![req.rel.clone()];
     paths.extend(req.orig.clone());
     let has_head = git(cwd)

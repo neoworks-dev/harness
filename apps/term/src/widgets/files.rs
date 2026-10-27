@@ -18,6 +18,9 @@ pub(crate) enum Mark {
     Renamed,
     Untracked,
     Conflicted,
+    /// An agent changed it in this session and git sees no change in it any more: committed
+    /// (or changed back).
+    Committed,
 }
 
 impl Mark {
@@ -29,6 +32,7 @@ impl Mark {
             Mark::Renamed => 'R',
             Mark::Untracked => '?',
             Mark::Conflicted => 'U',
+            Mark::Committed => '✓',
         }
     }
 
@@ -38,8 +42,16 @@ impl Mark {
             Mark::Modified | Mark::Renamed => fg(palette.accent),
             Mark::Added => fg(palette.success),
             Mark::Deleted => fg(palette.danger),
-            Mark::Untracked => fg(palette.muted),
+            Mark::Untracked | Mark::Committed => fg(palette.muted),
             Mark::Conflicted => fg(palette.danger).add_modifier(Modifier::BOLD),
+        }
+    }
+
+    /// The glyph's own style: a committed file's check is green, its name muted.
+    fn glyph_style(self, palette: &Palette) -> Style {
+        match self {
+            Mark::Committed => Style::new().fg(palette.success),
+            _ => self.style(palette),
         }
     }
 }
@@ -163,9 +175,15 @@ impl FilesState {
             let listed = entries
                 .iter()
                 .any(|e| e.rel == t.rel || (e.rel.ends_with('/') && t.rel.starts_with(&e.rel)));
-            // In a repository, a file git sees no change in (committed, or changed back) is done.
-            if !listed && self.status.is_none() {
-                let mark = if t.added { Mark::Added } else { Mark::Modified };
+            // In a repository, a file git sees no change in was committed (or changed back).
+            if !listed {
+                let mark = if self.status.is_some() {
+                    Mark::Committed
+                } else if t.added {
+                    Mark::Added
+                } else {
+                    Mark::Modified
+                };
                 entries.push(FileEntry {
                     rel: clean_line(&t.rel),
                     orig: None,
@@ -569,11 +587,18 @@ fn plain_pieces(r: &TreeRow, entries: &[FileEntry], palette: &Palette) -> Option
         RowKind::File(i) => {
             let e = entries.get(*i)?;
             let style = e.mark.style(palette);
-            let lead = Span::styled(format!("{indent}{} ", e.mark.glyph()), style);
-            let tag = if e.tags.is_empty() {
+            let lead = Span::styled(
+                format!("{indent}{} ", e.mark.glyph()),
+                e.mark.glyph_style(palette),
+            );
+            let mut said = e.tags.clone();
+            if e.mark == Mark::Committed {
+                said.push("committed".into());
+            }
+            let tag = if said.is_empty() {
                 String::new()
             } else {
-                format!(" ({})", e.tags.join(", "))
+                format!(" ({})", said.join(", "))
             };
             (vec![lead], file_name(e), style, tag, e.lines)
         }
@@ -806,7 +831,7 @@ mod tests {
     }
 
     #[test]
-    fn git_entries_with_agent_tags_and_committed_ones_left_out() {
+    fn git_entries_with_agent_tags_and_committed_ones_marked() {
         let mut f = FilesState::default();
         f.touch("src/a.ts", "agent", false);
         f.touch("src/a.ts", "claude", false);
@@ -833,9 +858,15 @@ mod tests {
                     vec!["agent".to_string(), "claude".to_string()]
                 ),
                 ("b.txt", Mark::Untracked, vec![]),
+                // Touched, but git sees no change in it any more: committed.
+                ("gone.txt", Mark::Committed, vec!["claude".to_string()]),
             ]
         );
-        // gone.txt: touched, but git sees no change in it any more (committed), so it is done.
+        let p = Palette::default();
+        let lines = f.render(40, 10, false, &p);
+        assert_eq!(text(&lines)[3], "✓ gone.txt (claude, committed)");
+        assert_eq!(lines[3].spans[0].style.fg, Some(p.success));
+        assert_eq!(lines[3].spans[1].style.fg, Some(p.muted));
         assert_eq!(f.branch().as_deref(), Some("main ↑1"));
         // Same status again is no change.
         assert!(!f.set_status(f.status.clone()));
