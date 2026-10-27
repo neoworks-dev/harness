@@ -200,7 +200,10 @@ impl TerminalState {
             self.max_back.set(max);
             let back = self.back.unwrap_or(0).min(max);
             let end = all.len() - back;
-            return all[end.saturating_sub(height)..end].to_vec();
+            let start = end.saturating_sub(height);
+            let mut shown = all[start..end].to_vec();
+            pin_head(&mut shown, &all, &[(0, all.len())], start);
+            return shown;
         }
         // From the newest run back, only as many as fill the view; a rule between runs.
         let mut blocks: Vec<Vec<Line<'static>>> = Vec::new();
@@ -221,6 +224,14 @@ impl TerminalState {
                 break;
             }
         }
+        // Where each run starts and how many rows it has before its rule.
+        let mut runs = Vec::new();
+        let mut at = 0;
+        for (i, block) in blocks.iter().rev().enumerate() {
+            let rule = usize::from(i + 1 < blocks.len());
+            runs.push((at, block.len() - rule));
+            at += block.len();
+        }
         let all: Vec<Line<'static>> = blocks.into_iter().rev().flatten().collect();
         // Up as far as there is; while some runs were left out, at least what was drawn.
         let max = all.len().saturating_sub(height);
@@ -228,7 +239,10 @@ impl TerminalState {
             .set(if complete { max } else { max.max(want) });
         let back = self.back.unwrap_or(0).min(max);
         let end = all.len() - back;
-        all[end.saturating_sub(height)..end].to_vec()
+        let start = end.saturating_sub(height);
+        let mut shown = all[start..end].to_vec();
+        pin_head(&mut shown, &all, &runs, start);
+        shown
     }
 
     /// Keys while focused; true leaves the panel.
@@ -424,6 +438,26 @@ fn pgid_of(pid: &str) -> Option<i64> {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
     let (_, rest) = stat.rsplit_once(')')?;
     rest.split_whitespace().nth(2)?.parse().ok()
+}
+
+/// When the top of `shown` (row `start` of `all`) is inside a run whose `$ command` row has
+/// scrolled off, that row takes the top's place, so the output keeps saying whose it is. `runs`
+/// are each run's first row in `all` and its rows before the rule under it.
+fn pin_head(
+    shown: &mut [Line<'static>],
+    all: &[Line<'static>],
+    runs: &[(usize, usize)],
+    start: usize,
+) {
+    if shown.len() < 2 {
+        return;
+    }
+    let inside = runs
+        .iter()
+        .find(|&&(first, rows)| start > first && start < first + rows);
+    if let Some(&(first, _)) = inside {
+        shown[0] = all[first].clone();
+    }
 }
 
 /// `[exited with code 0]`: the code.
@@ -747,15 +781,31 @@ mod tests {
             &update("1", Some("completed"), &numbers.join("\n"), None),
             0,
         );
-        assert_eq!(shown(&t, 20, 3), ["18", "19", "20"]);
+        // The command stays on top while its output scrolls under it.
+        assert_eq!(shown(&t, 20, 3), ["$ seq 20", "19", "20"]);
         t.key(KeyEvent::from(KeyCode::PageUp), 3);
         assert!(!t.following());
-        assert_eq!(shown(&t, 20, 3), ["15", "16", "17"]);
+        assert_eq!(shown(&t, 20, 3), ["$ seq 20", "16", "17"]);
         t.key(KeyEvent::from(KeyCode::Char('g')), 3);
         assert_eq!(shown(&t, 20, 3), ["$ seq 20", "1", "2"]);
         t.key(KeyEvent::from(KeyCode::Char('G')), 3);
         assert!(t.following());
         assert!(t.key(KeyEvent::from(KeyCode::Esc), 3));
+    }
+
+    #[test]
+    fn the_command_on_top_is_the_one_whose_output_shows() {
+        let mut t = TerminalState::default();
+        t.on_call(&call("1", "execute", "seq 5"));
+        t.on_update(&update("1", Some("completed"), "1\n2\n3\n4\n5", None), 0);
+        t.on_call(&call("2", "execute", "seq 2"));
+        t.on_update(&update("2", Some("completed"), "1\n2", None), 0);
+        let rule = "─".repeat(10);
+        // On the rule, nothing is pinned: the next command starts right under it.
+        assert_eq!(shown(&t, 10, 4), [rule.as_str(), "$ seq 2", "1", "2"]);
+        t.key(KeyEvent::from(KeyCode::Up), 4);
+        t.key(KeyEvent::from(KeyCode::Up), 4);
+        assert_eq!(shown(&t, 10, 4), ["$ seq 5", "5", rule.as_str(), "$ seq 2"]);
     }
 
     #[test]
