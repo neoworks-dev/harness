@@ -2184,9 +2184,10 @@ impl App {
                 }
                 self.editor.insert_char(c);
             }
-            KeyCode::Enter if alt || shift => self.editor.newline(),
-            // Ctrl-Enter: now, not after the running turn (which is cancelled for it).
-            KeyCode::Enter if ctrl => {
+            KeyCode::Enter if shift => self.editor.newline(),
+            // Ctrl-Enter or Alt-Enter (which every terminal tells apart from Enter): now, not
+            // after the running turn (which is cancelled for it).
+            KeyCode::Enter if ctrl || alt => {
                 if self.running && !self.editor.is_empty() && !self.menu_visible() {
                     fx.push(Effect::Cancel {
                         session: self.session.clone(),
@@ -3825,7 +3826,8 @@ impl App {
         let mut lines = vec![
             head("keys (any key closes this)"),
             key("enter", "send"),
-            key("alt-enter, ctrl-j", "new line"),
+            key("alt-enter, ctrl-enter", "send now, cancelling the turn"),
+            key("ctrl-j, shift-enter", "new line"),
             key("up / down", "move in the text, then through history"),
             key("ctrl-a / ctrl-e", "start / end of line"),
             key("alt-b / alt-f", "word left / right"),

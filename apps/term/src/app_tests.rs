@@ -226,11 +226,11 @@ fn enter_sends_the_trimmed_text_and_clears() {
 }
 
 #[test]
-fn alt_enter_and_ctrl_j_insert_newlines_and_paste_stays_in_the_editor() {
+fn shift_enter_and_ctrl_j_insert_newlines_and_paste_stays_in_the_editor() {
     let mut app = app();
     type_str(&mut app, "a");
     assert!(
-        app.handle_key(with(KeyCode::Enter, KeyModifiers::ALT))
+        app.handle_key(with(KeyCode::Enter, KeyModifiers::SHIFT))
             .is_empty()
     );
     type_str(&mut app, "b");
@@ -1298,6 +1298,17 @@ fn ctrl_enter_cancels_the_running_turn_and_sends_now() {
     assert!(
         app.handle_key(with(KeyCode::Enter, KeyModifiers::CONTROL))
             .is_empty()
+    );
+    // Alt-Enter does the same, for terminals that can't tell Ctrl-Enter from Enter.
+    type_str(&mut app, "now");
+    assert_eq!(
+        app.handle_key(with(KeyCode::Enter, KeyModifiers::ALT)),
+        [
+            Effect::Cancel {
+                session: "s1".into()
+            },
+            input("now")
+        ]
     );
 }
 
