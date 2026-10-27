@@ -322,21 +322,32 @@ impl<'a> Cx<'a> {
                 spans
             };
             if columns {
-                let sub = row.subtitle.as_deref().map(|s| truncate(s, sub_room));
+                // A long subtitle wraps in its column; the trailing value stays on the first row.
                 let sub_col = sub_w.min(sub_room);
+                let mut sub = match row.subtitle {
+                    Some(s) => wrap(&[Span::styled(s, muted)], sub_col.max(1)),
+                    None => Vec::new(),
+                }
+                .into_iter();
                 let mut spans = vec![Span::styled(row.title.clone(), bold)];
                 spans.push(Span::raw(" ".repeat(title_w - width(&row.title))));
                 if sub_w > 0 {
-                    let used = sub.as_deref().map_or(0, width);
+                    let first = sub.next().map(|l| l.spans).unwrap_or_default();
+                    let pad = sub_col.saturating_sub(line_width(&first));
                     spans.push(Span::raw("  "));
-                    spans.push(Span::styled(sub.unwrap_or_default(), muted));
-                    spans.push(Span::raw(" ".repeat(sub_col - used)));
+                    spans.extend(first);
+                    spans.push(Span::raw(" ".repeat(pad)));
                 }
                 if tail_w > 0 {
                     spans.push(Span::raw("  "));
                     spans.extend(right(row.trailing));
                 }
                 out.push(Line::from(spans));
+                for line in sub {
+                    let mut spans = vec![Span::raw(" ".repeat(title_w + 2))];
+                    spans.extend(line.spans);
+                    out.push(Line::from(spans));
+                }
                 continue;
             }
             // Stacked: the title and the trailing value on one line, the subtitle under.

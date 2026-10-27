@@ -1770,11 +1770,17 @@ fn an_entity_list_is_columns_of_title_subtitle_and_trailing() {
 }
 
 #[test]
-fn a_long_subtitle_is_cut_before_the_list_stacks() {
+fn a_long_subtitle_wraps_in_its_column_before_the_list_stacks() {
     let it = doc(people());
-    let out = lines(&it, 40);
-    assert_eq!(out.len(), 3, "{out:?}");
-    assert_eq!(out[1], "Grace Hopper  rear admiral, co…   owner");
+    assert_eq!(
+        lines(&it, 40),
+        [
+            "Ada Lovelace  analyst             admin",
+            "Grace Hopper  rear admiral,       owner",
+            "              compiler pioneer",
+            "Linus",
+        ]
+    );
 }
 
 #[test]
