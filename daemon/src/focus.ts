@@ -79,16 +79,18 @@ export class FocusManager {
   }
 
   /**
-   * `/clear` typed in any pane: a fresh session in the same working directory becomes current,
-   * and the agent stays in the app it's in. The old session stays in the list, unless it is
-   * empty and nothing follows it (see Hub).
+   * `/clear` typed in any pane: a fresh session in the same working directory becomes current.
+   * Typed in an open app's pane it moves the agent there, as other input does, so that pane
+   * follows; from anything else (the CLI) the agent stays in the app it's in. The old session
+   * stays in the list, unless it is empty and nothing follows it (see Hub).
    */
-  clear(from: string): AgentFocus {
+  clear(from: string, app: string): AgentFocus {
     const params: { cwd?: string } = {};
     const cwd = this.sessions.info(from)?.cwd;
     if (cwd !== undefined) params.cwd = cwd;
     const fresh = this.sessions.create(params).id;
-    return this.set(fresh, this.app, "session");
+    const here = this.registry.presenceOf(app)?.kind === "app" ? app : this.app;
+    return this.set(fresh, here, "session");
   }
 
   onChange(listener: (focus: AgentFocus) => void): () => void {

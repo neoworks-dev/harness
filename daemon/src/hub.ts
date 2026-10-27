@@ -465,7 +465,7 @@ export class Hub {
         }
         if (focus && text.trim() === "/clear") {
           if (!this.sessions.info(session)) throw new NotFoundError(`no session ${session}`);
-          focus.clear(session);
+          focus.clear(session, app);
         } else {
           // Before queueing, so the turn already sees the new focus.
           focus?.followInput(session, app);

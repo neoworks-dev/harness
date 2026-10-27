@@ -272,6 +272,25 @@ describe("over the bus and the gateway", () => {
     expect(a.received.slice(-2).map((e) => e.topic)).toEqual(["agent.focus", "bus.ack"]);
   });
 
+  test("/clear typed in another app's pane brings the agent there", async () => {
+    const { hub, registry, focus, sessions, store } = hubSetup();
+    await registry.presence({}, app("terminal"));
+    await registry.presence({}, app("terminal-2"));
+    const old = sessions.create({ cwd: "/site" }).id;
+    store.append(old, { type: "user_message", app: "terminal-2", text: "hi" });
+    focus.move({ app: "terminal-2", session: old }, "user");
+    const a = client(hub);
+    a.send({
+      topic: "session.input",
+      id: "c",
+      payload: { session: old, app: "terminal", text: "/clear" },
+    });
+    const now = focus.current();
+    expect(now.session).not.toBe(old);
+    expect(now.app).toBe("terminal");
+    expect(sessions.info(now.session)?.cwd).toBe("/site");
+  });
+
   test("app.context updates what the agent sees next, without a broadcast or a store write", async () => {
     const { hub, registry, focus, agent, sessions, store } = hubSetup();
     const editor = client(hub);
