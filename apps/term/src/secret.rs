@@ -124,8 +124,15 @@ impl Secret {
     }
 
     /// The field as it takes the editor's place: the title, one `•` per typed character (or the
-    /// placeholder while empty) and a line of keys, each with the bar in the margin.
-    pub fn lines(&self, width: usize, marker: Style, muted: Style) -> Vec<Line<'static>> {
+    /// placeholder while empty) and a line of keys, each with the bar in the margin (`bar`, none
+    /// in the input box).
+    pub fn lines(
+        &self,
+        width: usize,
+        marker: Style,
+        bar: Option<Style>,
+        muted: Style,
+    ) -> Vec<Line<'static>> {
         let title = Line::from(Span::styled(
             truncate(&self.title, width.saturating_sub(2)),
             Style::new().add_modifier(Modifier::BOLD),
@@ -149,7 +156,7 @@ impl Secret {
         ));
         [title, Line::from(field), keys]
             .into_iter()
-            .map(|line| fit_line(chat::barred(line, marker), width))
+            .map(|line| fit_line(chat::barred(line, bar), width))
             .collect()
     }
 }

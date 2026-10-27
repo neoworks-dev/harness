@@ -25,6 +25,6 @@
 
 
 ┃
-┃ ▎ Service · enter opens · ←/→ choose · tab next · esc input
+┃ Service · enter opens · ←/→ choose · tab next · esc input
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

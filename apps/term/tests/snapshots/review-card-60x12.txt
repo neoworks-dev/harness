@@ -2,11 +2,11 @@ The agent changed 2 files: keep them? · answer below
 
 
 ┃
-┃ ▎ The agent changed 2 files: keep them?
-┃ ▎   [1 Keep]
-┃ ▎   [2 Revert all]
-┃ ▎   [3 Revert a.ts]
-┃ ▎   [4 Revert b.ts]
-┃ ▎ enter keep · ←/→ choose · tab add a note · esc dismiss
+┃ The agent changed 2 files: keep them?
+┃   [1 Keep]
+┃   [2 Revert all]
+┃   [3 Revert a.ts]
+┃   [4 Revert b.ts]
+┃ enter keep · ←/→ choose · tab add a note · esc dismiss
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

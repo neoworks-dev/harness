@@ -6,9 +6,9 @@
   Model · answer below                                               │
 
 ┃
-┃ ▎ Model
-┃ ▎ filter › zzz
-┃ ▎ no match
-┃ ▎ esc clear
+┃ Model
+┃ filter › zzz
+┃ no match
+┃ esc clear
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

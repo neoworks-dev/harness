@@ -11,20 +11,20 @@
 
 
 ┃
-┃ ▎ claude: Start a subagent?
-┃ ▎   Harness    neo
-┃ ▎   Model      deepseek/deepseek-v4-flash
-┃ ▎   Effort     medium
-┃ ▎   Directory  ~/site/.worktrees/fix-login (new worktree, branch fix-login)
-┃ ▎     step 1: do the thing
-┃ ▎     step 2: do the thing
-┃ ▎     step 3: do the thing
-┃ ▎     step 4: do the thing
-┃ ▎     step 5: do the thing
-┃ ▎     step 6: do the thing
-┃ ▎   … 24 more lines (expand to see all)
-┃ ▎
-┃ ▎   [1 Start neo]  [2 Allow neo for this session]  [3 Reject]
-┃ ▎ enter start neo · ←/→ choose · tab add a note · esc dismiss
+┃ claude: Start a subagent?
+┃   Harness    neo
+┃   Model      deepseek/deepseek-v4-flash
+┃   Effort     medium
+┃   Directory  ~/site/.worktrees/fix-login (new worktree, branch fix-login)
+┃     step 1: do the thing
+┃     step 2: do the thing
+┃     step 3: do the thing
+┃     step 4: do the thing
+┃     step 5: do the thing
+┃     step 6: do the thing
+┃   … 24 more lines (expand to see all)
+┃
+┃   [1 Start neo]  [2 Allow neo for this session]  [3 Reject]
+┃ enter start neo · ←/→ choose · tab add a note · esc dismiss
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

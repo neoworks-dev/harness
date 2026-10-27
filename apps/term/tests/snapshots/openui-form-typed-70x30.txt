@@ -25,6 +25,6 @@
 
 
 ┃
-┃ ▎ Environment · ←/→ choose · tab next · esc input
+┃ Environment · ←/→ choose · tab next · esc input
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

@@ -804,7 +804,7 @@ fn a_pending_prompt_is_active_with_the_first_button_focused() {
     assert_eq!(app.active_ref(), Some("p1"));
     assert_eq!(app.prompt.button, 0);
     let text = screen_text(&mut app, 80, 24);
-    assert!(text.contains("▎ "), "{text}");
+    assert!(text.contains("┃ claude: run ls?"), "{text}");
     app.handle_key(key(KeyCode::Right));
     assert_eq!(app.prompt.button, 1);
     app.handle_key(key(KeyCode::Right));

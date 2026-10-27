@@ -1448,8 +1448,13 @@ impl App {
                 truncate(&text, w.saturating_sub(2)),
                 self.styles.muted,
             )),
-            self.styles.accent,
+            self.panel_marker(),
         )
+    }
+
+    /// The bar down a prompt in the editor's place: none in the input box, which has its own.
+    fn panel_marker(&self) -> Option<Style> {
+        (!self.styles.fills()).then_some(self.styles.accent)
     }
 
     // ---- keys ----
@@ -2636,7 +2641,12 @@ impl App {
         // An engaged prompt takes the editor's place; a waiting one adds a hint row above it.
         let box_w = main.width.saturating_sub(3 * margin);
         let panel = if let Some(secret) = &self.secret {
-            secret.lines(usize::from(box_w), self.styles.accent, self.styles.muted)
+            secret.lines(
+                usize::from(box_w),
+                self.styles.accent,
+                self.panel_marker(),
+                self.styles.muted,
+            )
         } else if self.prompt.engaged {
             self.panel_lines(box_w, usize::from(room.saturating_sub(1).min(PANEL_ROWS)))
         } else {
@@ -3279,9 +3289,10 @@ impl App {
             ),
         };
         let w = usize::from(width);
-        let marker = self.styles.accent;
+        let accent = self.styles.accent;
+        let marker = self.panel_marker();
         let tail = match &self.note {
-            Some(note) => chat::note_line(&note.text, w.saturating_sub(2), marker),
+            Some(note) => chat::note_line(&note.text, w.saturating_sub(2), accent),
             None => Line::from(Span::styled(
                 keys_hint(
                     buttons
@@ -3308,7 +3319,7 @@ impl App {
                 marker,
             );
             if filtering {
-                let field = chat::filter_line(&self.prompt.filter, w.saturating_sub(2), marker);
+                let field = chat::filter_line(&self.prompt.filter, w.saturating_sub(2), accent);
                 body.insert(1.min(body.len()), chat::barred(field, marker));
                 if nothing {
                     body.push(chat::barred(

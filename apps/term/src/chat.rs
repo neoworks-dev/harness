@@ -1170,7 +1170,7 @@ fn render(
     let lines = out
         .lines
         .into_iter()
-        .map(|line| barred(line, key.marker))
+        .map(|line| barred(line, Some(key.marker)))
         .collect();
     let mut slots = out.images;
     for slot in &mut slots {
@@ -1179,16 +1179,20 @@ fn render(
     (lines, slots, out.focus_line)
 }
 
-/// A line of the prompt being answered: the bar in the margin first.
-pub fn barred(line: Line<'static>, marker: Style) -> Line<'static> {
+/// A line of the prompt being answered: the bar in the margin first. None where something
+/// else draws the bar (the input box's).
+pub fn barred(line: Line<'static>, marker: Option<Style>) -> Line<'static> {
+    let Some(marker) = marker else {
+        return line;
+    };
     let mut spans = vec![Span::styled("▎ ", marker)];
     spans.extend(line.spans);
     Line::from(spans)
 }
 
 /// The prompt as the input area shows it: the item with the n-th button focused and at most
-/// `preview` lines of any diff or code, each line with the bar in the margin. `hide_keys` draws
-/// the buttons without their keys.
+/// `preview` lines of any diff or code, each line with the bar in the margin (none without a
+/// marker). `hide_keys` draws the buttons without their keys.
 pub fn panel_lines(
     item: &ViewItem,
     width: u16,
@@ -1196,7 +1200,7 @@ pub fn panel_lines(
     preview: usize,
     hide_keys: bool,
     palette: Palette,
-    marker: Style,
+    marker: Option<Style>,
 ) -> Vec<Line<'static>> {
     let opts = Options {
         expanded: false,
@@ -1215,7 +1219,8 @@ pub fn panel_lines(
         split_diffs: false,
         open_edits: false,
     };
-    neo_renderer_ratatui::render_item(item, width.saturating_sub(2).max(1), &opts)
+    let bar = if marker.is_some() { 2 } else { 0 };
+    neo_renderer_ratatui::render_item(item, width.saturating_sub(bar).max(1), &opts)
         .into_iter()
         .map(|line| barred(line, marker))
         .collect()

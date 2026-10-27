@@ -831,7 +831,7 @@ fn the_form_is_drawn_into_the_chat_on_a_wide_screen() {
     // Only the chat's margin bar marks the form being answered.
     assert!(screen.contains("▎ "), "{screen}");
     assert!(
-        screen.contains("▎ Email · type · enter submits · tab next · esc input"),
+        screen.contains("┃ Email · type · enter submits · tab next · esc input"),
         "{screen}"
     );
 }
