@@ -46,7 +46,7 @@ import { type Guard, RUN_TITLE, type Touches } from "../permissions.ts";
 import type { Approvals, HarnessSettings } from "../settings.ts";
 import { type FocusTarget, type ShowDontTellSetting, ToldState } from "../told.ts";
 import { AcpConnection, AcpError } from "./acp.ts";
-import { CLAUDE_AGENT_TOOLS } from "./config.ts";
+import { CLAUDE_AGENT_TOOLS, withCodexSubagents } from "./config.ts";
 import type { GuestAccounts, Route, RouteKind } from "./accounts.ts";
 import { GUEST_PROMPT, MAIN_PROMPT } from "./prompt.ts";
 import type { GuestRunResult, RunOptions } from "./run.ts";
@@ -65,6 +65,11 @@ export interface GuestConfig {
   route?: RouteKind;
   /** ask: permission requests show as buttons in the chat; allow: the first allow option wins. */
   permissions: "ask" | "allow";
+  /**
+   * It has subagents of its own that neo turns on and off: asks, their starts come as permission
+   * requests (Claude Code); silent, they start without asking (Codex).
+   */
+  subagents?: "asks" | "silent";
 }
 
 /** Which client of the gateway an agent is (see Caller in gateway.ts). */
@@ -114,6 +119,13 @@ export interface GuestManagerOptions {
   requestPermission?: (session: string, agent: string) => RequestPermission;
   /** Neo's API keys, for guests with a `route`. */
   accounts?: GuestAccounts;
+  /**
+   * Whether a session's agent may start subagents of its own (Claude Code's Agent tool, Codex's
+   * multi-agent tools), read when its adapter starts. Never for a subagent. Default: no.
+   */
+  nativeSubagents?: (session: string) => boolean;
+  /** Whether starting a subagent asks in every mode (the user's /settings ask-for-agents). */
+  alwaysAskForAgents?: () => boolean;
 }
 
 /** A conversation the adapter has stored (session/list), for /resume. */
@@ -298,6 +310,16 @@ function callPaths(call: Record<string, unknown>): string[] {
     }
   }
   return paths;
+}
+
+/** Whether the call starts one of the agent's own subagents (Claude Code's Agent or Task tool). */
+function isSubagentStart(call: Record<string, unknown>): boolean {
+  let tool = str(call.title);
+  if (isRecord(call._meta) && isRecord(call._meta.claudeCode)) {
+    tool = str(call._meta.claudeCode.toolName) ?? tool;
+  }
+  if (tool !== undefined && CLAUDE_AGENT_TOOLS.includes(tool)) return true;
+  return isRecord(call.rawInput) && typeof call.rawInput.subagent_type === "string";
 }
 
 /** The shell command of an execute call (a string, or an argv list as Codex sends it). */
@@ -496,6 +518,16 @@ export class GuestManager {
 
   title(name: string): string {
     return this.options.configs[name]?.title ?? name;
+  }
+
+  /**
+   * Whether the guest can use subagents of its own (see GuestConfig.subagents): ones that start
+   * without asking not while the user wants every start asked about.
+   */
+  ownSubagents(name: string): boolean {
+    const kind = this.options.configs[name]?.subagents;
+    if (kind === "silent") return this.options.alwaysAskForAgents?.() !== true;
+    return kind === "asks";
   }
 
   /**
@@ -926,13 +958,23 @@ export class GuestManager {
    * `target` gets the guest once it exists: the connection's updates and requests are its. What
    * the adapter lists before that (its commands) is kept in `target` for the guest.
    */
-  private spawn(name: string, cwd: string, target: GuestTarget, route?: Route): AcpConnection {
+  private spawn(
+    name: string,
+    cwd: string,
+    target: GuestTarget,
+    route?: Route,
+    native = false,
+  ): AcpConnection {
     const config = this.options.configs[name];
     if (!config) throw new NotFoundError(`no guest ${name}`);
+    const env = route ? { ...config.env, ...route.env } : { ...config.env };
+    if (env.CODEX_CONFIG !== undefined) {
+      env.CODEX_CONFIG = withCodexSubagents(env.CODEX_CONFIG, native);
+    }
     return AcpConnection.spawn({
       command: config.command,
       cwd,
-      env: route ? { ...config.env, ...route.env } : config.env,
+      env,
       onNotification: (method, params) => this.onNotification(target, method, params),
       onRequest: (method, params) => this.onRequest(target.guest, method, params),
     });
@@ -1035,7 +1077,9 @@ export class GuestManager {
     const cwd = this.options.cwd(session);
     const target: GuestTarget = {};
     const route = chosen === undefined ? await this.routeFromSettings(session, name) : chosen;
-    const conn = this.spawn(name, cwd, target, route ?? undefined);
+    const native =
+      main && this.ownSubagents(name) && this.options.nativeSubagents?.(session) === true;
+    const conn = this.spawn(name, cwd, target, route ?? undefined, native);
     void conn.exited.then((code) => {
       log.info(`${name} for ${session} exited (${code})`);
       const { guest } = target;
@@ -1057,8 +1101,14 @@ export class GuestManager {
         _meta: {
           // Both adapters append this to their own system prompt.
           jetbrains: { air: { customInstructions: main ? MAIN_PROMPT : GUEST_PROMPT } },
-          // Claude Code's own subagents are off: delegate hands work on (Codex: CODEX_CONFIG).
-          claudeCode: { options: { disallowedTools: CLAUDE_AGENT_TOOLS } },
+          // Claude Code's own subagents, when the user lets the agent use them, ask before they
+          // start like any tool (onRequest decides); else they are off and delegate hands work
+          // on. (Codex: CODEX_CONFIG, see spawn.)
+          claudeCode: {
+            options: native
+              ? { settings: { permissions: { ask: CLAUDE_AGENT_TOOLS } } }
+              : { disallowedTools: CLAUDE_AGENT_TOOLS },
+          },
         },
       };
       if (resume !== undefined) params.sessionId = resume;
@@ -1333,9 +1383,16 @@ export class GuestManager {
     if (allow && isNeoTool(call)) {
       return { outcome: { outcome: "selected", optionId: allow.id } };
     }
+    // The agent starting a subagent of its own: as delegate, auto mode starts it without asking,
+    // unless the user wants every start asked about (then nothing is allowed for good either).
+    const spawn = isSubagentStart(call);
+    const askAlways = spawn && this.options.alwaysAskForAgents?.() === true;
+    if (spawn && allow && !askAlways && (config?.permissions === "allow" || mode === "auto")) {
+      return { outcome: { outcome: "selected", optionId: allow.id } };
+    }
     let sensitive: string[] = [];
-    if (config?.permissions !== "allow") sensitive = this.guardOpen(guest, touches);
-    if (sensitive.length === 0 && allow) {
+    if (config?.permissions !== "allow" && !spawn) sensitive = this.guardOpen(guest, touches);
+    if (sensitive.length === 0 && allow && !spawn) {
       const reads = kind === "read" || kind === "search";
       const edits = (mode === "edits" || mode === "review") && isEdit;
       if (config?.permissions === "allow" || mode === "auto" || reads || edits) {
@@ -1360,6 +1417,20 @@ export class GuestManager {
       const description = rawDescription?.replace(/\s+/g, " ").trim();
       if (sensitive.length === 0) request.title = description || RUN_TITLE;
     } else if (content?.length) request.content = content;
+    if (spawn) {
+      // Asked like delegate's start: what kind of subagent, then its task.
+      const input: Record<string, unknown> = { ...(call.rawInput as object | undefined) };
+      request.title = "Start a subagent?";
+      const details = [{ key: "Agent", value: str(input.subagent_type) ?? "general-purpose" }];
+      const what = str(input.description);
+      if (what !== undefined) details.push({ key: "Task", value: what });
+      if (input.run_in_background === true)
+        details.push({ key: "Runs", value: "in the background" });
+      request.details = details;
+      const prompt = str(input.prompt);
+      if (prompt !== undefined) request.content = [{ type: "text", text: prompt }];
+      if (askAlways) request.options = options.filter((o) => o.kind !== "allow_always");
+    }
     const toolCallId = str(call.toolCallId);
     if (toolCallId !== undefined) {
       request.toolCallId = `${guest.main ? `${guest.name}-main` : guest.name}:${toolCallId}`;

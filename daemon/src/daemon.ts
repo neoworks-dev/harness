@@ -203,6 +203,10 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     neo: options.neo ?? (agent.name === "neo" ? agent : undefined),
     resolveAsset: (handle) => assets.resolve(handle),
     requestPermission: (session, name) => permissions.hook(session, name),
+    // Not for a delegation's own session: subagents don't start subagents.
+    nativeSubagents: (session) =>
+      settings.subagents() !== "delegate" && store.getSession(session)?.parent === undefined,
+    alwaysAskForAgents: () => settings.alwaysAskForAgents(),
   });
   /** The names a plugin's command may not take: what the daemon answers itself, and the guests'. */
   const reservedCommands = (): Set<string> => new Set([...DAEMON_COMMANDS, ...guests.names()]);
@@ -311,6 +315,14 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     approvals: (session) => settings.approvals(session),
     cwd: (session) => store.getSession(session)?.cwd ?? options.defaultCwd,
     autoApprove: (session) => settings.approvals(session) === "auto",
+    alwaysAsk: () => settings.alwaysAskForAgents(),
+    // Only an agent that has subagents of its own gives up delegate for them.
+    nativeOnly: (session) => {
+      const harness = harnessOf(session);
+      return (
+        settings.subagents() === "native" && guests.has(harness) && guests.ownSubagents(harness)
+      );
+    },
   });
   // The user cancelling a turn stops the session's background subagents with it.
   sessions.onCancel((session) => {

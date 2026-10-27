@@ -4,7 +4,7 @@
 //   ask           asks for permission and reports the answer
 //   ask edit      the same, for a tool call of kind edit with a diff (ask execute: kind execute;
 //                 ask diff: a diff but no kind; ask bash: a command with its description, as
-//                 Claude Code asks)
+//                 Claude Code asks; ask agent: Claude Code's Agent tool, with an always option)
 //   wait          runs until cancelled
 //   edit          reports a tool call with a diff
 //   readfile <p>  asks to read the file (kind read, locations [p]) and reports the answer
@@ -12,7 +12,7 @@
 //   editfile <p> <text>  asks to edit the file, and when allowed writes it and reports the
 //                 completed tool call with its diff (like an adapter that asks before it writes)
 //   config        reports what session/new (or resume) and set_config_option gave it (the
-//                 instructions, the disallowed tools, the settings)
+//                 instructions, the disallowed tools, the ask rules, the settings)
 //   title <t>     replies {"title": "<t>"} (plus " (<model>)" once a model was set): a title
 //                 generateText asked for (the prompt's last line)
 //   started       reports how the conversation began: "new" or "resume" (resuming a session id
@@ -52,6 +52,8 @@ const waiting = new Map<number, (result: unknown) => void>();
 let gateway: HttpServer | undefined;
 let instructions: unknown;
 let disallowed: unknown;
+/** The ask rules of the settings Claude Code's adapter was given. */
+let ask: unknown;
 const config: Record<string, unknown> = {};
 let sessionId = "";
 let started = "new";
@@ -210,7 +212,18 @@ async function prompt(params: {
     if (what === "edit") Object.assign(toolCall, { kind: "edit", content: [diff] });
     else if (what === "diff") Object.assign(toolCall, { content: [diff] });
     else if (what === "execute") Object.assign(toolCall, { kind: "execute", title: "ls" });
-    else if (what === "bash") {
+    else if (what === "agent") {
+      // Claude Code's Agent tool, asked about through an ask rule.
+      Object.assign(toolCall, {
+        kind: "think",
+        title: "Agent",
+        rawInput: {
+          subagent_type: "Explore",
+          description: "Find the tests",
+          prompt: "List the test files.",
+        },
+      });
+    } else if (what === "bash") {
       // As Claude Code asks: the command as the title, its description as the content.
       Object.assign(toolCall, {
         kind: "execute",
@@ -219,13 +232,14 @@ async function prompt(params: {
         content: [{ type: "content", content: { type: "text", text: "List the files" } }],
       });
     }
+    const options = [{ optionId: "yes", name: "Allow", kind: "allow_once" }];
+    if (what === "agent")
+      options.push({ optionId: "always", name: "Always", kind: "allow_always" });
+    options.push({ optionId: "no", name: "Reject", kind: "reject_once" });
     const answer = (await request("session/request_permission", {
       sessionId,
       toolCall,
-      options: [
-        { optionId: "yes", name: "Allow", kind: "allow_once" },
-        { optionId: "no", name: "Reject", kind: "reject_once" },
-      ],
+      options,
     })) as { outcome: { outcome: string; optionId?: string } };
     say(sessionId, "\n\n");
     update(sessionId, { sessionUpdate: "plan", entries: [] });
@@ -357,7 +371,7 @@ async function prompt(params: {
     });
   } else if (task === "config") {
     update(sessionId, { sessionUpdate: "plan", entries: [] });
-    say(sessionId, JSON.stringify({ instructions, disallowed, config, session: sessionId }));
+    say(sessionId, JSON.stringify({ instructions, disallowed, ask, config, session: sessionId }));
     return { stopReason: "end_turn" };
   } else if (task.startsWith("title ")) {
     // What generateText asks: the reply is a title (with the model it was asked on, if one was set).
@@ -422,10 +436,13 @@ async function handle(message: Record<string, unknown>): Promise<void> {
       cwd = params.cwd as string;
       const meta = (params._meta ?? {}) as {
         jetbrains?: { air?: { customInstructions?: string } };
-        claudeCode?: { options?: { disallowedTools?: string[] } };
+        claudeCode?: {
+          options?: { disallowedTools?: string[]; settings?: { permissions?: { ask?: string[] } } };
+        };
       };
       instructions = meta.jetbrains?.air?.customInstructions?.slice(0, 40);
       disallowed = meta.claudeCode?.options?.disallowedTools;
+      ask = meta.claudeCode?.options?.settings?.permissions?.ask;
       sessionId = "acp-1";
       result = { sessionId, configOptions: configOptions() };
       if (process.env.FAKE_ACP_COMMANDS_FIRST !== undefined)

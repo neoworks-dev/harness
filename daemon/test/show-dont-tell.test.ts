@@ -75,6 +75,8 @@ test("/settings without a toggle shows them with their state, and picking one fl
     "Show, don't tell. · off",
     "Side-by-side diffs · off",
     "Charts as images · off",
+    "Subagents · both",
+    "Always ask before starting agents · off",
   ]);
   expect(choice.options[0]?.description).toContain("UI more than text");
 

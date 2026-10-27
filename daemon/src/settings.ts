@@ -44,6 +44,19 @@ export function nextApprovals(mode: Approvals): Approvals {
   return APPROVALS[(APPROVALS.indexOf(mode) + 1) % APPROVALS.length] ?? "ask";
 }
 
+/**
+ * Which subagents the agents may start: both their own (Claude Code's Agent tool, Codex's
+ * multi-agent tools) and neo's delegate, only delegate, or only their own (neo, which has none,
+ * keeps delegate).
+ */
+export type Subagents = "both" | "delegate" | "native";
+
+export const SUBAGENTS: readonly Subagents[] = ["both", "delegate", "native"];
+
+export function parseSubagents(value: string): Subagents | undefined {
+  return SUBAGENTS.find((kind) => kind === value);
+}
+
 /** The model that writes session titles: one of a harness's models, or the harness's own default. */
 export interface TitleModel {
   harness: string;
@@ -227,6 +240,28 @@ export class Settings {
     this.togglesChanged();
   }
 
+  /**
+   * Whether starting a subagent always asks: not allowed by /approvals auto nor by an earlier
+   * "allow for this session" (off until the user turns it on).
+   */
+  alwaysAskForAgents(): boolean {
+    return this.store.getMeta(metaKey("daemon", "ask_agents")) === "on";
+  }
+
+  setAlwaysAskForAgents(on: boolean): void {
+    this.store.setMeta(metaKey("daemon", "ask_agents"), on ? "on" : "off");
+  }
+
+  /** Which subagents the agents may start (both until the user picks). */
+  subagents(): Subagents {
+    const value = this.store.getMeta(metaKey("daemon", "subagents"));
+    return (value === undefined ? undefined : parseSubagents(value)) ?? "both";
+  }
+
+  setSubagents(value: Subagents): void {
+    this.store.setMeta(metaKey("daemon", "subagents"), value);
+  }
+
   /** The /settings toggles, as apps get them (user.settings). */
   userSettings(): UserSettings {
     return {
@@ -246,6 +281,10 @@ export class Settings {
     for (const listener of this.toggleListeners) listener(settings);
   }
 
+  /**
+   * The session's mode, and its subagents' sessions' (delegations into a directory of their
+   * own, and theirs in turn): they work the way the user said the session should.
+   */
   setApprovals(session: string, value: Approvals): void {
     this.store.append(session, {
       type: "setting_changed",
@@ -253,6 +292,21 @@ export class Settings {
       option: "approvals",
       value,
     });
+    const rows = this.store.listSessions();
+    const down = (parent: string): void => {
+      for (const row of rows.filter((r) => r.parent === parent)) {
+        if (this.approvals(row.id) !== value) {
+          this.store.append(row.id, {
+            type: "setting_changed",
+            harness: "daemon",
+            option: "approvals",
+            value,
+          });
+        }
+        down(row.id);
+      }
+    };
+    down(session);
   }
 }
 

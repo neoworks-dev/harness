@@ -3,8 +3,9 @@
 // `guests: {claude: {title, command, permissions}, …}` (other names add guests); env overrides it:
 // NEO_GUESTS=none (or a list like claude), NEO_GUEST_PERMISSIONS=ask|allow. Model, effort and
 // mode are the user's choice per session (/model, /effort, /mode), not configured here.
-// Their own subagents are off (Claude Code's Agent tool, Codex's multi_agent): delegate, which
-// asks first and shows the work, is how agents hand work on here.
+// Their own subagents (Claude Code's Agent tool, Codex's multi_agent) are the user's choice
+// (/settings subagents), turned on or off when an adapter starts (see GuestManager.open); off
+// here, so a guest started any other way has only delegate, which asks first.
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -37,6 +38,20 @@ export function codexConfig(
   return JSON.stringify({ ...config, features, ...extra });
 }
 
+/** CODEX_CONFIG with Codex's subagents (its multi-agent tools) on or off, the rest as it was. */
+export function withCodexSubagents(json: string, on: boolean): string {
+  let config: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (isRecord(parsed)) config = { ...parsed };
+  } catch {
+    // Not JSON: replaced, as codexConfig does.
+  }
+  const features: Record<string, unknown> = { multi_agent: on };
+  if (isRecord(config.features)) Object.assign(features, config.features, { multi_agent: on });
+  return JSON.stringify({ ...config, features });
+}
+
 function defaults(env: NodeJS.ProcessEnv): Record<string, GuestConfig> {
   // Prefer the user's own Claude Code over the one the adapter bundles.
   const claudeCli = Bun.which("claude");
@@ -45,6 +60,7 @@ function defaults(env: NodeJS.ProcessEnv): Record<string, GuestConfig> {
     command: ["bunx", "@agentclientprotocol/claude-agent-acp@0.91.0"],
     route: "claude",
     permissions: "ask",
+    subagents: "asks",
   };
   if (claudeCli !== null) claude.env = { CLAUDE_CODE_EXECUTABLE: claudeCli };
   return {
@@ -55,6 +71,7 @@ function defaults(env: NodeJS.ProcessEnv): Record<string, GuestConfig> {
       env: { CODEX_CONFIG: codexConfig({}, env) },
       route: "codex",
       permissions: "ask",
+      subagents: "silent",
     },
   };
 }

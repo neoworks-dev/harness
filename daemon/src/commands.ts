@@ -9,9 +9,10 @@
 //   /title                                    write the session's title again, with a model
 //   /title-model [harness] [model|default]    the model that writes titles (for every session)
 //   /safesearch [strict|moderate|off]         what neo's web search may return, for every session
-//   /settings [toggle [on|off]]               the user's toggles ("Show, don't tell.", side-by-side
-//                                             diffs, charts as images), for every session; no
-//                                             toggle: pick one
+//   /settings [setting [value]]               the user's settings ("Show, don't tell.", side-by-side
+//                                             diffs, charts as images, which subagents, always ask
+//                                             for agents), for every session; no setting: pick
+//                                             one; no value: its next
 //   /login [provider | key [provider]]        add an API key or an account (login.ts)
 //   /logout [provider], /accounts             remove a login; list what is logged in
 //   /plugin …                                 marketplaces and plugins (plugins.ts)
@@ -39,7 +40,9 @@ import {
   nextApprovals,
   parseApprovals,
   parseSafeSearch,
+  parseSubagents,
   SAFE_SEARCH,
+  SUBAGENTS,
   type Settings,
   type TitleModel,
   titleModelText,
@@ -97,17 +100,35 @@ export interface CommandParts {
   settingsTimeoutMs?: number | undefined;
 }
 
-/** An on/off setting of the user's, for every session (see /settings). */
+/** A setting of the user's, for every session (see /settings): on/off, or one of a few values. */
 interface Toggle {
   /** What /settings takes: `show-dont-tell`. */
   id: string;
   name: string;
   description: string;
-  get: () => boolean;
-  set: (on: boolean) => void;
-  /** The agents are told of it (it changes how they answer), not only the apps. */
-  agents: boolean;
+  /** What it can be, in the order picking it steps through them: `on`, `off`. */
+  values: readonly string[];
+  get: () => string;
+  set: (value: string) => void;
+  /** Said after it was set, with the value: "Agents hear of it with their next prompt." */
+  after?: (value: string) => string | undefined;
 }
+
+/** An on/off setting as a Toggle. */
+function onOff(
+  get: () => boolean,
+  set: (on: boolean) => void,
+): Pick<Toggle, "values" | "get" | "set"> {
+  return {
+    values: ["on", "off"],
+    get: () => (get() ? "on" : "off"),
+    set: (value) => set(value === "on"),
+  };
+}
+
+/** Said when a setting about subagents changed: the agents running now keep how they started. */
+const NEXT_START =
+  "Agents already running keep theirs until they start again (a new session, or /clear).";
 
 function when(iso: string | undefined): string | undefined {
   if (iso === undefined) return undefined;
@@ -357,7 +378,7 @@ export class Commands {
     return Promise.resolve();
   }
 
-  /** The user's on/off settings, as /settings lists them. */
+  /** The user's settings, as /settings lists them. */
   private toggles(): Toggle[] {
     const { settings } = this.parts;
     return [
@@ -367,9 +388,12 @@ export class Commands {
         description:
           "Agents answer with UI more than text: cards, tables, lists and forms instead of " +
           "describing them. They get neo's UI library with their next prompt.",
-        get: () => settings.showDontTell(),
-        set: (on) => settings.setShowDontTell(on),
-        agents: true,
+        ...onOff(
+          () => settings.showDontTell(),
+          (on) => settings.setShowDontTell(on),
+        ),
+        after: (value) =>
+          value === "on" ? "Agents hear of it with their next prompt." : undefined,
       },
       {
         id: "split-diffs",
@@ -377,9 +401,10 @@ export class Commands {
         description:
           "Apps draw diffs with the old lines on the left and the new on the right where both " +
           "fit (term's edits and file view), else one after the other.",
-        get: () => settings.splitDiffs(),
-        set: (on) => settings.setSplitDiffs(on),
-        agents: false,
+        ...onOff(
+          () => settings.splitDiffs(),
+          (on) => settings.setSplitDiffs(on),
+        ),
       },
       {
         id: "chart-images",
@@ -387,42 +412,80 @@ export class Commands {
         description:
           "Apps that can show images (term in kitty, Ghostty, WezTerm or iTerm2) draw charts as " +
           "pictures, their labels as text; else charts are drawn with characters.",
-        get: () => settings.chartImages(),
-        set: (on) => settings.setChartImages(on),
-        agents: false,
+        ...onOff(
+          () => settings.chartImages(),
+          (on) => settings.setChartImages(on),
+        ),
+      },
+      {
+        id: "subagents",
+        name: "Subagents",
+        description:
+          "Which subagents agents start: both neo's delegate and their own (Claude Code's " +
+          "Agent tool, Codex's), only delegate, or only their own (neo keeps delegate).",
+        values: SUBAGENTS,
+        get: () => settings.subagents(),
+        set: (value) => {
+          const kind = parseSubagents(value);
+          if (kind !== undefined) settings.setSubagents(kind);
+        },
+        after: () => NEXT_START,
+      },
+      {
+        id: "ask-for-agents",
+        name: "Always ask before starting agents",
+        description:
+          "Every subagent asks first, also in auto mode and after “allow for this session”. " +
+          "Codex's own subagents can't ask, so they stay off.",
+        ...onOff(
+          () => settings.alwaysAskForAgents(),
+          (on) => settings.setAlwaysAskForAgents(on),
+        ),
+        after: () => NEXT_START,
       },
     ];
   }
 
-  /** /settings: a card of the toggles to flip one; /settings <toggle> [on|off] sets it. */
+  /**
+   * /settings: a card of the settings, picking one steps it to its next value; /settings
+   * <setting> [value] sets it (no value: the next).
+   */
   private toggleCommand(session: string, args: string[]): Promise<void> {
     const toggles = this.toggles();
     const [id, value] = args;
-    const usage = `usage: /settings [${toggles.map((t) => t.id).join("|")} [on|off]]`;
     const toggle = id === undefined ? undefined : toggles.find((t) => t.id === id);
+    const values = toggle ? toggle.values.join("|") : "value";
+    const usage = `usage: /settings [${toggles.map((t) => t.id).join("|")} [${values}]]`;
     if (
       args.length > 2 ||
       (id !== undefined && toggle === undefined) ||
-      (value !== undefined && value !== "on" && value !== "off")
+      (value !== undefined && toggle?.values.includes(value) !== true)
     ) {
       return Promise.reject(new BadRequestError(usage));
     }
-    const set = (t: Toggle, on: boolean): void => {
-      t.set(on);
-      let text = `${t.name} ${on ? "on" : "off"}, for every session.`;
-      if (on && t.agents) text += " Agents hear of it with their next prompt.";
+    const next = (t: Toggle): string => {
+      const at = t.values.indexOf(t.get());
+      return t.values[(at + 1) % t.values.length] ?? t.get();
+    };
+    const set = (t: Toggle, to: string): void => {
+      t.set(to);
+      // `Side-by-side diffs on`, `Subagents: delegate`.
+      const onOrOff = to === "on" || to === "off";
+      let text = `${t.name}${onOrOff ? " " : ": "}${to}, for every session.`;
+      const more = t.after?.(to);
+      if (more !== undefined) text += ` ${more}`;
       this.parts.notice(session, text);
     };
     if (toggle !== undefined) {
-      set(toggle, value === undefined ? !toggle.get() : value === "on");
+      set(toggle, value ?? next(toggle));
       return Promise.resolve();
     }
     const choice: Omit<Choice, "id"> = {
       type: "choice",
-      title: "Settings (pick one to turn it on or off)",
+      title: "Settings (pick one to change it)",
       options: toggles.map((t) => ({
         id: t.id,
-        name: `${t.name} · ${t.get() ? "on" : "off"}`,
+        name: `${t.name} · ${t.get()}`,
         description: t.description,
       })),
     };
@@ -431,7 +494,7 @@ export class Commands {
       .ask(session, choice)
       .then((picked) => {
         const t = toggles.find((x) => x.id === picked);
-        if (t) set(t, !t.get());
+        if (t) set(t, next(t));
       })
       .catch((err: unknown) => this.parts.log.warn(`/settings: ${String(err)}`));
     return Promise.resolve();

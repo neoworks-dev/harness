@@ -58,6 +58,13 @@ export interface DelegateParts {
   cwd: (session: string) => string;
   /** Whether the user lets this session start guests without asking (/approvals auto). */
   autoApprove?: (session: string) => boolean;
+  /**
+   * Whether every start asks, even in auto mode or after "allow for this session" (the user's
+   * /settings ask-for-agents).
+   */
+  alwaysAsk?: () => boolean;
+  /** Whether the session's agent is to use its own subagents, not delegate (/settings subagents). */
+  nativeOnly?: (session: string) => boolean;
   /** For showing directories as ~/…; tests give theirs. */
   home?: string;
 }
@@ -204,14 +211,17 @@ export function createDelegate(parts: DelegateParts): Delegate {
     const effective = { ...parts.settings(session, agent), ...explicit };
     const where = target?.dir ?? "";
     const key = `${session}\0${agent}\0${definition?.name ?? ""}\0${where}\0${JSON.stringify(effective)}`;
-    if (allowed.has(key) || parts.autoApprove?.(session) === true) {
+    const alwaysAsk = parts.alwaysAsk?.() === true;
+    if (!alwaysAsk && (allowed.has(key) || parts.autoApprove?.(session) === true)) {
       return { agent, settings: explicit };
     }
     const title = guests.title(agent);
     const options: PermissionOption[] = [
       { id: "allow", name: `Start ${title}`, kind: "allow_once" },
-      { id: "always", name: `Allow ${title} for this session`, kind: "allow_always" },
     ];
+    if (!alwaysAsk) {
+      options.push({ id: "always", name: `Allow ${title} for this session`, kind: "allow_always" });
+    }
     for (const other of guests.harnesses().filter((n) => n !== agent)) {
       options.push({ id: `use:${other}`, name: `Use ${guests.title(other)}`, kind: "allow_once" });
     }
@@ -300,19 +310,23 @@ export function createDelegate(parts: DelegateParts): Delegate {
       .find((s) => s.parent === session && s.cwd === dir && parts.main(s.id) === agent)?.id;
   }
 
-  /** The session a delegation into this directory on this harness runs as: reused or made. */
+  /**
+   * The session a delegation into this directory on this harness runs as: reused or made. It
+   * works in the session's approvals mode, whatever it was in when it ran before.
+   */
   function childFor(session: string, dir: string, agent: string): string {
-    const found = findChild(session, dir, agent);
-    if (found !== undefined) return found;
-    const child = sessions.create({ cwd: dir, parent: session }).id;
-    store.append(child, {
-      type: "setting_changed",
-      harness: "daemon",
-      option: "harness",
-      value: agent,
-    });
+    let child = findChild(session, dir, agent);
+    if (child === undefined) {
+      child = sessions.create({ cwd: dir, parent: session }).id;
+      store.append(child, {
+        type: "setting_changed",
+        harness: "daemon",
+        option: "harness",
+        value: agent,
+      });
+    }
     const mode = parts.approvals(session);
-    if (mode !== "ask") {
+    if (parts.approvals(child) !== mode) {
       store.append(child, {
         type: "setting_changed",
         harness: "daemon",
@@ -445,6 +459,12 @@ export function createDelegate(parts: DelegateParts): Delegate {
   };
 
   const run: Delegate["run"] = async (session, args, signal) => {
+    if (parts.nativeOnly?.(session) === true) {
+      return text(
+        "The user turned delegate off for agents with subagents of their own: use your own subagent tool for this, or do it yourself.",
+        true,
+      );
+    }
     const { task } = args;
     let { agent } = args;
     const harnesses = guests.harnesses();
