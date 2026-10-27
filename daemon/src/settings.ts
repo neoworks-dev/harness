@@ -252,6 +252,18 @@ export class Settings {
     this.store.setMeta(metaKey("daemon", "ask_agents"), on ? "on" : "off");
   }
 
+  /**
+   * Whether what the user sends while a turn runs goes into it at once (steering, for harnesses
+   * that take it); off until the user turns it on: it waits for the turn to end.
+   */
+  steer(): boolean {
+    return this.store.getMeta(metaKey("daemon", "steer")) === "on";
+  }
+
+  setSteer(on: boolean): void {
+    this.store.setMeta(metaKey("daemon", "steer"), on ? "on" : "off");
+  }
+
   /** Which subagents the agents may start (both until the user picks). */
   subagents(): Subagents {
     const value = this.store.getMeta(metaKey("daemon", "subagents"));

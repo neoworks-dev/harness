@@ -11,9 +11,14 @@ interface Setup {
   sessions: SessionManager;
 }
 
-function setup(store = new SessionStore(":memory:")): Setup {
+/** `steer`: the user lets what they send reach a running turn at once. */
+function setup(store = new SessionStore(":memory:"), steer = false): Setup {
   const agent = new FakeAgent();
-  const sessions = new SessionManager(store, agent, { defaultCwd: "/home", log: silentLogger });
+  const sessions = new SessionManager(store, agent, {
+    defaultCwd: "/home",
+    log: silentLogger,
+    steer: () => steer,
+  });
   return { store, agent, sessions };
 }
 
@@ -36,8 +41,25 @@ describe("shutdown", () => {
 });
 
 describe("turn queue", () => {
+  test("unless the user lets it, what is sent waits for the turn, steerable or not", async () => {
+    const { agent, sessions } = setup();
+    agent.steerable = true;
+    const { id } = sessions.create({});
+    sessions.input(id, "term", "one");
+    await agent.started(1);
+    sessions.input(id, "term", "later");
+    await Bun.sleep(0);
+    expect(agent.steered).toEqual([]);
+    expect(sessions.info(id)?.queued).toBe(1);
+    agent.release();
+    await agent.started(2);
+    expect(agent.prompts[1]?.text).toBe("later");
+    agent.release();
+    await sessions.idle(id);
+  });
+
   test("a harness that can be steered gets what is sent into the running turn at once", async () => {
-    const { store, agent, sessions } = setup();
+    const { store, agent, sessions } = setup(undefined, true);
     agent.steerable = true;
     const { id } = sessions.create({});
     sessions.input(id, "term", "one");
@@ -70,7 +92,7 @@ describe("turn queue", () => {
   });
 
   test("nothing is steered into a running command; it waits for the command to end", async () => {
-    const { agent, sessions } = setup();
+    const { agent, sessions } = setup(undefined, true);
     agent.steerable = true;
     const { id } = sessions.create({});
     sessions.input(id, "term", "/compact");
@@ -118,7 +140,7 @@ describe("turn queue", () => {
   });
 
   test("a running turn takes the inputs behind it up to a command, and logs them as it does", async () => {
-    const { store, agent, sessions } = setup();
+    const { store, agent, sessions } = setup(undefined, true);
     const { id } = sessions.create({});
     sessions.input(id, "cli", "one");
     await agent.started(1);

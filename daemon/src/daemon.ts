@@ -272,6 +272,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       announceCommands(sessionId);
     },
     takeMessages: (sessionId) => messenger.take(sessionId, undefined),
+    steer: () => settings.steer(),
   });
   // After the summaries, so the start of a first message names the session before a model does.
   const titles = new Titles({

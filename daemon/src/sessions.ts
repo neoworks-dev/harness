@@ -185,6 +185,11 @@ export interface SessionManagerOptions {
    * idle, starts a turn.
    */
   takeMessages?: (sessionId: string) => string[];
+  /**
+   * Whether what the user sends while a turn runs goes into that turn at once, for a harness
+   * that can take it (steering), instead of waiting for the next turn. Default: it waits.
+   */
+  steer?: () => boolean;
 }
 
 /** Ends the agent sessions a runtime loaded, also those still loading (their SessionEnd hooks run). */
@@ -323,8 +328,8 @@ export class SessionManager {
     rt.queue.push(input);
     this.kick(sessionId, rt);
     this.stateChanged(sessionId);
-    // A harness that can be steered gets it in the running turn at once.
-    if (rt.running) void this.steer(sessionId, rt);
+    // A harness that can be steered gets it in the running turn at once, if the user wants that.
+    if (rt.running && this.options.steer?.() === true) void this.steer(sessionId, rt);
   }
 
   /** Starts working off the queue, unless a turn already runs. */
@@ -631,8 +636,10 @@ export class SessionManager {
       } else {
         rt.active = agentSession;
         rt.command = isCommand(input);
-        // The user's next inputs join this turn as it goes, while it runs on the same harness.
+        // The user's next inputs join this turn as it goes, while it runs on the same harness,
+        // when the user lets them (see steer); else they wait for the next turn.
         const takeInputs = (): QueuedInput[] => {
+          if (this.options.steer?.() !== true) return [];
           if (rt.command || this.harness(sessionId) !== harness) return [];
           return this.takeInputs(sessionId, rt);
         };

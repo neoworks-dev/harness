@@ -378,16 +378,14 @@ export class Commands {
     return Promise.resolve();
   }
 
-  /** The user's settings, as /settings lists them. */
+  /** The user's settings, as /settings lists them; a description is one short line. */
   private toggles(): Toggle[] {
     const { settings } = this.parts;
     return [
       {
         id: "show-dont-tell",
         name: "Show, don't tell.",
-        description:
-          "Agents answer with UI more than text: cards, tables, lists and forms instead of " +
-          "describing them. They get neo's UI library with their next prompt.",
+        description: "Agents answer with cards, tables and forms more than text",
         ...onOff(
           () => settings.showDontTell(),
           (on) => settings.setShowDontTell(on),
@@ -398,9 +396,7 @@ export class Commands {
       {
         id: "split-diffs",
         name: "Side-by-side diffs",
-        description:
-          "Apps draw diffs with the old lines on the left and the new on the right where both " +
-          "fit (term's edits and file view), else one after the other.",
+        description: "Old lines left, new right, where both fit",
         ...onOff(
           () => settings.splitDiffs(),
           (on) => settings.setSplitDiffs(on),
@@ -409,20 +405,25 @@ export class Commands {
       {
         id: "chart-images",
         name: "Charts as images",
-        description:
-          "Apps that can show images (term in kitty, Ghostty, WezTerm or iTerm2) draw charts as " +
-          "pictures, their labels as text; else charts are drawn with characters.",
+        description: "Pictures in terminals that show images, else characters",
         ...onOff(
           () => settings.chartImages(),
           (on) => settings.setChartImages(on),
         ),
       },
       {
+        id: "steer",
+        name: "Messages reach a working agent at once",
+        description: "Off: they wait for the turn to end. On: Claude Code reads them mid-turn",
+        ...onOff(
+          () => settings.steer(),
+          (on) => settings.setSteer(on),
+        ),
+      },
+      {
         id: "subagents",
         name: "Subagents",
-        description:
-          "Which subagents agents start: both neo's delegate and their own (Claude Code's " +
-          "Agent tool, Codex's), only delegate, or only their own (neo keeps delegate).",
+        description: "Delegate, the agents' own (Claude Code, Codex), or both",
         values: SUBAGENTS,
         get: () => settings.subagents(),
         set: (value) => {
@@ -434,9 +435,7 @@ export class Commands {
       {
         id: "ask-for-agents",
         name: "Always ask before starting agents",
-        description:
-          "Every subagent asks first, also in auto mode and after “allow for this session”. " +
-          "Codex's own subagents can't ask, so they stay off.",
+        description: "Also in auto mode; Codex's own subagents stay off",
         ...onOff(
           () => settings.alwaysAskForAgents(),
           (on) => settings.setAlwaysAskForAgents(on),
