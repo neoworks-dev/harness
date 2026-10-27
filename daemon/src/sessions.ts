@@ -338,8 +338,10 @@ export class SessionManager {
    * Sends a command the running turn waits for to the background (see AgentSession.background);
    * false when there is none or its harness can't.
    */
-  background(sessionId: string, toolCallId: string): boolean {
-    return this.runtimes.get(sessionId)?.active?.background?.(toolCallId) === true;
+  async background(sessionId: string, toolCallId: string): Promise<boolean> {
+    const active = this.runtimes.get(sessionId)?.active;
+    if (!active?.background) return false;
+    return (await active.background(toolCallId)) === true;
   }
 
   /** Starts working off the queue, unless a turn already runs. */

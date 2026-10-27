@@ -194,6 +194,8 @@ interface Guest {
   commands?: SlashCommand[];
   /** The adapter takes `_session/steering`: a message for the running turn. */
   steering: boolean;
+  /** The adapter takes `_session/background_tasks`: a running tool call's task goes on aside. */
+  backgroundTasks: boolean;
   /** What a slash command's prompt couldn't carry, for the next prompt. */
   carried?: { events: ContextEvent[]; summary?: string };
 }
@@ -214,6 +216,8 @@ const PLAN_STATUSES: PlanEntryStatus[] = ["pending", "in_progress", "completed"]
 const PLAN_PRIORITIES: PlanEntryPriority[] = ["high", "medium", "low"];
 /** ACP's extension method for a message to the turn that is running. */
 const STEER_METHOD = "_session/steering";
+/** Sends a running tool call's task to the background (an adapter that advertises it). */
+const BACKGROUND_METHOD = "_session/background_tasks";
 const STOP_REASONS = new Set<string>(["end_turn", "max_tokens", "cancelled", "refusal"]);
 const IMAGE_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -701,6 +705,22 @@ export class GuestManager {
           return false;
         }
       },
+      background: async (toolCallId) => {
+        if (!guest.backgroundTasks || guest.run === undefined) return false;
+        // The log names the session agent's calls `<name>-main:<id>`; the adapter knows the id.
+        const own = `${name}-main:`;
+        if (!toolCallId.startsWith(own)) return false;
+        try {
+          const reply = await guest.conn.request(BACKGROUND_METHOD, {
+            sessionId: guest.acpSession,
+            toolCallId: toolCallId.slice(own.length),
+          });
+          return isRecord(reply) && reply.backgrounded === true;
+        } catch (err) {
+          this.options.log.warn(`${name}: sending to the background failed: ${errorText(err)}`);
+          return false;
+        }
+      },
       configOptions: () => [...guest.config.values()],
       loadConfigOptions: () => this.optionsOf(guest),
       setConfigOption: async (category, value) => {
@@ -999,8 +1019,14 @@ export class GuestManager {
     });
   }
 
-  /** Says hello; resolves with whether the adapter can be steered mid-turn. */
-  private async initialize(conn: AcpConnection, route?: Route): Promise<boolean> {
+  /**
+   * Says hello; resolves with whether the adapter can be steered mid-turn, and whether it can send
+   * a running tool call's task to the background.
+   */
+  private async initialize(
+    conn: AcpConnection,
+    route?: Route,
+  ): Promise<{ steering: boolean; backgroundTasks: boolean }> {
     const clientCapabilities: Record<string, unknown> = {
       fs: { readTextFile: false, writeTextFile: false },
       terminal: false,
@@ -1019,7 +1045,11 @@ export class GuestManager {
       });
     }
     const meta = isRecord(hello) && isRecord(hello._meta) ? hello._meta : undefined;
-    return isRecord(meta?.steering) && meta.steering.supported === true;
+    const supported = (key: string): boolean => {
+      const entry = meta?.[key];
+      return isRecord(entry) && entry.supported === true;
+    };
+    return { steering: supported("steering"), backgroundTasks: supported("backgroundTasks") };
   }
 
   /**
@@ -1091,7 +1121,7 @@ export class GuestManager {
       void this.guests.get(key)?.then((current) => current === guest && this.guests.delete(key));
     });
     try {
-      const steering = await this.initialize(conn, route ?? undefined);
+      const { steering, backgroundTasks } = await this.initialize(conn, route ?? undefined);
       const mcpServers = this.options
         .mcpServers(session, { name, guest: !main, text: true })
         .map((server) => ({ type: "http", ...server }));
@@ -1130,6 +1160,7 @@ export class GuestManager {
         queue: Promise.resolve(),
         config,
         steering,
+        backgroundTasks,
       };
       if (route) guest.route = route;
       if (this.forgotten.has(session)) {

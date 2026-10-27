@@ -500,6 +500,20 @@ describe("a session on an ACP harness", () => {
     expect(replies(daemon, session).at(-1)).toBe("Done: after");
   });
 
+  test("a running call of an adapter that can is sent to the background by the id it knows", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/harness fake");
+    daemon.sessions.input(session, "cli", "wait");
+    await until(() => replies(daemon, session).length > 0, "the harness to start");
+    expect(await daemon.sessions.background(session, "fake-main:t-wait")).toBe(true);
+    // Not a call of the session's agent, or one the adapter doesn't know.
+    expect(await daemon.sessions.background(session, "fake:t-wait")).toBe(false);
+    expect(await daemon.sessions.background(session, "fake-main:t-other")).toBe(false);
+    daemon.sessions.cancel(session);
+    await daemon.sessions.idle(session);
+    expect(await daemon.sessions.background(session, "fake-main:t-wait")).toBe(false);
+  });
+
   test("a restarted daemon resumes its conversation; one that is gone starts anew with the summary", async () => {
     const first = await setup();
     const { daemon: one, session } = first;

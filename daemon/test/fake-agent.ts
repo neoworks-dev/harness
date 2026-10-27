@@ -80,7 +80,7 @@ export class FakeAgent implements Agent {
       background: (toolCallId) => {
         const running = current !== undefined && this.waiting.includes(current);
         if (running) this.backgrounded.push(toolCallId);
-        return running;
+        return Promise.resolve(running);
       },
       close: (reason) => {
         this.closed.push(reason);

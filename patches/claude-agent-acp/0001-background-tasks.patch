@@ -1,0 +1,330 @@
+From 43c283e690b509f13fb8ece0484009e400dc4251 Mon Sep 17 00:00:00 2001
+From: Moritz Utcke <moritz.utcke@gmx.de>
+Date: Tue, 27 Oct 2026 19:55:25 +0100
+Subject: [PATCH] Move a running tool call's task to the background
+ (_session/background_tasks)
+
+The SDK's backgroundTasks (Ctrl+B in the terminal) had no ACP way in. _session/background_tasks {sessionId, toolCallId?} moves the foreground task of a tool call (a Bash command, a subagent), or all of them, to the background without cancelling the turn: the tool call returns at once and the task runs on. Advertised as _meta.backgroundTasks on v1; not on v2, which doesn't serve it.
+---
+ docs/air-extensions.md                        | 20 +++----
+ src/acp-agent.ts                              | 52 +++++++++++++++++++
+ src/tests/acp-agent.test.ts                   | 27 ++++++++++
+ src/tests/acp-scenarios.test.ts               |  8 ++-
+ .../air/session-load-replay.jsonl             |  2 +-
+ .../__snapshots__/air/session-setup.jsonl     |  2 +-
+ src/tests/acp-scenarios/compare.ts            | 23 +++++++-
+ src/tests/session-doubles.ts                  |  1 +
+ src/tests/session-index.test.ts               |  5 +-
+ src/v2/initialize.ts                          |  4 +-
+ 10 files changed, 126 insertions(+), 18 deletions(-)
+
+diff --git a/docs/air-extensions.md b/docs/air-extensions.md
+index d46ba45..3884a86 100644
+--- a/docs/air-extensions.md
++++ b/docs/air-extensions.md
+@@ -55,7 +55,7 @@ It gets the same information in the same fields as from the upstream adapter:
+ 
+ - the standard ACP fields with the upstream values, and the [Zed conventions](#zed-conventions);
+ - the upstream `_meta` keys: `claudeCode.toolName`, `claudeCode.parentToolUseId`, the full `claudeCode.toolResponse`, `claudeCode.promptQueueing`, and the `_claude/*` keys;
+-- the keys of other teams: `steering`, `quota`, `authStatus`, and `gateway`.
++- the keys of other teams: `steering`, `backgroundTasks`, `quota`, `authStatus`, and `gateway`.
+ 
+ It gets no key that exists only for AIR.
+ It gets no `_meta.jetbrains.air` key at all, and none of the removed upstream copies of an AIR key (see [Removed keys](#removed-keys)).
+@@ -132,7 +132,8 @@ The `initialize` response of an AIR client carries the agent side of the extensi
+         }
+       }
+     },
+-    "steering": { "supported": true }
++    "steering": { "supported": true },
++    "backgroundTasks": { "supported": true }
+   }
+ }
+ ```
+@@ -199,13 +200,14 @@ These keys are JetBrains conventions outside the AIR namespace.
+ Other JetBrains ACP clients and adapters use them too.
+ The adapter keeps them where they are.
+ 
+-| Key                     | Where                                                                                                                                     | Meaning                                                                            |
+-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+-| `terminal_output_delta` | client `initialize` `clientCapabilities._meta.terminal_output_delta: true`; tool call `_meta.terminal_output_delta = {terminal_id, data}` | The client appends the command output. The flag also enables the terminal channel. |
+-| `is_mcp_tool_call`      | `tool_call._meta.is_mcp_tool_call: true`, AIR only                                                                                        | The tool call is an MCP tool call (`mcp__*`).                                      |
+-| `steering`              | `initialize` response `_meta.steering = {supported: true}`                                                                                | The agent accepts `_session/steering` for a running turn.                          |
+-| `quota`                 | `PromptResponse._meta.quota`                                                                                                              | Token usage of the turn, also split by model.                                      |
+-| `authStatus`            | `initialize` response `agentCapabilities._meta.authStatus`                                                                                | The agent pushes `_auth/status_update`. The object carries no payload.             |
++| Key                     | Where                                                                                                                                     | Meaning                                                                                                                                                                                                          |
++| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
++| `terminal_output_delta` | client `initialize` `clientCapabilities._meta.terminal_output_delta: true`; tool call `_meta.terminal_output_delta = {terminal_id, data}` | The client appends the command output. The flag also enables the terminal channel.                                                                                                                               |
++| `is_mcp_tool_call`      | `tool_call._meta.is_mcp_tool_call: true`, AIR only                                                                                        | The tool call is an MCP tool call (`mcp__*`).                                                                                                                                                                    |
++| `steering`              | `initialize` response `_meta.steering = {supported: true}`                                                                                | The agent accepts `_session/steering` for a running turn.                                                                                                                                                        |
++| `backgroundTasks`       | `initialize` response `_meta.backgroundTasks = {supported: true}`                                                                         | The agent accepts `_session/background_tasks`: `{sessionId, toolCallId?}` moves the foreground task of that tool call (all of them without it) to the background, as Ctrl+B does; the reply is `{backgrounded}`. |
++| `quota`                 | `PromptResponse._meta.quota`                                                                                                              | Token usage of the turn, also split by model.                                                                                                                                                                    |
++| `authStatus`            | `initialize` response `agentCapabilities._meta.authStatus`                                                                                | The agent pushes `_auth/status_update`. The object carries no payload.                                                                                                                                           |
+ 
+ ## Auth source display
+ 
+diff --git a/src/acp-agent.ts b/src/acp-agent.ts
+index 21f111c..620b84e 100644
+--- a/src/acp-agent.ts
++++ b/src/acp-agent.ts
+@@ -615,6 +615,42 @@ function parseAsyncTaskStopRequest(value: unknown): AsyncTaskStopRequest {
+   return { sessionId, asyncTaskId };
+ }
+ 
++/** Moves the foreground task one tool call started (a Bash command, a
++ *  subagent) to the background without cancelling the turn: the tool call
++ *  returns at once and the task runs on, as Ctrl+B does in the terminal.
++ *  Without `toolCallId`, every foreground task goes. Advertised via
++ *  `InitializeResponse._meta.backgroundTasks.supported`. */
++const BACKGROUND_TASKS_METHOD = "_session/background_tasks";
++
++type BackgroundTasksRequest = {
++  sessionId: string;
++  toolCallId?: string;
++};
++
++type BackgroundTasksResponse = {
++  /** Whether any task went to the background. */
++  backgrounded: boolean;
++};
++
++function parseBackgroundTasksRequest(value: unknown): BackgroundTasksRequest {
++  if (!value || typeof value !== "object" || Array.isArray(value)) {
++    throw RequestError.invalidParams(undefined, "background tasks params must be an object");
++  }
++  const params = value as Record<string, unknown>;
++  const sessionId = typeof params.sessionId === "string" ? params.sessionId.trim() : "";
++  if (!sessionId) {
++    throw RequestError.invalidParams(
++      undefined,
++      "background tasks params require a non-empty sessionId",
++    );
++  }
++  if (params.toolCallId !== undefined && typeof params.toolCallId !== "string") {
++    throw RequestError.invalidParams(undefined, "background tasks toolCallId must be a string");
++  }
++  const toolCallId = typeof params.toolCallId === "string" ? params.toolCallId.trim() : "";
++  return toolCallId ? { sessionId, toolCallId } : { sessionId };
++}
++
+ /** How urgently the SDK delivers a steered message relative to the running
+  *  turn — an internal Claude implementation detail, not part of the wire
+  *  contract. `now` pre-empts the current generation, while `later` waits for a
+@@ -2951,6 +2987,9 @@ export class ClaudeAcpAgent {
+         steering: {
+           supported: true,
+         },
++        backgroundTasks: {
++          supported: true,
++        },
+       },
+     };
+   }
+@@ -4171,6 +4210,14 @@ export class ClaudeAcpAgent {
+     }
+   }
+ 
++  async backgroundTasks(params: BackgroundTasksRequest): Promise<BackgroundTasksResponse> {
++    const session = this.sessions[params.sessionId];
++    if (!session || session.queryClosed) return { backgrounded: false };
++    // A tool call's id is the tool use id it reports (see toAcpNotifications).
++    const backgrounded = await session.query.backgroundTasks(params.toolCallId);
++    return { backgrounded };
++  }
++
+   /** Lazily start the per-session consumer that drains the SDK query stream for
+    *  the session's whole life. Idempotent: only the first `prompt()` starts it. */
+   private ensureConsumer(session: Session, sessionId: string): void {
+@@ -13234,6 +13281,11 @@ export function v1AgentApp(
+       { parse: parseAsyncTaskStopRequest },
+       (ctx) => agent.stopAsyncTask(ctx.params),
+     )
++    .onRequest<BackgroundTasksRequest, BackgroundTasksResponse>(
++      BACKGROUND_TASKS_METHOD,
++      { parse: parseBackgroundTasksRequest },
++      (ctx) => agent.backgroundTasks(ctx.params),
++    )
+     .onRequest<GoalRequest, GoalControlResponse>(
+       GOAL_CONTROL_METHOD,
+       { parse: parseGoalRequest },
+diff --git a/src/tests/acp-agent.test.ts b/src/tests/acp-agent.test.ts
+index b5c4e7d..6b5f850 100644
+--- a/src/tests/acp-agent.test.ts
++++ b/src/tests/acp-agent.test.ts
+@@ -8803,6 +8803,33 @@ describe("subagent permission attribution (issue #851)", () => {
+     });
+   });
+ 
++  it("moves a tool call's foreground task to the background through the SDK", async () => {
++    const agent = new ClaudeAcpAgent({ sessionUpdate: async () => {} } as unknown as AcpClient, {
++      log: () => {},
++      error: () => {},
++    });
++    const init = await agent.initialize({ protocolVersion: 1, clientCapabilities: {} });
++    expect(init._meta?.backgroundTasks).toEqual({ supported: true });
++    injectGeneratorSession(agent, makeGenerator([successResult()]));
++    const query = agent.sessions["test-session"].query as any;
++
++    await expect(
++      agent.backgroundTasks({ sessionId: "test-session", toolCallId: "toolu_bash" }),
++    ).resolves.toEqual({ backgrounded: true });
++    expect(query.backgroundTasks).toHaveBeenCalledWith("toolu_bash");
++    // Nothing in the foreground: the SDK says so.
++    query.backgroundTasks.mockResolvedValueOnce(false);
++    await expect(agent.backgroundTasks({ sessionId: "test-session" })).resolves.toEqual({
++      backgrounded: false,
++    });
++    expect(query.backgroundTasks).toHaveBeenLastCalledWith(undefined);
++    expect(query.interrupt).not.toHaveBeenCalled();
++    // An unknown session has nothing to move.
++    await expect(agent.backgroundTasks({ sessionId: "nope" })).resolves.toEqual({
++      backgrounded: false,
++    });
++  });
++
+   it("takes the output path of a subagent's background Bash from its text in both orders", async () => {
+     const updates: AcpSessionNotification[] = [];
+     const agent = new ClaudeAcpAgent(
+diff --git a/src/tests/acp-scenarios.test.ts b/src/tests/acp-scenarios.test.ts
+index be20525..115c929 100644
+--- a/src/tests/acp-scenarios.test.ts
++++ b/src/tests/acp-scenarios.test.ts
+@@ -548,11 +548,14 @@ describe.skipIf(baselineDir)("ACP scenarios", () => {
+       expect(usage.some((update) => update._meta?.["_claude/origin"])).toBe(true);
+     });
+ 
+-    it("keeps promptQueueing and steering", () => {
++    it("keeps promptQueueing and steering, and gets background tasks", () => {
+       const initialize = zed("session-setup").find((record) => record.kind === "initialize")!
+         .payload as Record<string, any>;
+       expect(initialize.agentCapabilities._meta.claudeCode).toEqual({ promptQueueing: true });
+-      expect(initialize._meta).toEqual({ steering: { supported: true } });
++      expect(initialize._meta).toEqual({
++        steering: { supported: true },
++        backgroundTasks: { supported: true },
++      });
+     });
+ 
+     it("sends terminal-auth commands that rerun this adapter with --cli", () => {
+@@ -605,6 +608,7 @@ describe.skipIf(baselineDir)("ACP scenarios", () => {
+           },
+         },
+         steering: { supported: true },
++        backgroundTasks: { supported: true },
+       });
+       const session = air("session-setup").find((record) => record.kind === "newSession")!
+         .payload as Record<string, any>;
+diff --git a/src/tests/acp-scenarios/__snapshots__/air/session-load-replay.jsonl b/src/tests/acp-scenarios/__snapshots__/air/session-load-replay.jsonl
+index bd98a58..d423ce7 100644
+--- a/src/tests/acp-scenarios/__snapshots__/air/session-load-replay.jsonl
++++ b/src/tests/acp-scenarios/__snapshots__/air/session-load-replay.jsonl
+@@ -1,4 +1,4 @@
+-{"kind":"initialize","payload":{"_meta":{"jetbrains":{"air":{"capabilities":["sessionFailure","agentFileChangeReport","nativeSubagentSessions","asyncTasks","customInstructions","recommendedValue","diffPatch","planFile"],"goal":{"actions":["set","clear"],"controlMethod":"_session/goal","version":1},"version":1}},"steering":{"supported":true}},"agentCapabilities":{"_meta":{"authStatus":{},"claudeCode":{"promptQueueing":true}},"auth":{"logout":{}},"loadSession":true,"mcpCapabilities":{"http":true,"sse":true},"promptCapabilities":{"embeddedContext":true,"image":true},"providers":{},"sessionCapabilities":{"additionalDirectories":{},"close":{},"delete":{},"fork":{},"list":{},"resume":{},"subagents":{}}},"agentInfo":{"name":"@agentclientprotocol/claude-agent-acp","title":"Claude Agent","version":"<version>"},"authMethods":[],"protocolVersion":1}}
++{"kind":"initialize","payload":{"_meta":{"backgroundTasks":{"supported":true},"jetbrains":{"air":{"capabilities":["sessionFailure","agentFileChangeReport","nativeSubagentSessions","asyncTasks","customInstructions","recommendedValue","diffPatch","planFile"],"goal":{"actions":["set","clear"],"controlMethod":"_session/goal","version":1},"version":1}},"steering":{"supported":true}},"agentCapabilities":{"_meta":{"authStatus":{},"claudeCode":{"promptQueueing":true}},"auth":{"logout":{}},"loadSession":true,"mcpCapabilities":{"http":true,"sse":true},"promptCapabilities":{"embeddedContext":true,"image":true},"providers":{},"sessionCapabilities":{"additionalDirectories":{},"close":{},"delete":{},"fork":{},"list":{},"resume":{},"subagents":{}}},"agentInfo":{"name":"@agentclientprotocol/claude-agent-acp","title":"Claude Agent","version":"<version>"},"authMethods":[],"protocolVersion":1}}
+ {"kind":"sessionUpdate","payload":{"sessionId":"<session>","update":{"content":{"text":"Fix the bug","type":"text"},"messageId":"00000000-0000-4000-8000-00000000c001","sessionUpdate":"user_message_chunk"}}}
+ {"kind":"sessionUpdate","payload":{"sessionId":"<session>","update":{"content":{"text":"Check the file.","type":"text"},"messageId":"msg_r1","sessionUpdate":"agent_thought_chunk"}}}
+ {"kind":"sessionUpdate","payload":{"sessionId":"<session>","update":{"content":{"text":"I will edit it.","type":"text"},"messageId":"msg_r1","sessionUpdate":"agent_message_chunk"}}}
+diff --git a/src/tests/acp-scenarios/__snapshots__/air/session-setup.jsonl b/src/tests/acp-scenarios/__snapshots__/air/session-setup.jsonl
+index a3858a3..e7d94e9 100644
+--- a/src/tests/acp-scenarios/__snapshots__/air/session-setup.jsonl
++++ b/src/tests/acp-scenarios/__snapshots__/air/session-setup.jsonl
+@@ -1,3 +1,3 @@
+-{"kind":"initialize","payload":{"_meta":{"jetbrains":{"air":{"capabilities":["sessionFailure","agentFileChangeReport","nativeSubagentSessions","asyncTasks","customInstructions","recommendedValue","diffPatch","planFile"],"goal":{"actions":["set","clear"],"controlMethod":"_session/goal","version":1},"version":1}},"steering":{"supported":true}},"agentCapabilities":{"_meta":{"authStatus":{},"claudeCode":{"promptQueueing":true}},"auth":{"logout":{}},"loadSession":true,"mcpCapabilities":{"http":true,"sse":true},"promptCapabilities":{"embeddedContext":true,"image":true},"providers":{},"sessionCapabilities":{"additionalDirectories":{},"close":{},"delete":{},"fork":{},"list":{},"resume":{},"subagents":{}}},"agentInfo":{"name":"@agentclientprotocol/claude-agent-acp","title":"Claude Agent","version":"<version>"},"authMethods":[],"protocolVersion":1}}
++{"kind":"initialize","payload":{"_meta":{"backgroundTasks":{"supported":true},"jetbrains":{"air":{"capabilities":["sessionFailure","agentFileChangeReport","nativeSubagentSessions","asyncTasks","customInstructions","recommendedValue","diffPatch","planFile"],"goal":{"actions":["set","clear"],"controlMethod":"_session/goal","version":1},"version":1}},"steering":{"supported":true}},"agentCapabilities":{"_meta":{"authStatus":{},"claudeCode":{"promptQueueing":true}},"auth":{"logout":{}},"loadSession":true,"mcpCapabilities":{"http":true,"sse":true},"promptCapabilities":{"embeddedContext":true,"image":true},"providers":{},"sessionCapabilities":{"additionalDirectories":{},"close":{},"delete":{},"fork":{},"list":{},"resume":{},"subagents":{}}},"agentInfo":{"name":"@agentclientprotocol/claude-agent-acp","title":"Claude Agent","version":"<version>"},"authMethods":[],"protocolVersion":1}}
+ {"kind":"newSession","payload":{"configOptions":[{"category":"mode","currentValue":"default","description":"Session permission mode","id":"mode","name":"Mode","options":[{"_meta":{"jetbrains":{"air":{"kind":"standard","version":1}}},"description":"Always ask before making changes","name":"Manual","value":"default"},{"_meta":{"jetbrains":{"air":{"kind":"standard","version":1}}},"description":"Automatically accept all file edits","name":"Accept edits","value":"acceptEdits"},{"_meta":{"jetbrains":{"air":{"kind":"plan","version":1}}},"description":"Create a plan before making changes","name":"Plan","value":"plan"},{"_meta":{"jetbrains":{"air":{"kind":"auto_review","version":1}}},"description":"Claude handles permission decisions","name":"Auto","value":"auto"},{"_meta":{"jetbrains":{"air":{"kind":"full_access","version":1}}},"description":"Accepts all permissions","name":"Bypass permissions","value":"bypassPermissions"}],"type":"select"},{"category":"model","currentValue":"claude-sonnet-4-6","description":"AI model to use","id":"model","name":"Model","options":[{"description":"Fast","name":"Claude Sonnet 4.6","value":"claude-sonnet-4-6"}],"type":"select"}],"modes":{"availableModes":[{"_meta":{"jetbrains":{"air":{"kind":"standard","version":1}}},"description":"Always ask before making changes","id":"default","name":"Manual"},{"_meta":{"jetbrains":{"air":{"kind":"standard","version":1}}},"description":"Automatically accept all file edits","id":"acceptEdits","name":"Accept edits"},{"_meta":{"jetbrains":{"air":{"kind":"plan","version":1}}},"description":"Create a plan before making changes","id":"plan","name":"Plan"},{"_meta":{"jetbrains":{"air":{"kind":"auto_review","version":1}}},"description":"Claude handles permission decisions","id":"auto","name":"Auto"},{"_meta":{"jetbrains":{"air":{"kind":"full_access","version":1}}},"description":"Accepts all permissions","id":"bypassPermissions","name":"Bypass permissions"}],"currentModeId":"default"},"sessionId":"<session>"}}
+ {"kind":"sessionUpdate","payload":{"sessionId":"<session>","update":{"availableCommands":[{"description":"Show the MCP servers and their status, or reconnect, enable, or disable a server","input":{"hint":"[reconnect|enable|disable [<server>|all]]"},"name":"mcp"}],"sessionUpdate":"available_commands_update"}}}
+diff --git a/src/tests/acp-scenarios/compare.ts b/src/tests/acp-scenarios/compare.ts
+index 5d11ea2..efa53af 100644
+--- a/src/tests/acp-scenarios/compare.ts
++++ b/src/tests/acp-scenarios/compare.ts
+@@ -22,6 +22,9 @@
+  * - The `initialize` response does not advertise
+  *   `agentCapabilities.sessionCapabilities.subagents`: the subagents RFD has
+  *   only the client capability, and only AIR's draft keeps the agent one.
++ * - The `initialize` response also advertises `_meta.backgroundTasks`, for
++ *   `_session/background_tasks`, which origin/main did not serve (see
++ *   {@link NEW_META_KEYS}).
+  * - A `terminal_exit` has a `null` exit code where origin/main sent a code
+  *   that the tool result does not say (see `CommandOutput.exitCode`): 1 for a
+  *   failure that names no code or an interrupted command, 0 for a
+@@ -201,6 +204,21 @@ function isMeta(key: string): boolean {
+   return key.startsWith("_meta.");
+ }
+ 
++/** The top-level `_meta` keys of the `initialize` response that origin/main did not send. */
++const NEW_META_KEYS = ["backgroundTasks"];
++
++/** `record` without the extensions origin/main did not have, when it is an `initialize` response. */
++function withoutNewExtensions(record: Recorded): Recorded {
++  if (record.kind !== "initialize") return record;
++  const payload = record.payload as Json;
++  const meta = payload._meta as Json | undefined;
++  if (!meta || !NEW_META_KEYS.some((key) => key in meta)) return record;
++  const rest = Object.fromEntries(Object.entries(meta).filter(([k]) => !NEW_META_KEYS.includes(k)));
++  const others = without(payload, "_meta");
++  const next = Object.keys(rest).length > 0 ? { ...others, _meta: rest } : others;
++  return { ...record, payload: next } as Recorded;
++}
++
+ /** `record` without the agent subagent capability, when it is an `initialize` response. */
+ function withoutAgentSubagentCapability(record: Recorded): Recorded {
+   if (record.kind !== "initialize") return record;
+@@ -254,8 +272,9 @@ export function compareWithBaseline(baseline: Recorded[], current: Recorded[]):
+   };
+ 
+   /** Whether `actual` carries the information of `wanted` under the rule. */
+-  const matches = (wanted: Recorded, actual: Recorded | undefined): boolean => {
+-    if (!actual || actual.kind !== wanted.kind) return false;
++  const matches = (wanted: Recorded, received: Recorded | undefined): boolean => {
++    if (!received || received.kind !== wanted.kind) return false;
++    const actual = withoutNewExtensions(received);
+     if (canonical(actual) === canonical(wanted)) return true;
+     const want = updateOf(wanted);
+     const got = updateOf(actual);
+diff --git a/src/tests/session-doubles.ts b/src/tests/session-doubles.ts
+index 0e8ab28..ef16b5f 100644
+--- a/src/tests/session-doubles.ts
++++ b/src/tests/session-doubles.ts
+@@ -39,6 +39,7 @@ export function wrapQuery(generator: AsyncGenerator<any>) {
+   return Object.assign(generator, {
+     interrupt: vi.fn(async () => {}),
+     stopTask: vi.fn(async () => {}),
++    backgroundTasks: vi.fn(async () => true),
+     close: vi.fn(),
+     setModel: vi.fn(async () => {}),
+   }) as any;
+diff --git a/src/tests/session-index.test.ts b/src/tests/session-index.test.ts
+index 75dc14e..3265163 100644
+--- a/src/tests/session-index.test.ts
++++ b/src/tests/session-index.test.ts
+@@ -297,7 +297,10 @@ describe("sessionIndex negotiation", () => {
+       protocolVersion: 1,
+       clientCapabilities: {},
+     });
+-    expect(nonAir._meta).toEqual({ steering: { supported: true } });
++    expect(nonAir._meta).toEqual({
++      steering: { supported: true },
++      backgroundTasks: { supported: true },
++    });
+   });
+ 
+   it("is not advertised under ACP v2", async () => {
+diff --git a/src/v2/initialize.ts b/src/v2/initialize.ts
+index 1235926..e2e60df 100644
+--- a/src/v2/initialize.ts
++++ b/src/v2/initialize.ts
+@@ -56,9 +56,9 @@ export function v1InitializeRequest(request: v2.InitializeRequest): InitializeRe
+ /**
+  * The top-level `_meta` keys of the agent's v1 `initialize` response that
+  * advertise an extension the v2 surface does not serve yet: `steering`, for
+- * `_session/steering`.
++ * `_session/steering`, and `backgroundTasks`, for `_session/background_tasks`.
+  */
+-const UNSERVED_EXTENSION_KEYS: readonly string[] = ["steering"];
++const UNSERVED_EXTENSION_KEYS: readonly string[] = ["steering", "backgroundTasks"];
+ 
+ /**
+  * The v2 `initialize` response for the v1 response of the agent.
+-- 
+2.55.0
+

@@ -424,7 +424,12 @@ async function handle(message: Record<string, unknown>): Promise<void> {
     let result: unknown = null;
     if (method === "initialize") {
       initialize = params;
-      result = { protocolVersion: 1, agentCapabilities: { mcpCapabilities: { http: true } } };
+      result = {
+        protocolVersion: 1,
+        agentCapabilities: { mcpCapabilities: { http: true } },
+        // As claude-agent-acp with _session/background_tasks would.
+        _meta: { backgroundTasks: { supported: true } },
+      };
     } else if (method === "authenticate") {
       authenticated = withHashedHeaders(params);
       result = {};
@@ -477,6 +482,9 @@ async function handle(message: Record<string, unknown>): Promise<void> {
     } else if (method === "session/cancel") {
       cancel?.();
       return;
+    } else if (method === "_session/background_tasks") {
+      // Only the call the tests name, by the id the adapter knows it by.
+      result = { backgrounded: params.toolCallId === "t-wait" };
     } else {
       send({ id, error: { code: -32601, message: `no ${JSON.stringify(method)}` } });
       return;

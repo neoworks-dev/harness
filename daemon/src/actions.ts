@@ -170,8 +170,8 @@ export class ActionRunner {
       if (typeof toolCallId !== "string") {
         throw new BadRequestError("neo.background needs args {toolCallId}");
       }
-      if (!this.parts.sessions.background(session, toolCallId)) {
-        throw new BadRequestError("only neo's own commands can be sent to the background");
+      if (!(await this.parts.sessions.background(session, toolCallId))) {
+        throw new BadRequestError("this command can't be sent to the background");
       }
       return;
     }

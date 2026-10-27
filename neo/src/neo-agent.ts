@@ -634,7 +634,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
         agent.abort();
       },
       close: (reason) => sessionHooks.end(reason),
-      background: (toolCallId) => background.move(toolCallId),
+      background: (toolCallId) => Promise.resolve(background.move(toolCallId)),
       configOptions,
       setConfigOption,
       followUp,
