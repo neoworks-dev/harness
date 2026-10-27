@@ -1898,14 +1898,14 @@ fn session_changed_updates_or_adds_one_entry_live() {
         titles(&mut app),
         ["Sticky header", "Fix the login form", "Docs"]
     );
-    // Docs got a message: it moves up and shows what was said.
+    // Docs got a message: it shows what was said but keeps its place.
     let mut docs = info("s3", "Docs", NOW);
     docs.preview = Some("Rewrote the README".into());
     docs.added = Some(40);
     app.handle_event(Event::SessionChanged(docs));
     assert_eq!(
         titles(&mut app),
-        ["Docs", "Sticky header", "Fix the login form"]
+        ["Sticky header", "Fix the login form", "Docs"]
     );
     let text = screen_text(&mut app, 120, 24);
     assert!(text.contains("Rewrote the README"), "{text}");
@@ -1917,7 +1917,7 @@ fn session_changed_updates_or_adds_one_entry_live() {
     // One the daemon deleted goes again.
     app.handle_event(Event::SessionRemoved("s9".into()));
     assert_eq!(app.sessions().len(), 3);
-    assert_eq!(titles(&mut app)[0], "Docs");
+    assert_eq!(titles(&mut app)[0], "Sticky header");
     // The shown session's own queue and turn state follow it too.
     app.running = true;
     app.turn_started_ms = NOW - 10_000;

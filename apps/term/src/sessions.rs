@@ -173,8 +173,11 @@ enum Pick {
 
 #[derive(Debug, Default)]
 pub struct Sessions {
-    /// Most recent activity first.
+    /// By place, latest first.
     list: Vec<SessionInfo>,
+    /// Each session's place: its activity when first seen. New messages don't move it, so open
+    /// chats stay where they are while they talk.
+    places_at: HashMap<String, i64>,
     /// Where each cwd works, found once.
     places: HashMap<String, Place>,
     /// The list as drawn: headers and sessions in order.
@@ -226,13 +229,16 @@ impl Sessions {
             .or_insert_with(|| place_of(cwd))
             .repo
             .clone();
-        self.list
+        let mut recent: Vec<_> = self
+            .list
             .iter()
             .filter(|s| s.id != except)
             .filter(|s| self.places.get(&s.cwd).is_some_and(|p| p.repo == repo))
-            .take(n)
             .cloned()
-            .collect()
+            .collect();
+        recent.sort_by_key(|s| std::cmp::Reverse(s.last_activity));
+        recent.truncate(n);
+        recent
     }
 
     /// Whether any session is working (the spinner needs frames).
@@ -263,6 +269,7 @@ impl Sessions {
     pub fn remove(&mut self, id: &str) {
         self.list.retain(|s| s.id != id);
         self.finished.remove(id);
+        self.places_at.remove(id);
         if self.selected == Some(Pick::Session(id.to_string())) {
             self.selected = None;
         }
@@ -285,11 +292,14 @@ impl Sessions {
     }
 
     fn sort(&mut self) {
-        self.list.sort_by(|a, b| {
-            b.last_activity
-                .cmp(&a.last_activity)
-                .then_with(|| a.id.cmp(&b.id))
-        });
+        for info in &self.list {
+            self.places_at
+                .entry(info.id.clone())
+                .or_insert(info.last_activity);
+        }
+        let at = |info: &SessionInfo| self.places_at[&info.id];
+        self.list
+            .sort_by(|a, b| at(b).cmp(&at(a)).then_with(|| a.id.cmp(&b.id)));
         for info in &self.list {
             if !self.places.contains_key(&info.cwd) {
                 self.places.insert(info.cwd.clone(), place_of(&info.cwd));
@@ -298,7 +308,7 @@ impl Sessions {
         self.build();
     }
 
-    /// Groups the (recency-sorted) list: repositories by their latest activity, in each the main
+    /// Groups the (place-sorted) list: repositories by their latest place, in each the main
     /// checkout and then its worktrees by theirs, in each the sessions by theirs with children
     /// after their parent.
     fn build(&mut self) {
@@ -315,13 +325,14 @@ impl Sessions {
             let Some(place) = self.places.get(&info.cwd) else {
                 continue;
             };
+            let at = self.places_at[&info.id];
             let cluster = clusters.entry(&place.repo).or_default();
-            cluster.latest = cluster.latest.max(info.last_activity);
+            cluster.latest = cluster.latest.max(at);
             match &place.worktree {
                 None => cluster.main.push(index),
                 Some(name) => {
                     let group = cluster.worktrees.entry(name).or_default();
-                    group.0 = group.0.max(info.last_activity);
+                    group.0 = group.0.max(at);
                     group.1.push(index);
                 }
             }
@@ -937,22 +948,30 @@ mod tests {
     }
 
     #[test]
-    fn newest_activity_first_and_changes_update_in_place() {
+    fn newest_first_and_activity_does_not_move_them() {
         let mut s = Sessions::default();
         s.set_all(vec![info("a", "old", 10), info("b", "new", 30)]);
         let ids = |s: &Sessions| s.list.iter().map(|i| i.id.clone()).collect::<Vec<_>>();
         assert_eq!(ids(&s), ["b", "a"]);
         s.upsert(info("a", "old", 40));
-        assert_eq!(ids(&s), ["a", "b"]);
-        s.upsert(info("c", "fresh", 20));
-        assert_eq!(ids(&s), ["a", "b", "c"]);
+        assert_eq!(ids(&s), ["b", "a"]);
+        assert_eq!(s.get("a").unwrap().last_activity, 40);
+        s.upsert(info("c", "fresh", 50));
+        assert_eq!(ids(&s), ["c", "b", "a"]);
         assert_eq!(s.len(), 3);
         assert!(!s.any_running());
-        let mut running = info("c", "fresh", 50);
+        let mut running = info("a", "old", 60);
         running.state = SessionState::Running;
         s.upsert(running);
         assert!(s.any_running());
-        assert_eq!(ids(&s), ["c", "a", "b"]);
+        assert_eq!(ids(&s), ["c", "b", "a"]);
+        // A fresh list keeps the places too.
+        s.set_all(vec![
+            info("a", "old", 70),
+            info("b", "new", 30),
+            info("c", "fresh", 50),
+        ]);
+        assert_eq!(ids(&s), ["c", "b", "a"]);
     }
 
     #[test]
@@ -1130,9 +1149,9 @@ mod tests {
     #[test]
     fn a_session_that_finished_unseen_is_marked_until_shown() {
         let mut s = Sessions::default();
-        let mut a = info("a", "Background job", 10);
+        let mut a = info("a", "Background job", 20);
         a.state = SessionState::Running;
-        s.set_all(vec![a.clone(), info("b", "Here", 20)]);
+        s.set_all(vec![a.clone(), info("b", "Here", 10)]);
         assert!(!s.is_finished("a"));
         a.state = SessionState::Idle;
         a.last_activity = 30;
@@ -1343,7 +1362,7 @@ mod tests {
     }
 
     #[test]
-    fn the_cluster_with_the_latest_activity_leads_and_worktrees_follow_their_repo() {
+    fn the_cluster_with_the_newest_session_leads_and_worktrees_follow_their_repo() {
         let mut s = grouped();
         // The notes directory is quiet; the site repo has the newest session in a worktree.
         let mut f = at("f", "Scratch", "/w/notes", 5);
@@ -1360,11 +1379,14 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(order(&s), ["site", "  fix-login", "  dark", "notes"]);
-        // A newer session in the notes directory moves its cluster up.
+        // Activity in the notes directory doesn't move its cluster.
         s.upsert(at("f", "Scratch", "/w/notes", 99));
+        assert_eq!(order(&s), ["site", "  fix-login", "  dark", "notes"]);
+        // A new session there does.
+        s.upsert(at("g", "Ideas", "/w/notes", 100));
         assert_eq!(order(&s), ["notes", "site", "  fix-login", "  dark"]);
-        // Within a repo, the worktree with the newest activity comes first.
-        s.upsert(at("e", "Dark mode", "/w/site/.worktrees/dark", 200));
+        // Within a repo, the worktree with the newest session comes first.
+        s.upsert(at("h", "Contrast", "/w/site/.worktrees/dark", 200));
         assert_eq!(order(&s), ["site", "  dark", "  fix-login", "notes"]);
     }
 
