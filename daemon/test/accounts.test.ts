@@ -39,6 +39,8 @@ const VARS = [
   "ANTHROPIC_PROFILE",
   "CLAUDE_CODE_OAUTH_TOKEN",
   "CLAUDE_CODE_USE_BEDROCK",
+  // Set when the tests run inside Claude Code.
+  "CLAUDE_CODE_EXECUTABLE",
   "DEEPSEEK_API_KEY",
   "ZAI_API_KEY",
   "MOONSHOT_API_KEY",
