@@ -3145,8 +3145,10 @@ type ViewItem struct {
 	Label *string    `json:"label,omitempty"`
 	State *ItemState `json:"state,omitempty"`
 	// Tool items of a call that runs a shell command: the command. Renderers draw it highlighted, under the label, or in its place when there is none (the title only repeated the command).
-	Command   *string   `json:"command,omitempty"`
-	Component Component `json:"component"`
+	Command *string `json:"command,omitempty"`
+	// With command: what the agent said the command is for. Renderers may show it in the command's place once the command has run.
+	Description *string   `json:"description,omitempty"`
+	Component   Component `json:"component"`
 }
 
 type ItemKind string

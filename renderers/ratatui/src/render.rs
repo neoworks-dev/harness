@@ -256,11 +256,20 @@ impl<'a> Cx<'a> {
             Some(label) => wrap(&self.tool_label(label), hw),
             None => Vec::new(),
         };
+        // A command that has run and says what it was for reads as that; the command itself is
+        // in the expanded view.
+        let described = it
+            .description
+            .as_deref()
+            .filter(|d| cut && it.command.is_some() && !d.trim().is_empty());
         // A shell command is highlighted while it runs or waits, muted once it has run, and
         // broken after its `&&`, `||` and `;` when long (pipelines stay whole). Unless it is a
         // question or everything is expanded, it takes a few rows while it runs and two after.
         // A `cd` into the session's directory is left out.
-        if let Some(command) = it
+        if let Some(description) = described {
+            head.extend(wrap(&self.tool_label(description), hw));
+            cut_rows(&mut head, LABEL_ROWS, hw);
+        } else if let Some(command) = it
             .command
             .as_deref()
             .map(|c| crate::strip_cd(c, self.o.cwd.as_deref()))

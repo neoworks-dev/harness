@@ -766,9 +766,12 @@ export class SessionView {
         if (prefixed) item.label = call.agent;
         else delete item.label;
       }
+      const description = isRecord(call.rawInput) ? call.rawInput.description : undefined;
+      if (typeof description === "string" && description.trim() !== "") {
+        item.description = description.trim().replace(/\s+/g, " ");
+      }
       // While it runs, Claude Code sends the command's description as its content: that is the
       // label, and there is no output yet.
-      const description = isRecord(call.rawInput) ? call.rawInput.description : undefined;
       const running = call.status === "pending" || call.status === "in_progress";
       if (running && typeof description === "string" && onlyText(call.content, description)) {
         item.label = prefixed ? `${call.agent}: ${description}` : description;

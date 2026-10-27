@@ -404,6 +404,30 @@ fn a_cd_into_the_sessions_directory_goes_without_saying() {
 }
 
 #[test]
+fn a_command_that_ran_reads_as_what_it_was_for() {
+    let item = |state: &str| {
+        item_of(
+            "tool",
+            &format!(
+                r#""command":"cargo test -q 2>&1 | tail","description":"Run the tests","state":"{state}","#
+            ),
+            &code("ok"),
+        )
+    };
+    assert_eq!(lines(&item("done"), 40), ["Run the tests", "  ⎿ ok"]);
+    // Running, or expanded, the command shows.
+    assert_eq!(lines(&item("running"), 40)[0], "cargo test -q 2>&1 | tail");
+    let expanded = Options {
+        expanded: true,
+        ..Options::default()
+    };
+    assert_eq!(
+        lines_of(&item("done"), 40, &expanded)[0],
+        "cargo test -q 2>&1 | tail"
+    );
+}
+
+#[test]
 fn a_running_command_takes_four_rows_unless_asked_about_or_expanded() {
     let command = (1..=8)
         .map(|i| format!("step-{i}"))

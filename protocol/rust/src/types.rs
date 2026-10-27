@@ -3489,6 +3489,13 @@ pub struct ViewItem {
     /// Tool items of a call that runs a shell command: the command. Renderers draw it highlighted, under the label, or in its place when there is none (the title only repeated the command).
     #[serde(rename = "command", default, skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
+    /// With command: what the agent said the command is for. Renderers may show it in the command's place once the command has run.
+    #[serde(
+        rename = "description",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub description: Option<String>,
     #[serde(rename = "component")]
     pub component: Component,
 }

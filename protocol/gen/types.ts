@@ -1375,6 +1375,8 @@ export interface ViewItem {
   state?: ItemState;
   /** Tool items of a call that runs a shell command: the command. Renderers draw it highlighted, under the label, or in its place when there is none (the title only repeated the command). */
   command?: string;
+  /** With command: what the agent said the command is for. Renderers may show it in the command's place once the command has run. */
+  description?: string;
   component: Component;
 }
 

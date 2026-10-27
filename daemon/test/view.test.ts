@@ -276,7 +276,11 @@ describe("session view", () => {
         content: [{ type: "text", text: "```console\n3 pass\n```" }],
       },
     ]).view.snapshot().items[0];
-    expect(done).toMatchObject({ state: "done", component: { type: "code", code: "3 pass" } });
+    expect(done).toMatchObject({
+      state: "done",
+      description: "Run the tests",
+      component: { type: "code", code: "3 pass" },
+    });
     expect(done?.label).toBeUndefined();
   });
 
