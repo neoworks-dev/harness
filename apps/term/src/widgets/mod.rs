@@ -317,8 +317,17 @@ impl Widgets {
         if !panels || area.height < 6 {
             return (None, Some(area));
         }
-        let need = self.panels_height(usize::from(area.width));
-        let top = u16::try_from(need).unwrap_or(u16::MAX).min(area.height / 2);
+        let w = usize::from(area.width);
+        // The todos always show whole; the rest of the panels take up to half.
+        let need = self.panels_height(w);
+        let top = need
+            .min(usize::from(area.height / 2).max(self.todos_height(w)))
+            .min(usize::from(area.height));
+        let top = u16::try_from(top).unwrap_or(u16::MAX);
+        // No room left for the commands' title and a row: the panels get it all.
+        if area.height - top < 3 {
+            return (Some(area), None);
+        }
         let below = Rect {
             y: area.y + top + 1,
             height: area.height - top - 1,
@@ -333,13 +342,22 @@ impl Widgets {
         )
     }
 
+    /// Rows the todos would fill `w` columns wide, their title included; none without any.
+    fn todos_height(&self, w: usize) -> usize {
+        if self.todos.has_any() {
+            1 + self.todos.natural_height(w, &self.palette)
+        } else {
+            0
+        }
+    }
+
     /// Rows the todos, plan and files would fill `w` columns wide, their titles and the blank
     /// rows between them included.
     fn panels_height(&self, w: usize) -> usize {
         let p = &self.palette;
         let mut parts = Vec::new();
         if self.todos.has_any() {
-            parts.push(1 + self.todos.natural_height(w, p));
+            parts.push(self.todos_height(w));
         }
         if self.plan.has_any() {
             parts.push(1 + self.plan.natural_height(w, p));
@@ -371,6 +389,9 @@ impl Widgets {
         pane(frame, area, &self.palette);
         if let Some(at) = panels {
             self.draw_panels(frame, at, focus);
+            if commands.is_some() {
+                rule(frame, at.x, at.y + at.height, at.width, &self.palette);
+            }
         }
         if let Some(at) = commands {
             self.draw_terminal(frame, at, focus == Some(Panel::Terminal));
@@ -387,15 +408,8 @@ impl Widgets {
         let w = area.width;
         let has_plan = self.plan.has_any();
         let has_files = self.files.worth_showing();
-        // The shared todos on top while there are any: what they need, up to a third; the plan
-        // and the files below.
-        let todos_h = if self.todos.has_any() {
-            (1 + self.todos.natural_height(w as usize, p))
-                .min((area.height as usize / 3).max(3))
-                .min(area.height as usize)
-        } else {
-            0
-        };
+        // The shared todos on top while there are any, whole; the plan and the files below.
+        let todos_h = self.todos_height(w as usize).min(area.height as usize);
         let todos_at = |y: u16, h: usize| Rect {
             x,
             y: area.y + y,
@@ -411,7 +425,11 @@ impl Widgets {
             let lines = self.todos.render(w as usize, todos_h - 1, focused, p);
             frame.render_widget(Paragraph::new(lines), todos_at(1, todos_h - 1));
         }
-        let below = todos_h + usize::from(todos_h > 0 && (has_plan || has_files));
+        let parted = todos_h > 0 && (has_plan || has_files) && todos_h < area.height as usize;
+        if parted {
+            rule(frame, x, area.y + todos_h as u16, w, p);
+        }
+        let below = todos_h + usize::from(parted);
         let area = Rect {
             y: area.y + below as u16,
             height: area.height.saturating_sub(below as u16),
@@ -446,6 +464,9 @@ impl Widgets {
             }
         }
         if files_h > 0 {
+            if plan_h > 0 {
+                rule(frame, x, area.y + plan_h as u16, w, p);
+            }
             let top = if plan_h > 0 { plan_h + 1 } else { 0 };
             let focused = focus == Some(Panel::Files);
             let title = title_line("Files", focused, p);
@@ -625,6 +646,15 @@ fn pane(frame: &mut Frame, area: Rect, palette: &Palette) {
         ..area
     };
     crate::style::fill(buf, filled, palette.panel);
+}
+
+/// A thin rule parting two sections of the side column, on row `y`.
+fn rule(frame: &mut Frame, x: u16, y: u16, w: u16, palette: &Palette) {
+    let line = Line::from(Span::styled(
+        "─".repeat(usize::from(w)),
+        Style::new().fg(palette.border),
+    ));
+    frame.render_widget(Paragraph::new(line), Rect::new(x, y, w, 1));
 }
 
 /// Where a pane's content goes: a row down from the top when filled.

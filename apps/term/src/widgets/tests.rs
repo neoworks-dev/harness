@@ -188,7 +188,7 @@ fn sidebar_snapshot_plan_above_files() {
 │ ○ wire it up
 │ claude
 │ ○ review
-│
+│ ───────────────────────
 │ Files
 │ ▾ src/
 │   M a.ts (agent)
@@ -205,7 +205,7 @@ fn sidebar_snapshot_plan_above_files() {
 │ ◐ write the porcelain
 │   v2 parser with tests
 │ … 2 more
-│
+│ ───────────────────────
 │ Files
 │ ▾ src/
 │   M a.ts (agent)
