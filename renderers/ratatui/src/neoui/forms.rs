@@ -335,7 +335,11 @@ impl<'a> Cx<'a> {
                     .and_then(|s| s.select.as_ref().filter(|(open, _)| open == k))
             })
             .map(|(_, at)| *at);
-        if let (Some(at), true) = (open, focused) {
+        if let (Some(_), true, true) = (open, focused, options.is_empty()) {
+            // Open but empty (the options were not `Option` children): say so, rather than
+            // look like the key did nothing.
+            out.push(sline("  no options", self.p.muted_style()));
+        } else if let (Some(at), true) = (open, focused) {
             let at = at.min(options.len().saturating_sub(1));
             for (i, o) in options.iter().enumerate() {
                 let on = i == at;
