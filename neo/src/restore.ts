@@ -69,7 +69,11 @@ export function loggedMessages(history: SessionEvent[], logger?: Logger): Messag
   return messages;
 }
 
-/** Rebuilds the neo context from the session log. Everything but our own messages is ignored. */
+/**
+ * Rebuilds the neo context from the session log, from its last context_cleared (/clear) on.
+ * Everything but our own messages is ignored.
+ */
 export function restoreMessages(history: SessionEvent[], logger?: Logger): Message[] {
-  return repairMessages(loggedMessages(history, logger));
+  const cleared = history.findLastIndex((event) => event.type === "context_cleared");
+  return repairMessages(loggedMessages(history.slice(cleared + 1), logger));
 }

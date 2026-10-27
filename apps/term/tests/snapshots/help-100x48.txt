@@ -25,7 +25,8 @@ keys (any key closes this)
   ctrl-p / ctrl-n           use the buttons and forms above, older first
 
 commands
-  /clear                              start a new conversation in this directory
+  /clear                              clear the agent's context, keep the chat
+  /new                                start a new session in this directory
   /cd [dir]                           move this session to another directory
   /model [harness] [model]            show or set the model
   /effort [harness] [level]           show or set the reasoning effort
@@ -40,7 +41,6 @@ commands
   /login [provider]                   add an API key or an account (ChatGPT, Copilot, Claude Pro/Ma…
   /logout [provider]                  remove a stored API key or account
   /accounts                           list the API keys and accounts in use
-  /plugin [install|enable|…]          plugins for neo: list, search, install, uninstall, enable, di…
 
 ┃
 ┃ message the agent · / for commands

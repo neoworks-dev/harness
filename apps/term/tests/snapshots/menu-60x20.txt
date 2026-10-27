@@ -8,7 +8,7 @@
 
 
 ────────────────────────────────────────────────────────────
-› /clear           start a new conversation in this directo…
+› /clear           clear the agent's context, keep the chat
   /cd [dir]        move this session to another directory
   /claude <task>   give a task to Claude Code
   /codex <task>    give a task to Codex

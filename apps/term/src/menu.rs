@@ -38,7 +38,8 @@ const fn local(name: &'static str, desc: &'static str) -> Command {
 }
 
 pub const COMMANDS: &[Command] = &[
-    daemon("clear", "", "start a new conversation in this directory"),
+    daemon("clear", "", "clear the agent's context, keep the chat"),
+    daemon("new", "", "start a new session in this directory"),
     daemon("cd", "[dir]", "move this session to another directory"),
     daemon("model", "[harness] [model]", "show or set the model"),
     daemon(

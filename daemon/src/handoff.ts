@@ -31,7 +31,11 @@ export function turnsOf(records: SessionEventRecord[], main: string): Turn[] {
   let harness = main;
   let open: { turn: Turn; messages: Map<string, string>; guest: boolean } | undefined;
   for (const { seq, event } of records) {
-    if (event.type === "setting_changed") {
+    if (event.type === "context_cleared") {
+      // /clear: no harness knows the turns before it.
+      turns.length = 0;
+      open = undefined;
+    } else if (event.type === "setting_changed") {
       if (event.option === "harness") harness = event.value;
     } else if (event.type === "user_message") {
       const turn: Turn = { seq, harness, user: event.text, reply: "" };
@@ -92,7 +96,13 @@ export function handoffSummary(
   main: string,
   all = false,
 ): string | undefined {
-  const types = ["setting_changed", "user_message", "guest_turn", "turn_ended"] as const;
+  const types = [
+    "setting_changed",
+    "user_message",
+    "guest_turn",
+    "turn_ended",
+    "context_cleared",
+  ] as const;
   const missed = missedTurns(turnsOf(store.readTypes(session, [...types]), main), harness, all);
   const first = missed[0];
   if (!first) return undefined;

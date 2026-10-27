@@ -394,6 +394,8 @@ pub struct App {
     notice: Option<Notice>,
     /// The session's last turn is more than `CACHE_COLD_MS` ago: the next one starts uncached.
     cache_cold: bool,
+    /// The context was cleared (/clear) since the last turn: there is no cache to go cold.
+    context_cleared: bool,
     quit_armed_until: i64,
     now_ms: i64,
     last_poll_ms: i64,
@@ -484,6 +486,7 @@ impl App {
             awaiting: Some((session, now + 3000)),
             notice: None,
             cache_cold: false,
+            context_cleared: false,
             quit_armed_until: 0,
             now_ms: now,
             last_poll_ms: now,
@@ -622,6 +625,7 @@ impl App {
         }
         // The session's last event marks its last turn; one nothing was said in has no cache.
         let cold = !self.running
+            && !self.context_cleared
             && !self.chat.items().is_empty()
             && self
                 .sessions
@@ -877,7 +881,7 @@ impl App {
             }
         }
         if here && focus.session != self.session {
-            // Someone made another session current while the agent is here (/clear, `neo
+            // Someone made another session current while the agent is here (/new, `neo
             // move`): follow it. A new conversation starts in the same directory.
             let cwd = self.cwd.clone();
             let from = self.session.clone();
@@ -910,12 +914,14 @@ impl App {
                     self.turn_started_ms = record.ts;
                 }
                 self.running = true;
+                self.context_cleared = false;
                 let text = message.shown.as_ref().unwrap_or(&message.text);
                 if let Some(at) = self.waiting.iter().position(|w| w.text == *text) {
                     self.waiting.remove(at);
                 }
             }
             SessionEvent::TurnEnded(_) => self.running = false,
+            SessionEvent::ContextCleared(_) => self.context_cleared = true,
             SessionEvent::CommandsAvailable(offer) => {
                 self.offered
                     .insert(offer.harness.clone(), offer.commands.clone());
@@ -1017,6 +1023,7 @@ impl App {
         self.cwd = cwd.to_string();
         self.chat = Chat::for_app(&self.app_id).in_dir(cwd);
         self.running = false;
+        self.context_cleared = false;
         self.turn_started_ms = self.now_ms;
         self.waiting.clear();
         self.settings.clear();

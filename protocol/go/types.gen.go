@@ -1309,7 +1309,7 @@ type SessionEventRecord struct {
 }
 
 // SessionEvent: Everything that happens in a session. Views must ignore types they don't know.
-// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, ShowDontTell, Notice, SubagentStarted, SubagentEnded, AgentMessage, CommandsAvailable, Todos, UnknownSessionEvent.
+// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, ShowDontTell, Notice, SubagentStarted, SubagentEnded, AgentMessage, CommandsAvailable, Todos, ContextCleared, UnknownSessionEvent.
 type SessionEvent struct {
 	Value SessionEventVariant
 }
@@ -1516,6 +1516,12 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "todos":
 		var v Todos
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "context_cleared":
+		var v ContextCleared
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -2015,6 +2021,21 @@ func (v EditsReverted) MarshalJSON() ([]byte, error) {
 		Tag string `json:"type"`
 		plain
 	}{"edits_reverted", plain(v)})
+}
+
+// ContextCleared: The user cleared the agent's context (/clear): the session goes on, with its log, todos and settings, but its agents start a new conversation. Each harness rebuilds its context from the events after the last one only; usage and cost still count the whole session. Not a context event: the agent doesn't see it.
+type ContextCleared struct {
+}
+
+func (ContextCleared) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v ContextCleared) MarshalJSON() ([]byte, error) {
+	type plain ContextCleared
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"context_cleared", plain(v)})
 }
 
 // UserNote: The user answered a question with a note for the agent (Tab on a button in a permission_request or choice) and the answer could not reach the agent's tool result: a guest's permission request, a choice. Rendered to the main agent as <note about="...">text</note> with its next prompt. Not shown in the chat (the answered card shows the note).

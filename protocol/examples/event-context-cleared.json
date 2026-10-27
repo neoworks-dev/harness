@@ -1,0 +1,9 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 13,
+    "ts": 1760565601200,
+    "event": { "type": "context_cleared" }
+  }
+}

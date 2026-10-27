@@ -220,17 +220,17 @@ describe.skipIf(!existsSync(neoBin))("daemon + CLI end to end", () => {
     await app.close();
   });
 
-  test("/clear in attach moves to a fresh session in the same directory", async () => {
+  test("/new in attach moves to a fresh session in the same directory", async () => {
     const env = testEnv();
     await startDaemon(env);
-    const { out } = await neo(env, ["attach", "--new"], "hello\n/clear\nagain\n");
+    const { out } = await neo(env, ["attach", "--new"], "hello\n/new\nagain\n");
     const first = sessionIdFrom(out);
-    const fresh = /cleared: new session (s_[a-z0-9]+)/.exec(out)?.[1] ?? "";
+    const fresh = /-- new session (s_[a-z0-9]+)/.exec(out)?.[1] ?? "";
     expect(fresh).not.toBe("");
     expect(fresh).not.toBe(first);
-    expect(out.indexOf("echo #1: hello")).toBeLessThan(out.indexOf("cleared"));
+    expect(out.indexOf("echo #1: hello")).toBeLessThan(out.indexOf("-- new session"));
     // The new session starts its own count.
-    expect(out.slice(out.indexOf("cleared"))).toContain("echo #1: again");
+    expect(out.slice(out.indexOf("-- new session"))).toContain("echo #1: again");
     expect((await neo(env, ["focus"])).out).toContain(fresh);
   });
 

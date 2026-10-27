@@ -254,8 +254,13 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
         s.contains("⏵⏵ auto mode on (shift+tab to cycle)")
     });
 
-    // /clear: the daemon makes a fresh session current and the app follows it.
+    // /clear: the same session goes on, with the context cleared.
     ui.type_line("/clear");
+    ui.until("the cleared context", |s| s.contains("context cleared"));
+    assert_eq!(ui.app.session(), first_session);
+
+    // /new: the daemon makes a fresh session current and the app follows it.
+    ui.type_line("/new");
     let deadline = Instant::now() + Duration::from_secs(10);
     while ui.app.session() == first_session {
         ui.driver.pump(&mut ui.app);

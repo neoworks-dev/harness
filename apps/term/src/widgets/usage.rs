@@ -29,6 +29,16 @@ impl UsageState {
         self.last = Some(u.clone());
     }
 
+    /// The context was cleared (/clear): empty until the agent's next numbers; the cost goes on.
+    pub(crate) fn clear_context(&mut self) {
+        if self.ctx.is_some() {
+            self.ctx = Some(0.0);
+        }
+        if let Some(last) = &mut self.last {
+            last.context_used = last.context_used.map(|_| 0);
+        }
+    }
+
     /// The newest usage of the session's own agent.
     pub(crate) fn last(&self) -> Option<&Usage> {
         self.last.as_ref()
@@ -115,6 +125,16 @@ mod tests {
         s.apply(&usage(None, Some(35), Some(100), Some(0.184)));
         s.apply(&usage(Some("codex"), Some(90), Some(100), Some(3.0)));
         assert_eq!(text(&s.line(&p).unwrap()), "ctx 35% · $0.18");
+    }
+
+    #[test]
+    fn a_cleared_context_is_empty_and_the_cost_stays() {
+        let p = Palette::default();
+        let mut s = UsageState::default();
+        s.apply(&usage(None, Some(35), Some(100), Some(0.184)));
+        s.clear_context();
+        assert_eq!(text(&s.line(&p).unwrap()), "ctx 0% · $0.18");
+        assert_eq!(s.last().unwrap().context_used, Some(0));
     }
 
     #[test]

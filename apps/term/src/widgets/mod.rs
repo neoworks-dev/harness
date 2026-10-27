@@ -201,6 +201,7 @@ impl Widgets {
             SessionEvent::Plan(p) => self.plan.apply(p),
             SessionEvent::Todos(t) => self.todos.apply(t),
             SessionEvent::Usage(u) => self.usage.apply(u),
+            SessionEvent::ContextCleared(_) => self.usage.clear_context(),
             SessionEvent::ToolCall(call) => {
                 self.tool_agents
                     .insert(call.tool_call_id.clone(), call.agent.clone());

@@ -296,6 +296,24 @@ export class SessionManager {
   }
 
   /**
+   * Clears the context of an idle session (/clear): logs context_cleared and closes the agent
+   * sessions it loaded, so the next turn starts a new conversation on each harness, told about
+   * the open apps afresh. The log, todos and settings stay.
+   */
+  clearContext(sessionId: string): void {
+    if (!this.store.getSession(sessionId)) throw new NotFoundError(`no session ${sessionId}`);
+    const rt = this.runtime(sessionId);
+    if (rt.running) throw new BadRequestError("wait until the turn ends, or cancel it");
+    closeAgentSessions(rt);
+    rt.agentSessions.clear();
+    rt.pending = [];
+    const event: SessionEvent = { type: "context_cleared" };
+    rt.told.apply(event);
+    this.store.append(sessionId, event);
+    this.stateChanged(sessionId);
+  }
+
+  /**
    * Deletes a session and its log, and closes the agent sessions it loaded. onRemove listeners
    * are told afterwards, to drop what they keep for it. Check removable() first.
    */
@@ -569,8 +587,11 @@ export class SessionManager {
     const existing = this.runtimes.get(sessionId);
     if (existing) return existing;
     if (!this.store.getSession(sessionId)) throw new NotFoundError(`no session ${sessionId}`);
-    // Connector events since the last prompt are still pending after a restart.
-    const lastInput = this.store.lastSeqOfType(sessionId, "user_message");
+    // Connector events since the last prompt (or /clear) are still pending after a restart.
+    const lastInput = Math.max(
+      this.store.lastSeqOfType(sessionId, "user_message"),
+      this.store.lastSeqOfType(sessionId, "context_cleared"),
+    );
     const pending = this.store
       .read(sessionId, lastInput + 1)
       .map((r) => r.event)
@@ -581,6 +602,7 @@ export class SessionManager {
       "app_disconnected",
       "focus_changed",
       "show_dont_tell",
+      "context_cleared",
     ];
     for (const r of this.store.readTypes(sessionId, types)) told.apply(r.event);
     const rt: Runtime = {

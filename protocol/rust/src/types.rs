@@ -1530,6 +1530,7 @@ pub enum SessionEvent {
     AgentMessage(AgentMessage),
     CommandsAvailable(CommandsAvailable),
     Todos(Todos),
+    ContextCleared(ContextCleared),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -1638,6 +1639,10 @@ impl Serialize for SessionEvent {
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
             SessionEvent::Todos(v) => ("todos", serde_json::to_value(v).map_err(S::Error::custom)?),
+            SessionEvent::ContextCleared(v) => (
+                "context_cleared",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             SessionEvent::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -1735,6 +1740,9 @@ impl<'de> Deserialize<'de> for SessionEvent {
                 .map_err(D::Error::custom),
             "todos" => serde_json::from_value(value)
                 .map(SessionEvent::Todos)
+                .map_err(D::Error::custom),
+            "context_cleared" => serde_json::from_value(value)
+                .map(SessionEvent::ContextCleared)
                 .map_err(D::Error::custom),
             _ => Ok(SessionEvent::Unknown(value)),
         }
@@ -1906,6 +1914,12 @@ impl From<CommandsAvailable> for SessionEvent {
 impl From<Todos> for SessionEvent {
     fn from(v: Todos) -> Self {
         SessionEvent::Todos(v)
+    }
+}
+
+impl From<ContextCleared> for SessionEvent {
+    fn from(v: ContextCleared) -> Self {
+        SessionEvent::ContextCleared(v)
     }
 }
 
@@ -2359,6 +2373,11 @@ pub struct EditsReverted {
     #[serde(rename = "skipped", default, skip_serializing_if = "Option::is_none")]
     pub skipped: Option<Vec<String>>,
 }
+
+/// The user cleared the agent's context (/clear): the session goes on, with its log, todos and settings, but its agents start a new conversation. Each harness rebuilds its context from the events after the last one only; usage and cost still count the whole session. Not a context event: the agent doesn't see it.
+/// Tagged `type: "context_cleared"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContextCleared {}
 
 /// The user answered a question with a note for the agent (Tab on a button in a permission_request or choice) and the answer could not reach the agent's tool result: a guest's permission request, a choice. Rendered to the main agent as <note about="...">text</note> with its next prompt. Not shown in the chat (the answered card shows the note).
 /// Tagged `type: "user_note"` inside [`SessionEvent`].

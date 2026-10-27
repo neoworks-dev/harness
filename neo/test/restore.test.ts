@@ -68,6 +68,15 @@ test("restores only the neo messages, in order", () => {
   expect(messages).toEqual([user("a"), assistant, user("b")]);
 });
 
+test("restores only what came after the context was last cleared", () => {
+  const history = [
+    ...logged([user("a"), reply("old")]),
+    { type: "context_cleared" } as const,
+    ...logged([user("b")]),
+  ];
+  expect(restoreMessages(history)).toEqual([user("b")]);
+});
+
 test("a completed session continues exactly where it left off", async () => {
   // First run: a real session produces the log.
   const first = fakeModel([reply([call("c1")], "toolUse"), reply("all done")]);

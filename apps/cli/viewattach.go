@@ -421,7 +421,7 @@ func (a *viewAttachment) pollIdle(ctx context.Context) {
 }
 
 // input handles one line from stdin: a button (/key, or /help for the list),
-// a daemon command (/clear, /model, ...) or text for the agent.
+// /new, a daemon command (/clear, /model, ...) or text for the agent.
 func (a *viewAttachment) input(ctx context.Context, line string) {
 	if a.tty && a.interactive {
 		// The terminal echoed the line below the tail; it is erased with it.
@@ -433,8 +433,8 @@ func (a *viewAttachment) input(ctx context.Context, line string) {
 	case trimmed == "":
 	case trimmed == "/help":
 		a.help()
-	case trimmed == "/clear":
-		a.clear(ctx)
+	case trimmed == "/new":
+		a.fresh(ctx)
 	case isCommand(trimmed):
 		a.press(ctx, trimmed[1:])
 	default:
@@ -446,11 +446,11 @@ func (a *viewAttachment) input(ctx context.Context, line string) {
 	}
 }
 
-// clear asks the daemon for a fresh session (same directory, made current)
+// fresh asks the daemon for a fresh session (same directory, made current)
 // and follows it. The daemon sends the new agent.focus before acking, so the
 // client already knows the new session when Input returns.
-func (a *viewAttachment) clear(ctx context.Context) {
-	if err := a.c.Input(ctx, protocol.SessionInput{Session: a.id, App: a.app, Text: "/clear"}); err != nil {
+func (a *viewAttachment) fresh(ctx context.Context) {
+	if err := a.c.Input(ctx, protocol.SessionInput{Session: a.id, App: a.app, Text: "/new"}); err != nil {
 		a.failed(err)
 		return
 	}
@@ -475,7 +475,7 @@ func (a *viewAttachment) clear(ctx context.Context) {
 	a.id, a.view, a.state, a.events = focus.Session, view, view.State(), events
 	a.running = false
 	a.printed = map[string]bool{}
-	a.note("-- cleared: new session %s --", a.id)
+	a.note("-- new session %s --", a.id)
 	a.touch()
 }
 
@@ -518,7 +518,7 @@ func itemName(it protocol.ViewItem) string {
 func (a *viewAttachment) help() {
 	it, btns, ok := a.lastWithButtons()
 	if !ok {
-		a.note("no buttons in this session yet; type text to talk to the agent, /clear for a new conversation (also /model, /effort, /mode [harness] [value] and /resume)")
+		a.note("no buttons in this session yet; type text to talk to the agent, /new for a new session, /clear to clear the agent's context (also /model, /effort, /mode [harness] [value] and /resume)")
 		return
 	}
 	a.note("buttons of the latest item with any (%s); type /<key> to press one:", itemName(it))
@@ -529,7 +529,7 @@ func (a *viewAttachment) help() {
 		}
 		a.note("  /%s  %s  (%s)", b.Key, b.Label, what)
 	}
-	a.note("/clear starts a new conversation; /model, /effort, /mode [harness] [value] and /resume go to the daemon")
+	a.note("/new starts a new session, /clear clears the agent's context; /model, /effort, /mode [harness] [value] and /resume go to the daemon")
 }
 
 // press triggers the button with this key on the most recent item that has one.

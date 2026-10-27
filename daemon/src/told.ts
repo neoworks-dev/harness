@@ -37,7 +37,13 @@ export class ToldState {
 
   /** Records an event the agent was (or will be) told. */
   apply(event: SessionEvent): void {
-    if (event.type === "show_dont_tell") {
+    if (event.type === "context_cleared") {
+      // A new conversation (/clear): it knows nothing yet.
+      this.told.clear();
+      this.seen.clear();
+      this.focus = undefined;
+      this.showDontTell = false;
+    } else if (event.type === "show_dont_tell") {
       this.showDontTell = event.on;
     } else if (event.type === "app_connected") {
       this.told.set(event.app, event.v);

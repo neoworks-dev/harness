@@ -363,6 +363,8 @@ export class SessionView {
       }
       case "notice":
         return [this.notice(`n${seq}`, event.text, event.tone ?? "muted")];
+      case "context_cleared":
+        return [this.notice(`n${seq}`, "context cleared: the agent starts over from here")];
       case "turn_ended": {
         // A subagent whose end was never logged (a crash) must not hide the next turns' work. One
         // in the background runs on past the turn.

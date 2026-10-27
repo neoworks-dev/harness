@@ -221,7 +221,7 @@ export class PluginCommands {
     const { parts } = result;
     const notes: string[] = [];
     if (parts.skills > 0 || parts.commands > 0) {
-      notes.push("Its skills and commands are there in new sessions (/clear starts one).");
+      notes.push("Its skills and commands are there in new sessions (/new starts one).");
     }
     if (parts.mcpServers > 0) notes.push("Its MCP servers start now.");
     if (parts.lspServers > 0) notes.push("Its language servers are used from the next file.");

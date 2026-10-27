@@ -63,6 +63,18 @@ describe("turns", () => {
       ["real", "mine"],
     ]);
   });
+
+  test("/clear forgets the turns before it, but not the harness chosen", () => {
+    const { store } = logOf([
+      ...[user("one"), say("A: one"), end],
+      switchTo("claude"),
+      { type: "context_cleared" },
+      ...[user("two"), say("B: two"), end],
+    ]);
+    expect(turnsOf(store.read("s"), "neo").map((t) => [t.harness, t.user])).toEqual([
+      ["claude", "two"],
+    ]);
+  });
 });
 
 describe("what a harness missed", () => {

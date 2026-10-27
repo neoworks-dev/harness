@@ -6,7 +6,12 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { SessionEvent, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { SYSTEM_PROMPT } from "../../neo/src/system-prompt.ts";
 import { loadGuestConfigs } from "../src/guests/config.ts";
-import { describeCall, type GuestConfig, mcpResultText } from "../src/guests/guests.ts";
+import {
+  describeCall,
+  type GuestConfig,
+  mcpResultText,
+  storedConversation,
+} from "../src/guests/guests.ts";
 import { GUEST_PROMPT, MAIN_PROMPT } from "../src/guests/prompt.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { FakeAgent } from "./fake-agent.ts";
@@ -924,4 +929,16 @@ test("every prompt tells the harness to call ui_library before its first neoui b
   // neo's own prompt says the same, word for word.
   expect(SYSTEM_PROMPT).toContain(line);
   expect(GUEST_PROMPT).toContain("components=…");
+});
+
+test("a harness resumes its last conversation, unless the context was cleared since", () => {
+  const named = (acpSession: string): SessionEvent => ({
+    type: "harness_message",
+    harness: "claude",
+    message: { acpSession },
+  });
+  expect(storedConversation([named("a"), named("b")], "claude")).toBe("b");
+  expect(storedConversation([named("a"), { type: "context_cleared" }], "claude")).toBeUndefined();
+  const again = [named("a"), { type: "context_cleared" } as const, named("c")];
+  expect(storedConversation(again, "claude")).toBe("c");
 });

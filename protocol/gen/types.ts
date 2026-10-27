@@ -646,7 +646,8 @@ export type SessionEvent =
   | SubagentEnded
   | AgentMessage
   | CommandsAvailable
-  | Todos;
+  | Todos
+  | ContextCleared;
 
 export type SessionEventTag = SessionEvent["type"];
 
@@ -879,6 +880,11 @@ export interface EditsReverted {
   paths: string[];
   /** Files left alone because they changed again after the turn's edits. */
   skipped?: string[];
+}
+
+/** The user cleared the agent's context (/clear): the session goes on, with its log, todos and settings, but its agents start a new conversation. Each harness rebuilds its context from the events after the last one only; usage and cost still count the whole session. Not a context event: the agent doesn't see it. */
+export interface ContextCleared {
+  type: "context_cleared";
 }
 
 /** The user answered a question with a note for the agent (Tab on a button in a permission_request or choice) and the answer could not reach the agent's tool result: a guest's permission request, a choice. Rendered to the main agent as <note about="...">text</note> with its next prompt. Not shown in the chat (the answered card shows the note). */

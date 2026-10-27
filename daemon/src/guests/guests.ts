@@ -283,10 +283,14 @@ function labelled<T extends object>(update: T, agent: string | undefined): T {
   return agent === undefined ? update : { ...update, agent };
 }
 
-/** The ACP conversation a harness_message of this harness last named, if any. */
+/**
+ * The ACP conversation a harness_message of this harness last named, if any since the context
+ * was last cleared (/clear).
+ */
 export function storedConversation(history: SessionEvent[], name: string): string | undefined {
   let id: string | undefined;
   for (const event of history) {
+    if (event.type === "context_cleared") id = undefined;
     if (event.type !== "harness_message" || event.harness !== name) continue;
     if (isRecord(event.message)) id = str(event.message.acpSession) ?? id;
   }

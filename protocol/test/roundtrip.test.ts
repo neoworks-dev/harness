@@ -62,6 +62,7 @@ describe("protocol examples", () => {
       agent_message: true,
       commands_available: true,
       todos: true,
+      context_cleared: true,
     };
     expect([...seen].sort()).toEqual(Object.keys(all).sort());
   });

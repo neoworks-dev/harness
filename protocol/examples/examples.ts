@@ -490,6 +490,15 @@ export const examples: Record<string, Envelope> = {
       },
     },
   },
+  "event-context-cleared": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 13,
+      ts: 1760565601200,
+      event: { type: "context_cleared" },
+    },
+  },
   "event-setting-changed": {
     topic: "session.events",
     payload: {

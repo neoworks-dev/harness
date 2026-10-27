@@ -463,9 +463,11 @@ export class Hub {
           this.settle(client, msg.id, command);
           return;
         }
-        if (focus && text.trim() === "/clear") {
+        if (text.trim() === "/clear") {
+          this.sessions.clearContext(session);
+        } else if (focus && text.trim() === "/new") {
           if (!this.sessions.info(session)) throw new NotFoundError(`no session ${session}`);
-          focus.clear(session, app);
+          focus.fresh(session, app);
         } else {
           // Before queueing, so the turn already sees the new focus.
           focus?.followInput(session, app);

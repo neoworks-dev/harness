@@ -250,7 +250,7 @@ describe("over the bus and the gateway", () => {
     expect(focus.current().app).toBe("photo-editor");
   });
 
-  test("/clear starts a fresh current session in the same directory; the agent stays put", async () => {
+  test("/new starts a fresh current session in the same directory; the agent stays put", async () => {
     const { hub, registry, focus, sessions, agent, store } = hubSetup();
     await registry.presence({}, app("code-editor"));
     const old = sessions.create({ cwd: "/site" }).id;
@@ -261,7 +261,7 @@ describe("over the bus and the gateway", () => {
     a.send({
       topic: "session.input",
       id: "c",
-      payload: { session: old, app: "code-editor", text: " /clear " },
+      payload: { session: old, app: "code-editor", text: " /new " },
     });
     const now = focus.current();
     expect(now.session).not.toBe(old);
@@ -272,7 +272,38 @@ describe("over the bus and the gateway", () => {
     expect(a.received.slice(-2).map((e) => e.topic)).toEqual(["agent.focus", "bus.ack"]);
   });
 
-  test("/clear typed in another app's pane brings the agent there", async () => {
+  test("/clear stays in the session and starts the agent over, told about the apps afresh", async () => {
+    const { hub, registry, focus, sessions, agent, store } = hubSetup();
+    await registry.presence({}, app("code-editor"));
+    const session = sessions.create({ cwd: "/site" }).id;
+    focus.move({ app: "code-editor", session }, "user");
+    const input = (text: string): void => sessions.input(session, "code-editor", text);
+    input("1");
+    await agent.started(1);
+    agent.release();
+    await sessions.idle(session);
+    const a = client(hub);
+    a.send({
+      topic: "session.input",
+      id: "c",
+      payload: { session, app: "code-editor", text: "/clear" },
+    });
+    expect(focus.current().session).toBe(session);
+    expect(a.received.at(-1)?.topic).toBe("bus.ack");
+    expect(store.read(session).at(-1)?.event).toEqual({ type: "context_cleared" });
+    input("2");
+    await agent.started(2);
+    agent.release();
+    await sessions.idle(session);
+    // The second turn is told about the open app again, as a new conversation is.
+    const told = store
+      .read(session)
+      .map((r) => r.event)
+      .filter((e) => e.type === "app_connected");
+    expect(told).toHaveLength(2);
+  });
+
+  test("/new typed in another app's pane brings the agent there", async () => {
     const { hub, registry, focus, sessions, store } = hubSetup();
     await registry.presence({}, app("terminal"));
     await registry.presence({}, app("terminal-2"));
@@ -283,7 +314,7 @@ describe("over the bus and the gateway", () => {
     a.send({
       topic: "session.input",
       id: "c",
-      payload: { session: old, app: "terminal", text: "/clear" },
+      payload: { session: old, app: "terminal", text: "/new" },
     });
     const now = focus.current();
     expect(now.session).not.toBe(old);

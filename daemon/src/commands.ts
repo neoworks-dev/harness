@@ -50,12 +50,14 @@ import {
 import type { Titles } from "./titles.ts";
 
 /**
- * The commands the daemon answers itself (and /clear, which the hub answers): a harness's or a
- * plugin's command of the same name is reached some other way, see plugin-commands.ts.
+ * The commands the daemon answers itself (and /clear and /new, which the hub answers): a
+ * harness's or a plugin's command of the same name is reached some other way, see
+ * plugin-commands.ts.
  */
 export const DAEMON_COMMANDS: readonly string[] = [
   ...Object.keys(CATEGORIES),
   "clear",
+  "new",
   "resume",
   "approvals",
   "safesearch",
@@ -127,8 +129,7 @@ function onOff(
 }
 
 /** Said when a setting about subagents changed: the agents running now keep how they started. */
-const NEXT_START =
-  "Agents already running keep theirs until they start again (a new session, or /clear).";
+const NEXT_START = "Agents already running keep theirs until they start again (/new, or /clear).";
 
 function when(iso: string | undefined): string | undefined {
   if (iso === undefined) return undefined;

@@ -115,6 +115,9 @@
         },
         {
           "$ref": "#/$defs/Todos"
+        },
+        {
+          "$ref": "#/$defs/ContextCleared"
         }
       ],
       "discriminator": {
@@ -660,6 +663,17 @@
         }
       },
       "required": ["type", "paths"],
+      "additionalProperties": false
+    },
+    "ContextCleared": {
+      "description": "The user cleared the agent's context (/clear): the session goes on, with its log, todos and settings, but its agents start a new conversation. Each harness rebuilds its context from the events after the last one only; usage and cost still count the whole session. Not a context event: the agent doesn't see it.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "context_cleared"
+        }
+      },
+      "required": ["type"],
       "additionalProperties": false
     },
     "UserNote": {
