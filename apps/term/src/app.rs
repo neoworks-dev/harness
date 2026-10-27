@@ -3603,12 +3603,7 @@ impl App {
             connected: self.connected,
             approvals: self.approvals,
             notice,
-            ui_hint: self.active_ref().is_none()
-                && self
-                    .chat
-                    .prompt_refs()
-                    .iter()
-                    .any(|r| self.chat.has_targets(r)),
+            ui_hint: self.active_ref().is_none() && self.chat.latest_has_targets(),
             styles: &self.styles,
         }
         .lines(width)

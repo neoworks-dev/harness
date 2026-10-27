@@ -645,16 +645,32 @@ fn a_form_the_user_has_spoken_after_waits_to_be_picked() {
         vec![form_item("f1", false, ""), user("u1", "never mind")],
     );
     assert!(!app.prompt.engaged);
-    // The status line says how: it can still be picked by hand.
+    // It can still be picked by hand, but the status line only points at the latest reply's.
     let hint = |app: &mut App| {
         screen(app, 80, 30)
             .join("\n")
             .contains("ctrl-p use the buttons above")
     };
-    assert!(hint(&mut app));
+    assert!(!hint(&mut app));
     press(&mut app, ctrl('p'));
     assert!(app.prompt.engaged);
     assert_eq!(focused(&app).as_deref(), Some("service"));
+}
+
+#[test]
+fn the_hint_points_at_the_latest_replys_buttons() {
+    let mut app = app();
+    show(&mut app, vec![user("u1", "hi"), form_item("f1", false, "")]);
+    let hint = |app: &mut App| {
+        screen(app, 80, 30)
+            .join("\n")
+            .contains("ctrl-p use the buttons above")
+    };
+    // Put away, the form is pointed at.
+    press(&mut app, key(KeyCode::Esc));
+    assert!(!app.prompt.engaged);
+    assert!(hint(&mut app));
+    press(&mut app, ctrl('p'));
     // While the form has the keys, the hint is gone.
     assert!(!hint(&mut app));
 }

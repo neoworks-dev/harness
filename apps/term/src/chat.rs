@@ -326,6 +326,17 @@ impl Chat {
             .collect()
     }
 
+    /// Whether an item since the user last spoke has OpenUI targets: the latest reply has
+    /// something to use.
+    pub fn latest_has_targets(&self) -> bool {
+        self.state
+            .items
+            .iter()
+            .rev()
+            .take_while(|i| i.kind != ItemKind::User)
+            .any(|i| self.has_targets(&i.r#ref))
+    }
+
     /// The items with buttons still waiting for an answer, and the OpenUI forms the user has
     /// not spoken after, oldest first.
     pub fn pending_prompts(&self) -> Vec<&str> {
