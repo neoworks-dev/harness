@@ -168,6 +168,8 @@ pub(crate) struct Run {
     pub(crate) targets: Vec<UiTarget>,
     marked: bool,
     pub(crate) focus_line: Option<usize>,
+    /// Filled cards around what is being drawn: each one a shade lighter than the one it is in.
+    pub(crate) cards: u32,
 }
 
 impl Run {

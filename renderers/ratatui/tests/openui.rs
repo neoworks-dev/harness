@@ -46,7 +46,23 @@ fn text(s: &str) -> Value {
     )
 }
 
+/// The text of `it`, drawn on a theme whose surface is the terminal's own: cards are outlines
+/// there, so the text shows where each one is. [`filled`] draws them as they usually are.
 fn lines(it: &ViewItem, width: u16) -> Vec<String> {
+    lines_of(it, width, &outlined())
+}
+
+fn outlined() -> Options {
+    Options {
+        theme: Palette {
+            surface: Color::Reset,
+            ..Palette::default()
+        },
+        ..Options::default()
+    }
+}
+
+fn filled(it: &ViewItem, width: u16) -> Vec<String> {
     lines_of(it, width, &Options::default())
 }
 
@@ -55,7 +71,7 @@ fn state(f: impl FnOnce(&mut UiState)) -> Options {
     f(&mut s);
     Options {
         openui: HashMap::from([("0".to_string(), s)]),
-        ..Options::default()
+        ..outlined()
     }
 }
 
@@ -217,12 +233,17 @@ fn card_variants() {
             .flat_map(|l| &l.spans)
             .all(|s| s.style.bg == Some(pal().surface))
     );
-    // A tone colors the frame and the title.
+    // A tone colors the bar down the card's side and the title; outlined, the frame.
     let it = doc(node(
         "Card",
         json!({"children": kids, "title": "Hello", "tone": "danger"}),
     ));
     let rendered = render_item(&it, 30, &Options::default());
+    assert_eq!(rendered[1].spans[0].content, "▎ ");
+    assert_eq!(rendered[1].spans[0].style.fg, Some(pal().danger));
+    assert_eq!(rendered[1].spans[1].style.fg, Some(pal().danger));
+    assert_eq!(rendered[2].spans[0].style.fg, Some(pal().danger));
+    let rendered = render_item(&it, 30, &outlined());
     assert_eq!(rendered[0].spans[0].style.fg, Some(pal().danger));
     assert_eq!(rendered[0].spans[1].style.fg, Some(pal().danger));
     assert_eq!(rendered[1].spans[0].style.fg, Some(pal().danger));
@@ -230,16 +251,63 @@ fn card_variants() {
 }
 
 #[test]
-fn a_card_floats_on_the_surface_color_inside_its_outline() {
+fn a_card_is_a_fill_with_half_row_edges() {
     let it = doc(card("Hello", vec![text("body")]));
+    assert_eq!(
+        filled(&it, 20),
+        [
+            "▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄",
+            "  Hello",
+            "  body",
+            "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀"
+        ]
+    );
     let rendered = render_item(&it, 20, &Options::default());
+    // The edges are the fill's color on the terminal's; the rows between are on the fill.
+    for edge in [&rendered[0], &rendered[3]] {
+        assert!(
+            edge.spans
+                .iter()
+                .all(|s| s.style.fg == Some(pal().surface) && s.style.bg.is_none())
+        );
+    }
+    for line in &rendered[1..3] {
+        assert_eq!(line.width(), 20);
+        assert!(
+            line.spans.iter().all(|s| s.style.bg == Some(pal().surface)),
+            "{line:?}"
+        );
+    }
+    assert!(
+        rendered[1]
+            .spans
+            .iter()
+            .any(|s| s.content == "Hello" && s.style.add_modifier.contains(Modifier::BOLD))
+    );
+    // A card in a card is a shade lighter.
+    let it = doc(card("Outer", vec![card("Inner", vec![text("deep")])]));
+    let rendered = render_item(&it, 24, &Options::default());
+    let deep = rendered
+        .iter()
+        .flat_map(|l| &l.spans)
+        .find(|s| s.content.contains("deep"))
+        .unwrap();
+    assert_ne!(deep.style.bg, Some(pal().surface));
+    assert!(matches!(deep.style.bg, Some(Color::Rgb(..))));
+}
+
+#[test]
+fn without_a_colored_surface_a_card_is_an_outline() {
+    let it = doc(card("Hello", vec![text("body")]));
+    let rendered = render_item(&it, 20, &outlined());
+    let surface = outlined().theme.surface;
     assert_eq!(rendered.len(), 3);
     // Every cell of the box, the outline included, is on the surface; the outline in the
     // border color, the title bold.
     for line in &rendered {
         assert_eq!(line.width(), 20);
         assert!(
-            line.spans.iter().all(|s| s.style.bg == Some(pal().surface)),
+            line.spans.iter().all(|s| s.style.bg == Some(surface)),
             "{line:?}"
         );
     }

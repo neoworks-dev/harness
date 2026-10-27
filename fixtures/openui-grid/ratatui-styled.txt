@@ -1,12 +1,14 @@
 ⟦bold|820 GB⟧⟦danger| of 896 GB⟧  ⟦border|│⟧  ⟦bold|72 GB⟧⟦success| 8%⟧  ⟦border|│⟧  ⟦bold|Documents⟧⟦muted| 355 GB⟧
 ⟦muted|Used⟧              ⟦border|│⟧  ⟦muted|Free⟧      ⟦border|│⟧  ⟦muted|Largest⟧
-⟦border bg:surface|╭─ ⟧⟦bg:surface bold|Where the space goes⟧⟦border bg:surface| ───────────────╮⟧ ⟦border bg:surface|╭─ ⟧⟦bg:surface bold|Documents⟧⟦border bg:surface| ─────────────────────────╮⟧
-⟦border bg:surface|│ ⟧⟦muted bg:surface|Documents ⟧⟦accent bg:surface|▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄⟧⟦bg:surface| 355⟧⟦border bg:surface| │⟧ ⟦border bg:surface|│ ⟧⟦bg:surface bold|Path⟧⟦bg:surface|    ⟧⟦border bg:surface| │ ⟧⟦bg:surface bold|Size⟧⟦bg:surface|                    ⟧⟦border bg:surface| │⟧
-⟦border bg:surface|│ ⟧⟦muted bg:surface|.cache    ⟧⟦accent bg:surface|▄▄▄▄⟧⟦bg:surface| 65⟧⟦bg:surface|                   ⟧⟦border bg:surface| │⟧ ⟦border bg:surface|│ ⟧⟦border bg:surface|─────────┼───────⟧⟦bg:surface|                  ⟧⟦border bg:surface| │⟧
-⟦border bg:surface|│ ⟧⟦muted bg:surface|Games     ⟧⟦accent bg:surface|▄▄▄⟧⟦bg:surface| 48⟧⟦bg:surface|                    ⟧⟦border bg:surface| │⟧ ⟦border bg:surface|│ ⟧⟦bg:surface|neoworks⟧⟦bg:surface|⟧⟦border bg:surface| │ ⟧⟦bg:surface|210 GB⟧⟦bg:surface|                  ⟧⟦border bg:surface| │⟧
-⟦border bg:surface|│ ⟧⟦muted bg:surface|Other     ⟧⟦accent bg:surface|▄▄▄▄▄▄▖⟧⟦bg:surface| 103⟧⟦bg:surface|               ⟧⟦border bg:surface| │⟧ ⟦border bg:surface|│ ⟧⟦bg:surface|clients⟧⟦bg:surface| ⟧⟦border bg:surface| │ ⟧⟦bg:surface|45 GB⟧⟦bg:surface|                   ⟧⟦border bg:surface| │⟧
-⟦border bg:surface|│ ⟧⟦bg:surface|                                    ⟧⟦border bg:surface| │⟧ ⟦border bg:surface|│ ⟧⟦bg:surface|other⟧⟦bg:surface|   ⟧⟦border bg:surface| │ ⟧⟦bg:surface|47 GB⟧⟦bg:surface|                   ⟧⟦border bg:surface| │⟧
-⟦border bg:surface|╰──────────────────────────────────────╯⟧ ⟦border bg:surface|╰─────────────────────────────────────╯⟧
-⟦accent bg:surface|╭─ ⟧⟦accent bg:surface bold|Last 6 months⟧⟦accent bg:surface| ──────────────────────╮⟧
-⟦accent bg:surface|│ ⟧⟦muted bg:surface|Used, GB ⟧⟦accent bg:surface|▁▃▄▅▇█⟧⟦bg:surface| 820⟧⟦bg:surface|                 ⟧⟦accent bg:surface| │⟧
-⟦accent bg:surface|╰──────────────────────────────────────╯⟧
+⟦surface|▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄⟧ ⟦surface|▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄⟧
+⟦bg:surface|  ⟧⟦bg:surface bold|Where the space goes⟧⟦bg:surface|                  ⟧ ⟦bg:surface|  ⟧⟦bg:surface bold|Documents⟧⟦bg:surface|                            ⟧
+⟦bg:surface|  ⟧⟦muted bg:surface|Documents ⟧⟦accent bg:surface|▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄⟧⟦bg:surface| 355⟧⟦bg:surface|  ⟧ ⟦bg:surface|  ⟧⟦bg:surface bold|Path⟧⟦bg:surface|    ⟧⟦border bg:surface| │ ⟧⟦bg:surface bold|Size⟧⟦bg:surface|                      ⟧
+⟦bg:surface|  ⟧⟦muted bg:surface|.cache    ⟧⟦accent bg:surface|▄▄▄▄⟧⟦bg:surface| 65⟧⟦bg:surface|                     ⟧ ⟦bg:surface|  ⟧⟦border bg:surface|─────────┼───────⟧⟦bg:surface|                    ⟧
+⟦bg:surface|  ⟧⟦muted bg:surface|Games     ⟧⟦accent bg:surface|▄▄▄⟧⟦bg:surface| 48⟧⟦bg:surface|                      ⟧ ⟦bg:surface|  ⟧⟦bg:surface|neoworks⟧⟦bg:surface|⟧⟦border bg:surface| │ ⟧⟦bg:surface|210 GB⟧⟦bg:surface|                    ⟧
+⟦bg:surface|  ⟧⟦muted bg:surface|Other     ⟧⟦accent bg:surface|▄▄▄▄▄▄▖⟧⟦bg:surface| 103⟧⟦bg:surface|                 ⟧ ⟦bg:surface|  ⟧⟦bg:surface|clients⟧⟦bg:surface| ⟧⟦border bg:surface| │ ⟧⟦bg:surface|45 GB⟧⟦bg:surface|                     ⟧
+⟦bg:surface|  ⟧⟦bg:surface|                                      ⟧ ⟦bg:surface|  ⟧⟦bg:surface|other⟧⟦bg:surface|   ⟧⟦border bg:surface| │ ⟧⟦bg:surface|47 GB⟧⟦bg:surface|                     ⟧
+⟦surface|▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀⟧ ⟦surface|▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀⟧
+⟦surface|▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄⟧
+⟦accent bg:surface|▎ ⟧⟦accent bg:surface bold|Last 6 months⟧⟦bg:surface|                         ⟧
+⟦accent bg:surface|▎ ⟧⟦muted bg:surface|Used, GB ⟧⟦accent bg:surface|▁▃▄▅▇█⟧⟦bg:surface| 820⟧⟦bg:surface|                   ⟧
+⟦surface|▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀⟧

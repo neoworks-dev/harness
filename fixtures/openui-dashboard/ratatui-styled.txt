@@ -1,2 +1,2 @@
 ⟦bold|analytics.revenue⟧
-⟦muted|  ⎿ ⟧⟦muted bold|Revenue⟧⟦muted|  … +14 lines⟧
+⟦muted|  ⎿ ⟧⟦muted bold|Revenue⟧⟦muted|  … +15 lines⟧

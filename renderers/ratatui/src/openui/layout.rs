@@ -1,14 +1,26 @@
 //! Layout components: stacks (with a measured row), cards, headers, tabs, accordions, steps.
 
 use neo_protocol as pb;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use serde_json::Value;
 
 use super::generic::{Ask, ask, share_of};
 use super::{N, UiKind, join};
+use crate::palette::blend;
 use crate::render::{Cx, Lines, prefixed, stack};
 use crate::text::{clip, sline, truncate, width};
+
+/// `bg` behind every span that has no background of its own (a reversed span swaps its
+/// colors, so it keeps the terminal's).
+fn fill(mut line: Line<'static>, bg: Color) -> Line<'static> {
+    for s in &mut line.spans {
+        if s.style.bg.is_none() && !s.style.add_modifier.contains(Modifier::REVERSED) {
+            s.style = s.style.bg(bg);
+        }
+    }
+    line
+}
 
 /// The id of the target for the node at `path`.
 fn path_id(path: &str) -> String {
@@ -559,9 +571,11 @@ impl<'a> Cx<'a> {
     }
 
     /// A card at least `min_h` lines tall (cards of a grid row are stretched to the tallest).
-    /// `card` (the default) floats: a rounded outline in the tone (or the border color), the
-    /// title in the top edge, a surface-colored fill and one cell of padding inside. `sunk`
-    /// is the fill without the outline, `clear` neither.
+    /// `card` (the default) floats: a filled surface, a shade lighter in each card it sits in,
+    /// with half-row edges above and below, the title on its first row and a bar in the tone
+    /// down its left side; two cells of padding inside. Without true colors it is a rounded
+    /// outline in the tone (or the border color) with the title in its top edge. `sunk` is
+    /// the fill without the edges, `clear` neither.
     pub(super) fn ui_card_h(&mut self, n: N<'_>, path: &str, w: usize, min_h: usize) -> Lines {
         let title = n.line("title");
         let tone = n.tone();
@@ -570,15 +584,21 @@ impl<'a> Cx<'a> {
         if variant == Some("sunk") {
             let pad = usize::from(w >= 4);
             let inner = w - 2 * pad;
+            let bg = self.card_color();
+            self.ui.cards += 1;
             let mut body = self.ui_children(n, "children", path, inner, None);
+            self.ui.cards -= 1;
             if let Some(t) = &title {
                 body.insert(0, sline(truncate(t, inner), self.title_style(tone)));
             }
             grow(&mut body, min_h);
             return body
                 .into_iter()
-                .map(|line| self.surface_row(line, w, pad))
+                .map(|line| self.surface_row(line, w, pad, bg))
                 .collect();
+        }
+        if boxed && let Color::Rgb(..) = self.card_color() {
+            return self.filled_card(n, path, w, min_h, title, tone);
         }
         if !boxed {
             let mut out = Vec::new();
@@ -605,7 +625,8 @@ impl<'a> Cx<'a> {
             }
             None => top.push(Span::styled(format!("╭{}╮", "─".repeat(w - 2)), edge)),
         }
-        out.push(self.fill(Line::from(top)));
+        let bg = self.p.surface;
+        out.push(fill(Line::from(top), bg));
         for line in body {
             let used = line.width();
             let mut spans = vec![Span::styled("│ ", edge)];
@@ -614,32 +635,77 @@ impl<'a> Cx<'a> {
                 spans.push(Span::raw(" ".repeat(inner - used)));
             }
             spans.push(Span::styled(" │", edge));
-            out.push(self.fill(Line::from(spans)));
+            out.push(fill(Line::from(spans), bg));
         }
         let bottom = Span::styled(format!("╰{}╯", "─".repeat(w - 2)), edge);
-        out.push(self.fill(Line::from(bottom)));
+        out.push(fill(Line::from(bottom), bg));
         out
     }
 
-    /// The surface color behind every span that has no background of its own (a reversed
-    /// span swaps its colors, so it keeps the terminal's).
-    fn fill(&self, mut line: Line<'static>) -> Line<'static> {
-        for s in &mut line.spans {
-            if s.style.bg.is_none() && !s.style.add_modifier.contains(Modifier::REVERSED) {
-                s.style = s.style.bg(self.p.surface);
-            }
+    /// The card body on its fill (see [`Cx::ui_card_h`]).
+    fn filled_card(
+        &mut self,
+        n: N<'_>,
+        path: &str,
+        w: usize,
+        min_h: usize,
+        title: Option<String>,
+        tone: Option<pb::Tone>,
+    ) -> Lines {
+        let bg = self.card_color();
+        let inner = w - 4;
+        self.ui.cards += 1;
+        let mut body = self.ui_children(n, "children", path, inner, None);
+        self.ui.cards -= 1;
+        let title = title.map(|t| truncate(&t, inner)).filter(|t| !t.is_empty());
+        if let Some(t) = title {
+            body.insert(0, sline(t, self.title_style(tone)));
         }
-        line
+        grow(&mut body, min_h.saturating_sub(2));
+        // The tone's bar, else the padding.
+        let bar = match tone {
+            Some(t) => Span::styled("▎ ", Style::new().fg(self.p.tone(t))),
+            None => Span::raw("  "),
+        };
+        // The half rows above and below: the lower (upper) half of a cell in the fill.
+        let edge = |c: &str| Line::from(Span::styled(c.repeat(w), Style::new().fg(bg)));
+        let mut out = Vec::with_capacity(body.len() + 2);
+        out.push(edge("▄"));
+        for line in body {
+            let used = line.width();
+            let mut spans = vec![bar.clone()];
+            spans.extend(line.spans);
+            spans.push(Span::raw(" ".repeat(inner.saturating_sub(used) + 2)));
+            out.push(fill(Line::from(spans), bg));
+        }
+        out.push(edge("▀"));
+        out
     }
 
-    /// `line` between `pad` cells on each side, filled to `w` on the surface color.
-    fn surface_row(&self, mut line: Line<'static>, w: usize, pad: usize) -> Line<'static> {
+    /// The fill of a card drawn now: the surface color, a shade lighter in each card around it.
+    fn card_color(&self) -> Color {
+        let steps = self.ui.cards.min(3);
+        let mut color = self.p.surface;
+        for _ in 0..steps {
+            color = blend(color, self.p.fg, 6).unwrap_or(color);
+        }
+        color
+    }
+
+    /// `line` between `pad` cells on each side, filled to `w` on `bg`.
+    fn surface_row(
+        &self,
+        mut line: Line<'static>,
+        w: usize,
+        pad: usize,
+        bg: Color,
+    ) -> Line<'static> {
         line.spans.insert(0, Span::raw(" ".repeat(pad)));
         let used = line.width();
         if used < w {
             line.spans.push(Span::raw(" ".repeat(w - used)));
         }
-        self.fill(line)
+        fill(line, bg)
     }
 
     /// The title in bold; the subtitle muted after it, or under it when they do not fit.

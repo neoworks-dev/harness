@@ -1,6 +1,7 @@
-⟦border bg:surface|╭─ ⟧⟦bg:surface bold|One⟧⟦border bg:surface| ────────────────────────────────╮⟧ ⟦accent bg:surface|╭─ ⟧⟦accent bg:surface bold|Two⟧⟦accent bg:surface| ───────────────────────────────╮⟧
-⟦border bg:surface|│ ⟧⟦bg:surface|First slide⟧⟦bg:surface|                         ⟧⟦border bg:surface| │⟧ ⟦accent bg:surface|│ ⟧⟦bg:surface|Second slide⟧⟦bg:surface|                       ⟧⟦accent bg:surface| │⟧
-⟦border bg:surface|╰──────────────────────────────────────╯⟧ ⟦accent bg:surface|╰─────────────────────────────────────╯⟧
+⟦surface|▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄⟧ ⟦surface|▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄⟧
+⟦bg:surface|  ⟧⟦bg:surface bold|One⟧⟦bg:surface|                                   ⟧ ⟦accent bg:surface|▎ ⟧⟦accent bg:surface bold|Two⟧⟦bg:surface|                                  ⟧
+⟦bg:surface|  ⟧⟦bg:surface|First slide⟧⟦bg:surface|                           ⟧ ⟦accent bg:surface|▎ ⟧⟦bg:surface|Second slide⟧⟦bg:surface|                         ⟧
+⟦surface|▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀⟧ ⟦surface|▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀⟧
                                    ⟦muted|‹⟧⟦muted| 1–2/3 ⟧⟦accent bold|›⟧
 ⟦border|────────────────────────────────────────────────────────────────────────────────⟧
 ⟦fg bg:surface|  ⟧⟦#C792EA bg:surface|fn⟧⟦fg bg:surface| ⟧⟦#82AAFF bg:surface|main⟧⟦fg bg:surface|() {⟧⟦fg bg:surface|                                                                   ⟧
