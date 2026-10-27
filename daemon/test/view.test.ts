@@ -494,11 +494,16 @@ describe("view over the bus", () => {
     return { daemon, app, owner };
   }
 
-  test("welcome brings the theme; view.subscribe gives a snapshot, then patches", async () => {
+  test("welcome brings the theme and settings; view.subscribe gives a snapshot, then patches", async () => {
     const daemon = await startTestDaemon();
     cleanups.push(() => daemon.stop());
     const c = connect(daemon);
-    expect(c.received.map((e) => e.topic)).toEqual(["bus.welcome", "agent.focus", "theme"]);
+    expect(c.received.map((e) => e.topic)).toEqual([
+      "bus.welcome",
+      "agent.focus",
+      "theme",
+      "user.settings",
+    ]);
 
     const session = daemon.focus.current().session;
     c.send({ topic: "view.subscribe", id: "v", payload: { session } });
