@@ -268,7 +268,12 @@ impl<'a> Cx<'a> {
         // question or everything is expanded, it takes a few rows while it runs and one after.
         // A `cd` into the session's directory is left out.
         if let Some(description) = described {
-            head.extend(wrap(&self.tool_label(description), hw));
+            // Muted and italic, as the terminal pane has it: it steps back from the reply.
+            let style = self.p.muted_style().add_modifier(Modifier::ITALIC);
+            head.extend(wrap(
+                &[Span::styled(clean(description).into_owned(), style)],
+                hw,
+            ));
             cut_rows(&mut head, LABEL_ROWS, hw);
         } else if let Some(command) = it
             .command

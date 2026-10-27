@@ -407,6 +407,11 @@ fn a_command_that_ran_reads_as_what_it_was_for() {
     };
     assert_eq!(lines(&item("done"), 40), ["Run the tests"]);
     assert_eq!(lines(&item("failed"), 40), ["Run the tests"]);
+    // Muted and italic beside the reply; red when it failed.
+    let style = |state: &str| render_item(&item(state), 40, &Options::default())[0].spans[0].style;
+    assert_eq!(style("done").fg, Some(pal().muted));
+    assert!(style("done").add_modifier.contains(Modifier::ITALIC));
+    assert_eq!(style("failed").fg, Some(pal().danger));
     // Running, or expanded, the command shows.
     assert_eq!(lines(&item("running"), 40)[0], "cargo test -q 2>&1 | tail");
     let expanded = Options {
