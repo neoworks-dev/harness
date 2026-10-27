@@ -119,6 +119,10 @@ fn routes_replies_and_pushed_events() {
         );
         peer.send(json!({"topic": "bus.ack", "id": input["id"]}));
 
+        let unqueue = peer.expect("session.unqueue");
+        peer.send(json!({"topic": "session.unqueued", "id": unqueue["id"],
+            "payload": {"inputs": [{"app": "code-editor", "text": "hi"}]}}));
+
         let moved = peer.expect("agent.move");
         assert_eq!(moved["payload"], json!({"app": "code-editor"}));
         peer.send(json!({"topic": "bus.error", "id": moved["id"],
@@ -169,6 +173,8 @@ fn routes_replies_and_pushed_events() {
     });
 
     client.input("s1", "code-editor", "hi", &[]).expect("input");
+    let inputs = client.unqueue("s1", "code-editor").expect("unqueue");
+    assert_eq!(inputs[0].text, "hi");
     match client.move_agent(Some("code-editor"), None) {
         Err(Error::Daemon(info)) => assert_eq!(info.message, "code-editor isn't open"),
         other => panic!("expected the daemon's error, got {other:?}"),
