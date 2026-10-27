@@ -1673,4 +1673,20 @@ fn a_split_diff_puts_the_old_line_beside_the_new_one() {
     // Too narrow for two sides: unified.
     let narrow = lines_of(&edit_item(), 60, &split);
     assert!(narrow.contains(&"-old ten".to_string()), "{narrow:#?}");
+    // Wide enough, but the changed lines would wrap in a side: unified too.
+    let long = item_of(
+        "tool",
+        r#""label":"edit src/a.rs","state":"done","#,
+        &json!({"type": "diff", "path": "src/a.rs", "lines": [
+            {"kind": "remove", "text": format!("old {}", "x".repeat(50))},
+            {"kind": "add", "text": format!("new {}", "y".repeat(50))},
+        ]})
+        .to_string(),
+    );
+    let shown = lines_of(&long, 81, &split);
+    assert!(!shown.iter().any(|l| l.contains('│')), "{shown:#?}");
+    assert!(shown.iter().any(|l| l.starts_with("-old x")), "{shown:#?}");
+    // With room for them, side by side again.
+    let wide = lines_of(&long, 120, &split);
+    assert!(wide.iter().any(|l| l.contains("│+new y")), "{wide:#?}");
 }

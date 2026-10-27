@@ -29,6 +29,23 @@ const EDIT_ROWS: usize = 40;
 
 pub(crate) type Lines = Vec<Line<'static>>;
 
+/// Whether a diff reads side by side in `w` cells: no more than a fifth of its changed lines
+/// would wrap in a side (half the width, less the `+`/`-` before each line). Otherwise code
+/// breaks mid-word on both sides, and unified reads better.
+fn split_fits(lines: &[pb::DiffLine], w: usize) -> bool {
+    use pb::DiffLineKind::{Add, Remove};
+    let room = (w.saturating_sub(1) / 2).saturating_sub(1);
+    let changed: Vec<&pb::DiffLine> = lines
+        .iter()
+        .filter(|l| matches!(l.kind, Add | Remove))
+        .collect();
+    let wrapping = changed
+        .iter()
+        .filter(|l| width(&clean(&l.text)) > room)
+        .count();
+    wrapping * 5 <= changed.len()
+}
+
 /// What one render needs: the options and the running count of buttons drawn so far (the
 /// n-th button drawn is `buttons(item)[n]`, so the focus and the default keys line up).
 pub(crate) struct Cx<'a> {
@@ -1064,7 +1081,7 @@ impl<'a> Cx<'a> {
     /// The lines of a diff: side by side when the app asks and both sides get room, else
     /// unified.
     pub(crate) fn diff_rows(&self, path: Option<&str>, lines: &[pb::DiffLine], w: usize) -> Lines {
-        if self.o.split_diffs && w >= SPLIT_MIN {
+        if self.o.split_diffs && w >= SPLIT_MIN && split_fits(lines, w) {
             return self.split_rows(path, lines, w);
         }
         self.unified_rows(path, lines, w)
