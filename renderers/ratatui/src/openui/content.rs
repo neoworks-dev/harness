@@ -100,23 +100,28 @@ impl<'a> Cx<'a> {
     fn tag_spans(&self, n: N<'_>) -> Vec<Span<'static>> {
         let label = n.line("label").unwrap_or_default();
         let color = n.tone().map(|t| self.p.tone(t));
-        let tint = self.p.tint(color);
-        let mut style = Style::new().bg(tint);
+        let mut style = Style::new().bg(self.p.tint(color));
         if let Some(c) = color {
             style = style.fg(c);
         }
-        if !matches!(tint, Color::Rgb(..)) {
-            return vec![Span::styled(format!(" {label} "), style)];
-        }
+        self.pill(label, style)
+    }
+
+    /// `text` in `style` with ends in its background: rounded (Nerd Font glyphs) or half
+    /// blocks. Without a true-color background, a space each side.
+    pub(super) fn pill(&self, text: String, style: Style) -> Vec<Span<'static>> {
+        let Some(bg @ Color::Rgb(..)) = style.bg else {
+            return vec![Span::styled(format!(" {text} "), style)];
+        };
         let (left, right) = if self.o.file_icons {
             ("\u{e0b6}", "\u{e0b4}")
         } else {
             ("▐", "▌")
         };
-        let cap = Style::new().fg(tint);
+        let cap = Style::new().fg(bg);
         vec![
             Span::styled(left, cap),
-            Span::styled(label, style),
+            Span::styled(text, style),
             Span::styled(right, cap),
         ]
     }

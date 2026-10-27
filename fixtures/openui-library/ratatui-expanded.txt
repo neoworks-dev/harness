@@ -32,4 +32,4 @@ Docs (https://example.com/docs)
 [ ] Digest
 ● on  Dark mode
 ○ off Beta
-( Why is it slow? )  ( Show the queries )
+▐ Why is it slow? ▌  ▐ Show the queries ▌

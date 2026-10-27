@@ -801,18 +801,33 @@ impl<'a> Cx<'a> {
             );
             focused = self.ui_focused(key);
         }
-        let spans = if focused {
-            let st = Style::new()
-                .fg(self.p.accent)
-                .add_modifier(Modifier::REVERSED | Modifier::BOLD);
-            vec![Span::styled(format!("( {text} )"), st)]
+        // A pill on the accent's tint; filled with the accent while it has the keys.
+        let style = if focused {
+            Style::new()
+                .fg(self.p.bg)
+                .bg(self.p.accent)
+                .add_modifier(Modifier::BOLD)
         } else {
-            vec![
-                Span::styled("( ", self.p.muted_style()),
-                Span::styled(text, Style::new().fg(self.p.accent)),
-                Span::styled(" )", self.p.muted_style()),
-            ]
+            Style::new()
+                .fg(self.p.accent)
+                .bg(self.p.tint(Some(self.p.accent)))
         };
+        let mut spans = self.pill(format!(" {text} "), style);
+        // Without true colors the pill is plain: brackets say it can be pressed.
+        if spans.len() == 1 {
+            spans = if focused {
+                let st = Style::new()
+                    .fg(self.p.accent)
+                    .add_modifier(Modifier::REVERSED | Modifier::BOLD);
+                vec![Span::styled(format!("( {text} )"), st)]
+            } else {
+                vec![
+                    Span::styled("( ", self.p.muted_style()),
+                    Span::styled(text, Style::new().fg(self.p.accent)),
+                    Span::styled(" )", self.p.muted_style()),
+                ]
+            };
+        }
         (crate::text::truncate_spans(spans, w), focused)
     }
 

@@ -740,7 +740,7 @@ fn follow_ups_wait_for_ctrl_p_and_send_their_text_with_enter() {
     show(&mut app, vec![user("u1", "check the db"), reply]);
     // Suggestions don't take the editor's place.
     assert!(!app.prompt.engaged);
-    assert!(text(&mut app).contains("( Why is it slow? )  ( Show the queries )"));
+    assert!(text(&mut app).contains("▐ Why is it slow? ▌  ▐ Show the queries ▌"));
     press(&mut app, ctrl('p'));
     assert!(app.prompt.engaged);
     assert_eq!(focused(&app).as_deref(), Some("f.0"));

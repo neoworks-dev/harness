@@ -1196,28 +1196,35 @@ fn follow_ups_are_pills_in_a_row_that_wraps() {
     let it = doc(follow_ups());
     assert_eq!(
         lines(&it, 80),
-        ["( Why is it slow? )  ( Show the queries )  ( Fix it )"]
+        ["▐ Why is it slow? ▌  ▐ Show the queries ▌  ▐ Fix it ▌"]
     );
     assert_eq!(
         lines(&it, 40),
-        ["( Why is it slow? )", "( Show the queries )  ( Fix it )"]
+        ["▐ Why is it slow? ▌", "▐ Show the queries ▌  ▐ Fix it ▌"]
     );
     // A pill that is wider than the view is cut.
-    assert_eq!(lines(&it, 10)[0], "( Why is …");
+    assert_eq!(lines(&it, 10)[0], "▐ Why is …");
+    // Without true colors they are bracketed.
+    let mut plain = outlined();
+    plain.theme.bg = Color::Reset;
+    assert_eq!(
+        lines_of(&it, 80, &plain),
+        ["( Why is it slow? )  ( Show the queries )  ( Fix it )"]
+    );
     assert_fits(&it, &focused("f.1"));
 }
 
 #[test]
-fn a_focused_follow_up_is_reversed_and_a_target_like_a_button() {
+fn a_focused_follow_up_is_filled_and_a_target_like_a_button() {
     let it = doc(follow_ups());
     let rendered = render_item(&it, 80, &focused("f.1"));
-    let reversed: Vec<&str> = rendered[0]
+    let filled: Vec<&str> = rendered[0]
         .spans
         .iter()
-        .filter(|s| s.style.add_modifier.contains(Modifier::REVERSED))
+        .filter(|s| s.style.bg == Some(pal().accent))
         .map(|s| s.content.as_ref())
         .collect();
-    assert_eq!(reversed, ["( Show the queries )"]);
+    assert_eq!(filled, [" Show the queries "]);
     let targets = openui_targets(&it, &Options::default());
     let got: Vec<(&str, &str)> = targets
         .iter()

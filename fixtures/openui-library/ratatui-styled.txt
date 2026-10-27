@@ -32,4 +32,4 @@
 ⟦muted|[ ]⟧ Digest
 ⟦success|● on ⟧ Dark mode
 ⟦muted|○ off⟧ Beta
-⟦muted|( ⟧⟦accent|Why is it slow?⟧⟦muted| )⟧  ⟦muted|( ⟧⟦accent|Show the queries⟧⟦muted| )⟧
+⟦#2C364C|▐⟧⟦accent bg:#2C364C| Why is it slow? ⟧⟦#2C364C|▌⟧  ⟦#2C364C|▐⟧⟦accent bg:#2C364C| Show the queries ⟧⟦#2C364C|▌⟧
