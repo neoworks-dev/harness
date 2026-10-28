@@ -281,7 +281,7 @@ describe("using a doc", () => {
     expect(sent).toMatchObject({
       type: "user_message",
       text: '[ui action] The user pressed "Send": Here you go\nform ask: {"name":"Ada"}\ncontext: {"id":3}',
-      shown: "Here you go\n\nname: Ada",
+      shown: "Here you go\n\nName: Ada",
     });
   });
 
@@ -324,7 +324,7 @@ describe("using a doc", () => {
     await daemon.sessions.idle(session);
     expect(daemon.store.readTypes(session, ["user_message"]).at(-1)?.event).toMatchObject({
       text: '[ui action] The user pressed "Deploy": Deploy now\nstate: {"env":"staging"}',
-      shown: "Deploy now\n\nenv: staging",
+      shown: "Deploy now\n\nenv: Staging",
     });
   });
 
@@ -335,9 +335,9 @@ describe("using a doc", () => {
       session,
       [
         '<Form name="pick">',
-        '  <CheckBoxGroup name="tests" value={["unit", "e2e"]}>',
+        '  <FormControl label="Tests"><CheckBoxGroup name="tests" value={["unit", "e2e"]}>',
         '    <CheckBoxItem name="unit" label="Unit"/><CheckBoxItem name="e2e" label="E2E"/>',
-        "  </CheckBoxGroup>",
+        "  </CheckBoxGroup></FormControl>",
         '  <SwitchGroup name="opts"><SwitchItem name="lint" label="Lint" checked/>',
         '    <SwitchItem name="fmt" label="Format"/></SwitchGroup>',
         '  <Input name="note"/>',
@@ -355,7 +355,7 @@ describe("using a doc", () => {
     };
     const last = (): SessionEvent | undefined =>
       daemon.store.readTypes(session, ["user_message"]).at(-1)?.event;
-    const shown = "Go with the selected options\n\ntests: unit, e2e · opts: lint";
+    const shown = "Go with the selected options\n\nTests: Unit, E2E · opts: Lint";
     const told =
       '[ui action] The user pressed "Go": Go with the selected options\n' +
       'form pick: {"tests":["unit","e2e"],"opts":{"lint":true,"fmt":false},"note":null}\n' +
