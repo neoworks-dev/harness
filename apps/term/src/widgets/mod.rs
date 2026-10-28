@@ -40,8 +40,8 @@
 //!   searches (smart case, Enter jumps, Esc gives up), then n/N the next / previous match; `v`
 //!   and `V` select characters and lines (Esc leaves them), `y` copies the selection and `yy`
 //!   the cursor's line (`3yy` three), without the signs ([`Widgets::take_copy`]). The leader
-//!   is Space or `\`:
-//!   `<leader>c` comments on the cursor's line or the selection's lines — a block above them
+//!   is Space or `\`.
+//!   `c` comments on the cursor's line or the selection's lines — a block above them
 //!   splitting the file, written in place (Enter keeps it, Esc gives up, emptied it goes) and
 //!   put in the prompt as `@path:start-end text` ([`Widgets::take_comment_changes`]); on a
 //!   commented line it edits that comment, and the prompt's copy follows. The comments stay with

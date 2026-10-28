@@ -125,7 +125,7 @@ struct View {
     width: usize,
 }
 
-/// A comment on lines of the file, written in the view (`<leader>c`) and put in the prompt as
+/// A comment on lines of the file, written in the view (`c`) and put in the prompt as
 /// `@path:start-end text`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Comment {
@@ -641,9 +641,9 @@ impl DiffView {
     /// gg/G, H/M/L; a count before a key repeats it (`5j`) or names a line (`120G`); Ctrl-D/U
     /// half a page, Ctrl-F/B and PgUp/PgDn a page, Ctrl-E/Y scroll a line; `/` searches (smart
     /// case), `n` / `N` go to the next / previous match (without a search, `n` / `p` go between
-    /// hunks, as `}` / `{` always do); `v` and `V` select characters and lines. The leader (`\`
-    /// or Space) then `c` comments on the line or the selection (on a commented line: edits the
-    /// comment), `w` wraps or cuts long lines, `e` opens the file in the editor at the cursor.
+    /// hunks, as `}` / `{` always do); `v` and `V` select characters and lines; `c` comments on the
+    /// line or the selection (on a commented line: edits the comment). The leader (`\` or
+    /// Space) then `w` wraps or cuts long lines, `e` opens the file in the editor at the cursor.
     pub(crate) fn key(&mut self, key: KeyEvent) -> bool {
         self.message = None;
         if self.writing.is_some() {
@@ -670,7 +670,6 @@ impl DiffView {
                     let last = self.len(split).saturating_sub(1);
                     self.yank(cur, (cur + n - 1).min(last), None, split);
                 }
-                (Pending::Leader, KeyCode::Char('c')) => self.start_comment(),
                 (Pending::Leader, KeyCode::Char('w')) => {
                     self.wrap = !self.wrap;
                     self.hscroll = 0;
@@ -829,6 +828,7 @@ impl DiffView {
                 });
             }
             (KeyCode::Char(' ' | '\\'), false) => self.pending = Some(Pending::Leader),
+            (KeyCode::Char('c'), false) => self.start_comment(),
             (KeyCode::Char('/'), false) => self.typing = Some(String::new()),
             (KeyCode::Char('s'), false) => self.force = Some(!split),
             (KeyCode::Char('f'), false) => self.toggle_full(),
@@ -1092,7 +1092,7 @@ impl DiffView {
         self.col = col.min(line.len().saturating_sub(1));
     }
 
-    /// `<leader>c`: writes a comment on the selection's lines, or the cursor's; on a line a
+    /// `c`: writes a comment on the selection's lines, or the cursor's; on a line a
     /// comment is about (no selection), edits that one.
     fn start_comment(&mut self) {
         if self.req.is_none() {
@@ -3461,7 +3461,7 @@ index 1111111..2222222 100644
     }
 
     #[test]
-    fn leader_c_comments_on_a_line_and_the_prompt_gets_it() {
+    fn c_comments_on_a_line_and_the_prompt_gets_it() {
         let mut v = file_view(&std::env::temp_dir(), "@@ -10,3 +10,3 @@\n a\n-b\n+B\n c\n");
         let mut t = Terminal::new(TestBackend::new(60, 12)).unwrap();
         draw_to(&v, &mut t);
@@ -3469,7 +3469,7 @@ index 1111111..2222222 100644
         for _ in 0..3 {
             ch(&mut v, 'j');
         }
-        typed(&mut v, " c");
+        typed(&mut v, "c");
         typed(&mut v, "use a const");
         let out = draw_to(&v, &mut t);
         let rows: Vec<&str> = out.lines().collect();
@@ -3493,7 +3493,7 @@ index 1111111..2222222 100644
         assert!(out.contains("│ use a const"), "{out}");
         assert!(!out.contains("enter keeps it"), "{out}");
         // On the commented line again: edits it; the prompt's copy is replaced.
-        typed(&mut v, " c");
+        typed(&mut v, "c");
         assert_eq!(
             v.writing.as_ref().map(|w| w.text.as_str()),
             Some("use a const")
@@ -3508,7 +3508,7 @@ index 1111111..2222222 100644
             )]
         );
         // Emptied: it goes.
-        typed(&mut v, " c");
+        typed(&mut v, "c");
         ctrl(&mut v, 'u');
         press(&mut v, KeyCode::Enter);
         assert_eq!(
@@ -3517,7 +3517,7 @@ index 1111111..2222222 100644
         );
         assert!(v.comments.is_empty());
         // Esc gives up and leaves nothing.
-        typed(&mut v, " cnever mind");
+        typed(&mut v, "cnever mind");
         assert!(!press(&mut v, KeyCode::Esc), "the view stays open");
         assert!(v.writing.is_none());
         assert!(v.take_comment_changes().is_empty());
@@ -3561,7 +3561,7 @@ index 1111111..2222222 100644
         ch(&mut v, 'V');
         typed(&mut v, "jjj");
         assert_eq!(v.marks(2, false).sel, Some((0, 1)));
-        typed(&mut v, " c");
+        typed(&mut v, "c");
         assert!(v.visual.get().is_none(), "the comment ends the selection");
         typed(&mut v, "why");
         press(&mut v, KeyCode::Enter);
@@ -3584,7 +3584,7 @@ index 1111111..2222222 100644
         // Only the old side has a removed line: its comment counts in the old numbers.
         let mut w = file_view(&std::env::temp_dir(), "@@ -10,2 +10,1 @@\n a\n-b\n");
         draw_to(&w, &mut t);
-        typed(&mut w, "jj cgone?");
+        typed(&mut w, "jjcgone?");
         press(&mut w, KeyCode::Enter);
         assert!(w.comments[0].old);
         assert_eq!(w.comments[0].start, 11);
