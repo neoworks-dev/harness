@@ -75,6 +75,7 @@ test("/settings without a toggle shows them with their state, and picking one fl
     "Show, don't tell. · off",
     "Side-by-side diffs · off",
     "Charts as images · off",
+    "Fold earlier edits · off",
     "Messages reach a working agent at once · off",
     "Subagents · both",
     "Always ask before starting agents · off",
@@ -93,7 +94,9 @@ test("side-by-side diffs is a toggle for the apps: they hear of it, the agents d
   const heard: unknown[] = [];
   daemon.settings.onToggle((settings) => heard.push(settings));
   await daemon.commands.run(session, "/settings split-diffs on");
-  expect(heard).toEqual([{ showDontTell: false, splitDiffs: true, chartImages: false }]);
+  expect(heard).toEqual([
+    { showDontTell: false, splitDiffs: true, chartImages: false, hideEdits: false },
+  ]);
   expect(daemon.settings.userSettings().splitDiffs).toBe(true);
   await daemon.commands.run(session, "/settings chart-images on");
   expect(daemon.settings.userSettings().chartImages).toBe(true);

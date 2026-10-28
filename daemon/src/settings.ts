@@ -240,6 +240,16 @@ export class Settings {
     this.togglesChanged();
   }
 
+  /** Whether apps show only the newest edit's changes (off until the user turns it on). */
+  hideEdits(): boolean {
+    return this.store.getMeta(metaKey("daemon", "hide_edits")) === "on";
+  }
+
+  setHideEdits(on: boolean): void {
+    this.store.setMeta(metaKey("daemon", "hide_edits"), on ? "on" : "off");
+    this.togglesChanged();
+  }
+
   /**
    * Whether starting a subagent always asks: not allowed by /approvals auto nor by an earlier
    * "allow for this session" (off until the user turns it on).
@@ -280,6 +290,7 @@ export class Settings {
       showDontTell: this.showDontTell(),
       splitDiffs: this.splitDiffs(),
       chartImages: this.chartImages(),
+      hideEdits: this.hideEdits(),
     };
   }
 

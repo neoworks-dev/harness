@@ -908,6 +908,10 @@
         "chartImages": {
           "type": "boolean",
           "description": "Apps that can show images draw neoui charts as pictures (labels stay text); else with characters. Absent: off."
+        },
+        "hideEdits": {
+          "type": "boolean",
+          "description": "Only the newest file edit or write in the chat shows its changes; earlier ones are their one line. Off (absent): every edit shows them."
         }
       },
       "required": ["showDontTell", "splitDiffs"],

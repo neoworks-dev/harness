@@ -1123,6 +1123,9 @@ pub struct UserSettings {
         skip_serializing_if = "Option::is_none"
     )]
     pub chart_images: Option<bool>,
+    /// Only the newest file edit or write in the chat shows its changes; earlier ones are their one line. Off (absent): every edit shows them.
+    #[serde(rename = "hideEdits", default, skip_serializing_if = "Option::is_none")]
+    pub hide_edits: Option<bool>,
 }
 
 /// Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon.

@@ -413,6 +413,15 @@ export class Commands {
         ),
       },
       {
+        id: "hide-edits",
+        name: "Fold earlier edits",
+        description: "Only the newest edit shows its changes",
+        ...onOff(
+          () => settings.hideEdits(),
+          (on) => settings.setHideEdits(on),
+        ),
+      },
+      {
         id: "steer",
         name: "Messages reach a working agent at once",
         description: "Off: they wait for the turn to end. On: Claude Code reads them mid-turn",

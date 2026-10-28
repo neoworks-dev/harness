@@ -73,6 +73,9 @@ pub struct ChatOpts {
     pub running: bool,
     /// Diffs side by side where they fit (`/diff split`).
     pub split_diffs: bool,
+    /// Only the newest edit shows its changes, the others their one line (`/settings
+    /// hide-edits`); off, every edit shows them.
+    pub hide_edits: bool,
 }
 
 /// A file a turn changed, as the tools' diffs name it, and the lines added and removed.
@@ -100,7 +103,7 @@ struct CacheKey {
     thoughts: bool,
     icons: bool,
     split_diffs: bool,
-    /// The newest edit: it shows what it changed, the others are one line.
+    /// An edit that shows what it changed: every one, or with hide-edits the newest.
     open_edit: bool,
     focused: Option<usize>,
     palette: Palette,
@@ -477,8 +480,9 @@ impl Chat {
         let mut entries: Vec<Entry> = Vec::with_capacity(shown.len());
         let mut files: Vec<FileTarget> = Vec::new();
         let mut summaries = turn_changes(items, opts.running).into_iter().peekable();
-        // Only the newest edit shows what it changed (Ctrl-O opens them all).
+        // With hide-edits only the newest edit shows what it changed (Ctrl-O opens them all).
         let last_edit = items.iter().rposition(is_edit);
+        let open_edit = |index: usize| !opts.hide_edits || Some(index) == last_edit;
         // A blank row between entries, tool calls too.
         let mut offset = 0;
         let mut k = 0;
@@ -561,7 +565,7 @@ impl Chat {
                 thoughts: opts.show_thoughts,
                 icons: opts.icons,
                 split_diffs: opts.split_diffs,
-                open_edit: Some(index) == last_edit,
+                open_edit: open_edit(index),
                 focused: active,
                 palette: opts.palette,
                 marker: opts.marker,
@@ -1416,6 +1420,7 @@ mod tests {
             icons: false,
             running: false,
             split_diffs: false,
+            hide_edits: false,
         }
     }
 
@@ -1921,7 +1926,14 @@ mod tests {
             item("a1", "agent", "Done."),
         ]));
         c.layout(100, 40, &opts());
-        // Only the newest edit is open.
+        // Every edit is open.
+        assert_eq!(texts(&c)[2..5], ["edit src/b.rs  +2 −0", "+new", "+new"]);
+        // With hide-edits only the newest one is.
+        let hide = ChatOpts {
+            hide_edits: true,
+            ..opts()
+        };
+        c.layout(100, 40, &hide);
         assert_eq!(
             texts(&c)[2..7],
             [
@@ -1934,7 +1946,7 @@ mod tests {
         );
         let split = ChatOpts {
             split_diffs: true,
-            ..opts()
+            ..hide
         };
         c.layout(100, 40, &split);
         let row = &texts(&c)[5];

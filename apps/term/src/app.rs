@@ -330,6 +330,8 @@ pub struct App {
     split_diffs: bool,
     /// `/settings chart-images`: charts as pictures where the terminal draws them.
     chart_images: bool,
+    /// `/settings hide-edits`: only the newest edit shows its changes.
+    hide_edits: bool,
     /// What Alt-. / Alt-, did to the panes' widths.
     resized: Resized,
     /// The daemon's connectors (apps and services), for the sidebar's servers.
@@ -447,6 +449,7 @@ impl App {
             // Until the daemon's user.settings says otherwise.
             split_diffs: false,
             chart_images: false,
+            hide_edits: false,
             resized: Resized::default(),
             connectors: Vec::new(),
             editor: Editor::default(),
@@ -744,11 +747,13 @@ impl App {
         match event {
             Event::Focus(focus) => self.on_focus(focus, &mut fx),
             Event::Connectors(connectors) => self.connectors = connectors,
-            // `/settings`' side-by-side diffs, for the chat and the file view; charts as images.
+            // `/settings`' side-by-side diffs, for the chat and the file view; charts as images;
+            // folded edits.
             Event::UserSettings(settings) => {
                 self.split_diffs = settings.split_diffs;
                 self.widgets.set_split_diffs(settings.split_diffs);
                 self.chart_images = settings.chart_images == Some(true);
+                self.hide_edits = settings.hide_edits == Some(true);
             }
             Event::SessionChanged(info) => {
                 if info.id == self.session {
@@ -2886,6 +2891,7 @@ impl App {
                 // A subagent's work has no turns to sum up.
                 running: true,
                 split_diffs: self.split_diffs,
+                hide_edits: self.hide_edits,
             };
             if let Some(t) = self.transcript.as_mut() {
                 t.draw(frame, areas.chat, &opts, &self.styles);
@@ -3047,6 +3053,7 @@ impl App {
             icons: self.icons,
             running: self.running,
             split_diffs: self.split_diffs,
+            hide_edits: self.hide_edits,
         }
     }
 

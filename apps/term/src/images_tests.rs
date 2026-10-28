@@ -72,6 +72,7 @@ fn opts() -> ChatOpts {
         icons: false,
         running: false,
         split_diffs: false,
+        hide_edits: false,
     }
 }
 

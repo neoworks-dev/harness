@@ -948,6 +948,8 @@ type UserSettings struct {
 	SplitDiffs bool `json:"splitDiffs"`
 	// Apps that can show images draw neoui charts as pictures (labels stay text); else with characters. Absent: off.
 	ChartImages *bool `json:"chartImages,omitempty"`
+	// Only the newest file edit or write in the chat shows its changes; earlier ones are their one line. Off (absent): every edit shows them.
+	HideEdits *bool `json:"hideEdits,omitempty"`
 }
 
 // UiActionMessage: Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon.
