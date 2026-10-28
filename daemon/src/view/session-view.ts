@@ -205,6 +205,8 @@ export class SessionView {
   private readonly windows = new Map<string, string>();
   /** Those of them that outlive a turn (started in the background). */
   private readonly background = new Set<string>();
+  /** What the harness's own subagents are called, by the label of their events. */
+  private readonly names = new Map<string, string>();
   private readonly docs: NeoUiDocs;
   /** The line of app news that is last in the chat, and what it says per app. */
   private appNews: { ref: string; parts: Map<string, string> } | undefined;
@@ -290,6 +292,9 @@ export class SessionView {
       case "subagent_started":
         this.windows.set(event.id, event.agent);
         if (event.background === true) this.background.add(event.id);
+        if (event.native === true && event.name !== undefined) {
+          this.names.set(event.agent, event.name);
+        }
         return [];
       case "subagent_ended":
         this.windows.delete(event.id);
@@ -573,10 +578,12 @@ export class SessionView {
     answer?: string | null,
     note?: string,
   ): ViewItem {
-    // What is asked; a guest's named like its calls, `claude: …`.
+    // What is asked; a guest's named like its calls, `claude: …`, a harness's own subagent by
+    // its name (`Explore: …`).
+    const asker = request.agent === undefined ? undefined : this.names.get(request.agent);
     const label =
       this.guestAsking(request) && this.only === undefined
-        ? `${request.agent}: ${request.title}`
+        ? `${asker ?? request.agent}: ${request.title}`
         : request.title;
     const details: Component[] = [];
     if (request.details?.length) {
@@ -739,16 +746,23 @@ export class SessionView {
     return ops;
   }
 
-  /** A delegation reads `neo · first line of the task`, whatever the harness called its tool. */
+  /**
+   * A delegation reads `neo · first line of the task`, whatever the harness called its tool, and
+   * so does a subagent of the harness's own (Claude Code's Agent: `Explore · its description`).
+   */
   private callLabel(call: Call): string {
-    if (call.agent !== undefined || call.tool !== "delegate" || !isRecord(call.rawInput)) {
-      return call.title;
+    if (call.agent !== undefined || !isRecord(call.rawInput)) return call.title;
+    const { agent, task, subagent_type: type, description, prompt } = call.rawInput;
+    let who: unknown = agent;
+    let what: unknown = task;
+    if (call.tool !== "delegate") {
+      who = type;
+      what = typeof description === "string" && description.trim() !== "" ? description : prompt;
     }
-    const { agent, task } = call.rawInput;
-    if (typeof agent !== "string" || typeof task !== "string") return call.title;
-    const first = task.split("\n").find((line) => line.trim() !== "") ?? "";
+    if (typeof who !== "string" || typeof what !== "string") return call.title;
+    const first = what.split("\n").find((line) => line.trim() !== "") ?? "";
     const line = first.trim().replace(/\s+/g, " ");
-    return `${agent} · ${line.length > 80 ? `${line.slice(0, 79)}…` : line}`;
+    return `${who} · ${line.length > 80 ? `${line.slice(0, 79)}…` : line}`;
   }
 
   private toolItem(call: Call): ViewItem {

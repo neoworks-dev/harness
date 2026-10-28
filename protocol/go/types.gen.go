@@ -2128,7 +2128,7 @@ const (
 	NoticeToneDanger NoticeTone = "danger"
 )
 
-// SubagentStarted: The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event.
+// SubagentStarted: The main agent's delegate call was approved and a subagent starts (or one of the harness's own did, see `native`). Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event.
 type SubagentStarted struct {
 	ID string `json:"id"`
 	// Harness name: neo, claude, codex…
@@ -2145,6 +2145,8 @@ type SubagentStarted struct {
 	Child *string `json:"child,omitempty"`
 	// The delegate call returned at once and the subagent outlives the turn: a turn's end does not close it, and its final reply reaches the main agent as an agent_message.
 	Background *bool `json:"background,omitempty"`
+	// A subagent of the harness's own (Claude Code's Agent tool, Codex's spawn_agent), not one delegate started. `agent` is then the label its events carry, unique to it (`claude/1a2b3c4d`), and `name` what it is called.
+	Native *bool `json:"native,omitempty"`
 }
 
 func (SubagentStarted) isSessionEvent() {}

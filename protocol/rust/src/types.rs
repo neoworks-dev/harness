@@ -2451,7 +2451,7 @@ pub enum NoticeTone {
     Danger,
 }
 
-/// The main agent's delegate call was approved and a subagent starts. Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event.
+/// The main agent's delegate call was approved and a subagent starts (or one of the harness's own did, see `native`). Until the matching subagent_ended, events labelled with `agent` are that subagent's work: they stay in the log (and in the per-agent view) but the session's view draws one tool item for the delegation instead of its messages and tool calls. Not a context event.
 /// Tagged `type: "subagent_started"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SubagentStarted {
@@ -2483,6 +2483,9 @@ pub struct SubagentStarted {
         skip_serializing_if = "Option::is_none"
     )]
     pub background: Option<bool>,
+    /// A subagent of the harness's own (Claude Code's Agent tool, Codex's spawn_agent), not one delegate started. `agent` is then the label its events carry, unique to it (`claude/1a2b3c4d`), and `name` what it is called.
+    #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
+    pub native: Option<bool>,
 }
 
 /// The subagent started by subagent_started finished, failed or was stopped.

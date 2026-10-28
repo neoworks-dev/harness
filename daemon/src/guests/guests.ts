@@ -135,17 +135,49 @@ export interface StoredConversation {
   updatedAt?: string;
 }
 
-interface Run {
+/** Where the updates of one ACP session go: a turn's, or a native subagent's of that turn. */
+interface Stream {
   emit: (update: AgentUpdate) => void;
+  /** The label its events carry; the session's own agent's have none. */
+  agent?: string;
+  /** Before its message and tool call ids, so they stay unique in the log. */
+  prefix: string;
   /** ACP may not send message ids: a new one starts whenever something else came in between. */
   messageId?: string;
   messageKind?: "agent_message_chunk" | "agent_thought_chunk";
   /** Text of the agent's messages, by id, in order. */
   messages: Map<string, string>;
-  /** Aborted when the run ends: drops its open permission requests. */
-  done: AbortController;
   /** The adapter's own title of each tool call, to describe it again once its input arrives. */
   titles: Map<string, string>;
+}
+
+interface Run extends Stream {
+  /** Aborted when the run ends: drops its open permission requests. */
+  done: AbortController;
+}
+
+/**
+ * A subagent of the harness's own (Claude Code's Agent tool, Codex's spawn_agent), which the
+ * adapter reports as an ACP session of its own (the `subagents` client capability). It is logged
+ * like a delegation: subagent_started and subagent_ended, and its events labelled with a name
+ * of its own, so the lists show it and its transcript opens like a delegated agent's.
+ */
+interface NativeChild {
+  /** Its subagent id in subagent_started; a new one each time the adapter runs it again. */
+  id: string;
+  /** What lists call it: its name and role (Explore), when the adapter says. */
+  name?: string;
+  /** Claude Code's short description of the task, until the prompt arrives. */
+  description?: string;
+  /** Between its subagent_started and subagent_ended. */
+  running: boolean;
+  /** subagent_started is logged once something of this run arrived. */
+  started: boolean;
+  /** It may outlive the turn (Claude Code's run_in_background, every Codex agent). */
+  background: boolean;
+  /** session/cancel on its ACP session stops it. */
+  cancel: boolean;
+  stream: Stream;
 }
 
 /** Where a connection's notifications go: its guest, once there is one. */
@@ -198,6 +230,10 @@ interface Guest {
   backgroundTasks: boolean;
   /** What a slash command's prompt couldn't carry, for the next prompt. */
   carried?: { events: ContextEvent[]; summary?: string };
+  /** Its own subagents, by the ACP session they report in. */
+  children: Map<string, NativeChild>;
+  /** Whether each of its Agent calls runs in the background, by the adapter's tool call id. */
+  backgroundCalls: Map<string, boolean>;
 }
 
 const KINDS = new Set<string>([
@@ -1041,6 +1077,8 @@ export class GuestManager {
     const clientCapabilities: Record<string, unknown> = {
       fs: { readTextFile: false, writeTextFile: false },
       terminal: false,
+      // The harness's own subagents report as ACP sessions of their own (see NativeChild).
+      subagents: {},
     };
     // Codex's adapter takes a custom gateway only from a client that says it can sign in to one.
     if (route?.gateway) clientCapabilities.auth = { _meta: { gateway: true } };
@@ -1126,6 +1164,9 @@ export class GuestManager {
       const { guest } = target;
       if (!guest) return;
       this.live.delete(guest);
+      for (const child of guest.children.values()) {
+        this.endChild(guest, child, "error", `${this.title(name)} exited`);
+      }
       if (main) return;
       const key = `${session}\0${name}`;
       // Only if it's still the current one (a resume replaces it).
@@ -1172,6 +1213,8 @@ export class GuestManager {
         config,
         steering,
         backgroundTasks,
+        children: new Map(),
+        backgroundCalls: new Map(),
       };
       if (route) guest.route = route;
       if (this.forgotten.has(session)) {
@@ -1234,12 +1277,15 @@ export class GuestManager {
   }
 
   private async prompt(guest: Guest, task: string, opts: RunOptions): Promise<GuestRunResult> {
+    // The session's own agent is unlabelled; ids are prefixed so they stay unique in the log.
     const run: Run = {
       emit: opts.emit,
+      prefix: guest.main ? `${guest.name}-main` : guest.name,
       messages: new Map(),
       done: new AbortController(),
       titles: new Map(),
     };
+    if (!guest.main) run.agent = guest.name;
     const text = (): string => [...run.messages.values()].at(-1)?.trim() ?? "";
     if (opts.signal?.aborted) return { stopReason: "cancelled", text: "" };
     // What the session wants the agent to hear (guests' turns, reverted edits, the user's notes),
@@ -1314,12 +1360,175 @@ export class GuestManager {
       else target.commands = commands;
       return;
     }
-    const run = guest?.run;
-    if (!guest || !run) return;
-    // The session's own agent is unlabelled; ids are prefixed so they stay unique in the log.
-    const agent = guest.main ? undefined : guest.name;
-    const prefix = guest.main ? `${guest.name}-main` : guest.name;
+    // (A resumed conversation's history comes before there is a guest: it is in the log already.)
+    if (!guest) return;
     const update = params.update;
+    const sessionId = str(params.sessionId);
+    if (this.nativeLifecycle(guest, update)) return;
+    if (sessionId !== undefined && sessionId !== guest.acpSession) {
+      const child = guest.children.get(sessionId);
+      // The prompt opens its transcript, as delegate's task does.
+      if (child && update.sessionUpdate === "session_message") {
+        const content = Array.isArray(update.content) ? update.content : [];
+        const task = content
+          .map((c: unknown) => (isRecord(c) ? (str(c.text) ?? "") : ""))
+          .join("")
+          .trim();
+        // Its id is that of the Agent call that started it (or of the SendMessage that resumed it).
+        const call = str(update.messageId);
+        if (call !== undefined && guest.backgroundCalls.get(call)) child.background = true;
+        if (call !== undefined) guest.backgroundCalls.delete(call);
+        if (child.running && !child.started && task !== "") this.startChild(guest, child, task);
+        return;
+      }
+      if (child?.running) {
+        if (!child.started) this.startChild(guest, child);
+        this.streamUpdate(child.stream, update);
+      }
+      return;
+    }
+    const run = guest.run;
+    if (!run) return;
+    // Whether an Agent call runs in the background, for the subagent it starts (its input may
+    // arrive with an update of the call).
+    const call = str(update.toolCallId);
+    if (call !== undefined && isRecord(update.rawInput) && update.rawInput.subagent_type) {
+      guest.backgroundCalls.set(call, update.rawInput.run_in_background === true);
+    }
+    this.streamUpdate(run, update);
+  }
+
+  /**
+   * A native subagent starting, running again or ending (both forms the adapters send: the
+   * ACP RFD's subagent_update, Claude Code's; AIR's subagent_spawned and
+   * subagent_state_update, Codex's). Returns whether the update was one of those.
+   */
+  private nativeLifecycle(guest: Guest, update: Record<string, unknown>): boolean {
+    const kind = update.sessionUpdate;
+    if (kind === "subagent_update") {
+      const acpSession = str(update.sessionId);
+      if (acpSession === undefined) return true;
+      const child = this.childOf(guest, acpSession, false);
+      const title = str(update.title);
+      if (title !== undefined) child.name = title;
+      const description = str(update.description);
+      if (description !== undefined) child.description = description;
+      if (isRecord(update.capabilities)) child.cancel = isRecord(update.capabilities.cancel);
+      const state = isRecord(update.state) ? update.state : undefined;
+      if (state?.state === "running" && !child.running) {
+        child.id = `n_${crypto.randomUUID().slice(0, 8)}`;
+        child.running = true;
+        child.started = false;
+      } else if (state?.state === "idle" || state?.state === "unknown") {
+        const reason = str(state.stopReason);
+        const error = isRecord(state.error) ? str(state.error.message) : undefined;
+        let stop: StopReason = "end_turn";
+        if (reason === "error" || state.state === "unknown") stop = "error";
+        else if (reason !== undefined && STOP_REASONS.has(reason)) stop = reason as StopReason;
+        const why = state.state === "unknown" ? "lost track of it" : undefined;
+        this.endChild(guest, child, stop, error ?? why);
+      }
+      return true;
+    }
+    if (kind === "subagent_spawned") {
+      const acpSession = str(update.subagentSessionId);
+      if (acpSession === undefined) return true;
+      const child = this.childOf(guest, acpSession, true);
+      const name = str(update.name);
+      if (name !== undefined) child.name = name;
+      child.id = `n_${crypto.randomUUID().slice(0, 8)}`;
+      child.running = true;
+      child.started = false;
+      this.startChild(guest, child, str(update.prompt) ?? str(update.task));
+      return true;
+    }
+    if (kind === "subagent_state_update") {
+      const acpSession = str(update.subagentSessionId);
+      const child = acpSession === undefined ? undefined : guest.children.get(acpSession);
+      if (!child) return true;
+      const state = str(update.state);
+      if (state === "completed") this.endChild(guest, child, "end_turn");
+      else if (state === "cancelled") this.endChild(guest, child, "cancelled");
+      else this.endChild(guest, child, "error", state === "failed" ? undefined : state);
+      return true;
+    }
+    return false;
+  }
+
+  /** The native subagent that reports in this ACP session; a new one the first time. */
+  private childOf(guest: Guest, acpSession: string, background: boolean): NativeChild {
+    let child = guest.children.get(acpSession);
+    if (child) return child;
+    // Its label stays when it runs again, so its transcript goes on where it left off.
+    const label = `${guest.name}/${crypto.randomUUID().slice(0, 8)}`;
+    child = {
+      id: "",
+      running: false,
+      started: false,
+      background,
+      cancel: false,
+      stream: {
+        emit: (event) => this.options.append(guest.session, event),
+        agent: label,
+        prefix: label,
+        messages: new Map(),
+        titles: new Map(),
+      },
+    };
+    guest.children.set(acpSession, child);
+    return child;
+  }
+
+  /**
+   * Logs the start of a native subagent's run, with its task: the prompt, else the adapter's
+   * short description of it.
+   */
+  private startChild(guest: Guest, child: NativeChild, task?: string): void {
+    child.started = true;
+    const started: Extract<SessionEvent, { type: "subagent_started" }> = {
+      type: "subagent_started",
+      id: child.id,
+      agent: child.stream.agent ?? guest.name,
+      task: task ?? child.description ?? child.name ?? "",
+    };
+    started.name = child.name ?? this.title(guest.name);
+    started.native = true;
+    if (child.background) started.background = true;
+    this.options.append(guest.session, started);
+  }
+
+  private endChild(guest: Guest, child: NativeChild, stopReason: StopReason, error?: string): void {
+    if (!child.running) return;
+    child.running = false;
+    if (!child.started) this.startChild(guest, child);
+    const ended: Extract<SessionEvent, { type: "subagent_ended" }> = {
+      type: "subagent_ended",
+      id: child.id,
+      stopReason,
+    };
+    if (error !== undefined) ended.error = error;
+    this.options.append(guest.session, ended);
+  }
+
+  /**
+   * Stops a native subagent of the session's agent (its id is in subagent_started), when its
+   * adapter lets it be stopped alone. False when there is no such subagent running.
+   */
+  cancelNative(session: string, id: string): boolean {
+    for (const guest of this.live) {
+      if (guest.session !== session) continue;
+      for (const [acpSession, child] of guest.children) {
+        if (child.id !== id || !child.running || !child.cancel) continue;
+        guest.conn.notify("session/cancel", { sessionId: acpSession });
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** One ACP session's update into the log: what the agent says, its plan, its tool calls. */
+  private streamUpdate(run: Stream, update: Record<string, unknown>): void {
+    const { agent, prefix } = run;
     const kind = update.sessionUpdate;
     if (kind === "agent_message_chunk" || kind === "agent_thought_chunk") {
       const text = isRecord(update.content) ? str(update.content.text) : undefined;
@@ -1400,7 +1609,17 @@ export class GuestManager {
     }
     const options = this.permissionOptions(params.options);
     const cancelled = { outcome: { outcome: "cancelled" } };
-    if (!guest?.run || options.length === 0) return cancelled;
+    // A native subagent asks in its own session; one in the background may outlive the turn.
+    const acpSession = str(params.sessionId);
+    const child =
+      acpSession === undefined || acpSession === guest?.acpSession
+        ? undefined
+        : guest?.children.get(acpSession);
+    if (!guest || (!guest.run && !child?.running) || options.length === 0) return cancelled;
+    const stream = child?.stream ?? {
+      agent: guest.main ? undefined : guest.name,
+      prefix: guest.main ? `${guest.name}-main` : guest.name,
+    };
     const call: Record<string, unknown> = Object.assign({}, params.toolCall);
     const content = toContent(call.content, this.options.storeImage);
     const callKind = str(call.kind);
@@ -1443,7 +1662,7 @@ export class GuestManager {
     }
     const request: Omit<PermissionRequest, "id"> = {
       type: "permission_request",
-      agent: guest.name,
+      agent: stream.agent ?? guest.name,
       title: describeCall(str(call.title) ?? "use a tool", call.rawInput).title,
       options,
     };
@@ -1475,12 +1694,12 @@ export class GuestManager {
     }
     const toolCallId = str(call.toolCallId);
     if (toolCallId !== undefined) {
-      request.toolCallId = `${guest.main ? `${guest.name}-main` : guest.name}:${toolCallId}`;
+      request.toolCallId = `${stream.prefix}:${toolCallId}`;
     }
     const { option: optionId, note } = await this.options.asker.askWithNote(
       guest.session,
       request,
-      guest.run.done.signal,
+      guest.run?.done.signal,
     );
     if (optionId === undefined) return cancelled;
     const picked = options.find((o) => o.id === optionId);

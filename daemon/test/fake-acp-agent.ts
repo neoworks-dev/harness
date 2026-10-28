@@ -30,6 +30,10 @@
 //   listen        calls neo's wait (5 s) and reports "heard: …"
 //   poll          calls tools_search until a message rides on a result, and reports it
 //   commands      replaces its slash commands with one (review) and says so
+//   subagent      runs Claude Code's Agent tool as the ACP RFD has it: an Explore subagent in a
+//                 session of its own (sub-1), announced and ended with subagent_update ("subagent
+//                 ask": it asks for permission in its session first)
+//   spawn         Codex's spawn_agent as AIR has it: subagent_spawned, then it fails
 // It lists slash commands (available_commands_update) when a conversation starts or resumes: after
 // the answer to session/new, or before it with FAKE_ACP_COMMANDS_FIRST in the environment.
 // It offers a model option (small, large) and an effort option (low, high), and one stored
@@ -389,6 +393,69 @@ async function prompt(params: {
     return { stopReason: "end_turn" };
   } else if (task === "started") {
     say(sessionId, `started: ${started}`);
+    return { stopReason: "end_turn" };
+  } else if (task === "subagent" || task === "subagent ask") {
+    // Claude Code's Agent tool in the ACP RFD's form: the call stays the parent's, the subagent
+    // reports in a session of its own, announced and ended on the parent.
+    const input = { subagent_type: "Explore", description: "Find the tests", prompt: "List them." };
+    const call = { toolCallId: "t-agent", title: "Agent", kind: "think", rawInput: input };
+    update(sessionId, { sessionUpdate: "tool_call", ...call, status: "pending" });
+    const child = "sub-1";
+    update(sessionId, {
+      sessionUpdate: "subagent_update",
+      sessionId: child,
+      title: "Explore",
+      description: "Find the tests",
+      capabilities: { cancel: {} },
+      state: { state: "running" },
+    });
+    update(child, {
+      sessionUpdate: "session_message",
+      messageId: "t-agent",
+      senderSessionId: sessionId,
+      recipientSessionId: child,
+      content: [{ type: "text", text: "List them." }],
+    });
+    update(child, {
+      sessionUpdate: "tool_call",
+      toolCallId: "t-glob",
+      title: "Glob test/**",
+      kind: "search",
+      status: "completed",
+    });
+    if (task === "subagent ask") {
+      say(child, `asked: ${await permission(child, { toolCallId: "t-rm", title: "rm x" })}`);
+    }
+    say(child, "Found 3 tests.");
+    update(sessionId, {
+      sessionUpdate: "subagent_update",
+      sessionId: child,
+      state: { state: "idle", stopReason: "end_turn" },
+    });
+    update(sessionId, {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "t-agent",
+      status: "completed",
+    });
+    say(sessionId, "It found them.");
+    return { stopReason: "end_turn" };
+  } else if (task === "spawn") {
+    // Codex's spawn_agent in AIR's form.
+    update(sessionId, {
+      sessionUpdate: "subagent_spawned",
+      subagentSessionId: "thread-2",
+      name: "worker",
+      task: "Delegated task for worker",
+      prompt: "Count the lines.",
+      capabilities: {},
+    });
+    say("thread-2", "42 lines.");
+    update(sessionId, {
+      sessionUpdate: "subagent_state_update",
+      subagentSessionId: "thread-2",
+      state: "failed",
+    });
+    say(sessionId, "The worker is done.");
     return { stopReason: "end_turn" };
   } else if (task === "usage") {
     say(sessionId, "one ");

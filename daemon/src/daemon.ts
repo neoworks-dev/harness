@@ -367,7 +367,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     gateway,
     views,
     asker,
-    cancelAgent: delegate.cancel,
+    cancelAgent: (session, id) => delegate.cancel(session, id) || guests.cancelNative(session, id),
     todos,
   });
   const notice = (session: string, text: string, tone?: "muted" | "danger"): void => {

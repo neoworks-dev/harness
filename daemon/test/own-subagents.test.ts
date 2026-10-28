@@ -142,6 +142,89 @@ describe("the agents' own subagents", () => {
   });
 });
 
+describe("the agents' own subagents show like delegate's", () => {
+  test("the adapter is told it may report them as sessions of their own", async () => {
+    const daemon = await setup();
+    const session = await onFake(daemon);
+    await say(daemon, session, "route");
+    const route = JSON.parse(reply(daemon, session));
+    expect(route.initialize.clientCapabilities.subagents).toEqual({});
+  });
+
+  test("Claude Code's (the ACP RFD's form): a start, its own labelled work and transcript, an end", async () => {
+    const daemon = await setup();
+    const session = await onFake(daemon);
+    await say(daemon, session, "subagent");
+    const all = events(daemon, session);
+    const started = all.find((e) => e.type === "subagent_started");
+    if (started?.type !== "subagent_started") throw new Error("no subagent_started");
+    expect(started).toMatchObject({ name: "Explore", task: "List them.", native: true });
+    expect(started.agent).toMatch(/^fake\/[0-9a-f]{8}$/);
+    expect(started.background).toBeUndefined();
+    const ended = all.find((e) => e.type === "subagent_ended");
+    expect(ended).toEqual({ type: "subagent_ended", id: started.id, stopReason: "end_turn" });
+    // The subagent's work carries its label; the session's agent's reply doesn't.
+    const glob = all.find((e) => e.type === "tool_call" && e.title === "Glob test/**");
+    expect(glob).toMatchObject({ agent: started.agent });
+    expect(reply(daemon, session)).toBe("It found them.");
+
+    // Its transcript: the task, then its work; the session's view: the Agent call, like a
+    // delegation, without the subagent's work.
+    const own = daemon.views.get(session, started.agent).snapshot().items;
+    expect(JSON.stringify(own)).toContain("List them.");
+    expect(JSON.stringify(own)).toContain("Found 3 tests.");
+    expect(JSON.stringify(own)).not.toContain("It found them.");
+    const main = daemon.views.get(session).snapshot().items;
+    expect(main.map((i) => i.label)).toContain("Explore · Find the tests");
+    expect(JSON.stringify(main)).not.toContain("Found 3 tests.");
+  });
+
+  test("a subagent's question is its own, and the answer reaches its session", async () => {
+    const daemon = await setup();
+    const session = await onFake(daemon);
+    daemon.sessions.input(session, "cli", "subagent ask");
+    await until(
+      () => events(daemon, session).some((e) => e.type === "permission_request"),
+      "the question",
+    );
+    const started = events(daemon, session).find((e) => e.type === "subagent_started");
+    const asked = events(daemon, session).find((e) => e.type === "permission_request");
+    if (started?.type !== "subagent_started" || asked?.type !== "permission_request") {
+      throw new Error("no subagent question");
+    }
+    expect(asked.agent).toBe(started.agent);
+    const item = daemon.views
+      .get(session)
+      .snapshot()
+      .items.find((i) => i.ref === `p-${asked.id}`);
+    expect(item?.label).toBe("Explore: rm x");
+    await daemon.actions.run(
+      { session, ref: "x", action: "neo.permit", args: { id: asked.id, option: "no" } },
+      "test",
+    );
+    await daemon.sessions.idle(session);
+    const own = daemon.views.get(session, started.agent).snapshot().items;
+    expect(JSON.stringify(own)).toContain("asked: no");
+  });
+
+  test("Codex's (AIR's form): spawned with its prompt, and its failure ends it", async () => {
+    const daemon = await setup({ subagents: "silent" });
+    const session = await onFake(daemon);
+    await say(daemon, session, "spawn");
+    const all = events(daemon, session);
+    const started = all.find((e) => e.type === "subagent_started");
+    if (started?.type !== "subagent_started") throw new Error("no subagent_started");
+    expect(started).toMatchObject({ name: "worker", task: "Count the lines.", native: true });
+    expect(
+      all.find((e) => e.type === "agent_message_chunk" && e.text === "42 lines."),
+    ).toMatchObject({ agent: started.agent });
+    expect(all.find((e) => e.type === "subagent_ended")).toMatchObject({
+      id: started.id,
+      stopReason: "error",
+    });
+  });
+});
+
 describe("delegate and the settings", () => {
   test("always ask: auto mode asks, without an allow for the session", async () => {
     const daemon = await setup();
