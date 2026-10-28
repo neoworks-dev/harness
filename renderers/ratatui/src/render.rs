@@ -161,6 +161,12 @@ impl<'a> Cx<'a> {
             vec![Span::styled("›", accent), Span::raw(" ")]
         };
         let rest = if raised { bar() } else { vec![Span::raw("  ")] };
+        // The bar runs through the blank lines between paragraphs: one message, not several.
+        for line in &mut body {
+            if line.spans.is_empty() {
+                line.spans.push(Span::raw(""));
+            }
+        }
         let mut lines = if body.is_empty() {
             vec![Line::from(lead)]
         } else {

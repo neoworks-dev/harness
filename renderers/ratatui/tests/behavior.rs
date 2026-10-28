@@ -100,6 +100,20 @@ fn with_raised_boxes_a_user_item_is_one_with_the_accent_bar() {
 }
 
 #[test]
+fn the_accent_bar_runs_through_the_gap_between_a_user_items_paragraphs() {
+    let body = r#"{"type":"text","blocks":[{"type":"paragraph","spans":[{"text":"one"}]},{"type":"paragraph","spans":[{"text":"two"}]}]}"#;
+    let it = item_of("user", "", body);
+    let opts = Options {
+        theme: Palette {
+            raised: Color::Rgb(0x25, 0x25, 0x22),
+            ..pal()
+        },
+        ..Options::default()
+    };
+    assert_eq!(lines_of(&it, 10, &opts), ["┃", "┃ one", "┃", "┃ two", "┃"]);
+}
+
+#[test]
 fn user_text_hangs_under_the_prompt_and_the_label_moves_when_it_does_not_fit() {
     let it = item_of(
         "user",
