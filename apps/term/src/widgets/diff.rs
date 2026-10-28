@@ -1,7 +1,8 @@
 //! The diff overlay: `git diff` of one file, loaded in the background, drawn side by side (old
 //! left, new right) when it is wide enough and as a unified diff otherwise, scrolled by keys.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
@@ -29,8 +30,6 @@ const FULL_CONTEXT: u32 = 99_999;
 /// The overlay is split from this width on (`s` overrides); each side needs this much text.
 const SPLIT_MIN: usize = 90;
 const MIN_TEXT: usize = 8;
-/// Cells one Left / Right moves.
-const HSTEP: usize = 8;
 /// Shown after a line whose file ends without a newline.
 const NO_EOL: &str = "  [no newline at EOF]";
 
@@ -122,6 +121,124 @@ struct View {
     /// Cells of text in the narrowest column.
     col_w: usize,
     split: bool,
+    /// Cells across, for the comment blocks.
+    width: usize,
+}
+
+/// A comment on lines of the file, written in the view (`<leader>c`) and put in the prompt as
+/// `@path:start-end text`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Comment {
+    /// The first and last line it is about: the new version's numbers, or the old one's when
+    /// the lines are only there (removed lines).
+    pub start: usize,
+    pub end: usize,
+    pub old: bool,
+    pub text: String,
+}
+
+impl Comment {
+    /// How the prompt has it: `@src/a.rs:12-14 text`, `@src/a.rs:12 text` for one line.
+    pub(crate) fn mention(&self, rel: &str) -> String {
+        let at = if self.start == self.end {
+            format!("@{rel}:{}", self.start)
+        } else {
+            format!("@{rel}:{}-{}", self.start, self.end)
+        };
+        format!("{at} {}", self.text)
+    }
+}
+
+/// A comment being written: its lines, the text so far, and the comment it replaces.
+#[derive(Debug, Clone)]
+struct Writing {
+    start: usize,
+    end: usize,
+    old: bool,
+    text: String,
+    editing: Option<usize>,
+}
+
+/// `v` or `V`: where the selection started (a row of the shown mode and a char of it), and
+/// whether it takes whole lines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Visual {
+    row: usize,
+    col: usize,
+    line: bool,
+}
+
+/// A key waiting for the next one: `g` (`gg`), the leader (`\` or Space).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pending {
+    G,
+    Leader,
+}
+
+/// What row's text shows of the cursor and the selection: chars `a..b` selected, the char the
+/// cursor is on (past the end: a blank after it).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Marks {
+    sel: Option<(usize, usize)>,
+    cursor: Option<usize>,
+}
+
+/// The comment blocks drawn above the rows, by row, for one mode, width and state of the
+/// comments.
+#[derive(Debug, Default)]
+struct Blocks {
+    key: Option<(bool, usize, u64)>,
+    at: HashMap<usize, Vec<Vec<Line<'static>>>>,
+}
+
+/// A comment as a block across the view: `╭ @path:12-14`, its text wrapped under a `│`, and a
+/// `╰` with the keys while it is written.
+fn block(
+    head: &str,
+    text: &str,
+    cells: usize,
+    writing: bool,
+    colors: (Color, Color),
+) -> Vec<Line<'static>> {
+    let (accent, muted) = colors;
+    let edge = Style::new().fg(accent);
+    let inner = cells.saturating_sub(2).max(1);
+    let mut lines = vec![Line::from(vec![
+        Span::styled("╭ ", edge),
+        Span::styled(truncate(head, inner), edge.add_modifier(Modifier::BOLD)),
+    ])];
+    let mut body = super::text::wrap(text, inner);
+    if writing {
+        // The cursor after the text, on a line of its own when the last one is full.
+        let full = body.last().is_some_and(|l| width(l) >= inner);
+        if body.is_empty() || full {
+            body.push(String::new());
+        }
+    }
+    if body.is_empty() {
+        body.push(String::new());
+    }
+    let n = body.len();
+    for (i, row) in body.into_iter().enumerate() {
+        let mut spans = vec![Span::styled("│ ", edge), Span::raw(row)];
+        if writing && i + 1 == n {
+            spans.push(Span::styled(
+                " ",
+                Style::new().add_modifier(Modifier::REVERSED),
+            ));
+        }
+        lines.push(Line::from(spans));
+    }
+    let foot = if writing {
+        "╰ enter keeps it · esc gives up · empty deletes it"
+    } else {
+        "╰"
+    };
+    lines.push(Line::from(Span::styled(
+        truncate(foot, cells.max(1)),
+        Style::new().fg(muted),
+    )));
+    lines
 }
 
 pub(crate) struct DiffView {
@@ -168,8 +285,26 @@ pub(crate) struct DiffView {
     message: Option<String>,
     /// `e` asked for the file in the editor, at this line.
     edit: Option<(PathBuf, Option<usize>)>,
-    /// Long lines wrap at the edge (`w` switches to cutting them and scrolling sideways).
+    /// Long lines wrap at the edge (`<leader>w` switches to cutting them and scrolling sideways).
     wrap: bool,
+    /// The cursor: a row of the mode `scroll_split` says, and a char of the row's text.
+    cursor: Cell<usize>,
+    col: usize,
+    /// The column up and down go back to (vim's), `usize::MAX` after `$`.
+    want: usize,
+    visual: Cell<Option<Visual>>,
+    pending: Option<Pending>,
+    /// The comments on this file, in the order written.
+    comments: Vec<Comment>,
+    writing: Option<Writing>,
+    /// What the comments changed since the app last asked: each as the prompt had it and has
+    /// it now (none: not there).
+    changes: Vec<(Option<String>, Option<String>)>,
+    /// Bumped when the comments or the one being written change.
+    comments_gen: u64,
+    blocks: RefCell<Blocks>,
+    /// The accent and muted colors of the last draw, for the comment blocks.
+    colors: Cell<(Color, Color)>,
 }
 
 impl DiffView {
@@ -235,6 +370,7 @@ impl DiffView {
                 rows: 20,
                 col_w: 40,
                 split: false,
+                width: 80,
             }),
             count: None,
             typing: None,
@@ -242,6 +378,17 @@ impl DiffView {
             message: None,
             edit: None,
             wrap: true,
+            cursor: Cell::new(0),
+            col: 0,
+            want: 0,
+            visual: Cell::new(None),
+            pending: None,
+            comments: Vec::new(),
+            writing: None,
+            changes: Vec::new(),
+            comments_gen: 0,
+            blocks: RefCell::new(Blocks::default()),
+            colors: Cell::new((Color::Reset, Color::Reset)),
         }
     }
 
@@ -291,6 +438,13 @@ impl DiffView {
         self.dels = dels;
         self.loaded = true;
         self.rx = None;
+        self.comments_gen += 1;
+        self.visual.set(None);
+        self.cursor.set(
+            self.cursor
+                .get()
+                .min(self.len(self.scroll_split.get()).saturating_sub(1)),
+        );
         if let Some(line) = self.anchor.take() {
             let at = self
                 .aligned
@@ -298,6 +452,15 @@ impl DiffView {
                 .iter()
                 .position(|r| matches!(r, Row::Line { right: Some(s), .. } if s.no >= line));
             self.set_position(at.unwrap_or(0));
+            let split = self.scroll_split.get();
+            let row = at.unwrap_or(0);
+            let row = if split {
+                row
+            } else {
+                self.convert_row(row, true)
+            };
+            self.cursor.set(row);
+            self.col = self.col.min(self.last_col(row, split));
         } else if first && self.full && self.req.is_some() {
             // A file opened whole starts at its first change (the draw knows the mode).
             self.to_change.set(true);
@@ -306,7 +469,13 @@ impl DiffView {
 
     /// The first changed row in the mode's rows, a few lines above it.
     fn change_position(&self, split: bool) -> Option<usize> {
-        let at = if split {
+        self.first_change(split)
+            .map(|at| at.saturating_sub(CONTEXT as usize))
+    }
+
+    /// The first changed row in the mode's rows.
+    fn first_change(&self, split: bool) -> Option<usize> {
+        if split {
             self.aligned
                 .rows
                 .iter()
@@ -315,8 +484,7 @@ impl DiffView {
             self.lines
                 .iter()
                 .position(|l| matches!(l.kind, Kind::Add | Kind::Del))
-        };
-        at.map(|at| at.saturating_sub(CONTEXT as usize))
+        }
     }
 
     /// Picks up the loaded diff, or its highlighting. True when something arrived.
@@ -386,7 +554,7 @@ impl DiffView {
     fn max_scroll(&self) -> usize {
         let v = self.view.get();
         let len = self.len(v.split);
-        if !self.wrap {
+        if !self.wrap && self.comments.is_empty() && self.writing.is_none() {
             return len.saturating_sub(v.rows.max(1));
         }
         let (mut top, mut used) = (len, 0);
@@ -455,29 +623,62 @@ impl DiffView {
             return;
         };
         self.full = !self.full;
-        self.anchor = self.top_new_line();
+        let split = self.view.get().split;
+        self.anchor = self
+            .row_nos(self.cursor.get(), split)
+            .1
+            .or_else(|| self.top_new_line());
         self.rx = Some(spawn(self.cwd.clone(), req, self.full));
         self.loaded = false;
     }
 
-    /// Scrolls, searches, asks for the editor; true when the key closes the overlay (Esc, q).
-    /// Vim's keys: a count before a key repeats it (`5j`) or names a line (`120G`); `/` searches
-    /// (smart case), `n` / `N` go to the next / previous match (without a search, `n` / `p`
-    /// go between hunks, as `}` / `{` always do); Ctrl-D/U half a page, Ctrl-F/B a page,
-    /// Ctrl-E/Y a line; `$` to the right end; `e` opens the file in the editor.
+    /// Moves the cursor, selects, comments, searches, asks for the editor; true when the key
+    /// closes the overlay (Esc outside visual mode, q). Vim's keys: h/j/k/l, w/b/e, 0/^/$,
+    /// gg/G, H/M/L; a count before a key repeats it (`5j`) or names a line (`120G`); Ctrl-D/U
+    /// half a page, Ctrl-F/B and PgUp/PgDn a page, Ctrl-E/Y scroll a line; `/` searches (smart
+    /// case), `n` / `N` go to the next / previous match (without a search, `n` / `p` go between
+    /// hunks, as `}` / `{` always do); `v` and `V` select characters and lines. The leader (`\`
+    /// or Space) then `c` comments on the line or the selection (on a commented line: edits the
+    /// comment), `w` wraps or cuts long lines, `e` opens the file in the editor at the cursor.
     pub(crate) fn key(&mut self, key: KeyEvent) -> bool {
         self.message = None;
+        if self.writing.is_some() {
+            self.write_key(key);
+            return false;
+        }
         if self.typing.is_some() {
             self.search_key(key);
             return false;
         }
         let v = self.view.get();
-        let rows = v.rows.max(1);
-        let page = rows.saturating_sub(1).max(1);
-        let half = (rows / 2).max(1);
-        let max = self.max_scroll();
+        let split = v.split;
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-        let mut s = self.scroll.get().min(max);
+        if let Some(pending) = self.pending.take() {
+            match (pending, key.code) {
+                (Pending::G, KeyCode::Char('g')) => {
+                    self.cursor.set(0);
+                    self.col = 0;
+                    self.want = 0;
+                }
+                (Pending::Leader, KeyCode::Char('c')) => self.start_comment(),
+                (Pending::Leader, KeyCode::Char('w')) => {
+                    self.wrap = !self.wrap;
+                    self.hscroll = 0;
+                }
+                (Pending::Leader, KeyCode::Char('e')) => match &self.req {
+                    Some(req) => {
+                        let line = self.row_nos(self.cursor.get(), split).1;
+                        let line = line.or_else(|| self.top_new_line());
+                        self.edit = Some((self.cwd.join(&req.rel), line));
+                    }
+                    None => self.message = Some("not a file here".into()),
+                },
+                _ => {}
+            }
+            self.count = None;
+            self.follow();
+            return false;
+        }
         if let (KeyCode::Char(c @ '0'..='9'), false) = (key.code, ctrl)
             && (c != '0' || self.count.is_some())
         {
@@ -487,67 +688,591 @@ impl DiffView {
         }
         let count = self.count.take();
         let n = count.unwrap_or(1);
+        let rows = v.rows.max(1);
+        let page = rows.saturating_sub(1).max(1);
+        let half = (rows / 2).max(1);
+        let len = self.len(split);
+        let last = len.saturating_sub(1);
+        let cur = self.cursor.get().min(last);
+        // Moves the cursor (and the view with it, by the same rows) up or down.
+        let by = |this: &mut Self, rows: isize, scroll: bool| {
+            let to = cur.saturating_add_signed(rows).min(last);
+            this.set_row(to, split);
+            if scroll {
+                let s = this.scroll.get().saturating_add_signed(rows);
+                this.scroll.set(s.min(this.max_scroll()));
+            }
+        };
+        let signed = |x: usize| isize::try_from(x).unwrap_or(isize::MAX);
         match (key.code, ctrl) {
+            (KeyCode::Esc, _) if self.visual.get().is_some() => self.visual.set(None),
             (KeyCode::Esc, _) | (KeyCode::Char('q'), false) => return true,
-            (KeyCode::Up | KeyCode::Char('k'), false) | (KeyCode::Char('y'), true) => {
-                s = s.saturating_sub(n);
+            (KeyCode::Up | KeyCode::Char('k'), false) => by(self, -signed(n), false),
+            (KeyCode::Down | KeyCode::Char('j'), false) => by(self, signed(n), false),
+            (KeyCode::Char('y'), true) => self.scroll_only(-signed(n)),
+            (KeyCode::Char('e'), true) => self.scroll_only(signed(n)),
+            (KeyCode::PageUp, _) | (KeyCode::Char('b'), true) => by(self, -signed(page * n), true),
+            (KeyCode::PageDown, _) | (KeyCode::Char('f'), true) => {
+                by(self, signed(page * n), true);
             }
-            (KeyCode::Down | KeyCode::Char('j'), false) | (KeyCode::Char('e'), true) => {
-                s = (s + n).min(max);
+            (KeyCode::Char('u'), true) => by(self, -signed(half * n), true),
+            (KeyCode::Char('d'), true) => by(self, signed(half * n), true),
+            (KeyCode::Home, _) => {
+                self.set_row(0, split);
+                self.scroll.set(0);
             }
-            (KeyCode::PageUp | KeyCode::Char('b'), _) => s = s.saturating_sub(page * n),
-            (KeyCode::PageDown | KeyCode::Char(' '), false) | (KeyCode::Char('f'), true) => {
-                s = (s + page * n).min(max);
-            }
-            (KeyCode::Char('u'), true) => s = s.saturating_sub(half * n),
-            (KeyCode::Char('d'), true) => s = (s + half * n).min(max),
-            (KeyCode::Home | KeyCode::Char('g'), _) => s = 0,
+            (KeyCode::Char('g'), false) => self.pending = Some(Pending::G),
             (KeyCode::End | KeyCode::Char('G'), _) => {
-                s = match count {
-                    Some(line) => self.row_of_line(line, v.split).min(max),
-                    None => max,
-                };
+                let row = count.map_or(last, |line| self.row_of_line(line, split));
+                self.set_row(row, split);
             }
-            (KeyCode::Char('n'), false) if self.pattern.is_some() => s = self.find(s, true, n),
-            (KeyCode::Char('N'), false) => s = self.find(s, false, n),
+            (KeyCode::Char('H'), false) => self.set_row(self.scroll.get().min(last), split),
+            (KeyCode::Char('L'), false) => self.set_row(self.last_visible(), split),
+            (KeyCode::Char('M'), false) => {
+                let (top, bottom) = (self.scroll.get().min(last), self.last_visible());
+                self.set_row(top + (bottom - top) / 2, split);
+            }
+            (KeyCode::Left | KeyCode::Char('h'), _) => {
+                self.col = self.col.min(self.last_col(cur, split)).saturating_sub(n);
+                self.want = self.col;
+            }
+            (KeyCode::Right | KeyCode::Char('l'), _) => {
+                self.col = (self.col + n).min(self.last_col(cur, split));
+                self.want = self.col;
+            }
+            (KeyCode::Char('0'), false) => (self.col, self.want) = (0, 0),
+            (KeyCode::Char('^'), false) => {
+                let body = self.row_body(cur, split);
+                self.col = body.chars().take_while(|c| c.is_whitespace()).count();
+                self.col = self.col.min(self.last_col(cur, split));
+                self.want = self.col;
+            }
+            (KeyCode::Char('$'), false) => {
+                self.col = self.last_col(cur, split);
+                self.want = usize::MAX;
+            }
+            (KeyCode::Char(c @ ('w' | 'b' | 'e')), false) => {
+                for _ in 0..n {
+                    self.word(c, split);
+                }
+                self.want = self.col;
+            }
+            (KeyCode::Char('n'), false) if self.pattern.is_some() => {
+                let at = self.find(cur, true, n);
+                self.jump(at, split);
+            }
+            (KeyCode::Char('N'), false) => {
+                let at = self.find(cur, false, n);
+                self.jump(at, split);
+            }
             (KeyCode::Char('n' | '}'), false) => {
-                let after = self.hunk_starts(v.split).into_iter().filter(|&h| h > s);
+                let after = self.hunk_starts(split).into_iter().filter(|&h| h > cur);
                 if let Some(h) = after.take(n).last() {
-                    s = h.min(max);
+                    self.set_row(h, split);
+                    self.scroll.set(h.min(self.max_scroll()));
                 }
             }
             (KeyCode::Char('p' | '{'), false) => {
                 let mut before: Vec<usize> = self
-                    .hunk_starts(v.split)
+                    .hunk_starts(split)
                     .into_iter()
-                    .filter(|&h| h < s)
+                    .filter(|&h| h < cur)
                     .collect();
                 before.reverse();
-                s = before.get(n - 1).copied().unwrap_or(0);
+                let h = before.get(n - 1).copied().unwrap_or(0);
+                self.set_row(h, split);
+                self.scroll.set(h.min(self.max_scroll()));
             }
-            (KeyCode::Left | KeyCode::Char('h'), _) => {
-                self.hscroll = self.hscroll.saturating_sub(HSTEP * n);
+            (KeyCode::Char(c @ ('v' | 'V')), false) => {
+                let line = c == 'V';
+                self.visual.set(match self.visual.get() {
+                    Some(v) if v.line == line => None,
+                    Some(v) => Some(Visual { line, ..v }),
+                    None => Some(Visual {
+                        row: cur,
+                        col: self.col.min(self.last_col(cur, split)),
+                        line,
+                    }),
+                });
             }
-            (KeyCode::Right | KeyCode::Char('l'), _) => {
-                self.hscroll = (self.hscroll + HSTEP * n).min(self.max_hscroll());
-            }
-            (KeyCode::Char('0'), false) => self.hscroll = 0,
-            (KeyCode::Char('$'), false) => self.hscroll = self.max_hscroll(),
+            (KeyCode::Char(' ' | '\\'), false) => self.pending = Some(Pending::Leader),
             (KeyCode::Char('/'), false) => self.typing = Some(String::new()),
-            (KeyCode::Char('s'), false) => self.force = Some(!v.split),
-            (KeyCode::Char('w'), false) => {
-                self.wrap = !self.wrap;
-                self.hscroll = 0;
-            }
+            (KeyCode::Char('s'), false) => self.force = Some(!split),
             (KeyCode::Char('f'), false) => self.toggle_full(),
-            (KeyCode::Char('e'), false) => match &self.req {
-                Some(req) => self.edit = Some((self.cwd.join(&req.rel), self.top_new_line())),
-                None => self.message = Some("not a file here".into()),
-            },
             _ => {}
         }
-        self.scroll.set(s);
+        self.follow();
         false
+    }
+
+    /// Puts the cursor on `row`, at the column it keeps going back to.
+    fn set_row(&mut self, row: usize, split: bool) {
+        let row = row.min(self.len(split).saturating_sub(1));
+        self.cursor.set(row);
+        self.col = self.want.min(self.last_col(row, split));
+    }
+
+    /// The cursor on row `at` (a search's match), at the match.
+    fn jump(&mut self, at: usize, split: bool) {
+        self.set_row(at, split);
+        if let Some(pattern) = &self.pattern {
+            let body = self.row_body(at, split);
+            let exact = pattern.chars().any(char::is_uppercase);
+            let hay = if exact {
+                body.clone()
+            } else {
+                body.to_lowercase()
+            };
+            let needle = if exact {
+                pattern.clone()
+            } else {
+                pattern.to_lowercase()
+            };
+            if let Some(byte) = hay.find(&needle) {
+                self.col = hay[..byte].chars().count().min(self.last_col(at, split));
+                self.want = self.col;
+            }
+        }
+        self.scroll.set(at.min(self.max_scroll()));
+    }
+
+    /// Ctrl-E / Ctrl-Y: the view moves, the cursor only as far as it has to stay in it.
+    fn scroll_only(&mut self, rows: isize) {
+        let s = self.scroll.get().min(self.max_scroll());
+        self.scroll
+            .set(s.saturating_add_signed(rows).min(self.max_scroll()));
+        let split = self.view.get().split;
+        let (top, bottom) = (self.scroll.get(), self.last_visible());
+        let cur = self.cursor.get();
+        if cur < top {
+            self.set_row(top, split);
+        } else if cur > bottom {
+            self.set_row(bottom, split);
+        }
+    }
+
+    /// The last row the view shows whole from its top row.
+    fn last_visible(&self) -> usize {
+        let v = self.view.get();
+        let len = self.len(v.split);
+        let top = self.scroll.get().min(len.saturating_sub(1));
+        let mut used = 0;
+        let mut at = top;
+        for i in top..len {
+            used += self.height(i, v.split);
+            if used > v.rows.max(1) {
+                break;
+            }
+            at = i;
+        }
+        at
+    }
+
+    /// Scrolls so the cursor is in view, its block of comments too; sideways to its column when
+    /// long lines are cut.
+    fn follow(&mut self) {
+        let v = self.view.get();
+        let cur = self.cursor.get();
+        let s = self.scroll.get().min(self.max_scroll());
+        self.scroll.set(if cur < s {
+            cur
+        } else {
+            s.max(self.top_for(cur, v.split, v.rows))
+        });
+        if !self.wrap {
+            let body = self.row_body(cur, v.split);
+            let cell: usize = body
+                .chars()
+                .take(self.col)
+                .map(|c| c.width().unwrap_or(0))
+                .sum();
+            let room = v.col_w.saturating_sub(2).max(1);
+            if cell < self.hscroll {
+                self.hscroll = cell;
+            } else if cell >= self.hscroll + room {
+                self.hscroll = cell + 1 - room;
+            }
+        }
+    }
+
+    /// The highest top row that still shows row `cur` whole (as far up as `rows` lines reach).
+    fn top_for(&self, cur: usize, split: bool, rows: usize) -> usize {
+        let mut used = 0;
+        let mut top = cur;
+        loop {
+            used += self.height(top, split);
+            if used > rows.max(1) {
+                return (top + 1).min(cur);
+            }
+            if top == 0 {
+                return 0;
+            }
+            top -= 1;
+        }
+    }
+
+    /// The old and new line number of row `i` of a mode (a context line in the unified view
+    /// only knows its new one).
+    fn row_nos(&self, i: usize, split: bool) -> (Option<usize>, Option<usize>) {
+        if split {
+            return match self.aligned.rows.get(i) {
+                Some(Row::Line { left, right, .. }) => {
+                    (left.as_ref().map(|s| s.no), right.as_ref().map(|s| s.no))
+                }
+                _ => (None, None),
+            };
+        }
+        let no = self.numbers.get(i).copied().flatten();
+        match self.lines.get(i).map(|l| l.kind) {
+            Some(Kind::Del) => (no, None),
+            Some(Kind::Add | Kind::Context) => (None, no),
+            _ => (None, None),
+        }
+    }
+
+    /// The text the cursor moves in on row `i`: the line without its sign; in the split view
+    /// the new side's when it has one, else the old one's.
+    fn row_body(&self, i: usize, split: bool) -> String {
+        if split {
+            return match self.aligned.rows.get(i) {
+                Some(Row::Line { left, right, .. }) => right
+                    .as_ref()
+                    .or(left.as_ref())
+                    .map_or_else(String::new, |s| s.text.clone()),
+                Some(Row::Hunk(t) | Row::Note(t)) => t.clone(),
+                None => String::new(),
+            };
+        }
+        match self.lines.get(i) {
+            Some(l) if matches!(l.kind, Kind::Add | Kind::Del | Kind::Context) => {
+                l.text.chars().skip(1).collect()
+            }
+            Some(l) => l.text.clone(),
+            None => String::new(),
+        }
+    }
+
+    /// The last column the cursor can be on in row `i` (0 for an empty one).
+    fn last_col(&self, i: usize, split: bool) -> usize {
+        self.row_body(i, split).chars().count().saturating_sub(1)
+    }
+
+    /// Row `row` of one mode in the other: the row of the same line, else the start of its
+    /// hunk.
+    fn convert_row(&self, row: usize, from_split: bool) -> usize {
+        let (old, new) = self.row_nos(row, from_split);
+        let to = !from_split;
+        let same = (0..self.len(to)).find(|&j| {
+            let (o, n) = self.row_nos(j, to);
+            match new {
+                Some(new) => n == Some(new),
+                None => old.is_some() && n.is_none() && o == old,
+            }
+        });
+        same.unwrap_or_else(|| self.convert(row, from_split))
+    }
+
+    /// `w`, `b` or `e` once, from the cursor: to the start of the next word, the start of this
+    /// or the last one, the end of this or the next one; across lines as vim goes.
+    fn word(&mut self, motion: char, split: bool) {
+        let class = |c: char| {
+            if c.is_whitespace() {
+                0
+            } else if c.is_alphanumeric() || c == '_' {
+                1
+            } else {
+                2
+            }
+        };
+        let len = self.len(split);
+        let chars = |row: usize| self.row_body(row, split).chars().collect::<Vec<char>>();
+        let (mut row, mut col) = (self.cursor.get(), self.col);
+        let mut line = chars(row);
+        match motion {
+            'w' => {
+                let start = line.get(col).map(|&c| class(c));
+                if let Some(k) = start.filter(|&k| k != 0) {
+                    while line.get(col).is_some_and(|&c| class(c) == k) {
+                        col += 1;
+                    }
+                }
+                loop {
+                    while line.get(col).is_some_and(|&c| class(c) == 0) {
+                        col += 1;
+                    }
+                    if col < line.len() || row + 1 >= len {
+                        break;
+                    }
+                    row += 1;
+                    col = 0;
+                    line = chars(row);
+                    // An empty line is a word of its own.
+                    if line.is_empty() {
+                        break;
+                    }
+                }
+            }
+            'e' => {
+                col += 1;
+                loop {
+                    while line.get(col).is_some_and(|&c| class(c) == 0) {
+                        col += 1;
+                    }
+                    if col < line.len() || row + 1 >= len {
+                        break;
+                    }
+                    row += 1;
+                    col = 0;
+                    line = chars(row);
+                }
+                if let Some(k) = line.get(col).map(|&c| class(c)) {
+                    while line.get(col + 1).is_some_and(|&c| class(c) == k) {
+                        col += 1;
+                    }
+                }
+            }
+            _ => loop {
+                if col == 0 {
+                    if row == 0 {
+                        break;
+                    }
+                    row -= 1;
+                    line = chars(row);
+                    col = line.len();
+                    if line.is_empty() {
+                        break;
+                    }
+                    continue;
+                }
+                col -= 1;
+                if class(line[col]) == 0 {
+                    continue;
+                }
+                let k = class(line[col]);
+                while col > 0 && class(line[col - 1]) == k {
+                    col -= 1;
+                }
+                break;
+            },
+        }
+        self.cursor.set(row);
+        self.col = col.min(line.len().saturating_sub(1));
+    }
+
+    /// `<leader>c`: writes a comment on the selection's lines, or the cursor's; on a line a
+    /// comment is about (no selection), edits that one.
+    fn start_comment(&mut self) {
+        if self.req.is_none() {
+            self.message = Some("no file here to comment on".into());
+            return;
+        }
+        let split = self.view.get().split;
+        let cur = self.cursor.get();
+        let (a, b) = match self.visual.take() {
+            Some(v) => (v.row.min(cur), v.row.max(cur)),
+            None => {
+                let (old, new) = self.row_nos(cur, split);
+                let on = |c: &Comment| {
+                    let no = if c.old {
+                        old.filter(|_| new.is_none())
+                    } else {
+                        new
+                    };
+                    no.is_some_and(|no| (c.start..=c.end).contains(&no))
+                };
+                if let Some(i) = self.comments.iter().position(on) {
+                    let c = &self.comments[i];
+                    self.writing = Some(Writing {
+                        start: c.start,
+                        end: c.end,
+                        old: c.old,
+                        text: c.text.clone(),
+                        editing: Some(i),
+                    });
+                    self.comments_gen += 1;
+                    return;
+                }
+                (cur, cur)
+            }
+        };
+        let (mut news, mut olds) = (Vec::new(), Vec::new());
+        for row in a..=b {
+            match self.row_nos(row, split) {
+                (_, Some(n)) => news.push(n),
+                (Some(o), None) => olds.push(o),
+                _ => {}
+            }
+        }
+        let (nos, old) = if news.is_empty() {
+            (olds, true)
+        } else {
+            (news, false)
+        };
+        let (Some(&start), Some(&end)) = (nos.iter().min(), nos.iter().max()) else {
+            self.message = Some("no line here to comment on".into());
+            return;
+        };
+        self.writing = Some(Writing {
+            start,
+            end,
+            old,
+            text: String::new(),
+            editing: None,
+        });
+        self.comments_gen += 1;
+    }
+
+    /// A key while a comment is written: Enter keeps it (empty: deletes it), Esc gives up.
+    fn write_key(&mut self, key: KeyEvent) {
+        let Some(w) = self.writing.as_mut() else {
+            return;
+        };
+        self.comments_gen += 1;
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Esc => self.writing = None,
+            KeyCode::Backspace => {
+                w.text.pop();
+            }
+            KeyCode::Char('u') if ctrl => w.text.clear(),
+            KeyCode::Char('w') if ctrl => {
+                let kept = w.text.trim_end().len();
+                let start = w.text[..kept]
+                    .rfind(char::is_whitespace)
+                    .map_or(0, |at| at + 1);
+                w.text.truncate(start);
+            }
+            KeyCode::Char(c) if !ctrl => w.text.push(c),
+            KeyCode::Enter => {
+                let Some(w) = self.writing.take() else {
+                    return;
+                };
+                let rel = self.req.as_ref().map_or("", |r| r.rel.as_str()).to_string();
+                let text = w.text.split_whitespace().collect::<Vec<_>>().join(" ");
+                let before = w.editing.and_then(|i| self.comments.get(i).cloned());
+                let after = (!text.is_empty()).then_some(Comment {
+                    start: w.start,
+                    end: w.end,
+                    old: w.old,
+                    text,
+                });
+                match (w.editing, &after) {
+                    (Some(i), Some(c)) => self.comments[i] = c.clone(),
+                    (Some(i), None) => {
+                        self.comments.remove(i);
+                    }
+                    (None, Some(c)) => self.comments.push(c.clone()),
+                    (None, None) => return,
+                }
+                let mention = |c: &Comment| c.mention(&rel);
+                self.changes
+                    .push((before.as_ref().map(mention), after.as_ref().map(mention)));
+            }
+            _ => {}
+        }
+    }
+
+    /// What the comments changed since the last call: each as the prompt had it and has it now.
+    pub(crate) fn take_comment_changes(&mut self) -> Vec<(Option<String>, Option<String>)> {
+        std::mem::take(&mut self.changes)
+    }
+
+    /// The comments, to keep while the view is closed.
+    pub(crate) fn take_comments(&mut self) -> Vec<Comment> {
+        std::mem::take(&mut self.comments)
+    }
+
+    /// The comments written on this file before.
+    pub(crate) fn with_comments(mut self, comments: Vec<Comment>) -> DiffView {
+        self.comments = comments;
+        self.comments_gen += 1;
+        self
+    }
+
+    /// The path the view shows, as the prompt names it.
+    pub(crate) fn rel(&self) -> Option<&str> {
+        self.req.as_ref().map(|r| r.rel.as_str())
+    }
+
+    /// The cursor and selection on row `i`, for drawing.
+    fn marks(&self, i: usize, split: bool) -> Marks {
+        if self.writing.is_some() {
+            return Marks::default();
+        }
+        let cur = self.cursor.get();
+        let len = self.row_body(i, split).chars().count();
+        let mut m = Marks::default();
+        if i == cur {
+            m.cursor = Some(self.col.min(len.saturating_sub(1)));
+        }
+        if let Some(v) = self.visual.get() {
+            let here = (cur, self.col.min(self.last_col(cur, split)));
+            let (a, b) = if (v.row, v.col) <= here {
+                ((v.row, v.col), here)
+            } else {
+                (here, (v.row, v.col))
+            };
+            if (a.0..=b.0).contains(&i) {
+                let whole = len.max(1);
+                m.sel = Some(if v.line {
+                    (0, whole)
+                } else {
+                    let from = if i == a.0 { a.1 } else { 0 };
+                    let to = if i == b.0 { b.1 + 1 } else { whole };
+                    (from, to.max(from + 1))
+                });
+            }
+        }
+        m
+    }
+
+    /// The comment blocks above row `i` of a mode, at the view's width.
+    fn blocks_at(&self, i: usize, split: bool) -> Vec<Vec<Line<'static>>> {
+        let width = self.view.get().width;
+        let key = (split, width, self.comments_gen);
+        let colors = self.colors.get();
+        let mut cache = self.blocks.borrow_mut();
+        if cache.key != Some(key) {
+            cache.key = Some(key);
+            cache.at.clear();
+            let rel = self.rel().unwrap_or("");
+            let editing = self.writing.as_ref().and_then(|w| w.editing);
+            let mut put = |start: usize, old: bool, block: Vec<Line<'static>>| {
+                let row = (0..self.len(split)).find(|&r| {
+                    let (o, n) = self.row_nos(r, split);
+                    if old {
+                        n.is_none() && o == Some(start)
+                    } else {
+                        n == Some(start)
+                    }
+                });
+                if let Some(row) = row {
+                    cache.at.entry(row).or_default().push(block);
+                }
+            };
+            for (i, c) in self.comments.iter().enumerate() {
+                if Some(i) != editing {
+                    let head = c.mention(rel);
+                    let head = head.split_once(' ').map_or(head.as_str(), |(at, _)| at);
+                    put(c.start, c.old, block(head, &c.text, width, false, colors));
+                }
+            }
+            if let Some(w) = &self.writing {
+                let c = Comment {
+                    start: w.start,
+                    end: w.end,
+                    old: w.old,
+                    text: String::new(),
+                };
+                let head = c.mention(rel);
+                put(
+                    w.start,
+                    w.old,
+                    block(head.trim_end(), &w.text, width, true, colors),
+                );
+            }
+        }
+        cache.at.get(&i).cloned().unwrap_or_default()
     }
 
     /// A key while `/` is typed: Enter searches, Esc gives up.
@@ -568,12 +1293,11 @@ impl DiffView {
                 if !text.is_empty() {
                     self.pattern = Some(text);
                 }
-                let max = self.max_scroll();
-                // From the top row on: a match already in view at the top counts.
-                let top = self.scroll.get().min(max);
-                let s = self.find(top.saturating_sub(1), true, 1);
+                let split = self.view.get().split;
+                let at = self.find(self.cursor.get(), true, 1);
                 if self.message.is_none() {
-                    self.scroll.set(s);
+                    self.jump(at, split);
+                    self.follow();
                 }
             }
             _ => {}
@@ -698,19 +1422,38 @@ impl DiffView {
         let col_w = geom.map_or(w.saturating_sub(1 + self.uni_gutter(w)), |g| {
             g.left - g.gutter - 3
         });
+        self.colors.set((look.accent, palette.muted));
         if self.to_change.take()
-            && let Some(at) = self.change_position(split)
+            && let (Some(at), Some(change)) =
+                (self.change_position(split), self.first_change(split))
         {
             self.scroll.set(at);
+            self.cursor.set(change);
             self.scroll_split.set(split);
         }
-        // A resize (or `s`) changed the mode: land on the same hunk.
+        // A resize (or `s`) changed the mode: land on the same hunk, the cursor on its line.
         if self.scroll_split.get() != split {
-            let pos = self.convert(self.scroll.get(), self.scroll_split.get());
+            let from = self.scroll_split.get();
+            let pos = self.convert(self.scroll.get(), from);
             self.scroll.set(pos);
+            self.cursor.set(self.convert_row(self.cursor.get(), from));
+            if let Some(v) = self.visual.get() {
+                let row = self.convert_row(v.row, from);
+                self.visual.set(Some(Visual { row, ..v }));
+            }
             self.scroll_split.set(split);
         }
-        self.view.set(View { rows, col_w, split });
+        self.view.set(View {
+            rows,
+            col_w,
+            split,
+            width: w,
+        });
+        // The cursor stays in view however the size changed.
+        let cur = self.cursor.get();
+        if cur < self.scroll.get().min(self.max_scroll()) || cur > self.last_visible() {
+            self.scroll.set(self.top_for(cur, split, rows));
+        }
         let n = self.len(split);
         let first = self.scroll.get().min(self.max_scroll());
         let hscroll = self.hscroll.min(self.max_hscroll());
@@ -842,19 +1585,27 @@ impl DiffView {
                 break;
             }
             shown += 1;
+            for block in self.blocks_at(index, true) {
+                out.extend(block);
+            }
+            let marks = self.marks(index, true);
+            // A separator or a note across both sides; the cursor can be on it.
+            let across = |text: &str, offset: usize, style: Style| {
+                let mut chars: Vec<(char, usize)> = text.chars().map(|c| (c, 0)).collect();
+                let mut styles = vec![style; 3];
+                let extra = paint(&mut chars, &mut styles, marks, offset, look.selection);
+                let cells = width(text) + extra;
+                Line::from(windowed(chars.into_iter(), cells, 0, total, &styles, true))
+            };
             match row {
                 Row::Hunk(text) => {
-                    let style = with_bg(look.muted, look.band);
-                    let text = format!("⋯ {text}");
-                    let chars = text.chars().map(|c| (c, 0));
-                    let spans = windowed(chars, width(&text), 0, total, &[style; 3], true);
-                    out.push(Line::from(spans));
+                    out.push(across(
+                        &format!("⋯ {text}"),
+                        2,
+                        with_bg(look.muted, look.band),
+                    ));
                 }
-                Row::Note(text) => {
-                    let chars = text.chars().map(|c| (c, 0));
-                    let spans = windowed(chars, width(text), 0, total, &[look.muted; 3], true);
-                    out.push(Line::from(spans));
-                }
+                Row::Note(text) => out.push(across(text, 0, look.muted)),
                 Row::Line {
                     left,
                     right,
@@ -870,8 +1621,15 @@ impl DiffView {
                         (Tone::Ctx, Tone::Ctx)
                     };
                     let (gut, wrap) = (g.gutter, self.wrap);
-                    let l = side_rows(left.as_ref(), lc, lt, gut, g.left, hscroll, wrap, look);
-                    let r = side_rows(right.as_ref(), rc, rt, gut, g.right, hscroll, wrap, look);
+                    // The cursor is on the new side, or the old one when only it has a line.
+                    let (lm, rm) = if right.is_some() {
+                        (Marks::default(), marks)
+                    } else {
+                        (marks, Marks::default())
+                    };
+                    let (lw, rw) = ((gut, g.left, hscroll, wrap), (gut, g.right, hscroll, wrap));
+                    let l = side_rows(left.as_ref(), lc, lt, lw, lm, look);
+                    let r = side_rows(right.as_ref(), rc, rt, rw, rm, look);
                     // The shorter side goes on blank, in its tint, as long as the other wraps.
                     for i in 0..l.len().max(r.len()) {
                         let mut spans = l
@@ -929,6 +1687,9 @@ impl DiffView {
                 break;
             }
             shown += 1;
+            for block in self.blocks_at(index, false) {
+                out.extend(block);
+            }
             out.extend(self.unified_rows(index, l, w, hscroll, look));
         }
         out.truncate(rows);
@@ -978,7 +1739,7 @@ impl DiffView {
             style
         };
         let mut styles = vec![base, base, base];
-        let chars: Vec<(char, usize)> = body
+        let mut chars: Vec<(char, usize)> = body
             .chars()
             .enumerate()
             .map(|(i, c)| match look.code(classes.get(i).copied()) {
@@ -986,8 +1747,11 @@ impl DiffView {
                 None => (c, 0),
             })
             .collect();
+        let marks = self.marks(index, false);
+        let extra = paint(&mut chars, &mut styles, marks, 0, look.selection);
         let pad = lit && tone != Tone::Ctx;
-        let text = fitted(chars, width(body), hscroll, avail, &styles, pad, self.wrap);
+        let total = width(body) + extra;
+        let text = fitted(chars, total, hscroll, avail, &styles, pad, self.wrap);
         text.into_iter()
             .enumerate()
             .map(|(i, text)| {
@@ -1011,6 +1775,16 @@ impl DiffView {
 
     /// Screen rows row `i` of the shown mode takes: one, or more when it wraps.
     fn height(&self, i: usize, split: bool) -> usize {
+        let blocks: usize = if self.comments.is_empty() && self.writing.is_none() {
+            0
+        } else {
+            self.blocks_at(i, split).iter().map(Vec::len).sum()
+        };
+        blocks + self.text_height(i, split)
+    }
+
+    /// Screen rows the text of row `i` takes, without the comments above it.
+    fn text_height(&self, i: usize, split: bool) -> usize {
         let v = self.view.get();
         if !self.wrap {
             return 1;
@@ -1066,6 +1840,8 @@ struct Look {
     band: Option<Color>,
     /// The colors of code, by class; None without true colors (code stays plain).
     syntax: Option<[Style; syntax::CLASSES]>,
+    /// What `v` / `V` selected: the accent mixed in, underlined without colors to mix.
+    selection: Style,
 }
 
 impl Look {
@@ -1082,6 +1858,10 @@ impl Look {
             add_hl: blend(p.bg, p.success, 38),
             band: matches!(p.surface, Color::Rgb(..)).then_some(p.surface),
             syntax: code_colors(p),
+            selection: match blend(p.bg, p.accent, 35) {
+                Some(c) => Style::new().bg(c),
+                None => Style::new().add_modifier(Modifier::UNDERLINED),
+            },
         }
     }
 
@@ -1255,18 +2035,17 @@ fn side_filler(present: bool, tone: Tone, col: usize, look: &Look) -> Vec<Span<'
 }
 
 /// One column of a split row, each screen row exactly `col` cells: the line number, a sign, the
-/// text (wrapped, or from cell `skip` on); a blank filler when this side has no line.
-#[allow(clippy::too_many_arguments)]
+/// text (wrapped, or from cell `skip` on) with the cursor and selection on it; a blank filler
+/// when this side has no line. `cols` is the gutter, the column's width, `skip` and `wrap`.
 fn side_rows(
     side: Option<&Side>,
     classes: &[Class],
     tone: Tone,
-    gutter: usize,
-    col: usize,
-    skip: usize,
-    wrap: bool,
+    cols: (usize, usize, usize, bool),
+    marks: Marks,
     look: &Look,
 ) -> Vec<Vec<Span<'static>>> {
+    let (gutter, col, skip, wrap) = cols;
     let Some(side) = side else {
         return vec![side_filler(false, tone, col, look)];
     };
@@ -1281,7 +2060,7 @@ fn side_rows(
     let hl = side.hl.filter(|_| tone != Tone::Ctx);
     // Highlighted code keeps the change's color as a background tint.
     let mut styles = vec![base, look.changed(tone), bg.patch(look.muted)];
-    let chars: Vec<(char, usize)> = side
+    let mut chars: Vec<(char, usize)> = side
         .text
         .chars()
         .enumerate()
@@ -1302,7 +2081,8 @@ fn side_rows(
         .then_some(NO_EOL)
         .into_iter()
         .flat_map(str::chars);
-    let total = width(&side.text) + if side.no_eol { width(NO_EOL) } else { 0 };
+    let extra = paint(&mut chars, &mut styles, marks, 0, look.selection);
+    let total = width(&side.text) + extra + if side.no_eol { width(NO_EOL) } else { 0 };
     let chars = chars.into_iter().chain(eol.map(|c| (c, 2))).collect();
     fitted(chars, total, skip, avail, &styles, true, wrap)
         .into_iter()
@@ -1322,6 +2102,48 @@ fn side_rows(
             spans
         })
         .collect()
+}
+
+/// Paints the selection and the cursor of `m` on a row's chars, whose text starts at char
+/// `offset`; a cursor or selection past the end gets a blank after the text. The cells added.
+fn paint(
+    chars: &mut Vec<(char, usize)>,
+    styles: &mut Vec<Style>,
+    m: Marks,
+    offset: usize,
+    selection: Style,
+) -> usize {
+    if m == Marks::default() {
+        return 0;
+    }
+    let len = chars.len().saturating_sub(offset);
+    let need = m
+        .cursor
+        .map_or(0, |c| c + 1)
+        .max(m.sel.map_or(0, |(_, b)| b));
+    let extra = usize::from(need > len);
+    if extra == 1 {
+        chars.push((' ', 0));
+    }
+    let end = len + extra;
+    let mut over = |at: usize, patch: Style| {
+        if let Some(ch) = chars.get_mut(offset + at) {
+            let style = styles[ch.1].patch(patch);
+            ch.1 = style_id(styles, style);
+        }
+    };
+    if let Some((a, b)) = m.sel {
+        for at in a..b.min(end) {
+            over(at, selection);
+        }
+    }
+    if let Some(c) = m.cursor {
+        over(
+            c.min(end.saturating_sub(1)),
+            Style::new().add_modifier(Modifier::REVERSED),
+        );
+    }
+    extra
 }
 
 /// The index of `style` in `styles`, added when it isn't there yet.
@@ -1661,14 +2483,19 @@ fn file_as_diff(cwd: &Path, rel: &str) -> Result<String, String> {
 }
 
 fn run(cmd: &mut std::process::Command, no_index: bool) -> Result<String, String> {
-    let out = cmd.output().map_err(|e| format!("git: {e}"))?;
+    let out = cmd
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .map_err(|e| format!("git: {e}"))?;
     // --no-index exits 1 when the files differ.
     let ok = out.status.success() || (no_index && out.status.code() == Some(1));
     if ok {
-        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
-    } else {
-        Err("git diff failed".into())
+        return Ok(String::from_utf8_lossy(&out.stdout).into_owned());
     }
+    // What git said, on one line: the view shows it in place of the diff.
+    let said = String::from_utf8_lossy(&out.stderr);
+    let said = said.lines().map(str::trim).find(|l| !l.is_empty());
+    Err(said.map_or_else(|| "git diff failed".into(), clean_line))
 }
 
 /// The diff text of one row: against HEAD (staged and unstaged together), or the whole file
@@ -1692,7 +2519,8 @@ fn load(cwd: &Path, req: &DiffRequest, full: bool) -> Result<String, String> {
         return Err("no diff outside a git repository".into());
     }
     if req.mark == Mark::Committed {
-        // What the last commit that touched it changed.
+        // What the last commit that touched it changed. Asked where the file is: one outside the
+        // session's repository (../other/a.rs) is in a repository of its own.
         let log = [
             "log",
             "-1",
@@ -1701,8 +2529,13 @@ fn load(cwd: &Path, req: &DiffRequest, full: bool) -> Result<String, String> {
             "--no-color",
             "--no-ext-diff",
         ];
+        let path = cwd.join(&req.rel);
+        let (dir, name) = match (path.parent(), path.file_name()) {
+            (Some(dir), Some(name)) if dir.is_dir() => (dir.to_path_buf(), PathBuf::from(name)),
+            _ => (cwd.to_path_buf(), PathBuf::from(&req.rel)),
+        };
         let out = run(
-            git(cwd).args(log).arg(&context).arg("--").arg(&req.rel),
+            git(&dir).args(log).arg(&context).arg("--").arg(&name),
             false,
         )?;
         return if out.trim().is_empty() {
@@ -2071,9 +2904,12 @@ index 1111111..2222222 100644
         assert_eq!(rows[5], "  2  ok");
         // The title counts lines of the diff, not rows of the screen.
         assert!(rows[0].ends_with("1–3/3"), "{}", rows[0]);
-        // Nothing to scroll sideways while wrapping; `w` cuts again.
-        ch(&mut v, 'l');
+        // Nothing to scroll sideways while wrapping; `<leader>w` cuts again.
+        ch(&mut v, 'j');
+        ch(&mut v, '$');
         assert_eq!(v.hscroll, 0);
+        ch(&mut v, '0');
+        ch(&mut v, ' ');
         ch(&mut v, 'w');
         let cut = draw_to(&v, &mut t);
         assert_eq!(cut.lines().nth(2).unwrap(), "  1 +0123456789abcd…");
@@ -2124,16 +2960,19 @@ index 1111111..2222222 100644
         v.wrap = false;
         let mut t = Terminal::new(TestBackend::new(10, 4)).unwrap();
         assert_eq!(draw_to(&v, &mut t).lines().nth(2).unwrap(), "+01234567…");
-        ch(&mut v, 'l');
-        draw_to(&v, &mut t);
-        ch(&mut v, 'l');
-        assert_eq!(draw_to(&v, &mut t).lines().nth(2).unwrap(), "+89abcdef");
-        // Not past the end.
-        ch(&mut v, 'l');
-        assert_eq!(draw_to(&v, &mut t).lines().nth(2).unwrap(), "+89abcdef");
-        press(&mut v, KeyCode::Left);
+        // The view follows the cursor sideways, the sign staying put.
+        ch(&mut v, 'j');
+        for _ in 0..6 {
+            ch(&mut v, 'l');
+        }
         assert_eq!(draw_to(&v, &mut t).lines().nth(2).unwrap(), "+01234567…");
         ch(&mut v, 'l');
+        assert_ne!(draw_to(&v, &mut t).lines().nth(2).unwrap(), "+01234567…");
+        // Not past the end.
+        ch(&mut v, '$');
+        assert_eq!(draw_to(&v, &mut t).lines().nth(2).unwrap(), "+89abcdef");
+        ch(&mut v, 'l');
+        assert_eq!(draw_to(&v, &mut t).lines().nth(2).unwrap(), "+89abcdef");
         ch(&mut v, '0');
         assert_eq!(draw_to(&v, &mut t).lines().nth(2).unwrap(), "+01234567…");
     }
@@ -2331,7 +3170,14 @@ index 1111111..2222222 100644
         let mut t = Terminal::new(TestBackend::new(30, 11)).unwrap();
         let line = |out: &str, n: usize| out.lines().nth(n).unwrap().to_string();
         draw_to(&v, &mut t); // learns the height
+        // Down moves the cursor; the view only once it would leave it.
         assert!(!press(&mut v, KeyCode::Down));
+        let out = draw_to(&v, &mut t);
+        assert_eq!(v.cursor.get(), 1);
+        assert!(line(&out, 0).ends_with("lines 1–10 of 41"));
+        for _ in 0..9 {
+            press(&mut v, KeyCode::Down);
+        }
         let out = draw_to(&v, &mut t);
         assert!(line(&out, 1).starts_with("  1 +line 0"));
         assert!(line(&out, 0).ends_with("lines 2–11 of 41"));
@@ -2373,12 +3219,14 @@ index 1111111..2222222 100644
                 .unwrap()
                 .starts_with(" 40 +line 39")
         );
-        press(&mut v, KeyCode::Char('g'));
+        ch(&mut v, 'g');
+        ch(&mut v, 'g');
         assert!(line(&draw_to(&v, &mut t), 1).starts_with("    @@"));
         ch(&mut v, 'j');
         ch(&mut v, 'j');
         ch(&mut v, 'k');
-        assert!(line(&draw_to(&v, &mut t), 1).starts_with("  1 +line 0"));
+        assert_eq!(v.cursor.get(), 1);
+        assert!(line(&draw_to(&v, &mut t), 1).starts_with("    @@"));
         assert!(press(&mut v, KeyCode::Esc));
         assert!(ch(&mut v, 'q'));
     }
@@ -2410,43 +3258,70 @@ index 1111111..2222222 100644
         let mut t = Terminal::new(TestBackend::new(60, 10)).unwrap(); // unified, 9 rows
         draw_to(&v, &mut t);
         assert!(!v.view.get().split);
+        let at = |v: &DiffView| (v.cursor.get(), v.scroll.get());
         ch(&mut v, '5');
         ch(&mut v, 'j');
-        assert_eq!(v.scroll.get(), 5);
+        assert_eq!(at(&v), (5, 0));
+        // Ctrl-E / Ctrl-Y move the view, not the cursor.
         ctrl(&mut v, 'e');
-        assert_eq!(v.scroll.get(), 6);
+        assert_eq!(at(&v), (5, 1));
         ctrl(&mut v, 'y');
         ctrl(&mut v, 'y');
-        assert_eq!(v.scroll.get(), 4);
+        assert_eq!(at(&v), (5, 0));
+        // Half a page and a page move both.
         ctrl(&mut v, 'd');
-        assert_eq!(v.scroll.get(), 8);
+        assert_eq!(at(&v), (9, 4));
         ctrl(&mut v, 'u');
-        assert_eq!(v.scroll.get(), 4);
+        assert_eq!(at(&v), (5, 0));
         ctrl(&mut v, 'f');
-        assert_eq!(v.scroll.get(), 12);
+        assert_eq!(at(&v), (13, 8));
         ctrl(&mut v, 'b');
-        assert_eq!(v.scroll.get(), 4);
+        assert_eq!(at(&v), (5, 0));
+        // H / M / L: the top, middle and bottom of the view.
+        ch(&mut v, 'L');
+        assert_eq!(at(&v), (8, 0));
+        ch(&mut v, 'M');
+        assert_eq!(at(&v), (4, 0));
+        ch(&mut v, 'H');
+        assert_eq!(at(&v), (0, 0));
         // `}` / `{` between hunks (each 13 unified rows: its `@@` and 12 lines); a count goes
         // further.
         assert_eq!(v.hunk_starts(false), [0, 13, 26]);
         ch(&mut v, '}');
-        assert_eq!(v.scroll.get(), 13);
+        assert_eq!(at(&v), (13, 13));
         ch(&mut v, 'g');
+        ch(&mut v, 'g');
+        assert_eq!(v.cursor.get(), 0);
         ch(&mut v, '2');
         ch(&mut v, '}');
-        assert_eq!(v.scroll.get(), 26);
+        assert_eq!(v.cursor.get(), 26);
         ch(&mut v, '{');
-        assert_eq!(v.scroll.get(), 13);
+        assert_eq!(v.cursor.get(), 13);
         // `23G`: the row of the file's line 23 (in the second hunk, which starts at line 21).
         ch(&mut v, '2');
         ch(&mut v, '3');
         ch(&mut v, 'G');
-        assert_eq!(v.numbers[v.scroll.get()], Some(23));
-        // `0` alone still goes back to the left edge; `$` to the right one.
+        assert_eq!(v.numbers[v.cursor.get()], Some(23));
+        // In a line: `$` to its end, `0` back; w / e / b by words, on into the next line.
+        ch(&mut v, 'g');
+        ch(&mut v, 'g');
+        ch(&mut v, 'j');
+        assert_eq!(v.row_body(1, false), "ctx 0.0");
         ch(&mut v, '$');
-        assert_eq!(v.hscroll, v.max_hscroll());
+        assert_eq!(v.col, 6);
         ch(&mut v, '0');
-        assert_eq!(v.hscroll, 0);
+        assert_eq!(v.col, 0);
+        let mut word = |c: char| {
+            ch(&mut v, c);
+            (v.cursor.get(), v.col)
+        };
+        assert_eq!(word('w'), (1, 4));
+        assert_eq!(word('w'), (1, 5));
+        assert_eq!(word('w'), (1, 6));
+        assert_eq!(word('w'), (2, 0));
+        assert_eq!(word('e'), (2, 2));
+        assert_eq!(word('b'), (2, 0));
+        assert_eq!(word('b'), (1, 6));
     }
 
     #[test]
@@ -2487,26 +3362,152 @@ index 1111111..2222222 100644
     }
 
     #[test]
-    fn e_asks_for_the_file_in_the_editor_at_the_line_in_view() {
+    fn leader_e_asks_for_the_file_in_the_editor_at_the_cursor() {
         let dir = std::env::temp_dir();
-        let req = DiffRequest {
+        let mut v = file_view(&dir, "@@ -10,3 +10,3 @@\n a\n-b\n+B\n c\n");
+        // On the `@@`: the first line in view.
+        ch(&mut v, ' ');
+        ch(&mut v, 'e');
+        assert_eq!(v.take_edit(), Some((dir.join("src/a.rs"), Some(10))));
+        assert_eq!(v.take_edit(), None);
+        // On `+B`, line 11; `\` is the leader too.
+        for _ in 0..3 {
+            ch(&mut v, 'j');
+        }
+        ch(&mut v, '\\');
+        ch(&mut v, 'e');
+        assert_eq!(v.take_edit(), Some((dir.join("src/a.rs"), Some(11))));
+        // A pull request's diff has no file here.
+        let mut pr = DiffView::from_text("pr", "@@ -1 +1 @@\n-a\n+b\n");
+        ch(&mut pr, ' ');
+        ch(&mut pr, 'e');
+        assert_eq!(pr.take_edit(), None);
+        assert_eq!(pr.message.as_deref(), Some("not a file here"));
+    }
+
+    /// The diff of `src/a.rs` in `dir`, as the files panel opens it.
+    fn file_view(dir: &Path, diff: &str) -> DiffView {
+        let mut v = DiffView::blank("src/a.rs".into());
+        v.cwd = dir.to_path_buf();
+        v.req = Some(DiffRequest {
             rel: "src/a.rs".into(),
             orig: None,
             mark: Mark::Modified,
             in_repo: true,
-        };
-        let mut v = DiffView::blank("src/a.rs".into());
-        v.cwd = dir.clone();
-        v.req = Some(req);
-        v.finish(Ok("@@ -10,3 +10,3 @@\n a\n-b\n+B\n c\n".into()));
-        ch(&mut v, 'e');
-        assert_eq!(v.take_edit(), Some((dir.join("src/a.rs"), Some(10))));
-        assert_eq!(v.take_edit(), None);
-        // A pull request's diff has no file here.
-        let mut pr = DiffView::from_text("pr", "@@ -1 +1 @@\n-a\n+b\n");
-        ch(&mut pr, 'e');
-        assert_eq!(pr.take_edit(), None);
-        assert_eq!(pr.message.as_deref(), Some("not a file here"));
+        });
+        v.finish(Ok(diff.into()));
+        v
+    }
+
+    fn typed(v: &mut DiffView, text: &str) {
+        for c in text.chars() {
+            ch(v, c);
+        }
+    }
+
+    #[test]
+    fn leader_c_comments_on_a_line_and_the_prompt_gets_it() {
+        let mut v = file_view(&std::env::temp_dir(), "@@ -10,3 +10,3 @@\n a\n-b\n+B\n c\n");
+        let mut t = Terminal::new(TestBackend::new(60, 12)).unwrap();
+        draw_to(&v, &mut t);
+        // On `+B` (line 11): the block opens above it, the file split there.
+        for _ in 0..3 {
+            ch(&mut v, 'j');
+        }
+        typed(&mut v, " c");
+        typed(&mut v, "use a const");
+        let out = draw_to(&v, &mut t);
+        let rows: Vec<&str> = out.lines().collect();
+        let head = rows
+            .iter()
+            .position(|r| r.contains("╭ @src/a.rs:11"))
+            .expect(&out);
+        assert!(rows[head + 1].starts_with("│ use a const"), "{out}");
+        assert!(rows[head + 2].contains("enter keeps it"), "{out}");
+        assert!(rows[head + 3].contains("+B"), "{out}");
+        // Keys go to the comment while it is written: j is a letter.
+        ch(&mut v, 'j');
+        press(&mut v, KeyCode::Backspace);
+        press(&mut v, KeyCode::Enter);
+        assert_eq!(
+            v.take_comment_changes(),
+            [(None, Some("@src/a.rs:11 use a const".to_string()))]
+        );
+        let out = draw_to(&v, &mut t);
+        assert!(out.contains("╭ @src/a.rs:11"), "{out}");
+        assert!(out.contains("│ use a const"), "{out}");
+        assert!(!out.contains("enter keeps it"), "{out}");
+        // On the commented line again: edits it; the prompt's copy is replaced.
+        typed(&mut v, " c");
+        assert_eq!(
+            v.writing.as_ref().map(|w| w.text.as_str()),
+            Some("use a const")
+        );
+        typed(&mut v, "ant");
+        press(&mut v, KeyCode::Enter);
+        assert_eq!(
+            v.take_comment_changes(),
+            [(
+                Some("@src/a.rs:11 use a const".to_string()),
+                Some("@src/a.rs:11 use a constant".to_string())
+            )]
+        );
+        // Emptied: it goes.
+        typed(&mut v, " c");
+        ctrl(&mut v, 'u');
+        press(&mut v, KeyCode::Enter);
+        assert_eq!(
+            v.take_comment_changes(),
+            [(Some("@src/a.rs:11 use a constant".to_string()), None)]
+        );
+        assert!(v.comments.is_empty());
+        // Esc gives up and leaves nothing.
+        typed(&mut v, " cnever mind");
+        assert!(!press(&mut v, KeyCode::Esc), "the view stays open");
+        assert!(v.writing.is_none());
+        assert!(v.take_comment_changes().is_empty());
+    }
+
+    #[test]
+    fn visual_selections_comment_on_their_lines() {
+        let mut v = file_view(
+            &std::env::temp_dir(),
+            "@@ -10,4 +10,4 @@\n a\n-b\n+B\n c\n d\n",
+        );
+        let mut t = Terminal::new(TestBackend::new(60, 12)).unwrap();
+        draw_to(&v, &mut t);
+        // `V` from `a` (10) down to `c` (12): the removed line has no new number.
+        ch(&mut v, 'j');
+        ch(&mut v, 'V');
+        typed(&mut v, "jjj");
+        assert_eq!(v.marks(2, false).sel, Some((0, 1)));
+        typed(&mut v, " c");
+        assert!(v.visual.get().is_none(), "the comment ends the selection");
+        typed(&mut v, "why");
+        press(&mut v, KeyCode::Enter);
+        assert_eq!(
+            v.take_comment_changes(),
+            [(None, Some("@src/a.rs:10-12 why".to_string()))]
+        );
+        // `v` selects characters: from the cursor's to the one it moves to.
+        ch(&mut v, 'G');
+        ch(&mut v, '0');
+        ch(&mut v, 'v');
+        assert_eq!(v.marks(5, false).sel, Some((0, 1)));
+        ch(&mut v, 'k');
+        assert_eq!(v.marks(4, false).sel, Some((0, 1)));
+        assert_eq!(v.marks(5, false).sel, Some((0, 1)));
+        // Esc leaves visual mode first, then the view.
+        assert!(!press(&mut v, KeyCode::Esc));
+        assert!(v.visual.get().is_none());
+        assert!(press(&mut v, KeyCode::Esc));
+        // Only the old side has a removed line: its comment counts in the old numbers.
+        let mut w = file_view(&std::env::temp_dir(), "@@ -10,2 +10,1 @@\n a\n-b\n");
+        draw_to(&w, &mut t);
+        typed(&mut w, "jj cgone?");
+        press(&mut w, KeyCode::Enter);
+        assert!(w.comments[0].old);
+        assert_eq!(w.comments[0].start, 11);
     }
 
     #[test]
@@ -2558,10 +3559,13 @@ index 1111111..2222222 100644
                 .unwrap()
                 .ends_with("lines 29–36 of 36")
         );
-        // The mouse wheel is Up / Down.
-        press(&mut v, KeyCode::Up);
-        press(&mut v, KeyCode::Up);
+        // The mouse wheel is Ctrl-Y / Ctrl-E: the view moves, the cursor (at the end) with it
+        // only as far as it has to.
+        assert_eq!(v.cursor.get(), 35);
+        ctrl(&mut v, 'y');
+        ctrl(&mut v, 'y');
         assert_eq!(v.scroll.get(), 26);
+        assert_eq!(v.cursor.get(), 33);
         press(&mut v, KeyCode::End);
         assert_eq!(v.scroll.get(), 28);
         press(&mut v, KeyCode::Home);
@@ -2579,30 +3583,26 @@ index 1111111..2222222 100644
         let cut = out.lines().nth(long).unwrap();
         assert_eq!(cut.matches('…').count(), 2, "{cut}");
         assert!(!cut.contains("sideways"));
-        // Left / Right (and h / l) move both sides by 8 cells.
-        press(&mut v, KeyCode::Right);
-        ch(&mut v, 'l');
-        let out = draw_to(&v, &mut t);
-        let cut = out.lines().nth(long).unwrap();
-        assert!(cut.contains("g = \"a very"), "{cut}");
-        for _ in 0..20 {
-            press(&mut v, KeyCode::Right);
+        // The cursor on the long line (the new side's): `$` takes both sides to its end.
+        ch(&mut v, '/');
+        for c in "const long".chars() {
+            ch(&mut v, c);
         }
+        press(&mut v, KeyCode::Enter);
+        ch(&mut v, '$');
         let out = draw_to(&v, &mut t);
         let cut = out.lines().nth(long).unwrap();
         // The end of both lines is in view, and no `…` is left.
         assert_eq!(cut.matches("sideways").count(), 2, "{cut}");
         assert!(cut.trim_end().ends_with("sideways!\";"), "{cut}");
-        assert_eq!(v.hscroll, v.max_hscroll());
+        assert!(v.hscroll > 0);
         // The line numbers stay.
         assert!(out.lines().nth(2).unwrap().starts_with("⋯"));
+        // Back a few columns stays where it is; `0` goes back to the left edge.
+        let at = v.hscroll;
         press(&mut v, KeyCode::Left);
-        assert_eq!(v.hscroll, v.max_hscroll() - 8);
+        assert_eq!(v.hscroll, at);
         ch(&mut v, '0');
-        assert_eq!(v.hscroll, 0);
-        for _ in 0..30 {
-            press(&mut v, KeyCode::Left);
-        }
         assert_eq!(v.hscroll, 0);
     }
 

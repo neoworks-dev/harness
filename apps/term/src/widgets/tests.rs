@@ -306,9 +306,12 @@ fn overlay_takes_keys_until_closed() {
         draw(&w),
         "a.rs  +20 −0   lines 1–5 of 21\n    @@ -1 +1 @@\n  1 +l0\n  2 +l1\n  3 +l2\n  4 +l3"
     );
-    // Whatever panel is focused, the overlay gets the keys.
+    // Whatever panel is focused, the overlay gets the keys (Ctrl-E scrolls a line).
     assert_eq!(
-        w.handle_key(Panel::Plan, key(KeyCode::Char('j'))),
+        w.handle_key(
+            Panel::Plan,
+            KeyEvent::new(KeyCode::Char('e'), KeyModifiers::CONTROL)
+        ),
         WidgetAction::Redraw
     );
     assert!(draw(&w).contains("  1 +l0\n  2 +l1\n  3 +l2\n  4 +l3\n  5 +l4"));

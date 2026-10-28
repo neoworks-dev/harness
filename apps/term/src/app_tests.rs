@@ -2694,6 +2694,39 @@ fn a_filtered_list_scrolls_to_the_focused_match() {
 }
 
 #[test]
+fn comments_from_the_diff_view_go_into_the_prompt_and_follow_their_edits() {
+    let mut app = app();
+    let some = |s: &str| Some(s.to_string());
+    type_str(&mut app, "look at these");
+    app.comment_in_prompt(None, some("@src/a.rs:11 use a const"));
+    app.comment_in_prompt(None, some("@src/b.rs:2-4 why?"));
+    assert_eq!(
+        app.editor.text(),
+        "look at these\n@src/a.rs:11 use a const\n@src/b.rs:2-4 why?"
+    );
+    // Edited: in its place, wherever the user moved it.
+    app.comment_in_prompt(
+        some("@src/a.rs:11 use a const"),
+        some("@src/a.rs:11 use a constant"),
+    );
+    assert!(
+        app.editor
+            .text()
+            .contains("\n@src/a.rs:11 use a constant\n")
+    );
+    // Deleted: gone with its line.
+    app.comment_in_prompt(some("@src/b.rs:2-4 why?"), None);
+    assert_eq!(
+        app.editor.text(),
+        "look at these\n@src/a.rs:11 use a constant"
+    );
+    // Taken out of the prompt by hand, an edit comes back at the end.
+    app.editor.set_text("just this");
+    app.comment_in_prompt(some("@src/a.rs:11 use a constant"), some("@src/a.rs:11 x"));
+    assert_eq!(app.editor.text(), "just this\n@src/a.rs:11 x");
+}
+
+#[test]
 fn tab_reaches_the_files_in_the_chat_and_enter_opens_one() {
     let mut app = app();
     let edit: ViewItem = serde_json::from_value(json!({
@@ -2712,9 +2745,10 @@ fn tab_reaches_the_files_in_the_chat_and_enter_opens_one() {
     assert_eq!(app.chat.picked_file(), Some("src/a.rs"));
     app.handle_key(key(KeyCode::Enter));
     assert!(app.widgets().overlay_open());
-    // Ctrl-D reaches the diff, not the editor; `e` hands the file to the editor.
+    // Ctrl-D reaches the diff, not the editor; `<leader>e` hands the file to the editor.
     assert!(app.handle_key(ctrl('d')).is_empty());
     assert!(app.widgets().overlay_open());
+    assert!(app.handle_key(key(KeyCode::Char(' '))).is_empty());
     assert_eq!(
         app.handle_key(key(KeyCode::Char('e'))),
         [Effect::Edit {

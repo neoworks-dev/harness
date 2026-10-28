@@ -31,17 +31,25 @@
 //!   behind them and the sign its color. Without true colors code stays plain.
 //! - **Diff overlay**: `git diff HEAD -- path` (the whole file for untracked ones; at most a
 //!   million lines) loaded in the background and drawn over the chat, side by side from 90
-//!   columns on. While it is open it takes every key whatever panel is focused, vim's way:
-//!   Up/Down/j/k, Ctrl-E/Ctrl-Y a line, Ctrl-D/Ctrl-U half a page, PgUp/PgDn, Space/b and
-//!   Ctrl-F/Ctrl-B a page, g/G the ends; a count first repeats (`5j`) or names a line (`120G`);
-//!   n/p or }/{ the next / previous hunk; `/` searches (smart case, Enter jumps, Esc gives up),
-//!   then n/N the next / previous match; long lines wrap under their line number (each side of
-//!   the split view on its own, the shorter one going on blank in its tint), and w switches to
-//!   cutting them with a `…` instead, when Left/Right/h/l scroll sideways by 8 cells and 0 and $
-//!   go to the edges; s switches split and unified; f reloads with the whole file as context (and
-//!   back); e asks for the file in the editor at the top line ([`Widgets::take_edit`]); Esc or q
-//!   close it. Closing returns `Redraw`, so focus stays on the files panel (to pick the next
-//!   file); a second Esc there returns `Leave`.
+//!   columns on. While it is open it takes every key whatever panel is focused, vim's way, with
+//!   a cursor (on the new side of the split view, the old one where only it has a line):
+//!   h/j/k/l and the arrows, w/b/e by words, 0/^/$ in the line, gg/G the ends, H/M/L the view's
+//!   top, middle and bottom; Ctrl-D/Ctrl-U half a page, PgUp/PgDn and Ctrl-F/Ctrl-B a page;
+//!   Ctrl-E/Ctrl-Y (and the wheel) scroll a line, the cursor only moving to stay in view; a count
+//!   first repeats (`5j`) or names a line (`120G`); n/p or }/{ the next / previous hunk; `/`
+//!   searches (smart case, Enter jumps, Esc gives up), then n/N the next / previous match; `v`
+//!   and `V` select characters and lines (Esc leaves them). The leader is Space or `\`:
+//!   `<leader>c` comments on the cursor's line or the selection's lines — a block above them
+//!   splitting the file, written in place (Enter keeps it, Esc gives up, emptied it goes) and
+//!   put in the prompt as `@path:start-end text` ([`Widgets::take_comment_changes`]); on a
+//!   commented line it edits that comment, and the prompt's copy follows. The comments stay with
+//!   their file while the view is closed, until a message carrying them is sent. Long lines
+//!   wrap under their line number (each side of the split view on its own, the shorter one
+//!   going on blank in its tint), and `<leader>w` switches to cutting them with a `…` instead,
+//!   the view following the cursor sideways; s switches split and unified; f reloads with the
+//!   whole file as context (and back); `<leader>e` asks for the file in the editor at the
+//!   cursor's line ([`Widgets::take_edit`]); Esc or q close it. Closing returns `Redraw`, so
+//!   focus stays on the files panel (to pick the next file); a second Esc there returns `Leave`.
 //! - The GitHub view (`crate::github`) reuses the diff view for a pull request's diff.
 //! - Keys the panels don't use return `Redraw` (harmless). Esc and q in a panel return `Leave`.
 
@@ -73,8 +81,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use diff::DiffRequest;
 pub(crate) use diff::DiffView;
+use diff::{Comment, DiffRequest};
 use files::{FileKey, FilesState};
 use git::Runner;
 use plan::PlanState;
@@ -128,6 +136,9 @@ pub struct Widgets {
     /// `/diff split`: files open side by side where they fit.
     split_diffs: bool,
     diff: Option<DiffView>,
+    /// The comments written in the diff view, by file, kept while it is closed and until the
+    /// message they are in is sent.
+    comments: HashMap<String, Vec<Comment>>,
     /// toolCallId -> the guest that made the call (None: the session's own agent).
     tool_agents: HashMap<String, Option<String>>,
     /// None only in tests that don't want a git process.
@@ -156,6 +167,7 @@ impl Widgets {
             jobs_polled_ms: 0,
             split_diffs: false,
             diff: None,
+            comments: HashMap::new(),
             tool_agents: HashMap::new(),
             runner,
         }
@@ -177,6 +189,8 @@ impl Widgets {
         self.files = FilesState::default();
         self.files.icons = icons;
         self.diff = None;
+        // Their paths were relative to the old directory.
+        self.comments.clear();
         if self.runner.is_some() {
             let mut runner = Runner::for_dir(&cwd, Instant::now());
             runner.poll(Instant::now());
@@ -565,9 +579,45 @@ impl Widgets {
         self.diff.is_some()
     }
 
-    /// The file `e` in the diff overlay asked to open in the editor, and the line.
+    /// The file `<leader>e` in the diff overlay asked to open in the editor, and the line.
     pub fn take_edit(&mut self) -> Option<(PathBuf, Option<usize>)> {
         self.diff.as_mut()?.take_edit()
+    }
+
+    /// What the comments written in the diff overlay changed: each as the prompt had it
+    /// (`@path:12-14 text`) and has it now; none: not there.
+    pub fn take_comment_changes(&mut self) -> Vec<(Option<String>, Option<String>)> {
+        self.diff
+            .as_mut()
+            .map(DiffView::take_comment_changes)
+            .unwrap_or_default()
+    }
+
+    /// A message went: the comments it has in it are done.
+    pub fn comments_sent(&mut self, text: &str) {
+        for (rel, list) in &mut self.comments {
+            list.retain(|c| !text.contains(&c.mention(rel)));
+        }
+        self.comments.retain(|_, list| !list.is_empty());
+    }
+
+    /// The diff view, with the comments written on its file before.
+    fn with_comments(&self, view: DiffView, rel: &str) -> DiffView {
+        view.with_comments(self.comments.get(rel).cloned().unwrap_or_default())
+    }
+
+    /// Closes the diff view, keeping its comments.
+    fn close_diff(&mut self) {
+        if let Some(mut d) = self.diff.take()
+            && let Some(rel) = d.rel().map(str::to_string)
+        {
+            let comments = d.take_comments();
+            if comments.is_empty() {
+                self.comments.remove(&rel);
+            } else {
+                self.comments.insert(rel, comments);
+            }
+        }
     }
 
     /// A key while a panel (or the diff overlay) has focus.
@@ -577,7 +627,7 @@ impl Widgets {
         }
         if let Some(d) = &mut self.diff {
             if d.key(key) {
-                self.diff = None;
+                self.close_diff();
             }
             return WidgetAction::Redraw;
         }
@@ -617,8 +667,9 @@ impl Widgets {
                 mark: e.mark,
                 in_repo: self.files.in_repo(),
             };
-            self.diff =
-                Some(DiffView::open_file(self.cwd.clone(), req).with_split(self.split_diffs));
+            let rel = req.rel.clone();
+            let view = DiffView::open_file(self.cwd.clone(), req).with_split(self.split_diffs);
+            self.diff = Some(self.with_comments(view, &rel));
         }
     }
 
@@ -636,9 +687,10 @@ impl Widgets {
             orig: entry.and_then(|e| e.orig.clone()),
             mark: entry.map_or(files::Mark::Modified, |e| e.mark),
             in_repo: self.files.in_repo(),
-            rel,
+            rel: rel.clone(),
         };
-        self.diff = Some(DiffView::open_file(self.cwd.clone(), req).with_split(self.split_diffs));
+        let view = DiffView::open_file(self.cwd.clone(), req).with_split(self.split_diffs);
+        self.diff = Some(self.with_comments(view, &rel));
     }
 }
 

@@ -1513,6 +1513,9 @@ impl App {
             if let Some((path, line)) = self.widgets.take_edit() {
                 fx.push(Effect::Edit { path, line });
             }
+            for (before, after) in self.widgets.take_comment_changes() {
+                self.comment_in_prompt(before, after);
+            }
             return fx;
         }
         if self.github.is_open() {
@@ -1587,10 +1590,11 @@ impl App {
                     .handle_key(Panel::Terminal, KeyEvent::new(code, KeyModifiers::NONE));
             }
         } else if self.widgets.overlay_open() {
-            let code = if down { KeyCode::Down } else { KeyCode::Up };
+            // Ctrl-E / Ctrl-Y: the view moves, the cursor only as far as it has to.
+            let code = KeyCode::Char(if down { 'e' } else { 'y' });
             for _ in 0..WHEEL_LINES {
                 self.widgets
-                    .handle_key(Panel::Files, KeyEvent::new(code, KeyModifiers::NONE));
+                    .handle_key(Panel::Files, KeyEvent::new(code, KeyModifiers::CONTROL));
             }
         } else if down {
             self.chat.scroll_down(WHEEL_LINES);
@@ -2574,8 +2578,32 @@ impl App {
         }
     }
 
+    /// A comment from the diff view, as `@path:12-14 text`: a new one goes on a line of its own
+    /// at the end of the prompt; an edited one takes the old one's place (where the user left
+    /// it), a deleted one goes.
+    fn comment_in_prompt(&mut self, before: Option<String>, after: Option<String>) {
+        let text = self.editor.text().to_string();
+        let new = match (before.filter(|b| text.contains(b.as_str())), after) {
+            (Some(b), Some(a)) => text.replacen(&b, &a, 1),
+            (Some(b), None) => {
+                let gone = text.replacen(&format!("{b}\n"), "", 1);
+                let gone = if gone == text {
+                    text.replacen(&b, "", 1)
+                } else {
+                    gone
+                };
+                gone.trim_end().to_string()
+            }
+            (None, Some(a)) if text.trim().is_empty() => a,
+            (None, Some(a)) => format!("{}\n{a}", text.trim_end()),
+            (None, None) => return,
+        };
+        self.editor.set_text(&new);
+    }
+
     fn send(&mut self, text: String, fx: &mut Vec<Effect>) {
         self.histories.record(&self.session, &text);
+        self.widgets.comments_sent(&text);
         self.chat.follow();
         // Sending ends the typing: a card it brings (/model's choice) takes the editor's place at
         // once instead of showing in the chat first.
