@@ -1043,6 +1043,8 @@ export interface Choice {
   current?: string;
   /** The answer concerns the agent's work (a review of its changes): a note for the agent may go with it. Absent: a setting of the user's (a model, /settings), no note. */
   forAgent?: boolean;
+  /** A pick can leave it open (/settings): an answer with stay (neo.choose {id, option, stay: true}) acts on the option, and the choice comes again with the same id and its options as they are now. Absent: every pick ends it. */
+  stays?: boolean;
 }
 
 /** The answer to a choice: the picked option, or none when it was dropped (the daemon restarted, or a newer choice replaced it). */
@@ -1252,6 +1254,8 @@ export interface ButtonComponent {
   current?: boolean;
   /** The answer is the agent's to hear: a note for it may go with the press (args.note). Absent: no note. */
   note?: boolean;
+  /** Pressed with args.stay (Space in the terminal), its card stays open and is drawn again as it is now: a setting changed in place. Absent: a press ends the card. */
+  stays?: boolean;
 }
 
 /** TUI: underlined text plus the URL. */

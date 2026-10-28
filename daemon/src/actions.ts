@@ -135,9 +135,10 @@ export class ActionRunner {
       throw new BadRequestError("copy: actions are handled by the client");
     }
     if (action === "neo.permit" || action === "neo.choose") {
-      // Answers a permission_request or a choice: args {id, option, note?}.
+      // Answers a permission_request or a choice: args {id, option, note?, stay?}; stay keeps
+      // a choice that stays open (it acts on the option and shows again).
       const fields: Record<string, unknown> = Object.assign({}, args);
-      const { id, option, note } = fields;
+      const { id, option, note, stay } = fields;
       if (typeof id !== "string" || typeof option !== "string" || !this.parts.asker) {
         throw new BadRequestError(`${action} needs args {id, option}`);
       }
@@ -148,7 +149,7 @@ export class ActionRunner {
       // An empty note is no note.
       const trimmed = note?.trim();
       const added = trimmed === "" ? undefined : trimmed;
-      this.parts.asker.answer(session, kind, id, option, from, added);
+      this.parts.asker.answer(session, kind, id, option, from, added, stay === true);
       return;
     }
     if (action === "neoui.input" || action === "neoui.press") {

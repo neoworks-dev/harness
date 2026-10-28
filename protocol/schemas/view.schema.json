@@ -369,6 +369,10 @@
         "note": {
           "type": "boolean",
           "description": "The answer is the agent's to hear: a note for it may go with the press (args.note). Absent: no note."
+        },
+        "stays": {
+          "type": "boolean",
+          "description": "Pressed with args.stay (Space in the terminal), its card stays open and is drawn again as it is now: a setting changed in place. Absent: a press ends the card."
         }
       },
       "required": ["type", "label", "action"],

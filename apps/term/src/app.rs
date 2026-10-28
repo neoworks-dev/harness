@@ -246,7 +246,13 @@ struct PromptState {
 fn keys_hint(focused: Option<&ButtonRef>, buttons: usize, filter: Option<&str>) -> String {
     let mut parts = Vec::new();
     if let Some(button) = focused {
-        parts.push(format!("enter {}", button.label.to_lowercase()));
+        // A setting: Space changes it and stays, Enter changes it and closes.
+        if button.stays {
+            parts.push("space change".to_string());
+            parts.push("enter change and close".to_string());
+        } else {
+            parts.push(format!("enter {}", button.label.to_lowercase()));
+        }
         if takes_note(button) {
             parts.push("tab add a note".to_string());
         }
@@ -1100,6 +1106,31 @@ impl App {
 
     fn active_buttons(&self) -> &[ButtonRef] {
         self.active_ref().map_or(&[], |r| self.chat.buttons_of(r))
+    }
+
+    fn focused_button(&self) -> Option<&ButtonRef> {
+        self.active_buttons().get(self.prompt.button)
+    }
+
+    /// Space on a button whose card stays (`/settings`): pressed with `stay`, the card left
+    /// open and the focus where it is, for the daemon to draw it again as it is now.
+    fn press_staying(&mut self, fx: &mut Vec<Effect>) {
+        let (Some(r), Some(button)) = (
+            self.active_ref().map(str::to_string),
+            self.focused_button().cloned(),
+        ) else {
+            return;
+        };
+        let mut args = button.args;
+        if let Some(serde_json::Value::Object(map)) = args.as_mut() {
+            map.insert("stay".into(), true.into());
+        }
+        fx.push(Effect::Action {
+            session: self.session.clone(),
+            item: r,
+            action: button.action,
+            args,
+        });
     }
 
     /// The active prompt is a choice long enough to be filtered by typing.
@@ -2126,6 +2157,10 @@ impl App {
                 self.edit_filter(|f| {
                     f.pop();
                 });
+            }
+            // A setting changed in place: the card stays, drawn again as it is now.
+            KeyCode::Char(' ') if self.focused_button().is_some_and(|b| b.stays) => {
+                self.press_staying(fx);
             }
             KeyCode::Char(c) => {
                 if let Some(n) = c.to_digit(10).filter(|n| (1..=9).contains(n))

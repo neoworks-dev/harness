@@ -1044,6 +1044,10 @@
         "forAgent": {
           "description": "The answer concerns the agent's work (a review of its changes): a note for the agent may go with it. Absent: a setting of the user's (a model, /settings), no note.",
           "type": "boolean"
+        },
+        "stays": {
+          "description": "A pick can leave it open (/settings): an answer with stay (neo.choose {id, option, stay: true}) acts on the option, and the choice comes again with the same id and its options as they are now. Absent: every pick ends it.",
+          "type": "boolean"
         }
       },
       "required": ["type", "id", "title", "options"],

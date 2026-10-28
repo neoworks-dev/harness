@@ -2463,6 +2463,58 @@ fn a_long_choice_scrolls_to_the_focused_button() {
     assert!(!s.contains("model-000"), "{s}");
 }
 
+/// `/settings`: three settings, each a button that stays; `on` says which are on.
+fn settings_choice(app: &mut App, on: [bool; 3]) {
+    let rows: Vec<_> = ["Diffs", "Charts", "Edits"]
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let state = if on[i] { "on" } else { "off" };
+            json!({"type":"button","label":format!("{name} · {state}"),"action":"neo.choose",
+                "args":{"id":"c","option":name.to_lowercase()},"key":(i + 1).to_string(),
+                "stays":true})
+        })
+        .collect();
+    let item: ViewItem = serde_json::from_value(json!({
+        "ref":"q-s","kind":"tool","label":"Settings","state":"pending",
+        "component":{"type":"stack","gap":"s","children":rows}}))
+    .unwrap();
+    patch(app, item);
+}
+
+#[test]
+fn space_changes_a_setting_and_the_card_stays_enter_closes_it() {
+    let mut app = app();
+    long_chat(&mut app, 3);
+    settings_choice(&mut app, [false; 3]);
+    app.handle_key(key(KeyCode::Down));
+    let s = screen_text(&mut app, 80, 24);
+    assert!(
+        s.contains("space change · ←/→ choose · enter change and close"),
+        "{s}"
+    );
+    match &app.handle_key(key(KeyCode::Char(' ')))[..] {
+        [Effect::Action { args: Some(a), .. }] => {
+            assert_eq!(a["option"], "charts");
+            assert_eq!(a["stay"], true);
+        }
+        other => panic!("{other:?}"),
+    }
+    // Still open, on the same option, drawn again with the value as it is now.
+    assert_eq!(app.active_ref(), Some("q-s"));
+    settings_choice(&mut app, [false, true, false]);
+    assert_eq!(app.active_ref(), Some("q-s"));
+    assert!(screen_text(&mut app, 80, 24).contains("[2 Charts · on]"));
+    match &app.handle_key(key(KeyCode::Char(' ')))[..] {
+        [Effect::Action { args: Some(a), .. }] => assert_eq!(a["option"], "charts"),
+        other => panic!("{other:?}"),
+    }
+    // Enter changes it and closes the card.
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert_eq!(picked(&fx), "charts");
+    assert_eq!(app.active_ref(), None);
+}
+
 // ---- type to find an option of a long choice ----
 
 /// `/model` with several providers: 12 options, the third and fourth with a description, the

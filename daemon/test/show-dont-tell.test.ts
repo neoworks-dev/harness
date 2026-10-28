@@ -82,10 +82,29 @@ test("/settings without a toggle shows them with their state, and picking one fl
   ]);
   expect(choice.options[0]?.description).toContain("cards, tables and forms");
 
+  // With stay (Space): flipped, and the same choice again with the value as it is now.
+  expect(choice.stays).toBe(true);
+  const stay = { id: choice.id, option: "split-diffs", stay: true };
+  await daemon.actions.run({ session, ref: "x", action: "neo.choose", args: stay }, "test");
+  expect(daemon.settings.splitDiffs()).toBe(true);
+  const again = events(daemon, session).findLast((e) => e.type === "choice");
+  if (again?.type !== "choice") throw new Error("no choice was shown");
+  expect(again.id).toBe(choice.id);
+  expect(again.options[1]?.name).toBe("Side-by-side diffs · on");
+  expect(events(daemon, session).some((e) => e.type === "choice_made")).toBe(false);
+  const item = daemon.views
+    .get(session)
+    .snapshot()
+    .items.find((i) => i.ref === `q-${choice.id}`);
+  expect(JSON.stringify(item?.component)).toContain("Side-by-side diffs · on");
+  expect(JSON.stringify(item?.component)).toContain('"stays":true');
+
+  // Without: flipped, and the choice is answered.
   const args = { id: choice.id, option: "show-dont-tell" };
   await daemon.actions.run({ session, ref: "x", action: "neo.choose", args }, "test");
   await Bun.sleep(10);
   expect((await turn(daemon, agent, session)).map((e) => e.on)).toEqual([true]);
+  expect(events(daemon, session).some((e) => e.type === "choice_made")).toBe(true);
 });
 
 test("side-by-side diffs is a toggle for the apps: they hear of it, the agents don't", async () => {

@@ -80,6 +80,7 @@ mod tests {
             current: false,
             description: description.map(str::to_string),
             note: false,
+            stays: false,
         }
     }
 

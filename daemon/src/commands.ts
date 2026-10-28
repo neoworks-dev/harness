@@ -489,7 +489,8 @@ export class Commands {
       set(toggle, value ?? next(toggle));
       return Promise.resolve();
     }
-    const choice: Omit<Choice, "id"> = {
+    // Each with its value now: drawn again after one is changed in place.
+    const choice = (): Omit<Choice, "id"> => ({
       type: "choice",
       title: "Settings (pick one to change it)",
       options: toggles.map((t) => ({
@@ -497,14 +498,21 @@ export class Commands {
         name: `${t.name} · ${t.get()}`,
         description: t.description,
       })),
+      stays: true,
+    });
+    const change = (picked: string | undefined): void => {
+      const t = toggles.find((x) => x.id === picked);
+      if (t) set(t, next(t));
     };
-    // The answer comes later, from a button; the command is done once the choice is shown.
+    // The answer comes later, from a button; the command is done once the choice is shown. A
+    // pick with stay (Space) changes the setting and leaves the choice open.
+    const stay = (picked: string): Omit<Choice, "id"> => {
+      change(picked);
+      return choice();
+    };
     void this.parts.asker
-      .ask(session, choice)
-      .then((picked) => {
-        const t = toggles.find((x) => x.id === picked);
-        if (t) set(t, next(t));
-      })
+      .ask(session, choice(), undefined, stay)
+      .then(change)
       .catch((err: unknown) => this.parts.log.warn(`/settings: ${String(err)}`));
     return Promise.resolve();
   }

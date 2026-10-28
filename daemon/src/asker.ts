@@ -15,7 +15,12 @@ interface Pending {
   kind: "permission" | "choice";
   options: string[];
   resolve: (answer: Answer) => void;
+  /** A choice that stays: acts on a pick made with stay and gives the choice as it is now. */
+  stay?: Stay;
 }
+
+/** Acts on an option picked while the choice stays open; the choice to show now. */
+export type Stay = (option: string) => Omit<Choice, "id">;
 
 /** What the user picked (none: dropped before anyone answered) and what they added. */
 export interface Answer {
@@ -34,14 +39,16 @@ export class Asker {
    * Asks and waits. Resolves with the picked option id, or undefined when the signal aborts
    * first (the answer is then logged as none). A note the user added becomes a user_note
    * event: the agent hears it with its next prompt. Callers that can hand the note to the
-   * agent right away use askWithNote.
+   * agent right away use askWithNote. With `stay`, a choice picked with stay is not answered:
+   * `stay` acts on the option and the choice shows again as it gives it.
    */
   async ask(
     session: string,
     question: Omit<PermissionRequest, "id"> | Omit<Choice, "id">,
     signal?: AbortSignal,
+    stay?: Stay,
   ): Promise<string | undefined> {
-    const { option, note } = await this.askWithNote(session, question, signal);
+    const { option, note } = await this.askWithNote(session, question, signal, stay);
     if (option !== undefined && note !== undefined) {
       const name = question.options.find((o) => o.id === option)?.name ?? option;
       this.append(session, { type: "user_note", note, about: `${question.title} → ${name}` });
@@ -68,6 +75,7 @@ export class Asker {
     session: string,
     question: Omit<PermissionRequest, "id"> | Omit<Choice, "id">,
     signal?: AbortSignal,
+    stay?: Stay,
   ): Promise<Answer> {
     if (signal?.aborted) return Promise.resolve({});
     const id = `${question.type === "choice" ? "c" : "p"}_${crypto.randomUUID().slice(0, 8)}`;
@@ -75,7 +83,7 @@ export class Asker {
       const onAbort = (): void => this.settle(id, undefined);
       signal?.addEventListener("abort", onAbort, { once: true });
       const mirrors = [...(this.mirrored.get(session) ?? [])];
-      this.pending.set(id, {
+      const pending: Pending = {
         session,
         mirrors,
         kind: question.type === "choice" ? "choice" : "permission",
@@ -84,14 +92,19 @@ export class Asker {
           signal?.removeEventListener("abort", onAbort);
           resolve(answer);
         },
-      });
+      };
+      if (stay !== undefined && question.type === "choice") pending.stay = stay;
+      this.pending.set(id, pending);
       for (const target of [session, ...mirrors]) {
         this.append(target, { ...question, id } as SessionEvent);
       }
     });
   }
 
-  /** A button press: neo.permit or neo.choose with {id, option}. */
+  /**
+   * A button press: neo.permit or neo.choose with {id, option}. With `stay`, a choice that
+   * stays acts on the option and shows again instead of being answered.
+   */
   answer(
     session: string,
     kind: Pending["kind"],
@@ -99,6 +112,7 @@ export class Asker {
     option: string,
     by: string,
     note?: string,
+    stay = false,
   ): void {
     const pending = this.pending.get(id);
     if (
@@ -110,6 +124,12 @@ export class Asker {
     }
     if (!pending.options.includes(option))
       throw new BadRequestError(`${id} has no option ${option}`);
+    if (stay && pending.stay) {
+      const now = { ...pending.stay(option), id } as SessionEvent;
+      pending.options = now.type === "choice" ? now.options.map((o) => o.id) : pending.options;
+      for (const target of [pending.session, ...pending.mirrors]) this.append(target, now);
+      return;
+    }
     this.settle(id, option, by, note);
   }
 

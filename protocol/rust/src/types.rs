@@ -2654,6 +2654,9 @@ pub struct Choice {
     /// The answer concerns the agent's work (a review of its changes): a note for the agent may go with it. Absent: a setting of the user's (a model, /settings), no note.
     #[serde(rename = "forAgent", default, skip_serializing_if = "Option::is_none")]
     pub for_agent: Option<bool>,
+    /// A pick can leave it open (/settings): an answer with stay (neo.choose {id, option, stay: true}) acts on the option, and the choice comes again with the same id and its options as they are now. Absent: every pick ends it.
+    #[serde(rename = "stays", default, skip_serializing_if = "Option::is_none")]
+    pub stays: Option<bool>,
 }
 
 /// The answer to a choice: the picked option, or none when it was dropped (the daemon restarted, or a newer choice replaced it).
@@ -3202,6 +3205,9 @@ pub struct ButtonComponent {
     /// The answer is the agent's to hear: a note for it may go with the press (args.note). Absent: no note.
     #[serde(rename = "note", default, skip_serializing_if = "Option::is_none")]
     pub note: Option<bool>,
+    /// Pressed with args.stay (Space in the terminal), its card stays open and is drawn again as it is now: a setting changed in place. Absent: a press ends the card.
+    #[serde(rename = "stays", default, skip_serializing_if = "Option::is_none")]
+    pub stays: Option<bool>,
 }
 
 /// TUI: underlined text plus the URL.

@@ -648,6 +648,7 @@ export class SessionView {
         if (option.id === choice.current) button.current = true;
         // Only an answer about the agent's work takes a note for it; a setting doesn't.
         if (choice.forAgent === true) button.note = true;
+        if (choice.stays === true) button.stays = true;
         if (option.description === undefined) return button;
         return {
           type: "row",
