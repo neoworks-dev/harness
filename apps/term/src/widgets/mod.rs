@@ -38,7 +38,9 @@
 //!   Ctrl-E/Ctrl-Y (and the wheel) scroll a line, the cursor only moving to stay in view; a count
 //!   first repeats (`5j`) or names a line (`120G`); n/p or }/{ the next / previous hunk; `/`
 //!   searches (smart case, Enter jumps, Esc gives up), then n/N the next / previous match; `v`
-//!   and `V` select characters and lines (Esc leaves them). The leader is Space or `\`:
+//!   and `V` select characters and lines (Esc leaves them), `y` copies the selection and `yy`
+//!   the cursor's line (`3yy` three), without the signs ([`Widgets::take_copy`]). The leader
+//!   is Space or `\`:
 //!   `<leader>c` comments on the cursor's line or the selection's lines — a block above them
 //!   splitting the file, written in place (Enter keeps it, Esc gives up, emptied it goes) and
 //!   put in the prompt as `@path:start-end text` ([`Widgets::take_comment_changes`]); on a
@@ -582,6 +584,11 @@ impl Widgets {
     /// The file `<leader>e` in the diff overlay asked to open in the editor, and the line.
     pub fn take_edit(&mut self) -> Option<(PathBuf, Option<usize>)> {
         self.diff.as_mut()?.take_edit()
+    }
+
+    /// What `y` in the diff overlay copied, for the clipboard.
+    pub fn take_copy(&mut self) -> Option<String> {
+        self.diff.as_mut()?.take_copy()
     }
 
     /// What the comments written in the diff overlay changed: each as the prompt had it

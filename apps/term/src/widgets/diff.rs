@@ -168,10 +168,11 @@ struct Visual {
     line: bool,
 }
 
-/// A key waiting for the next one: `g` (`gg`), the leader (`\` or Space).
+/// A key waiting for the next one: `g` (`gg`), `y` (`yy`), the leader (`\` or Space).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pending {
     G,
+    Y,
     Leader,
 }
 
@@ -283,8 +284,10 @@ pub(crate) struct DiffView {
     pattern: Option<String>,
     /// Said in the title line until the next key (`no match`).
     message: Option<String>,
-    /// `e` asked for the file in the editor, at this line.
+    /// `<leader>e` asked for the file in the editor, at this line.
     edit: Option<(PathBuf, Option<usize>)>,
+    /// `y` copied this, for the app to put on the clipboard.
+    copy: Option<String>,
     /// Long lines wrap at the edge (`<leader>w` switches to cutting them and scrolling sideways).
     wrap: bool,
     /// The cursor: a row of the mode `scroll_split` says, and a char of the row's text.
@@ -377,6 +380,7 @@ impl DiffView {
             pattern: None,
             message: None,
             edit: None,
+            copy: None,
             wrap: true,
             cursor: Cell::new(0),
             col: 0,
@@ -660,6 +664,12 @@ impl DiffView {
                     self.col = 0;
                     self.want = 0;
                 }
+                (Pending::Y, KeyCode::Char('y')) => {
+                    let cur = self.cursor.get();
+                    let n = self.count.unwrap_or(1);
+                    let last = self.len(split).saturating_sub(1);
+                    self.yank(cur, (cur + n - 1).min(last), None, split);
+                }
                 (Pending::Leader, KeyCode::Char('c')) => self.start_comment(),
                 (Pending::Leader, KeyCode::Char('w')) => {
                     self.wrap = !self.wrap;
@@ -722,6 +732,29 @@ impl DiffView {
                 self.scroll.set(0);
             }
             (KeyCode::Char('g'), false) => self.pending = Some(Pending::G),
+            (KeyCode::Char('y'), false) => match self.visual.take() {
+                Some(v) => {
+                    let here = (cur, self.col.min(self.last_col(cur, split)));
+                    let (a, b) = if (v.row, v.col) <= here {
+                        ((v.row, v.col), here)
+                    } else {
+                        (here, (v.row, v.col))
+                    };
+                    let cols = (!v.line).then_some((a.1, b.1));
+                    self.yank(a.0, b.0, cols, split);
+                    // As vim: the cursor goes to the start of what was copied.
+                    self.cursor.set(a.0);
+                    self.col = if v.line {
+                        self.col.min(self.last_col(a.0, split))
+                    } else {
+                        a.1
+                    };
+                }
+                None => {
+                    self.count = count;
+                    self.pending = Some(Pending::Y);
+                }
+            },
             (KeyCode::End | KeyCode::Char('G'), _) => {
                 let row = count.map_or(last, |line| self.row_of_line(line, split));
                 self.set_row(row, split);
@@ -1170,6 +1203,28 @@ impl DiffView {
             }
             _ => {}
         }
+    }
+
+    /// Copies rows `a..=b` as the cursor reads them (without the signs): whole, or from char
+    /// `cols.0` of the first to char `cols.1` of the last.
+    fn yank(&mut self, a: usize, b: usize, cols: Option<(usize, usize)>, split: bool) {
+        let lines: Vec<String> = (a..=b)
+            .map(|row| {
+                let body: Vec<char> = self.row_body(row, split).chars().collect();
+                let from = cols.filter(|_| row == a).map_or(0, |c| c.0).min(body.len());
+                let to = cols
+                    .filter(|_| row == b)
+                    .map_or(body.len(), |c| c.1 + 1)
+                    .clamp(from, body.len());
+                body[from..to].iter().collect()
+            })
+            .collect();
+        self.copy = Some(lines.join("\n"));
+    }
+
+    /// What `y` copied, once.
+    pub(crate) fn take_copy(&mut self) -> Option<String> {
+        self.copy.take()
     }
 
     /// What the comments changed since the last call: each as the prompt had it and has it now.
@@ -3466,6 +3521,31 @@ index 1111111..2222222 100644
         assert!(!press(&mut v, KeyCode::Esc), "the view stays open");
         assert!(v.writing.is_none());
         assert!(v.take_comment_changes().is_empty());
+    }
+
+    #[test]
+    fn y_copies_the_selection_or_lines_without_their_signs() {
+        let mut v = file_view(
+            &std::env::temp_dir(),
+            "@@ -1,3 +1,3 @@\n alpha\n-beta\n+gamma one\n",
+        );
+        let mut t = Terminal::new(TestBackend::new(60, 12)).unwrap();
+        draw_to(&v, &mut t);
+        // `V` and `y`: whole lines; the cursor goes back to the first.
+        typed(&mut v, "jVjjy");
+        assert_eq!(v.take_copy().as_deref(), Some("alpha\nbeta\ngamma one"));
+        assert!(v.visual.get().is_none());
+        assert_eq!(v.cursor.get(), 1);
+        // `v` and `y`: from the char it started on to the cursor's, both in.
+        typed(&mut v, "lvjjey");
+        assert_eq!(v.take_copy().as_deref(), Some("lpha\nbeta\ngamma"));
+        assert_eq!((v.cursor.get(), v.col), (1, 1));
+        // `yy`: the cursor's line; `2yy` two of them.
+        typed(&mut v, "yy");
+        assert_eq!(v.take_copy().as_deref(), Some("alpha"));
+        typed(&mut v, "2yy");
+        assert_eq!(v.take_copy().as_deref(), Some("alpha\nbeta"));
+        assert_eq!(v.take_copy(), None);
     }
 
     #[test]

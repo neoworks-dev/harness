@@ -1516,6 +1516,16 @@ impl App {
             for (before, after) in self.widgets.take_comment_changes() {
                 self.comment_in_prompt(before, after);
             }
+            if let Some(text) = self.widgets.take_copy() {
+                let lines = text.lines().count().max(1);
+                fx.push(Effect::Copy(text));
+                let said = if lines == 1 {
+                    "copied".to_string()
+                } else {
+                    format!("copied {lines} lines")
+                };
+                self.notify(&said, false);
+            }
             return fx;
         }
         if self.github.is_open() {
