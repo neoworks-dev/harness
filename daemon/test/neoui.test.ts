@@ -328,7 +328,7 @@ describe("using a doc", () => {
     });
   });
 
-  test("the chat shows what was picked, and a press taken back out of the queue keeps it", async () => {
+  test("the chat shows what was picked; a press taken back out of the queue and sent again is told whole", async () => {
     const { daemon, session } = await setup();
     reply(
       daemon,
@@ -341,18 +341,43 @@ describe("using a doc", () => {
         '  <SwitchGroup name="opts"><SwitchItem name="lint" label="Lint" checked/>',
         '    <SwitchItem name="fmt" label="Format"/></SwitchGroup>',
         '  <Input name="note"/>',
-        '  <Buttons><Button id="go" ui-ask="Go with the selected options">Go</Button></Buttons>',
+        '  <Buttons><Button id="go" ui-ask="Go with the selected options" ui-context={{ plan: 7 }}>Go</Button></Buttons>',
         "</Form>",
       ].join("\n"),
     );
-    // A turn is running, so the press waits in the queue.
-    daemon.sessions.input(session, "test", "busy");
-    await daemon.actions.run(
-      { session, ref: "m-m1", action: "neoui.press", args: { doc: "0", key: "go" } },
-      "test",
-    );
+    const press = async (): Promise<void> => {
+      // A turn is running, so the press waits in the queue.
+      daemon.sessions.input(session, "test", "busy");
+      await daemon.actions.run(
+        { session, ref: "m-m1", action: "neoui.press", args: { doc: "0", key: "go" } },
+        "test",
+      );
+    };
+    const last = (): SessionEvent | undefined =>
+      daemon.store.readTypes(session, ["user_message"]).at(-1)?.event;
     const shown = "Go with the selected options\n\ntests: unit, e2e · opts: lint";
+    const told =
+      '[ui action] The user pressed "Go": Go with the selected options\n' +
+      'form pick: {"tests":["unit","e2e"],"opts":{"lint":true,"fmt":false},"note":null}\n' +
+      'context: {"plan":7}';
+
+    await press();
     expect(daemon.sessions.unqueue(session, "test")).toEqual([{ app: "test", text: shown }]);
+    // Sent again as it came back, with a line typed under it.
+    daemon.sessions.input(session, "test", `${shown}\n\nand be quick`);
+    await daemon.sessions.idle(session);
+    expect(last()).toMatchObject({
+      text: `${told}\n\nand be quick`,
+      shown: `${shown}\n\nand be quick`,
+    });
+
+    // Edited, it goes as written.
+    await press();
+    daemon.sessions.unqueue(session, "test");
+    daemon.sessions.input(session, "test", "Go with unit only");
+    await daemon.sessions.idle(session);
+    expect(last()).toMatchObject({ text: "Go with unit only" });
+    expect(last()).not.toHaveProperty("shown");
   });
 
   test("actions on a doc that is still streaming are ignored; bad ones are rejected", async () => {

@@ -64,6 +64,11 @@ interface Runtime {
   pending: ContextEvent[];
   /** What this session's log has told the agent. */
   told: ToldState;
+  /**
+   * By app, the inputs it took back out of the queue whose text for the agent is more than the
+   * chat shows (see unqueue); its next input brings them back.
+   */
+  redrafts: Map<string, QueuedInput[]>;
   /** Resolves when the current drain loop finishes. */
   drained: Promise<void>;
 }
@@ -345,6 +350,15 @@ export class SessionManager {
     const rt = this.runtime(sessionId);
     const input: QueuedInput = images?.length ? { app, text, images } : { app, text };
     if (shown !== undefined) input.shown = shown;
+    // What the app took back out of the queue and sends again unchanged gets its text for the
+    // agent back (a neoui press's context); one that was edited goes as written.
+    const redrafts = rt.redrafts.get(app);
+    rt.redrafts.delete(app);
+    for (const redraft of redrafts ?? []) {
+      if (redraft.shown === undefined || !input.text.includes(redraft.shown)) continue;
+      input.shown ??= text;
+      input.text = input.text.replace(redraft.shown, () => redraft.text);
+    }
     rt.queue.push(input);
     this.kick(sessionId, rt);
     this.stateChanged(sessionId);
@@ -401,12 +415,15 @@ export class SessionManager {
   /**
    * Takes the inputs `app` queued behind the running turn back out of the queue, oldest first,
    * as the user wrote them (to edit them again). Throws NotFoundError for an unknown session.
+   * Those whose text for the agent says more are kept, so the app's next input can bring it back.
    */
   unqueue(sessionId: string, app: string): WaitingInput[] {
     const rt = this.runtime(sessionId);
     const taken = rt.queue.filter((input) => input.app === app);
     if (taken.length === 0) return [];
     rt.queue = rt.queue.filter((input) => input.app !== app);
+    const hidden = taken.filter((input) => input.shown !== undefined && input.shown !== input.text);
+    rt.redrafts.set(app, hidden);
     this.stateChanged(sessionId);
     return taken.map(waiting);
   }
@@ -615,6 +632,7 @@ export class SessionManager {
       command: false,
       pending,
       told,
+      redrafts: new Map(),
       drained: Promise.resolve(),
     };
     this.runtimes.set(sessionId, rt);
