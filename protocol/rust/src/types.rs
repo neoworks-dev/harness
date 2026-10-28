@@ -2651,6 +2651,9 @@ pub struct Choice {
     /// The id of the option in effect now, if any.
     #[serde(rename = "current", default, skip_serializing_if = "Option::is_none")]
     pub current: Option<String>,
+    /// The answer concerns the agent's work (a review of its changes): a note for the agent may go with it. Absent: a setting of the user's (a model, /settings), no note.
+    #[serde(rename = "forAgent", default, skip_serializing_if = "Option::is_none")]
+    pub for_agent: Option<bool>,
 }
 
 /// The answer to a choice: the picked option, or none when it was dropped (the daemon restarted, or a newer choice replaced it).
@@ -3196,6 +3199,9 @@ pub struct ButtonComponent {
     /// The value in effect now (a picker's current model): keyboard focus starts here and renderers may mark it.
     #[serde(rename = "current", default, skip_serializing_if = "Option::is_none")]
     pub current: Option<bool>,
+    /// The answer is the agent's to hear: a note for it may go with the press (args.note). Absent: no note.
+    #[serde(rename = "note", default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<bool>,
 }
 
 /// TUI: underlined text plus the URL.

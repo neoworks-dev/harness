@@ -274,9 +274,10 @@ struct Note {
     text: String,
 }
 
-/// Buttons that answer a question of the daemon's can carry a note for the agent.
+/// Buttons whose answer the agent hears can carry a note for it: a permission, a review of its
+/// changes; not a setting (/settings, /model). The daemon marks them.
 fn takes_note(button: &ButtonRef) -> bool {
-    matches!(button.action.as_str(), "neo.permit" | "neo.choose")
+    button.note
         && button
             .args
             .as_ref()

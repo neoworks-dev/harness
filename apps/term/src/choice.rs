@@ -79,6 +79,7 @@ mod tests {
             key: "1".into(),
             current: false,
             description: description.map(str::to_string),
+            note: false,
         }
     }
 

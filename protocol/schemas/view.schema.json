@@ -365,6 +365,10 @@
         "current": {
           "type": "boolean",
           "description": "The value in effect now (a picker's current model): keyboard focus starts here and renderers may mark it."
+        },
+        "note": {
+          "type": "boolean",
+          "description": "The answer is the agent's to hear: a note for it may go with the press (args.note). Absent: no note."
         }
       },
       "required": ["type", "label", "action"],

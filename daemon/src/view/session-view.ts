@@ -594,6 +594,7 @@ export class SessionView {
         action: "neo.permit",
         args: { id: request.id, option: option.id },
         key: String(i + 1),
+        note: true,
       }));
       const row: Component = { type: "row", gap: "s", children: buttons };
       // A command to run is shell, highlighted and broken where it is long.
@@ -645,6 +646,8 @@ export class SessionView {
         };
         if (i < 9) button.key = String(i + 1);
         if (option.id === choice.current) button.current = true;
+        // Only an answer about the agent's work takes a note for it; a setting doesn't.
+        if (choice.forAgent === true) button.note = true;
         if (option.description === undefined) return button;
         return {
           type: "row",

@@ -68,7 +68,7 @@ fn prompt(r: &str, state: &str, labels: &[&str]) -> ViewItem {
         .enumerate()
         .map(|(i, l)| {
             json!({"type":"button","label":l,"action":"neo.permit",
-                   "args":{"id":r,"option":l},"key":(i + 1).to_string()})
+                   "args":{"id":r,"option":l},"key":(i + 1).to_string(),"note":true})
         })
         .collect();
     serde_json::from_value(json!({
@@ -1597,7 +1597,7 @@ fn permission_with_diff(changed: usize) -> ViewItem {
         .enumerate()
         .map(|(i, (id, name))| {
             json!({"type":"button","label":name,"action":"neo.permit",
-                   "args":{"id":"7","option":id},"key":(i + 1).to_string()})
+                   "args":{"id":"7","option":id},"key":(i + 1).to_string(),"note":true})
         })
         .collect();
     serde_json::from_value(json!({
@@ -1643,7 +1643,7 @@ fn edit_review_card() -> ViewItem {
         .enumerate()
         .map(|(i, (id, name))| {
             json!({"type":"button","label":name,"action":"neo.permit",
-                   "args":{"id":"9","option":id},"key":(i + 1).to_string()})
+                   "args":{"id":"9","option":id},"key":(i + 1).to_string(),"note":true})
         })
         .collect::<Vec<_>>();
     serde_json::from_value(json!({
@@ -1809,7 +1809,7 @@ fn a_long_diff_keeps_the_buttons_in_reach_until_expanded() {
 fn the_review_card_after_an_edits_turn_is_answered_with_keys() {
     let option = |i: usize, id: &str, name: &str| {
         json!({"type":"button","label":name,"action":"neo.choose",
-               "args":{"id":"r1","option":id},"key":(i + 1).to_string()})
+               "args":{"id":"r1","option":id},"key":(i + 1).to_string(),"note":true})
     };
     let card: ViewItem = serde_json::from_value(json!({
         "ref": "q-r1", "kind": "tool", "label": "The agent changed 2 files: keep them?",
@@ -2615,17 +2615,19 @@ fn esc_clears_the_filter_first_and_then_dismisses() {
 }
 
 #[test]
-fn a_note_goes_with_the_focused_match() {
+fn a_setting_takes_no_note() {
     let mut app = app();
     model_choice(&mut app);
     type_str(&mut app, "gemini");
+    let s = screen_text(&mut app, 80, 24);
+    assert!(!s.contains("note"), "{s}");
     app.handle_key(key(KeyCode::Tab));
-    type_str(&mut app, "thanks");
+    assert!(!screen_text(&mut app, 80, 24).contains("note ›"));
     let fx = app.handle_key(key(KeyCode::Enter));
     match &fx[..] {
         [Effect::Action { args: Some(a), .. }] => {
-            assert_eq!(a["option"], "claude/3/Gemini 2.5");
-            assert_eq!(a["note"], "thanks");
+            assert!(a["option"].as_str().unwrap().ends_with("Gemini 2.5"), "{a}");
+            assert!(a.get("note").is_none(), "{a}");
         }
         other => panic!("{other:?}"),
     }

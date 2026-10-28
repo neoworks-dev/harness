@@ -2312,6 +2312,8 @@ type Choice struct {
 	Options []ChoiceOption `json:"options"`
 	// The id of the option in effect now, if any.
 	Current *string `json:"current,omitempty"`
+	// The answer concerns the agent's work (a review of its changes): a note for the agent may go with it. Absent: a setting of the user's (a model, /settings), no note.
+	ForAgent *bool `json:"forAgent,omitempty"`
 }
 
 func (Choice) isSessionEvent() {}
@@ -2832,6 +2834,8 @@ type ButtonComponent struct {
 	Key *string `json:"key,omitempty"`
 	// The value in effect now (a picker's current model): keyboard focus starts here and renderers may mark it.
 	Current *bool `json:"current,omitempty"`
+	// The answer is the agent's to hear: a note for it may go with the press (args.note). Absent: no note.
+	Note *bool `json:"note,omitempty"`
 }
 
 func (ButtonComponent) isComponent() {}

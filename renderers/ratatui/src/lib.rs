@@ -213,6 +213,8 @@ pub struct ButtonRef {
     pub current: bool,
     /// What a choice says about this option: the text after the button in its row.
     pub description: Option<String>,
+    /// The answer is the agent's to hear: a note for it may go with the press (`args.note`).
+    pub note: bool,
 }
 
 impl ButtonRef {
@@ -239,6 +241,7 @@ fn collect(c: &pb::Component, out: &mut Vec<ButtonRef>) {
             key: render::button_key(b, out.len()),
             current: b.current == Some(true),
             description: None,
+            note: b.note == Some(true),
         }),
         pb::Component::CardComponent(v) => v.children.iter().for_each(|c| collect(c, out)),
         pb::Component::RowComponent(v) => {

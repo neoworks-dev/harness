@@ -222,6 +222,8 @@ export class Review {
         type: "choice",
         title: `Edited ${paths.length} ${noun}: ${list}`,
         options,
+        // Why a change goes back is worth the agent hearing.
+        forAgent: true,
       });
       if (picked === undefined || picked === "keep") return;
       if (picked === "revert") {

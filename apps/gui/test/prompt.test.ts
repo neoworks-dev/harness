@@ -42,6 +42,7 @@ const permission: ViewItem = {
             action: "neo.permit",
             args: { id: "1", option: "allow" },
             key: "1",
+            note: true,
           },
           {
             type: "button",
@@ -49,6 +50,7 @@ const permission: ViewItem = {
             action: "neo.permit",
             args: { id: "1", option: "deny" },
             key: "2",
+            note: true,
           },
         ],
       },
@@ -125,7 +127,7 @@ test("Esc dismisses a prompt and the next open one takes over", () => {
   expect(activePrompt(items, new Set(["p-1", "q-2"]))).toBeUndefined();
 });
 
-test("a note goes along in the args of answers that carry args", () => {
+test("a note goes along in the args of answers the daemon marks for one", () => {
   const [allow] = promptOf(permission)?.buttons ?? [];
   if (!allow) throw new Error("the permission has no buttons");
   expect(takesNote(allow)).toBe(true);
@@ -136,7 +138,10 @@ test("a note goes along in the args of answers that carry args", () => {
   });
   expect(argsWithNote(allow, "  ")).toEqual({ id: "1", option: "allow" });
   expect(takesNote({ label: "x", action: "copy:abc", current: false })).toBe(false);
-  expect(takesNote({ label: "x", action: "neo.permit", current: false })).toBe(false);
+  expect(takesNote({ label: "x", action: "neo.permit", current: false, note: true })).toBe(false);
+  // A setting's choice isn't marked: no note.
+  const [first] = promptOf(choice)?.buttons ?? [];
+  expect(takesNote(first)).toBe(false);
   expect(takesNote(undefined)).toBe(false);
 });
 

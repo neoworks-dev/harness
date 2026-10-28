@@ -1040,6 +1040,10 @@
         "current": {
           "description": "The id of the option in effect now, if any.",
           "type": "string"
+        },
+        "forAgent": {
+          "description": "The answer concerns the agent's work (a review of its changes): a note for the agent may go with it. Absent: a setting of the user's (a model, /settings), no note.",
+          "type": "boolean"
         }
       },
       "required": ["type", "id", "title", "options"],

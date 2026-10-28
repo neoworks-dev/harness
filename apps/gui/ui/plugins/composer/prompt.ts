@@ -16,6 +16,8 @@ export interface PromptButton {
   current: boolean;
   /** What a choice says about this option, shown while it is selected. */
   description?: string;
+  /** The answer is the agent's to hear: a note for it may go with it (the daemon marks it). */
+  note?: boolean;
 }
 
 export interface Prompt {
@@ -81,8 +83,10 @@ export function splitPrompt(root: Component): { body: Component[]; buttons: Prom
 
   function walk(component: Component, inRow: boolean): void {
     if (component.type === "button") {
-      const { label, action, args, key, current } = component;
-      buttons.push({ label, action, args, key, current: current === true });
+      const { label, action, args, key, current, note } = component;
+      const button: PromptButton = { label, action, args, key, current: current === true };
+      if (note === true) button.note = true;
+      buttons.push(button);
       return;
     }
     if (!containsButton(component)) {
@@ -215,11 +219,13 @@ export function scrollToRow(
   return undefined;
 }
 
-/** Whether Tab can add a note: permission and choice answers carry one, other buttons do not. */
+/**
+ * Whether Tab can add a note: answers the agent hears (a permission, a review of its changes)
+ * carry one, settings (/settings, /model) and other buttons do not.
+ */
 export function takesNote(button: PromptButton | undefined): boolean {
-  if (button === undefined) return false;
-  const answers = button.action === "neo.permit" || button.action === "neo.choose";
-  return answers && typeof button.args === "object" && button.args !== null;
+  if (button?.note !== true) return false;
+  return typeof button.args === "object" && button.args !== null;
 }
 
 /** The text a `copy:` button puts on the clipboard; undefined for buttons that act on the daemon. */

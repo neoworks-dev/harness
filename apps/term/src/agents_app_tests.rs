@@ -422,7 +422,7 @@ fn the_delegation_gate_is_a_compact_card_with_highlighted_values() {
         .enumerate()
         .map(|(i, l)| {
             json!({"type": "button", "label": l, "action": "neo.permit",
-                   "args": {"id": "p1", "option": l}, "key": (i + 1).to_string()})
+                   "args": {"id": "p1", "option": l}, "key": (i + 1).to_string(), "note": true})
         })
         .collect();
     let gate: ViewItem = serde_json::from_value(json!({
