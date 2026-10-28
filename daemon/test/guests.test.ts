@@ -383,6 +383,31 @@ describe("permissions", () => {
     });
   });
 
+  test("a note on the answer goes into the guest's running turn", async () => {
+    const { daemon, session } = await setup({ guest: { env: { FAKE_ACP_STEERING: "1" } } });
+    daemon.sessions.input(session, "cli", "/fake ask");
+    await until(
+      () => events(daemon, session).some((e) => e.type === "permission_request"),
+      "the permission request",
+    );
+    const request = events(daemon, session).find((e) => e.type === "permission_request");
+    if (request?.type !== "permission_request") throw new Error("no permission_request");
+    const args = { id: request.id, option: "no", note: "use english." };
+    await daemon.actions.run(
+      { session, ref: `p-${request.id}`, action: "neo.permit", args },
+      "pad",
+    );
+    await daemon.sessions.idle(session);
+    // In the turn the answer was for, not left for the next prompt.
+    const turn = events(daemon, session).findLast((e) => e.type === "guest_turn");
+    expect(turn).toMatchObject({
+      result: expect.stringContaining(
+        'steered: The user answered "Write notes.txt" with Reject and added: use english.',
+      ),
+    });
+    expect(events(daemon, session).some((e) => e.type === "user_note")).toBe(false);
+  });
+
   test("cancelling the turn answers an open request with nothing", async () => {
     const { daemon, session } = await setup();
     daemon.sessions.input(session, "cli", "/fake ask");

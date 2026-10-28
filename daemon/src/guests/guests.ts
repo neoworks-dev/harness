@@ -216,6 +216,13 @@ const PLAN_STATUSES: PlanEntryStatus[] = ["pending", "in_progress", "completed"]
 const PLAN_PRIORITIES: PlanEntryPriority[] = ["high", "medium", "low"];
 /** ACP's extension method for a message to the turn that is running. */
 const STEER_METHOD = "_session/steering";
+
+/** A note the user added to a guest's permission answer: the question, the answer, the note. */
+interface SaidNote {
+  title: string;
+  answer: string;
+  note: string;
+}
 /** Sends a running tool call's task to the background (an adapter that advertises it). */
 const BACKGROUND_METHOD = "_session/background_tasks";
 const STOP_REASONS = new Set<string>(["end_turn", "max_tokens", "cancelled", "refusal"]);
@@ -1470,11 +1477,46 @@ export class GuestManager {
     if (toolCallId !== undefined) {
       request.toolCallId = `${guest.main ? `${guest.name}-main` : guest.name}:${toolCallId}`;
     }
-    const optionId = await this.options.asker.ask(guest.session, request, guest.run.done.signal);
+    const { option: optionId, note } = await this.options.asker.askWithNote(
+      guest.session,
+      request,
+      guest.run.done.signal,
+    );
     if (optionId === undefined) return cancelled;
     const picked = options.find((o) => o.id === optionId);
     if (picked?.kind === "allow_always") this.options.guard?.remember(guest.session, sensitive);
+    if (note !== undefined) {
+      // ACP's answer has no room for the note: it goes into the guest's running turn, once its
+      // tool call has this answer; a guest that can't take that hears it with its next prompt.
+      const said = { title: request.title, answer: picked?.name ?? optionId, note };
+      if (guest.steering) setTimeout(() => void this.steerNote(guest, said), 0);
+      else this.noteLater(guest, said);
+    }
     return { outcome: { outcome: "selected", optionId } };
+  }
+
+  /** The note into the guest's running turn; for its next prompt when that doesn't work. */
+  private async steerNote(guest: Guest, said: SaidNote): Promise<void> {
+    if (guest.run !== undefined) {
+      const text = `The user answered "${said.title}" with ${said.answer} and added: ${said.note}`;
+      try {
+        const reply = await guest.conn.request(STEER_METHOD, {
+          sessionId: guest.acpSession,
+          prompt: [{ type: "text", text }],
+          _meta: { steering: { idleBehavior: "promptRequired" } },
+        });
+        if (isRecord(reply) && reply.outcome === "injected") return;
+      } catch (err) {
+        this.options.log.warn(`${guest.name}: passing a note failed: ${errorText(err)}`);
+      }
+    }
+    this.noteLater(guest, said);
+  }
+
+  /** The note as a user_note: the agent hears it with its next prompt. */
+  private noteLater(guest: Guest, said: SaidNote): void {
+    const about = `${said.title} → ${said.answer}`;
+    this.options.append(guest.session, { type: "user_note", note: said.note, about });
   }
 
   private guardOpen(guest: Guest, touches: Touches): string[] {

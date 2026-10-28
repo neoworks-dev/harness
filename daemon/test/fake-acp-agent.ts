@@ -36,7 +36,8 @@
 // conversation, "old-1", for session/list and session/resume.
 //   anything else sends a plan (one entry with an unknown status), a usage_update, and replies
 //   "Done: <task>"
-// FAKE_ACP_HANG in the environment makes session/new never answer.
+// FAKE_ACP_HANG in the environment makes session/new never answer. FAKE_ACP_STEERING makes it
+// take _session/steering; `ask` then reports what it was steered with after the answer.
 // Every prompt first echoes the whole prompt text as a thought, so tests can see the event tags.
 import { readFileSync, writeFileSync } from "node:fs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -60,6 +61,8 @@ let started = "new";
 let cwd = "";
 let initialize: unknown;
 let authenticated: unknown;
+/** What `_session/steering` brought into the running turn (FAKE_ACP_STEERING). */
+const steered: string[] = [];
 
 const VALUES: Record<string, string[]> = { model: ["small", "large"], effort: ["low", "high"] };
 const CATEGORY: Record<string, string> = { model: "model", effort: "thought_level" };
@@ -244,6 +247,11 @@ async function prompt(params: {
     say(sessionId, "\n\n");
     update(sessionId, { sessionUpdate: "plan", entries: [] });
     say(sessionId, `answer: ${answer.outcome.optionId ?? answer.outcome.outcome}`);
+    if (process.env.FAKE_ACP_STEERING !== undefined) {
+      // What the client steers in right after the answer (a note on it) is part of this turn.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      for (const text of steered.splice(0)) say(sessionId, `\nsteered: ${text}`);
+    }
     return { stopReason: "end_turn" };
   } else if (task === "commands") {
     listCommands(sessionId, [{ name: "review", description: "Review again" }]);
@@ -427,8 +435,11 @@ async function handle(message: Record<string, unknown>): Promise<void> {
       result = {
         protocolVersion: 1,
         agentCapabilities: { mcpCapabilities: { http: true } },
-        // As claude-agent-acp with _session/background_tasks would.
-        _meta: { backgroundTasks: { supported: true } },
+        // As claude-agent-acp with _session/background_tasks (and steering) would.
+        _meta: {
+          backgroundTasks: { supported: true },
+          ...(process.env.FAKE_ACP_STEERING !== undefined && { steering: { supported: true } }),
+        },
       };
     } else if (method === "authenticate") {
       authenticated = withHashedHeaders(params);
@@ -482,6 +493,10 @@ async function handle(message: Record<string, unknown>): Promise<void> {
     } else if (method === "session/cancel") {
       cancel?.();
       return;
+    } else if (method === "_session/steering") {
+      const prompt = params.prompt as { text?: string }[];
+      steered.push(prompt.map((b) => b.text ?? "").join("\n"));
+      result = { outcome: "injected" };
     } else if (method === "_session/background_tasks") {
       // Only the call the tests name, by the id the adapter knows it by.
       result = { backgrounded: params.toolCallId === "t-wait" };
