@@ -281,7 +281,7 @@ describe("using a doc", () => {
     expect(sent).toMatchObject({
       type: "user_message",
       text: '[ui action] The user pressed "Send": Here you go\nform ask: {"name":"Ada"}\ncontext: {"id":3}',
-      shown: "Here you go",
+      shown: "Here you go\n\nname: Ada",
     });
   });
 
@@ -324,7 +324,35 @@ describe("using a doc", () => {
     await daemon.sessions.idle(session);
     expect(daemon.store.readTypes(session, ["user_message"]).at(-1)?.event).toMatchObject({
       text: '[ui action] The user pressed "Deploy": Deploy now\nstate: {"env":"staging"}',
+      shown: "Deploy now\n\nenv: staging",
     });
+  });
+
+  test("the chat shows what was picked, and a press taken back out of the queue keeps it", async () => {
+    const { daemon, session } = await setup();
+    reply(
+      daemon,
+      session,
+      [
+        '<Form name="pick">',
+        '  <CheckBoxGroup name="tests" value={["unit", "e2e"]}>',
+        '    <CheckBoxItem name="unit" label="Unit"/><CheckBoxItem name="e2e" label="E2E"/>',
+        "  </CheckBoxGroup>",
+        '  <SwitchGroup name="opts"><SwitchItem name="lint" label="Lint" checked/>',
+        '    <SwitchItem name="fmt" label="Format"/></SwitchGroup>',
+        '  <Input name="note"/>',
+        '  <Buttons><Button id="go" ui-ask="Go with the selected options">Go</Button></Buttons>',
+        "</Form>",
+      ].join("\n"),
+    );
+    // A turn is running, so the press waits in the queue.
+    daemon.sessions.input(session, "test", "busy");
+    await daemon.actions.run(
+      { session, ref: "m-m1", action: "neoui.press", args: { doc: "0", key: "go" } },
+      "test",
+    );
+    const shown = "Go with the selected options\n\ntests: unit, e2e · opts: lint";
+    expect(daemon.sessions.unqueue(session, "test")).toEqual([{ app: "test", text: shown }]);
   });
 
   test("actions on a doc that is still streaming are ignored; bad ones are rejected", async () => {

@@ -97,9 +97,33 @@ export function neoUiTools(parts: Pick<Parts, "store" | "gateway">, session: str
   };
 }
 
+/** A field's value as the user picked it: a list's items, a switch group's names that are on. */
+function picked(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  if (Array.isArray(value))
+    return value
+      .map(picked)
+      .filter((v) => v !== "")
+      .join(", ");
+  if (typeof value === "object" && value !== null) {
+    const entries = Object.entries(value);
+    if (entries.every(([, on]) => typeof on === "boolean")) {
+      return entries
+        .filter(([, on]) => on)
+        .map(([name]) => name)
+        .join(", ");
+    }
+  }
+  if (value === undefined || value === null) return "";
+  return JSON.stringify(value);
+}
+
 /**
- * What a button of a neoui doc sends: for the agent, what was pressed with the form's values; for
- * the chat, only the message, as if the user had written it.
+ * What a button of a neoui doc sends: for the agent, what was pressed with the form's values and
+ * the context; for the chat, the message as if the user had written it, with what they picked in
+ * a paragraph under it. Taken back out of the queue, the chat's text is what is sent again, so
+ * the picks have to be in it.
  */
 function neoUiInput(sent: AssistantMessage): { text: string; shown: string } {
   const pressed = `[ui action] The user pressed "${sent.label}"`;
@@ -110,7 +134,13 @@ function neoUiInput(sent: AssistantMessage): { text: string; shown: string } {
     lines.push(`${where}: ${JSON.stringify(sent.values)}`);
   }
   if (sent.context !== undefined) lines.push(`context: ${JSON.stringify(sent.context)}`);
-  return { text: lines.join("\n"), shown: sent.message };
+  const picks: string[] = [];
+  for (const [name, value] of Object.entries(sent.values ?? {})) {
+    const text = picked(value);
+    if (text !== "") picks.push(`${name}: ${text}`);
+  }
+  const shown = picks.length === 0 ? sent.message : `${sent.message}\n\n${picks.join(" · ")}`;
+  return { text: lines.join("\n"), shown };
 }
 
 function findLabel(component: Component, action: string): string | undefined {
