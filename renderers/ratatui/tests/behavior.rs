@@ -1726,10 +1726,13 @@ fn a_choice_says_what_only_its_focused_option_does() {
     assert!(got.contains("[one]") && got.contains("[two]"), "{got}");
     assert!(!got.contains("First thing"), "{got}");
     assert!(got.contains("Second thing"), "{got}");
-    // Under its option.
-    let lines = lines_of(&it, 60, &focused(1));
-    let at = lines.iter().position(|l| l.contains("[two]")).unwrap();
-    assert!(lines[at + 1].contains("Second thing"), "{lines:#?}");
+    // By the title, so the options don't move as the focus does; under it when there's no room.
+    assert_eq!(lines_of(&it, 60, &focused(1))[0], "Settings  Second thing");
+    assert_eq!(lines_of(&it, 60, &focused(0)).len(), 3);
+    assert_eq!(
+        lines_of(&it, 16, &focused(0))[..2],
+        ["Settings", "First thing"]
+    );
     // Not being answered: every option says what it does.
     let all = lines_of(&it, 60, &Options::default()).join("\n");
     assert!(

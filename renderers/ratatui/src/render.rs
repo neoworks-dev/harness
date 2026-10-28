@@ -62,6 +62,8 @@ pub(crate) struct Cx<'a> {
     slots: Vec<ImageSlot>,
     /// What the neoui docs drawn so far noted (targets, the focused line).
     pub(crate) ui: crate::neoui::Run,
+    /// What the focused option says it does, for its prompt's title (see `row`).
+    focused_detail: Option<Lines>,
 }
 
 impl<'a> Cx<'a> {
@@ -75,6 +77,7 @@ impl<'a> Cx<'a> {
             rooms: Vec::new(),
             slots: Vec::new(),
             ui: Default::default(),
+            focused_detail: None,
         }
     }
 
@@ -371,6 +374,9 @@ impl<'a> Cx<'a> {
         if self.o.expanded || prompt {
             self.budget = self.o.preview_lines.filter(|_| prompt && !self.o.expanded);
             let body = self.comp(&it.component, w.saturating_sub(2).max(1));
+            if let Some(detail) = self.focused_detail.take() {
+                self.title_detail(&mut out, detail, w);
+            }
             out.extend(indented(body, 2));
         } else {
             let mut summary = self.summary(&it.component, w.saturating_sub(4).max(1));
@@ -379,6 +385,20 @@ impl<'a> Cx<'a> {
             out.extend(prefixed(summary, elbow, vec![Span::raw("    ")]));
         }
         out
+    }
+
+    /// The focused option's description after the prompt's title: on its last line when one
+    /// line of it fits there, else under it.
+    fn title_detail(&self, head: &mut Lines, detail: Lines, w: usize) {
+        const GAP: &str = "  ";
+        let fits = |last: &Line<'_>| last.width() + GAP.len() + detail[0].width() <= w;
+        match head.last_mut() {
+            Some(last) if detail.len() == 1 && fits(last) => {
+                last.spans.push(Span::raw(GAP));
+                last.spans.extend(detail.into_iter().flat_map(|l| l.spans));
+            }
+            _ => head.extend(detail),
+        }
     }
 
     /// The verb bold, what it acts on in the normal weight: `read` `src/a.rs`, `search the web:`
@@ -498,7 +518,7 @@ impl<'a> Cx<'a> {
     /// Side by side when every child is a single line and they all fit, else stacked.
     fn row(&mut self, v: &pb::RowComponent, w: usize) -> Lines {
         // An option with its description, while the keys go through the options: only the
-        // focused one says what it does.
+        // focused one says what it does, by the prompt's title, so the options stay put.
         if let (Some(focused), [pb::Component::ButtonComponent(b), rest @ ..]) =
             (self.o.focused_button, v.children.as_slice())
             && !rest.is_empty()
@@ -506,13 +526,10 @@ impl<'a> Cx<'a> {
                 .iter()
                 .all(|c| matches!(c, pb::Component::TextComponent(_)))
         {
-            let mine = self.next_button == focused;
-            let mut out = vec![self.button(b, w)];
-            if mine {
-                let detail = self.children(rest, w.saturating_sub(2).max(1));
-                out.extend(indented(stack(detail, v.gap), 2));
+            if self.next_button == focused {
+                self.focused_detail = Some(stack(self.children(rest, w), v.gap));
             }
-            return out;
+            return vec![self.button(b, w)];
         }
         let parts = self.children(&v.children, w);
         let sep = match v.gap {

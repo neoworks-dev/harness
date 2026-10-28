@@ -2609,6 +2609,9 @@ fn esc_clears_the_filter_first_and_then_dismisses() {
     );
     app.handle_key(key(KeyCode::Esc));
     assert_eq!(app.active_ref(), None, "the second one dismisses");
+    // And the choice leaves the chat with it.
+    let s = screen_text(&mut app, 80, 24);
+    assert!(!s.contains("Model") && !s.contains("Haiku"), "{s}");
 }
 
 #[test]

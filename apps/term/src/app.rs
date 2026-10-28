@@ -2892,6 +2892,7 @@ impl App {
                 running: true,
                 split_diffs: self.split_diffs,
                 hide_edits: self.hide_edits,
+                dismissed: Vec::new(),
             };
             if let Some(t) = self.transcript.as_mut() {
                 t.draw(frame, areas.chat, &opts, &self.styles);
@@ -3054,6 +3055,7 @@ impl App {
             running: self.running,
             split_diffs: self.split_diffs,
             hide_edits: self.hide_edits,
+            dismissed: self.prompt.dismissed.clone(),
         }
     }
 

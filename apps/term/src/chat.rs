@@ -76,6 +76,8 @@ pub struct ChatOpts {
     /// Only the newest edit shows its changes, the others their one line (`/settings
     /// hide-edits`); off, every edit shows them.
     pub hide_edits: bool,
+    /// The choices the user dismissed (Esc), by ref: not drawn while they are.
+    pub dismissed: Vec<String>,
 }
 
 /// A file a turn changed, as the tools' diffs name it, and the lines added and removed.
@@ -470,6 +472,13 @@ impl Chat {
             .filter_map(|(index, item)| {
                 // A question the user allowed has done its job: the tool's own row says the rest.
                 if is_allowed_question(item) {
+                    return None;
+                }
+                // A choice (/settings, /model…) the user waved away doesn't stay in the chat.
+                if item.r#ref.starts_with("q-")
+                    && item.state == Some(ItemState::Pending)
+                    && opts.dismissed.contains(&item.r#ref)
+                {
                     return None;
                 }
                 // Hidden thoughts show while the agent thinks, as one animated line, and then go.
@@ -1421,6 +1430,7 @@ mod tests {
             running: false,
             split_diffs: false,
             hide_edits: false,
+            dismissed: Vec::new(),
         }
     }
 
