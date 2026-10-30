@@ -449,7 +449,7 @@ export class Hub {
         return;
       }
       case "session.input": {
-        const { session, app, text, images } = msg.payload;
+        const { session, app, text, images, steer } = msg.payload;
         const { focus } = this.parts;
         const command = this.parts.command?.(session, text, {
           askSecret: (title, placeholder, signal) => {
@@ -472,8 +472,8 @@ export class Hub {
           // Before queueing, so the turn already sees the new focus.
           focus?.followInput(session, app);
           const expanded = this.parts.expand?.(session, text);
-          if (expanded) this.sessions.input(session, app, expanded.text, images, expanded.shown);
-          else this.sessions.input(session, app, text, images);
+          const sent = expanded ?? { text, shown: undefined };
+          this.sessions.input(session, app, sent.text, images, sent.shown, steer === true);
         }
         if (msg.id !== undefined) this.send(client, { topic: "bus.ack", id: msg.id });
         return;

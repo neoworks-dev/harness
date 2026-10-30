@@ -101,6 +101,8 @@ pub enum Effect {
         text: String,
         /// Absolute paths of attached images.
         images: Vec<String>,
+        /// Into the running turn at once (Alt-Enter), not after it.
+        steer: bool,
     },
     /// A button was pressed.
     Action {
@@ -2186,6 +2188,7 @@ impl App {
             session: self.session.clone(),
             text: format!("/approvals {}", self.approvals.next().word()),
             images: Vec::new(),
+            steer: false,
         });
     }
 
@@ -2340,17 +2343,20 @@ impl App {
                 self.editor.insert_char(c);
             }
             KeyCode::Enter if shift => self.editor.newline(),
-            // Ctrl-Enter or Alt-Enter (which every terminal tells apart from Enter): now, not
-            // after the running turn (which is cancelled for it).
+            // Ctrl-Enter or Alt-Enter (which every terminal tells apart from Enter): into the
+            // running turn at once, which goes on with it, not after it.
             KeyCode::Enter if ctrl || alt => {
-                if self.running && !self.editor.is_empty() && !self.menu_visible() {
-                    fx.push(Effect::Cancel {
-                        session: self.session.clone(),
-                    });
-                }
+                let from = fx.len();
                 if self.enter(fx) {
                     self.histories.of(&self.session).reset();
                     edited = false;
+                }
+                if self.running {
+                    for effect in &mut fx[from..] {
+                        if let Effect::Input { steer, .. } = effect {
+                            *steer = true;
+                        }
+                    }
                 }
             }
             KeyCode::Enter => {
@@ -2766,6 +2772,7 @@ impl App {
             session: self.session.clone(),
             text,
             images,
+            steer: false,
         });
         // What was written in its place is out: the draft put aside comes back.
         if self.editor.is_empty() && self.stash.is_some() {
@@ -4036,7 +4043,10 @@ impl App {
         let mut lines = vec![
             head("keys (any key closes this)"),
             key("enter", "send"),
-            key("alt-enter, ctrl-enter", "send now, cancelling the turn"),
+            key(
+                "alt-enter, ctrl-enter",
+                "send into the running turn, not after it",
+            ),
             key("ctrl-j, shift-enter", "new line"),
             key("up / down", "move in the text, then through history"),
             key("ctrl-a / ctrl-e", "start / end of line"),

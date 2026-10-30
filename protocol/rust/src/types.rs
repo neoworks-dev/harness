@@ -2267,6 +2267,9 @@ pub struct SessionInput {
     /// Absolute paths of attached images (PNG, JPEG, GIF, WebP).
     #[serde(rename = "images", default, skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,
+    /// Into the running turn at once, where its harness can take it (steering), whatever the steer setting says; else it waits for the next turn like any input.
+    #[serde(rename = "steer", default, skip_serializing_if = "Option::is_none")]
+    pub steer: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

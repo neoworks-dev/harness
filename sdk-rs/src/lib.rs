@@ -245,6 +245,23 @@ impl Client {
 
     /// Submits input; returns once the daemon has queued it. `images` are absolute paths.
     pub fn input(&self, session: &str, app: &str, text: &str, images: &[String]) -> Result<()> {
+        self.send_input(session, app, text, images, false)
+    }
+
+    /// [`Client::input`] into the running turn at once, where its harness can take it
+    /// (steering); else it waits for the next turn like any input.
+    pub fn steer(&self, session: &str, app: &str, text: &str, images: &[String]) -> Result<()> {
+        self.send_input(session, app, text, images, true)
+    }
+
+    fn send_input(
+        &self,
+        session: &str,
+        app: &str,
+        text: &str,
+        images: &[String],
+        steer: bool,
+    ) -> Result<()> {
         self.ack(Effect::None, |id| {
             Envelope::SessionInputMessage(SessionInputMessage {
                 id: Some(id),
@@ -253,6 +270,7 @@ impl Client {
                     app: app.into(),
                     text: text.into(),
                     images: (!images.is_empty()).then(|| images.to_vec()),
+                    steer: steer.then_some(true),
                 },
             })
         })

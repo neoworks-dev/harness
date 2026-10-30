@@ -255,8 +255,14 @@ fn work(client: &Client, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sen
                 session,
                 text,
                 images,
+                steer,
             } => {
-                if let Err(err) = client.input(&session, app, &text, &images) {
+                let sent = if steer {
+                    client.steer(&session, app, &text, &images)
+                } else {
+                    client.input(&session, app, &text, &images)
+                };
+                if let Err(err) = sent {
                     fail("send failed", err);
                 }
             }

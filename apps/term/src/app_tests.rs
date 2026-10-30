@@ -158,6 +158,7 @@ fn input(text: &str) -> Effect {
         session: "s1".into(),
         text: text.into(),
         images: Vec::new(),
+        steer: false,
     }
 }
 
@@ -291,6 +292,7 @@ fn pasted_images_are_placed_in_the_draft_and_go_with_it() {
             session: "s1".into(),
             text: "[image 1] compare [image 2] with".into(),
             images: vec![dropped.clone(), "/tmp/neo-term/paste-1.png".into()],
+            steer: false,
         }]
     );
     assert!(!screen(&mut app, 80, 20).join("\n").contains("[image"));
@@ -1327,20 +1329,21 @@ fn queued_inputs_are_counted_while_a_turn_runs() {
 }
 
 #[test]
-fn ctrl_enter_cancels_the_running_turn_and_sends_now() {
+fn ctrl_enter_sends_into_the_running_turn_without_cancelling_it() {
+    let steered = |text: &str| Effect::Input {
+        session: "s1".into(),
+        text: text.into(),
+        images: Vec::new(),
+        steer: true,
+    };
     let mut app = app();
     app.handle_event(user_message(NOW));
-    type_str(&mut app, "stop, do this");
+    type_str(&mut app, "also do this");
     assert_eq!(
         app.handle_key(with(KeyCode::Enter, KeyModifiers::CONTROL)),
-        [
-            Effect::Cancel {
-                session: "s1".into()
-            },
-            input("stop, do this")
-        ]
+        [steered("also do this")]
     );
-    // Idle, it is just Enter; on an empty editor nothing is cancelled.
+    // Idle, it is just Enter; on an empty editor nothing is sent.
     app.handle_event(turn_ended());
     type_str(&mut app, "next");
     assert_eq!(
@@ -1356,12 +1359,7 @@ fn ctrl_enter_cancels_the_running_turn_and_sends_now() {
     type_str(&mut app, "now");
     assert_eq!(
         app.handle_key(with(KeyCode::Enter, KeyModifiers::ALT)),
-        [
-            Effect::Cancel {
-                session: "s1".into()
-            },
-            input("now")
-        ]
+        [steered("now")]
     );
 }
 

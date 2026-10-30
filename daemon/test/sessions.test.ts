@@ -104,6 +104,49 @@ describe("turn queue", () => {
     await sessions.idle(id);
   });
 
+  test("an input sent to steer goes into the running turn with the setting off", async () => {
+    const { agent, sessions } = setup();
+    agent.steerable = true;
+    const { id } = sessions.create({});
+    sessions.input(id, "term", "one");
+    await agent.started(1);
+    sessions.input(id, "term", "waits");
+    sessions.input(id, "term", "now", undefined, undefined, true);
+    await Bun.sleep(0);
+    // Past what waits: the user asked for it now.
+    expect(agent.steered).toEqual([{ text: "now" }]);
+    expect(sessions.info(id)?.waiting).toEqual([{ app: "term", text: "waits" }]);
+    agent.release();
+    await agent.started(2);
+    expect(agent.prompts[1]?.text).toBe("waits");
+    agent.release();
+    await sessions.idle(id);
+  });
+
+  test("a turn that takes inputs as it goes takes only those sent to steer, setting off", async () => {
+    const { agent, sessions } = setup();
+    const { id } = sessions.create({});
+    sessions.input(id, "term", "one");
+    await agent.started(1);
+    sessions.input(id, "term", "waits");
+    sessions.input(id, "term", "now", undefined, undefined, true);
+    sessions.input(id, "term", "/claude review");
+    sessions.input(id, "term", "behind the command", undefined, undefined, true);
+    const take = agent.prompts[0]?.takeInputs;
+    expect(take?.()).toEqual([{ text: "now" }]);
+    expect(sessions.info(id)?.queued).toBe(3);
+    agent.release();
+    await agent.started(2);
+    expect(agent.prompts[1]?.text).toBe("waits");
+    agent.release();
+    await agent.started(3);
+    expect(agent.prompts[2]?.text).toBe("/claude review");
+    agent.release();
+    await agent.started(4);
+    agent.release();
+    await sessions.idle(id);
+  });
+
   test("nothing is steered into a running command; it waits for the command to end", async () => {
     const { agent, sessions } = setup(undefined, true);
     agent.steerable = true;

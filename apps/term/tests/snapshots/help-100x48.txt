@@ -1,6 +1,6 @@
 keys (any key closes this)
   enter                     send
-  alt-enter, ctrl-enter     send now, cancelling the turn
+  alt-enter, ctrl-enter     send into the running turn, not after it
   ctrl-j, shift-enter       new line
   up / down                 move in the text, then through history
   ctrl-a / ctrl-e           start / end of line

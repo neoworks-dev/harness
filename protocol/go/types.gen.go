@@ -1917,6 +1917,8 @@ type SessionInput struct {
 	Text string `json:"text"`
 	// Absolute paths of attached images (PNG, JPEG, GIF, WebP).
 	Images []string `json:"images,omitempty"`
+	// Into the running turn at once, where its harness can take it (steering), whatever the steer setting says; else it waits for the next turn like any input.
+	Steer *bool `json:"steer,omitempty"`
 }
 
 type SessionState string

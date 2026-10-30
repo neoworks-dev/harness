@@ -811,6 +811,8 @@ export interface SessionInput {
   text: string;
   /** Absolute paths of attached images (PNG, JPEG, GIF, WebP). */
   images?: string[];
+  /** Into the running turn at once, where its harness can take it (steering), whatever the steer setting says; else it waits for the next turn like any input. */
+  steer?: boolean;
 }
 
 export type SessionState = "idle" | "running";

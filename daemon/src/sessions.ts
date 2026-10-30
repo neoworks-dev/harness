@@ -42,6 +42,8 @@ interface QueuedInput {
   images?: string[];
   /** What the chat shows in place of `text` (user_message `shown`). */
   shown?: string;
+  /** The user wants it in the running turn at once, whatever the steer setting says. */
+  steer?: boolean;
 }
 
 /** In-memory state of a session that has been used since the daemon started. */
@@ -344,12 +346,21 @@ export class SessionManager {
 
   /**
    * Queues input. When this returns, info() already shows the session running or queued. `shown`
-   * is what the chat shows when `text` is written for the agent.
+   * is what the chat shows when `text` is written for the agent. `steer` hands it to the running
+   * turn at once where its harness can take it, even with the steer setting off.
    */
-  input(sessionId: string, app: string, text: string, images?: string[], shown?: string): void {
+  input(
+    sessionId: string,
+    app: string,
+    text: string,
+    images?: string[],
+    shown?: string,
+    steer = false,
+  ): void {
     const rt = this.runtime(sessionId);
     const input: QueuedInput = images?.length ? { app, text, images } : { app, text };
     if (shown !== undefined) input.shown = shown;
+    if (steer) input.steer = true;
     // What the app took back out of the queue and sends again unchanged gets its text for the
     // agent back (a neoui press's context); one that was edited goes as written.
     const redrafts = rt.redrafts.get(app);
@@ -363,7 +374,24 @@ export class SessionManager {
     this.kick(sessionId, rt);
     this.stateChanged(sessionId);
     // A harness that can be steered gets it in the running turn at once, if the user wants that.
-    if (rt.running && this.options.steer?.() === true) void this.steer(sessionId, rt);
+    if (rt.running && this.steerable(input)) void this.steer(sessionId, rt);
+  }
+
+  /** Whether the user wants the input in the running turn: the setting says so, or the input. */
+  private steerable(input: QueuedInput): boolean {
+    return input.steer === true || this.options.steer?.() === true;
+  }
+
+  /**
+   * Where in the queue the next input for the running turn is: the first steerable one before
+   * any command (a command, and what follows it, waits for a turn of its own); -1 for none.
+   */
+  private nextSteerable(rt: Runtime): number {
+    for (const [at, input] of rt.queue.entries()) {
+      if (isCommand(input)) return -1;
+      if (this.steerable(input)) return at;
+    }
+    return -1;
   }
 
   /**
@@ -384,23 +412,24 @@ export class SessionManager {
   }
 
   /**
-   * Hands the inputs at the head of the queue, up to a command, to the running turn of a harness
-   * that can be steered (ACP), one by one, each logged as user_message once it took it. One it
-   * doesn't take (the turn just ended) goes back to the head of the queue and waits for a turn.
+   * Hands the steerable inputs before any command to the running turn of a harness that can be
+   * steered (ACP), one by one, each logged as user_message once it took it. One it doesn't take
+   * (the turn just ended) goes back to its place in the queue and waits for a turn.
    */
   private async steer(sessionId: string, rt: Runtime): Promise<void> {
     if (rt.steering) return;
     rt.steering = true;
     try {
-      for (let input = rt.queue[0]; input; input = rt.queue[0]) {
+      for (let at = this.nextSteerable(rt); at >= 0; at = this.nextSteerable(rt)) {
         const active = rt.active;
-        if (isCommand(input) || !active?.steer || rt.cancelling || rt.command) return;
-        rt.queue.shift();
+        if (!active?.steer || rt.cancelling || rt.command) return;
+        const [input] = rt.queue.splice(at, 1);
+        if (!input) return;
         const taken = await active
           .steer(input.images ? { text: input.text, images: input.images } : { text: input.text })
           .catch(() => false);
         if (!taken) {
-          rt.queue.unshift(input);
+          rt.queue.splice(at, 0, input);
           this.kick(sessionId, rt);
           return;
         }
@@ -691,7 +720,6 @@ export class SessionManager {
         // The user's next inputs join this turn as it goes, while it runs on the same harness,
         // when the user lets them (see steer); else they wait for the next turn.
         const takeInputs = (): QueuedInput[] => {
-          if (this.options.steer?.() !== true) return [];
           if (rt.command || this.harness(sessionId) !== harness) return [];
           return this.takeInputs(sessionId, rt);
         };
@@ -782,15 +810,15 @@ export class SessionManager {
   }
 
   /**
-   * Takes the inputs at the head of the queue a running turn can be told: not a command (a guest's
-   * "/claude task", a harness's own /command), which waits for a turn of its own, nor anything
-   * behind it. Each is logged as the user_message it is now.
+   * Takes the inputs a running turn can be told: the steerable ones (see steerable) before any
+   * command (a guest's "/claude task", a harness's own /command), which waits for a turn of its
+   * own with everything behind it. Each is logged as the user_message it is now.
    */
   private takeInputs(sessionId: string, rt: Runtime): QueuedInput[] {
     const taken: QueuedInput[] = [];
-    for (let input = rt.queue[0]; input; input = rt.queue[0]) {
-      if (isCommand(input)) break;
-      rt.queue.shift();
+    for (let at = this.nextSteerable(rt); at >= 0; at = this.nextSteerable(rt)) {
+      const [input] = rt.queue.splice(at, 1);
+      if (!input) break;
       this.store.append(sessionId, userMessage(input));
       taken.push(input);
     }
