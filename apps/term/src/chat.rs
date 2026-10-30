@@ -88,13 +88,17 @@ pub struct Changed {
     pub removed: usize,
 }
 
-/// A line in the chat that stands for a file: an edit's row or a line of a turn's changes.
+/// What Tab picks in the chat: a line that stands for a file (an edit's row, a line of a turn's
+/// changes), or a reply of the agent's.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct FileTarget {
-    /// The entry the line is in.
+struct Target {
+    /// The entry it is in.
     r#ref: String,
-    path: String,
+    /// The file; None for a reply.
+    path: Option<String>,
     line: usize,
+    /// Lines it takes.
+    len: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -183,12 +187,15 @@ pub struct Chat {
     app: Option<String>,
     /// The session's directory: paths in it are shown relative to it.
     cwd: Option<String>,
-    /// The lines that stand for files, top to bottom, as laid out last.
-    files: Vec<FileTarget>,
-    /// The file picked with the keys: its entry and path.
-    selected: Option<(String, String)>,
-    /// The picked file's line is drawn highlighted (the chat has the keys).
+    /// The files and replies that can be picked, top to bottom, as laid out last.
+    targets: Vec<Target>,
+    /// The target picked with the keys: its entry and the file's path (None: the reply).
+    selected: Option<(String, Option<String>)>,
+    /// The picked target is drawn highlighted (the chat has the keys).
     highlight: bool,
+    /// Text selected with the mouse: from where the drag started to where it is, as (line,
+    /// cell) of the whole chat.
+    mouse: Option<((usize, usize), (usize, usize))>,
     /// The item whose first line says Ctrl-B sends its command to the background.
     background_hint: Option<String>,
 }
@@ -487,7 +494,7 @@ impl Chat {
             })
             .collect();
         let mut entries: Vec<Entry> = Vec::with_capacity(shown.len());
-        let mut files: Vec<FileTarget> = Vec::new();
+        let mut targets: Vec<Target> = Vec::new();
         let mut summaries = turn_changes(items, opts.running).into_iter().peekable();
         // With hide-edits only the newest edit shows what it changed (Ctrl-O opens them all).
         let last_edit = items.iter().rposition(is_edit);
@@ -507,10 +514,11 @@ impl Chat {
                 let r = format!("{}#changes", items[end].r#ref);
                 let lines = changes_lines(&changed, usize::from(width), opts, self.cwd.as_deref());
                 for (j, c) in changed.iter().enumerate() {
-                    files.push(FileTarget {
+                    targets.push(Target {
                         r#ref: r.clone(),
-                        path: c.path.clone(),
+                        path: Some(c.path.clone()),
                         line: offset + 1 + j,
+                        len: 1,
                     });
                 }
                 let len = lines.len();
@@ -627,14 +635,22 @@ impl Chat {
             if !entries.is_empty() {
                 offset += 1;
             }
+            let len = lines.len();
             if tool_row && let Some(first) = changed_files(item).into_iter().next() {
-                files.push(FileTarget {
+                targets.push(Target {
                     r#ref: r.clone(),
-                    path: first.path,
+                    path: Some(first.path),
                     line: offset,
+                    len: 1,
+                });
+            } else if item.kind == ItemKind::Agent && !self.has_targets(r) {
+                targets.push(Target {
+                    r#ref: r.clone(),
+                    path: None,
+                    line: offset,
+                    len,
                 });
             }
-            let len = lines.len();
             entries.push(Entry {
                 r#ref: r.clone(),
                 thinking,
@@ -654,7 +670,7 @@ impl Chat {
                 .retain(|r, _| items.iter().any(|i| &i.r#ref == r));
         }
         self.entries = entries;
-        self.files = files;
+        self.targets = targets;
         if self.selected_index().is_none() {
             self.selected = None;
         }
@@ -744,7 +760,11 @@ impl Chat {
         let picked = self
             .selected_index()
             .filter(|_| self.highlight)
-            .map(|i| self.files[i].line);
+            .map(|i| &self.targets[i]);
+        let picked_file = picked.filter(|t| t.path.is_some()).map(|t| t.line);
+        let picked_reply = picked
+            .filter(|t| t.path.is_none())
+            .map(|t| t.line..t.line + t.len);
         let mut at = top;
         for e in &self.entries[first..] {
             if e.offset >= bottom {
@@ -768,7 +788,11 @@ impl Chat {
                         }
                         out.push(lit);
                     }
-                    _ if picked == Some(at) => out.push(picked_line(line, self.width)),
+                    _ if picked_file == Some(at) => out.push(picked_line(line, self.width)),
+                    _ if picked_reply.as_ref().is_some_and(|r| r.contains(&at)) => {
+                        let first = picked_reply.as_ref().is_some_and(|r| r.start == at);
+                        out.push(picked_reply_line(line, first, self.width, &self.palette));
+                    }
                     _ => out.push(line.clone()),
                 }
                 at += 1;
@@ -861,21 +885,22 @@ impl Chat {
         }
     }
 
-    // ---- files ----
+    // ---- files and replies ----
 
-    /// Whether any line stands for a file (an edit, a turn's changes).
-    pub fn has_files(&self) -> bool {
-        !self.files.is_empty()
+    /// Whether anything can be picked: a line that stands for a file (an edit, a turn's
+    /// changes) or a reply.
+    pub fn has_picks(&self) -> bool {
+        !self.targets.is_empty()
     }
 
     fn selected_index(&self) -> Option<usize> {
         let (r, path) = self.selected.as_ref()?;
-        self.files
+        self.targets
             .iter()
             .position(|f| &f.r#ref == r && &f.path == path)
     }
 
-    /// Whether the picked file's line is drawn highlighted.
+    /// Whether the picked target is drawn highlighted.
     pub fn set_highlight(&mut self, on: bool) {
         self.highlight = on;
     }
@@ -885,30 +910,115 @@ impl Chat {
         self.background_hint = r;
     }
 
-    /// Picks the n-th file line (counted from the end when negative) and scrolls to it.
-    pub fn pick_file(&mut self, n: isize) {
-        let len = self.files.len() as isize;
+    /// Picks the n-th target (counted from the end when negative) and scrolls to it: a reply
+    /// as much of it as fits, from its top.
+    pub fn pick(&mut self, n: isize) {
+        let len = self.targets.len() as isize;
         if len == 0 {
             return;
         }
         let i = if n < 0 { len + n } else { n }.clamp(0, len - 1) as usize;
-        let f = &self.files[i];
-        self.selected = Some((f.r#ref.clone(), f.path.clone()));
-        self.reveal_line(f.line);
+        let t = &self.targets[i];
+        self.selected = Some((t.r#ref.clone(), t.path.clone()));
+        let (line, end) = (t.line, t.line + t.len - 1);
+        self.reveal_line(end.min(line + self.height.saturating_sub(2)));
+        self.reveal_line(line);
     }
 
-    /// Moves the pick by `by` file lines; with none picked, starts from the last.
-    pub fn move_file(&mut self, by: isize) {
+    /// Moves the pick by `by` targets; with none picked, starts from the last.
+    pub fn move_pick(&mut self, by: isize) {
         match self.selected_index() {
-            Some(i) => self.pick_file((i as isize + by).max(0)),
-            None => self.pick_file(-1),
+            Some(i) => self.pick((i as isize + by).max(0)),
+            None => self.pick(-1),
         }
     }
 
     /// The path of the picked file.
     pub fn picked_file(&self) -> Option<&str> {
-        self.selected_index().map(|i| self.files[i].path.as_str())
+        self.selected_index()
+            .and_then(|i| self.targets[i].path.as_deref())
     }
+
+    /// The ref of the picked reply.
+    pub fn picked_reply(&self) -> Option<&str> {
+        self.selected_index()
+            .filter(|&i| self.targets[i].path.is_none())
+            .map(|i| self.targets[i].r#ref.as_str())
+    }
+
+    // ---- the mouse ----
+
+    /// Where the pane's cell (`col`, `row`) is in the whole chat: its line and cell.
+    pub fn at_cell(&self, col: u16, row: u16) -> (usize, usize) {
+        (self.top() + usize::from(row), usize::from(col))
+    }
+
+    /// A drag starts (`extend` false) or goes on to a line and cell of the chat.
+    pub fn select_to(&mut self, at: (usize, usize), extend: bool) {
+        let at = (at.0.min(self.total.saturating_sub(1)), at.1);
+        self.mouse = match self.mouse {
+            Some((from, _)) if extend => Some((from, at)),
+            _ => Some((at, at)),
+        };
+    }
+
+    /// A drag is under way.
+    pub fn selecting(&self) -> bool {
+        self.mouse.is_some()
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.mouse = None;
+    }
+
+    /// The mouse's selection in order, from its first cell to its last (both in it); None
+    /// while it is a single cell (a click).
+    pub fn selection(&self) -> Option<((usize, usize), (usize, usize))> {
+        let (a, b) = self.mouse?;
+        (a != b).then(|| if a <= b { (a, b) } else { (b, a) })
+    }
+
+    /// The text of the mouse's selection, each line's trailing blanks cut.
+    pub fn selected_text(&self) -> Option<String> {
+        let ((l0, c0), (l1, c1)) = self.selection()?;
+        let mut out = Vec::new();
+        for line in l0..=l1 {
+            let text = self.line_text(line);
+            let from = if line == l0 { c0 } else { 0 };
+            let to = if line == l1 { c1 + 1 } else { usize::MAX };
+            out.push(cells(&text, from, to).trim_end().to_string());
+        }
+        Some(out.join("\n"))
+    }
+
+    /// A line of the chat as plain text (blank between entries).
+    fn line_text(&self, at: usize) -> String {
+        let i = self
+            .entries
+            .partition_point(|e| e.offset + e.lines.len() <= at);
+        self.entries
+            .get(i)
+            .filter(|e| e.offset <= at)
+            .and_then(|e| e.lines.get(at - e.offset))
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+            .unwrap_or_default()
+    }
+}
+
+/// The chars of `text` in cells `from..to`; a wide char counts when it starts in them.
+fn cells(text: &str, from: usize, to: usize) -> String {
+    let mut col = 0;
+    let mut out = String::new();
+    for c in text.chars() {
+        if col >= to {
+            break;
+        }
+        if col >= from {
+            out.push(c);
+        }
+        col += unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
+    }
+    out
 }
 
 /// The diffs in an item's result, in order (a path twice is summed).
@@ -1033,6 +1143,36 @@ fn picked_line(line: &Line<'static>, width_cells: usize) -> Line<'static> {
         .push(Span::raw(" ".repeat(width_cells.saturating_sub(used))));
     for s in &mut line.spans {
         s.style = s.style.add_modifier(Modifier::REVERSED | Modifier::BOLD);
+    }
+    line
+}
+
+/// A line of the picked reply: tinted with the accent across the pane (its code keeps its own
+/// background). Without true colors the first line is drawn like a picked file's.
+fn picked_reply_line(
+    line: &Line<'static>,
+    first: bool,
+    width_cells: usize,
+    p: &Palette,
+) -> Line<'static> {
+    let Some(tint) = mix(p.bg, p.accent, 0.15) else {
+        return if first {
+            picked_line(line, width_cells)
+        } else {
+            line.clone()
+        };
+    };
+    let mut line = line.clone();
+    let used: usize = line.spans.iter().map(|s| width(&s.content)).sum();
+    line.spans
+        .push(Span::raw(" ".repeat(width_cells.saturating_sub(used))));
+    for s in &mut line.spans {
+        if s.style
+            .bg
+            .is_none_or(|bg| bg == ratatui::style::Color::Reset)
+        {
+            s.style = s.style.bg(tint);
+        }
     }
     line
 }
@@ -1887,8 +2027,51 @@ mod tests {
             "{shown:#?}"
         );
         // What is opened is still the whole path.
-        c.pick_file(1);
+        c.pick(1);
         assert_eq!(c.picked_file(), Some("/elsewhere/b.rs"));
+    }
+
+    #[test]
+    fn a_picked_reply_is_tinted_through_all_its_lines() {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(vec![
+            item("u1", "user", "go"),
+            item("a1", "agent", "one two three four five six seven"),
+        ]));
+        c.layout(12, 20, &opts());
+        c.pick(-1);
+        assert_eq!(c.picked_reply(), Some("a1"));
+        let plain = c.visible();
+        c.set_highlight(true);
+        let tinted: Vec<bool> = c
+            .visible()
+            .iter()
+            .zip(&plain)
+            .map(|(a, b)| a != b)
+            .collect();
+        let first = texts(&c).iter().position(|l| l.starts_with("one")).unwrap();
+        assert!(
+            first > 0 && !tinted[..first].iter().any(|t| *t),
+            "{tinted:?}"
+        );
+        assert!(tinted[first..].iter().all(|t| *t), "{tinted:?}");
+    }
+
+    #[test]
+    fn the_mouse_selects_text_across_lines() {
+        let mut c = many(3);
+        // "line 0", "", "line 1", "", "line 2", all in view.
+        assert_eq!(c.selected_text(), None);
+        c.select_to(c.at_cell(2, 0), false);
+        assert_eq!(c.selection(), None, "a click selects nothing");
+        c.select_to(c.at_cell(3, 2), true);
+        assert_eq!(c.selected_text().as_deref(), Some("ne 0\n\nline"));
+        // Backwards is the same.
+        c.select_to(c.at_cell(3, 2), false);
+        c.select_to(c.at_cell(2, 0), true);
+        assert_eq!(c.selected_text().as_deref(), Some("ne 0\n\nline"));
+        c.clear_selection();
+        assert_eq!(c.selected_text(), None);
     }
 
     #[test]
@@ -1901,17 +2084,21 @@ mod tests {
             item("a1", "agent", "Done."),
         ]));
         c.layout(80, 40, &opts());
-        assert!(c.has_files());
-        // The two edits, then the two lines of the turn's changes.
-        c.pick_file(-1);
+        assert!(c.has_picks());
+        // The two edits, the reply, then the two lines of the turn's changes.
+        c.pick(-1);
         assert_eq!(c.picked_file(), Some("src/b.rs"));
-        c.move_file(-1);
+        c.move_pick(-1);
         assert_eq!(c.picked_file(), Some("src/a.rs"));
-        c.move_file(-1);
+        c.move_pick(-1);
+        assert_eq!(c.picked_file(), None);
+        assert_eq!(c.picked_reply(), Some("a1"));
+        c.move_pick(-1);
         assert_eq!(c.picked_file(), Some("src/b.rs"));
-        c.pick_file(0);
+        assert_eq!(c.picked_reply(), None);
+        c.pick(0);
         assert_eq!(c.picked_file(), Some("src/a.rs"));
-        c.move_file(-1);
+        c.move_pick(-1);
         assert_eq!(c.picked_file(), Some("src/a.rs"), "stays at the first");
 
         // Only drawn picked while the chat has the keys.

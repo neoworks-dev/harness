@@ -17,7 +17,7 @@ use neo_renderer_ratatui::{
 use neo_sdk::Event;
 use ratatui::Frame;
 use ratatui::crossterm::event::{
-    KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
+    KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use ratatui::layout::{Position, Rect};
 use ratatui::style::{Modifier, Style};
@@ -36,6 +36,7 @@ use crate::images::Images;
 use crate::jobs::{Jobs, JobsAction};
 use crate::mention::{self, Candidate, Mentions};
 use crate::menu::{self, Entry, Item, Switcher, session_title};
+use crate::reader::{Reader, ReaderAction};
 use crate::secret::{self, Secret, SecretValue};
 use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction, sidebar_width};
 use crate::status::{Approvals, HarnessSettings, Status, record_setting};
@@ -326,6 +327,8 @@ pub struct App {
     jobs_shown: usize,
     last_tick_ms: i64,
     transcript: Option<Transcript>,
+    /// A reply opened as markdown (Enter on a picked reply), in the chat's place.
+    reader: Option<Reader>,
     /// Last whole second the agents list was painted for (its clocks run).
     agents_tick: i64,
     chat: Chat,
@@ -415,6 +418,8 @@ pub struct App {
     terminal_on: bool,
     /// Where the terminal panel was drawn last (the wheel scrolls it there).
     terminal_area: Option<Rect>,
+    /// Where the chat's lines were drawn last (the mouse selects text there).
+    chat_area: Option<Rect>,
     dirty: bool,
     clear: bool,
 }
@@ -439,6 +444,7 @@ impl App {
             jobs_shown: 0,
             last_tick_ms: 0,
             transcript: None,
+            reader: None,
             agents_tick: 0,
             styles: Styles::new(&palette, config.no_color),
             palette,
@@ -505,6 +511,7 @@ impl App {
             sidebar_shown: false,
             terminal_on: true,
             terminal_area: None,
+            chat_area: None,
             dirty: true,
             clear: false,
         }
@@ -1056,6 +1063,7 @@ impl App {
         self.github.reset(PathBuf::from(cwd));
         self.agents = Agents::default();
         self.transcript = None;
+        self.reader = None;
         self.dirty = true;
     }
 
@@ -1548,14 +1556,7 @@ impl App {
                 self.comment_in_prompt(before, after);
             }
             if let Some(text) = self.widgets.take_copy() {
-                let lines = text.lines().count().max(1);
-                fx.push(Effect::Copy(text));
-                let said = if lines == 1 {
-                    "copied".to_string()
-                } else {
-                    format!("copied {lines} lines")
-                };
-                self.notify(&said, false);
+                self.copy(text, &mut fx);
             }
             return fx;
         }
@@ -1567,6 +1568,14 @@ impl App {
         }
         if self.transcript.is_some() {
             self.transcript_key(key, &mut fx);
+            return fx;
+        }
+        if let Some(reader) = self.reader.as_mut() {
+            if let ReaderAction::Close = reader.key(key) {
+                self.reader = None;
+            } else if let Some(text) = reader.take_copy() {
+                self.copy(text, &mut fx);
+            }
             return fx;
         }
         // Alt-. / Alt-, widen / narrow the focused pane (the keys' > and <, with the shift too).
@@ -1608,19 +1617,41 @@ impl App {
         fx
     }
 
+    /// Puts text on the clipboard and says so.
+    fn copy(&mut self, text: String, fx: &mut Vec<Effect>) {
+        let lines = text.lines().count().max(1);
+        fx.push(Effect::Copy(text));
+        let said = if lines == 1 {
+            "copied".to_string()
+        } else {
+            format!("copied {lines} lines")
+        };
+        self.notify(&said, false);
+    }
+
     /// The mouse wheel scrolls the chat (or the open diff, or the terminal panel under the
-    /// pointer). Other mouse events are ignored.
-    pub fn handle_mouse(&mut self, mouse: MouseEvent) {
+    /// pointer); dragging over the chat selects text and copies it when let go. Other mouse
+    /// events are ignored.
+    pub fn handle_mouse(&mut self, mouse: MouseEvent) -> Vec<Effect> {
+        let mut fx = Vec::new();
         let down = match mouse.kind {
             MouseEventKind::ScrollUp => false,
             MouseEventKind::ScrollDown => true,
-            _ => return,
+            MouseEventKind::Down(MouseButton::Left)
+            | MouseEventKind::Drag(MouseButton::Left)
+            | MouseEventKind::Up(MouseButton::Left) => {
+                self.mouse_select(mouse, &mut fx);
+                return fx;
+            }
+            _ => return fx,
         };
         self.dirty = true;
         if self.github.is_open() {
             self.github.wheel(down);
         } else if let Some(t) = self.transcript.as_mut() {
             t.wheel(down);
+        } else if let Some(r) = self.reader.as_mut() {
+            r.wheel(down);
         } else if self
             .terminal_area
             .is_some_and(|a| a.contains(ratatui::layout::Position::new(mouse.column, mouse.row)))
@@ -1641,6 +1672,52 @@ impl App {
             self.chat.scroll_down(WHEEL_LINES);
         } else {
             self.chat.scroll_up(WHEEL_LINES);
+        }
+        fx
+    }
+
+    /// The left button over the chat: pressed starts a selection, dragged extends it (past the
+    /// pane's top or bottom it scrolls), let go copies what it covers.
+    fn mouse_select(&mut self, mouse: MouseEvent, fx: &mut Vec<Effect>) {
+        let shown = !self.github.is_open()
+            && !self.widgets.overlay_open()
+            && self.transcript.is_none()
+            && self.reader.is_none()
+            && self.overlay == Overlay::None;
+        let Some(area) = self.chat_area.filter(|_| shown) else {
+            return;
+        };
+        let inside = area.contains(Position::new(mouse.column, mouse.row));
+        let (col, row) = (
+            mouse.column.saturating_sub(area.x).min(area.width - 1),
+            mouse.row.saturating_sub(area.y).min(area.height - 1),
+        );
+        match mouse.kind {
+            MouseEventKind::Down(_) if inside => {
+                self.dirty = true;
+                self.chat.select_to(self.chat.at_cell(col, row), false);
+            }
+            MouseEventKind::Down(_) => {
+                self.dirty |= self.chat.selecting();
+                self.chat.clear_selection();
+            }
+            MouseEventKind::Drag(_) if self.chat.selecting() => {
+                self.dirty = true;
+                if mouse.row < area.y {
+                    self.chat.scroll_up(1);
+                } else if mouse.row >= area.bottom() {
+                    self.chat.scroll_down(1);
+                }
+                self.chat.select_to(self.chat.at_cell(col, row), true);
+            }
+            MouseEventKind::Up(_) if self.chat.selecting() => {
+                self.dirty = true;
+                if let Some(text) = self.chat.selected_text() {
+                    self.copy(text, fx);
+                }
+                self.chat.clear_selection();
+            }
+            _ => {}
         }
     }
 
@@ -1786,26 +1863,50 @@ impl App {
                 },
                 Focus::Agents => self.agents_key(key, fx),
                 Focus::Jobs => self.jobs_key(key),
-                Focus::Chat => self.chat_files_key(key),
+                Focus::Chat => self.chat_pick_key(key, fx),
             },
         }
     }
 
-    /// Keys while the chat's file lines have focus: move between them, open one's diff.
-    fn chat_files_key(&mut self, key: KeyEvent) {
+    /// Keys while the chat's files and replies have focus: move between them, open a file's
+    /// diff or a reply as markdown, copy a reply's markdown or a file's path.
+    fn chat_pick_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => self.focus = None,
-            KeyCode::Up | KeyCode::Char('k') => self.chat.move_file(-1),
-            KeyCode::Down | KeyCode::Char('j') => self.chat.move_file(1),
-            KeyCode::Home | KeyCode::Char('g') => self.chat.pick_file(0),
-            KeyCode::End | KeyCode::Char('G') => self.chat.pick_file(-1),
-            KeyCode::Enter | KeyCode::Char(' ') => {
+            KeyCode::Up | KeyCode::Char('k') => self.chat.move_pick(-1),
+            KeyCode::Down | KeyCode::Char('j') => self.chat.move_pick(1),
+            KeyCode::Home | KeyCode::Char('g') => self.chat.pick(0),
+            KeyCode::End | KeyCode::Char('G') => self.chat.pick(-1),
+            KeyCode::Enter | KeyCode::Char(' ' | 'v' | 'V') => {
                 if let Some(path) = self.chat.picked_file().map(str::to_string) {
                     self.widgets.open_path(&path);
+                } else if let Some(text) = self.picked_markdown() {
+                    self.reader = Some(Reader::new("reply", &text));
+                }
+            }
+            KeyCode::Char('y') => {
+                if let Some(path) = self.chat.picked_file().map(str::to_string) {
+                    self.copy(path, fx);
+                } else if let Some(text) = self.picked_markdown() {
+                    self.copy(text, fx);
                 }
             }
             _ => {}
         }
+    }
+
+    /// The picked reply as markdown; None (and a word why) when it has no text.
+    fn picked_markdown(&mut self) -> Option<String> {
+        let r = self.chat.picked_reply()?;
+        let text = self
+            .chat
+            .item(r)
+            .map(crate::markdown::item_markdown)
+            .filter(|t| !t.trim().is_empty());
+        if text.is_none() {
+            self.notify("this reply has no text", false);
+        }
+        text
     }
 
     // ---- subagents ----
@@ -1932,11 +2033,11 @@ impl App {
         }
     }
 
-    /// Tab: editor, the chat's files, sessions, terminal, plan, files (the ones on screen),
-    /// editor.
+    /// Tab: editor, the chat's files and replies, sessions, terminal, plan, files (the ones on
+    /// screen), editor.
     fn cycle_focus(&mut self) {
         let order = [
-            (self.chat.has_files(), Focus::Chat),
+            (self.chat.has_picks(), Focus::Chat),
             (self.sessions_shown, Focus::Sessions),
             // The side column top to bottom.
             (
@@ -1977,9 +2078,8 @@ impl App {
     fn enter_focus(&mut self) {
         match self.focus {
             Some(Focus::Sessions) => self.sessions.focus(&self.session),
-            // The latest file, unless one is picked already.
-            Some(Focus::Chat) if self.chat.picked_file().is_none() => self.chat.pick_file(-1),
-            Some(Focus::Chat) => self.chat.move_file(0),
+            // The latest file or reply, unless one is picked already.
+            Some(Focus::Chat) => self.chat.move_pick(0),
             _ => {}
         }
     }
@@ -2939,7 +3039,7 @@ impl App {
                 self.widgets.show_job(None);
                 self.focus = None;
             }
-            Some(Focus::Chat) if !self.chat.has_files() => self.focus = None,
+            Some(Focus::Chat) if !self.chat.has_picks() => self.focus = None,
             _ => {}
         }
         self.sync_prompt();
@@ -2971,6 +3071,8 @@ impl App {
             if let Some(t) = self.transcript.as_mut() {
                 t.draw(frame, areas.chat, &opts, &self.styles);
             }
+        } else if let Some(r) = self.reader.as_mut() {
+            r.draw(frame, areas.chat, &self.palette);
         } else {
             match self.overlay {
                 Overlay::None => self.draw_chat(frame, areas.chat),
@@ -3133,6 +3235,29 @@ impl App {
         }
     }
 
+    /// The cells the mouse is selecting, reversed.
+    fn draw_mouse_selection(&self, frame: &mut Frame, content: Rect) {
+        let Some(((l0, c0), (l1, c1))) = self.chat.selection() else {
+            return;
+        };
+        let top = self.chat.top();
+        let buf = frame.buffer_mut();
+        for y in 0..content.height {
+            let line = top + usize::from(y);
+            if line < l0 || line > l1 {
+                continue;
+            }
+            let from = if line == l0 { c0 } else { 0 };
+            let to = if line == l1 { c1 } else { usize::MAX };
+            for x in 0..content.width {
+                if (from..=to).contains(&usize::from(x)) {
+                    let cell = &mut buf[(content.x + x, content.y + y)];
+                    cell.set_style(cell.style().add_modifier(Modifier::REVERSED));
+                }
+            }
+        }
+    }
+
     /// A session nothing was said in yet: where it works, the latest sessions there when the
     /// sidebar doesn't list them, and the keys to start with.
     fn empty_chat(&mut self, w: usize) -> Vec<Line<'static>> {
@@ -3219,6 +3344,7 @@ impl App {
             self.chat.set_images(Some(view));
         }
         self.chat.layout(content.width, content.height, &opts);
+        self.chat_area = (!self.chat.items().is_empty()).then_some(content);
         if self.chat.items().is_empty() {
             let lines = if self.chat.loaded() {
                 self.empty_chat(usize::from(content.width))
@@ -3240,6 +3366,7 @@ impl App {
                 images.draw(frame.buffer_mut(), content, &at, self.styles.muted);
             }
         }
+        self.draw_mouse_selection(frame, content);
         let total = self.chat.total_lines();
         let height = usize::from(content.height);
         if total > height && area.width >= 20 {
@@ -3918,7 +4045,10 @@ impl App {
                 "ctrl-w / ctrl-u / ctrl-k",
                 "delete word / to line start / to line end",
             ),
-            key("pgup / pgdn", "scroll the chat (also the mouse wheel)"),
+            key(
+                "pgup / pgdn",
+                "scroll the chat (also the mouse wheel; dragging copies text)",
+            ),
             key("shift-up / shift-down", "scroll the chat a line"),
             key(
                 "ctrl-u / ctrl-d",
@@ -3936,7 +4066,11 @@ impl App {
             key("shift-tab", "approvals: ask / review / accept edits / auto"),
             key(
                 "tab",
-                "complete command, note on a prompt, next panel (the chat's files first)",
+                "complete command, note on a prompt, next panel (the chat first)",
+            ),
+            key(
+                "chat (tab)",
+                "j/k pick · y copy as markdown · enter: in vim keys (v/V, y) · q",
             ),
             key("ctrl-s", "put the draft aside / bring it back"),
             key(

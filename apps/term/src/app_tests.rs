@@ -720,6 +720,59 @@ fn the_wheel_and_shift_arrows_scroll_the_chat() {
 }
 
 #[test]
+fn dragging_over_the_chat_copies_what_it_covers() {
+    let mut app = scenario();
+    let lines = screen(&mut app, 100, 30);
+    let y = lines.iter().position(|l| l.contains("Done.")).unwrap();
+    let x = lines[y].find("Done.").unwrap();
+    let at = |kind, x: usize| MouseEvent {
+        kind,
+        column: x as u16,
+        row: y as u16,
+        modifiers: KeyModifiers::NONE,
+    };
+    let left = ratatui::crossterm::event::MouseButton::Left;
+    assert!(
+        app.handle_mouse(at(MouseEventKind::Down(left), x))
+            .is_empty()
+    );
+    app.handle_mouse(at(MouseEventKind::Drag(left), x + 4));
+    let shown = screen(&mut app, 100, 30);
+    assert_eq!(shown[y], lines[y], "the text stays as it is, only reversed");
+    let fx = app.handle_mouse(at(MouseEventKind::Up(left), x + 4));
+    assert_eq!(fx, [Effect::Copy("Done.".into())]);
+    // A click copies nothing.
+    app.handle_mouse(at(MouseEventKind::Down(left), x));
+    assert!(app.handle_mouse(at(MouseEventKind::Up(left), x)).is_empty());
+}
+
+#[test]
+fn tab_picks_a_reply_y_copies_its_markdown_and_enter_opens_it_in_vim_keys() {
+    let mut app = scenario();
+    screen(&mut app, 100, 30);
+    app.handle_key(key(KeyCode::Tab));
+    assert_eq!(app.focus, Some(Focus::Chat));
+    let markdown = "Done. The header now uses `position: sticky`.";
+    assert_eq!(
+        app.handle_key(key(KeyCode::Char('y'))),
+        [Effect::Copy(markdown.into())]
+    );
+    app.handle_key(key(KeyCode::Enter));
+    let text = screen_text(&mut app, 100, 30);
+    assert!(text.contains("reply  markdown"), "{text}");
+    assert!(text.contains(markdown), "{text}");
+    // Done . The header: the full stop is a word of its own, as in vim.
+    type_str(&mut app, "wwwve");
+    assert_eq!(
+        app.handle_key(key(KeyCode::Char('y'))),
+        [Effect::Copy("header".into())]
+    );
+    app.handle_key(key(KeyCode::Char('q')));
+    assert!(!screen_text(&mut app, 100, 30).contains("reply  markdown"));
+    assert_eq!(app.focus, Some(Focus::Chat), "back where it was");
+}
+
+#[test]
 fn home_end_belong_to_the_editor_when_it_has_text() {
     let mut app = app();
     long_chat(&mut app, 40);
@@ -2054,13 +2107,15 @@ fn tab_walks_sessions_plan_files_and_back() {
     screen(&mut app, 150, 30);
     assert!(app.sessions_shown && app.sidebar_shown);
     let mut seen = Vec::new();
-    for _ in 0..4 {
+    for _ in 0..5 {
         app.handle_key(key(KeyCode::Tab));
         seen.push(app.focus);
     }
     assert_eq!(
         seen,
         [
+            // The chat's replies first.
+            Some(Focus::Chat),
             Some(Focus::Sessions),
             Some(Focus::Panel(Panel::Plan)),
             Some(Focus::Panel(Panel::Files)),
@@ -2189,6 +2244,8 @@ fn the_sidebar_appears_with_a_plan_and_tab_cycles_focus() {
     // The chat keeps the left part; the side column the right.
     assert!(app.sidebar_shown);
     app.handle_key(key(KeyCode::Tab));
+    assert_eq!(app.focus, Some(Focus::Chat), "the reply first");
+    app.handle_key(key(KeyCode::Tab));
     assert_eq!(app.focus, Some(Focus::Panel(Panel::Plan)));
     app.handle_key(key(KeyCode::Tab));
     assert_eq!(app.focus, Some(Focus::Panel(Panel::Files)));
@@ -2204,6 +2261,8 @@ fn the_sidebar_appears_with_a_plan_and_tab_cycles_focus() {
     assert_eq!(app.editor_text(), "x");
     // A terminal too narrow for the column drops it and the focus with it.
     app.handle_key(key(KeyCode::Tab));
+    app.handle_key(key(KeyCode::Tab));
+    assert_eq!(app.focus, Some(Focus::Panel(Panel::Plan)));
     screen(&mut app, 60, 20);
     assert_eq!(app.focus, None);
 }

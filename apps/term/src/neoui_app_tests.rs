@@ -935,9 +935,12 @@ fn screens() {
 #[test]
 fn enter_opens_a_select_with_no_value_and_says_when_it_has_no_options() {
     let select = |options: Value| {
-        let root = node("Card", json!({"children": [
-            control("Team", keyed("Select", "team", json!({"name": "team", "placeholder": "Choose", "options": options}))),
-        ]}));
+        let root = node(
+            "Card",
+            json!({"children": [
+                control("Team", keyed("Select", "team", json!({"name": "team", "placeholder": "Choose", "options": options}))),
+            ]}),
+        );
         let mut app = app();
         let item: ViewItem = serde_json::from_value(json!({
             "ref": "f1", "kind": "agent",
@@ -949,7 +952,10 @@ fn enter_opens_a_select_with_no_value_and_says_when_it_has_no_options() {
         text(&mut app)
     };
     let screen = select(json!([option("a", "Alpha"), option("b", "Beta")]));
-    assert!(screen.contains("› Alpha") && screen.contains("Beta"), "{screen}");
+    assert!(
+        screen.contains("› Alpha") && screen.contains("Beta"),
+        "{screen}"
+    );
     // Options the program dropped (a model wrote them as a JSON string) leave the list empty.
     let screen = select(json!([]));
     assert!(screen.contains("no options"), "{screen}");

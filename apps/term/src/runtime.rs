@@ -237,10 +237,7 @@ fn run(mut app: crate::app::App, driver: Driver) -> io::Result<()> {
             loop {
                 let fx = match event::read()? {
                     Event::Key(key) => app.handle_key(key),
-                    Event::Mouse(mouse) => {
-                        app.handle_mouse(mouse);
-                        Vec::new()
-                    }
+                    Event::Mouse(mouse) => app.handle_mouse(mouse),
                     Event::Paste(text) => app.handle_paste(&text),
                     Event::Resize(w, h) => {
                         app.resize(w, h);

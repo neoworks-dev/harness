@@ -6,7 +6,7 @@ keys (any key closes this)
   ctrl-a / ctrl-e           start / end of line
   alt-b / alt-f             word left / right
   ctrl-w / ctrl-u / ctrl-k  delete word / to line start / to line end
-  pgup / pgdn               scroll the chat (also the mouse wheel)
+  pgup / pgdn               scroll the chat (also the mouse wheel; dragging copies text)
   shift-up / shift-down     scroll the chat a line
   ctrl-u / ctrl-d           half page up / down (empty input; ctrl-d quits at the end)
   home / end                top / bottom of the chat (empty input; ctrl-home/end always)
@@ -16,7 +16,8 @@ keys (any key closes this)
   ctrl-b                    a command running a while: on in the background
   ctrl-c                    clear input; twice to quit
   shift-tab                 approvals: ask / review / accept edits / auto
-  tab                       complete command, note on a prompt, next panel (the chat's files first)
+  tab                       complete command, note on a prompt, next panel (the chat first)
+  chat (tab)                j/k pick · y copy as markdown · enter: in vim keys (v/V, y) · q
   ctrl-s                    put the draft aside / bring it back
   ctrl-g                    sessions sidebar: focus (up/down, enter, n new chat, esc)
   ctrl-r                    GitHub issues and pull requests (/github)
@@ -40,7 +41,6 @@ commands
   /safesearch [strict|moderate|off]   how much adult content web search may return
   /settings [toggle [on|off]]         turn settings on or off, like Show, don't tell. (UI over text)
   /login [provider]                   add an API key or an account (ChatGPT, Copilot, Claude Pro/Ma…
-  /logout [provider]                  remove a stored API key or account
 
 ┃
 ┃ message the agent · / for commands
