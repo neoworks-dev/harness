@@ -239,6 +239,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       return child;
     },
     // Claude Code going on by itself once a background command or subagent ended.
+    stopTurn: (session) => sessions.stopTurn(session),
     ownTurn: (session, title) =>
       sessions.ownTurn(session, "background", `${title} went on by itself`),
     alwaysAskForAgents: () => settings.alwaysAskForAgents(),
@@ -307,7 +308,9 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     harness: harnessOf,
     agents: (name) => (guests.has(name) ? guests.agent(name) : undefined),
     settings: (sessionId, harness) => settings.get(sessionId, harness),
-    requestPermission: (sessionId) => permissions.hook(sessionId, agent.name),
+    // A tool the user declined stops the turn: the model doesn't go on without it.
+    requestPermission: (sessionId) =>
+      permissions.hook(sessionId, agent.name, () => sessions.stopTurn(sessionId)),
     safeSearch: () => settings.safeSearch(),
     created: (sessionId) => {
       settings.inheritHarness(sessionId, (name) => name === agent.name || guests.has(name));

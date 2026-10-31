@@ -272,6 +272,18 @@ async function prompt(params: {
     say(sessionId, "Passed it on.");
     return { stopReason: "end_turn" };
   }
+  if (task === "ask then work") {
+    // Asks, then works on a while: a session/cancel meanwhile ends the turn as cancelled.
+    const answer = await permission(sessionId, { toolCallId: "t7", kind: "execute", title: "ls" });
+    say(sessionId, `answer: ${answer}`);
+    const stopped = await Promise.race([
+      new Promise<boolean>((resolve) => (cancel = () => resolve(true))),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 300)),
+    ]);
+    if (stopped) return { stopReason: "cancelled" };
+    say(sessionId, "went on");
+    return { stopReason: "end_turn" };
+  }
   if (task.startsWith("greet ")) {
     await greet(sessionId, task.slice(6));
   } else if (task === "ask" || task.startsWith("ask ")) {

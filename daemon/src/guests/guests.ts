@@ -136,6 +136,8 @@ export interface GuestManagerOptions {
    * which ownTurnSession shows. `title` is the harness's. Without it that work isn't shown.
    */
   ownTurn?: (session: string, title: string) => void;
+  /** Stops the session's running turn alone (see SessionManager.stopTurn). */
+  stopTurn?: (session: string) => void;
   /** Whether starting a subagent asks in every mode (the user's /settings ask-for-agents). */
   alwaysAskForAgents?: () => boolean;
 }
@@ -1954,6 +1956,17 @@ export class GuestManager {
     if (optionId === undefined) return cancelled;
     const picked = options.find((o) => o.id === optionId);
     if (picked?.kind === "allow_always") this.options.guard?.remember(guest.session, sensitive);
+    // Rejected without a note saying what to do instead: the work stops there, once the
+    // adapter has the answer (a native subagent's alone; else the session's turn, or the guest's).
+    if (picked?.kind.startsWith("reject") === true && note === undefined) {
+      // Only the run that asked: one that ended meanwhile takes the next one along otherwise.
+      const asked = child ? child.id : guest.run;
+      setTimeout(() => {
+        if (child ? !child.running || child.id !== asked : guest.run !== asked) return;
+        if (guest.main && !child) this.options.stopTurn?.(guest.session);
+        else guest.conn.notify("session/cancel", { sessionId: acpSession ?? guest.acpSession });
+      }, 0);
+    }
     if (note !== undefined) {
       // ACP's answer has no room for the note: it goes into the guest's running turn, once its
       // tool call has this answer; a guest that can't take that hears it with its next prompt.

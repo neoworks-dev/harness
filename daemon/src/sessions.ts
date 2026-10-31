@@ -576,6 +576,18 @@ export class SessionManager {
     else rt.cancelRequested = true;
   }
 
+  /**
+   * Stops the turn whose agent is working right now, as when the user declined a tool: what
+   * runs beside it (its background subagents) goes on, unlike cancel, and a turn that already
+   * ended (the decline came late) takes nothing along to the next one. Queued inputs still run.
+   */
+  stopTurn(sessionId: string): void {
+    const rt = this.runtimes.get(sessionId);
+    if (!rt?.running || rt.active === undefined) return;
+    rt.cancelling = true;
+    rt.active.cancel();
+  }
+
   /** Resolves once the session has no running or queued turns. */
   async idle(sessionId: string): Promise<void> {
     const rt = this.runtimes.get(sessionId);

@@ -579,6 +579,28 @@ describe("notes with an answer", () => {
     expect(await refused).toEqual({ allowed: false, note: "just clean the cache" });
   });
 
+  test("a tool declined without a note stops the turn; with one the turn goes on", async () => {
+    const { daemon, session, agent } = await setup();
+    const ask = await hookOf(daemon, session, agent);
+    daemon.sessions.input(session, "cli", "build it");
+    await agent.started(2);
+    const withNote = ask({ title: "rm -r build", kind: "execute" });
+    const first = await nextRequest(daemon, session, 0);
+    await press(daemon, session, first.id, "reject", "clean the cache instead");
+    expect(await withNote).toEqual({ allowed: false, note: "clean the cache instead" });
+    expect(daemon.sessions.info(session)?.state).toBe("running");
+
+    const declined = ask({ title: "make build", kind: "execute" });
+    const second = await nextRequest(daemon, session, 1);
+    await press(daemon, session, second.id, "reject");
+    expect(await declined).toEqual({ allowed: false });
+    await daemon.sessions.idle(session);
+    expect(events(daemon, session).findLast((e) => e.type === "turn_ended")).toEqual({
+      type: "turn_ended",
+      stopReason: "cancelled",
+    });
+  });
+
   test("an empty note is no note; a note must be text", async () => {
     const { daemon, session, agent } = await setup();
     const ask = await hookOf(daemon, session, agent);

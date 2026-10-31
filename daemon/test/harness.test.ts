@@ -682,6 +682,42 @@ describe("approvals apply to the session's ACP harness", () => {
     expect(thoughts(daemon, session).at(-1)).toContain('<reverted paths="r.txt"/>');
   });
 
+  test("a tool the ACP harness was refused stops its turn, unless a note says what to do", async () => {
+    const { daemon, session } = await setup();
+    await daemon.commands.run(session, "/harness fake");
+    daemon.sessions.input(session, "cli", "ask then work");
+    await answer(daemon, session, "permission_request", "no");
+    await daemon.sessions.idle(session);
+    expect(replies(daemon, session).at(-1)).toBe("answer: no");
+    expect(events(daemon, session).findLast((e) => e.type === "turn_ended")).toEqual({
+      type: "turn_ended",
+      stopReason: "cancelled",
+    });
+
+    daemon.sessions.input(session, "cli", "ask then work");
+    const open = async (): Promise<Extract<SessionEvent, { type: "permission_request" }>> => {
+      await until(
+        () => events(daemon, session).filter((e) => e.type === "permission_request").length === 2,
+        "the question",
+      );
+      const found = events(daemon, session).findLast((e) => e.type === "permission_request");
+      if (found?.type !== "permission_request") throw new Error("no question");
+      return found;
+    };
+    const request = await open();
+    await daemon.actions.run(
+      {
+        session,
+        ref: "x",
+        action: "neo.permit",
+        args: { id: request.id, option: "no", note: "use dir" },
+      },
+      "test",
+    );
+    await daemon.sessions.idle(session);
+    expect(replies(daemon, session).at(-1)).toBe("went on");
+  });
+
   test("a sensitive read by the ACP harness asks in auto mode; an ordinary one doesn't", async () => {
     const { daemon, session } = await setup();
     await daemon.commands.run(session, "/harness fake");

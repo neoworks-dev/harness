@@ -101,8 +101,22 @@ export class Permissions {
     },
   };
 
-  /** The hook for one session's agent (harness name `agent`), given to its tools. */
-  hook(session: string, agent: string): RequestPermission {
+  /**
+   * The hook for one session's agent (harness name `agent`), given to its tools. `onDecline`
+   * runs when the user refused (rejected, or reverted an edit) without a note saying what to do
+   * instead: the turn stops there, the model doesn't go on (see daemon.ts).
+   */
+  hook(session: string, agent: string, onDecline?: () => void): RequestPermission {
+    const ask = this.ask(session, agent);
+    return async (request, signal) => {
+      const answer = await ask(request, signal);
+      // Every refusal is the user's answer, but one to a question that was dropped.
+      if (!answer.allowed && answer.note === undefined && signal?.aborted !== true) onDecline?.();
+      return answer;
+    };
+  }
+
+  private ask(session: string, agent: string): RequestPermission {
     return async (request, signal) => {
       if (request.phase === "after") return this.afterEdit(session, agent, request, signal);
       const mode = this.options.approvals(session);
