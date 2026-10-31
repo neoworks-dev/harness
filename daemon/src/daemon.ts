@@ -218,6 +218,9 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       });
       return child;
     },
+    // Claude Code going on by itself once a background command or subagent ended.
+    ownTurn: (session, title) =>
+      sessions.ownTurn(session, "background", `${title} went on by itself`),
     alwaysAskForAgents: () => settings.alwaysAskForAgents(),
   });
   /** The names a plugin's command may not take: what the daemon answers itself, and the guests'. */
@@ -280,6 +283,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     showDontTell,
     mcpServers: (sessionId) => mcpServers(sessionId),
     guest: (sessionId, name) => guests.turnSession(sessionId, name),
+    ownTurn: (sessionId) => guests.ownTurnSession(sessionId),
     harness: harnessOf,
     agents: (name) => (guests.has(name) ? guests.agent(name) : undefined),
     settings: (sessionId, harness) => settings.get(sessionId, harness),

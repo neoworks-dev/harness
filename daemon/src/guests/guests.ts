@@ -130,6 +130,11 @@ export interface GuestManagerOptions {
    * into `session`, labelled.
    */
   childSession?: (session: string, harness: string) => string;
+  /**
+   * The session's agent went on by itself (see OwnTurn): the session should run a turn for it,
+   * which ownTurnSession shows. `title` is the harness's. Without it that work isn't shown.
+   */
+  ownTurn?: (session: string, title: string) => void;
   /** Whether starting a subagent asks in every mode (the user's /settings ask-for-agents). */
   alwaysAskForAgents?: () => boolean;
 }
@@ -191,6 +196,35 @@ interface NativeChild {
   stream: Stream;
 }
 
+/**
+ * Work the session's own agent does without a prompt: Claude Code's follow-up once a command or
+ * subagent it ran in the background ended (its "autonomous cycle"), which ACP v1 reports only as
+ * updates outside any prompt, ending with its result's usage. The daemon runs a turn of the
+ * session for it (see GuestManagerOptions.ownTurn), so it is shown and nothing else runs meanwhile.
+ */
+interface OwnTurn {
+  /** What arrived before that turn started. */
+  held: Record<string, unknown>[];
+  /** Set once it is over. */
+  stopReason?: StopReason;
+  /** The turn that shows it, once that started. */
+  run?: Run;
+  /** Ends that turn. */
+  end?: () => void;
+  /** Ends it when nothing came for a while, so a result without usage can't hang the session. */
+  quiet?: ReturnType<typeof setTimeout>;
+}
+
+/** What starts an own turn of the agent: its output, not a late update of an earlier turn. */
+const OWN_TURN_STARTS = new Set([
+  "agent_message_chunk",
+  "agent_thought_chunk",
+  "tool_call",
+  "plan",
+]);
+/** How long an own turn of the agent may go without an update before it counts as over. */
+const OWN_TURN_QUIET_MS = 10 * 60 * 1000;
+
 /** Where a connection's notifications go: its guest, once there is one. */
 interface GuestTarget {
   guest?: Guest;
@@ -245,6 +279,8 @@ interface Guest {
   children: Map<string, NativeChild>;
   /** Whether each of its Agent calls runs in the background, by the adapter's tool call id. */
   backgroundCalls: Map<string, boolean>;
+  /** What it does on its own right now, as the session's agent. */
+  own?: OwnTurn;
 }
 
 const KINDS = new Set<string>([
@@ -1178,6 +1214,7 @@ export class GuestManager {
       for (const child of guest.children.values()) {
         this.endChild(guest, child, "error", `${this.title(name)} exited`);
       }
+      if (guest.own) this.endOwnTurn(guest.own, "error");
       if (main) return;
       const key = `${session}\0${name}`;
       // Only if it's still the current one (a resume replaces it).
@@ -1399,7 +1436,10 @@ export class GuestManager {
       return;
     }
     const run = guest.run;
-    if (!run) return;
+    if (!run) {
+      this.holdOwnTurn(guest, update);
+      return;
+    }
     // Whether an Agent call runs in the background, for the subagent it starts (its input may
     // arrive with an update of the call).
     const call = str(update.toolCallId);
@@ -1407,6 +1447,92 @@ export class GuestManager {
       guest.backgroundCalls.set(call, update.rawInput.run_in_background === true);
     }
     this.streamUpdate(run, update);
+    const own = guest.own;
+    if (own?.run === run) this.ownTurnGoesOn(guest, own, update);
+  }
+
+  /**
+   * An update of the session's agent while no turn runs: the start or more of work it does on
+   * its own (see OwnTurn), held for the turn the session runs for it.
+   */
+  private holdOwnTurn(guest: Guest, update: Record<string, unknown>): void {
+    if (!guest.main || !this.options.ownTurn) return;
+    const own = guest.own;
+    if (own) {
+      // More of it before its turn started; one that ended meanwhile goes on.
+      delete own.stopReason;
+      own.held.push(update);
+      this.ownTurnGoesOn(guest, own, update);
+      return;
+    }
+    if (!OWN_TURN_STARTS.has(String(update.sessionUpdate))) return;
+    const started: OwnTurn = { held: [update] };
+    guest.own = started;
+    // (Its turn may start at once, and take what is held.)
+    this.options.ownTurn(guest.session, this.title(guest.name));
+    this.ownTurnGoesOn(guest, started, update);
+  }
+
+  /** The agent's own work sent this: its result's usage ends it, else it ends when quiet. */
+  private ownTurnGoesOn(guest: Guest, own: OwnTurn, update: Record<string, unknown>): void {
+    clearTimeout(own.quiet);
+    if (update.sessionUpdate === "usage_update" && update.cost !== undefined) {
+      this.endOwnTurn(own, "end_turn");
+      return;
+    }
+    own.quiet = setTimeout(() => this.endOwnTurn(own, "end_turn"), OWN_TURN_QUIET_MS);
+    own.quiet.unref?.();
+  }
+
+  private endOwnTurn(own: OwnTurn, stopReason: StopReason): void {
+    clearTimeout(own.quiet);
+    if (own.stopReason !== undefined) return;
+    own.stopReason = stopReason;
+    own.end?.();
+  }
+
+  /**
+   * The turn of the session that shows what its agent does on its own (see OwnTurn): its
+   * prompt() streams that work into the log and resolves when it is over. Undefined when there
+   * is none (any more).
+   */
+  ownTurnSession(session: string): AgentSession | undefined {
+    const guest = [...this.live].find((g) => g.main && g.session === session && g.own);
+    const own = guest?.own;
+    if (!guest || !own) return undefined;
+    return {
+      prompt: async (params) => {
+        // A prompt took it over meanwhile: it was shown as that turn's.
+        if (guest.run) return { stopReason: "end_turn" };
+        const run: Run = {
+          emit: params.onUpdate,
+          prefix: `${guest.name}-main`,
+          messages: new Map(),
+          done: new AbortController(),
+          titles: new Map(),
+        };
+        guest.run = run;
+        own.run = run;
+        try {
+          for (const update of own.held.splice(0)) this.streamUpdate(run, update);
+          if (own.stopReason === undefined) {
+            await new Promise<void>((resolve) => {
+              own.end = resolve;
+            });
+          }
+          return { stopReason: own.stopReason ?? "end_turn" };
+        } finally {
+          clearTimeout(own.quiet);
+          run.done.abort();
+          if (guest.run === run) guest.run = undefined;
+          if (guest.own === own) guest.own = undefined;
+        }
+      },
+      cancel: () => {
+        guest.conn.notify("session/cancel", { sessionId: guest.acpSession });
+        this.endOwnTurn(own, "cancelled");
+      },
+    };
   }
 
   /**
@@ -1673,7 +1799,9 @@ export class GuestManager {
       acpSession === undefined || acpSession === guest?.acpSession
         ? undefined
         : guest?.children.get(acpSession);
-    if (!guest || (!guest.run && !child?.running) || options.length === 0) return cancelled;
+    // (Work of the agent's own, before its turn started, may ask too.)
+    const busy = guest?.run !== undefined || guest?.own !== undefined || child?.running === true;
+    if (!guest || !busy || options.length === 0) return cancelled;
     const stream = child?.stream ?? {
       agent: guest.main ? undefined : guest.name,
       prefix: guest.main ? `${guest.name}-main` : guest.name,

@@ -257,6 +257,21 @@ async function prompt(params: {
       for (const text of steered.splice(0)) say(sessionId, `\nsteered: ${text}`);
     }
     return { stopReason: "end_turn" };
+  } else if (task === "later") {
+    // Like Claude Code once a background command ended: a cycle of its own, after the turn,
+    // that only its result's usage ends.
+    setTimeout(() => {
+      say(sessionId, "The build passed.");
+      update(sessionId, { sessionUpdate: "usage_update", used: 10, size: 100 });
+      update(sessionId, {
+        sessionUpdate: "usage_update",
+        used: 12,
+        size: 100,
+        cost: { amount: 0.01, currency: "USD" },
+      });
+    }, 50);
+    say(sessionId, "Started the build.");
+    return { stopReason: "end_turn" };
   } else if (task === "commands") {
     listCommands(sessionId, [{ name: "review", description: "Review again" }]);
     say(sessionId, "listed");

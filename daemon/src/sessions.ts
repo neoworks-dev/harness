@@ -44,6 +44,8 @@ interface QueuedInput {
   shown?: string;
   /** The user wants it in the running turn at once, whatever the steer setting says. */
   steer?: boolean;
+  /** Not for the agent: it shows a turn the agent started on its own (see ownTurn). */
+  own?: boolean;
 }
 
 /** In-memory state of a session that has been used since the daemon started. */
@@ -105,10 +107,10 @@ const isCommand = (input: QueuedInput): boolean => input.text.trimStart().starts
  */
 function takeBatch(queue: QueuedInput[]): QueuedInput | undefined {
   const first = queue.shift();
-  if (first === undefined || isCommand(first)) return first;
+  if (first === undefined || isCommand(first) || first.own) return first;
   const batch = [first];
   for (let next = queue[0]; next; next = queue[0]) {
-    if (next.app !== first.app || isCommand(next)) break;
+    if (next.app !== first.app || isCommand(next) || next.own) break;
     queue.shift();
     batch.push(next);
   }
@@ -174,6 +176,11 @@ export interface SessionManagerOptions {
    * undefined when there is none by that name. Its prompt() gets the task as text.
    */
   guest?: (sessionId: string, name: string) => AgentSession | undefined;
+  /**
+   * The turn the session's agent started on its own (see ownTurn), as a session whose prompt()
+   * shows it and resolves when it ends; undefined when there is none any more.
+   */
+  ownTurn?: (sessionId: string) => AgentSession | undefined;
   /** The harness the session's turns run on; the agent's own name when absent. */
   harness?: (sessionId: string) => string;
   /** The agent of a harness other than the default one (an ACP harness); undefined: none. */
@@ -377,6 +384,18 @@ export class SessionManager {
     if (rt.running && this.steerable(input)) void this.steer(sessionId, rt);
   }
 
+  /**
+   * The session's agent went on by itself, without a prompt (Claude Code's follow-up once
+   * something it ran in the background ended): that work runs as a turn of the session, which
+   * `text` opens in the chat and options.ownTurn shows, queued like any other.
+   */
+  ownTurn(sessionId: string, app: string, text: string): void {
+    const rt = this.runtime(sessionId);
+    rt.queue.push({ app, text, own: true });
+    this.kick(sessionId, rt);
+    this.stateChanged(sessionId);
+  }
+
   /** Whether the user wants the input in the running turn: the setting says so, or the input. */
   private steerable(input: QueuedInput): boolean {
     return input.steer === true || this.options.steer?.() === true;
@@ -388,7 +407,7 @@ export class SessionManager {
    */
   private nextSteerable(rt: Runtime): number {
     for (const [at, input] of rt.queue.entries()) {
-      if (isCommand(input)) return -1;
+      if (isCommand(input) || input.own) return -1;
       if (this.steerable(input)) return at;
     }
     return -1;
@@ -691,6 +710,7 @@ export class SessionManager {
     rt: Runtime,
     input: QueuedInput,
   ): Promise<TurnEnded["stopReason"]> {
+    if (input.own) return this.runOwnTurn(sessionId, rt, input);
     const command = guestCommand(input.text);
     const guest = command && this.options.guest?.(sessionId, command.name);
     if (command && guest) {
@@ -743,6 +763,30 @@ export class SessionManager {
       rt.cancelling = false;
       rt.command = false;
       rt.active = undefined;
+    }
+    this.store.append(sessionId, ended);
+    return ended.stopReason;
+  }
+
+  /** A turn the agent started on its own (see ownTurn): logged like one the user started. */
+  private async runOwnTurn(
+    sessionId: string,
+    rt: Runtime,
+    input: QueuedInput,
+  ): Promise<TurnEnded["stopReason"]> {
+    const own = this.options.ownTurn?.(sessionId);
+    // Over before its turn came (a cancel, the adapter gone): nothing to show.
+    if (!own) return "end_turn";
+    this.store.append(sessionId, userMessage(input));
+    const ended: TurnEnded = { type: "turn_ended", stopReason: "cancelled" };
+    if (rt.cancelRequested) own.cancel();
+    rt.active = own;
+    try {
+      Object.assign(ended, await this.prompt(sessionId, own, input, []));
+    } finally {
+      rt.active = undefined;
+      rt.cancelRequested = false;
+      rt.cancelling = false;
     }
     this.store.append(sessionId, ended);
     return ended.stopReason;
@@ -868,6 +912,8 @@ export class SessionManager {
 
   private toInfo(row: SessionRow): SessionInfo {
     const rt = this.runtimes.get(row.id);
+    // A turn the agent started on its own isn't the user's to wait for.
+    const queue = rt?.queue.filter((input) => !input.own) ?? [];
     const info: SessionInfo = {
       id: row.id,
       cwd: row.cwd,
@@ -875,9 +921,9 @@ export class SessionManager {
       lastActivity: row.lastActivity,
       lastSeq: row.lastSeq,
       state: rt?.running ? "running" : "idle",
-      queued: rt?.queue.length ?? 0,
+      queued: queue.length,
     };
-    if (rt && rt.queue.length > 0) info.waiting = rt.queue.map(waiting);
+    if (queue.length > 0) info.waiting = queue.map(waiting);
     if (row.title !== undefined) info.title = row.title;
     if (row.parent !== undefined) info.parent = row.parent;
     if (this.options.describe) Object.assign(info, this.options.describe(row.id));
