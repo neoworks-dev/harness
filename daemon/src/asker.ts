@@ -19,8 +19,11 @@ interface Pending {
   stay?: Stay;
 }
 
-/** Acts on an option picked while the choice stays open; the choice to show now. */
-export type Stay = (option: string) => Omit<Choice, "id">;
+/**
+ * Acts on an option picked while the choice stays open; the choice to show now. `id` is the
+ * choice's, for an act that takes a while to show its outcome later (see update).
+ */
+export type Stay = (option: string, id: string) => Omit<Choice, "id">;
 
 /** What the user picked (none: dropped before anyone answered) and what they added. */
 export interface Answer {
@@ -125,12 +128,20 @@ export class Asker {
     if (!pending.options.includes(option))
       throw new BadRequestError(`${id} has no option ${option}`);
     if (stay && pending.stay) {
-      const now = { ...pending.stay(option), id } as SessionEvent;
-      pending.options = now.type === "choice" ? now.options.map((o) => o.id) : pending.options;
-      for (const target of [pending.session, ...pending.mirrors]) this.append(target, now);
+      this.update(id, pending.stay(option, id));
       return;
     }
     this.settle(id, option, by, note);
+  }
+
+  /** Shows a choice that is still open as it is now; false when it was answered meanwhile. */
+  update(id: string, choice: Omit<Choice, "id">): boolean {
+    const pending = this.pending.get(id);
+    if (!pending || pending.kind !== "choice") return false;
+    pending.options = choice.options.map((o) => o.id);
+    const now = { ...choice, id } as SessionEvent;
+    for (const target of [pending.session, ...pending.mirrors]) this.append(target, now);
+    return true;
   }
 
   /** Drops every open question of a session (or all). */

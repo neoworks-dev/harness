@@ -1401,7 +1401,7 @@ export class GuestManager {
       opts.signal?.removeEventListener("abort", onAbort);
       run.done.abort();
       guest.run = undefined;
-      if (guest.main) this.relaysLeft(guest, began);
+      if (guest.main && !command) this.relaysLeft(guest, began);
     }
   }
 
@@ -1706,6 +1706,34 @@ export class GuestManager {
       this.options.asker.dropAll(child.session);
     }
     this.options.append(guest.session, ended);
+  }
+
+  /**
+   * Whether the session's agent runs on `name` and offers the slash command `command` (its
+   * adapter is running; see quietCommand).
+   */
+  offers(session: string, name: string, command: string): boolean {
+    const guest = this.mainGuest(session, name);
+    return guest?.commands?.some((c) => c.name === command) === true;
+  }
+
+  /**
+   * Runs a slash command of the session's agent (on harness `name`) without logging anything,
+   * for the daemon to read its answer: the text of its last message. Waits for a running turn,
+   * as a prompt does. Rejects with BadRequestError when it can't.
+   */
+  async quietCommand(session: string, name: string, text: string): Promise<string> {
+    const guest = this.mainGuest(session, name);
+    if (!guest) throw new BadRequestError(`${this.title(name)} isn't running in this session`);
+    const result = await this.enqueue(guest, text, { emit: () => {} });
+    if (result.stopReason !== "end_turn") {
+      throw new BadRequestError(result.error ?? `${text}: ${result.stopReason}`);
+    }
+    return result.text;
+  }
+
+  private mainGuest(session: string, name: string): Guest | undefined {
+    return [...this.live].find((g) => g.main && g.session === session && g.name === name);
   }
 
   /** Stops the native subagent working in this session, when its adapter lets it be stopped. */

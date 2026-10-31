@@ -532,6 +532,12 @@ export class SessionManager {
     return agentSession.followUp?.(category, value);
   }
 
+  /** Loads the agent of the session's harness as a turn would, if it isn't loaded yet. */
+  async prepare(sessionId: string): Promise<void> {
+    if (!this.store.getSession(sessionId)) throw new NotFoundError(`no session ${sessionId}`);
+    await this.agentSession(sessionId, this.harness(sessionId));
+  }
+
   private agentSession(sessionId: string, harness: string): Promise<AgentSession> {
     const rt = this.runtime(sessionId);
     let session = rt.agentSessions.get(harness);

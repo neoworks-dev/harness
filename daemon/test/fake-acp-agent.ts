@@ -96,6 +96,36 @@ const START_COMMANDS = [
   { name: "model", description: "Claude's own model picker" },
   { name: "", description: "nameless" },
 ];
+// FAKE_ACP_MCP: /mcp as Claude Code's adapter answers it (its formatMcpStatus's markdown).
+if (process.env.FAKE_ACP_MCP !== undefined)
+  START_COMMANDS.push({ name: "mcp", description: "MCP" });
+const mcpServers: Record<string, string> = {
+  serena: "connected",
+  posthog: "disabled",
+  broken: "failed",
+};
+
+function mcpMarkdown(): string {
+  const of = (status: string): string[] =>
+    Object.keys(mcpServers).filter((name) => mcpServers[name] === status);
+  const blocks = ["3 MCP servers"];
+  if (of("failed").length > 0) {
+    blocks.push(
+      ["**Failed**", ...of("failed").map((n) => `- \`${n}\`: Connection closed`)].join("\n"),
+    );
+  }
+  if (of("connected").length > 0) {
+    blocks.push(["**Connected**", ...of("connected").map((n) => `- \`${n}\`: 4 tools`)].join("\n"));
+  }
+  if (of("disabled").length > 0) {
+    blocks.push(
+      `**Disabled:** ${of("disabled")
+        .map((n) => `\`${n}\``)
+        .join(", ")}`,
+    );
+  }
+  return blocks.join("\n\n");
+}
 
 function send(message: Record<string, unknown>): void {
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
@@ -208,6 +238,15 @@ async function prompt(params: {
   const { sessionId } = params;
   const text = params.prompt.map((b) => b.text ?? "").join("\n");
   const task = text.split("\n").at(-1) ?? "";
+  const mcp = /^\/mcp(?: (enable|disable|reconnect) (\S+))?$/.exec(text.trim());
+  if (mcp && process.env.FAKE_ACP_MCP !== undefined) {
+    const [, action, name] = mcp;
+    if (action !== undefined && name !== undefined) {
+      mcpServers[name] = action === "disable" ? "disabled" : "connected";
+    }
+    say(sessionId, mcpMarkdown());
+    return { stopReason: "end_turn" };
+  }
   say(sessionId, text, "agent_thought_chunk");
   say(sessionId, "Looking.");
   // The message's last line, before its closing tag.

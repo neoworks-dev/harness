@@ -28,6 +28,7 @@ import type { Asker, Choice } from "./asker.ts";
 import { BadRequestError } from "./focus.ts";
 import type { GuestManager, StoredConversation } from "./guests/guests.ts";
 import type { CommandContext } from "./hub.ts";
+import { actionFor, mcpChoice, parseMcpStatus } from "./mcp-picker.ts";
 import type { Logger } from "./log.ts";
 import type { Login } from "./login.ts";
 import type { PluginCommands } from "./plugins.ts";
@@ -160,7 +161,68 @@ export class Commands {
     if (name === "logout") return this.parts.login.logout(session, args);
     if (name === "accounts") return this.parts.login.accounts(session);
     if (name === "plugin" && this.parts.plugins) return this.parts.plugins.run(session, args);
+    if (name === "mcp" && args.length === 0) {
+      const harness = this.parts.sessions.harness(session);
+      if (this.parts.guests.has(harness)) return this.mcp(session, harness);
+    }
     return undefined;
+  }
+
+  /**
+   * /mcp on a harness that manages its own MCP servers (Claude Code): a picker of them that
+   * stays open, picking one enables, disables or reconnects it (see mcp-picker.ts).
+   */
+  private async mcp(session: string, harness: string): Promise<void> {
+    const { guests, sessions, asker, notice, log } = this.parts;
+    // Its adapter starts as for a turn, if it hasn't yet.
+    await sessions.prepare(session);
+    const answer = await guests.quietCommand(session, harness, "/mcp");
+    let servers = parseMcpStatus(answer);
+    if (!guests.offers(session, harness, "mcp") || servers.length === 0) {
+      notice(session, answer.trim() || "No MCP servers.", "muted");
+      return;
+    }
+    let busy: string | undefined;
+    const act = (name: string, id: string): void => {
+      const server = servers.find((s) => s.name === name);
+      if (!server || busy !== undefined) return;
+      busy = name;
+      const action = actionFor(server);
+      guests
+        .quietCommand(session, harness, `/mcp ${action} ${name}`)
+        .then(
+          (text) => {
+            const now = parseMcpStatus(text);
+            if (now.length > 0) servers = now;
+            const after = servers.find((s) => s.name === name);
+            return after ? `${name}: ${after.status}` : undefined;
+          },
+          (err: unknown) => `${name}: ${err instanceof Error ? err.message : String(err)}`,
+        )
+        .then((note) => {
+          busy = undefined;
+          asker.update(id, mcpChoice(servers, undefined, note));
+        })
+        .catch((err: unknown) => log.warn(`/mcp: ${String(err)}`));
+    };
+    const stay = (picked: string, id: string): Omit<Choice, "id"> => {
+      act(picked, id);
+      return mcpChoice(servers, busy);
+    };
+    // Enter acts on the server and closes the picker; Space (stay) keeps it open.
+    void asker
+      .ask(session, mcpChoice(servers), undefined, stay)
+      .then((picked) => {
+        const server = servers.find((s) => s.name === picked);
+        if (!server) return;
+        const action = actionFor(server);
+        return guests
+          .quietCommand(session, harness, `/mcp ${action} ${server.name}`)
+          .then(() => notice(session, `${server.name}: ${action}d`, "muted"));
+      })
+      .catch((err: unknown) =>
+        notice(session, `/mcp: ${err instanceof Error ? err.message : String(err)}`),
+      );
   }
 
   /** Commands that ask the user something privately need the client that typed them. */
