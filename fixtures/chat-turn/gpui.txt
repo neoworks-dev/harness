@@ -80,11 +80,11 @@ item c-c2 kind=tool state=done
         context old="2" new="3" sign=" " "  <h1>Site</h1>" fg=fg num=muted
         context old="3" new="4" sign=" " "</header>" fg=fg num=muted
 
-item c-c3 kind=tool state=running
+item c-c3 kind=tool state=failed
   frame body-indent=16
   header
-    icon text 12.6/400 fg=accent
-      "◐"
+    icon text 12.6/400 fg=danger
+      "✗"
     text 12.6/400 fg=muted
       "bash: npm run build"
   body

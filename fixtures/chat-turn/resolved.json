@@ -110,7 +110,7 @@
     "ref": "c-c3",
     "kind": "tool",
     "label": "bash: npm run build",
-    "state": "running",
+    "state": "failed",
     "component": { "type": "code", "code": "vite v6.0.0 building for production..." }
   },
   {

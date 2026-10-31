@@ -371,12 +371,24 @@ export class SessionView {
       case "context_cleared":
         return [this.notice(`n${seq}`, "context cleared: the agent starts over from here")];
       case "turn_ended": {
+        // A call the turn never heard the end of (it was interrupted, the harness gave no
+        // result) is over with it, but a background subagent's, which runs on past the turn.
+        const runsOn = new Set<string>();
+        for (const [id, agent] of this.windows) if (this.background.has(id)) runsOn.add(agent);
+        const closed: ViewOp[] = [];
+        for (const call of this.calls.values()) {
+          if (event.stopReason === "end_turn") break;
+          if (call.status !== "pending" && call.status !== "in_progress") continue;
+          if (call.agent !== undefined && runsOn.has(call.agent)) continue;
+          call.status = "failed";
+          closed.push({ op: "set", item: this.toolItem(call) });
+        }
         // A subagent whose end was never logged (a crash) must not hide the next turns' work. One
         // in the background runs on past the turn.
         for (const id of [...this.windows.keys()]) {
           if (!this.background.has(id)) this.windows.delete(id);
         }
-        const finished = this.finishStreams();
+        const finished = [...closed, ...this.finishStreams()];
         if (event.stopReason === "end_turn") return finished;
         const what = event.error ?? `stopped: ${event.stopReason.replace("_", " ")}`;
         const tone = event.stopReason === "cancelled" ? "muted" : "danger";

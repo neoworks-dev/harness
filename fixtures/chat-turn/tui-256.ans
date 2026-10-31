@@ -24,7 +24,7 @@ I'll crop the image to [1m512×512[0m first.
      <h1>Site</h1>
    </header>
 
-[38;5;111m◐[0m [1mbash: npm run build[0m
+[38;5;210m✗[0m [1mbash: npm run build[0m
   [38;5;254;48;5;235m  vite v6.0.0 building for production...                                      [0m
 
 [38;5;210mRate limited by the provider; try again in a minute.[0m

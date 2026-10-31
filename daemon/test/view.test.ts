@@ -54,6 +54,23 @@ const chunks = (messageId: string, text: string): SessionEvent[] =>
   [];
 
 describe("session view", () => {
+  test("a call the interrupted turn never ended stops running with it", () => {
+    const { view } = feed([
+      { type: "user_message", app: "cli", text: "build" },
+      {
+        type: "tool_call",
+        toolCallId: "t1",
+        title: "Terminal",
+        kind: "execute",
+        status: "pending",
+        rawInput: { command: "cargo build" },
+      },
+      { type: "turn_ended", stopReason: "cancelled" },
+    ]);
+    const call = view.snapshot().items.find((i) => i.ref === "c-t1");
+    expect(call?.state).toBe("failed");
+  });
+
   test("streaming text sends only changed tail blocks, and patches rebuild the snapshot", () => {
     const reply = "# Plan\n\nFirst I'll copy the file.\n\n- one\n- two\n\nDone **now**.";
     const events: SessionEvent[] = [

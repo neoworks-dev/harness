@@ -24,7 +24,7 @@ I'll crop the image to 512×512 first.
      <h1>Site</h1>
    </header>
 
-◐ bash: npm run build
+✗ bash: npm run build
     vite v6.0.0 building for production...
 
 Rate limited by the provider; try again in a minute.
