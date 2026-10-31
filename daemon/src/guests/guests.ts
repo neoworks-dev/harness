@@ -124,6 +124,12 @@ export interface GuestManagerOptions {
    * multi-agent tools), read when its adapter starts. Never for a subagent. Default: no.
    */
   nativeSubagents?: (session: string) => boolean;
+  /**
+   * Makes the session a native subagent of `session`'s agent works as: a child of it on this
+   * harness, so it is listed and opens like a delegation's. Without it the subagent's events go
+   * into `session`, labelled.
+   */
+  childSession?: (session: string, harness: string) => string;
   /** Whether starting a subagent asks in every mode (the user's /settings ask-for-agents). */
   alwaysAskForAgents?: () => boolean;
 }
@@ -159,10 +165,15 @@ interface Run extends Stream {
 /**
  * A subagent of the harness's own (Claude Code's Agent tool, Codex's spawn_agent), which the
  * adapter reports as an ACP session of its own (the `subagents` client capability). It is logged
- * like a delegation: subagent_started and subagent_ended, and its events labelled with a name
- * of its own, so the lists show it and its transcript opens like a delegated agent's.
+ * like a delegation into a directory: subagent_started and subagent_ended in the session, and
+ * its work in a session of its own (`child`), each run a turn there that its task starts. So the
+ * lists show it and it opens like a delegated agent's session.
  */
 interface NativeChild {
+  /** The session it works in (see GuestManagerOptions.childSession). */
+  session?: string;
+  /** Takes back the copies of its questions in the session that started it. */
+  unmirror?: () => void;
   /** Its subagent id in subagent_started; a new one each time the adapter runs it again. */
   id: string;
   /** What lists call it: its name and role (Explore), when the adapter says. */
@@ -1457,26 +1468,26 @@ export class GuestManager {
 
   /** The native subagent that reports in this ACP session; a new one the first time. */
   private childOf(guest: Guest, acpSession: string, background: boolean): NativeChild {
-    let child = guest.children.get(acpSession);
+    const child = guest.children.get(acpSession);
     if (child) return child;
-    // Its label stays when it runs again, so its transcript goes on where it left off.
+    // Its label (and session) stays when it runs again, so its transcript goes on where it left off.
     const label = `${guest.name}/${crypto.randomUUID().slice(0, 8)}`;
-    child = {
+    const made: NativeChild = {
       id: "",
       running: false,
       started: false,
       background,
       cancel: false,
       stream: {
-        emit: (event) => this.options.append(guest.session, event),
+        emit: (event) => this.options.append(made.session ?? guest.session, event),
         agent: label,
         prefix: label,
         messages: new Map(),
         titles: new Map(),
       },
     };
-    guest.children.set(acpSession, child);
-    return child;
+    guest.children.set(acpSession, made);
+    return made;
   }
 
   /**
@@ -1485,16 +1496,32 @@ export class GuestManager {
    */
   private startChild(guest: Guest, child: NativeChild, task?: string): void {
     child.started = true;
+    let text = "";
+    if (task !== undefined) text = task;
+    else if (child.description !== undefined) text = child.description;
+    else if (child.name !== undefined) text = child.name;
+    // Its session, made the first time it runs; its events there are its own agent's.
+    if (child.session === undefined && this.options.childSession) {
+      child.session = this.options.childSession(guest.session, guest.name);
+      delete child.stream.agent;
+    }
     const started: Extract<SessionEvent, { type: "subagent_started" }> = {
       type: "subagent_started",
       id: child.id,
-      agent: child.stream.agent ?? guest.name,
-      task: task ?? child.description ?? child.name ?? "",
+      agent: child.stream.prefix,
+      task: text,
     };
     started.name = child.name ?? this.title(guest.name);
     started.native = true;
     if (child.background) started.background = true;
+    if (child.session !== undefined) started.child = child.session;
     this.options.append(guest.session, started);
+    if (child.session !== undefined) {
+      // Its questions show in the session that started it too, as a delegation's do.
+      child.unmirror?.();
+      child.unmirror = this.options.asker.mirror(child.session, guest.session);
+      this.options.append(child.session, { type: "user_message", app: "delegate", text });
+    }
   }
 
   private endChild(guest: Guest, child: NativeChild, stopReason: StopReason, error?: string): void {
@@ -1507,7 +1534,38 @@ export class GuestManager {
       stopReason,
     };
     if (error !== undefined) ended.error = error;
+    if (child.session !== undefined) {
+      const turn: Extract<SessionEvent, { type: "turn_ended" }> = {
+        type: "turn_ended",
+        stopReason,
+      };
+      if (error !== undefined) turn.error = error;
+      this.options.append(child.session, turn);
+      child.unmirror?.();
+      child.unmirror = undefined;
+      this.options.asker.dropAll(child.session);
+    }
     this.options.append(guest.session, ended);
+  }
+
+  /** Stops the native subagent working in this session, when its adapter lets it be stopped. */
+  cancelNativeSession(session: string): void {
+    for (const guest of this.live) {
+      for (const [acpSession, child] of guest.children) {
+        if (child.session !== session || !child.running || !child.cancel) continue;
+        guest.conn.notify("session/cancel", { sessionId: acpSession });
+      }
+    }
+  }
+
+  /** Whether a native subagent is running in this session (see GuestManagerOptions.childSession). */
+  runsNative(session: string): boolean {
+    for (const guest of this.live) {
+      for (const child of guest.children.values()) {
+        if (child.session === session && child.running) return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -1662,7 +1720,8 @@ export class GuestManager {
     }
     const request: Omit<PermissionRequest, "id"> = {
       type: "permission_request",
-      agent: stream.agent ?? guest.name,
+      // A native subagent's by its label, which the session that started it knows it by.
+      agent: child ? child.stream.prefix : (stream.agent ?? guest.name),
       title: describeCall(str(call.title) ?? "use a tool", call.rawInput).title,
       options,
     };
@@ -1696,8 +1755,9 @@ export class GuestManager {
     if (toolCallId !== undefined) {
       request.toolCallId = `${stream.prefix}:${toolCallId}`;
     }
+    // A native subagent's in its own session, copied to this one (see startChild).
     const { option: optionId, note } = await this.options.asker.askWithNote(
-      guest.session,
+      child?.session ?? guest.session,
       request,
       guest.run?.done.signal,
     );

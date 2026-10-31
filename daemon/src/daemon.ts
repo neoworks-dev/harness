@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { findEnvKeys, getProviders } from "@mariozechner/pi-ai";
 import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import type { Agent, McpServer } from "@neoworks-dev/neo/agent";
-import type { SlashCommand, Theme } from "@neoworks-dev/neo-protocol/types";
+import type { SessionInfo, SlashCommand, Theme } from "@neoworks-dev/neo-protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
 import { ActionRunner, neoUiTools } from "./actions.ts";
 import { Todos, todosTool } from "./todos.ts";
@@ -206,6 +206,18 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     // Not for a delegation's own session: subagents don't start subagents.
     nativeSubagents: (session) =>
       settings.subagents() !== "delegate" && store.getSession(session)?.parent === undefined,
+    // A native subagent works as a session of its own, like a delegation into a directory.
+    childSession: (session, harness) => {
+      const cwd = store.getSession(session)?.cwd ?? options.defaultCwd;
+      const child = sessions.create({ cwd, parent: session }).id;
+      store.append(child, {
+        type: "setting_changed",
+        harness: "daemon",
+        option: "harness",
+        value: harness,
+      });
+      return child;
+    },
     alwaysAskForAgents: () => settings.alwaysAskForAgents(),
   });
   /** The names a plugin's command may not take: what the daemon answers itself, and the guests'. */
@@ -251,7 +263,15 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     if (event.app !== MESSAGES_APP && event.app !== "delegate") messenger.newRound(session);
   });
   const sessions = new SessionManager(store, agent, {
-    describe: (sessionId) => ({ ...summaries.get(sessionId), harness: harnessOf(sessionId) }),
+    describe: (sessionId) => {
+      const info: Partial<SessionInfo> = {
+        ...summaries.get(sessionId),
+        harness: harnessOf(sessionId),
+      };
+      // A native subagent's session runs no turn of the session manager's.
+      if (guests.runsNative(sessionId)) info.state = "running";
+      return info;
+    },
     defaultCwd: options.defaultCwd,
     resolveAsset: (handle) => assets.resolve(handle),
     log,
@@ -329,6 +349,8 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   // The user cancelling a turn stops the session's background subagents with it.
   sessions.onCancel((session) => {
     delegate.stopBackground(session);
+    // Cancelling a native subagent's own session stops it.
+    guests.cancelNativeSession(session);
   });
   const todos = new Todos(store);
   const gateway = new Gateway(connectors, {

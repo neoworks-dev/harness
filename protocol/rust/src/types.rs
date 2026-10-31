@@ -2476,7 +2476,7 @@ pub struct SubagentStarted {
     /// The directory it works in, when that is not the session's.
     #[serde(rename = "cwd", default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
-    /// A subagent working in another directory runs as its own session (parent = this one); its id.
+    /// A subagent working in another directory, or a native one, runs as its own session (parent = this one); its id.
     #[serde(rename = "child", default, skip_serializing_if = "Option::is_none")]
     pub child: Option<String>,
     /// The delegate call returned at once and the subagent outlives the turn: a turn's end does not close it, and its final reply reaches the main agent as an agent_message.
@@ -2486,7 +2486,7 @@ pub struct SubagentStarted {
         skip_serializing_if = "Option::is_none"
     )]
     pub background: Option<bool>,
-    /// A subagent of the harness's own (Claude Code's Agent tool, Codex's spawn_agent), not one delegate started. `agent` is then the label its events carry, unique to it (`claude/1a2b3c4d`), and `name` what it is called.
+    /// A subagent of the harness's own (Claude Code's Agent tool, Codex's spawn_agent), not one delegate started. `agent` is then a label unique to it (`claude/1a2b3c4d`), which its questions carry, and `name` what it is called. Its work is in its `child` session; logs from before that carry the label on its events instead.
     #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
     pub native: Option<bool>,
 }

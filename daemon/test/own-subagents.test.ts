@@ -151,7 +151,7 @@ describe("the agents' own subagents show like delegate's", () => {
     expect(route.initialize.clientCapabilities.subagents).toEqual({});
   });
 
-  test("Claude Code's (the ACP RFD's form): a start, its own labelled work and transcript, an end", async () => {
+  test("Claude Code's (the ACP RFD's form): a start, its work in a session of its own, an end", async () => {
     const daemon = await setup();
     const session = await onFake(daemon);
     await say(daemon, session, "subagent");
@@ -163,23 +163,32 @@ describe("the agents' own subagents show like delegate's", () => {
     expect(started.background).toBeUndefined();
     const ended = all.find((e) => e.type === "subagent_ended");
     expect(ended).toEqual({ type: "subagent_ended", id: started.id, stopReason: "end_turn" });
-    // The subagent's work carries its label; the session's agent's reply doesn't.
-    const glob = all.find((e) => e.type === "tool_call" && e.title === "Glob test/**");
-    expect(glob).toMatchObject({ agent: started.agent });
     expect(reply(daemon, session)).toBe("It found them.");
 
-    // Its transcript: the task, then its work; the session's view: the Agent call, like a
-    // delegation, without the subagent's work.
-    const own = daemon.views.get(session, started.agent).snapshot().items;
-    expect(JSON.stringify(own)).toContain("List them.");
-    expect(JSON.stringify(own)).toContain("Found 3 tests.");
-    expect(JSON.stringify(own)).not.toContain("It found them.");
+    // Its session: a child of this one on the same harness, a turn that its task starts, its
+    // work as that session's own agent's; not running once it ended.
+    const child = started.child;
+    if (child === undefined) throw new Error("no session of its own");
+    expect(daemon.sessions.info(child)).toMatchObject({
+      parent: session,
+      harness: "fake",
+      state: "idle",
+    });
+    const own = events(daemon, child);
+    expect(own.find((e) => e.type === "user_message")).toMatchObject({ text: "List them." });
+    const glob = own.find((e) => e.type === "tool_call" && e.title === "Glob test/**");
+    expect(glob).toBeDefined();
+    expect(glob).not.toHaveProperty("agent");
+    expect(own.at(-1)).toEqual({ type: "turn_ended", stopReason: "end_turn" });
+    expect(JSON.stringify(daemon.views.get(child).snapshot().items)).toContain("Found 3 tests.");
+
+    // The session's view: the Agent call, like a delegation, without the subagent's work.
     const main = daemon.views.get(session).snapshot().items;
     expect(main.map((i) => i.label)).toContain("Explore · Find the tests");
     expect(JSON.stringify(main)).not.toContain("Found 3 tests.");
   });
 
-  test("a subagent's question is its own, and the answer reaches its session", async () => {
+  test("a subagent's question is its own, shown in both sessions, and the answer reaches it", async () => {
     const daemon = await setup();
     const session = await onFake(daemon);
     daemon.sessions.input(session, "cli", "subagent ask");
@@ -198,13 +207,15 @@ describe("the agents' own subagents show like delegate's", () => {
       .snapshot()
       .items.find((i) => i.ref === `p-${asked.id}`);
     expect(item?.label).toBe("Explore: rm x");
+    const child = started.child;
+    if (child === undefined) throw new Error("no session of its own");
+    expect(events(daemon, child).find((e) => e.type === "permission_request")).toEqual(asked);
     await daemon.actions.run(
       { session, ref: "x", action: "neo.permit", args: { id: asked.id, option: "no" } },
       "test",
     );
     await daemon.sessions.idle(session);
-    const own = daemon.views.get(session, started.agent).snapshot().items;
-    expect(JSON.stringify(own)).toContain("asked: no");
+    expect(JSON.stringify(daemon.views.get(child).snapshot().items)).toContain("asked: no");
   });
 
   test("Codex's (AIR's form): spawned with its prompt, and its failure ends it", async () => {
@@ -215,9 +226,10 @@ describe("the agents' own subagents show like delegate's", () => {
     const started = all.find((e) => e.type === "subagent_started");
     if (started?.type !== "subagent_started") throw new Error("no subagent_started");
     expect(started).toMatchObject({ name: "worker", task: "Count the lines.", native: true });
-    expect(
-      all.find((e) => e.type === "agent_message_chunk" && e.text === "42 lines."),
-    ).toMatchObject({ agent: started.agent });
+    if (started.child === undefined) throw new Error("no session of its own");
+    const own = events(daemon, started.child);
+    expect(own.some((e) => e.type === "agent_message_chunk" && e.text === "42 lines.")).toBe(true);
+    expect(own.at(-1)).toMatchObject({ type: "turn_ended", stopReason: "error" });
     expect(all.find((e) => e.type === "subagent_ended")).toMatchObject({
       id: started.id,
       stopReason: "error",

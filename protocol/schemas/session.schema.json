@@ -812,7 +812,7 @@
         },
         "child": {
           "type": "string",
-          "description": "A subagent working in another directory runs as its own session (parent = this one); its id."
+          "description": "A subagent working in another directory, or a native one, runs as its own session (parent = this one); its id."
         },
         "background": {
           "type": "boolean",
@@ -820,7 +820,7 @@
         },
         "native": {
           "type": "boolean",
-          "description": "A subagent of the harness's own (Claude Code's Agent tool, Codex's spawn_agent), not one delegate started. `agent` is then the label its events carry, unique to it (`claude/1a2b3c4d`), and `name` what it is called."
+          "description": "A subagent of the harness's own (Claude Code's Agent tool, Codex's spawn_agent), not one delegate started. `agent` is then a label unique to it (`claude/1a2b3c4d`), which its questions carry, and `name` what it is called. Its work is in its `child` session; logs from before that carry the label on its events instead."
         }
       },
       "required": ["type", "id", "agent", "task"],
