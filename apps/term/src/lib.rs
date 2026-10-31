@@ -27,4 +27,5 @@ pub mod style;
 pub mod theme;
 pub mod toast;
 pub mod util;
+pub mod voice;
 pub mod widgets;

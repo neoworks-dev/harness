@@ -26,15 +26,17 @@ use neo_protocol::{
     FileChangedMessage, SecretAnswer, SecretAnswerMessage, SecretRequest, SessionCancel,
     SessionCreate, SessionCreateParams, SessionEventRecord, SessionInfo, SessionInput,
     SessionInputMessage, SessionList, SessionRef, SessionSubscribe, SessionUnqueue,
-    SessionUnqueueParams, SessionUnsubscribe, SubscribeParams, SubscribedPayload, Theme, UiAction,
-    UiActionMessage, UserSettings, ViewPatch, ViewRef, ViewSnapshot, ViewSubscribe,
-    ViewUnsubscribe, WaitingInput,
+    SessionUnqueueParams, SessionUnsubscribe, SpeechAudio, SpeechTranscribeMessage,
+    SubscribeParams, SubscribedPayload, Theme, UiAction, UiActionMessage, UserSettings, ViewPatch,
+    ViewRef, ViewSnapshot, ViewSubscribe, ViewUnsubscribe, WaitingInput,
 };
 pub use socket::default_socket_path;
 pub use view::ViewState;
 
 /// How long a request waits for its reply.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long a transcription may take: the daemon waits a minute for its model.
+const TRANSCRIBE_TIMEOUT: Duration = Duration::from_secs(70);
 
 /// Protocol version this client speaks (`bus.hello`).
 pub const PROTOCOL_VERSION: i64 = 1;
@@ -467,6 +469,17 @@ impl Client {
         }
     }
 
+    /// Has the daemon write out what was said in a recording (speech to text); an error says
+    /// why it couldn't (no key to transcribe with, the model failed). Blocks while it works.
+    pub fn transcribe(&self, audio: SpeechAudio) -> Result<String> {
+        let transcribe =
+            |id| Envelope::SpeechTranscribeMessage(SpeechTranscribeMessage { id, payload: audio });
+        match self.call_within(TRANSCRIBE_TIMEOUT, Effect::None, transcribe)? {
+            Envelope::SpeechTextMessage(reply) => Ok(reply.payload.text),
+            _ => Err(Error::Unexpected),
+        }
+    }
+
     /// Tells the other clients this app changed a file (after saving it). No reply; lost if
     /// the connection is down.
     pub fn file_changed(&self, path: &str) -> Result<()> {
@@ -506,6 +519,15 @@ impl Client {
     /// Sends one request and waits for the frame carrying its id. `bus.error` becomes
     /// [`Error::Daemon`].
     fn call(&self, effect: Effect, build: impl FnOnce(String) -> Envelope) -> Result<Envelope> {
+        self.call_within(REQUEST_TIMEOUT, effect, build)
+    }
+
+    fn call_within(
+        &self,
+        timeout: Duration,
+        effect: Effect,
+        build: impl FnOnce(String) -> Envelope,
+    ) -> Result<Envelope> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed).to_string();
         let (reply, answer) = mpsc::channel();
         let request = Request {
@@ -516,7 +538,7 @@ impl Client {
         self.commands
             .send(Command::Request(Box::new(request)))
             .map_err(|_| Error::Disconnected)?;
-        match answer.recv_timeout(REQUEST_TIMEOUT) {
+        match answer.recv_timeout(timeout) {
             Ok(reply) => reply,
             Err(mpsc::RecvTimeoutError::Timeout) => Err(Error::Timeout),
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(Error::Disconnected),

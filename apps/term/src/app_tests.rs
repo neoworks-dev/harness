@@ -221,9 +221,58 @@ fn enter_sends_the_trimmed_text_and_clears() {
     let fx = app.handle_key(key(KeyCode::Enter));
     assert_eq!(fx, [input("hello")]);
     assert_eq!(app.editor_text(), "");
-    // Nothing to send.
-    type_str(&mut app, "   ");
+    // Nothing to send. (Typed by hand: three Spaces at once would be a held one, see voice.rs.)
+    for at in [1_000, 1_300, 1_600] {
+        app.tick(at);
+        type_str(&mut app, " ");
+    }
     assert!(app.handle_key(key(KeyCode::Enter)).is_empty());
+}
+
+#[test]
+fn holding_space_records_and_letting_go_writes_it_out() {
+    let mut app = app();
+    type_str(&mut app, "fix");
+    app.tick(1_000);
+    type_str(&mut app, " ");
+    // The key repeat: its delay, then a Space every 33 ms.
+    app.tick(1_500);
+    type_str(&mut app, " ");
+    app.tick(1_533);
+    type_str(&mut app, " ");
+    app.tick(1_566);
+    assert_eq!(app.handle_key(key(KeyCode::Char(' '))), [Effect::VoiceStart]);
+    // The Spaces it typed before it was clear came back out; more repeats type nothing.
+    assert_eq!(app.editor_text(), "fix");
+    app.tick(1_600);
+    assert!(app.handle_key(key(KeyCode::Char(' '))).is_empty());
+    assert_eq!(app.editor_text(), "fix");
+    // The repeats stop: Space was let go.
+    assert!(app.tick(1_700).is_empty());
+    assert_eq!(app.tick(2_100), [Effect::VoiceStop]);
+    app.handle_msg(Msg::Transcribed(Ok("the failing test".into())));
+    assert_eq!(app.editor_text(), "fix the failing test");
+}
+
+#[test]
+fn a_space_let_go_under_kittys_protocol_stops_at_once() {
+    let mut app = app();
+    app.tick(1_000);
+    type_str(&mut app, " ");
+    app.tick(1_500);
+    let repeat = KeyEvent {
+        kind: KeyEventKind::Repeat,
+        ..key(KeyCode::Char(' '))
+    };
+    assert_eq!(app.handle_key(repeat), [Effect::VoiceStart]);
+    assert_eq!(app.editor_text(), "");
+    let release = KeyEvent {
+        kind: KeyEventKind::Release,
+        ..key(KeyCode::Char(' '))
+    };
+    assert_eq!(app.handle_key(release), [Effect::VoiceStop]);
+    app.handle_msg(Msg::Transcribed(Err("speech to text failed: no key".into())));
+    assert_eq!(app.editor_text(), "");
 }
 
 #[test]

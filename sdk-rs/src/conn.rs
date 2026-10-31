@@ -166,6 +166,7 @@ fn reply_id(envelope: &Envelope) -> Option<&str> {
         Envelope::ConnectorsListResult(m) => Some(&m.id),
         Envelope::ViewSnapshotMessage(m) => Some(&m.id),
         Envelope::AssetInfoMessage(m) => Some(&m.id),
+        Envelope::SpeechTextMessage(m) => Some(&m.id),
         _ => None,
     }
 }
@@ -509,6 +510,7 @@ fn request_id(envelope: &Envelope) -> Option<String> {
         Envelope::AppContextMessage(m) => m.id.clone(),
         Envelope::AssetGetMessage(m) => Some(m.id.clone()),
         Envelope::AssetFetchMessage(m) => Some(m.id.clone()),
+        Envelope::SpeechTranscribeMessage(m) => Some(m.id.clone()),
         _ => None,
     }
 }

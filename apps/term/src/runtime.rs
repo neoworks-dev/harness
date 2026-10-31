@@ -19,6 +19,11 @@ use crate::util::{now_ms, osc52};
 
 /// How long to wait for a key before looking at the daemon's events again.
 const POLL: Duration = Duration::from_millis(50);
+/// What term asks of kitty's keyboard protocol: keys like Ctrl-Enter apart from Enter, and
+/// repeats and releases, so holding Space to talk ends the moment it is let go (voice.rs).
+const KEYBOARD_FLAGS: KeyboardEnhancementFlags =
+    KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+        .union(KeyboardEnhancementFlags::REPORT_EVENT_TYPES);
 
 pub fn main() -> ExitCode {
     let args = match driver::parse_args(std::env::args().skip(1)) {
@@ -113,10 +118,7 @@ impl Screen {
         execute!(io::stdout(), EnableBracketedPaste, EnableMouseCapture)?;
         // Keys like Ctrl-Enter reported apart from Enter: kitty's keyboard protocol, and xterm's
         // modifyOtherKeys, which is what tmux (`extended-keys on`) listens for.
-        execute!(
-            io::stdout(),
-            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
-        )?;
+        execute!(io::stdout(), PushKeyboardEnhancementFlags(KEYBOARD_FLAGS))?;
         write!(io::stdout(), "{MODIFY_OTHER_KEYS_ON}")?;
         io::stdout().flush()?;
         Ok(Screen { terminal, picker })
@@ -136,7 +138,7 @@ impl Screen {
             ratatui::crossterm::terminal::EnterAlternateScreen,
             EnableBracketedPaste,
             EnableMouseCapture,
-            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+            PushKeyboardEnhancementFlags(KEYBOARD_FLAGS)
         )?;
         write!(io::stdout(), "{MODIFY_OTHER_KEYS_ON}")?;
         io::stdout().flush()?;

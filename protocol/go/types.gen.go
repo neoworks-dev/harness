@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionUnqueue, SessionUnqueued, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UserSettingsMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetFetchMessage, AssetInfoMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, SessionRemovedMessage, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionUnqueue, SessionUnqueued, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UserSettingsMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetFetchMessage, AssetInfoMessage, SpeechTranscribeMessage, SpeechTextMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, SessionRemovedMessage, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -269,6 +269,18 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "asset.info":
 		var v AssetInfoMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "speech.transcribe":
+		var v SpeechTranscribeMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "speech.text":
+		var v SpeechTextMessage
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -1098,6 +1110,61 @@ func (v AssetFetchMessage) MarshalJSON() ([]byte, error) {
 type AssetUrl struct {
 	// An http:// or https:// URL.
 	URL string `json:"url"`
+}
+
+// SpeechTranscribeMessage: Client → daemon: what the user said into the microphone, to be written out (speech to text). Replied to with speech.text; bus.error bad_request when there is no key to transcribe with or the transcription failed.
+type SpeechTranscribeMessage struct {
+	ID      string      `json:"id"`
+	Payload SpeechAudio `json:"payload"`
+}
+
+func (SpeechTranscribeMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v SpeechTranscribeMessage) MarshalJSON() ([]byte, error) {
+	type plain SpeechTranscribeMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"speech.transcribe", plain(v)})
+}
+
+type SpeechAudio struct {
+	// The recording, base64.
+	Data   string      `json:"data"`
+	Format AudioFormat `json:"format"`
+}
+
+// AudioFormat: A recording's container.
+type AudioFormat string
+
+const (
+	AudioFormatWav  AudioFormat = "wav"
+	AudioFormatMp3  AudioFormat = "mp3"
+	AudioFormatFlac AudioFormat = "flac"
+	AudioFormatOgg  AudioFormat = "ogg"
+)
+
+// SpeechTextMessage: Daemon → client: reply to speech.transcribe.
+type SpeechTextMessage struct {
+	ID      string     `json:"id"`
+	Payload SpeechText `json:"payload"`
+}
+
+func (SpeechTextMessage) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v SpeechTextMessage) MarshalJSON() ([]byte, error) {
+	type plain SpeechTextMessage
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"speech.text", plain(v)})
+}
+
+type SpeechText struct {
+	// What was said, as text; empty when nothing was.
+	Text string `json:"text"`
 }
 
 // AssetInfoMessage: Daemon → client: reply to asset.put / asset.get / asset.fetch.

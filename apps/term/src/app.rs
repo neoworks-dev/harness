@@ -44,6 +44,7 @@ use crate::style::{Styles, plain_palette};
 use crate::theme::{Prefs, Theme};
 use crate::toast::{self, Toasts};
 use crate::util::{fit_line, relative_time, shorten_home, split_line, truncate, width};
+use crate::voice::{SpaceKey, SpaceRun, Voice};
 use crate::widgets::{Panel, WidgetAction, Widgets};
 
 /// How long a second Ctrl-C quits.
@@ -147,6 +148,10 @@ pub enum Effect {
     Copy(String),
     /// Save the clipboard's image to a file and attach it (`Msg::Pasted`).
     PasteImage,
+    /// Start recording from the microphone (see voice.rs; `Msg::VoiceFailed` if it can't).
+    VoiceStart,
+    /// Stop recording and have the daemon write it out (`Msg::Transcribed`).
+    VoiceStop,
     /// Take this app's inputs back out of the session's queue (`Msg::Unqueued`).
     Unqueue {
         session: String,
@@ -171,6 +176,10 @@ pub enum Msg {
     Notice(String),
     /// The clipboard's image, saved; none when it holds no image.
     Pasted(Option<String>),
+    /// Recording couldn't start: why.
+    VoiceFailed(String),
+    /// What was said into the microphone, written out (empty: nothing was), or why not.
+    Transcribed(Result<String, String>),
     /// The inputs taken back out of the queue of `session`, oldest first.
     Unqueued {
         session: String,
@@ -408,6 +417,10 @@ pub struct App {
     notice: Option<Notice>,
     /// The session's last turn is more than `CACHE_COLD_MS` ago: the next one starts uncached.
     cache_cold: bool,
+    /// Speech to text (hold Space): recording, or being written out.
+    voice: Voice,
+    /// The Spaces just typed in the editor, to tell a held Space (see space).
+    spaces: SpaceRun,
     /// The context was cleared (/clear) since the last turn: there is no cache to go cold.
     context_cleared: bool,
     quit_armed_until: i64,
@@ -504,6 +517,8 @@ impl App {
             awaiting: Some((session, now + 3000)),
             notice: None,
             cache_cold: false,
+            voice: Voice::Off,
+            spaces: SpaceRun::default(),
             context_cleared: false,
             quit_armed_until: 0,
             now_ms: now,
@@ -652,6 +667,18 @@ impl App {
                 .is_some_and(|s| now_ms - s.last_activity > CACHE_COLD_MS);
         if cold != self.cache_cold {
             self.cache_cold = cold;
+            self.dirty = true;
+        }
+        // A held Space whose repeats stopped was let go; the seconds recorded count up.
+        if let Voice::Recording(_) = self.voice {
+            if self.spaces.released(now_ms) {
+                self.stop_voice(&mut fx);
+            } else if tick_s {
+                self.dirty = true;
+            }
+        }
+        if self.voice == Voice::Transcribing && now_ms / 80 != self.last_spin {
+            self.last_spin = now_ms / 80;
             self.dirty = true;
         }
         self.update_engaged();
@@ -1032,6 +1059,18 @@ impl App {
             Msg::Notice(text) => self.notify(text, false),
             Msg::Pasted(Some(path)) => self.attach(vec![path]),
             Msg::Pasted(None) => self.notify("no image on the clipboard", false),
+            Msg::VoiceFailed(why) => {
+                self.voice = Voice::Off;
+                self.notify(why, true);
+            }
+            Msg::Transcribed(result) => {
+                self.voice = Voice::Off;
+                match result {
+                    Ok(text) if text.is_empty() => self.notify("nothing heard", false),
+                    Ok(text) => self.dictate(&text),
+                    Err(why) => self.notify(why, true),
+                }
+            }
             Msg::Unqueued { session, inputs } if session == self.session => self.redraft(inputs),
             Msg::Unqueued { .. } => {}
         }
@@ -1541,8 +1580,16 @@ impl App {
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Vec<Effect> {
         let mut fx = Vec::new();
+        let space = key.code == KeyCode::Char(' ') && key.modifiers.is_empty();
         if key.kind == KeyEventKind::Release {
+            // Letting go of Space ends the recording it holds (kitty's keyboard protocol tells).
+            if space && matches!(self.voice, Voice::Recording(_)) {
+                self.stop_voice(&mut fx);
+            }
             return fx;
+        }
+        if !space {
+            self.spaces = SpaceRun::default();
         }
         self.dirty = true;
         if self.secret.is_some() {
@@ -2335,6 +2382,7 @@ impl App {
                 'd' => self.editor.delete_word_forward(),
                 _ => edited = false,
             },
+            KeyCode::Char(' ') if !shift => edited = self.space(key.kind, fx),
             KeyCode::Char(c) => {
                 if c == '?' && empty {
                     self.overlay = Overlay::Help;
@@ -2540,6 +2588,49 @@ impl App {
             _ => return false,
         }
         true
+    }
+
+    /// Space in the editor: typed, or, held down, recording speech until it is let go (see
+    /// voice.rs). Returns whether the draft changed.
+    fn space(&mut self, kind: KeyEventKind, fx: &mut Vec<Effect>) -> bool {
+        if matches!(self.voice, Voice::Recording(_)) {
+            self.spaces.held(self.now_ms);
+            return false;
+        }
+        // Held again while the last one is written out: only typed Spaces go in.
+        let hold = self.spaces.press(self.now_ms, kind == KeyEventKind::Repeat);
+        match hold {
+            SpaceKey::Type => self.editor.insert_char(' '),
+            SpaceKey::Hold { .. } if self.voice == Voice::Transcribing => return false,
+            SpaceKey::Hold { typed } => {
+                let before = &self.editor.text()[..self.editor.cursor()];
+                if typed > 0 && before.ends_with(&" ".repeat(typed)) {
+                    self.editor.delete_before(typed);
+                }
+                self.voice = Voice::Recording(self.now_ms);
+                fx.push(Effect::VoiceStart);
+            }
+        }
+        true
+    }
+
+    /// Space was let go: the recording goes to be written out.
+    fn stop_voice(&mut self, fx: &mut Vec<Effect>) {
+        if matches!(self.voice, Voice::Recording(_)) {
+            self.voice = Voice::Transcribing;
+            self.dirty = true;
+            fx.push(Effect::VoiceStop);
+        }
+    }
+
+    /// What was said goes in at the cursor, a space apart from the text around it.
+    fn dictate(&mut self, text: &str) {
+        let before = &self.editor.text()[..self.editor.cursor()];
+        if before.chars().last().is_some_and(|c| !c.is_whitespace()) {
+            self.editor.insert_char(' ');
+        }
+        self.editor.insert_str(text);
+        self.dirty = true;
     }
 
     fn history_prev(&mut self) {
@@ -2926,7 +3017,9 @@ impl App {
         let gap = u16::from(self.styles.fills() && chat_h > 1);
         // While a turn runs, a row of its own says so, over the input box; while idle, that the
         // cache has gone.
-        let work_h = u16::from((self.running || self.cache_cold) && chat_h >= gap + 6);
+        let work_h = u16::from(
+            (self.running || self.cache_cold || self.voice != Voice::Off) && chat_h >= gap + 6,
+        );
         let inset = |r: Rect| {
             if self.styles.fills() {
                 Rect {
@@ -3938,6 +4031,38 @@ impl App {
             width: area.width.saturating_sub(inset),
             ..area
         };
+        // Speech to text, over whatever else the row would say.
+        match self.voice {
+            Voice::Recording(since) => {
+                let secs = u64::try_from((self.now_ms - since) / 1000).unwrap_or(0);
+                let line = Line::from(vec![
+                    Span::styled(
+                        "● recording",
+                        self.styles.danger.add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!(
+                            " · {} · let go of space to stop",
+                            crate::status::duration(secs)
+                        ),
+                        self.styles.muted,
+                    ),
+                ]);
+                frame.render_widget(Paragraph::new(fit_line(line, usize::from(at.width))), at);
+                return;
+            }
+            Voice::Transcribing => {
+                let spinner =
+                    SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()];
+                let line = Line::from(Span::styled(
+                    format!("{spinner} writing out what you said…"),
+                    self.styles.accent,
+                ));
+                frame.render_widget(Paragraph::new(fit_line(line, usize::from(at.width))), at);
+                return;
+            }
+            Voice::Off => {}
+        }
         let Some(secs) = self.working_secs() else {
             if self.cache_cold {
                 self.draw_cache_cold(frame, at);

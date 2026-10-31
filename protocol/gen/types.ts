@@ -38,6 +38,8 @@ export type Envelope =
   | AssetGetMessage
   | AssetFetchMessage
   | AssetInfoMessage
+  | SpeechTranscribeMessage
+  | SpeechTextMessage
   | FileChangedMessage
   | AppContextMessage
   | SessionChangedMessage
@@ -457,6 +459,34 @@ export interface AssetFetchMessage {
 export interface AssetUrl {
   /** An http:// or https:// URL. */
   url: string;
+}
+
+/** Client → daemon: what the user said into the microphone, to be written out (speech to text). Replied to with speech.text; bus.error bad_request when there is no key to transcribe with or the transcription failed. */
+export interface SpeechTranscribeMessage {
+  topic: "speech.transcribe";
+  id: string;
+  payload: SpeechAudio;
+}
+
+export interface SpeechAudio {
+  /** The recording, base64. */
+  data: string;
+  format: AudioFormat;
+}
+
+/** A recording's container. */
+export type AudioFormat = "wav" | "mp3" | "flac" | "ogg";
+
+/** Daemon → client: reply to speech.transcribe. */
+export interface SpeechTextMessage {
+  topic: "speech.text";
+  id: string;
+  payload: SpeechText;
+}
+
+export interface SpeechText {
+  /** What was said, as text; empty when nothing was. */
+  text: string;
 }
 
 /** Daemon → client: reply to asset.put / asset.get / asset.fetch. */

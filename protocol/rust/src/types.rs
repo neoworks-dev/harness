@@ -58,6 +58,8 @@ pub enum Envelope {
     AssetGetMessage(AssetGetMessage),
     AssetFetchMessage(AssetFetchMessage),
     AssetInfoMessage(AssetInfoMessage),
+    SpeechTranscribeMessage(SpeechTranscribeMessage),
+    SpeechTextMessage(SpeechTextMessage),
     FileChangedMessage(FileChangedMessage),
     AppContextMessage(AppContextMessage),
     SessionChangedMessage(SessionChangedMessage),
@@ -216,6 +218,14 @@ impl Serialize for Envelope {
                 "asset.info",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            Envelope::SpeechTranscribeMessage(v) => (
+                "speech.transcribe",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::SpeechTextMessage(v) => (
+                "speech.text",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             Envelope::FileChangedMessage(v) => (
                 "file.changed",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
@@ -356,6 +366,12 @@ impl<'de> Deserialize<'de> for Envelope {
                 .map_err(D::Error::custom),
             "asset.info" => serde_json::from_value(value)
                 .map(Envelope::AssetInfoMessage)
+                .map_err(D::Error::custom),
+            "speech.transcribe" => serde_json::from_value(value)
+                .map(Envelope::SpeechTranscribeMessage)
+                .map_err(D::Error::custom),
+            "speech.text" => serde_json::from_value(value)
+                .map(Envelope::SpeechTextMessage)
                 .map_err(D::Error::custom),
             "file.changed" => serde_json::from_value(value)
                 .map(Envelope::FileChangedMessage)
@@ -593,6 +609,18 @@ impl From<AssetFetchMessage> for Envelope {
 impl From<AssetInfoMessage> for Envelope {
     fn from(v: AssetInfoMessage) -> Self {
         Envelope::AssetInfoMessage(v)
+    }
+}
+
+impl From<SpeechTranscribeMessage> for Envelope {
+    fn from(v: SpeechTranscribeMessage) -> Self {
+        Envelope::SpeechTranscribeMessage(v)
+    }
+}
+
+impl From<SpeechTextMessage> for Envelope {
+    fn from(v: SpeechTextMessage) -> Self {
+        Envelope::SpeechTextMessage(v)
     }
 }
 
@@ -1256,6 +1284,55 @@ pub struct AssetUrl {
     /// An http:// or https:// URL.
     #[serde(rename = "url")]
     pub url: String,
+}
+
+/// Client → daemon: what the user said into the microphone, to be written out (speech to text). Replied to with speech.text; bus.error bad_request when there is no key to transcribe with or the transcription failed.
+/// Tagged `topic: "speech.transcribe"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpeechTranscribeMessage {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: SpeechAudio,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpeechAudio {
+    /// The recording, base64.
+    #[serde(rename = "data")]
+    pub data: String,
+    #[serde(rename = "format")]
+    pub format: AudioFormat,
+}
+
+/// A recording's container.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AudioFormat {
+    #[serde(rename = "wav")]
+    Wav,
+    #[serde(rename = "mp3")]
+    Mp3,
+    #[serde(rename = "flac")]
+    Flac,
+    #[serde(rename = "ogg")]
+    Ogg,
+}
+
+/// Daemon → client: reply to speech.transcribe.
+/// Tagged `topic: "speech.text"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpeechTextMessage {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: SpeechText,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpeechText {
+    /// What was said, as text; empty when nothing was.
+    #[serde(rename = "text")]
+    pub text: String,
 }
 
 /// Daemon → client: reply to asset.put / asset.get / asset.fetch.

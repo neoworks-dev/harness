@@ -6,6 +6,7 @@ import type {
   FileChanged,
   HarnessSettings,
   SessionEventRecord,
+  SpeechAudio,
   Theme,
   UiAction,
   UserSettings,
@@ -41,6 +42,8 @@ export interface HubParts {
     onChange: (listener: (settings: UserSettings) => void) => void;
   };
   assets?: AssetStore;
+  /** Writes out what the user said (speech.transcribe); rejects with BadRequestError. */
+  transcribe?: (audio: SpeechAudio) => Promise<string>;
   /** Runs a ui.action; rejects with NotFoundError/BadRequestError for impossible ones. */
   action?: (action: UiAction, from: string) => Promise<void>;
   /**
@@ -577,6 +580,17 @@ export class Hub {
         );
         return;
       }
+      case "speech.transcribe": {
+        const { transcribe } = this.parts;
+        if (!transcribe) throw new BadRequestError("this daemon can't transcribe speech");
+        const { id } = msg;
+        this.settle(
+          client,
+          id,
+          transcribe(msg.payload).then((text) => ({ topic: "speech.text", id, payload: { text } })),
+        );
+        return;
+      }
       case "secret.answer": {
         // Never log or echo msg.payload.value: not here, not in an error.
         const { id, value } = msg.payload;
@@ -610,6 +624,7 @@ export class Hub {
       case "secret.request":
       case "theme":
       case "user.settings":
+      case "speech.text":
         this.fail(
           client,
           "id" in msg ? msg.id : undefined,

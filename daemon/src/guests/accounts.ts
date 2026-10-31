@@ -175,7 +175,7 @@ async function readOr(path: string): Promise<Accounts> {
  * The API key for a provider: its environment variable, neo's file, then pi's. Never an
  * OAuth login (so never a Claude subscription) and never NEO_API_KEY, which is neo's own.
  */
-async function apiKey(files: AccountFiles, provider: string): Promise<string | undefined> {
+export async function apiKey(files: AccountFiles, provider: string): Promise<string | undefined> {
   for (const name of findEnvKeys(provider) ?? []) {
     if (name.includes("OAUTH")) continue;
     const value = process.env[name];

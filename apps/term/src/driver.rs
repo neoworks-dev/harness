@@ -8,7 +8,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use neo_protocol::{
-    AgentFocus, AppPresence, ConnectorInfo, ConnectorKind, SessionCreateParams, SessionInfo,
+    AgentFocus, AppPresence, AudioFormat, ConnectorInfo, ConnectorKind, SessionCreateParams,
+    SessionInfo, SpeechAudio,
 };
 use neo_sdk::{Client, Event};
 
@@ -16,6 +17,8 @@ use crate::app::{App, Config, Effect, Msg};
 use crate::attach;
 use crate::history::HistoryStore;
 use crate::secret::SecretValue;
+use crate::util::base64;
+use crate::voice;
 
 /// What to show at start.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -241,7 +244,9 @@ impl Drop for Driver {
     }
 }
 
-fn work(client: &Client, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sender<Msg>) {
+fn work(client: &Arc<Client>, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sender<Msg>) {
+    // The microphone while Space is held (see voice.rs).
+    let mut recording: Option<voice::Recording> = None;
     let fail = |what: &str, err: neo_sdk::Error| {
         let _ = msgs.send(Msg::Error(format!("{what}: {err}")));
     };
@@ -343,6 +348,33 @@ fn work(client: &Client, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc::Sen
                 }
                 Err(err) => fail("taking the queued messages back failed", err),
             },
+            Effect::VoiceStart => match voice::Recording::start() {
+                Ok(started) => recording = Some(started),
+                Err(why) => {
+                    let _ = msgs.send(Msg::VoiceFailed(why));
+                }
+            },
+            Effect::VoiceStop => {
+                let Some(stopped) = recording.take() else {
+                    continue;
+                };
+                // Written out on a thread of its own: it takes seconds, the worker goes on.
+                let client = client.clone();
+                let msgs = msgs.clone();
+                thread::spawn(move || {
+                    let result = match stopped.stop() {
+                        Ok(None) => Ok(String::new()),
+                        Ok(Some(wav)) => client
+                            .transcribe(SpeechAudio {
+                                data: base64(&wav),
+                                format: AudioFormat::Wav,
+                            })
+                            .map_err(|e| format!("speech to text failed: {e}")),
+                        Err(why) => Err(why),
+                    };
+                    let _ = msgs.send(Msg::Transcribed(result));
+                });
+            }
             Effect::PasteImage => {
                 let path = attach::paste_image().map(|p| p.to_string_lossy().into_owned());
                 let _ = msgs.send(Msg::Pasted(path));

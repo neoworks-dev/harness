@@ -42,6 +42,7 @@ import type { Logger } from "./log.ts";
 import type { DaemonPaths } from "./paths.ts";
 import { type BusServer, type DaemonInfoFile, startServer } from "./server.ts";
 import { SessionManager } from "./sessions.ts";
+import { createTranscriber } from "./speech.ts";
 import { SessionStore } from "./store.ts";
 import type { ShowDontTellSetting } from "./told.ts";
 import { Titles } from "./titles.ts";
@@ -458,6 +459,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
         onChange: (listener) => settings.onToggle(listener),
       },
       assets,
+      transcribe: createTranscriber({ accounts: { authPath, piAuthPath } }),
       action: (action, from) => actions.run(action, from),
       command: (session, text, context) => commands.run(session, text, context),
       expand: (session, text) => {
