@@ -7,7 +7,8 @@ import { createTranscriber, type FetchFn } from "../src/speech.ts";
 function accounts(withKey: boolean): { authPath: string; piAuthPath: string } {
   const dir = mkdtempSync(join(tmpdir(), "neo-speech-"));
   const authPath = join(dir, "auth.json");
-  const file = withKey ? { openrouter: { type: "api_key", key: "sk-or-test" } } : {};
+  const file: Record<string, unknown> = {};
+  if (withKey) file.openrouter = { type: "api_key", key: "sk-or-test" };
   writeFileSync(authPath, JSON.stringify(file));
   return { authPath, piAuthPath: join(dir, "pi.json") };
 }

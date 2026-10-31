@@ -210,6 +210,29 @@ async function prompt(params: {
   const task = text.split("\n").at(-1) ?? "";
   say(sessionId, text, "agent_thought_chunk");
   say(sessionId, "Looking.");
+  // The message's last line, before its closing tag.
+  const passed = text.split("\n").at(-2) ?? "";
+  if (text.includes("Pass it on unchanged") && passed !== "drop it") {
+    // Like Claude Code's SendMessage to its subagent sub-1: it runs again with the message.
+    update(sessionId, {
+      sessionUpdate: "subagent_update",
+      sessionId: "sub-1",
+      state: { state: "running" },
+    });
+    update("sub-1", {
+      sessionUpdate: "session_message",
+      messageId: "t-send",
+      content: [{ type: "text", text: passed }],
+    });
+    say("sub-1", `got: ${passed}`);
+    update(sessionId, {
+      sessionUpdate: "subagent_update",
+      sessionId: "sub-1",
+      state: { state: "idle", stopReason: "end_turn" },
+    });
+    say(sessionId, "Passed it on.");
+    return { stopReason: "end_turn" };
+  }
   if (task.startsWith("greet ")) {
     await greet(sessionId, task.slice(6));
   } else if (task === "ask" || task.startsWith("ask ")) {

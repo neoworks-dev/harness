@@ -2214,6 +2214,8 @@ type SubagentStarted struct {
 	Child *string `json:"child,omitempty"`
 	// The delegate call returned at once and the subagent outlives the turn: a turn's end does not close it, and its final reply reaches the main agent as an agent_message.
 	Background *bool `json:"background,omitempty"`
+	// A native subagent's id in its harness (Claude Code's agentId): what its agent addresses it by (SendMessage), so what the user writes in its session can be passed on.
+	Handle *string `json:"handle,omitempty"`
 	// A subagent of the harness's own (Claude Code's Agent tool, Codex's spawn_agent), not one delegate started. `agent` is then a label unique to it (`claude/1a2b3c4d`), which its questions carry, and `name` what it is called. Its work is in its `child` session; logs from before that carry the label on its events instead.
 	Native *bool `json:"native,omitempty"`
 }

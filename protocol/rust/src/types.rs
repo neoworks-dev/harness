@@ -2563,6 +2563,9 @@ pub struct SubagentStarted {
         skip_serializing_if = "Option::is_none"
     )]
     pub background: Option<bool>,
+    /// A native subagent's id in its harness (Claude Code's agentId): what its agent addresses it by (SendMessage), so what the user writes in its session can be passed on.
+    #[serde(rename = "handle", default, skip_serializing_if = "Option::is_none")]
+    pub handle: Option<String>,
     /// A subagent of the harness's own (Claude Code's Agent tool, Codex's spawn_agent), not one delegate started. `agent` is then a label unique to it (`claude/1a2b3c4d`), which its questions carry, and `name` what it is called. Its work is in its `child` session; logs from before that carry the label on its events instead.
     #[serde(rename = "native", default, skip_serializing_if = "Option::is_none")]
     pub native: Option<bool>,

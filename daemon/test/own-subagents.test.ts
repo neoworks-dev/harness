@@ -188,6 +188,52 @@ describe("the agents' own subagents show like delegate's", () => {
     expect(JSON.stringify(main)).not.toContain("Found 3 tests.");
   });
 
+  test("what the user writes in its session is passed on to it by the agent that started it", async () => {
+    const daemon = await setup();
+    const session = await onFake(daemon);
+    await say(daemon, session, "subagent");
+    const started = events(daemon, session).find((e) => e.type === "subagent_started");
+    if (started?.type !== "subagent_started" || started.child === undefined) {
+      throw new Error("no session of its own");
+    }
+    const child = started.child;
+    expect(started.handle).toBe("sub-1");
+
+    daemon.sessions.input(child, "cli", "Now count them.");
+    const turns = (): SessionEvent[] =>
+      events(daemon, child).filter((e) => e.type === "turn_ended");
+    await until(() => turns().length === 2, "its second run");
+    await daemon.sessions.idle(session);
+    // Asked of the agent that started it, as a message, not as something the user said there.
+    const asked = events(daemon, session).find((e) => e.type === "agent_message");
+    expect(asked).toMatchObject({ from: "user", to: "main" });
+    expect(JSON.stringify(asked)).toContain("Now count them.");
+    // Its session: what the user wrote, once, then its answer.
+    const said = events(daemon, child).filter((e) => e.type === "user_message");
+    expect(said.map((e) => e.type === "user_message" && e.text)).toEqual([
+      "List them.",
+      "Now count them.",
+    ]);
+    expect(
+      events(daemon, child).some(
+        (e) => e.type === "agent_message_chunk" && e.text === "got: Now count them.",
+      ),
+    ).toBe(true);
+    expect(turns().at(-1)).toEqual({ type: "turn_ended", stopReason: "end_turn" });
+    // Its run again stays in the session it worked in.
+    const children = daemon.sessions.list().filter((s) => s.parent === session);
+    expect(children.map((s) => s.id)).toEqual([child]);
+
+    // Not passed on: its session says so.
+    daemon.sessions.input(child, "cli", "drop it");
+    await until(() => turns().length === 3, "the relay to end");
+    expect(turns().at(-1)).toEqual({
+      type: "turn_ended",
+      stopReason: "error",
+      error: "Fake didn't pass it on",
+    });
+  });
+
   test("a subagent's question is its own, shown in both sessions, and the answer reaches it", async () => {
     const daemon = await setup();
     const session = await onFake(daemon);

@@ -126,10 +126,11 @@ export interface GuestManagerOptions {
   nativeSubagents?: (session: string) => boolean;
   /**
    * Makes the session a native subagent of `session`'s agent works as: a child of it on this
-   * harness, so it is listed and opens like a delegation's. Without it the subagent's events go
-   * into `session`, labelled.
+   * harness, so it is listed and opens like a delegation's; the one it worked in before when
+   * there is one (`handle`, its id in the harness, after a restart). Without it the subagent's
+   * events go into `session`, labelled.
    */
-  childSession?: (session: string, harness: string) => string;
+  childSession?: (session: string, harness: string, handle: string) => string;
   /**
    * The session's agent went on by itself (see OwnTurn): the session should run a turn for it,
    * which ownTurnSession shows. `title` is the harness's. Without it that work isn't shown.
@@ -175,6 +176,8 @@ interface Run extends Stream {
  * lists show it and it opens like a delegated agent's session.
  */
 interface NativeChild {
+  /** Its ACP session, which is its id in the harness too (Claude Code's agentId). */
+  handle: string;
   /** The session it works in (see GuestManagerOptions.childSession). */
   session?: string;
   /** Takes back the copies of its questions in the session that started it. */
@@ -576,6 +579,8 @@ export class GuestManager {
   private readonly guests = new Map<string, Promise<Guest>>();
   /** Every running adapter (guests and sessions' own agents), to stop them with the daemon. */
   private readonly live = new Set<Guest>();
+  /** What the user wrote in native subagents' sessions, waiting to be passed on, by session. */
+  private readonly relays = new Map<string, { parent: string; at: number }>();
   private readonly subagents?: NeoSubagents;
   /** The commands each session's guest last listed, as JSON, so an unchanged list isn't logged again. */
   private readonly commandLists = new Map<string, string>();
@@ -1371,6 +1376,7 @@ export class GuestManager {
     };
     opts.signal?.addEventListener("abort", onAbort);
     guest.run = run;
+    const began = Date.now();
     try {
       // What arrived before this turn, ahead of the task (the gateway adds what comes during the
       // turn to its tool results).
@@ -1395,6 +1401,7 @@ export class GuestManager {
       opts.signal?.removeEventListener("abort", onAbort);
       run.done.abort();
       guest.run = undefined;
+      if (guest.main) this.relaysLeft(guest, began);
     }
   }
 
@@ -1599,6 +1606,7 @@ export class GuestManager {
     // Its label (and session) stays when it runs again, so its transcript goes on where it left off.
     const label = `${guest.name}/${crypto.randomUUID().slice(0, 8)}`;
     const made: NativeChild = {
+      handle: acpSession,
       id: "",
       running: false,
       started: false,
@@ -1628,7 +1636,7 @@ export class GuestManager {
     else if (child.name !== undefined) text = child.name;
     // Its session, made the first time it runs; its events there are its own agent's.
     if (child.session === undefined && this.options.childSession) {
-      child.session = this.options.childSession(guest.session, guest.name);
+      child.session = this.options.childSession(guest.session, guest.name, child.handle);
       delete child.stream.agent;
     }
     const started: Extract<SessionEvent, { type: "subagent_started" }> = {
@@ -1639,6 +1647,7 @@ export class GuestManager {
     };
     started.name = child.name ?? this.title(guest.name);
     started.native = true;
+    started.handle = child.handle;
     if (child.background) started.background = true;
     if (child.session !== undefined) started.child = child.session;
     this.options.append(guest.session, started);
@@ -1646,7 +1655,32 @@ export class GuestManager {
       // Its questions show in the session that started it too, as a delegation's do.
       child.unmirror?.();
       child.unmirror = this.options.asker.mirror(child.session, guest.session);
-      this.options.append(child.session, { type: "user_message", app: "delegate", text });
+      // What the user wrote in its session, passed on, is logged there already.
+      if (!this.relays.delete(child.session)) {
+        this.options.append(child.session, { type: "user_message", app: "delegate", text });
+      }
+    }
+  }
+
+  /**
+   * What the user wrote in a native subagent's session went to the agent that started it, to
+   * pass on (see daemon.ts): its run then starts with it, and is not logged a second time. A
+   * turn of that agent that began after it and ends without it having passed it on says so.
+   */
+  relayed(child: string, parent: string): void {
+    this.relays.set(child, { parent, at: Date.now() });
+  }
+
+  /** The turn of the session's agent that began at `began` ended: relays it left alone end. */
+  private relaysLeft(guest: Guest, began: number): void {
+    for (const [child, relay] of this.relays) {
+      if (relay.parent !== guest.session || relay.at > began) continue;
+      this.relays.delete(child);
+      this.options.append(child, {
+        type: "turn_ended",
+        stopReason: "error",
+        error: `${this.title(guest.name)} didn't pass it on`,
+      });
     }
   }
 
