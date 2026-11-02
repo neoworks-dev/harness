@@ -22,6 +22,7 @@ import { MAIN, MESSAGES_APP } from "../messages.ts";
 import { diffLines } from "./diff.ts";
 import { GrowingMarkdown, parseMarkdown } from "./markdown.ts";
 import { isNeoUiTemplate, NeoUiDocs, templateData } from "./neoui.ts";
+import { recognize } from "./recognize.ts";
 import { resolveTemplate, TemplateError } from "./template.ts";
 
 /** Finds the template registered for a tool (app.tool), if any. */
@@ -808,6 +809,15 @@ export class SessionView {
       if (running && typeof description === "string" && onlyText(call.content, description)) {
         item.label = prefixed ? `${call.agent}: ${description}` : description;
         item.component = { type: "stack", gap: "s", children: [] };
+      }
+      // Ended: a test run, a diff, git's or gh's answer shown as what it is.
+      if (!running) {
+        const output = (call.content ?? [])
+          .filter((c) => c.type === "text")
+          .map((c) => unfenced(c.text))
+          .join("\n");
+        const recognized = recognize(command, output);
+        if (recognized !== undefined) item.component = recognized;
       }
     }
     return item;

@@ -44,9 +44,10 @@ export function treeRows(tree: UiNode): TreeRow[] {
       let name = first;
       let node = start;
       while (node.files.length === 0 && node.dirs.size === 1) {
-        const [[next, only]] = [...node.dirs];
-        name += next;
-        node = only;
+        const only = [...node.dirs][0];
+        if (only === undefined) break;
+        name += only[0];
+        node = only[1];
       }
       rows.push({ kind: "dir", name, depth });
       walk(node, depth + 1);

@@ -260,20 +260,20 @@ describe("session view", () => {
   });
 
   test("a started call is running; its description is the label until there is output", () => {
-    const input = { command: "bun test", description: "Run the tests" };
+    const input = { command: "make check", description: "Run the tests" };
     const { view } = feed([
       { type: "tool_call", toolCallId: "a", title: "Terminal", kind: "execute", status: "pending" },
       {
         type: "tool_call_update",
         toolCallId: "a",
-        title: "bun test",
+        title: "make check",
         rawInput: input,
         content: [{ type: "text", text: "Run the tests" }],
       },
     ]);
     expect(view.snapshot().items[0]).toMatchObject({
       label: "Run the tests",
-      command: "bun test",
+      command: "make check",
       state: "running",
       component: { type: "stack", children: [] },
     });
@@ -281,7 +281,7 @@ describe("session view", () => {
       {
         type: "tool_call",
         toolCallId: "a",
-        title: "bun test",
+        title: "make check",
         kind: "execute",
         status: "pending",
         rawInput: input,
@@ -299,6 +299,41 @@ describe("session view", () => {
       component: { type: "code", code: "3 pass" },
     });
     expect(done?.label).toBeUndefined();
+  });
+
+  test("a command whose output is recognized shows as what it is, once it has ended", () => {
+    const item = feed([
+      {
+        type: "tool_call",
+        toolCallId: "a",
+        title: "git status",
+        kind: "execute",
+        status: "pending",
+        rawInput: { command: "git status --short" },
+      },
+      {
+        type: "tool_call_update",
+        toolCallId: "a",
+        status: "completed",
+        content: [{ type: "text", text: "```console\n M a.rs\n?? notes/\n```" }],
+      },
+    ]).view.snapshot().items[0];
+    expect(item?.component).toEqual({
+      type: "neoui",
+      ui: {
+        id: "0",
+        streaming: false,
+        root: {
+          component: "FileTree",
+          props: {
+            files: [
+              { component: "File", props: { path: "a.rs", status: "modified" } },
+              { component: "File", props: { path: "notes/", status: "untracked" } },
+            ],
+          },
+        },
+      },
+    });
   });
 
   test("output in one markdown code block, as Claude Code sends it, is the output", () => {
