@@ -264,10 +264,10 @@ export class Settings {
 
   /**
    * Whether what the user sends while a turn runs goes into it at once (steering, for harnesses
-   * that take it); off until the user turns it on: it waits for the turn to end.
+   * that take it); on until the user turns it off: then it waits for the turn to end.
    */
   steer(): boolean {
-    return this.store.getMeta(metaKey("daemon", "steer")) === "on";
+    return this.store.getMeta(metaKey("daemon", "steer")) !== "off";
   }
 
   setSteer(on: boolean): void {
