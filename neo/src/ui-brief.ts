@@ -4,8 +4,8 @@
 // components an agent is about to write; a block written wrong is answered with what they take.
 import { indexText } from "@neoworks/neoui";
 
-export const UI_BRIEF = `You can show UI: write a \`\`\`neoui block in your reply. neoui is HTML whose
-elements are UI components: strings in quotes, everything else in braces
+export const UI_BRIEF = `You can show UI: write a \`\`\`neoui block in your reply. neoui is HTML and
+HTMX whose elements are UI components: strings in quotes, everything else in braces
 (\`<Progress value={0.72} label="used"/>\`), every element closed, one root (usually a Card).
 The components:
 ${indexText()}
