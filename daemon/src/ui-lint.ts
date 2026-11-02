@@ -34,6 +34,22 @@ const ATTRS: Record<string, keyof typeof LIMITS> = {
 /** Components whose text between the tags is a body. */
 const BODIES = new Set(["Callout", "Text"]);
 
+/**
+ * Components whose titles and names are quoted, not written: an issue's, a commit's subject, a
+ * test's name. They are as long as they are; the components cut them to fit.
+ */
+const QUOTED = new Set([
+  "Issue",
+  "PullRequest",
+  "Commit",
+  "Test",
+  "Check",
+  "File",
+  "Frame",
+  "CodeRef",
+  "TimelineItem",
+]);
+
 /** How many findings one note names. */
 const MAX_FINDINGS = 3;
 
@@ -61,6 +77,7 @@ export function lintUi(text: string): Finding[] {
   for (const [, block = ""] of text.matchAll(FENCE)) {
     for (const tag of block.matchAll(TAG)) {
       const [whole, component = "", attrs = ""] = tag;
+      if (QUOTED.has(component)) continue;
       for (const [, name = "", value = ""] of attrs.matchAll(ATTR)) {
         const kind = ATTRS[name];
         if (kind === undefined) continue;

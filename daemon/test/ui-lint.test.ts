@@ -16,6 +16,20 @@ describe("lintUi", () => {
     expect(lintUi(text)).toEqual([]);
   });
 
+  test("an issue's, a commit's or a test's title is quoted, not written: it may be long", () => {
+    const long = "neoui Shape: a filled rect has a dotted outline off its fill, an arc a stray bar";
+    const text = block(`<Card title="Issues">
+  <Issue number={53} title="${long}"/>
+  <Commit sha="43bb880" title="${long}"/>
+  <TestRun><Test name="${long}"/></TestRun>
+</Card>`);
+    expect(lintUi(text)).toEqual([]);
+    // The card around them still counts.
+    expect(
+      lintUi(block(`<Card title="${long}"><Issue number={1} title="x"/></Card>`)),
+    ).toHaveLength(1);
+  });
+
   test("a long subtitle, title and callout are found, the furthest over first", () => {
     const text =
       block(`<Card title="Across a daemon restart, what is kept and what is dropped for good">
