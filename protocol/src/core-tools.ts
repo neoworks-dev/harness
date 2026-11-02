@@ -55,6 +55,11 @@ export interface SendMessageArgs {
   text: string;
 }
 
+export interface UiLibraryArgs {
+  /** Component names (`TestRun`, `photo.Crop`) or groups; none for everything. */
+  components?: string[];
+}
+
 export interface WaitArgs {
   for?: string[];
   timeoutSeconds?: number;

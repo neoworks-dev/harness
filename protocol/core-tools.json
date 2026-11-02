@@ -192,10 +192,16 @@
     },
     {
       "name": "ui_library",
-      "description": "How to show UI: write a ```neoui block in your reply. Returns what you need to write one: when UI beats prose, the neoui language, every library component with its attributes, and the components the connected apps add (their signatures and what each is for). Call it before your first neoui block in a conversation, and again when an app announces components= you haven't read.",
+      "description": "The attributes of neoui components: their signatures, the components they hold and their notes. Name the ones you are about to write, or a group (Layout, Content, Charts, Dev, Forms), or an app's as app.Name. With none: the whole language and library, and how to lay a page out.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "components": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Component names (TestRun, PullRequest, photo.Crop) or groups."
+          }
+        },
         "additionalProperties": false
       }
     }

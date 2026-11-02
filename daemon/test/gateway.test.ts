@@ -705,6 +705,26 @@ describe("ui_library", () => {
     );
   });
 
+  test("with components named, only their signatures; a bad argument is an error", async () => {
+    const { registry, gateway, upstreams } = setup();
+    upstreams.set("mem://photo", fakeUpstream(photoTools));
+    await registry.presence(
+      {},
+      { ...photoPresence(), components: { BrightnessCard: card("An image with a slider.") } },
+    );
+    const text = resultText(
+      await gateway.call("ui_library", {
+        components: ["PullRequest", "photo-editor.BrightnessCard"],
+      }),
+    );
+    expect(text).toContain("<PullRequest number={number}");
+    expect(text).toContain("<photo-editor.BrightnessCard asset=");
+    expect(text).not.toContain(GUIDANCE);
+    expect(text.length).toBeLessThan(2000);
+    const bad = await gateway.call("ui_library", { components: "PullRequest" });
+    expect(bad.isError).toBe(true);
+  });
+
   test("an app's components are in its announcement, and a change of them is an update", async () => {
     const { registry, upstreams } = setup();
     upstreams.set("mem://photo", fakeUpstream(photoTools));

@@ -1,6 +1,16 @@
-// UI that runs long (docs/neoui.md): the library asks for a few words per title and label and a
-// short line per subtitle. When a turn ends, the main agent's neoui blocks in it are measured, and
-// what ran long is told to the agent with its next prompt (a user_note, not shown in the chat).
+// UI that runs long or is written wrong (docs/neoui.md). The library asks for a few words per title
+// and label and a short line per subtitle; an agent that knows the components by name only (neo's
+// UI_BRIEF) may guess an attribute. When a turn ends, the main agent's neoui blocks in it are
+// measured and evaluated, and what ran long and what was wrong are told to the agent with its next
+// prompt (a user_note, not shown in the chat), a mistake with what its component takes.
+import {
+  type AppComponents,
+  COMPONENTS,
+  appLibrary,
+  asComponent,
+  check,
+  signature,
+} from "@neoworks/neoui";
 import type { SessionStore } from "./store.ts";
 
 /** At most this many words, by what holds them; the library asks for fewer, this is past slack. */
@@ -87,12 +97,92 @@ export function lintNote(found: Finding[]): string {
   );
 }
 
-/** Measures each turn's UI as it ends and notes what ran long. */
+/** A mistake neoui found in a block: its message, and the component it is about. */
+export interface Mistake {
+  message: string;
+  component?: string;
+}
+
+/** What neoui finds wrong in the neoui blocks of `text` (the first few). */
+export function mistakesIn(text: string, apps: AppComponents = {}): Mistake[] {
+  const library = appLibrary(apps);
+  const out: Mistake[] = [];
+  for (const [, block = ""] of text.matchAll(FENCE)) {
+    if (block.trim() === "") continue;
+    for (const error of check(block, { apps: library }).doc.errors ?? []) {
+      const mistake: Mistake = { message: error.message };
+      const named = componentOf(error.message);
+      if (named !== undefined) mistake.component = named;
+      out.push(mistake);
+      if (out.length >= MAX_FINDINGS) return out;
+    }
+  }
+  return out;
+}
+
+/** The note for `wrong`: each mistake with what its component takes, or the nearest name. */
+export function mistakesNote(wrong: Mistake[], apps: AppComponents = {}): string {
+  const known = new Map(COMPONENTS.map((c) => [c.name, c]));
+  for (const reg of appLibrary(apps).components.values()) known.set(reg.call, asComponent(reg));
+  const lines = wrong.map((m) => {
+    const c = m.component === undefined ? undefined : known.get(m.component);
+    if (c !== undefined) return `- ${m.message}. It takes: ${signature(c)}`;
+    const near = m.component === undefined ? undefined : nearest(m.component, [...known.keys()]);
+    return near === undefined ? `- ${m.message}.` : `- ${m.message}; did you mean ${near}?`;
+  });
+  return `Your last reply's UI had mistakes; the app drew what it could. For next time:\n${lines.join("\n")}`;
+}
+
+/** The component an error of neoui's is about: `Unknown component X`, `X.attr is …`, `X cannot be inside`. */
+function componentOf(message: string): string | undefined {
+  for (const pattern of [
+    /^Unknown component ([\w.]+)/,
+    /^([\w.]+)\.[\w-]+ (?:is|are) /,
+    /^([\w.]+) cannot be inside/,
+  ]) {
+    const named = pattern.exec(message)?.[1];
+    if (named !== undefined) return named;
+  }
+  return undefined;
+}
+
+/** The name closest to `name` (by edits), when it is close enough to be a typo of it. */
+function nearest(name: string, names: string[]): string | undefined {
+  let best: string | undefined;
+  let bestCost = Math.max(2, Math.floor(name.length / 3)) + 1;
+  for (const candidate of names) {
+    const cost = edits(name.toLowerCase(), candidate.toLowerCase());
+    if (cost < bestCost) {
+      best = candidate;
+      bestCost = cost;
+    }
+  }
+  return best;
+}
+
+function edits(a: string, b: string): number {
+  let row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const swap = (row[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1);
+      next.push(Math.min((row[j] ?? 0) + 1, (next[j - 1] ?? 0) + 1, swap));
+    }
+    row = next;
+  }
+  return row[b.length] ?? 0;
+}
+
+/** Measures each turn's UI as it ends and notes what ran long and what was wrong. */
 export class UiLint {
   /** The main agent's text of the turn under way and its last message, per session. */
   private readonly turns = new Map<string, { text: string; message: string }>();
 
-  constructor(private readonly store: SessionStore) {
+  constructor(
+    private readonly store: SessionStore,
+    /** The components the open apps add: a block may use them. */
+    private readonly apps: () => AppComponents = () => ({}),
+  ) {
     store.onAppend(({ session, event }) => {
       if (event.type === "user_message") {
         this.turns.delete(session);
@@ -106,12 +196,17 @@ export class UiLint {
       } else if (event.type === "turn_ended") {
         const text = this.turns.get(session)?.text ?? "";
         this.turns.delete(session);
+        const notes: string[] = [];
         const found = lintUi(text);
-        if (found.length === 0) return;
+        if (found.length > 0) notes.push(lintNote(found));
+        const wrong = mistakesIn(text, this.apps());
+        if (wrong.length > 0) notes.push(mistakesNote(wrong, this.apps()));
+        if (notes.length === 0) return;
         // Not from inside the store's own append.
         queueMicrotask(() => {
           if (this.store.getSession(session) === undefined) return;
-          this.store.append(session, { type: "user_note", note: lintNote(found), about: "neoui" });
+          for (const note of notes)
+            this.store.append(session, { type: "user_note", note, about: "neoui" });
         });
       }
     });

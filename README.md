@@ -85,7 +85,7 @@ neo searches the web itself: `web_search` asks several engines at once (web, new
 
 Skills are instructions neo loads when the work calls for them: a folder with a `SKILL.md` (frontmatter `name` and `description`, then the text) in `~/.config/neo/skills/` or in a project's `.neo/skills/`. neo sees each skill's description and loads the text with its `skill` tool.
 
-UI in the chat is not a skill: every agent (neo, Claude Code, Codex) is told it can write a ```neoui block, and the gateway's `ui_library` tool teaches the language, the library and the components the connected apps add.
+UI in the chat is not a skill: every agent (neo, Claude Code, Codex) is told it can write a ```neoui block and which components there are, and the gateway's `ui_library` tool gives the attributes of the ones it is about to write (or the whole language and library). A shell command's result is drawn as what it is without the agent doing anything: a test run as passed and failed tests, `git diff` as diffs, `gh pr view` as a pull request.
 
 Keys and accounts: `/login` adds an API key or an account (ChatGPT, GitHub Copilot, Claude Pro/Max, which neo only may use), `/logout` removes one, `/accounts` lists them. Keys are typed into a hidden field, never into the chat.
 

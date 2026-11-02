@@ -5,6 +5,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { SessionEvent, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { SYSTEM_PROMPT } from "../../neo/src/system-prompt.ts";
+import { UI_BRIEF } from "../../neo/src/ui-brief.ts";
 import { loadGuestConfigs } from "../src/guests/config.ts";
 import {
   describeCall,
@@ -946,13 +947,11 @@ describe("/approvals", () => {
   });
 });
 
-test("every prompt tells the harness to call ui_library before its first neoui block", () => {
-  const line =
-    "You can show UI by writing a ```neoui block. Call ui_library before your first one.";
-  expect(GUEST_PROMPT).toContain(line);
-  expect(MAIN_PROMPT).toContain(line);
+test("every prompt tells the harness about UI the same way: the brief", () => {
+  expect(GUEST_PROMPT).toContain(UI_BRIEF);
+  expect(MAIN_PROMPT).toContain(UI_BRIEF);
   // neo's own prompt says the same, word for word.
-  expect(SYSTEM_PROMPT).toContain(line);
+  expect(SYSTEM_PROMPT).toContain(UI_BRIEF);
   expect(GUEST_PROMPT).toContain("components=…");
 });
 

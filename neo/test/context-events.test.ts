@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { ContextEvent } from "../src/agent.ts";
 import { formatPrompt, SHOW_DONT_TELL_OFF, SHOW_DONT_TELL_ON } from "../src/context-events.ts";
 import { SYSTEM_PROMPT } from "../src/system-prompt.ts";
+import { UI_BRIEF } from "../src/ui-brief.ts";
 
 test("no events leaves the text unchanged", () => {
   expect(formatPrompt("hello\nworld", [])).toBe("hello\nworld");
@@ -190,9 +191,7 @@ test("Show, don't tell. asks for UI and hands over the library, or takes it back
   );
 });
 
-test("every harness is told to call ui_library before its first neoui block", () => {
-  expect(SYSTEM_PROMPT).toContain(NEOUI_LINE);
+test("the system prompt has the UI brief: what neoui is and the components by name", () => {
+  expect(SYSTEM_PROMPT).toContain(UI_BRIEF);
+  expect(UI_BRIEF).toContain("- Dev: Diff FileTree");
 });
-
-const NEOUI_LINE =
-  "You can show UI by writing a ```neoui block. Call ui_library before your first one.";

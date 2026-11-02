@@ -529,7 +529,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     log,
   });
   // UI that ran long is told to the agent with its next prompt.
-  new UiLint(store);
+  new UiLint(store, () => connectors.componentsOf());
   try {
     server = await startServer(hub, {
       paths,

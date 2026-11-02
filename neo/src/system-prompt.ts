@@ -1,4 +1,5 @@
 import type { Skill } from "./skills.ts";
+import { UI_BRIEF } from "./ui-brief.ts";
 
 // Static and identical for every session (cache-friendly). Never put session state in here:
 // connector and focus state travel in the user message (see context-events.ts).
@@ -28,7 +29,7 @@ saves a page as markdown in a file and returns its path and outline: grep and
 read the parts you need. Prefer the sources over what you remember for anything
 that changes (versions, prices, news).
 
-You can show UI by writing a \`\`\`neoui block. Call ui_library before your first one.
+${UI_BRIEF}
 
 The most recent <focus> event says where the user is now.
 

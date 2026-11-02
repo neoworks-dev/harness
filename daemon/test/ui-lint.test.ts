@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionEventRecord } from "@neoworks-dev/neo-protocol/types";
 import { SessionStore } from "../src/store.ts";
-import { lintNote, lintUi, UiLint } from "../src/ui-lint.ts";
+import { lintNote, lintUi, mistakesIn, mistakesNote, UiLint } from "../src/ui-lint.ts";
 
 const block = (markup: string): string => `Here it is:\n\n\`\`\`neoui\n${markup}\n\`\`\`\n\nDone.`;
 
@@ -62,12 +62,48 @@ describe("lintUi", () => {
   });
 });
 
+describe("mistakes", () => {
+  test("a wrong attribute or a missing one is told with what the component takes", () => {
+    const wrong = mistakesIn(block('<TestRun name="x" pased={3}/>\n<PullRequest title="y"/>'));
+    expect(wrong).toEqual([
+      { message: "TestRun.pased is not an attribute", component: "TestRun" },
+      { message: "PullRequest.number is required", component: "PullRequest" },
+    ]);
+    const note = mistakesNote(wrong);
+    expect(note).toStartWith("Your last reply's UI had mistakes");
+    expect(note).toContain(
+      '- TestRun.pased is not an attribute. It takes: <TestRun name?="string" passed?={number}',
+    );
+    expect(note).toContain(
+      "- PullRequest.number is required. It takes: <PullRequest number={number}",
+    );
+  });
+
+  test("an unknown component gets the nearest name; an app's own is known", () => {
+    const note = mistakesNote(mistakesIn(block('<Card><Metrc label="a" value={1}/></Card>')));
+    expect(note).toContain("- Unknown component Metrc; did you mean Metric?");
+    const apps = {
+      photo: {
+        Crop: {
+          description: "A crop box",
+          params: { asset: "string" },
+          neoui: "<Text>{asset}</Text>",
+        },
+      },
+    };
+    expect(mistakesIn(block('<Card><photo.Crop asset="a"/></Card>'), apps)).toEqual([]);
+    expect(mistakesIn(block('<Card title="fine"><Metric label="a" value={1}/></Card>'))).toEqual(
+      [],
+    );
+  });
+});
+
 describe("UiLint", () => {
   test("a turn whose UI ran long leaves the agent a note; a guest's text doesn't count", async () => {
     const store = new SessionStore(":memory:");
     store.createSession({ id: "s", cwd: "/" });
     new UiLint(store);
-    const long = `<ListItem subtitle="${"w ".repeat(20)}"/>`;
+    const long = `<ListItem title="t" subtitle="${"w ".repeat(20)}"/>`;
     store.append("s", { type: "user_message", app: "cli", text: "hi" });
     store.append("s", { type: "agent_message_chunk", messageId: "m1", text: "```neo" });
     store.append("s", { type: "agent_message_chunk", messageId: "m1", text: `ui\n${long}\n` });

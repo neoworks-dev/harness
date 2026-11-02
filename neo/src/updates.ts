@@ -66,8 +66,14 @@ function describeToolCall(name: string, args: unknown): { title: string; kind: T
     }
     case "wait":
       return { title: "wait for messages", kind: "other" };
-    case "ui_library":
-      return { title: "UI library", kind: "other" };
+    case "ui_library": {
+      // A lookup names what it looked up.
+      const listed: unknown = isRecord(args) ? args.components : undefined;
+      if (!Array.isArray(listed)) return { title: "UI library", kind: "other" };
+      const names = listed.filter((n): n is string => typeof n === "string");
+      const title = names.length > 0 ? `UI library · ${names.join(", ")}` : "UI library";
+      return { title, kind: "other" };
+    }
     case "todo_write":
       return { title: "update todos", kind: "think" };
     case "skill":

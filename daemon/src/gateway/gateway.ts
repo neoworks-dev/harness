@@ -20,7 +20,7 @@ import type { MessageTools } from "../messages.ts";
 import type { StoredConnector, StoredTool } from "../store.ts";
 import type { ConnectorRegistry } from "./registry.ts";
 import { type SearchHit, searchTools } from "./search.ts";
-import { uiLibraryText } from "./ui-library.ts";
+import { uiLibraryText, uiLookupText } from "./ui-library.ts";
 
 const LAUNCH_TIMEOUT_MS = 20_000;
 
@@ -237,8 +237,19 @@ export class Gateway {
           return text("No other agents are available here.", true);
         }
         return this.options.messages.send(session, guest, args as unknown as SendMessageArgs);
-      case "ui_library":
-        return text(uiLibraryText(this.registry.componentsOf(), this.registry.openApps()));
+      case "ui_library": {
+        const names: unknown = args.components;
+        if (
+          names !== undefined &&
+          !(Array.isArray(names) && names.every((n) => typeof n === "string"))
+        ) {
+          return text("ui_library: components must be a list of names", true);
+        }
+        const all = this.registry.componentsOf();
+        const open = this.registry.openApps();
+        if (names !== undefined && names.length > 0) return text(uiLookupText(all, open, names));
+        return text(uiLibraryText(all, open));
+      }
       case "todos":
         if (!this.options.todos || session === undefined) {
           return text("There is no shared todo list here.", true);

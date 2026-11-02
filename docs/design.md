@@ -97,23 +97,23 @@ A general-purpose agent with a minimal core. Its own package, running in-process
 
 **Fixed tool list** (full native definitions, never changes)
 
-| Tool                                                                   | Purpose                                                                                                                                       |
-| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bash`                                                                 | Run shell commands                                                                                                                            |
-| `read`                                                                 | Read files; each text line tagged `12:k3\|…` (number and a two-character hash, after hashline)                                                |
-| `write`                                                                | Write files                                                                                                                                   |
-| `edit`                                                                 | Edit files by line tags from read: replace lines `start`..`end` or insert `after` a line (see below)                                          |
-| `todo_write(todos)`                                                    | Keep a todo list (replaces the whole list)                                                                                                    |
-| `skill(name)`                                                          | Load a skill: instructions for a kind of work, listed in the system prompt (below)                                                            |
-| `web_search(query, kind?, since?, limit?)`                             | Search the web, news or images with several engines at once; the results as they are (`@neoworks/websearch`, its own repository)              |
-| `web_fetch(url)`                                                       | Save a page as markdown in a file; returns its path and outline (short pages whole)                                                           |
-| `tools_search(query, app?)`                                            | Find connector tools; returns full JSON schemas                                                                                               |
-| `tools_call(name, args)`                                               | Run a connector tool (validated by the gateway)                                                                                               |
-| `ui_library()`                                                         | How to show UI: the neoui guidance, language and library, and the components the connected apps add (`docs/neoui.md`)                         |
-| `apps_focus(app)`                                                      | Move the agent into an app                                                                                                                    |
-| `delegate(agent, task, model?, effort?, cwd?, worktree?, background?)` | Hand a task to a subagent: neo, Claude Code or Codex, optionally in another directory or git worktree, optionally without waiting for it (§9) |
-| `send_message(to, text)`                                               | Write to a running subagent, a peer, or `main`, the session's agent (§9)                                                                      |
-| `wait(for?, timeoutSeconds?)`                                          | Block until a message arrives or a named subagent ends; returns what came in (§9)                                                             |
+| Tool                                                                   | Purpose                                                                                                                                                        |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bash`                                                                 | Run shell commands                                                                                                                                             |
+| `read`                                                                 | Read files; each text line tagged `12:k3\|…` (number and a two-character hash, after hashline)                                                                 |
+| `write`                                                                | Write files                                                                                                                                                    |
+| `edit`                                                                 | Edit files by line tags from read: replace lines `start`..`end` or insert `after` a line (see below)                                                           |
+| `todo_write(todos)`                                                    | Keep a todo list (replaces the whole list)                                                                                                                     |
+| `skill(name)`                                                          | Load a skill: instructions for a kind of work, listed in the system prompt (below)                                                                             |
+| `web_search(query, kind?, since?, limit?)`                             | Search the web, news or images with several engines at once; the results as they are (`@neoworks/websearch`, its own repository)                               |
+| `web_fetch(url)`                                                       | Save a page as markdown in a file; returns its path and outline (short pages whole)                                                                            |
+| `tools_search(query, app?)`                                            | Find connector tools; returns full JSON schemas                                                                                                                |
+| `tools_call(name, args)`                                               | Run a connector tool (validated by the gateway)                                                                                                                |
+| `ui_library({components?})`                                            | The signatures of the neoui components named (or groups), or with none the guidance, language and library and the connected apps' components (`docs/neoui.md`) |
+| `apps_focus(app)`                                                      | Move the agent into an app                                                                                                                                     |
+| `delegate(agent, task, model?, effort?, cwd?, worktree?, background?)` | Hand a task to a subagent: neo, Claude Code or Codex, optionally in another directory or git worktree, optionally without waiting for it (§9)                  |
+| `send_message(to, text)`                                               | Write to a running subagent, a peer, or `main`, the session's agent (§9)                                                                                       |
+| `wait(for?, timeoutSeconds?)`                                          | Block until a message arrives or a named subagent ends; returns what came in (§9)                                                                              |
 
 **Line tags** (`neo/src/tools/hashline.ts`, after [hashline](https://github.com/kebbbnnn/hashline)). `read` prefixes each line with `N:hh|`: its number and two characters (base 36) of the md5 of the line without its outer whitespace, so indentation changes keep the tag. `edit({path, edits: [{start, end?, newText} | {after, newText}]})` names lines by those tags instead of repeating their text; `after: "0"` inserts at the top, an empty `newText` with `start` deletes. All tags in a call refer to the file before it, edits may not overlap, and they are applied bottom-up. The number says where and the hash checks the line is still what was read. Two characters are 1296 values, so hashes repeat in a file: a line that no longer matches is only followed when its hash appears exactly once within 30 lines of the number (the result says where it moved; a range's two ends must have moved by the same amount); otherwise the edit fails with the current lines there, tagged, so the model can retry without reading again. The result shows the changed regions with two lines of context and their new tags. The permission request and the details still carry the whole old and new text, so diffs, review and revert are unchanged.
 
@@ -214,7 +214,8 @@ Connectors (apps and services) announce themselves with <app connected=…/>
 and <app disconnected=…/> events. Each event lists tool names only; use
 tools_search to get a connector's tool schemas and tools_call to run them.
 
-You can show UI by writing a ```neoui block. Call ui_library before your first one.
+You can show UI: write a ```neoui block in your reply. … (UI_BRIEF, neo/src/ui-brief.ts: the
+language in a sentence, every component by name, when to use UI and the Dev components.)
 
 The most recent <focus> event says where the user is now.
 

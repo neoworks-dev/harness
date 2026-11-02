@@ -1,17 +1,38 @@
 import { expect, test } from "bun:test";
 import { check, COMPONENTS } from "@neoworks/neoui";
-import { GUIDANCE, uiLibraryText } from "../src/gateway/ui-library.ts";
+import { UI_BRIEF } from "@neoworks-dev/neo/ui-brief";
+import { GUIDANCE, uiLibraryText, uiLookupText } from "../src/gateway/ui-library.ts";
 
-test("the guidance's examples are neoui, and evaluate without errors", () => {
-  const programs = [...GUIDANCE.matchAll(/```neoui\n([\s\S]*?)\n```/g)].map((m) => m[1] ?? "");
-  expect(programs.length).toBeGreaterThan(0);
-  for (const program of programs) {
-    const { doc, repairs } = check(program);
+test("the neoui the brief and the guidance write evaluates without errors", () => {
+  // Elements written inline: `<Progress value={0.72} label="used"/>`.
+  const inline = [...`${UI_BRIEF}\n${GUIDANCE}`.matchAll(/`(<[A-Z][^`]*\/>)`/g)].map(
+    (m) => m[1] ?? "",
+  );
+  expect(inline.length).toBeGreaterThan(0);
+  for (const element of inline) {
+    const { doc, repairs } = check(`<Card>${element}</Card>`);
     expect(doc.errors).toBeUndefined();
     expect(repairs).toEqual([]);
   }
   // Nothing in OpenUI, the language before neoui.
   expect(GUIDANCE).not.toContain("```openui");
+});
+
+test("the brief names every component and stays short; the reference is on demand", () => {
+  for (const c of COMPONENTS.filter((c) => !c.virtual)) expect(UI_BRIEF).toContain(c.name);
+  expect(UI_BRIEF.length / 3.6).toBeLessThan(450);
+  expect(GUIDANCE.length / 3.6).toBeLessThan(450);
+});
+
+test("a lookup gives the components asked for, an open app's among them", () => {
+  const body = { description: "A note", params: { text: "string" }, neoui: "<Text>{text}</Text>" };
+  const all = { notes: { NoteCard: body } };
+  const text = uiLookupText(all, new Set(["notes"]), ["TestRun", "notes.NoteCard"]);
+  expect(text).toContain("<TestRun name?=");
+  expect(text).toContain('<notes.NoteCard text="string"/> — A note');
+  expect(text).not.toContain("# neoui");
+  // A closed app's are not offered.
+  expect(uiLookupText(all, new Set(), ["notes.NoteCard"])).toStartWith("Not in the library");
 });
 
 test("every component the guidance names is in the library", () => {
