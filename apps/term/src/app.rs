@@ -1875,8 +1875,9 @@ impl App {
     fn panel_key(&mut self, focus: Focus, key: KeyEvent, fx: &mut Vec<Effect>) {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
-            KeyCode::Tab => self.cycle_focus(),
-            KeyCode::BackTab => self.cycle_approvals(fx),
+            KeyCode::Tab => self.cycle_focus(1),
+            // Back a pane; from the first, back to the editor (where Shift-Tab is approvals').
+            KeyCode::BackTab => self.cycle_focus(-1),
             KeyCode::Char('c') if ctrl => self.ctrl_c(fx),
             KeyCode::Char('g') if ctrl => self.toggle_sessions_focus(),
             _ => match focus {
@@ -2071,7 +2072,9 @@ impl App {
 
     /// Tab: editor, the chat's files and replies, sessions, terminal, plan, files (the ones on
     /// screen), editor.
-    fn cycle_focus(&mut self) {
+    /// Tab (`delta` 1) or Shift-Tab (-1): the next or previous pane on screen, the editor past
+    /// either end.
+    fn cycle_focus(&mut self, delta: isize) {
         let order = [
             (self.chat.has_picks(), Focus::Chat),
             (self.sessions_shown, Focus::Sessions),
@@ -2084,7 +2087,15 @@ impl App {
             (self.sidebar_shown, Focus::Panel(Panel::Files)),
             (self.terminal_area.is_some(), Focus::Panel(Panel::Terminal)),
         ];
-        let mut on_screen = order.iter().filter(|(shown, _)| *shown).map(|(_, f)| *f);
+        let mut on_screen: Vec<Focus> = order
+            .iter()
+            .filter(|(shown, _)| *shown)
+            .map(|(_, f)| *f)
+            .collect();
+        if delta < 0 {
+            on_screen.reverse();
+        }
+        let mut on_screen = on_screen.into_iter();
         self.focus = match self.focus {
             None => on_screen.next(),
             Some(current) => on_screen.skip_while(|f| *f != current).nth(1),
@@ -2410,7 +2421,7 @@ impl App {
                 if self.menu_visible() {
                     self.complete_menu();
                 } else {
-                    self.cycle_focus();
+                    self.cycle_focus(1);
                 }
             }
             KeyCode::Esc => {
@@ -4195,7 +4206,10 @@ impl App {
             key("esc", "close menu, dismiss prompt, cancel the running turn"),
             key("ctrl-b", "a command running a while: on in the background"),
             key("ctrl-c", "clear input; twice to quit"),
-            key("shift-tab", "approvals: ask / review / accept edits / auto"),
+            key(
+                "shift-tab",
+                "approvals: ask / review / edits / auto; in a panel, the previous one",
+            ),
             key(
                 "tab",
                 "complete command, note on a prompt, next panel (the chat first)",

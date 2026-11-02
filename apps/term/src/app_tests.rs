@@ -2197,6 +2197,35 @@ fn tab_walks_sessions_plan_files_and_back() {
     );
 }
 
+#[test]
+fn shift_tab_walks_the_panels_back_to_the_editor() {
+    let mut app = overview();
+    app.handle_event(plan_event());
+    screen(&mut app, 150, 30);
+    for _ in 0..4 {
+        app.handle_key(key(KeyCode::Tab));
+    }
+    assert_eq!(app.focus, Some(Focus::Panel(Panel::Files)));
+    let approvals = app.approvals;
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        assert!(app.handle_key(key(KeyCode::BackTab)).is_empty());
+        seen.push(app.focus);
+    }
+    assert_eq!(
+        seen,
+        [
+            Some(Focus::Panel(Panel::Plan)),
+            Some(Focus::Sessions),
+            Some(Focus::Chat),
+            None
+        ]
+    );
+    assert_eq!(app.approvals, approvals, "the approvals mode stays");
+    // In the editor Shift-Tab is the approvals' again.
+    assert!(!app.handle_key(key(KeyCode::BackTab)).is_empty());
+}
+
 fn command_event() -> Event {
     record(
         "s1",
