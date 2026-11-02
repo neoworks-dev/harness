@@ -82,7 +82,8 @@ fn scaled(value: f64, max: f64, of: usize) -> usize {
 }
 
 impl<'a> Cx<'a> {
-    /// Series colors: the theme's accent, success and danger first, then mixes of them.
+    /// Series colors: the theme's accent, success and danger first, then mixes of them; a color
+    /// the theme repeats (an accent that is its success green) once, so no two series look alike.
     pub(super) fn series_color(&self, i: usize) -> Color {
         let p = &self.p;
         let mixes = [
@@ -96,7 +97,13 @@ impl<'a> Cx<'a> {
         all.extend(mixes[1]);
         all.extend(mixes[2]);
         all.push(p.muted);
-        all[i % all.len()]
+        let mut distinct: Vec<Color> = Vec::new();
+        for c in all {
+            if !distinct.contains(&c) {
+                distinct.push(c);
+            }
+        }
+        distinct[i % distinct.len()]
     }
 
     /// `■ name  ■ name`, wrapped.
@@ -890,5 +897,23 @@ impl Braille {
                 spans
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Options;
+
+    #[test]
+    fn a_theme_whose_accent_is_its_success_still_gives_the_first_series_their_own_colors() {
+        let mut o = Options::default();
+        o.theme.success = o.theme.accent;
+        let cx = Cx::new(&o);
+        // Accent, its mix with danger, danger, muted; then round again.
+        let colors: Vec<Color> = (0..4).map(|i| cx.series_color(i)).collect();
+        for (i, a) in colors.iter().enumerate() {
+            assert!(!colors[i + 1..].contains(a), "{colors:?}");
+        }
     }
 }
