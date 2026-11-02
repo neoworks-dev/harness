@@ -1,10 +1,10 @@
 //! The subagents under the prompt bar, like Claude Code's agent list: while a delegated task
 //! runs (and a few seconds after it ends) one row per subagent below the main agent's, with what
-//! it is doing, how long it has run and its tokens; arrows select one, Enter opens its transcript
-//! (or, for a subagent working as a session of its own in another directory, that session), `x`
-//! stops it. The rows are built from the session's log: `subagent_started` / `subagent_ended`
-//! mark a delegation, and the events labelled with the subagent's name (or, for a session of its
-//! own, the events of that session) say what it does. One started in the background lives on past
+//! it is doing, how long it has run and its tokens; arrows select one, Enter opens its transcript,
+//! `x` stops it. The rows are built from the session's log: `subagent_started` / `subagent_ended`
+//! mark a delegation, and the events labelled with the subagent's name say what it does. A
+//! subagent working as a session of its own (a guest like Claude Code, or one in another
+//! directory) is not listed: the sessions sidebar has it. One started in the background lives on past
 //! the turn that started it (`[bg]` after its name); a message to or from a subagent shows as its
 //! activity (`← main`, `→ main`).
 
@@ -46,10 +46,6 @@ pub struct Agent {
     pub name: Option<String>,
     pub model: Option<String>,
     pub task: String,
-    /// The directory it works in, when that isn't the session's.
-    pub cwd: Option<String>,
-    /// The session it runs as, when it works in a directory of its own.
-    pub child: Option<String>,
     /// Started with `background`: it keeps running when the turn that started it ends.
     pub background: bool,
     pub state: AgentState,
@@ -75,8 +71,6 @@ pub enum AgentsAction {
     Leave,
     /// Show this subagent's transcript (Enter).
     Transcript(String),
-    /// Switch to the session this subagent runs as (Enter on one in a directory of its own).
-    Session(String),
     /// Stop this subagent (`x`).
     Stop(String),
 }
@@ -92,8 +86,6 @@ pub struct Agents {
     rows: Vec<Agent>,
     /// The row the keys are on while the list has focus.
     selected: Option<String>,
-    /// Sessions of subagents in directories of their own whose events should be followed.
-    wanted: Vec<String>,
 }
 
 impl Agents {
@@ -103,19 +95,6 @@ impl Agents {
 
     pub fn get(&self, id: &str) -> Option<&Agent> {
         self.rows.iter().find(|a| a.id == id)
-    }
-
-    /// The sessions of subagents with a directory of their own, once each: the app subscribes
-    /// to them to see what they do. Cleared when read.
-    pub fn take_wanted(&mut self) -> Vec<String> {
-        std::mem::take(&mut self.wanted)
-    }
-
-    /// Whether an event of this session is one of a subagent's.
-    pub fn follows(&self, session: &str) -> bool {
-        self.rows
-            .iter()
-            .any(|a| a.child.as_deref() == Some(session))
     }
 
     fn shown(&self, now_ms: i64) -> Vec<&Agent> {
@@ -151,11 +130,9 @@ impl Agents {
     pub fn on_record(&mut self, record: &SessionEventRecord) {
         match &record.event {
             SessionEvent::SubagentStarted(e) => {
-                if self.get(&e.id).is_some() {
+                // One with a session of its own is in the sessions sidebar instead.
+                if self.get(&e.id).is_some() || e.child.is_some() {
                     return;
-                }
-                if let Some(child) = &e.child {
-                    self.wanted.push(child.clone());
                 }
                 self.rows.push(Agent {
                     id: e.id.clone(),
@@ -163,8 +140,6 @@ impl Agents {
                     name: e.name.clone(),
                     model: e.model.clone(),
                     task: e.task.clone(),
-                    cwd: e.cwd.clone(),
-                    child: e.child.clone(),
                     background: e.background.unwrap_or(false),
                     state: AgentState::Running,
                     started_ms: record.ts,
@@ -228,33 +203,6 @@ impl Agents {
         }
     }
 
-    /// An event of a subagent's own session: its agent is unlabelled there.
-    pub fn on_child_record(&mut self, record: &SessionEventRecord) {
-        let Some(agent) = self
-            .rows
-            .iter_mut()
-            .rfind(|a| a.child.as_deref() == Some(record.session.as_str()))
-        else {
-            return;
-        };
-        match &record.event {
-            SessionEvent::ToolCall(c) if c.agent.is_none() => agent.activity = c.title.clone(),
-            SessionEvent::AgentThoughtChunk(c) if c.agent.is_none() => {
-                agent.activity = "thinking…".into();
-            }
-            SessionEvent::AgentMessageChunk(c) if c.agent.is_none() => {
-                agent.activity = "thinking…".into();
-            }
-            SessionEvent::Usage(u) if u.agent.is_none() => {
-                agent.tokens = match (u.input_tokens, u.output_tokens) {
-                    (None, None) => u.context_used,
-                    (i, o) => Some(i.unwrap_or(0) + o.unwrap_or(0)),
-                };
-            }
-            _ => {}
-        }
-    }
-
     /// What a labelled event says about the running subagent of that name.
     fn note(&mut self, label: Option<&str>, call: Option<&str>, tokens: Option<i64>) {
         let Some(label) = label else {
@@ -263,7 +211,7 @@ impl Agents {
         let Some(agent) = self
             .rows
             .iter_mut()
-            .rfind(|a| a.harness == label && a.state == AgentState::Running && a.child.is_none())
+            .rfind(|a| a.harness == label && a.state == AgentState::Running)
         else {
             return;
         };
@@ -328,10 +276,7 @@ impl Agents {
             }
             KeyCode::Enter => {
                 return match current {
-                    Some(a) => match a.child {
-                        Some(child) => AgentsAction::Session(child),
-                        None => AgentsAction::Transcript(a.id),
-                    },
+                    Some(a) => AgentsAction::Transcript(a.id),
                     None => AgentsAction::Leave,
                 };
             }
@@ -410,12 +355,6 @@ fn row(agent: &Agent, w: usize, now_ms: i64, styles: &Styles) -> Line<'static> {
     if let Some(model) = &agent.model {
         // `provider/model-id` reads as the id.
         name.push_str(&format!(" · {}", model.rsplit('/').next().unwrap_or(model)));
-    }
-    if agent.child.is_some()
-        && let Some(dir) = &agent.cwd
-    {
-        let dir = dir.trim_end_matches('/').rsplit('/').next().unwrap_or(dir);
-        name.push_str(&format!(" ⎇ {dir}"));
     }
     if agent.background {
         name.push_str(" [bg]");

@@ -90,7 +90,7 @@ fn started(id: &str, agent: &str, ago_ms: i64, extra: serde_json::Value) -> Even
     event("s1", 1, NOW - ago_ms, e)
 }
 
-/// neo has been searching tools for 72 s; claude works in a worktree of its own.
+/// neo has been searching tools for 72 s; claude has just started.
 fn busy() -> App {
     let mut app = app();
     let fx = app.handle_event(started(
@@ -117,7 +117,7 @@ fn busy() -> App {
         "d2",
         "claude",
         5_000,
-        json!({"model": "sonnet", "cwd": "/home/me/site/.worktrees/fix-login", "child": "s_child"}),
+        json!({"model": "sonnet"}),
     ));
     app.tick(NOW);
     app
@@ -153,34 +153,27 @@ fn the_list_sits_under_the_status_lines_while_subagents_run() {
     assert!(lines[at - 2].starts_with("┃ site ·"), "{text}");
     assert!(lines[at + 1].starts_with("○ neo · deepseek-v4-flash  search tools: weather"));
     assert!(lines[at + 1].ends_with("1m 12s · 3.4k tokens"));
-    assert!(lines[at + 2].starts_with("○ claude · sonnet ⎇ fix-login  starting…"));
+    assert!(lines[at + 2].starts_with("○ claude · sonnet  starting…"));
 }
 
 #[test]
-fn a_subagent_in_its_own_session_is_followed_and_its_activity_shown() {
+fn a_subagent_with_a_session_of_its_own_is_only_in_the_sidebar() {
     let mut app = app();
+    app.set_sessions(vec![
+        session_info("s1", "/home/me/site", None),
+        session_info("s_child", "/home/me/site/.worktrees/fix-login", Some("s1")),
+    ]);
     let fx = app.handle_event(started(
         "d2",
         "claude",
         1_000,
-        json!({"child": "s_child", "cwd": "/w/x"}),
+        json!({"child": "s_child", "cwd": "/home/me/site/.worktrees/fix-login"}),
     ));
-    assert_eq!(
-        fx,
-        [Effect::Watch {
-            session: "s_child".into()
-        }]
-    );
-    app.handle_event(event(
-        "s_child",
-        4,
-        NOW,
-        json!({"type": "tool_call", "toolCallId": "t", "title": "bash: cargo test",
-               "kind": "execute", "status": "pending"}),
-    ));
-    assert!(screen_text(&mut app, 100, 24).contains("bash: cargo test"));
-    // Its events don't leak into the chat's state.
-    assert!(!app.running());
+    assert!(fx.is_empty(), "its session is not followed: {fx:?}");
+    let text = screen_text(&mut app, 100, 24);
+    assert!(!text.contains("● main"), "no list under the input: {text}");
+    app.handle_key(ctrl('x'));
+    assert_eq!(app.focus, None, "nothing to focus");
 }
 
 #[test]
@@ -201,7 +194,7 @@ fn the_list_goes_five_seconds_after_the_last_subagent_ends() {
     let text = screen_text(&mut app, 100, 24);
     assert!(text.contains("✓ neo · deepseek-v4-flash  done"), "{text}");
     assert!(
-        text.contains("✗ claude · sonnet ⎇ fix-login  boom"),
+        text.contains("✗ claude · sonnet  boom"),
         "{text}"
     );
     app.tick(NOW + 4_000);
@@ -266,7 +259,7 @@ fn app_without_agents() -> App {
 fn enter_opens_the_transcript_of_the_selected_subagent_and_esc_closes_it() {
     let mut app = busy();
     app.handle_key(ctrl('x'));
-    // The latest running one is claude (own session); up to neo.
+    // The latest running one is claude; up to neo.
     app.handle_key(key(KeyCode::Up));
     let fx = app.handle_key(key(KeyCode::Enter));
     assert_eq!(
@@ -386,29 +379,6 @@ fn x_stops_the_selected_subagent() {
             args: Some(json!({"id": "d2"})),
         }]
     );
-}
-
-#[test]
-fn enter_on_a_subagent_with_its_own_session_switches_to_it() {
-    let mut app = busy();
-    app.set_sessions(vec![
-        session_info("s1", "/home/me/site", None),
-        session_info("s_child", "/home/me/site/.worktrees/fix-login", Some("s1")),
-    ]);
-    app.handle_key(ctrl('x'));
-    let fx = app.handle_key(key(KeyCode::Enter));
-    assert_eq!(app.session(), "s_child");
-    assert_eq!(
-        fx,
-        [Effect::Switch {
-            from: Some("s1".into()),
-            to: "s_child".into(),
-            cwd: "/home/me/site/.worktrees/fix-login".into(),
-            move_agent: true,
-        }]
-    );
-    // The parent's agents belong to the parent.
-    assert!(!screen_text(&mut app, 100, 24).contains("● main"));
 }
 
 #[test]

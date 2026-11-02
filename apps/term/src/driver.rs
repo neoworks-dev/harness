@@ -250,9 +250,8 @@ fn work(client: &Arc<Client>, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc
     let fail = |what: &str, err: neo_sdk::Error| {
         let _ = msgs.send(Msg::Error(format!("{what}: {err}")));
     };
-    // What is followed besides the shown session: the sessions of subagents in directories of
-    // their own, and the views of single agents (transcripts). Dropped when the session changes.
-    let mut watched: HashSet<String> = HashSet::new();
+    // What is followed besides the shown session: the views of single agents (transcripts).
+    // Dropped when the session changes.
     let mut agent_views: HashSet<(String, String)> = HashSet::new();
     while let Ok(Job::Effect(effect)) = jobs.recv() {
         match effect {
@@ -286,14 +285,6 @@ fn work(client: &Arc<Client>, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc
                     fail("cancel failed", err);
                 }
             }
-            Effect::Watch { session } => {
-                if watched.insert(session.clone())
-                    && let Err(err) = client.subscribe(&session, 1)
-                {
-                    watched.remove(&session);
-                    fail("following a subagent failed", err);
-                }
-            }
             Effect::AgentView { session, agent, on } => {
                 let key = (session.clone(), agent.clone());
                 if on {
@@ -313,9 +304,6 @@ fn work(client: &Arc<Client>, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc
             } => {
                 for (session, agent) in agent_views.drain() {
                     let _ = client.unsubscribe_agent_view(&session, &agent);
-                }
-                for session in watched.drain().filter(|s| *s != to) {
-                    let _ = client.unsubscribe(&session);
                 }
                 if let Err(err) = switch(client, app, from.as_deref(), &to, &cwd, move_agent) {
                     fail("switching session failed", err);

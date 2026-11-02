@@ -240,7 +240,7 @@ fn a_message_shows_as_the_activity_of_the_subagent_it_is_to_or_from() {
 }
 
 #[test]
-fn a_subagent_in_a_directory_of_its_own_is_followed_through_its_session() {
+fn a_subagent_with_a_session_of_its_own_is_left_to_the_sidebar() {
     let mut a = Agents::default();
     a.on_record(&started(
         "d1",
@@ -248,39 +248,16 @@ fn a_subagent_in_a_directory_of_its_own_is_followed_through_its_session() {
         0,
         json!({"cwd": "/w/site/.worktrees/fix-login", "child": "s_child"}),
     ));
-    assert_eq!(a.take_wanted(), ["s_child"]);
-    assert!(a.take_wanted().is_empty());
-    assert!(a.follows("s_child") && !a.follows("s1"));
-    // Its own session's agent is unlabelled; the parent's labelled events don't count.
-    a.on_child_record(&rec("s_child", 3, 100, json!({"type": "tool_call", "toolCallId": "t", "title": "bash: cargo test", "kind": "execute", "status": "pending"})));
-    a.on_child_record(&rec(
-        "s_child",
-        4,
-        200,
-        json!({"type": "usage", "contextUsed": 52000, "contextSize": 200000}),
-    ));
-    a.on_record(&rec("s1", 3, 300, json!({"type": "tool_call", "toolCallId": "z", "title": "ignored", "kind": "other", "status": "pending", "agent": "claude"})));
-    let got = text(&a.lines(80, 65_000, &MAIN, false, &styles()));
-    assert_eq!(
-        got[1],
-        flush(
-            "○ claude ⎇ fix-login  bash: cargo test",
-            "1m 05s · 52.0k tokens",
-            80
-        )
-    );
+    assert!(a.get("d1").is_none());
+    assert!(!a.visible(1_000));
+    assert_eq!(a.height(1_000, false), 0);
 }
 
 #[test]
 fn keys_select_open_and_stop() {
     let mut a = Agents::default();
     a.on_record(&started("d1", "neo", 0, json!({})));
-    a.on_record(&started(
-        "d2",
-        "claude",
-        0,
-        json!({"cwd": "/w/x", "child": "s_c"}),
-    ));
+    a.on_record(&started("d2", "claude", 0, json!({})));
     a.on_record(&started("d3", "codex", 0, json!({})));
     a.on_record(&ended("d3", 100, "end_turn"));
     let now = 1_000;
@@ -288,7 +265,7 @@ fn keys_select_open_and_stop() {
     a.focus(now);
     assert_eq!(
         a.key(press(KeyCode::Enter), now),
-        AgentsAction::Session("s_c".into())
+        AgentsAction::Transcript("d2".into())
     );
     a.key(press(KeyCode::Up), now);
     assert_eq!(
@@ -350,9 +327,9 @@ fn the_focused_list_has_its_keys_and_a_reversed_selection() {
 fn many_subagents_fold_and_nothing_overflows() {
     let mut a = Agents::default();
     for i in 0..9 {
-        a.on_record(&started(&format!("d{i}"), "neo", 0, json!({"model": "a-very-long-model-name-indeed", "cwd": "/w/some/where", "child": format!("c{i}")})));
+        a.on_record(&started(&format!("d{i}"), "neo", 0, json!({"model": "a-very-long-model-name-indeed"})));
     }
-    a.on_child_record(&rec("c8", 2, 1, json!({"type": "tool_call", "toolCallId": "t", "title": "日本語の長いタイトルがここにあります", "kind": "other", "status": "pending"})));
+    a.on_record(&rec("s1", 2, 1, json!({"type": "tool_call", "toolCallId": "t", "title": "日本語の長いタイトルがここにあります", "kind": "other", "status": "pending", "agent": "neo"})));
     let lines = a.lines(60, 100_000, &MAIN, true, &styles());
     assert_eq!(lines.len(), a.height(100_000, true));
     assert!(text(&lines).contains(&"  … +3 more".to_string()));

@@ -115,10 +115,6 @@ pub enum Effect {
     Cancel {
         session: String,
     },
-    /// Follow the events of a session a subagent runs as (its activity in the agents list).
-    Watch {
-        session: String,
-    },
     /// Follow (`on`) or stop following the view of one agent's work in a session.
     AgentView {
         session: String,
@@ -808,11 +804,6 @@ impl App {
             Event::Session(record) => {
                 if record.session == self.session {
                     self.on_record(&record);
-                    for session in self.agents.take_wanted() {
-                        fx.push(Effect::Watch { session });
-                    }
-                } else if self.agents.follows(&record.session) {
-                    self.agents.on_child_record(&record);
                 }
             }
             Event::Subscribed { session, .. } => {
@@ -2040,13 +2031,6 @@ impl App {
                     on: true,
                 });
                 self.transcript = Some(Transcript::new(agent));
-            }
-            AgentsAction::Session(child) => {
-                self.focus = None;
-                match self.sessions.get(&child).cloned() {
-                    Some(info) => self.open_session(info, fx),
-                    None => self.notify("that session isn't known yet", false),
-                }
             }
             AgentsAction::Stop(id) => {
                 self.notify("stopping…", false);
