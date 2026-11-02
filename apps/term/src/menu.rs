@@ -181,15 +181,17 @@ pub fn items_for(harness: &str, listed: &[SlashCommand]) -> Vec<Item> {
     out
 }
 
-/// Items matching what is typed after the slash: names starting with it first, then ones
-/// containing it.
+/// Items matching what is typed after the slash: names starting with it first (the one it names
+/// exactly ahead of the rest, so Enter on `/usage` runs `/usage`, not `/usage-credits`), then
+/// ones containing it.
 pub fn matching(typed: &str, items: &[Item]) -> Vec<Item> {
     let q = typed.strip_prefix('/').unwrap_or(typed).to_lowercase();
-    let starts: Vec<Item> = items
+    let mut starts: Vec<Item> = items
         .iter()
         .filter(|c| c.name.to_lowercase().starts_with(&q))
         .cloned()
         .collect();
+    starts.sort_by_key(|c| c.name.to_lowercase() != q);
     if !starts.is_empty() {
         return starts;
     }
@@ -403,6 +405,23 @@ mod tests {
             .map(|c| c.name.to_string())
             .collect();
         assert_eq!(typed, ["resume", "review"]);
+    }
+
+    #[test]
+    fn the_command_typed_in_full_comes_first() {
+        let listed = [
+            listed("usage-credits", "Extra usage credits", None),
+            listed("usage", "Plan usage limits", None),
+        ];
+        let all = items_for("claude", &listed);
+        let names = |q: &str| {
+            matching(q, &all)
+                .iter()
+                .map(|c| c.name.to_string())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names("/usage"), ["usage", "usage-credits"]);
+        assert_eq!(names("/usa"), ["usage-credits", "usage"], "else as listed");
     }
 
     #[test]
