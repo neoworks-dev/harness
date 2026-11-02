@@ -604,10 +604,12 @@ fn esc_gives_the_editor_back_with_its_draft() {
         &mut app,
         vec![user("u1", "deploy it"), form_item("f1", false, "")],
     );
-    // The user is typing: the form waits.
+    // There is a draft: the form waits, a pause in typing or not, until it is asked for.
     assert!(!app.prompt.engaged);
     assert!(text(&mut app).contains("form open"));
     app.tick(NOW + 1000);
+    assert!(!app.prompt.engaged);
+    press(&mut app, ctrl('p'));
     assert!(app.prompt.engaged);
     press(&mut app, key(KeyCode::Esc));
     assert!(!app.prompt.engaged);

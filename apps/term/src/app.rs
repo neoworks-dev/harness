@@ -1137,11 +1137,13 @@ impl App {
         (at.map_or(1, |i| i + 1), pending.len().max(1))
     }
 
-    /// A prompt takes the editor's place once the user has paused typing (at once when they
-    /// weren't typing), and gives it back, draft intact, when it is answered or dismissed.
+    /// A prompt takes the editor's place once the editor is empty and the user has paused typing
+    /// (at once when they weren't typing), and gives it back, draft intact, when it is answered
+    /// or dismissed. A draft holds it back until it is sent or stashed, or Ctrl-P asks for it.
     fn update_engaged(&mut self) {
         let quiet = self.now_ms - self.prompt.typed_ms >= TYPING_PAUSE_MS;
-        let engaged = self.active_ref().is_some() && (self.prompt.engaged || quiet);
+        let free = self.editor.is_empty() && self.attachments.is_empty();
+        let engaged = self.active_ref().is_some() && (self.prompt.engaged || quiet && free);
         if engaged != self.prompt.engaged {
             self.prompt.engaged = engaged;
             self.dirty = true;
@@ -1373,8 +1375,9 @@ impl App {
                 let r = refs[i].clone();
                 self.prompt.dismissed.retain(|d| *d != r);
                 self.prompt.selected = Some(r.clone());
-                // Asked for by hand: no waiting for a pause in typing.
-                self.prompt.typed_ms = 0;
+                // Asked for by hand: no waiting for the draft to go.
+                self.prompt.engaged = true;
+                self.dirty = true;
                 self.chat.reveal(&r);
             }
             None => {
@@ -2534,7 +2537,13 @@ impl App {
                 self.notify("sent to the background: it runs on under the prompt", false);
                 return false;
             }
-            's' => self.swap_stash(),
+            // Putting the draft aside makes room: a waiting prompt takes it at once.
+            's' => {
+                self.swap_stash();
+                self.prompt.typed_ms = 0;
+                self.update_engaged();
+                return false;
+            }
             'r' => {
                 self.github.open();
                 return false;
@@ -2563,6 +2572,10 @@ impl App {
                 let delta = if c == 'p' { -1 } else { 1 };
                 if self.menu_visible() {
                     self.move_menu(delta);
+                } else if self.prompt_waits() {
+                    // The prompt held back by the draft is the one asked for.
+                    self.prompt.engaged = true;
+                    self.dirty = true;
                 } else if !self.select_prompt(delta) {
                     if delta < 0 {
                         self.history_prev();
@@ -3207,9 +3220,9 @@ impl App {
         }
         if areas.hint.height > 0 {
             let hint = if self.active_form().is_some() {
-                "form open — it takes the keys when you stop typing"
+                "form open · ctrl-p to fill it in · ctrl-s stashes your draft"
             } else {
-                "permission needed — waiting until you stop typing"
+                "permission needed · ctrl-p to answer · ctrl-s stashes your draft"
             };
             frame.render_widget(
                 Paragraph::new(Span::styled(

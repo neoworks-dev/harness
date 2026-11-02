@@ -8,7 +8,7 @@
 
 
 ┃
-┃ permission needed — waiting until you stop typing
+┃ permission needed · ctrl-p to answer · ctrl-s stashes your draft
 ┃ draft
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

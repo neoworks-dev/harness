@@ -996,13 +996,21 @@ fn a_prompt_right_after_sending_takes_the_editors_place_at_once() {
     assert!(app.prompt.engaged, "sending ended the typing");
 }
 
+/// A prompt that arrived over a draft, taken by hand with Ctrl-P.
+fn prompt_over_draft() -> App {
+    let mut app = typing_then_prompt(1_000);
+    app.handle_key(ctrl('p'));
+    assert!(app.prompt.engaged);
+    app
+}
+
 #[test]
-fn a_prompt_waits_while_the_user_types_and_takes_over_after_a_pause() {
+fn a_prompt_waits_while_there_is_a_draft_and_ctrl_p_takes_it() {
     let mut app = typing_then_prompt(100);
     assert!(!app.prompt.engaged);
     let text = screen_text(&mut app, 70, 14);
     assert!(
-        text.contains("permission needed — waiting until you stop typing"),
+        text.contains("permission needed · ctrl-p to answer · ctrl-s stashes your draft"),
         "{text}"
     );
     assert!(
@@ -1013,44 +1021,62 @@ fn a_prompt_waits_while_the_user_types_and_takes_over_after_a_pause() {
     // Keys still belong to the editor, digits included.
     app.handle_key(key(KeyCode::Char('2')));
     assert_eq!(app.editor_text(), "draft2");
-    // Typing again restarts the pause.
-    app.tick(NOW + 700);
-    app.handle_key(key(KeyCode::Char('!')));
-    app.tick(NOW + 1_400);
-    assert!(
-        !app.prompt.engaged,
-        "700 ms after the last key is not enough"
-    );
-    app.tick(NOW + 1_500);
+    // A pause in typing is not enough while there is a draft.
+    app.tick(NOW + 60_000);
+    assert!(!app.prompt.engaged, "the draft holds it back");
+    // Ctrl-P takes it now; the draft is untouched behind it and comes back once it is gone.
+    app.handle_key(ctrl('p'));
     assert!(app.prompt.engaged);
+    assert_eq!(app.active_ref(), Some("p1"), "the waiting one, not an older one");
     assert!(app.take_dirty(), "the swap redraws");
     let text = screen_text(&mut app, 70, 14);
     assert!(!text.contains("draft"), "{text}");
     assert!(!text.contains("permission needed"), "{text}");
-    // The draft is untouched behind it and comes back once the prompt is gone.
-    assert_eq!(app.editor_text(), "draft2!");
+    assert_eq!(app.editor_text(), "draft2");
     app.handle_key(key(KeyCode::Char('1')));
-    assert!(screen_text(&mut app, 70, 14).contains("┃ draft2!"));
+    assert!(screen_text(&mut app, 70, 14).contains("┃ draft2"));
 }
 
 #[test]
-fn a_prompt_after_a_pause_in_typing_takes_over_without_waiting() {
-    let app = typing_then_prompt(800);
+fn a_prompt_takes_over_once_the_draft_is_gone_and_typing_paused() {
+    let mut app = typing_then_prompt(1_000);
+    for _ in 0.."draft".len() {
+        app.handle_key(key(KeyCode::Backspace));
+    }
+    assert!(!app.prompt.engaged, "the user may be typing on");
+    app.tick(NOW + 1_800);
+    assert!(app.prompt.engaged);
+}
+
+#[test]
+fn stashing_the_draft_hands_the_editor_to_the_prompt_at_once() {
+    let mut app = typing_then_prompt(100);
+    app.handle_key(ctrl('s'));
+    assert!(app.prompt.engaged);
+    assert_eq!(app.editor_text(), "");
+    app.handle_key(key(KeyCode::Char('1')));
+    assert!(!app.prompt.engaged);
+    app.handle_key(ctrl('s'));
+    assert_eq!(app.editor_text(), "draft", "the stash comes back");
+}
+
+#[test]
+fn sending_the_draft_lets_the_prompt_take_over() {
+    let mut app = typing_then_prompt(100);
+    app.handle_key(key(KeyCode::Enter));
     assert!(app.prompt.engaged);
 }
 
 #[test]
 fn enter_answers_the_prompt_never_the_draft_and_esc_gives_the_editor_back() {
-    let mut app = typing_then_prompt(1_000);
-    app.tick(NOW + 1_000);
-    assert!(app.prompt.engaged);
+    let mut app = prompt_over_draft();
     type_str(&mut app, "more");
     app.handle_key(key(KeyCode::Right));
     let fx = app.handle_key(key(KeyCode::Enter));
     assert!(matches!(&fx[..], [Effect::Action { args: Some(a), .. }] if a["option"] == "No"));
     assert_eq!(app.editor_text(), "draft", "the draft came back as it was");
     // Esc dismisses instead of answering; the draft is intact and Enter sends it.
-    let mut app = typing_then_prompt(1_000);
+    let mut app = prompt_over_draft();
     assert!(app.handle_key(key(KeyCode::Esc)).is_empty());
     assert!(!app.prompt.engaged);
     assert_eq!(app.editor_text(), "draft");
@@ -1063,7 +1089,7 @@ fn enter_answers_the_prompt_never_the_draft_and_esc_gives_the_editor_back() {
 
 #[test]
 fn a_prompt_leaves_the_draft_alone_for_ctrl_c_and_paste() {
-    let mut app = typing_then_prompt(1_000);
+    let mut app = prompt_over_draft();
     app.handle_paste("pasted");
     assert_eq!(app.editor_text(), "draft");
     app.handle_key(ctrl('c'));
