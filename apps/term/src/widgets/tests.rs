@@ -194,8 +194,8 @@ fn sidebar_snapshot_plan_above_files() {
 │   M a.ts (agent)
 │   A b.ts
 │ U lock.json
-│ ? notes.md
 │ D old.txt
+│ ▸ untracked 1 file
 │";
     assert_eq!(sidebar(&w, 26, 17, None), expected);
     // Squeezed: the plan keeps its in-progress entry, the files are capped.
@@ -471,7 +471,10 @@ fn real_git_end_to_end() {
     w.handle_key(Panel::Files, key(KeyCode::Esc));
     assert!(!w.overlay_open());
 
-    // The untracked file shows whole.
+    // The untracked file is in the untracked group, opened with Enter; it shows whole.
+    w.handle_key(Panel::Files, key(KeyCode::Char('G')));
+    assert!(w.files.selected().is_none(), "the untracked group");
+    w.handle_key(Panel::Files, key(KeyCode::Enter));
     w.handle_key(Panel::Files, key(KeyCode::Char('G')));
     assert_eq!(w.files.selected().unwrap().rel, "new.txt");
     w.handle_key(Panel::Files, key(KeyCode::Enter));
@@ -490,8 +493,9 @@ fn real_git_end_to_end() {
     });
     let rels: Vec<_> = sub.files.entries().iter().map(|e| e.rel.as_str()).collect();
     assert_eq!(rels, ["../gone.txt", "a.txt", "../new.txt"]);
-    // ../ with the two files outside, then a.txt.
+    // ../ with the file outside, then a.txt, then the untracked group.
     sub.handle_key(Panel::Files, key(KeyCode::Char('G')));
+    sub.handle_key(Panel::Files, key(KeyCode::Char('k')));
     assert_eq!(sub.files.selected().unwrap().rel, "a.txt");
     sub.handle_key(Panel::Files, key(KeyCode::Enter));
     wait_until(&mut sub, "the sub diff", |w| {

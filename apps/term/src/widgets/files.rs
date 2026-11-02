@@ -201,15 +201,24 @@ impl FilesState {
             .min(self.rows.len().saturating_sub(1));
     }
 
-    /// The tree's rows from the entries and which folders are collapsed.
+    /// The tree's rows from the entries and which folders are collapsed. Untracked files no
+    /// agent touched go under one `untracked` row at the end, folded until opened.
     fn rebuild_rows(&mut self) {
         let mut root = Dir::default();
+        let mut untracked = Dir {
+            path: UNTRACKED.into(),
+            ..Dir::default()
+        };
         for (i, e) in self.entries.iter().enumerate() {
             let trimmed = e.rel.trim_end_matches('/');
             let mut parts: Vec<&str> = trimmed.split('/').collect();
             parts.pop();
-            let mut node = &mut root;
-            let mut path = String::new();
+            let mut node = if e.mark == Mark::Untracked && e.tags.is_empty() {
+                &mut untracked
+            } else {
+                &mut root
+            };
+            let mut path = node.path.clone();
             for part in parts {
                 path.push_str(part);
                 path.push('/');
@@ -226,6 +235,23 @@ impl FilesState {
             opened: &self.opened,
         };
         flatten(&root, 0, &self.entries, &folds, &mut rows);
+        let files = untracked.file_count();
+        if files > 0 {
+            let folded = folds.folded(&untracked);
+            rows.push(TreeRow {
+                depth: 0,
+                kind: RowKind::Dir {
+                    path: UNTRACKED.into(),
+                    name: "untracked".into(),
+                    collapsed: folded,
+                    counts: untracked.counts(&self.entries),
+                    files,
+                },
+            });
+            if !folded {
+                flatten(&untracked, 1, &self.entries, &folds, &mut rows);
+            }
+        }
         self.rows = rows;
     }
 
@@ -457,8 +483,8 @@ struct Folds<'a> {
 
 impl Folds<'_> {
     fn folded(&self, dir: &Dir) -> bool {
-        self.collapsed.contains(&dir.path)
-            || (dir.files.len() > FOLD_FILES && !self.opened.contains(&dir.path))
+        let crowded = dir.files.len() > FOLD_FILES || dir.path == UNTRACKED;
+        self.collapsed.contains(&dir.path) || (crowded && !self.opened.contains(&dir.path))
     }
 }
 
@@ -527,6 +553,9 @@ fn line_counts(lines: Option<LineCount>, palette: &Palette) -> Vec<Span<'static>
 const MIN_NAME: usize = 8;
 /// A folder with more files than this right in it starts folded.
 const FOLD_FILES: usize = 5;
+/// The path of the group the untracked files no agent touched are in (no real path has `?/`
+/// at its start).
+const UNTRACKED: &str = "?/";
 
 /// The file's name in the tree: the last part of its path (`new/` for a new folder), a rename
 /// as `old → new`.
@@ -567,11 +596,11 @@ fn plain_pieces(r: &TreeRow, entries: &[FileEntry], palette: &Palette) -> Option
     let indent = "  ".repeat(r.depth);
     Some(match &r.kind {
         RowKind::Dir {
+            path,
             name,
             collapsed,
             counts,
             files,
-            ..
         } => {
             let arrow = if *collapsed { "▸ " } else { "▾ " };
             // An open folder's files carry its counts; a folded one says how many there are.
@@ -582,7 +611,13 @@ fn plain_pieces(r: &TreeRow, entries: &[FileEntry], palette: &Palette) -> Option
                 String::new()
             };
             let lead = Span::styled(format!("{indent}{arrow}"), Style::new().fg(palette.muted));
-            (vec![lead], name.clone(), Style::new(), tag, lines)
+            // The untracked group reads like its files: muted.
+            let style = if path == UNTRACKED {
+                Mark::Untracked.style(palette)
+            } else {
+                Style::new()
+            };
+            (vec![lead], name.clone(), style, tag, lines)
         }
         RowKind::File(i) => {
             let e = entries.get(*i)?;
@@ -864,9 +899,10 @@ mod tests {
         );
         let p = Palette::default();
         let lines = f.render(40, 10, false, &p);
-        assert_eq!(text(&lines)[3], "✓ gone.txt (claude, committed)");
-        assert_eq!(lines[3].spans[0].style.fg, Some(p.success));
-        assert_eq!(lines[3].spans[1].style.fg, Some(p.muted));
+        assert_eq!(text(&lines)[2], "✓ gone.txt (claude, committed)");
+        assert_eq!(lines[2].spans[0].style.fg, Some(p.success));
+        assert_eq!(lines[2].spans[1].style.fg, Some(p.muted));
+        assert_eq!(text(&lines)[3], "▸ untracked 1 file");
         assert_eq!(f.branch().as_deref(), Some("main ↑1"));
         // Same status again is no change.
         assert!(!f.set_status(f.status.clone()));
@@ -923,6 +959,9 @@ mod tests {
         ];
         f.set_status(Some(status(all)));
         f.touch("a.ts", "agent", false);
+        // The untracked group opened.
+        f.key(KeyEvent::from(KeyCode::Char('G')));
+        f.key(KeyEvent::from(KeyCode::Enter));
         let lines = f.render(30, 20, false, &p);
         assert_eq!(
             text(&lines),
@@ -930,30 +969,70 @@ mod tests {
                 "M a.ts (agent)",
                 "A b.ts",
                 "D c.ts",
-                "? d.md",
                 "U e.txt",
                 "R old.rs → new name.rs",
+                "▾ untracked",
+                "  ? d.md",
             ]
         );
         assert_eq!(lines[0].spans[1].style.fg, Some(p.accent));
         assert_eq!(lines[0].spans[2].style.fg, Some(p.muted));
         assert_eq!(lines[1].spans[1].style.fg, Some(p.success));
         assert_eq!(lines[2].spans[1].style.fg, Some(p.danger));
-        assert_eq!(lines[3].spans[1].style.fg, Some(p.muted));
-        assert_eq!(lines[4].spans[1].style.fg, Some(p.danger));
+        assert_eq!(lines[3].spans[1].style.fg, Some(p.danger));
         assert!(
-            lines[4].spans[1]
+            lines[3].spans[1]
                 .style
                 .add_modifier
                 .contains(Modifier::BOLD)
         );
+        assert_eq!(lines[5].spans[1].style.fg, Some(p.muted));
+        assert_eq!(lines[6].spans[1].style.fg, Some(p.muted));
         // Cap.
         let capped = text(&f.render(30, 4, false, &p));
-        assert_eq!(capped, ["M a.ts (agent)", "A b.ts", "D c.ts", "… 3 more"]);
+        assert_eq!(capped, ["M a.ts (agent)", "A b.ts", "D c.ts", "… 4 more"]);
         // Too narrow: tag first, then the front of the path.
         let narrow = text(&f.render(12, 20, false, &p));
         assert_eq!(narrow[0], "M a.ts");
-        assert_eq!(narrow[5], "R …w name.rs");
+        assert_eq!(narrow[4], "R …w name.rs");
+    }
+
+    #[test]
+    fn untracked_files_no_agent_touched_fold_into_one_row() {
+        let p = Palette::default();
+        let mut f = FilesState::default();
+        f.set_status(Some(status(vec![
+            entry(".claude/", Change::Untracked),
+            entry("atlas/", Change::Untracked),
+            entry("notes/todo.md", Change::Untracked),
+            entry("src/a.rs", Change::Modified),
+        ])));
+        f.touch("atlas/x.rs", "agent", true);
+        assert_eq!(
+            text(&f.render(40, 10, false, &p)),
+            [
+                "▾ src/",
+                "  M a.rs",
+                "? atlas/ (agent)",
+                "▸ untracked 2 files"
+            ],
+            "one an agent touched stays in the tree"
+        );
+        f.key(KeyEvent::from(KeyCode::Char('G')));
+        f.key(KeyEvent::from(KeyCode::Enter));
+        assert_eq!(
+            text(&f.render(40, 10, false, &p)),
+            [
+                "▾ src/",
+                "  M a.rs",
+                "? atlas/ (agent)",
+                "▾ untracked",
+                "  ▾ notes/",
+                "    ? todo.md",
+                "  ? .claude/",
+            ]
+        );
+        assert_eq!(f.natural_height(), 8, "the branch line and the rows");
     }
 
     #[test]
