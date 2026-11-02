@@ -507,10 +507,12 @@ impl<'a> Cx<'a> {
         }
         let hidden = lines.len() - left;
         lines.truncate(left);
-        lines.push(sline(
-            format!("… {hidden} more lines (expand to see all)"),
-            self.p.muted_style(),
-        ));
+        let hint = if self.o.shown_above {
+            format!("… {hidden} more lines, in full above")
+        } else {
+            format!("… {hidden} more lines (expand to see all)")
+        };
+        lines.push(sline(hint, self.p.muted_style()));
         self.budget = Some(0);
         lines
     }

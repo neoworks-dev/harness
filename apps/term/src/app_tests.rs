@@ -1167,6 +1167,15 @@ fn a_long_diff_stays_compact_in_the_input_area() {
     // A tiny terminal still shows the question, the buttons and the keys.
     let tiny = screen(&mut app, 50, 9).join("\n");
     assert!(tiny.contains("[1 Allow once]"), "{tiny}");
+
+    // Expanded, the chat has the whole diff: the panel keeps only the question and buttons.
+    app.handle_key(ctrl('o'));
+    let text = screen(&mut app, 70, 60).join("\n");
+    // The chat follows its end; the panel's preview would have repeated the diff's start.
+    assert_eq!(text.matches("const next59 = 59;").count(), 1, "{text}");
+    assert!(!text.contains("const next0 = 0;"), "no preview: {text}");
+    assert!(text.contains("more lines, in full above"), "{text}");
+    assert!(text.contains("[1 Allow once]"), "{text}");
 }
 
 #[test]

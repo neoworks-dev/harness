@@ -51,6 +51,9 @@ pub struct Options {
     /// full; with this set they stop after that many lines in all and say how many are left, so
     /// the buttons stay near. `expanded` shows everything. None: no limit.
     pub preview_lines: Option<usize>,
+    /// What `preview_lines` cuts is on screen in full elsewhere (the chat, while the card is
+    /// answered below it): the cut says so instead of asking to expand.
+    pub shown_above: bool,
     /// Highlights the n-th button of this item (index into [`buttons`]).
     pub focused_button: Option<usize>,
     /// Draws a button as `[Label]` without the key that triggers it (a card that takes its

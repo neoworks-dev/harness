@@ -3696,6 +3696,7 @@ impl App {
             icons: self.icons,
             split_diffs: self.split_diffs,
             cwd: Some(&self.cwd),
+            shown_above: self.expanded,
         };
         let compose = |preview: usize| {
             let mut body =
@@ -3713,7 +3714,13 @@ impl App {
             body
         };
         let mut body = Vec::new();
-        for preview in [10, 6, 3, 1, 0] {
+        // Expanded (Ctrl-O), the chat has the card in full: no preview of it here again.
+        let previews: &[usize] = if self.expanded {
+            &[0]
+        } else {
+            &[10, 6, 3, 1, 0]
+        };
+        for &preview in previews {
             body = compose(preview);
             if body.len() <= budget {
                 break;

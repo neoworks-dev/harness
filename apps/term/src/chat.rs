@@ -1399,6 +1399,7 @@ fn render(
         hide_keys: false,
         prose_width: Some(PROSE_WIDTH),
         preview_lines: Some(PREVIEW_LINES),
+        shown_above: false,
         theme: key.palette,
         images: key.images.as_ref().map(|i| ImageOptions {
             max_rows: if key.expanded {
@@ -1454,6 +1455,8 @@ pub struct PanelLook<'a> {
     pub split_diffs: bool,
     /// Paths in it are shown relative to it.
     pub cwd: Option<&'a str>,
+    /// The chat shows the card in full (Ctrl-O): the panel's cut says so.
+    pub shown_above: bool,
 }
 
 /// The prompt as the input area shows it: the item with the n-th button focused and at most
@@ -1475,6 +1478,7 @@ pub fn panel_lines(
         hide_keys,
         prose_width: Some(PROSE_WIDTH),
         preview_lines: Some(preview),
+        shown_above: look.shown_above,
         theme: look.palette,
         images: None,
         neoui: HashMap::new(),
