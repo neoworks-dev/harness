@@ -26,11 +26,12 @@ describe("fixtures", () => {
     });
   }
 
-  test("the neoui fixtures are there: a template, a chat, a model's dashboard, a form with inputs and a press, a grid, boxes and shapes, the rest of the library, a stream", () => {
+  test("the neoui fixtures are there: a template, a chat, a model's dashboard, the dev components, a form with inputs and a press, a grid, boxes and shapes, the rest of the library, a stream", () => {
     expect(names.filter((n) => n.startsWith("neoui-"))).toEqual([
       "neoui-boxes",
       "neoui-chat",
       "neoui-dashboard",
+      "neoui-dev",
       "neoui-disk",
       "neoui-form",
       "neoui-grid",

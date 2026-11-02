@@ -6,10 +6,12 @@
 //! pure. Tabs and accordion items have no key: they are named by their node path in the doc.
 //!
 //! The pieces: `layout` (stacks, rows, cards, tabs, accordions, steps), `content` (text, code,
-//! tables, metrics…), `charts`, `forms` and `generic` (Box and Shape).
+//! tables, metrics…), `charts`, `dev` (diffs, files, commits, output, tests, GitHub), `forms`
+//! and `generic` (Box and Shape).
 
 mod charts;
 mod content;
+mod dev;
 mod forms;
 mod generic;
 mod layout;

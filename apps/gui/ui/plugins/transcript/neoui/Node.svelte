@@ -8,6 +8,9 @@
   import ButtonsNode from "./ButtonsNode.svelte";
   import CalloutNode from "./CalloutNode.svelte";
   import DateNode from "./DateNode.svelte";
+  import DevNode from "./DevNode.svelte";
+  import DiffNode from "./DiffNode.svelte";
+  import OutputNode from "./OutputNode.svelte";
   import CardNode from "./CardNode.svelte";
   import CarouselNode from "./CarouselNode.svelte";
   import CheckBoxNode from "./CheckBoxNode.svelte";
@@ -104,6 +107,22 @@
     Button: ButtonNode,
     Buttons: ButtonsNode,
     FollowUpBlock: FollowUpNode,
+    Diff: DiffNode,
+    CommandOutput: OutputNode,
+    FileTree: DevNode,
+    File: DevNode,
+    CodeRef: DevNode,
+    Commit: DevNode,
+    TestRun: DevNode,
+    Test: DevNode,
+    StackTrace: DevNode,
+    Frame: DevNode,
+    Issue: DevNode,
+    PullRequest: DevNode,
+    Checks: DevNode,
+    Check: DevNode,
+    Timeline: DevNode,
+    TimelineItem: DevNode,
   };
 </script>
 

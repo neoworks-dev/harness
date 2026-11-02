@@ -1059,7 +1059,7 @@ impl<'a> Cx<'a> {
 
     /// A colored diff under its path: unified, or side by side when the app asks for it
     /// ([`Options::split_diffs`]) and the width allows.
-    fn diff(&self, v: &pb::DiffComponent, w: usize) -> Lines {
+    pub(crate) fn diff(&self, v: &pb::DiffComponent, w: usize) -> Lines {
         let mut out = self.diff_title(v, w);
         out.extend(self.diff_rows(v.path.as_deref(), &v.lines, w));
         out

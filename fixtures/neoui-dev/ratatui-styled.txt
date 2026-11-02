@@ -1,0 +1,45 @@
+⟦#33402D|▐⟧⟦success bg:#33402D|Open⟧⟦#33402D|▌⟧⟦muted| #41⟧⟦bold| Defer permission prompts while typing⟧
+⟦muted|defer-prompts → main · neoworks-dev/harness · moritz · ⟧⟦danger|✗ checks fail⟧⟦muted| ·…⟧ ⟦success|+248⟧ ⟦danger|−46⟧
+⟦#33402D|▐⟧⟦success bg:#33402D|Open⟧⟦#33402D|▌⟧⟦muted| #53⟧⟦bold| neoui Shape: a filled rect has a dotted outline⟧
+⟦muted|neoworks-dev/harness · neoworks-bot · 2 comments⟧ ⟦#2F3238|▐⟧⟦muted bg:#2F3238|area:ui⟧⟦#2F3238|▌⟧ ⟦#2F3238|▐⟧⟦muted bg:#2F3238|bug⟧⟦#2F3238|▌⟧
+⟦success|✓ ⟧build                                                                   ⟦muted|2m 10s⟧
+⟦danger|✗ ⟧⟦danger|test (ubuntu)⟧                                                           ⟦muted|4m 02s⟧
+⟦accent|◐ ⟧lint
+⟦muted|○ ⟧⟦muted|deploy preview⟧
+⟦bold|cargo test -p neo-term  ⟧⟦success|✓ 434 passed⟧  ⟦danger|✗ 1 failed⟧  ⟦muted|○ 2 skipped · 13.1s⟧
+⟦danger|✗ ⟧app::tests::a_long_diff_stays_compact                                    ⟦muted|0.04s⟧
+    ⟦danger|assertion `left == right` failed⟧
+    ⟦danger|  left: 2⟧
+    ⟦danger| right: 1⟧
+⟦muted|$ ⟧⟦bold|cargo build⟧                                                  ⟦danger|✗ exit 101⟧⟦muted| · ⟧⟦muted|8.2s⟧
+⟦muted|   Compiling neo-term v0.1.0⟧
+⟦danger|error[E0308]: mismatched types⟧
+⟦muted|  --> apps/term/src/app.rs:42:9⟧
+⟦danger|error: could not compile `neo-term`⟧
+⟦bold|apps/term/src/menu.rs⟧
+⟦muted|⟧⟦muted|@@ -186,6 +186,7 @@ pub fn matching(typed: &str, items: &[Item]) -> Vec<Item> {⟧
+ ⟦fg|    ⟧⟦#C792EA|let⟧⟦fg| q = typed.⟧⟦#82AAFF|to_lowercase⟧⟦fg|();⟧
+⟦danger bg:#3A272F|-⟧⟦fg bg:#3A272F|    ⟧⟦#C792EA bg:#3A272F|let⟧⟦fg bg:#3A272F| starts: ⟧⟦#FFCB6B bg:#3A272F|Vec⟧⟦fg bg:#3A272F|<Item> = items⟧⟦danger bg:#3A272F|                                              ⟧
+⟦success bg:#2B3529|+⟧⟦fg bg:#2B3529|    ⟧⟦#C792EA bg:#2B3529|let⟧⟦fg bg:#2B3529| ⟧⟦#C792EA bg:#2B3529|mut⟧⟦fg bg:#2B3529| starts: ⟧⟦#FFCB6B bg:#2B3529|Vec⟧⟦fg bg:#2B3529|<Item> = items⟧⟦success bg:#2B3529|                                          ⟧
+ ⟦fg|        .⟧⟦#82AAFF|iter⟧⟦fg|()⟧
+⟦success bg:#2B3529|+⟧⟦fg bg:#2B3529|    starts.⟧⟦#82AAFF bg:#2B3529|sort_by_key⟧⟦fg bg:#2B3529|(|c| c.name != q);⟧⟦success bg:#2B3529|                                       ⟧
+⟦muted|▾ ⟧apps/term/
+⟦muted|  ▾ ⟧src/
+    ⟦accent|M ⟧app.rs                                                              ⟦success|+12⟧ ⟦danger|−3⟧
+    ⟦accent|M ⟧menu.rs⟦muted|  exact match first⟧                                           ⟦success|+4⟧ ⟦danger|−1⟧
+⟦muted|  ▾ ⟧tests/snapshots/
+    ⟦success|A ⟧⟦success|new.txt⟧                                                                ⟦success|+20⟧
+⟦muted|▾ ⟧docs/
+  ⟦danger|D ⟧⟦danger|old.md⟧                                                                   ⟦danger|−40⟧
+⟦muted|? ⟧⟦muted|notes.md⟧
+⟦accent|c9f2844 ⟧⟦bold|term: Enter on a command typed in full runs that command⟧          ⟦success|+21⟧ ⟦danger|−2⟧
+⟦muted|        moritz · 2h ago · 1 file⟧
+⟦accent underlined|apps/term/src/menu.rs:194⟧⟦muted|  starts.sort_by_key(|c| c.name.to_lowercase() != q);⟧
+⟦danger|✗ ⟧⟦danger bold|panic: index out of bounds: the len is 3 but the index is 7⟧
+⟦muted|  at ⟧neo_term::chat::Chat::visible_at  ⟦accent|apps/term/src/chat.rs:784⟧
+⟦muted|  at ⟧neo_term::app::App::draw  ⟦accent|apps/term/src/app.rs:3201⟧
+⟦accent|● ⟧⟦muted|14:02  ⟧⟦bold|Pushed defer-prompts⟧
+⟦muted|│ ⟧       ⟦muted|3 commits⟧
+⟦danger|● ⟧⟦muted|14:05  ⟧⟦bold|CI failed⟧
+⟦muted|│ ⟧       ⟦muted|test (ubuntu): 1 failed⟧
+⟦success|● ⟧⟦muted|14:20  ⟧⟦bold|Deployed preview⟧

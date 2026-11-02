@@ -1,0 +1,45 @@
+▐Open▌ #41 Defer permission prompts while typing
+defer-prompts → main · neoworks-dev/harness · moritz · ✗ checks fail ·… +248 −46
+▐Open▌ #53 neoui Shape: a filled rect has a dotted outline
+neoworks-dev/harness · neoworks-bot · 2 comments ▐area:ui▌ ▐bug▌
+✓ build                                                                   2m 10s
+✗ test (ubuntu)                                                           4m 02s
+◐ lint
+○ deploy preview
+cargo test -p neo-term  ✓ 434 passed  ✗ 1 failed  ○ 2 skipped · 13.1s
+✗ app::tests::a_long_diff_stays_compact                                    0.04s
+    assertion `left == right` failed
+      left: 2
+     right: 1
+$ cargo build                                                  ✗ exit 101 · 8.2s
+   Compiling neo-term v0.1.0
+error[E0308]: mismatched types
+  --> apps/term/src/app.rs:42:9
+error: could not compile `neo-term`
+apps/term/src/menu.rs
+@@ -186,6 +186,7 @@ pub fn matching(typed: &str, items: &[Item]) -> Vec<Item> {
+     let q = typed.to_lowercase();
+-    let starts: Vec<Item> = items
++    let mut starts: Vec<Item> = items
+         .iter()
++    starts.sort_by_key(|c| c.name != q);
+▾ apps/term/
+  ▾ src/
+    M app.rs                                                              +12 −3
+    M menu.rs  exact match first                                           +4 −1
+  ▾ tests/snapshots/
+    A new.txt                                                                +20
+▾ docs/
+  D old.md                                                                   −40
+? notes.md
+c9f2844 term: Enter on a command typed in full runs that command          +21 −2
+        moritz · 2h ago · 1 file
+apps/term/src/menu.rs:194  starts.sort_by_key(|c| c.name.to_lowercase() != q);
+✗ panic: index out of bounds: the len is 3 but the index is 7
+  at neo_term::chat::Chat::visible_at  apps/term/src/chat.rs:784
+  at neo_term::app::App::draw  apps/term/src/app.rs:3201
+● 14:02  Pushed defer-prompts
+│        3 commits
+● 14:05  CI failed
+│        test (ubuntu): 1 failed
+● 14:20  Deployed preview
