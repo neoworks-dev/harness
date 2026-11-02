@@ -241,7 +241,10 @@ fn holding_space_records_and_letting_go_writes_it_out() {
     app.tick(1_533);
     type_str(&mut app, " ");
     app.tick(1_566);
-    assert_eq!(app.handle_key(key(KeyCode::Char(' '))), [Effect::VoiceStart]);
+    assert_eq!(
+        app.handle_key(key(KeyCode::Char(' '))),
+        [Effect::VoiceStart]
+    );
     // The Spaces it typed before it was clear came back out; more repeats type nothing.
     assert_eq!(app.editor_text(), "fix");
     app.tick(1_600);
@@ -271,7 +274,9 @@ fn a_space_let_go_under_kittys_protocol_stops_at_once() {
         ..key(KeyCode::Char(' '))
     };
     assert_eq!(app.handle_key(release), [Effect::VoiceStop]);
-    app.handle_msg(Msg::Transcribed(Err("speech to text failed: no key".into())));
+    app.handle_msg(Msg::Transcribed(
+        Err("speech to text failed: no key".into()),
+    ));
     assert_eq!(app.editor_text(), "");
 }
 
@@ -1027,7 +1032,11 @@ fn a_prompt_waits_while_there_is_a_draft_and_ctrl_p_takes_it() {
     // Ctrl-P takes it now; the draft is untouched behind it and comes back once it is gone.
     app.handle_key(ctrl('p'));
     assert!(app.prompt.engaged);
-    assert_eq!(app.active_ref(), Some("p1"), "the waiting one, not an older one");
+    assert_eq!(
+        app.active_ref(),
+        Some("p1"),
+        "the waiting one, not an older one"
+    );
     assert!(app.take_dirty(), "the swap redraws");
     let text = screen_text(&mut app, 70, 14);
     assert!(!text.contains("draft"), "{text}");

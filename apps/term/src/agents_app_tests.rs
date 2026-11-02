@@ -113,12 +113,7 @@ fn busy() -> App {
         NOW - 50_000,
         json!({"type": "usage", "agent": "neo", "inputTokens": 3100, "outputTokens": 300}),
     ));
-    app.handle_event(started(
-        "d2",
-        "claude",
-        5_000,
-        json!({"model": "sonnet"}),
-    ));
+    app.handle_event(started("d2", "claude", 5_000, json!({"model": "sonnet"})));
     app.tick(NOW);
     app
 }
@@ -193,10 +188,7 @@ fn the_list_goes_five_seconds_after_the_last_subagent_ends() {
     ));
     let text = screen_text(&mut app, 100, 24);
     assert!(text.contains("✓ neo · deepseek-v4-flash  done"), "{text}");
-    assert!(
-        text.contains("✗ claude · sonnet  boom"),
-        "{text}"
-    );
+    assert!(text.contains("✗ claude · sonnet  boom"), "{text}");
     app.tick(NOW + 4_000);
     assert!(screen_text(&mut app, 100, 24).contains("● main"));
     app.tick(NOW + 6_000);
@@ -774,15 +766,30 @@ fn a_command_running_a_while_offers_ctrl_b_and_ctrl_b_sends_it_to_the_background
         kind: KeyEventKind::Press,
         state: KeyEventState::NONE,
     };
-    // Not yet: Ctrl-B is the cursor's.
+    let call_line = |app: &mut App| {
+        let text = screen_text(app, 100, 30);
+        text.lines()
+            .find(|l| l.contains("Build the site"))
+            .unwrap()
+            .trim_end()
+            .to_string()
+    };
+    // Under a second it says nothing.
+    app.tick(NOW + 500);
+    let line = call_line(&mut app);
+    assert!(line.contains("Build the site   "), "{line}");
+    // Not yet: Ctrl-B is the cursor's. How long it has run shows already.
     app.tick(NOW + 1000);
-    assert!(!screen_text(&mut app, 100, 30).contains("ctrl-b background"));
+    let line = call_line(&mut app);
+    assert!(line.contains("Build the site  1s   "), "{line}");
     assert!(app.handle_key(ctrl_b).is_empty());
 
     app.tick(NOW + 3500);
-    let text = screen_text(&mut app, 100, 30);
-    let line = text.lines().find(|l| l.contains("Build the site")).unwrap();
-    assert!(line.contains("ctrl-b background"), "{text}");
+    let line = call_line(&mut app);
+    assert!(
+        line.contains("Build the site  3s · ctrl-b background"),
+        "{line}"
+    );
     let fx = app.handle_key(ctrl_b);
     assert!(
         matches!(&fx[..], [Effect::Action { item, action, args: Some(args), .. }]

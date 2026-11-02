@@ -198,10 +198,16 @@ pub struct Chat {
     mouse: Option<((usize, usize), (usize, usize))>,
     /// The item whose first line says Ctrl-B sends its command to the background.
     background_hint: Option<String>,
+    /// When each tool call started (its `tool_call` record), by item ref: a running one says
+    /// how long it has run.
+    started: HashMap<String, i64>,
 }
 
+/// A running call shows how long it has run once it has taken this long.
+const ELAPSED_AFTER_MS: i64 = 1000;
+
 /// What the line of a command Ctrl-B can send to the background ends with.
-const BACKGROUND_HINT: &str = "  ctrl-b background";
+const BACKGROUND_HINT: &str = "ctrl-b background";
 
 impl Chat {
     pub fn new() -> Chat {
@@ -782,11 +788,25 @@ impl Chat {
                 match now_ms {
                     Some(now) if e.thinking => out.push(thinking_line(line, now, &self.palette)),
                     Some(now) if e.running && at == e.offset => {
-                        let mut lit = sweep(line, now, &self.palette);
-                        if self.background_hint.as_deref() == Some(e.r#ref.as_str()) {
-                            lit = with_hint(lit, self.width, &self.palette);
-                        }
-                        out.push(lit);
+                        let lit = sweep(line, now, &self.palette);
+                        let ran = self
+                            .started
+                            .get(&e.r#ref)
+                            .map(|started| now - started)
+                            .filter(|ms| *ms >= ELAPSED_AFTER_MS)
+                            .map(crate::agents::elapsed);
+                        let background = self.background_hint.as_deref() == Some(e.r#ref.as_str());
+                        let hint = match (ran, background) {
+                            (Some(ran), true) => format!("  {ran} · {BACKGROUND_HINT}"),
+                            (Some(ran), false) => format!("  {ran}"),
+                            (None, true) => format!("  {BACKGROUND_HINT}"),
+                            (None, false) => String::new(),
+                        };
+                        out.push(if hint.is_empty() {
+                            lit
+                        } else {
+                            with_hint(lit, &hint, self.width, &self.palette)
+                        });
                     }
                     _ if picked_file == Some(at) => out.push(picked_line(line, self.width)),
                     _ if picked_reply.as_ref().is_some_and(|r| r.contains(&at)) => {
@@ -908,6 +928,11 @@ impl Chat {
     /// The item (`c-<call id>`) whose command Ctrl-B would send to the background, if any.
     pub fn set_background_hint(&mut self, r: Option<String>) {
         self.background_hint = r;
+    }
+
+    /// A tool call started at `ts` (its first `tool_call` record): item `c-<call id>`.
+    pub fn tool_started(&mut self, r: &str, ts: i64) {
+        self.started.entry(r.to_string()).or_insert(ts);
     }
 
     /// Picks the n-th target (counted from the end when negative) and scrolls to it: a reply
@@ -1279,9 +1304,10 @@ fn thinking_line(line: &Line<'static>, now_ms: i64, p: &Palette) -> Line<'static
     Line::from(spans)
 }
 
-/// The line with [`BACKGROUND_HINT`] at its end, the line cut to make room when it is long.
-fn with_hint(line: Line<'static>, width: usize, p: &Palette) -> Line<'static> {
-    let hint = Span::styled(BACKGROUND_HINT, Style::new().fg(p.muted));
+/// The line with `hint` (how long it has run, [`BACKGROUND_HINT`]) at its end, the line cut to
+/// make room when it is long.
+fn with_hint(line: Line<'static>, hint: &str, width: usize, p: &Palette) -> Line<'static> {
+    let hint = Span::styled(hint.to_string(), Style::new().fg(p.muted));
     let room = width.saturating_sub(hint.width());
     if room < 10 {
         return line;

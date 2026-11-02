@@ -946,6 +946,10 @@ impl App {
         if !known {
             self.toast_subagent(record);
         }
+        if let SessionEvent::ToolCall(call) = &record.event {
+            self.chat
+                .tool_started(&format!("c-{}", call.tool_call_id), record.ts);
+        }
         match &record.event {
             SessionEvent::UserMessage(message) => {
                 // A turn starts with it, or the running one took it in.

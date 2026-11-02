@@ -327,7 +327,12 @@ fn the_focused_list_has_its_keys_and_a_reversed_selection() {
 fn many_subagents_fold_and_nothing_overflows() {
     let mut a = Agents::default();
     for i in 0..9 {
-        a.on_record(&started(&format!("d{i}"), "neo", 0, json!({"model": "a-very-long-model-name-indeed"})));
+        a.on_record(&started(
+            &format!("d{i}"),
+            "neo",
+            0,
+            json!({"model": "a-very-long-model-name-indeed"}),
+        ));
     }
     a.on_record(&rec("s1", 2, 1, json!({"type": "tool_call", "toolCallId": "t", "title": "日本語の長いタイトルがここにあります", "kind": "other", "status": "pending", "agent": "neo"})));
     let lines = a.lines(60, 100_000, &MAIN, true, &styles());
