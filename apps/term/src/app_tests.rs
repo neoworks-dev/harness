@@ -2010,6 +2010,34 @@ fn overview() -> App {
 }
 
 #[test]
+fn context_and_cost_are_in_the_sidebar_while_it_shows_else_under_the_input() {
+    let mut app = overview();
+    app.handle_event(record(
+        "s1",
+        9,
+        NOW,
+        SessionEvent::Usage(
+            serde_json::from_value(serde_json::json!({
+                "contextUsed": 190000, "contextSize": 1000000, "cost": 5.61
+            }))
+            .unwrap(),
+        ),
+    ));
+    let text = screen_text(&mut app, 150, 40);
+    assert!(app.sessions_shown);
+    assert!(text.contains("ctx 19%  190,000 / 1,000,000"), "{text}");
+    assert!(!app.status_lines(150)[1].to_string().contains("ctx"));
+    // Too narrow for the sidebar: under the input again.
+    screen_text(&mut app, 70, 40);
+    assert!(!app.sessions_shown);
+    assert!(
+        app.status_lines(70)[1]
+            .to_string()
+            .contains("ctx 19% · $5.61")
+    );
+}
+
+#[test]
 fn the_sessions_sidebar_lists_every_session_newest_first() {
     let mut app = overview();
     let text = screen_text(&mut app, 120, 24);

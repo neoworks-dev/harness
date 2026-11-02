@@ -368,6 +368,9 @@ pub struct App {
     /// The sessions sidebar is switched on (it still needs a wide enough terminal).
     sessions_on: bool,
     sessions_shown: bool,
+    /// The session's details (context, cost) are drawn at the foot of the sessions sidebar:
+    /// the status line leaves them out.
+    details_shown: bool,
     /// The working line is drawn over the input box: the status line leaves it out.
     work_shown: bool,
     /// Event cards in the top right of the chat.
@@ -486,6 +489,7 @@ impl App {
             sessions: Sessions::default(),
             sessions_on: true,
             sessions_shown: false,
+            details_shown: false,
             work_shown: false,
             toasts: Toasts::default(),
             toasted_jobs: HashSet::new(),
@@ -3196,6 +3200,7 @@ impl App {
         }
         self.toasts
             .draw(frame.buffer_mut(), areas.chat, self.now_ms, &self.styles);
+        self.details_shown = false;
         if let Some(left) = areas.left {
             self.draw_sessions(frame, left);
         }
@@ -3295,6 +3300,7 @@ impl App {
         } else {
             0
         };
+        self.details_shown = details_h > 0;
         // A row of the fill above the list.
         let top = u16::from(self.styles.fills() && area.height - details_h > 4);
         let list = Rect {
@@ -4138,7 +4144,8 @@ impl App {
             settings: &self.settings,
             harness: &self.harness,
             agent_in,
-            usage: self.widgets.usage_line(),
+            // The sessions sidebar's foot has them when it shows.
+            usage: self.widgets.usage_line().filter(|_| !self.details_shown),
             working_secs: self.working_secs().filter(|_| !self.work_shown),
             spinner: SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()],
             queued: self.waiting.len(),
