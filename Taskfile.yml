@@ -77,7 +77,9 @@ tasks:
   daemon:
     desc: Run the daemon in the foreground
     cmds:
-      - bun run daemon/src/main.ts
+      # Under a name of its own, like `neo up` does: plain bun gets SCHED_IDLE from CachyOS's ananicy-cpp.
+      - mkdir -p bin && ln -sfn "$(command -v bun)" bin/neo-daemon
+      - bin/neo-daemon run daemon/src/main.ts
 
   gui:
     desc: Open the desktop app the way users do (`neo gui`), after building it

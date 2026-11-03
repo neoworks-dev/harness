@@ -410,6 +410,36 @@ func TestDaemonCommandAndRoot(t *testing.T) {
 	}
 }
 
+func TestNamedRuntime(t *testing.T) {
+	dir := t.TempDir()
+	bun := filepath.Join(dir, "bun")
+	if err := os.WriteFile(bun, nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	found := func(string) (string, error) { return bun, nil }
+	link := filepath.Join(dir, daemonName)
+	// Made, then kept as it is.
+	for range 2 {
+		if got := namedRuntime(dir, "bun", found); got != link {
+			t.Fatalf("got %q, want %q", got, link)
+		}
+		if target, err := os.Readlink(link); err != nil || target != bun {
+			t.Fatalf("link points at %q, %v; want %q", target, err, bun)
+		}
+	}
+	// A bun that moved: the link follows it.
+	moved := filepath.Join(dir, "bun2")
+	namedRuntime(dir, "bun", func(string) (string, error) { return moved, nil })
+	if target, _ := os.Readlink(link); target != moved {
+		t.Errorf("link points at %q after bun moved, want %q", target, moved)
+	}
+	// No bun on PATH: plain bun, which fails to start with a clear error.
+	missing := func(string) (string, error) { return "", errors.New("not found") }
+	if got := namedRuntime(dir, "bun", missing); got != "bun" {
+		t.Errorf("got %q without bun, want bun", got)
+	}
+}
+
 func TestDataDir(t *testing.T) {
 	for _, tc := range []struct {
 		env  map[string]string

@@ -86,6 +86,41 @@ func daemonCommand(getenv func(string) string, exe func() (string, error)) ([]st
 	return []string{"bun", "run", filepath.Join(root, daemonEntry)}, nil
 }
 
+// daemonName is the process name the daemon runs under. As plain `bun` it gets
+// whatever the system does to bun: CachyOS's ananicy-cpp runs every bun process
+// under SCHED_IDLE, which starves the daemon whenever the CPU is busy.
+const daemonName = "neo-daemon"
+
+// namedRuntime links bun into dir as daemonName and returns the link: a
+// process is named after the path it was exec'd by, not the file behind it.
+// It returns bun itself if the link can't be made.
+func namedRuntime(dir, bun string, lookPath func(string) (string, error)) string {
+	if lookPath == nil {
+		lookPath = osexec.LookPath
+	}
+	target, err := lookPath(bun)
+	if err != nil {
+		return bun
+	}
+	if target, err = filepath.Abs(target); err != nil {
+		return bun
+	}
+	link := filepath.Join(dir, daemonName)
+	if current, err := os.Readlink(link); err == nil && current == target {
+		return link
+	}
+	tmp := link + ".tmp"
+	_ = os.Remove(tmp)
+	if err := os.Symlink(target, tmp); err != nil {
+		return bun
+	}
+	if err := os.Rename(tmp, link); err != nil {
+		_ = os.Remove(tmp)
+		return bun
+	}
+	return link
+}
+
 // daemonRoot is the repo the daemon runs from: NEO_ROOT, else found from exe.
 func daemonRoot(getenv func(string) string, exe func() (string, error)) (string, error) {
 	if root := getenv("NEO_ROOT"); root != "" {
@@ -158,6 +193,9 @@ func ensureDaemon(ctx context.Context, socket string, e cliEnv) (pid int, starte
 	dir := dataDir(e.Getenv)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return 0, false, "", err
+	}
+	if e.Getenv("NEO_DAEMON_CMD") == "" {
+		argv[0] = namedRuntime(dir, argv[0], e.LookPath)
 	}
 	logPath = filepath.Join(dir, "daemon.log")
 	logf, err := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
