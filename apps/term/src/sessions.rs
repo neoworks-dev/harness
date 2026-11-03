@@ -7,7 +7,9 @@
 //! `list_sessions` at start and `session.changed` events afterwards. A session that finished a
 //! turn while another one was shown stays marked until it is shown. Sessions idle for over a day
 //! fold into a `▸ N older` row at the end of their group, which Enter opens and closes; the
-//! shown session, a running one and one that finished unseen never fold.
+//! shown session, a running one and one that finished unseen never fold. Enter on a repository's
+//! header folds the whole of it, worktrees too, into that one line (`▸ name · N`, with a spinner
+//! or a dot when one of them is running or finished unseen); Enter again unfolds it.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -125,8 +127,12 @@ pub fn place_of(cwd: &str) -> Place {
 /// One line-group of the drawn list.
 #[derive(Debug, Clone, PartialEq)]
 enum Entry {
-    /// A repository (or directory) name.
-    Cluster(String),
+    /// A repository (or directory): its path, its name and, when it is folded, what is in it.
+    Cluster {
+        repo: String,
+        name: String,
+        folded: Option<Folded>,
+    },
     /// A worktree of the cluster above.
     Group(String),
     /// A session: index into the list, whether it is drawn as a child of the one above,
@@ -146,6 +152,15 @@ enum Entry {
     },
 }
 
+/// What a folded repository holds: how many sessions, and whether one is running or finished
+/// unseen.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Folded {
+    count: usize,
+    running: bool,
+    finished: bool,
+}
+
 impl Entry {
     fn height(&self) -> usize {
         match self {
@@ -156,17 +171,18 @@ impl Entry {
         }
     }
 
-    /// A row the keys can be on.
-    fn pickable(&self) -> bool {
+    /// A row of the list itself, not a header over one.
+    fn is_row(&self) -> bool {
         matches!(self, Entry::Session { .. } | Entry::Older { .. })
     }
 }
 
-/// A row the keys can be on: `+ New chat`, a session (its id) or a group's older row (the
-/// group's key).
+/// A row the keys can be on: `+ New chat`, a repository's header (its path), a session (its id)
+/// or a group's older row (the group's key).
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Pick {
     New,
+    Cluster(String),
     Session(String),
     Older(String),
 }
@@ -189,6 +205,8 @@ pub struct Sessions {
     selected: Option<Pick>,
     /// The groups whose older sessions are shown.
     opened: HashSet<String>,
+    /// The repositories folded into their header.
+    folded: HashSet<String>,
     /// What the folding was worked out for: the shown session, and the minute.
     current: String,
     minute: i64,
@@ -351,7 +369,11 @@ impl Sessions {
         let mut starts = Vec::new();
         // `+ New chat`, pinned under the header, comes first.
         let mut visual = vec![Pick::New];
-        let mut put = |key: String, group: &Group, entries: &mut Vec<Entry>| {
+        let put = |key: String,
+                   group: &Group,
+                   entries: &mut Vec<Entry>,
+                   visual: &mut Vec<Pick>,
+                   starts: &mut Vec<usize>| {
             if group.is_empty() {
                 return;
             }
@@ -395,13 +417,50 @@ impl Sessions {
             }
         };
         for (repo, cluster) in ordered {
-            entries.push(Entry::Cluster(base(repo).to_string()));
-            put(repo.to_string(), &cluster.main, &mut entries);
+            let folded = self.folded.contains(repo).then(|| {
+                let all: Vec<_> = cluster
+                    .main
+                    .iter()
+                    .chain(cluster.worktrees.values().flat_map(|(_, g)| g))
+                    .map(|&i| &self.list[i])
+                    .collect();
+                Folded {
+                    count: all.len(),
+                    running: all.iter().any(|i| i.state == SessionState::Running),
+                    finished: all.iter().any(|i| self.finished.contains(&i.id)),
+                }
+            });
+            if folded.is_some() {
+                // A folded repository is a group of its own for `[` and `]`: its header.
+                starts.push(visual.len());
+            }
+            visual.push(Pick::Cluster(repo.to_string()));
+            entries.push(Entry::Cluster {
+                repo: repo.to_string(),
+                name: base(repo).to_string(),
+                folded,
+            });
+            if folded.is_some() {
+                continue;
+            }
+            put(
+                repo.to_string(),
+                &cluster.main,
+                &mut entries,
+                &mut visual,
+                &mut starts,
+            );
             let mut trees: Vec<_> = cluster.worktrees.into_iter().collect();
             trees.sort_by(|a, b| b.1.0.cmp(&a.1.0).then_with(|| a.0.cmp(b.0)));
             for (name, (_, group)) in trees {
                 entries.push(Entry::Group(name.to_string()));
-                put(format!("{repo}\0{name}"), &group, &mut entries);
+                put(
+                    format!("{repo}\0{name}"),
+                    &group,
+                    &mut entries,
+                    &mut visual,
+                    &mut starts,
+                );
             }
         }
         self.entries = entries;
@@ -438,10 +497,22 @@ impl Sessions {
         self.visual.iter().position(|p| p == pick)
     }
 
+    /// The row standing for a session: itself, or its repository's header when that is folded.
+    fn row_of(&self, id: &str) -> Pick {
+        let folded = self
+            .get(id)
+            .and_then(|info| self.places.get(&info.cwd))
+            .filter(|place| self.folded.contains(&place.repo));
+        match folded {
+            Some(place) => Pick::Cluster(place.repo.clone()),
+            None => Pick::Session(id.to_string()),
+        }
+    }
+
     /// The sidebar gets focus: the keys start on the shown session.
     pub fn focus(&mut self, current: &str) {
         let at = self
-            .visual_pos(Some(&Pick::Session(current.to_string())))
+            .visual_pos(Some(&self.row_of(current)))
             .or((!self.visual.is_empty()).then_some(0));
         self.selected = at.map(|p| self.visual[p].clone());
     }
@@ -512,6 +583,12 @@ impl Sessions {
                     }
                     self.build();
                 }
+                Some(Pick::Cluster(repo)) => {
+                    if !self.folded.remove(&repo) {
+                        self.folded.insert(repo);
+                    }
+                    self.build();
+                }
                 None => return SessionsAction::Leave,
             },
             KeyCode::Esc | KeyCode::Char('q') | KeyCode::Left | KeyCode::Char('h') => {
@@ -526,7 +603,7 @@ impl Sessions {
     /// its group) is inside `rows` lines.
     fn scroll_to(&mut self, anchor: usize, rows: usize) {
         let mut from = anchor;
-        while from > 0 && !self.entries[from - 1].pickable() {
+        while from > 0 && !self.entries[from - 1].is_row() {
             from -= 1;
         }
         if from < self.top || self.top > anchor {
@@ -612,7 +689,7 @@ impl Sessions {
                         .is_some();
             }
         }
-        let shown = Pick::Session(current.to_string());
+        let shown = self.row_of(current);
         let anchor_pick = if focused {
             self.selected.as_ref()
         } else {
@@ -622,7 +699,8 @@ impl Sessions {
             let pick = match e {
                 Entry::Session { index, .. } => Pick::Session(self.list[*index].id.clone()),
                 Entry::Older { group, .. } => Pick::Older(group.clone()),
-                _ => return false,
+                Entry::Cluster { repo, .. } => Pick::Cluster(repo.clone()),
+                Entry::Group(_) => return false,
             };
             Some(&pick) == anchor_pick
         });
@@ -638,17 +716,36 @@ impl Sessions {
             }
             used += entry.height();
             match entry {
-                Entry::Cluster(name) => {
+                Entry::Cluster { repo, name, folded } => {
                     // The repository's name, then a rule to the edge: it parts the projects.
-                    let name = truncate(name, w.saturating_sub(3));
-                    let rule = "─".repeat(w.saturating_sub(width(&name) + 2));
-                    out.push(Line::from(vec![
-                        Span::styled(
-                            format!(" {name} "),
-                            Style::new().add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled(rule, styles.border),
-                    ]));
+                    // Folded, a `▸` before it and what it holds after it.
+                    let mut tail = Vec::new();
+                    if let Some(f) = folded {
+                        tail.push(Span::styled(format!(" · {}", f.count), styles.muted));
+                        if f.running {
+                            tail.push(Span::styled(format!(" {}", look.spinner), styles.accent));
+                        } else if f.finished {
+                            tail.push(Span::styled(" ●", styles.success));
+                        }
+                    }
+                    let lead = if folded.is_some() { " ▸ " } else { " " };
+                    let tail_w: usize = tail.iter().map(|s| width(&s.content)).sum();
+                    let name = truncate(name, w.saturating_sub(width(lead) + tail_w + 2));
+                    let rule =
+                        "─".repeat(w.saturating_sub(width(lead) + width(&name) + tail_w + 1));
+                    let mut line = Line::from(Span::styled(
+                        format!("{lead}{name}"),
+                        Style::new().add_modifier(Modifier::BOLD),
+                    ));
+                    line.spans.extend(tail);
+                    line.spans.push(Span::raw(" "));
+                    line.spans.push(Span::styled(rule, styles.border));
+                    if focused && self.selected.as_ref() == Some(&Pick::Cluster(repo.clone())) {
+                        for span in &mut line.spans {
+                            span.style = span.style.add_modifier(Modifier::REVERSED);
+                        }
+                    }
+                    out.push(line);
                 }
                 Entry::Group(name) => {
                     out.push(Line::from(vec![
@@ -1202,6 +1299,9 @@ mod tests {
             SessionsAction::New,
             "stops at the start"
         );
+        // Then the directory's header, then its first session.
+        s.key(press(KeyCode::Char('j')));
+        assert_eq!(s.selected, Some(Pick::Cluster("/w".into())));
         s.key(press(KeyCode::Char('j')));
         match s.key(press(KeyCode::Enter)) {
             SessionsAction::Open(i) => assert_eq!(i.id, "a"),
@@ -1367,7 +1467,7 @@ mod tests {
             s.entries
                 .iter()
                 .filter_map(|e| match e {
-                    Entry::Cluster(n) => Some(n.clone()),
+                    Entry::Cluster { name, .. } => Some(name.clone()),
                     Entry::Group(n) => Some(format!("  {n}")),
                     Entry::Session { .. } | Entry::Older { .. } => None,
                 })
@@ -1391,17 +1491,18 @@ mod tests {
         s.focus("b");
         let selected = |s: &Sessions| match s.selected.clone().unwrap() {
             Pick::Session(id) => id,
-            Pick::Older(group) => group,
+            Pick::Older(group) | Pick::Cluster(group) => group,
             Pick::New => "new".into(),
         };
         let mut walk = vec![selected(&s)];
-        for _ in 0..5 {
+        for _ in 0..6 {
             s.key(press(KeyCode::Down));
             walk.push(selected(&s));
         }
         // Main checkout (b, a: newest first), the worktree's session and its child (c, d), then
-        // dark (e) and the notes (f): the order on screen.
-        assert_eq!(walk, ["b", "a", "c", "d", "e", "f"]);
+        // dark (e), the notes' header and its session (f): the order on screen. Worktree
+        // headers are skipped.
+        assert_eq!(walk, ["b", "a", "c", "d", "e", "/w/notes", "f"]);
         s.key(press(KeyCode::Down));
         assert_eq!(selected(&s), "f", "stops at the end");
 
@@ -1427,6 +1528,44 @@ mod tests {
             SessionsAction::Open(i) => assert_eq!(i.id, "b"),
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn enter_on_a_repositorys_header_folds_it_and_its_worktrees() {
+        let mut s = grouped();
+        let lines = |s: &mut Sessions, focused: bool| {
+            text(&s.render(29, 40, &look("a", focused), &styles()))
+                .iter()
+                .map(|l| l.trim_end().to_string())
+                .collect::<Vec<_>>()
+        };
+        s.focus("b");
+        s.key(press(KeyCode::Up));
+        assert_eq!(s.selected, Some(Pick::Cluster("/w/site".into())));
+        assert_eq!(s.key(press(KeyCode::Enter)), SessionsAction::Redraw);
+        // Five sessions in it, one running.
+        assert_eq!(
+            lines(&mut s, false),
+            [
+                " Sessions · 6",
+                "   + New chat",
+                " ▸ site · 5 ◐ ───────────────",
+                " notes ──────────────────────",
+                "   Scratch                now",
+                "",
+            ]
+        );
+        // The keys go from the folded header straight to the next repository.
+        s.key(press(KeyCode::Down));
+        assert_eq!(s.selected, Some(Pick::Cluster("/w/notes".into())));
+        s.key(press(KeyCode::Char('[')));
+        assert_eq!(s.selected, Some(Pick::Cluster("/w/site".into())));
+        // Focused again, the keys start on the header standing for the shown session.
+        s.focus("a");
+        assert_eq!(s.selected, Some(Pick::Cluster("/w/site".into())));
+        s.key(press(KeyCode::Enter));
+        assert_eq!(lines(&mut s, false)[2], " site ───────────────────────");
+        assert_eq!(lines(&mut s, false).len(), 19);
     }
 
     #[test]
