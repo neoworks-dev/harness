@@ -20,7 +20,7 @@ keys (any key closes this)
   chat (tab)                j/k pick · y copy as markdown · enter: in vim keys (v/V, y) · q
   ctrl-s                    put the draft aside / bring it back
   ctrl-g                    sessions sidebar: focus (up/down, enter, n new chat, esc)
-  alt-m, alt-1…9, alt-'     mark the chat, show marked chat n, list the marks
+  alt-m, ctrl-g 1…9, alt-'  mark the chat, show marked chat n (alt-1…9 too), the marks
   ctrl-r                    GitHub issues and pull requests (/github)
   ctrl-x, down              subagents under the prompt: enter opens, x stops (down: empty input)
   diff view                 n/p hunk · h/l/0 sideways · s split/unified · f whole file · q close

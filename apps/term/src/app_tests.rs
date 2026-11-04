@@ -3194,3 +3194,27 @@ fn the_marks_dialog_lists_the_marked_chats_over_the_chat() {
     app.handle_key(with(KeyCode::Char('\''), KeyModifiers::ALT));
     snapshot("marks-dialog-90x20", &screen_text(&mut app, 90, 20));
 }
+
+#[test]
+fn ctrl_g_then_a_digit_shows_the_marked_chat() {
+    let mut app = app();
+    app.set_sessions(vec![info("s1", "One", 2), info("s2", "Two", 1)]);
+    app.marks = vec!["s2".into()];
+    // With the sidebar drawn (it has the keys then) and without.
+    screen(&mut app, 120, 30);
+    app.handle_key(with(KeyCode::Char('g'), KeyModifiers::CONTROL));
+    assert_eq!(app.focus, Some(Focus::Sessions));
+    let fx = app.handle_key(key(KeyCode::Char('1')));
+    assert!(matches!(&fx[..], [Effect::Switch { to, .. }] if to == "s2"));
+    assert_eq!(app.focus, None);
+
+    let mut app = self::app();
+    app.set_sessions(vec![info("s1", "One", 2), info("s2", "Two", 1)]);
+    app.marks = vec!["s2".into()];
+    app.handle_key(with(KeyCode::Char('g'), KeyModifiers::CONTROL));
+    let fx = app.handle_key(key(KeyCode::Char('1')));
+    assert!(matches!(&fx[..], [Effect::Switch { to, .. }] if to == "s2"));
+    // A digit typed later is text.
+    app.handle_key(key(KeyCode::Char('1')));
+    assert_eq!(app.editor_text(), "1");
+}

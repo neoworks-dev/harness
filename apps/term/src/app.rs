@@ -367,11 +367,13 @@ pub struct App {
     switcher: Switcher,
     focus: Option<Focus>,
     sessions: Sessions,
-    /// The marked sessions, slot 1 first: Alt-1…Alt-9 show them, Alt-m marks the shown one,
+    /// The marked sessions, slot 1 first: Ctrl-G 1…9 (or Alt-1…9) show them, Alt-m marks the shown one,
     /// Alt-' lists them (kept in `term.json`).
     marks: Vec<String>,
     /// The row the marks list is on.
     marks_sel: usize,
+    /// The last key was Ctrl-G: a digit now shows a marked chat.
+    after_ctrl_g: bool,
     /// The sessions sidebar is switched on (it still needs a wide enough terminal).
     sessions_on: bool,
     sessions_shown: bool,
@@ -497,6 +499,7 @@ impl App {
             sessions: Sessions::default(),
             marks,
             marks_sel: 0,
+            after_ctrl_g: false,
             sessions_on: true,
             sessions_shown: false,
             details_shown: false,
@@ -1678,6 +1681,21 @@ impl App {
             }
             return fx;
         }
+        // Ctrl-G then a digit: the same, where the terminal takes Alt-digit (kitty does). The
+        // digit counts whether or not Ctrl-G got the sidebar the keys.
+        let ctrl_g = key.code == KeyCode::Char('g') && key.modifiers == KeyModifiers::CONTROL;
+        let after_ctrl_g = std::mem::replace(&mut self.after_ctrl_g, ctrl_g);
+        if after_ctrl_g
+            && self.overlay == Overlay::None
+            && let KeyCode::Char(d @ '1'..='9') = key.code
+        {
+            if self.focus == Some(Focus::Sessions) {
+                self.focus = None;
+            }
+            self.sessions_wanted = false;
+            self.jump_to_mark(usize::from(d as u8 - b'1'), &mut fx);
+            return fx;
+        }
         let ctrl_c =
             key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL);
         if !ctrl_c && self.quit_armed_until > 0 {
@@ -2283,7 +2301,7 @@ impl App {
             }
             None => {
                 self.marks.push(self.session.clone());
-                format!("marked: alt-{}", self.marks.len())
+                format!("marked: ctrl-g {}", self.marks.len())
             }
         };
         self.save_marks(&said);
@@ -4370,8 +4388,8 @@ impl App {
                 "sessions sidebar: focus (up/down, enter, n new chat, esc)",
             ),
             key(
-                "alt-m, alt-1…9, alt-'",
-                "mark the chat, show marked chat n, list the marks",
+                "alt-m, ctrl-g 1…9, alt-'",
+                "mark the chat, show marked chat n (alt-1…9 too), the marks",
             ),
             key("ctrl-r", "GitHub issues and pull requests (/github)"),
             key(
