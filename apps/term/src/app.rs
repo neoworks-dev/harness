@@ -1665,9 +1665,19 @@ impl App {
             self.resize_pane(by);
             return fx;
         }
-        // Harpoon's marks: Ctrl-1…Ctrl-9 show a marked session (kitty's keyboard protocol tells
-        // them from the digits; elsewhere Alt-1…Alt-9 or Ctrl-G and the digit), Alt-m marks the
-        // shown one, Alt-' lists them.
+        // Harpoon's marks: Ctrl-E opens and closes the quick menu (as harpoon's is usually
+        // bound; End goes to the line's end), Ctrl-1…Ctrl-9 show a marked session (kitty's
+        // keyboard protocol tells them from the digits; elsewhere Alt-1…Alt-9 or Ctrl-G and the
+        // digit), Alt-m marks the shown one, Alt-' lists them too.
+        if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('e') {
+            self.overlay = if self.overlay == Overlay::Marks {
+                Overlay::None
+            } else {
+                self.marks_sel = 0;
+                Overlay::Marks
+            };
+            return fx;
+        }
         if key.modifiers.contains(KeyModifiers::CONTROL)
             && let KeyCode::Char(d @ '1'..='9') = key.code
         {
@@ -2340,8 +2350,8 @@ impl App {
         }
     }
 
-    /// The marks list: j/k move, J/K move the mark itself, d unmarks, Enter (or its number)
-    /// shows it, Esc closes.
+    /// The marks list: j/k move, J/K move the mark itself, d unmarks, a marks or unmarks the
+    /// shown chat, Enter (or its number) shows it, Esc (or Ctrl-E again) closes.
     fn marks_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
         let len = self.marks.len();
         let at = self.marks_sel.min(len.saturating_sub(1));
@@ -2370,6 +2380,10 @@ impl App {
                 self.save_marks("unmarked");
             }
             KeyCode::Enter if len > 0 => self.jump_to_mark(at, fx),
+            KeyCode::Char('a') => {
+                self.toggle_mark();
+                self.marks_sel = self.marks.len().saturating_sub(1);
+            }
             KeyCode::Char(d @ '1'..='9') => self.jump_to_mark(usize::from(d as u8 - b'1'), fx),
             _ => {}
         }
@@ -2735,7 +2749,6 @@ impl App {
                 return false;
             }
             'a' => self.editor.line_start(),
-            'e' => self.editor.line_end(),
             'b' => self.editor.left(),
             'f' => self.editor.right(),
             'w' => self.editor.delete_word_back(),
@@ -4353,7 +4366,7 @@ impl App {
             ),
             key("ctrl-j, shift-enter", "new line"),
             key("up / down", "move in the text, then through history"),
-            key("ctrl-a / ctrl-e", "start / end of line"),
+            key("ctrl-a / end", "start / end of line"),
             key("alt-b / alt-f", "word left / right"),
             key(
                 "ctrl-w / ctrl-u / ctrl-k",
@@ -4395,8 +4408,8 @@ impl App {
                 "sessions sidebar: focus (up/down, enter, n new chat, esc)",
             ),
             key(
-                "alt-m, ctrl-1…9, alt-'",
-                "mark the chat, show marked chat n (or ctrl-g n), the marks",
+                "ctrl-e, alt-m, ctrl-1…9",
+                "marked chats (a adds, 1-9 shows), mark the chat, show chat n",
             ),
             key("ctrl-r", "GitHub issues and pull requests (/github)"),
             key(
@@ -4453,7 +4466,7 @@ impl App {
         };
         // Inside the border and a column of padding each side.
         let w = usize::from(dialog.width.saturating_sub(4));
-        let keys = " enter show · J/K reorder · d unmark · esc ";
+        let keys = " enter show · a add · J/K reorder · d unmark · esc ";
         let block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -4468,7 +4481,7 @@ impl App {
         let mut lines = Vec::new();
         if self.marks.is_empty() {
             lines.push(Line::from(Span::styled(
-                "nothing marked yet: alt-m marks the shown chat",
+                "nothing marked yet: a marks the shown chat",
                 self.styles.muted,
             )));
         }

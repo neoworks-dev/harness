@@ -3,7 +3,7 @@ keys (any key closes this)
   alt-enter, ctrl-enter     send into the running turn, not after it
   ctrl-j, shift-enter       new line
   up / down                 move in the text, then through history
-  ctrl-a / ctrl-e           start / end of line
+  ctrl-a / end              start / end of line
   alt-b / alt-f             word left / right
   ctrl-w / ctrl-u / ctrl-k  delete word / to line start / to line end
   pgup / pgdn               scroll the chat (also the mouse wheel; dragging copies text)
@@ -20,7 +20,7 @@ keys (any key closes this)
   chat (tab)                j/k pick · y copy as markdown · enter: in vim keys (v/V, y) · q
   ctrl-s                    put the draft aside / bring it back
   ctrl-g                    sessions sidebar: focus (up/down, enter, n new chat, esc)
-  alt-m, ctrl-1…9, alt-'    mark the chat, show marked chat n (or ctrl-g n), the marks
+  ctrl-e, alt-m, ctrl-1…9   marked chats (a adds, 1-9 shows), mark the chat, show chat n
   ctrl-r                    GitHub issues and pull requests (/github)
   ctrl-x, down              subagents under the prompt: enter opens, x stops (down: empty input)
   diff view                 n/p hunk · h/l/0 sideways · s split/unified · f whole file · q close

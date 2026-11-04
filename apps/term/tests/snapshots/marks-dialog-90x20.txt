@@ -4,7 +4,7 @@
  site ───────────────────────    ╭ Marks ──────────────────────────────────────────────╮
 ▎  2 Fix the parser       16m    │ › 1   Write the docs  ~/site  16m ago               │
                                  │   2 ● Fix the parser  ~/site  16m ago               │
-   1 Write the docs       16m    ╰────────── enter show · J/K reorder · d unmark · esc ╯
+   1 Write the docs       16m    ╰── enter show · a add · J/K reorder · d unmark · esc ╯
 
 
 

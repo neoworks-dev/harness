@@ -378,7 +378,8 @@ fn readline_keys() {
     assert_eq!(app.editor_text(), "one ");
     app.handle_key(ctrl('a'));
     type_str(&mut app, ">");
-    app.handle_key(ctrl('e'));
+    // Ctrl-E is the marks' quick menu: End goes to the line's end.
+    app.handle_key(key(KeyCode::End));
     type_str(&mut app, "!");
     assert_eq!(app.editor_text(), ">one !");
     app.handle_key(ctrl('u'));
@@ -3226,4 +3227,22 @@ fn ctrl_and_a_digit_shows_the_marked_chat_at_once() {
     app.marks = vec!["s2".into()];
     let fx = app.handle_key(with(KeyCode::Char('1'), KeyModifiers::CONTROL));
     assert!(matches!(&fx[..], [Effect::Switch { to, .. }] if to == "s2"));
+}
+
+#[test]
+fn ctrl_e_opens_the_quick_menu_where_a_marks_the_shown_chat() {
+    let mut app = app();
+    app.set_sessions(vec![info("s1", "One", 2), info("s2", "Two", 1)]);
+    let ctrl_e = with(KeyCode::Char('e'), KeyModifiers::CONTROL);
+    app.handle_key(ctrl_e);
+    assert_eq!(app.overlay, Overlay::Marks);
+    app.handle_key(key(KeyCode::Char('a')));
+    assert_eq!(app.marks, ["s1"]);
+    app.handle_key(ctrl_e);
+    assert_eq!(app.overlay, Overlay::None);
+    // The menu is how to get there: Ctrl-E, then the digit.
+    app.begin_session("s2", "/home/me/site");
+    app.handle_key(ctrl_e);
+    let fx = app.handle_key(key(KeyCode::Char('1')));
+    assert!(matches!(&fx[..], [Effect::Switch { to, .. }] if to == "s1"));
 }
