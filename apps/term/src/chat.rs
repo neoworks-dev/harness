@@ -201,6 +201,9 @@ pub struct Chat {
     /// When each tool call started (its `tool_call` record), by item ref: a running one says
     /// how long it has run.
     started: HashMap<String, i64>,
+    /// Tool calls that read a file, by item ref: Ctrl-O leaves them their summary, else every
+    /// file the agent looked at would show in full.
+    reads: std::collections::HashSet<String>,
 }
 
 /// A running call shows how long it has run once it has taken this long.
@@ -584,7 +587,7 @@ impl Chat {
             let ckey = CacheKey {
                 rev,
                 width,
-                expanded: opts.expanded,
+                expanded: opts.expanded && !self.reads.contains(r),
                 thoughts: opts.show_thoughts,
                 icons: opts.icons,
                 split_diffs: opts.split_diffs,
@@ -933,6 +936,28 @@ impl Chat {
     /// A tool call started at `ts` (its first `tool_call` record): item `c-<call id>`.
     pub fn tool_started(&mut self, r: &str, ts: i64) {
         self.started.entry(r.to_string()).or_insert(ts);
+    }
+
+    /// The tool call of item `r` reads a file: Ctrl-O doesn't show what it read.
+    pub fn tool_reads(&mut self, r: &str) {
+        if self.reads.insert(r.to_string()) {
+            self.generation += 1;
+        }
+    }
+
+    /// While scrolled up, the items at or above the view's last line, oldest first; None while
+    /// following the tail (everything is).
+    pub fn items_through_view(&self) -> Option<&[ViewItem]> {
+        self.top?;
+        let bottom = self.top() + self.height;
+        let items = &self.state.items;
+        // The first item that starts below the view; a turn's changes aren't an item.
+        let below = self.entries.partition_point(|e| e.offset < bottom);
+        let end = self.entries[below..]
+            .iter()
+            .find_map(|e| items.iter().position(|i| i.r#ref == e.r#ref))
+            .unwrap_or(items.len());
+        Some(&items[..end])
     }
 
     /// Picks the n-th target (counted from the end when negative) and scrolls to it: a reply
@@ -2199,6 +2224,48 @@ mod tests {
         assert!(c.following());
         assert!(!c.has_unseen());
         assert_eq!(texts(&c).last().unwrap(), "fresh");
+    }
+
+    #[test]
+    fn ctrl_o_leaves_what_a_read_read_out() {
+        let long = |r: &str, label: &str| -> ViewItem {
+            serde_json::from_value(json!({
+                "ref": r, "kind": "tool", "label": label, "state": "done",
+                "component": {"type":"code","code":"1\n2\n3\n4\n5\n6\n7\n8"}
+            }))
+            .unwrap()
+        };
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(vec![
+            long("c-r", "read a.rs"),
+            long("c-f", "fetch https://a"),
+        ]));
+        c.tool_reads("c-r");
+        let expanded = ChatOpts {
+            expanded: true,
+            ..opts()
+        };
+        c.layout(80, 40, &expanded);
+        let t = texts(&c);
+        let fetch = t.iter().position(|l| l == "fetch https://a").unwrap();
+        assert!(t[..fetch].len() <= 3, "the read stays its summary: {t:?}");
+        assert!(t[fetch..].iter().any(|l| l.trim() == "8"), "{t:?}");
+    }
+
+    #[test]
+    fn scrolled_up_the_items_through_the_view_are_known() {
+        let mut c = many(10);
+        assert_eq!(c.items_through_view(), None, "following: everything");
+        c.page_up();
+        c.layout(40, 10, &opts());
+        let seen = c.items_through_view().unwrap();
+        let last = &seen.last().unwrap().r#ref;
+        assert!(
+            texts(&c)
+                .iter()
+                .any(|l| *l == format!("line {}", &last[1..]))
+        );
+        assert!(seen.len() < 10);
     }
 
     #[test]

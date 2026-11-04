@@ -91,6 +91,9 @@ pub(crate) struct TerminalState {
     back: Option<usize>,
     /// How far up the last draw could go (for the keys).
     max_back: Cell<usize>,
+    /// The chat is scrolled up: the newest command shown is the one at that point (its run's
+    /// id; None: there was none yet). None shows them all.
+    upto: Option<Option<String>>,
 }
 
 impl TerminalState {
@@ -234,13 +237,24 @@ impl TerminalState {
             pin_head(&mut shown, &all, &[(0, all.len())], start);
             return shown;
         }
+        // Where the chat is scrolled to, the commands up to there.
+        let runs = match &self.upto {
+            None => &self.runs[..],
+            Some(upto) => {
+                let end = upto
+                    .as_ref()
+                    .and_then(|id| self.runs.iter().position(|r| r.id == *id))
+                    .map_or(0, |at| at + 1);
+                &self.runs[..end]
+            }
+        };
         // From the newest run back, only as many as fill the view; a rule between runs.
         let mut blocks: Vec<Vec<Line<'static>>> = Vec::new();
         let mut have = 0;
         let mut complete = true;
-        for (i, run) in self.runs.iter().enumerate().rev() {
+        for (i, run) in runs.iter().enumerate().rev() {
             let mut lines = run_lines(run, width, cwd, p);
-            if i + 1 < self.runs.len() {
+            if i + 1 < runs.len() {
                 lines.push(Line::from(Span::styled(
                     "─".repeat(width),
                     Style::new().fg(p.border),
@@ -295,6 +309,25 @@ impl TerminalState {
     /// Whether the view follows the newest output.
     pub(crate) fn following(&self) -> bool {
         self.back.is_none()
+    }
+
+    /// Whether a run of this toolCallId is kept.
+    pub(crate) fn has_run(&self, id: &str) -> bool {
+        self.runs.iter().any(|r| r.id == id)
+    }
+
+    /// The chat scrolled: show the commands up to the run `Some(id)` (`Some(None)`: none), or
+    /// (None) all of them. Moving starts at the end of what is shown again.
+    pub(crate) fn set_upto(&mut self, upto: Option<Option<String>>) {
+        if self.upto != upto {
+            self.upto = upto;
+            self.back = None;
+        }
+    }
+
+    /// Whether the commands end where the chat is scrolled to, not with the newest.
+    pub(crate) fn with_chat(&self) -> bool {
+        self.upto.is_some()
     }
 
     /// Reads what the running background commands wrote since the last time; true when any
@@ -799,6 +832,21 @@ mod tests {
                 "100%"
             ]
         );
+    }
+
+    #[test]
+    fn scrolled_with_the_chat_the_commands_end_where_it_is() {
+        let mut t = TerminalState::default();
+        for (id, out) in [("1", "one"), ("2", "two")] {
+            t.on_call(&call(id, "execute", "echo"));
+            t.on_update(&update(id, Some("completed"), out, None), 0);
+        }
+        t.set_upto(Some(Some("1".into())));
+        assert_eq!(shown(&t, 20, 10), ["$ echo", "one"]);
+        t.set_upto(Some(None));
+        assert!(shown(&t, 20, 10).is_empty(), "no command yet there");
+        t.set_upto(None);
+        assert_eq!(shown(&t, 20, 10).last().unwrap(), "two");
     }
 
     #[test]

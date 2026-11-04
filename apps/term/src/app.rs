@@ -951,8 +951,11 @@ impl App {
             self.toast_subagent(record);
         }
         if let SessionEvent::ToolCall(call) = &record.event {
-            self.chat
-                .tool_started(&format!("c-{}", call.tool_call_id), record.ts);
+            let r = format!("c-{}", call.tool_call_id);
+            self.chat.tool_started(&r, record.ts);
+            if call.kind == neo_protocol::ToolKind::Read {
+                self.chat.tool_reads(&r);
+            }
         }
         match &record.event {
             SessionEvent::UserMessage(message) => {
@@ -3209,6 +3212,8 @@ impl App {
                 Some(Focus::Panel(panel)) => Some(panel),
                 _ => None,
             };
+            // Scrolled up, the terminal shows the commands as they were at that point.
+            self.widgets.follow_chat(self.chat.items_through_view());
             self.widgets
                 .draw_sidebar(frame, side, panel, areas.terminal);
         }

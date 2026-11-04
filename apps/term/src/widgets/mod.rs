@@ -525,6 +525,20 @@ impl Widgets {
         self.terminal.set_view(id);
     }
 
+    /// Where the chat is scrolled to: the items at or above its view's last line (None: it
+    /// follows the tail). The terminal panel ends with the newest command among them.
+    pub fn follow_chat(&mut self, seen: Option<&[neo_protocol::ViewItem]>) {
+        let upto = seen.map(|items| {
+            items
+                .iter()
+                .rev()
+                .filter_map(|i| i.r#ref.strip_prefix("c-"))
+                .find(|id| self.terminal.has_run(id))
+                .map(str::to_string)
+        });
+        self.terminal.set_upto(upto);
+    }
+
     /// Whether there is a command to show in the terminal panel.
     pub fn has_commands(&self) -> bool {
         self.terminal.has_any()
@@ -540,6 +554,11 @@ impl Widgets {
         if self.terminal.view().is_some() {
             title.spans.push(Span::styled(
                 " · background command · esc all commands",
+                Style::new().fg(p.muted),
+            ));
+        } else if self.terminal.with_chat() {
+            title.spans.push(Span::styled(
+                " · where the chat is",
                 Style::new().fg(p.muted),
             ));
         }
