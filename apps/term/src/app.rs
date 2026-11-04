@@ -1665,8 +1665,15 @@ impl App {
             self.resize_pane(by);
             return fx;
         }
-        // Harpoon's marks: Alt-1…Alt-9 show a marked session, Alt-m marks the shown one, Alt-'
-        // lists them.
+        // Harpoon's marks: Ctrl-1…Ctrl-9 show a marked session (kitty's keyboard protocol tells
+        // them from the digits; elsewhere Alt-1…Alt-9 or Ctrl-G and the digit), Alt-m marks the
+        // shown one, Alt-' lists them.
+        if key.modifiers.contains(KeyModifiers::CONTROL)
+            && let KeyCode::Char(d @ '1'..='9') = key.code
+        {
+            self.jump_to_mark(usize::from(d as u8 - b'1'), &mut fx);
+            return fx;
+        }
         if key.modifiers.contains(KeyModifiers::ALT)
             && self.overlay != Overlay::Marks
             && let KeyCode::Char(c @ ('1'..='9' | 'm' | '\'')) = key.code
@@ -2301,7 +2308,7 @@ impl App {
             }
             None => {
                 self.marks.push(self.session.clone());
-                format!("marked: ctrl-g {}", self.marks.len())
+                format!("marked: ctrl-{}", self.marks.len())
             }
         };
         self.save_marks(&said);
@@ -4388,8 +4395,8 @@ impl App {
                 "sessions sidebar: focus (up/down, enter, n new chat, esc)",
             ),
             key(
-                "alt-m, ctrl-g 1…9, alt-'",
-                "mark the chat, show marked chat n (alt-1…9 too), the marks",
+                "alt-m, ctrl-1…9, alt-'",
+                "mark the chat, show marked chat n (or ctrl-g n), the marks",
             ),
             key("ctrl-r", "GitHub issues and pull requests (/github)"),
             key(

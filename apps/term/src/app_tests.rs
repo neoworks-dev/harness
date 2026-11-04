@@ -3218,3 +3218,12 @@ fn ctrl_g_then_a_digit_shows_the_marked_chat() {
     app.handle_key(key(KeyCode::Char('1')));
     assert_eq!(app.editor_text(), "1");
 }
+
+#[test]
+fn ctrl_and_a_digit_shows_the_marked_chat_at_once() {
+    let mut app = app();
+    app.set_sessions(vec![info("s1", "One", 2), info("s2", "Two", 1)]);
+    app.marks = vec!["s2".into()];
+    let fx = app.handle_key(with(KeyCode::Char('1'), KeyModifiers::CONTROL));
+    assert!(matches!(&fx[..], [Effect::Switch { to, .. }] if to == "s2"));
+}
