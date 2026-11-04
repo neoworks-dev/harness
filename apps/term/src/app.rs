@@ -188,6 +188,8 @@ enum Overlay {
     None,
     Help,
     Switcher,
+    /// The marked sessions (Alt-').
+    Marks,
 }
 
 /// What has the keyboard besides the editor.
@@ -365,6 +367,11 @@ pub struct App {
     switcher: Switcher,
     focus: Option<Focus>,
     sessions: Sessions,
+    /// The marked sessions, slot 1 first: Alt-1…Alt-9 show them, Alt-m marks the shown one,
+    /// Alt-' lists them (kept in `term.json`).
+    marks: Vec<String>,
+    /// The row the marks list is on.
+    marks_sel: usize,
     /// The sessions sidebar is switched on (it still needs a wide enough terminal).
     sessions_on: bool,
     sessions_shown: bool,
@@ -441,6 +448,7 @@ pub struct App {
 impl App {
     pub fn new(config: Config) -> App {
         let theme = config.prefs.theme();
+        let marks = config.prefs.marks();
         let palette = if config.no_color {
             plain_palette()
         } else {
@@ -487,6 +495,8 @@ impl App {
             switcher: Switcher::new(&session),
             focus: None,
             sessions: Sessions::default(),
+            marks,
+            marks_sel: 0,
             sessions_on: true,
             sessions_shown: false,
             details_shown: false,
@@ -804,7 +814,13 @@ impl App {
                 }
                 self.sessions.upsert(info);
             }
-            Event::SessionRemoved(id) => self.sessions.remove(&id),
+            Event::SessionRemoved(id) => {
+                self.sessions.remove(&id);
+                if let Some(at) = self.marks.iter().position(|m| *m == id) {
+                    self.marks.remove(at);
+                    let _ = self.prefs.set_marks(&self.marks);
+                }
+            }
             Event::Session(record) => {
                 if record.session == self.session {
                     self.on_record(&record);
@@ -1646,6 +1662,22 @@ impl App {
             self.resize_pane(by);
             return fx;
         }
+        // Harpoon's marks: Alt-1…Alt-9 show a marked session, Alt-m marks the shown one, Alt-'
+        // lists them.
+        if key.modifiers.contains(KeyModifiers::ALT)
+            && self.overlay != Overlay::Marks
+            && let KeyCode::Char(c @ ('1'..='9' | 'm' | '\'')) = key.code
+        {
+            match c {
+                'm' => self.toggle_mark(),
+                '\'' => {
+                    self.marks_sel = 0;
+                    self.overlay = Overlay::Marks;
+                }
+                d => self.jump_to_mark(usize::from(d as u8 - b'1'), &mut fx),
+            }
+            return fx;
+        }
         let ctrl_c =
             key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL);
         if !ctrl_c && self.quit_armed_until > 0 {
@@ -1661,6 +1693,7 @@ impl App {
         match self.overlay {
             Overlay::Help => self.overlay = Overlay::None,
             Overlay::Switcher => self.switcher_key(key, &mut fx),
+            Overlay::Marks => self.marks_key(key, &mut fx),
             Overlay::None if self.note.is_some() => self.note_key(key, &mut fx),
             Overlay::None => match self.focus {
                 Some(focus) => self.panel_key(focus, key, &mut fx),
@@ -1796,7 +1829,7 @@ impl App {
                 .chars()
                 .filter(|c| !c.is_control())
                 .for_each(|c| self.switcher.type_char(c)),
-            Overlay::Help => self.overlay = Overlay::None,
+            Overlay::Help | Overlay::Marks => self.overlay = Overlay::None,
             Overlay::None if self.note.is_some() => {
                 if let Some(note) = self.note.as_mut() {
                     note.text.extend(text.chars().filter(|c| !c.is_control()));
@@ -2230,6 +2263,82 @@ impl App {
             cwd: info.cwd,
             move_agent: true,
         });
+    }
+
+    /// Marks the shown session (the last slot), or unmarks it.
+    fn toggle_mark(&mut self) {
+        let said = match self.marks.iter().position(|m| *m == self.session) {
+            Some(at) => {
+                self.marks.remove(at);
+                "unmarked".to_string()
+            }
+            None => {
+                self.marks.push(self.session.clone());
+                format!("marked: alt-{}", self.marks.len())
+            }
+        };
+        self.save_marks(&said);
+    }
+
+    /// Keeps the marks in `term.json`, and says `said` (or why they weren't kept).
+    fn save_marks(&mut self, said: &str) {
+        match self.prefs.set_marks(&self.marks) {
+            Ok(()) => self.notify(said, false),
+            Err(why) => self.notify(format!("{said} (not kept: {why})"), true),
+        }
+    }
+
+    /// Shows the session marked in slot `n` (from 0).
+    fn jump_to_mark(&mut self, n: usize, fx: &mut Vec<Effect>) {
+        let Some(id) = self.marks.get(n).cloned() else {
+            self.notify(format!("nothing marked at {} (alt-m marks)", n + 1), false);
+            return;
+        };
+        match self.sessions.get(&id).cloned() {
+            Some(info) => {
+                self.overlay = Overlay::None;
+                self.open_session(info, fx);
+            }
+            None => {
+                self.marks.remove(n);
+                self.save_marks(&format!("the chat at {} is gone: unmarked", n + 1));
+            }
+        }
+    }
+
+    /// The marks list: j/k move, J/K move the mark itself, d unmarks, Enter (or its number)
+    /// shows it, Esc closes.
+    fn marks_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
+        let len = self.marks.len();
+        let at = self.marks_sel.min(len.saturating_sub(1));
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => self.overlay = Overlay::None,
+            KeyCode::Char('\'') if key.modifiers.contains(KeyModifiers::ALT) => {
+                self.overlay = Overlay::None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.marks_sel = (at + 1).min(len.saturating_sub(1))
+            }
+            KeyCode::Up | KeyCode::Char('k') => self.marks_sel = at.saturating_sub(1),
+            KeyCode::Char('J') if at + 1 < len => {
+                self.marks.swap(at, at + 1);
+                self.marks_sel = at + 1;
+                self.save_marks(&format!("moved to {}", at + 2));
+            }
+            KeyCode::Char('K') if at > 0 => {
+                self.marks.swap(at, at - 1);
+                self.marks_sel = at - 1;
+                self.save_marks(&format!("moved to {at}"));
+            }
+            KeyCode::Char('d') | KeyCode::Delete if len > 0 => {
+                self.marks.remove(at);
+                self.marks_sel = at.min(self.marks.len().saturating_sub(1));
+                self.save_marks("unmarked");
+            }
+            KeyCode::Enter if len > 0 => self.jump_to_mark(at, fx),
+            KeyCode::Char(d @ '1'..='9') => self.jump_to_mark(usize::from(d as u8 - b'1'), fx),
+            _ => {}
+        }
     }
 
     fn open_switcher(&mut self, fx: &mut Vec<Effect>) {
@@ -3197,6 +3306,7 @@ impl App {
                 Overlay::None => self.draw_chat(frame, areas.chat),
                 Overlay::Help => self.draw_help(frame, areas.chat),
                 Overlay::Switcher => self.draw_switcher(frame, areas.chat),
+                Overlay::Marks => self.draw_marks(frame, areas.chat),
             }
             self.draw_menu(frame, areas.chat);
             self.draw_mentions(frame, areas.chat);
@@ -3328,6 +3438,7 @@ impl App {
             focused: self.focus == Some(Focus::Sessions),
             spinner,
             now_ms: self.now_ms,
+            marks: &self.marks,
         };
         let lines = self.sessions.render(
             usize::from(list.width),
@@ -4246,6 +4357,10 @@ impl App {
                 "ctrl-g",
                 "sessions sidebar: focus (up/down, enter, n new chat, esc)",
             ),
+            key(
+                "alt-m, alt-1…9, alt-'",
+                "mark the chat, show marked chat n, list the marks",
+            ),
             key("ctrl-r", "GitHub issues and pull requests (/github)"),
             key(
                 "ctrl-x, down",
@@ -4282,6 +4397,53 @@ impl App {
             .into_iter()
             .map(|l| fit_line(l, usize::from(area.width)))
             .collect::<Vec<_>>();
+        frame.render_widget(Paragraph::new(lines), area);
+    }
+
+    /// The marked sessions, by slot, over the chat.
+    fn draw_marks(&self, frame: &mut Frame, area: Rect) {
+        let w = usize::from(area.width);
+        let mut lines = vec![Line::from(vec![
+            Span::styled("marks", Modifier::BOLD),
+            Span::styled(
+                "  enter or 1-9 show · j/k move · J/K reorder · d unmark · esc close",
+                self.styles.muted,
+            ),
+        ])];
+        if self.marks.is_empty() {
+            lines.push(Line::from(Span::styled(
+                "nothing marked yet: alt-m marks the shown chat",
+                self.styles.muted,
+            )));
+        }
+        let sel = self.marks_sel.min(self.marks.len().saturating_sub(1));
+        for (i, id) in self.marks.iter().enumerate() {
+            let selected = i == sel;
+            let (marker, style) = if selected {
+                ("› ", self.styles.accent.add_modifier(Modifier::BOLD))
+            } else {
+                ("  ", Style::new())
+            };
+            let mut spans = vec![
+                Span::styled(marker, self.styles.accent),
+                Span::styled(format!("{} ", i + 1), self.styles.accent),
+            ];
+            let here = if *id == self.session { "● " } else { "  " };
+            spans.push(Span::styled(here, self.styles.success));
+            match self.sessions.get(id) {
+                Some(info) => {
+                    let (name, rest) = menu::session_label(info, self.home.as_deref(), self.now_ms);
+                    spans.push(Span::styled(truncate(&name, 40.min(w / 2)), style));
+                    spans.push(Span::styled(format!("  {rest}"), self.styles.muted));
+                }
+                None => spans.push(Span::styled(
+                    format!("{id} (not listed)"),
+                    self.styles.muted,
+                )),
+            }
+            lines.push(fit_line(Line::from(spans), w));
+        }
+        frame.render_widget(Clear, area);
         frame.render_widget(Paragraph::new(lines), area);
     }
 

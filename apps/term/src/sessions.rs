@@ -224,6 +224,16 @@ pub struct Look<'a> {
     pub focused: bool,
     pub spinner: char,
     pub now_ms: i64,
+    /// The marked sessions (Alt-m), slot 1 first: each has its slot's number before its title.
+    pub marks: &'a [String],
+}
+
+impl Look<'_> {
+    /// `1 ` before the title of the session in slot 1, and so on.
+    fn slot(&self, id: &str) -> Option<String> {
+        let at = self.marks.iter().position(|m| m == id)?;
+        Some(format!("{} ", at + 1))
+    }
 }
 
 impl Sessions {
@@ -864,6 +874,9 @@ fn row(
     if child {
         first.push(Span::styled("↳ ", styles.muted));
     }
+    if let Some(slot) = look.slot(&info.id) {
+        first.push(Span::styled(slot, styles.accent));
+    }
     let title_w = width(&title);
     first.push(Span::styled(title, title_style));
     if let Some(age) = age {
@@ -920,7 +933,7 @@ fn row(
 }
 
 /// A row's room in `w` cells: for the title, the age beside it (when it fits), and in all after
-/// the margin and the child marker.
+/// the margin, the child marker and the slot's number.
 fn title_room(
     info: &SessionInfo,
     child: bool,
@@ -929,7 +942,8 @@ fn title_room(
 ) -> (usize, Option<String>, usize) {
     let left = w
         .saturating_sub(3)
-        .saturating_sub(if child { 2 } else { 0 });
+        .saturating_sub(if child { 2 } else { 0 })
+        .saturating_sub(look.slot(&info.id).as_deref().map_or(0, width));
     let age = age(info.last_activity, look.now_ms);
     let age_w = width(&age);
     if age_w + 2 <= left {
@@ -1036,7 +1050,22 @@ mod tests {
             focused,
             spinner: '◐',
             now_ms: 60_000,
+            marks: &[],
         }
+    }
+
+    #[test]
+    fn a_marked_session_has_its_slot_before_its_title() {
+        let mut s = Sessions::default();
+        s.set_all(vec![info("a", "Alpha", 2), info("b", "Beta", 1)]);
+        let marks = ["b".to_string()];
+        let look = Look {
+            marks: &marks,
+            ..look("a", false)
+        };
+        let text = neo_renderer_ratatui::plain_text(&s.render(40, 20, &look, &styles())).join("\n");
+        assert!(text.contains("1 Beta"), "{text}");
+        assert!(!text.contains("1 Alpha"), "{text}");
     }
 
     #[test]

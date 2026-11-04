@@ -102,7 +102,7 @@ pub fn paint(buf: &mut Buffer, palette: &Palette) {
     }
 }
 
-/// Where the theme is kept: `{"theme": "light"}`. No file: nothing is kept (tests).
+/// Where the theme and the marked sessions are kept: `{"theme": "light", "marks": […]}`. No file: nothing is kept (tests).
 #[derive(Debug, Clone, Default)]
 pub struct Prefs {
     file: Option<PathBuf>,
@@ -129,7 +129,7 @@ impl Prefs {
     }
 
     /// Sets one key, keeping the others.
-    fn write(&self, key: &str, value: &str) -> std::io::Result<()> {
+    fn write(&self, key: &str, value: impl Into<serde_json::Value>) -> std::io::Result<()> {
         let Some(file) = &self.file else {
             return Ok(());
         };
@@ -153,6 +153,23 @@ impl Prefs {
 
     pub fn set_theme(&self, theme: Theme) -> std::io::Result<()> {
         self.write("theme", theme.name())
+    }
+
+    /// The marked sessions (Alt-m), slot 1 first: `{"marks": ["id", …]}`.
+    pub fn marks(&self) -> Vec<String> {
+        self.read()
+            .get("marks")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn set_marks(&self, marks: &[String]) -> std::io::Result<()> {
+        self.write("marks", marks.to_vec())
     }
 }
 
@@ -188,6 +205,9 @@ mod tests {
         assert_eq!(prefs.theme(), Theme::Dark);
         prefs.set_theme(Theme::Light).unwrap();
         assert_eq!(prefs.theme(), Theme::Light);
+        prefs.set_marks(&["s2".into(), "s1".into()]).unwrap();
+        assert_eq!(prefs.marks(), ["s2", "s1"]);
+        assert_eq!(prefs.theme(), Theme::Light, "the other keys stay");
         std::fs::write(dir.join("term.json"), "not json").unwrap();
         assert_eq!(prefs.theme(), Theme::Dark);
         std::fs::remove_dir_all(dir).unwrap();
