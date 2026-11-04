@@ -12,6 +12,7 @@ import {
   type GuestConfig,
   mcpResultText,
   storedConversation,
+  withNotebookEdit,
 } from "../src/guests/guests.ts";
 import { GUEST_PROMPT, MAIN_PROMPT } from "../src/guests/prompt.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
@@ -477,6 +478,31 @@ describe("adapter shapes", () => {
     });
     expect(describeCall("mcp__neo__wait", undefined)).toEqual({ title: "wait for messages" });
     expect(describeCall("Edit a.ts", undefined)).toEqual({ title: "Edit a.ts" });
+  });
+
+  test("Claude Code's NotebookEdit is an edit that shows the new cell", () => {
+    const bare = { toolCallId: "t", title: "NotebookEdit", kind: "other", content: [] };
+    expect(withNotebookEdit(bare)).toMatchObject({ kind: "edit", title: "NotebookEdit" });
+    const rawInput = {
+      notebook_path: "/w/nb.ipynb",
+      cell_id: "c3",
+      new_source: "print(1)",
+      edit_mode: "replace",
+    };
+    expect(withNotebookEdit({ ...bare, rawInput })).toMatchObject({
+      kind: "edit",
+      title: "Edit cell c3 in /w/nb.ipynb",
+      locations: [{ path: "/w/nb.ipynb" }],
+      content: [{ type: "content", content: { type: "text", text: "print(1)" } }],
+    });
+    // Its own result stays; a deleted cell has no source to show.
+    const result = [{ type: "content", content: { type: "text", text: "Updated cell c3" } }];
+    expect(withNotebookEdit({ ...bare, rawInput, content: result }).content).toEqual(result);
+    const deleted = withNotebookEdit({ ...bare, rawInput: { ...rawInput, edit_mode: "delete" } });
+    expect(deleted).toMatchObject({ title: "Delete cell c3 in /w/nb.ipynb", content: [] });
+    // Anything else passes untouched.
+    const edit = { toolCallId: "e", title: "Edit a.ts", kind: "edit" };
+    expect(withNotebookEdit(edit)).toBe(edit);
   });
 
   test("an MCP result in rawOutput (Codex) becomes the call's text", () => {

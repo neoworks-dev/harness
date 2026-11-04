@@ -508,6 +508,37 @@ export function describeCall(title: string, rawInput: unknown): { title: string;
 }
 
 /**
+ * Claude Code's NotebookEdit as an edit with something to show. Its adapter describes the call
+ * only to JetBrains AIR; anyone else gets the bare title `NotebookEdit`, kind `other` and no
+ * content. The input has it all: the notebook, the cell, insert/replace/delete and the new
+ * source, which goes in as the content until the call's own result comes.
+ */
+export function withNotebookEdit(call: Record<string, unknown>): Record<string, unknown> {
+  const tool =
+    isRecord(call._meta) && isRecord(call._meta.claudeCode)
+      ? str(call._meta.claudeCode.toolName)
+      : undefined;
+  if (tool !== "NotebookEdit" && call.title !== "NotebookEdit") return call;
+  const out: Record<string, unknown> = { ...call, kind: "edit" };
+  const input = isRecord(call.rawInput) ? call.rawInput : undefined;
+  const path = str(input?.notebook_path);
+  if (path === undefined) return out;
+  const mode = str(input?.edit_mode);
+  const verbs: Record<string, string> = { insert: "Insert", delete: "Delete" };
+  const words = [verbs[mode ?? ""] ?? "Edit", "cell"];
+  const cell = str(input?.cell_id);
+  if (cell !== undefined) words.push(cell);
+  out.title = `${words.join(" ")} in ${path}`;
+  out.locations = [{ path }];
+  const source = str(input?.new_source);
+  const empty = !Array.isArray(call.content) || call.content.length === 0;
+  if (mode !== "delete" && source !== undefined && empty) {
+    out.content = [{ type: "content", content: { type: "text", text: source } }];
+  }
+  return out;
+}
+
+/**
  * Whether a permission request is for one of neo's own MCP tools (tools_search, tools_call,
  * apps_launch, apps_focus, delegate, models, send_message, wait), as Claude Code
  * (`mcp__neo__tools_call`, also in its `_meta.claudeCode.toolName`) and Codex
@@ -1775,7 +1806,8 @@ export class GuestManager {
   }
 
   /** One ACP session's update into the log: what the agent says, its plan, its tool calls. */
-  private streamUpdate(run: Stream, update: Record<string, unknown>): void {
+  private streamUpdate(run: Stream, acpUpdate: Record<string, unknown>): void {
+    const update = withNotebookEdit(acpUpdate);
     const { agent, prefix } = run;
     const kind = update.sessionUpdate;
     if (kind === "agent_message_chunk" || kind === "agent_thought_chunk") {
@@ -1870,7 +1902,7 @@ export class GuestManager {
       agent: guest.main ? undefined : guest.name,
       prefix: guest.main ? `${guest.name}-main` : guest.name,
     };
-    const call: Record<string, unknown> = Object.assign({}, params.toolCall);
+    const call: Record<string, unknown> = withNotebookEdit(Object.assign({}, params.toolCall));
     const content = toContent(call.content, this.options.storeImage);
     const callKind = str(call.kind);
     const kind: ToolKind | undefined =
