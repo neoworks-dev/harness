@@ -2103,7 +2103,7 @@ impl App {
                 }
             }
             KeyCode::Char('c') if ctrl => self.ctrl_c(fx),
-            KeyCode::Char('o') if ctrl => self.expanded = !self.expanded,
+            KeyCode::Char('o') if ctrl => self.toggle_expanded(),
             KeyCode::Char('t') if ctrl => self.show_thoughts = !self.show_thoughts,
             _ if !ctrl => {
                 if let Some(t) = self.transcript.as_mut() {
@@ -2263,6 +2263,15 @@ impl App {
             cwd: info.cwd,
             move_agent: true,
         });
+    }
+
+    /// Ctrl-O: tool results in full, or back. Scrolled up, the view stays on what it showed.
+    fn toggle_expanded(&mut self) {
+        self.expanded = !self.expanded;
+        self.chat.keep_place();
+        if let Some(t) = self.transcript.as_mut() {
+            t.chat.keep_place();
+        }
     }
 
     /// Marks the shown session (the last slot), or unmarks it.
@@ -2664,7 +2673,7 @@ impl App {
                 return false;
             }
             'o' => {
-                self.expanded = !self.expanded;
+                self.toggle_expanded();
                 return false;
             }
             't' => {
@@ -2918,7 +2927,7 @@ impl App {
         match name {
             "sessions" => self.open_switcher(fx),
             "sidebar" => self.toggle_sessions(),
-            "expand" => self.expanded = !self.expanded,
+            "expand" => self.toggle_expanded(),
             "thoughts" => self.show_thoughts = !self.show_thoughts,
             "help" => self.overlay = Overlay::Help,
             "github" => self.github.open(),

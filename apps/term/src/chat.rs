@@ -204,6 +204,9 @@ pub struct Chat {
     /// Tool calls that read a file, by item ref: Ctrl-O leaves them their summary, else every
     /// file the agent looked at would show in full.
     reads: std::collections::HashSet<String>,
+    /// The entry at the top of the view and the line of it there, to keep in place through the
+    /// next layout (Ctrl-O while scrolled up).
+    anchor: Option<(String, usize)>,
 }
 
 /// A running call shows how long it has run once it has taken this long.
@@ -686,7 +689,13 @@ impl Chat {
         self.palette = opts.palette;
         self.total = offset;
         self.layout_key = Some(key);
-        if self.top.is_some() && self.total > was_total {
+        if let Some((r, within)) = self.anchor.take()
+            && self.top.is_some()
+        {
+            if let Some(top) = self.anchored_top(&r, within) {
+                self.top = Some(top);
+            }
+        } else if self.top.is_some() && self.total > was_total {
             self.unseen = true;
         }
         if let Some(top) = self.top {
@@ -936,6 +945,37 @@ impl Chat {
     /// A tool call started at `ts` (its first `tool_call` record): item `c-<call id>`.
     pub fn tool_started(&mut self, r: &str, ts: i64) {
         self.started.entry(r.to_string()).or_insert(ts);
+    }
+
+    /// Scrolled up, the line at the top of the view stays there through the next layout, however
+    /// much the items above it grow or shrink (Ctrl-O). Following the tail, the tail stays.
+    pub fn keep_place(&mut self) {
+        if self.top.is_none() {
+            return;
+        }
+        let top = self.top();
+        let at = self
+            .entries
+            .partition_point(|e| e.offset + e.lines.len() <= top);
+        self.anchor = self
+            .entries
+            .get(at)
+            .map(|e| (e.r#ref.clone(), top.saturating_sub(e.offset)));
+    }
+
+    /// Where the kept place is now: the entry's new offset and the same line of it (its last
+    /// when it got shorter). An item folded away is found by the entry it went into.
+    fn anchored_top(&self, r: &str, within: usize) -> Option<usize> {
+        let items = &self.state.items;
+        let index = |r: &str| items.iter().position(|i| i.r#ref == r);
+        let entry = self.entries.iter().find(|e| e.r#ref == r).or_else(|| {
+            let want = index(r)?;
+            self.entries
+                .iter()
+                .rev()
+                .find(|e| index(&e.r#ref).is_some_and(|i| i <= want))
+        })?;
+        Some(entry.offset + within.min(entry.lines.len().saturating_sub(1)))
     }
 
     /// The tool call of item `r` reads a file: Ctrl-O doesn't show what it read.
@@ -2250,6 +2290,38 @@ mod tests {
         let fetch = t.iter().position(|l| l == "fetch https://a").unwrap();
         assert!(t[..fetch].len() <= 3, "the read stays its summary: {t:?}");
         assert!(t[fetch..].iter().any(|l| l.trim() == "8"), "{t:?}");
+    }
+
+    #[test]
+    fn ctrl_o_while_scrolled_up_keeps_the_line_at_the_top() {
+        let mut items = vec![
+            call("t1", "fetch https://a", "done"),
+            call("t2", "fetch https://b", "done"),
+            call("t3", "fetch https://c", "done"),
+        ];
+        items.extend((0..20).map(|i| item(&format!("a{i}"), "agent", &format!("line {i}"))));
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(items));
+        c.layout(40, 6, &opts());
+        c.scroll_up(1000);
+        c.scroll_down(4);
+        let before = texts(&c)[0].clone();
+        assert!(before.starts_with("line"), "{before}");
+        let expanded = ChatOpts {
+            expanded: true,
+            ..opts()
+        };
+        c.keep_place();
+        c.layout(40, 6, &expanded);
+        assert_eq!(
+            texts(&c)[0],
+            before,
+            "the unfolded calls above don't push it"
+        );
+        c.keep_place();
+        c.layout(40, 6, &opts());
+        assert_eq!(texts(&c)[0], before);
+        assert!(!c.has_unseen());
     }
 
     #[test]
