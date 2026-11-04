@@ -3315,7 +3315,10 @@ impl App {
                 Overlay::None => self.draw_chat(frame, areas.chat),
                 Overlay::Help => self.draw_help(frame, areas.chat),
                 Overlay::Switcher => self.draw_switcher(frame, areas.chat),
-                Overlay::Marks => self.draw_marks(frame, areas.chat),
+                Overlay::Marks => {
+                    self.draw_chat(frame, areas.chat);
+                    self.draw_marks(frame, areas.chat);
+                }
             }
             self.draw_menu(frame, areas.chat);
             self.draw_mentions(frame, areas.chat);
@@ -4409,16 +4412,35 @@ impl App {
         frame.render_widget(Paragraph::new(lines), area);
     }
 
-    /// The marked sessions, by slot, over the chat.
+    /// The marked sessions, by slot: a dialog in the middle of the chat, the keys in its frame.
     fn draw_marks(&self, frame: &mut Frame, area: Rect) {
-        let w = usize::from(area.width);
-        let mut lines = vec![Line::from(vec![
-            Span::styled("marks", Modifier::BOLD),
-            Span::styled(
-                "  enter or 1-9 show · j/k move · J/K reorder · d unmark · esc close",
-                self.styles.muted,
-            ),
-        ])];
+        use ratatui::widgets::{Block, BorderType, Borders, Padding};
+        let rows = u16::try_from(self.marks.len().max(1)).unwrap_or(u16::MAX);
+        let dialog = Rect {
+            width: area.width.saturating_sub(4).min(72),
+            height: (rows + 2).min(area.height),
+            ..area
+        };
+        let dialog = Rect {
+            x: area.x + (area.width - dialog.width) / 2,
+            y: area.y + (area.height - dialog.height) / 3,
+            ..dialog
+        };
+        // Inside the border and a column of padding each side.
+        let w = usize::from(dialog.width.saturating_sub(4));
+        let keys = " enter show · J/K reorder · d unmark · esc ";
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(self.styles.accent)
+            .title(Span::styled(
+                " Marks ",
+                self.styles.accent.add_modifier(Modifier::BOLD),
+            ))
+            .title_bottom(Line::from(Span::styled(keys, self.styles.muted)).right_aligned())
+            .style(Style::new().bg(self.styles.raised))
+            .padding(Padding::horizontal(1));
+        let mut lines = Vec::new();
         if self.marks.is_empty() {
             lines.push(Line::from(Span::styled(
                 "nothing marked yet: alt-m marks the shown chat",
@@ -4452,8 +4474,8 @@ impl App {
             }
             lines.push(fit_line(Line::from(spans), w));
         }
-        frame.render_widget(Clear, area);
-        frame.render_widget(Paragraph::new(lines), area);
+        frame.render_widget(Clear, dialog);
+        frame.render_widget(Paragraph::new(lines).block(block), dialog);
     }
 
     fn draw_switcher(&self, frame: &mut Frame, area: Rect) {

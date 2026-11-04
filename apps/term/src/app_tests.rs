@@ -3182,3 +3182,15 @@ fn a_mark_whose_chat_is_gone_is_dropped() {
     assert!(fx.is_empty());
     assert!(app.marks.is_empty());
 }
+
+#[test]
+fn the_marks_dialog_lists_the_marked_chats_over_the_chat() {
+    let mut app = app();
+    app.set_sessions(vec![
+        info("s1", "Fix the parser", 2),
+        info("s2", "Write the docs", 1),
+    ]);
+    app.marks = vec!["s2".into(), "s1".into()];
+    app.handle_key(with(KeyCode::Char('\''), KeyModifiers::ALT));
+    snapshot("marks-dialog-90x20", &screen_text(&mut app, 90, 20));
+}
