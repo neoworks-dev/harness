@@ -202,7 +202,7 @@ pub struct Chat {
     /// how long it has run.
     started: HashMap<String, i64>,
     /// Tool calls that read a file, by item ref: Ctrl-O leaves them their summary, else every
-    /// file the agent looked at would show in full.
+    /// file the agent looked at would show in full. An image read is still shown larger.
     reads: std::collections::HashSet<String>,
     /// The entry at the top of the view and the line of it there, to keep in place through the
     /// next layout (Ctrl-O while scrolled up).
@@ -590,7 +590,9 @@ impl Chat {
             let ckey = CacheKey {
                 rev,
                 width,
-                expanded: opts.expanded && !self.reads.contains(r),
+                // What a read read stays folded, unless it is a picture.
+                expanded: opts.expanded
+                    && (!self.reads.contains(r) || self.sources.contains_key(r)),
                 thoughts: opts.show_thoughts,
                 icons: opts.icons,
                 split_diffs: opts.split_diffs,
@@ -2582,6 +2584,27 @@ mod tests {
         assert!(Rc::ptr_eq(&c.entries[0].lines, &first_again));
         assert!(!Rc::ptr_eq(&c.entries[1].lines, &pic));
         assert_eq!((c.placements()[0].cols, size(&c)), (40, 10));
+    }
+
+    #[test]
+    fn ctrl_o_still_shows_an_image_a_read_read_larger() {
+        let mut c = Chat::new();
+        let read: ViewItem = serde_json::from_value(json!({
+            "ref": "c-r", "kind": "tool", "label": "Read p.png", "state": "done",
+            "component": {"type":"image","src":"/tmp/p.png","alt":"pic"}
+        }))
+        .unwrap();
+        c.apply_snapshot(snapshot(vec![read]));
+        c.tool_reads("c-r");
+        c.set_images(known(&[("/tmp/p.png", ready(400, 400))]));
+        c.layout(60, 30, &opts());
+        assert_eq!(c.placements()[0].rows, 12);
+        let open = ChatOpts {
+            expanded: true,
+            ..opts()
+        };
+        c.layout(60, 30, &open);
+        assert_eq!(c.placements()[0].rows, 20);
     }
 
     #[test]
