@@ -10,6 +10,7 @@ import type {
 } from "@neoworks-dev/neo-protocol/types";
 import { validateEnvelope } from "@neoworks-dev/neo-protocol/validate";
 import { silentLogger } from "../src/log.ts";
+import { SessionStore } from "../src/store.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { SessionView } from "../src/view/session-view.ts";
 import { type McpApp, startMcpApp } from "./mcp-app.ts";
@@ -576,6 +577,71 @@ describe("view over the bus", () => {
     c.send({ topic: "view.subscribe", id: "v2", payload: { session } });
     const fresh = c.received.at(-1);
     expect(fresh?.topic === "view.snapshot" && fresh.payload.items).toEqual(items);
+  });
+
+  test("a tail snapshot leaves older items to view.page; new items say they are appended", async () => {
+    const daemon = await startTestDaemon();
+    cleanups.push(() => daemon.stop());
+    const session = daemon.sessions.create({}).id;
+    for (const text of ["one", "two", "three"]) {
+      daemon.sessions.input(session, "cli", text);
+      await daemon.sessions.idle(session);
+    }
+    const all = daemon.views.get(session).snapshot().items;
+    expect(all.length).toBe(6);
+
+    const c = connect(daemon);
+    c.send({ topic: "view.subscribe", id: "v", payload: { session, tail: 2 } });
+    const snap = c.received.at(-1);
+    if (snap?.topic !== "view.snapshot") throw new Error("no snapshot");
+    expect(snap.payload.items).toEqual(all.slice(4));
+    expect(snap.payload.before).toBe(4);
+
+    c.send({
+      topic: "view.page",
+      id: "p",
+      payload: { session, before: all[4]!.ref, count: 3 },
+    });
+    expect(c.received.at(-1)).toEqual({
+      topic: "view.page_result",
+      id: "p",
+      payload: { session, items: all.slice(1, 4), before: 1 },
+    });
+    c.send({ topic: "view.page", id: "q", payload: { session, before: all[1]!.ref, count: 3 } });
+    expect(c.received.at(-1)).toEqual({
+      topic: "view.page_result",
+      id: "q",
+      payload: { session, items: all.slice(0, 1) },
+    });
+    c.send({ topic: "view.page", id: "r", payload: { session, before: "nope", count: 3 } });
+    expect(c.received.at(-1)).toMatchObject({ topic: "bus.error", id: "r" });
+
+    daemon.sessions.input(session, "cli", "four");
+    await daemon.sessions.idle(session);
+    const sets = c.received.flatMap((e) =>
+      e.topic === "view.patch" ? e.payload.ops.filter((op) => op.op === "set") : [],
+    );
+    expect(sets.some((op) => op.op === "set" && op.appended === true)).toBe(true);
+  });
+
+  test("a view built from a long log parses what it sends, as it sends it", () => {
+    const store = new SessionStore(":memory:");
+    const id = store.createSession({ id: "s", cwd: "/w" }).id;
+    for (let i = 0; i < 3; i++) {
+      store.append(id, { type: "user_message", app: "cli", text: `q${i}` });
+      store.append(id, { type: "agent_message_chunk", messageId: `m${i}`, text: `**bold` });
+      store.append(id, { type: "agent_message_chunk", messageId: `m${i}`, text: ` ${i}**` });
+      store.append(id, { type: "turn_ended", stopReason: "end_turn" });
+    }
+    const view = new SessionView(id, () => undefined, silentLogger);
+    view.replay(store.read(id));
+    const live = new SessionView(id, () => undefined, silentLogger);
+    for (const r of store.read(id)) live.apply(r);
+    // The tail, then the rest page by page: the same as a view that followed it live.
+    const tail = view.snapshot(2);
+    const page = view.page(tail.items[0]!.ref, 10);
+    expect([...(page?.items ?? []), ...tail.items]).toEqual(live.snapshot().items);
+    expect(view.snapshot()).toEqual(live.snapshot());
   });
 
   test("a turn that ends with nobody looking is unseen until the session is opened", async () => {

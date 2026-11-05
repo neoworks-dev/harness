@@ -106,6 +106,10 @@ const WORK_WORDS: [&str; 24] = [
 ];
 /// How long each of them stays.
 const WORK_WORD_MS: i64 = 12_000;
+/// A chat opens with its last this many items (`view.subscribe` with a tail), and pages in this
+/// many older ones whenever the view nears the oldest it has.
+pub const TAIL_ITEMS: i64 = 40;
+const PAGE_ITEMS: i64 = 40;
 /// The chat needs at least this much beside the sessions sidebar, else the sidebar is hidden.
 const CHAT_MIN_WIDTH: u16 = 52;
 /// The narrowest the plan / files column gets.
@@ -185,6 +189,12 @@ pub enum Effect {
     Unqueue {
         session: String,
     },
+    /// The `count` items of the session's view ahead of item `before` (`Msg::Page`).
+    Page {
+        session: String,
+        before: String,
+        count: i64,
+    },
     /// Open a link of a neoui button in the browser (xdg-open).
     OpenUrl(String),
     /// Open a file in the user's editor at a line, the screen handed over until it exits.
@@ -213,6 +223,11 @@ pub enum Msg {
     Unqueued {
         session: String,
         inputs: Vec<WaitingInput>,
+    },
+    /// Older items of `session`'s view, or why they didn't come.
+    Page {
+        session: String,
+        page: Result<neo_protocol::ViewPage, String>,
     },
 }
 
@@ -692,6 +707,15 @@ impl App {
         if let Some(out) = gh.out {
             self.take_github(out, &mut fx);
         }
+        // The chat opened with its latest items: older ones come as they are needed.
+        if let Some(before) = self.chat.wants_page().map(str::to_string) {
+            self.chat.paging(true);
+            fx.push(Effect::Page {
+                session: self.session.clone(),
+                before,
+                count: PAGE_ITEMS,
+            });
+        }
         if self.running || self.sessions_shown && self.sessions.any_running() {
             let frame = now_ms / SPIN_MS;
             if frame != self.last_spin {
@@ -1131,6 +1155,14 @@ impl App {
             }
             Msg::Unqueued { session, inputs } if session == self.session => self.redraft(inputs),
             Msg::Unqueued { .. } => {}
+            Msg::Page { session, page } if session == self.session => match page {
+                Ok(page) => self.chat.prepend(page),
+                Err(why) => {
+                    // Not asked again until the next snapshot: the item paged from is gone.
+                    self.notify(format!("older messages didn't load: {why}"), true);
+                }
+            },
+            Msg::Page { .. } => {}
         }
         fx
     }

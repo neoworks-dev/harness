@@ -204,7 +204,7 @@ func (c *Client) SubscribeView(ctx context.Context, session string) (*ViewSubscr
 	c.mu.Unlock()
 
 	res, err := request[protocol.ViewSnapshotMessage](ctx, c, func(id string) protocol.EnvelopeVariant {
-		return protocol.ViewSubscribe{ID: id, Payload: protocol.ViewRef{Session: session}}
+		return protocol.ViewSubscribe{ID: id, Payload: protocol.ViewSubscribeParams{Session: session}}
 	})
 	if err != nil {
 		c.mu.Lock()

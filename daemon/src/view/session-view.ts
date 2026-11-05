@@ -197,6 +197,8 @@ export class SessionView {
   private readonly items: ViewItem[] = [];
   private readonly index = new Map<string, number>();
   private readonly streams = new Map<string, Stream>();
+  /** The streams not ended yet. */
+  private readonly open = new Set<Stream>();
   private readonly calls = new Map<string, Call>();
   /** Connector results handed to guests as [result:ref]. */
   private readonly results = new Map<string, { tool: string; rawOutput: unknown }>();
@@ -214,9 +216,14 @@ export class SessionView {
   private seq = 0;
   /** A prompt was sent: settings changed from here on show in the chat. */
   private prompted = false;
-  /** Inside `replay`, and the streams whose text has grown since they were parsed. */
+  /**
+   * Inside `replay`. What replay leaves for later: the streams whose text has grown since they
+   * were parsed, and the calls updated since their item was built. Each is brought up to date
+   * when its item is next sent (`fresh`), so a long chat costs only what is shown of it.
+   */
   private replaying = false;
   private readonly unparsed = new Set<string>();
+  private readonly unbuilt = new Map<string, Call>();
   /** Told of the ops a change outside the event log makes (a neoui doc answering). */
   onOps: ((ops: ViewOp[]) => void) | undefined;
 
@@ -242,14 +249,64 @@ export class SessionView {
     return this.seq;
   }
 
-  snapshot(): ViewSnapshot {
+  /**
+   * The view as of now; with `tail`, only its last `tail` items, and in `before` how many come
+   * ahead of them (`page` has those).
+   */
+  snapshot(tail?: number): ViewSnapshot {
+    const start = tail === undefined ? 0 : Math.max(0, this.items.length - tail);
     const snapshot: ViewSnapshot = {
       session: this.session,
       seq: this.seq,
-      items: structuredClone(this.items),
+      items: this.sent(start, this.items.length),
     };
+    if (start > 0) snapshot.before = start;
     if (this.only !== undefined) snapshot.agent = this.only;
     return snapshot;
+  }
+
+  /**
+   * Up to `count` items just ahead of the item `ref`, and how many come ahead of them; undefined
+   * when there is no such item (any more).
+   */
+  page(ref: string, count: number): { items: ViewItem[]; before: number } | undefined {
+    const end = this.index.get(ref);
+    if (end === undefined) return undefined;
+    const start = Math.max(0, end - count);
+    return { items: this.sent(start, end), before: start };
+  }
+
+  /** A copy of the item `ref`, if there is one. */
+  item(ref: string): ViewItem | undefined {
+    const at = this.index.get(ref);
+    return at === undefined ? undefined : this.sent(at, at + 1)[0];
+  }
+
+  /** Copies of items `start..end`, each brought up to date first. */
+  private sent(start: number, end: number): ViewItem[] {
+    const out: ViewItem[] = [];
+    for (let i = start; i < end; i++) {
+      const ref = this.items[i]?.ref;
+      if (ref !== undefined) this.fresh(ref);
+      out.push(structuredClone(this.items[i] as ViewItem));
+    }
+    return out;
+  }
+
+  /** What replay left of item `ref` for later, done now: its message parsed, its call's item built. */
+  private fresh(ref: string): void {
+    if (this.unparsed.delete(ref)) {
+      const stream = this.streams.get(ref);
+      if (stream !== undefined) {
+        stream.blocks = this.blocksOf(stream, true);
+        this.applyOp({ op: "blocks", ref, path: [], from: 0, blocks: stream.blocks });
+      }
+    }
+    const call = this.unbuilt.get(ref);
+    if (call !== undefined) {
+      this.unbuilt.delete(ref);
+      this.applyOp({ op: "set", item: this.toolItem(call) });
+    }
   }
 
   /** Whether an event labelled with this agent (none: the session's own agent) is drawn. */
@@ -259,9 +316,9 @@ export class SessionView {
   }
 
   /**
-   * Builds the view from a session's log. Streamed text is only collected meanwhile, and each
-   * message parsed once at the end: parsing it again for every chunk, as a live stream does,
-   * made a long session take most of a second to open.
+   * Builds the view from a session's log. Streamed text is only collected meanwhile and a call's
+   * updates only noted: a message is parsed, a call's item built, once, when it is first sent
+   * (`fresh`). Doing it all here made a long session take a second or more to open.
    */
   replay(records: Iterable<SessionEventRecord>): void {
     this.replaying = true;
@@ -270,20 +327,17 @@ export class SessionView {
     } finally {
       this.replaying = false;
     }
-    for (const ref of this.unparsed) {
-      const stream = this.streams.get(ref);
-      if (stream === undefined) continue;
-      stream.blocks = this.blocksOf(stream);
-      this.applyOp({ op: "blocks", ref, path: [], from: 0, blocks: stream.blocks });
-    }
-    this.unparsed.clear();
   }
 
   /** Applies one event and returns the ops that bring a pane from the previous state to this one. */
   apply(record: SessionEventRecord): ViewOp[] {
     this.seq = record.seq;
     const ops = this.opsFor(record.event, record.seq);
-    for (const op of ops) this.applyOp(op);
+    for (const op of ops) {
+      // A client holding only the latest items tells a new one from one it left out by this.
+      if (op.op === "set" && !this.index.has(op.item.ref)) op.appended = true;
+      this.applyOp(op);
+    }
     return ops;
   }
 
@@ -434,6 +488,11 @@ export class SessionView {
     if (event.status !== undefined) call.status = event.status;
     if (event.content !== undefined) call.content = event.content;
     if (event.rawOutput !== undefined) call.rawOutput = event.rawOutput;
+    if (this.replaying) {
+      this.unbuilt.set(call.ref, call);
+      return [];
+    }
+    this.unbuilt.delete(call.ref);
     return [{ op: "set", item: this.toolItem(call) }];
   }
 
@@ -724,14 +783,20 @@ export class SessionView {
       markdown: new GrowingMarkdown(),
     };
     stream.raw += chunk;
-    if (existing && this.replaying) {
-      this.unparsed.add(ref);
-      return [];
+    if (!existing) {
+      this.streams.set(ref, stream);
+      this.open.add(stream);
     }
-    const blocks = this.blocksOf(stream);
+    if (this.replaying) {
+      this.unparsed.add(ref);
+      if (existing) return [];
+    } else if (existing) {
+      // A message replay left unparsed goes on: parsed whole first.
+      this.fresh(ref);
+    }
+    const blocks = this.replaying ? [] : this.blocksOf(stream);
     const from = firstChange(stream.blocks, blocks);
     stream.blocks = blocks;
-    this.streams.set(ref, stream);
     if (!existing) {
       const component = kind === "thought" ? text(blocks, { tone: "muted" }) : text(blocks);
       const item: ViewItem = { ref, kind, component };
@@ -744,10 +809,11 @@ export class SessionView {
   /** The turn is over: a neoui fence a message left open is a finished program. */
   private finishStreams(): ViewOp[] {
     const ops: ViewOp[] = [];
-    for (const stream of this.streams.values()) {
-      if (stream.ended) continue;
+    for (const stream of this.open) {
       stream.ended = true;
       if (stream.kind !== "agent" || !stream.raw.includes("```")) continue;
+      // Not parsed yet: it will be, as ended (`fresh`).
+      if (this.unparsed.has(stream.ref)) continue;
       const before = stream.blocks;
       const blocks = this.blocksOf(stream, true);
       const from = firstChange(before, blocks);
@@ -756,6 +822,7 @@ export class SessionView {
         ops.push({ op: "blocks", ref: stream.ref, path: [], from, blocks: blocks.slice(from) });
       }
     }
+    this.open.clear();
     return ops;
   }
 
@@ -901,6 +968,8 @@ export class SessionView {
 
   /** Doc `doc` of item `ref`, running: where typed values and $variables live. */
   program(ref: string, doc: string): Program | undefined {
+    // Its message may not be parsed yet, and its docs not running.
+    if (this.index.has(ref)) this.fresh(ref);
     return this.docs.program(ref, doc);
   }
 
@@ -913,10 +982,12 @@ export class SessionView {
     const stream = this.streams.get(ref);
     if (stream) {
       if (current.component.type !== "text") return;
+      this.unparsed.delete(ref);
       stream.blocks = this.blocksOf(stream, true);
       item = { ...current, component: { ...current.component, blocks: stream.blocks } };
     } else {
       const call = [...this.calls.values()].find((c) => c.ref === ref);
+      this.unbuilt.delete(ref);
       if (call) item = this.toolItem(call);
     }
     if (!item || JSON.stringify(item) === JSON.stringify(current)) return;

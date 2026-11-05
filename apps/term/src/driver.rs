@@ -329,6 +329,16 @@ fn work(client: &Arc<Client>, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc
                     fail("answering the question failed", err);
                 }
             }
+            Effect::Page {
+                session,
+                before,
+                count,
+            } => {
+                let page = client
+                    .view_page(&session, &before, count)
+                    .map_err(|e| e.to_string());
+                let _ = msgs.send(Msg::Page { session, page });
+            }
             Effect::OpenUrl(url) => open_url(&url, msgs),
             Effect::Unqueue { session } => match client.unqueue(&session, app) {
                 Ok(inputs) => {
@@ -405,7 +415,8 @@ fn switch(
         let _ = client.unsubscribe_view(old);
         let _ = client.unsubscribe(old);
     }
-    client.subscribe_view(to)?;
+    // The latest items only: a long chat shows at once, older ones are paged in.
+    client.subscribe_view_tail(to, crate::app::TAIL_ITEMS)?;
     client.subscribe(to, 1)?;
     if move_agent {
         client.move_agent(Some(app), Some(to))?;

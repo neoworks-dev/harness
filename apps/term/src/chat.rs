@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use neo_protocol::{
-    Component, DiffLineKind, ItemKind, ItemState, ViewItem, ViewPatch, ViewSnapshot,
+    Component, DiffLineKind, ItemKind, ItemState, ViewItem, ViewPage, ViewPatch, ViewSnapshot,
 };
 use neo_renderer_ratatui::{
     ButtonRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiDocInfo, UiState, buttons,
@@ -207,6 +207,8 @@ pub struct Chat {
     /// The entry at the top of the view and the line of it there, to keep in place through the
     /// next layout (Ctrl-O while scrolled up).
     anchor: Option<(String, usize)>,
+    /// Older items were asked for (`view.page`) and haven't come yet.
+    paging: bool,
 }
 
 /// A running call shows how long it has run once it has taken this long.
@@ -257,25 +259,61 @@ impl Chat {
     pub fn apply_snapshot(&mut self, snapshot: ViewSnapshot) {
         self.state.apply_snapshot(snapshot);
         self.loaded = true;
+        self.paging = false;
         self.revs.clear();
         self.buttons.clear();
         self.docs.clear();
         self.sources.clear();
-        for item in &self.state.items {
-            self.next_rev += 1;
-            self.revs.insert(item.r#ref.clone(), self.next_rev);
-            let b = buttons(item);
-            if !b.is_empty() {
-                self.buttons.insert(item.r#ref.clone(), b);
-            }
-            let d = focusable_docs(item);
-            if !d.is_empty() {
-                self.docs.insert(item.r#ref.clone(), d);
-            }
-            let srcs = image_sources(item);
-            if !srcs.is_empty() {
-                self.sources.insert(item.r#ref.clone(), srcs);
-            }
+        for i in 0..self.state.items.len() {
+            self.register(i);
+        }
+        self.generation += 1;
+    }
+
+    /// What the pane keeps about item `i` besides the item: its revision, buttons, docs and
+    /// images.
+    fn register(&mut self, i: usize) {
+        let item = &self.state.items[i];
+        self.next_rev += 1;
+        self.revs.insert(item.r#ref.clone(), self.next_rev);
+        let b = buttons(item);
+        if !b.is_empty() {
+            self.buttons.insert(item.r#ref.clone(), b);
+        }
+        let d = focusable_docs(item);
+        if !d.is_empty() {
+            self.docs.insert(item.r#ref.clone(), d);
+        }
+        let srcs = image_sources(item);
+        if !srcs.is_empty() {
+            self.sources.insert(item.r#ref.clone(), srcs);
+        }
+    }
+
+    /// The item to page back from when older ones should come (the snapshot was a tail): the
+    /// chat doesn't fill two screens yet, or the view is within a screen of its top. None
+    /// while a page is on its way, or when there is nothing older.
+    pub fn wants_page(&self) -> Option<&str> {
+        if self.paging || self.state.before == 0 || self.height == 0 {
+            return None;
+        }
+        let near_top = self.total < 2 * self.height || self.top() < self.height;
+        near_top.then(|| self.state.items.first().map(|i| i.r#ref.as_str()))?
+    }
+
+    /// A page was asked for: no other until it comes (or fails).
+    pub fn paging(&mut self, on: bool) {
+        self.paging = on;
+    }
+
+    /// Older items in front of the ones held; scrolled up, the view stays on what it showed.
+    pub fn prepend(&mut self, page: ViewPage) {
+        self.paging = false;
+        let held = self.state.items.len();
+        self.keep_place();
+        self.state.prepend(page);
+        for i in 0..self.state.items.len() - held {
+            self.register(i);
         }
         self.generation += 1;
     }
@@ -1649,6 +1687,7 @@ mod tests {
 
     fn snapshot(items: Vec<ViewItem>) -> ViewSnapshot {
         ViewSnapshot {
+            before: None,
             agent: None,
             session: "s".into(),
             seq: 1,
@@ -2664,6 +2703,9 @@ mod tests {
     }
 
     fn set(item: ViewItem) -> neo_protocol::ViewOp {
-        neo_protocol::ViewOp::SetViewOp(neo_protocol::SetViewOp { item })
+        neo_protocol::ViewOp::SetViewOp(neo_protocol::SetViewOp {
+            item,
+            appended: None,
+        })
     }
 }

@@ -80,6 +80,7 @@ fn prompt(r: &str, state: &str, labels: &[&str]) -> ViewItem {
 
 fn show(app: &mut App, items: Vec<ViewItem>) {
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        before: None,
         agent: None,
         session: "s1".into(),
         seq: 1,
@@ -92,7 +93,10 @@ fn patch(app: &mut App, item: ViewItem) {
         agent: None,
         session: "s1".into(),
         seq: 2,
-        ops: vec![ViewOp::SetViewOp(neo_protocol::SetViewOp { item })],
+        ops: vec![ViewOp::SetViewOp(neo_protocol::SetViewOp {
+            item,
+            appended: None,
+        })],
     }));
 }
 
@@ -1277,6 +1281,7 @@ fn events_of_other_sessions_are_ignored() {
     ));
     assert!(!app.running());
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        before: None,
         agent: None,
         session: "other".into(),
         seq: 1,
@@ -1560,6 +1565,7 @@ fn clear_starts_a_fresh_view_when_the_new_session_becomes_current() {
     // Old events are ignored, new ones shown.
     show(&mut app, vec![]);
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        before: None,
         agent: None,
         session: "s2".into(),
         seq: 1,
@@ -3173,6 +3179,53 @@ fn a_background_command_ending_gets_one_card() {
 }
 
 #[test]
+fn a_chat_opened_with_its_latest_items_pages_in_older_ones() {
+    let mut app = app();
+    app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        before: Some(2),
+        agent: None,
+        session: "s1".into(),
+        seq: 9,
+        items: vec![item("a3", "agent", "third")],
+    }));
+    screen_text(&mut app, 80, 24);
+    let fx = app.tick(NOW);
+    assert!(
+        matches!(&fx[..], [Effect::Page { session, before, .. }] if session == "s1" && before == "a3"),
+        "{fx:?}"
+    );
+    // One at a time.
+    assert!(
+        !app.tick(NOW)
+            .iter()
+            .any(|e| matches!(e, Effect::Page { .. }))
+    );
+    let page: neo_protocol::ViewPage = serde_json::from_value(json!({
+        "session": "s1",
+        "items": [
+            {"ref": "a1", "kind": "agent", "component": {"type": "text", "blocks": [
+                {"type": "paragraph", "spans": [{"text": "first"}]}]}},
+            {"ref": "a2", "kind": "agent", "component": {"type": "text", "blocks": [
+                {"type": "paragraph", "spans": [{"text": "second"}]}]}}
+        ]
+    }))
+    .unwrap();
+    app.handle_msg(Msg::Page {
+        session: "s1".into(),
+        page: Ok(page),
+    });
+    let s = screen_text(&mut app, 80, 24);
+    let at = |t: &str| s.find(t).unwrap_or_else(|| panic!("{t} in {s}"));
+    assert!(at("first") < at("second") && at("second") < at("third"));
+    // Nothing older is left.
+    assert!(
+        !app.tick(NOW)
+            .iter()
+            .any(|e| matches!(e, Effect::Page { .. }))
+    );
+}
+
+#[test]
 fn a_draft_waits_for_its_chat_to_be_shown_again() {
     let mut app = app();
     app.set_sessions(vec![info("s1", "One", 2), info("s2", "Two", 1)]);
@@ -3306,4 +3359,38 @@ fn ctrl_e_opens_the_quick_menu_where_a_marks_the_shown_chat() {
     app.handle_key(ctrl_e);
     let fx = app.handle_key(key(KeyCode::Char('1')));
     assert!(matches!(&fx[..], [Effect::Switch { to, .. }] if to == "s1"));
+}
+
+/// Not a test: how long switching to a long session takes in term, from a dump of its view and
+/// events (`sdk-rs/examples/switch_timing.rs <session> <dir>`).
+/// `SWITCH_DUMP=/tmp/dir cargo test --release -p neo-term switch_timing -- --ignored --nocapture`
+#[test]
+#[ignore = "a timing, needs SWITCH_DUMP"]
+fn switch_timing() {
+    let dir = std::env::var("SWITCH_DUMP").expect("SWITCH_DUMP");
+    let t = std::time::Instant::now();
+    let mut view: ViewSnapshot =
+        serde_json::from_str(&std::fs::read_to_string(format!("{dir}/view.json")).unwrap())
+            .unwrap();
+    let records: Vec<neo_protocol::SessionEventRecord> =
+        serde_json::from_str(&std::fs::read_to_string(format!("{dir}/events.json")).unwrap())
+            .unwrap();
+    eprintln!("parse dumps: {:?}", t.elapsed());
+    let mut app = app();
+    view.session = "s1".into();
+    let t = std::time::Instant::now();
+    app.handle_event(Event::ViewSnapshot(view));
+    eprintln!("snapshot: {:?}", t.elapsed());
+    let t = std::time::Instant::now();
+    let n = records.len();
+    for mut r in records {
+        r.session = "s1".into();
+        app.handle_event(Event::Session(r));
+    }
+    eprintln!("{n} records: {:?}", t.elapsed());
+    for i in 0..3 {
+        let t = std::time::Instant::now();
+        screen(&mut app, 160, 50);
+        eprintln!("frame {i}: {:?}", t.elapsed());
+    }
 }

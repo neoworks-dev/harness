@@ -10,6 +10,7 @@ import type {
   Theme,
   UiAction,
   UserSettings,
+  ViewPage,
 } from "@neoworks-dev/neo-protocol/types";
 import { validateEnvelope } from "@neoworks-dev/neo-protocol/validate";
 import type { AssetStore } from "./assets.ts";
@@ -529,14 +530,14 @@ export class Hub {
         this.send(client, { topic: "bus.ack", id: msg.id });
         return;
       case "view.subscribe": {
-        const { session, agent } = msg.payload;
+        const { session, agent, tail } = msg.payload;
         if (!this.parts.views) {
           this.fail(client, msg.id, "bad_request", "this daemon has no view resolver");
           return;
         }
         if (!this.sessions.info(session)) throw new NotFoundError(`no session ${session}`);
         // Synchronous, like session.subscribe: no patch can slip between snapshot and live.
-        const snapshot = this.parts.views.get(session, agent).snapshot();
+        const snapshot = this.parts.views.get(session, agent).snapshot(tail);
         client.views.add(viewKey(session, agent));
         this.send(client, { topic: "view.snapshot", id: msg.id, payload: snapshot });
         // Opened: whatever it finished is seen.
@@ -548,6 +549,21 @@ export class Hub {
         this.send(client, { topic: "bus.ack", id: msg.id });
         this.releaseIfUnused(msg.payload.session);
         return;
+      case "view.page": {
+        const { session, agent, before, count } = msg.payload;
+        if (!this.parts.views) {
+          this.fail(client, msg.id, "bad_request", "this daemon has no view resolver");
+          return;
+        }
+        if (!this.sessions.info(session)) throw new NotFoundError(`no session ${session}`);
+        const page = this.parts.views.get(session, agent).page(before, count);
+        if (!page) throw new NotFoundError(`no item ${before} in the view of ${session}`);
+        const payload: ViewPage = { session, items: page.items };
+        if (agent !== undefined) payload.agent = agent;
+        if (page.before > 0) payload.before = page.before;
+        this.send(client, { topic: "view.page_result", id: msg.id, payload });
+        return;
+      }
       case "ui.action": {
         const { action } = this.parts;
         if (!action) {

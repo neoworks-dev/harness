@@ -123,6 +123,7 @@ fn user(r: &str, text: &str) -> ViewItem {
 
 fn show(app: &mut App, items: Vec<ViewItem>) {
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        before: None,
         agent: None,
         session: "s1".into(),
         seq: 1,
@@ -135,7 +136,10 @@ fn patch(app: &mut App, item: ViewItem) {
         agent: None,
         session: "s1".into(),
         seq: 2,
-        ops: vec![ViewOp::SetViewOp(neo_protocol::SetViewOp { item })],
+        ops: vec![ViewOp::SetViewOp(neo_protocol::SetViewOp {
+            item,
+            appended: None,
+        })],
     }));
 }
 

@@ -204,10 +204,7 @@ export class ActionRunner {
       return;
     }
 
-    const item = views
-      .get(session)
-      .snapshot()
-      .items.find((i) => i.ref === ref);
+    const item = views.get(session).item(ref);
     const label = item ? findLabel(item.component, action) : undefined;
     const pressed = label === undefined ? `a button` : `"${label}"`;
     const why = known ? `${app} isn't open` : `no open app handles it`;

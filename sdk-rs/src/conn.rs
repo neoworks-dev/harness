@@ -9,11 +9,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use std::collections::HashSet;
-
 use neo_protocol::{
     AppPresence, AppPresenceMessage, BusHello, Envelope, Hello, SessionSubscribe, SubscribeParams,
-    ViewRef, ViewSubscribe,
+    ViewSubscribe, ViewSubscribeParams,
 };
 use tungstenite::client::IntoClientRequest;
 use tungstenite::{Message, WebSocket};
@@ -56,7 +54,8 @@ pub(crate) enum Effect {
     Presence(AppPresence),
     /// A new context for the registered presence (kept for reconnects).
     Context(std::collections::BTreeMap<String, String>),
-    ViewSubscribe(ViewKey),
+    /// The view, and the tail its snapshot was asked with.
+    ViewSubscribe(ViewKey, Option<i64>),
     ViewUnsubscribe(ViewKey),
 }
 
@@ -92,8 +91,9 @@ pub(crate) struct Io {
     /// Subscribed sessions and the last seq seen of each. Replays after a resubscription
     /// start at the next one; anything at or below it is dropped as a repeat.
     subs: HashMap<String, i64>,
-    /// Sessions whose view is followed; resubscribed (fresh snapshot) after a reconnect.
-    views: HashSet<ViewKey>,
+    /// Sessions whose view is followed, with the tail asked for; resubscribed (fresh snapshot)
+    /// after a reconnect.
+    views: HashMap<ViewKey, Option<i64>>,
     presence: Option<AppPresence>,
     next_internal: u64,
 }
@@ -165,6 +165,7 @@ fn reply_id(envelope: &Envelope) -> Option<&str> {
         Envelope::SessionUnqueued(m) => Some(&m.id),
         Envelope::ConnectorsListResult(m) => Some(&m.id),
         Envelope::ViewSnapshotMessage(m) => Some(&m.id),
+        Envelope::ViewPageResult(m) => Some(&m.id),
         Envelope::AssetInfoMessage(m) => Some(&m.id),
         Envelope::SpeechTextMessage(m) => Some(&m.id),
         _ => None,
@@ -184,7 +185,7 @@ impl Io {
             events,
             pending: HashMap::new(),
             subs: HashMap::new(),
-            views: HashSet::new(),
+            views: HashMap::new(),
             presence,
             next_internal: 0,
         }
@@ -296,8 +297,8 @@ impl Io {
                 }
                 Undo::None
             }
-            Effect::ViewSubscribe(key) => {
-                self.views.insert(key.clone());
+            Effect::ViewSubscribe(key, tail) => {
+                self.views.insert(key.clone(), tail);
                 Undo::ViewUnsubscribe(key)
             }
             Effect::ViewUnsubscribe(key) => {
@@ -356,7 +357,7 @@ impl Io {
                     message.payload.session.clone(),
                     message.payload.agent.clone(),
                 );
-                if self.views.contains(&key) {
+                if self.views.contains_key(&key) {
                     self.emit(Event::ViewPatch(message.payload));
                 }
             }
@@ -431,14 +432,16 @@ impl Io {
             });
             self.send_internal(socket, id, message, Undo::Unsubscribe(session));
         }
-        let views: Vec<ViewKey> = self.views.iter().cloned().collect();
-        for key in views {
+        let views: Vec<(ViewKey, Option<i64>)> =
+            self.views.iter().map(|(k, t)| (k.clone(), *t)).collect();
+        for (key, tail) in views {
             let id = self.internal_id();
             let message = Envelope::ViewSubscribe(ViewSubscribe {
                 id: id.clone(),
-                payload: ViewRef {
+                payload: ViewSubscribeParams {
                     session: key.0.clone(),
                     agent: key.1.clone(),
+                    tail,
                 },
             });
             self.send_internal(socket, id, message, Undo::ViewUnsubscribe(key));
@@ -505,6 +508,7 @@ fn request_id(envelope: &Envelope) -> Option<String> {
         Envelope::AgentMoveMessage(m) => Some(m.id.clone()),
         Envelope::ViewSubscribe(m) => Some(m.id.clone()),
         Envelope::ViewUnsubscribe(m) => Some(m.id.clone()),
+        Envelope::ViewPageRequest(m) => Some(m.id.clone()),
         Envelope::UiActionMessage(m) => Some(m.id.clone()),
         Envelope::AssetPutMessage(m) => Some(m.id.clone()),
         Envelope::AppContextMessage(m) => m.id.clone(),

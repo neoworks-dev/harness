@@ -785,6 +785,10 @@
         },
         "item": {
           "$ref": "#/$defs/ViewItem"
+        },
+        "appended": {
+          "type": "boolean",
+          "description": "Set when the item is new and goes at the end. Without it the item was there before: a client holding only the latest items (view.subscribe with tail) that doesn't have it leaves it out; view.page brings it as it is then."
         }
       },
       "required": ["op", "item"],
@@ -852,9 +856,39 @@
           "items": {
             "$ref": "#/$defs/ViewItem"
           }
+        },
+        "before": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many items come ahead of these, left out because view.subscribe asked for a tail; view.page has them. Absent when none are."
         }
       },
       "required": ["session", "seq", "items"],
+      "additionalProperties": false
+    },
+    "ViewPage": {
+      "description": "Items of a view ahead of the ones a client has, oldest first.",
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ViewItem"
+          }
+        },
+        "before": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many items still come ahead of these. Absent when none do."
+        }
+      },
+      "required": ["session", "items"],
       "additionalProperties": false
     },
     "ViewPatch": {

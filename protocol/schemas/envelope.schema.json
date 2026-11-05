@@ -86,6 +86,12 @@
           "$ref": "#/$defs/ViewUnsubscribe"
         },
         {
+          "$ref": "#/$defs/ViewPageRequest"
+        },
+        {
+          "$ref": "#/$defs/ViewPageResult"
+        },
+        {
           "$ref": "#/$defs/ViewSnapshotMessage"
         },
         {
@@ -817,7 +823,82 @@
           "type": "string"
         },
         "payload": {
-          "$ref": "#/$defs/ViewRef"
+          "$ref": "#/$defs/ViewSubscribeParams"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "ViewSubscribeParams": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string",
+          "description": "As in ViewRef."
+        },
+        "tail": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Only the last this many items in the snapshot (its before says how many are left out); view.page brings older ones. Without it, all of them. A long chat opens much faster this way: the daemon only prepares what it sends."
+        }
+      },
+      "required": ["session"],
+      "additionalProperties": false
+    },
+    "ViewPageRequest": {
+      "description": "Client → daemon: the items of a subscribed view just ahead of one the client has. Replied to with view.page_result, or bus.error not_found when that item is gone (subscribe again).",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "view.page"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/ViewPageParams"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "ViewPageParams": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string",
+          "description": "As in ViewRef."
+        },
+        "before": {
+          "type": "string",
+          "description": "The ref of the item to page back from (the oldest one the client has)."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": ["session", "before", "count"],
+      "additionalProperties": false
+    },
+    "ViewPageResult": {
+      "description": "Daemon → client: reply to view.page.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "view.page_result"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "view.schema.json#/$defs/ViewPage"
         }
       },
       "required": ["topic", "id", "payload"],

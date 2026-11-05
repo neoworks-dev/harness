@@ -27,6 +27,8 @@ export type Envelope =
   | ConnectorsChanged
   | ViewSubscribe
   | ViewUnsubscribe
+  | ViewPageRequest
+  | ViewPageResult
   | ViewSnapshotMessage
   | ViewPatchMessage
   | ThemeMessage
@@ -326,7 +328,38 @@ export interface ViewRef {
 export interface ViewSubscribe {
   topic: "view.subscribe";
   id: string;
-  payload: ViewRef;
+  payload: ViewSubscribeParams;
+}
+
+export interface ViewSubscribeParams {
+  session: string;
+  /** As in ViewRef. */
+  agent?: string;
+  /** Only the last this many items in the snapshot (its before says how many are left out); view.page brings older ones. Without it, all of them. A long chat opens much faster this way: the daemon only prepares what it sends. */
+  tail?: number;
+}
+
+/** Client → daemon: the items of a subscribed view just ahead of one the client has. Replied to with view.page_result, or bus.error not_found when that item is gone (subscribe again). */
+export interface ViewPageRequest {
+  topic: "view.page";
+  id: string;
+  payload: ViewPageParams;
+}
+
+export interface ViewPageParams {
+  session: string;
+  /** As in ViewRef. */
+  agent?: string;
+  /** The ref of the item to page back from (the oldest one the client has). */
+  before: string;
+  count: number;
+}
+
+/** Daemon → client: reply to view.page. */
+export interface ViewPageResult {
+  topic: "view.page_result";
+  id: string;
+  payload: ViewPage;
 }
 
 /** Client → daemon (acked). */
@@ -1451,6 +1484,8 @@ export type ViewOpTag = ViewOp["op"];
 export interface SetViewOp {
   op: "set";
   item: ViewItem;
+  /** Set when the item is new and goes at the end. Without it the item was there before: a client holding only the latest items (view.subscribe with tail) that doesn't have it leaves it out; view.page brings it as it is then. */
+  appended?: boolean;
 }
 
 /** Streaming text: in the text component at `path` (child indexes from the item's component; [] is the component itself), replace blocks[from..] with these. */
@@ -1474,6 +1509,17 @@ export interface ViewSnapshot {
   agent?: string;
   seq: number;
   items: ViewItem[];
+  /** How many items come ahead of these, left out because view.subscribe asked for a tail; view.page has them. Absent when none are. */
+  before?: number;
+}
+
+/** Items of a view ahead of the ones a client has, oldest first. */
+export interface ViewPage {
+  session: string;
+  agent?: string;
+  items: ViewItem[];
+  /** How many items still come ahead of these. Absent when none do. */
+  before?: number;
 }
 
 /** Changes caused by the session event with this seq, applied in order. */

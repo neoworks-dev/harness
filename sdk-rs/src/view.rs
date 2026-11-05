@@ -1,6 +1,6 @@
 //! The client side of the view stream: a snapshot plus patches, applied in order.
 
-use neo_protocol::{Block, Component, ViewItem, ViewOp, ViewPatch, ViewSnapshot};
+use neo_protocol::{Block, Component, ViewItem, ViewOp, ViewPage, ViewPatch, ViewSnapshot};
 
 /// A session's view as drawn: keep one per followed session and feed it every
 /// [`crate::Event::ViewSnapshot`] and [`crate::Event::ViewPatch`].
@@ -9,6 +9,9 @@ pub struct ViewState {
     pub session: String,
     pub seq: i64,
     pub items: Vec<ViewItem>,
+    /// How many items come ahead of `items`, left out of a tail snapshot; [`ViewState::prepend`]
+    /// takes them in as they are paged.
+    pub before: i64,
 }
 
 impl ViewState {
@@ -17,11 +20,28 @@ impl ViewState {
             session: snapshot.session,
             seq: snapshot.seq,
             items: snapshot.items,
+            before: snapshot.before.unwrap_or(0),
         }
     }
 
     pub fn apply_snapshot(&mut self, snapshot: ViewSnapshot) {
         *self = ViewState::from_snapshot(snapshot);
+    }
+
+    /// Older items, from [`crate::Client::view_page`], go in front of the ones held. A page for
+    /// another session is ignored, and so is one of items already held.
+    pub fn prepend(&mut self, page: ViewPage) {
+        if page.session != self.session {
+            return;
+        }
+        let mut items: Vec<ViewItem> = page
+            .items
+            .into_iter()
+            .filter(|p| !self.items.iter().any(|i| i.r#ref == p.r#ref))
+            .collect();
+        items.append(&mut self.items);
+        self.items = items;
+        self.before = page.before.unwrap_or(0);
     }
 
     /// Applies a patch; returns the refs of the items it touched (for redrawing only those).
@@ -36,11 +56,14 @@ impl ViewState {
             match op {
                 ViewOp::SetViewOp(set) => {
                     let item = set.item;
-                    touched.push(item.r#ref.clone());
-                    match self.items.iter_mut().find(|i| i.r#ref == item.r#ref) {
+                    let r = item.r#ref.clone();
+                    match self.items.iter_mut().find(|i| i.r#ref == r) {
                         Some(existing) => *existing = item,
+                        // An item ahead of the tail held: it comes with its page.
+                        None if self.before > 0 && set.appended != Some(true) => continue,
                         None => self.items.push(item),
                     }
+                    touched.push(r);
                 }
                 ViewOp::BlocksViewOp(op) => {
                     let Some(item) = self.items.iter_mut().find(|i| i.r#ref == op.r#ref) else {
@@ -154,6 +177,28 @@ mod tests {
         ])));
         let refs: Vec<&str> = view.items.iter().map(|i| i.r#ref.as_str()).collect();
         assert_eq!(refs, ["a", "c"]);
+    }
+
+    #[test]
+    fn a_tail_leaves_out_older_items_until_their_page_comes() {
+        let mut view = state();
+        view.before = 2;
+        let empty = json!({"type": "text", "blocks": []});
+        view.apply_patch(patch(json!([
+            // An older item changing: not held, left out.
+            {"op": "set", "item": {"ref": "old", "kind": "tool", "component": empty}},
+            {"op": "set", "appended": true, "item": {"ref": "new", "kind": "agent", "component": empty}}
+        ])));
+        let refs = |v: &ViewState| v.items.iter().map(|i| i.r#ref.clone()).collect::<Vec<_>>();
+        assert_eq!(refs(&view), ["a", "b", "new"]);
+        let page: ViewPage = serde_json::from_value(json!({
+            "session": "s", "before": 1,
+            "items": [{"ref": "old", "kind": "tool", "component": empty}]
+        }))
+        .unwrap();
+        view.prepend(page);
+        assert_eq!(refs(&view), ["old", "a", "b", "new"]);
+        assert_eq!(view.before, 1);
     }
 
     #[test]

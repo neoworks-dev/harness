@@ -47,6 +47,8 @@ pub enum Envelope {
     ConnectorsChanged(ConnectorsChanged),
     ViewSubscribe(ViewSubscribe),
     ViewUnsubscribe(ViewUnsubscribe),
+    ViewPageRequest(ViewPageRequest),
+    ViewPageResult(ViewPageResult),
     ViewSnapshotMessage(ViewSnapshotMessage),
     ViewPatchMessage(ViewPatchMessage),
     ThemeMessage(ThemeMessage),
@@ -173,6 +175,14 @@ impl Serialize for Envelope {
             ),
             Envelope::ViewUnsubscribe(v) => (
                 "view.unsubscribe",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::ViewPageRequest(v) => (
+                "view.page",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::ViewPageResult(v) => (
+                "view.page_result",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
             Envelope::ViewSnapshotMessage(v) => (
@@ -333,6 +343,12 @@ impl<'de> Deserialize<'de> for Envelope {
                 .map_err(D::Error::custom),
             "view.unsubscribe" => serde_json::from_value(value)
                 .map(Envelope::ViewUnsubscribe)
+                .map_err(D::Error::custom),
+            "view.page" => serde_json::from_value(value)
+                .map(Envelope::ViewPageRequest)
+                .map_err(D::Error::custom),
+            "view.page_result" => serde_json::from_value(value)
+                .map(Envelope::ViewPageResult)
                 .map_err(D::Error::custom),
             "view.snapshot" => serde_json::from_value(value)
                 .map(Envelope::ViewSnapshotMessage)
@@ -543,6 +559,18 @@ impl From<ViewSubscribe> for Envelope {
 impl From<ViewUnsubscribe> for Envelope {
     fn from(v: ViewUnsubscribe) -> Self {
         Envelope::ViewUnsubscribe(v)
+    }
+}
+
+impl From<ViewPageRequest> for Envelope {
+    fn from(v: ViewPageRequest) -> Self {
+        Envelope::ViewPageRequest(v)
+    }
+}
+
+impl From<ViewPageResult> for Envelope {
+    fn from(v: ViewPageResult) -> Self {
+        Envelope::ViewPageResult(v)
     }
 }
 
@@ -1088,7 +1116,53 @@ pub struct ViewSubscribe {
     #[serde(rename = "id")]
     pub id: String,
     #[serde(rename = "payload")]
-    pub payload: ViewRef,
+    pub payload: ViewSubscribeParams,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewSubscribeParams {
+    #[serde(rename = "session")]
+    pub session: String,
+    /// As in ViewRef.
+    #[serde(rename = "agent", default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    /// Only the last this many items in the snapshot (its before says how many are left out); view.page brings older ones. Without it, all of them. A long chat opens much faster this way: the daemon only prepares what it sends.
+    #[serde(rename = "tail", default, skip_serializing_if = "Option::is_none")]
+    pub tail: Option<i64>,
+}
+
+/// Client → daemon: the items of a subscribed view just ahead of one the client has. Replied to with view.page_result, or bus.error not_found when that item is gone (subscribe again).
+/// Tagged `topic: "view.page"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewPageRequest {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: ViewPageParams,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewPageParams {
+    #[serde(rename = "session")]
+    pub session: String,
+    /// As in ViewRef.
+    #[serde(rename = "agent", default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    /// The ref of the item to page back from (the oldest one the client has).
+    #[serde(rename = "before")]
+    pub before: String,
+    #[serde(rename = "count")]
+    pub count: i64,
+}
+
+/// Daemon → client: reply to view.page.
+/// Tagged `topic: "view.page_result"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewPageResult {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: ViewPage,
 }
 
 /// Client → daemon (acked).
@@ -3731,6 +3805,9 @@ impl From<RemoveViewOp> for ViewOp {
 pub struct SetViewOp {
     #[serde(rename = "item")]
     pub item: ViewItem,
+    /// Set when the item is new and goes at the end. Without it the item was there before: a client holding only the latest items (view.subscribe with tail) that doesn't have it leaves it out; view.page brings it as it is then.
+    #[serde(rename = "appended", default, skip_serializing_if = "Option::is_none")]
+    pub appended: Option<bool>,
 }
 
 /// Streaming text: in the text component at `path` (child indexes from the item's component; [] is the component itself), replace blocks[from..] with these.
@@ -3766,6 +3843,23 @@ pub struct ViewSnapshot {
     pub seq: i64,
     #[serde(rename = "items")]
     pub items: Vec<ViewItem>,
+    /// How many items come ahead of these, left out because view.subscribe asked for a tail; view.page has them. Absent when none are.
+    #[serde(rename = "before", default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<i64>,
+}
+
+/// Items of a view ahead of the ones a client has, oldest first.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewPage {
+    #[serde(rename = "session")]
+    pub session: String,
+    #[serde(rename = "agent", default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(rename = "items")]
+    pub items: Vec<ViewItem>,
+    /// How many items still come ahead of these. Absent when none do.
+    #[serde(rename = "before", default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<i64>,
 }
 
 /// Changes caused by the session event with this seq, applied in order.

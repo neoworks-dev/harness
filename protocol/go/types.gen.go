@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionUnqueue, SessionUnqueued, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UserSettingsMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetFetchMessage, AssetInfoMessage, SpeechTranscribeMessage, SpeechTextMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, SessionRemovedMessage, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionUnqueue, SessionUnqueued, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewPageRequest, ViewPageResult, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UserSettingsMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetFetchMessage, AssetInfoMessage, SpeechTranscribeMessage, SpeechTextMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, SessionRemovedMessage, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -203,6 +203,18 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "view.unsubscribe":
 		var v ViewUnsubscribe
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "view.page":
+		var v ViewPageRequest
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "view.page_result":
+		var v ViewPageResult
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -855,8 +867,8 @@ type ViewRef struct {
 
 // ViewSubscribe: Client → daemon: follow the resolved view of a session, or (with agent) the view of one agent's work in it. Replied to with view.snapshot, then view.patch for every later change. Re-subscribing sends a fresh snapshot.
 type ViewSubscribe struct {
-	ID      string  `json:"id"`
-	Payload ViewRef `json:"payload"`
+	ID      string              `json:"id"`
+	Payload ViewSubscribeParams `json:"payload"`
 }
 
 func (ViewSubscribe) isEnvelope() {}
@@ -868,6 +880,57 @@ func (v ViewSubscribe) MarshalJSON() ([]byte, error) {
 		Tag string `json:"topic"`
 		plain
 	}{"view.subscribe", plain(v)})
+}
+
+type ViewSubscribeParams struct {
+	Session string `json:"session"`
+	// As in ViewRef.
+	Agent *string `json:"agent,omitempty"`
+	// Only the last this many items in the snapshot (its before says how many are left out); view.page brings older ones. Without it, all of them. A long chat opens much faster this way: the daemon only prepares what it sends.
+	Tail *int64 `json:"tail,omitempty"`
+}
+
+// ViewPageRequest: Client → daemon: the items of a subscribed view just ahead of one the client has. Replied to with view.page_result, or bus.error not_found when that item is gone (subscribe again).
+type ViewPageRequest struct {
+	ID      string         `json:"id"`
+	Payload ViewPageParams `json:"payload"`
+}
+
+func (ViewPageRequest) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v ViewPageRequest) MarshalJSON() ([]byte, error) {
+	type plain ViewPageRequest
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"view.page", plain(v)})
+}
+
+type ViewPageParams struct {
+	Session string `json:"session"`
+	// As in ViewRef.
+	Agent *string `json:"agent,omitempty"`
+	// The ref of the item to page back from (the oldest one the client has).
+	Before string `json:"before"`
+	Count  int64  `json:"count"`
+}
+
+// ViewPageResult: Daemon → client: reply to view.page.
+type ViewPageResult struct {
+	ID      string   `json:"id"`
+	Payload ViewPage `json:"payload"`
+}
+
+func (ViewPageResult) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v ViewPageResult) MarshalJSON() ([]byte, error) {
+	type plain ViewPageResult
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"view.page_result", plain(v)})
 }
 
 // ViewUnsubscribe: Client → daemon (acked).
@@ -3352,6 +3415,8 @@ func (u *ViewOp) UnmarshalJSON(data []byte) error {
 // SetViewOp: Replace the item with this ref, or append it if it's new.
 type SetViewOp struct {
 	Item ViewItem `json:"item"`
+	// Set when the item is new and goes at the end. Without it the item was there before: a client holding only the latest items (view.subscribe with tail) that doesn't have it leaves it out; view.page brings it as it is then.
+	Appended *bool `json:"appended,omitempty"`
 }
 
 func (SetViewOp) isViewOp() {}
@@ -3406,6 +3471,17 @@ type ViewSnapshot struct {
 	Agent *string    `json:"agent,omitempty"`
 	Seq   int64      `json:"seq"`
 	Items []ViewItem `json:"items"`
+	// How many items come ahead of these, left out because view.subscribe asked for a tail; view.page has them. Absent when none are.
+	Before *int64 `json:"before,omitempty"`
+}
+
+// ViewPage: Items of a view ahead of the ones a client has, oldest first.
+type ViewPage struct {
+	Session string     `json:"session"`
+	Agent   *string    `json:"agent,omitempty"`
+	Items   []ViewItem `json:"items"`
+	// How many items still come ahead of these. Absent when none do.
+	Before *int64 `json:"before,omitempty"`
 }
 
 // ViewPatch: Changes caused by the session event with this seq, applied in order.

@@ -28,7 +28,8 @@ use neo_protocol::{
     SessionInputMessage, SessionList, SessionRef, SessionSubscribe, SessionUnqueue,
     SessionUnqueueParams, SessionUnsubscribe, SpeechAudio, SpeechTranscribeMessage,
     SubscribeParams, SubscribedPayload, Theme, UiAction, UiActionMessage, UserSettings, ViewPatch,
-    ViewRef, ViewSnapshot, ViewSubscribe, ViewUnsubscribe, WaitingInput,
+    ViewPage, ViewPageParams, ViewPageRequest, ViewRef, ViewSnapshot, ViewSubscribe,
+    ViewSubscribeParams, ViewUnsubscribe, WaitingInput,
 };
 pub use socket::default_socket_path;
 pub use view::ViewState;
@@ -365,26 +366,64 @@ impl Client {
     /// Follows the session's resolved view: returns the snapshot (also sent as
     /// [`Event::ViewSnapshot`]), then [`Event::ViewPatch`]es arrive on [`Client::events`].
     pub fn subscribe_view(&self, session: &str) -> Result<ViewSnapshot> {
-        self.subscribe_view_of(session, None)
+        self.subscribe_view_of(session, None, None)
+    }
+
+    /// Like [`Client::subscribe_view`], with only the view's last `tail` items in the snapshot
+    /// (its `before` says how many are left out; [`Client::view_page`] brings them). A patch's
+    /// `set` without `appended` for an item the client doesn't have is one of those: leave it
+    /// out. Reconnecting asks for the same tail again.
+    pub fn subscribe_view_tail(&self, session: &str, tail: i64) -> Result<ViewSnapshot> {
+        self.subscribe_view_of(session, None, Some(tail))
     }
 
     /// Follows the view of one agent's work in the session (a subagent, or a guest the user
     /// addressed): its messages, thoughts and tool calls, none of the main conversation. Its
     /// snapshot and patches carry `agent`, and are told apart from the session's own that way.
     pub fn subscribe_agent_view(&self, session: &str, agent: &str) -> Result<ViewSnapshot> {
-        self.subscribe_view_of(session, Some(agent))
+        self.subscribe_view_of(session, Some(agent), None)
     }
 
-    fn subscribe_view_of(&self, session: &str, agent: Option<&str>) -> Result<ViewSnapshot> {
-        let effect = Effect::ViewSubscribe((session.into(), agent.map(Into::into)));
+    fn subscribe_view_of(
+        &self,
+        session: &str,
+        agent: Option<&str>,
+        tail: Option<i64>,
+    ) -> Result<ViewSnapshot> {
+        let effect = Effect::ViewSubscribe((session.into(), agent.map(Into::into)), tail);
         let subscribe = |id| {
             Envelope::ViewSubscribe(ViewSubscribe {
                 id,
-                payload: view_ref(session, agent),
+                payload: ViewSubscribeParams {
+                    session: session.into(),
+                    agent: agent.map(Into::into),
+                    tail,
+                },
             })
         };
         match self.call(effect, subscribe)? {
             Envelope::ViewSnapshotMessage(reply) => Ok(reply.payload),
+            _ => Err(Error::Unexpected),
+        }
+    }
+
+    /// Up to `count` items of the session's view just ahead of the item `before` (the oldest
+    /// the client has), for a snapshot that was a tail. Fails with not_found when that item is
+    /// gone; subscribe again then.
+    pub fn view_page(&self, session: &str, before: &str, count: i64) -> Result<ViewPage> {
+        let page = |id| {
+            Envelope::ViewPageRequest(ViewPageRequest {
+                id,
+                payload: ViewPageParams {
+                    session: session.into(),
+                    agent: None,
+                    before: before.into(),
+                    count,
+                },
+            })
+        };
+        match self.call(Effect::None, page)? {
+            Envelope::ViewPageResult(reply) => Ok(reply.payload),
             _ => Err(Error::Unexpected),
         }
     }
