@@ -915,7 +915,6 @@ struct Areas {
 }
 
 #[cfg(test)]
-#[path = "app_tests.rs"]
 mod tests;
 
 #[cfg(test)]
