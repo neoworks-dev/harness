@@ -394,7 +394,8 @@ fn encode_loop(picker: &Picker, jobs: &mpsc::Receiver<EncodeJob>, done: &mpsc::S
                 picker,
                 DynamicImage::clone(&img),
                 Size::new(*cols, *rows),
-                Resize::Fit(Some(FilterType::Triangle)),
+                // Grown too: a small picture still takes the room the chat gave it.
+                Resize::Scale(Some(FilterType::Triangle)),
             )
             .map(Box::new)
             .map_err(|e| e.to_string())

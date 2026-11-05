@@ -10,11 +10,16 @@ use crate::text::{
     clean, clip, hard_wrap, hard_wrap_spans, line_width, one_line, push_text, sline, truncate,
     truncate_spans, width, wrap,
 };
-use crate::{ImageOptions, ImageSlot, ImageStatus, Options, Palette, image_cells};
+use crate::{ImageOptions, ImageSlot, ImageStatus, Options, Palette, filled_cells, image_cells};
 
 /// Marks the first line reserved for an image until `item` has found its place. Zero width, so
 /// padding and clipping ignore it; it is removed before the lines leave the renderer.
 const SLOT_MARK: &str = "\u{2060}";
+/// Pictures side by side: at most this many a row, each at least this many cells wide, this
+/// many cells apart.
+const PICTURES_PER_ROW: usize = 3;
+const MIN_PICTURE: usize = 16;
+const GAP: usize = 2;
 
 /// Rows the label of a finished tool call takes at most, and its command; unless expanded.
 const LABEL_ROWS: usize = 2;
@@ -477,7 +482,25 @@ impl<'a> Cx<'a> {
     fn stack(&mut self, v: &pb::StackComponent, w: usize) -> Lines {
         let mut parts: Vec<Lines> = Vec::new();
         let mut content_above = false;
-        for c in &v.children {
+        let mut i = 0;
+        while i < v.children.len() {
+            // Pictures one after the other share the width.
+            let run = self.ready_pictures(&v.children[i..]);
+            if run >= 2 {
+                let pictures: Vec<&pb::ImageComponent> = v.children[i..i + run]
+                    .iter()
+                    .filter_map(|c| match c {
+                        pb::Component::ImageComponent(p) => Some(p),
+                        _ => None,
+                    })
+                    .collect();
+                parts.push(self.pictures(&pictures, w));
+                content_above = true;
+                i += run;
+                continue;
+            }
+            let c = &v.children[i];
+            i += 1;
             let lines = self.comp(c, w);
             if lines.is_empty() {
                 continue;
@@ -1007,9 +1030,77 @@ impl<'a> Cx<'a> {
         w: usize,
     ) -> Lines {
         let max_cols = u16::try_from(w).unwrap_or(u16::MAX);
-        let (mut out, _) = self.reserve(images, src, size, max_cols, images.max_rows);
+        let (cols, rows) = filled_cells(size.0, size.1, images.cell, max_cols, images.max_rows);
+        let mut out = self.reserve_cells(src, cols, rows);
         let caption = format!("{name} · {}×{}", size.0, size.1);
         out.extend(wrap(&[Span::styled(caption, self.p.muted_style())], w));
+        out
+    }
+
+    /// How many of `children`, from the first, are pictures ready to draw: a run of them shares
+    /// the width.
+    fn ready_pictures(&self, children: &[pb::Component]) -> usize {
+        let Some(images) = self.o.images.as_ref() else {
+            return 0;
+        };
+        children
+            .iter()
+            .take_while(|c| match c {
+                pb::Component::ImageComponent(v) => {
+                    matches!(images.status.get(&v.src), Some(ImageStatus::Ready { .. }))
+                }
+                _ => false,
+            })
+            .count()
+    }
+
+    /// Pictures side by side, up to three a row, each row as tall as its least tall picture
+    /// would be in its share of the width (so they line up), each with its name under it.
+    fn pictures(&mut self, pictures: &[&pb::ImageComponent], w: usize) -> Lines {
+        let Some(images) = self.o.images.as_ref() else {
+            return Vec::new();
+        };
+        let size = |v: &pb::ImageComponent| match images.status.get(&v.src) {
+            Some(ImageStatus::Ready { width, height }) => (*width, *height),
+            _ => (1, 1),
+        };
+        let per_row = (w + GAP) / (MIN_PICTURE + GAP);
+        let per_row = per_row.clamp(1, PICTURES_PER_ROW);
+        let mut out: Lines = Vec::new();
+        for row in pictures.chunks(per_row) {
+            if !out.is_empty() {
+                out.push(Line::default());
+            }
+            let share = (w.saturating_sub(GAP * (row.len() - 1)) / row.len()).max(1);
+            let share16 = u16::try_from(share).unwrap_or(u16::MAX);
+            let tall = row
+                .iter()
+                .map(|v| {
+                    let (iw, ih) = size(v);
+                    filled_cells(iw, ih, images.cell, share16, images.max_rows).1
+                })
+                .min()
+                .unwrap_or(1);
+            let parts: Vec<(Lines, usize)> = row
+                .iter()
+                .map(|v| {
+                    let (iw, ih) = size(v);
+                    let (cols, rows) = filled_cells(iw, ih, images.cell, share16, tall);
+                    let mut lines = self.reserve_cells(&v.src, cols, rows);
+                    lines.resize(usize::from(tall), Line::default());
+                    let name = v
+                        .alt
+                        .as_deref()
+                        .map(one_line)
+                        .filter(|a| !a.is_empty())
+                        .unwrap_or_else(|| file_name(&v.src));
+                    let caption = truncate(&format!("{name} · {iw}×{ih}"), share);
+                    lines.push(sline(caption, self.p.muted_style()));
+                    (lines, share)
+                })
+                .collect();
+            out.extend(crate::neoui::columns(parts, &vec![GAP; row.len()], "start"));
+        }
         out
     }
 

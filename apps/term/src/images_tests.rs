@@ -254,7 +254,7 @@ fn what_can_not_be_shown_says_why() {
 #[test]
 fn an_image_in_view_is_encoded_once_and_drawn_into_its_rows() {
     let dir = Dir::new("draw");
-    let path = dir.png("box.png", 400, 400);
+    let path = dir.png("box.png", 400, 800);
     let src = path.to_string_lossy().into_owned();
     let mut images = images(&dir);
     let mut chat = Chat::new();
@@ -267,14 +267,15 @@ fn an_image_in_view_is_encoded_once_and_drawn_into_its_rows() {
         )
     });
     chat.set_images(Some(images.chat_view()));
-    chat.layout(60, 20, &opts());
-    // 400x400 at 10x20 pixel cells is 40x20 cells; 12 rows at most keeps the aspect: 24x12.
+    chat.layout(60, 30, &opts());
+    // 400x800 at 10x20 pixel cells is 40x40 cells; 500 pixels (25 rows) at most keeps the
+    // aspect: 25x25, short of the width.
     let placements = chat.placements();
     assert_eq!(placements.len(), 1);
     let at = &placements[0];
-    assert_eq!((at.x, at.y, at.cols, at.rows), (0, 0, 24, 12));
-    let area = Rect::new(0, 0, 60, 20);
-    let slot = Rect::new(0, 0, 24, 12);
+    assert_eq!((at.x, at.y, at.cols, at.rows), (0, 0, 25, 25));
+    let area = Rect::new(0, 0, 60, 30);
+    let slot = Rect::new(0, 0, 25, 25);
 
     // Not encoded yet: the first row says so, nothing else of the slot is drawn.
     let mut buf = Buffer::empty(area);
@@ -289,23 +290,23 @@ fn an_image_in_view_is_encoded_once_and_drawn_into_its_rows() {
     images.draw(&mut buf, area, at, Style::new());
     assert_eq!(
         non_blank(&buf, slot),
-        24 * 12,
+        25 * 25,
         "half blocks fill every cell"
     );
     assert_eq!(
-        non_blank(&buf, Rect::new(24, 0, 36, 20)),
+        non_blank(&buf, Rect::new(25, 0, 35, 30)),
         0,
         "nothing beside it"
     );
     assert_eq!(
-        non_blank(&buf, Rect::new(0, 12, 60, 8)),
+        non_blank(&buf, Rect::new(0, 25, 60, 5)),
         0,
         "nothing below it"
     );
     // The caption is part of the chat's own lines.
     assert_eq!(
-        neo_renderer_ratatui::plain_text(&chat.visible())[12],
-        "a red box · 400×400"
+        neo_renderer_ratatui::plain_text(&chat.visible())[25],
+        "a red box · 400×800"
     );
     // Drawing again asks for nothing new.
     images.draw(&mut buf, area, at, Style::new());

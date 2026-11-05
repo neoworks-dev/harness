@@ -79,7 +79,7 @@ fn pad_to(line: &mut Line<'static>, w: usize) {
 
 /// One row of items, each already drawn at its width, side by side. `valign` places items
 /// that are shorter than the tallest.
-pub(super) fn columns(parts: Vec<(Lines, usize)>, gaps: &[usize], valign: &str) -> Lines {
+pub(crate) fn columns(parts: Vec<(Lines, usize)>, gaps: &[usize], valign: &str) -> Lines {
     let height = parts.iter().map(|(l, _)| l.len()).max().unwrap_or(0);
     let mut cols: Vec<(Lines, usize)> = Vec::new();
     for (mut lines, w) in parts {

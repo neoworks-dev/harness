@@ -190,14 +190,37 @@ pub fn image_cells(
     max_cols: u16,
     max_rows: u16,
 ) -> (u16, u16) {
+    scaled_cells(width, height, cell, max_cols, max_rows, false)
+}
+
+/// Like [`image_cells`], but grown as well as shrunk: as large as fits `max_cols` x
+/// `max_rows`, which is the whole width unless the picture is too tall for that.
+pub fn filled_cells(
+    width: u32,
+    height: u32,
+    cell: (u16, u16),
+    max_cols: u16,
+    max_rows: u16,
+) -> (u16, u16) {
+    scaled_cells(width, height, cell, max_cols, max_rows, true)
+}
+
+fn scaled_cells(
+    width: u32,
+    height: u32,
+    cell: (u16, u16),
+    max_cols: u16,
+    max_rows: u16,
+    grow: bool,
+) -> (u16, u16) {
     let (cw, ch) = (u32::from(cell.0.max(1)), u32::from(cell.1.max(1)));
     let natural = (
         f64::from(width.div_ceil(cw).max(1)),
         f64::from(height.div_ceil(ch).max(1)),
     );
-    let scale = (f64::from(max_cols.max(1)) / natural.0)
-        .min(f64::from(max_rows.max(1)) / natural.1)
-        .min(1.0);
+    let scale =
+        (f64::from(max_cols.max(1)) / natural.0).min(f64::from(max_rows.max(1)) / natural.1);
+    let scale = if grow { scale } else { scale.min(1.0) };
     let cols = ((natural.0 * scale).round() as u16).clamp(1, max_cols.max(1));
     let rows = ((natural.1 * scale).round() as u16).clamp(1, max_rows.max(1));
     (cols, rows)

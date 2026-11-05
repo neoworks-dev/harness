@@ -28,9 +28,12 @@ const PROSE_WIDTH: usize = 100;
 /// Finished tool calls in a row fold into one line from this many on (Ctrl-O shows them).
 const FOLD_MIN: usize = 3;
 
-/// Rows an image thumbnail takes at most, and with tool results expanded (Ctrl-O).
-const IMAGE_ROWS: u16 = 12;
-const IMAGE_ROWS_EXPANDED: u16 = 30;
+/// How tall a picture is at most, in pixels, and with tool results expanded (Ctrl-O): it
+/// takes the pane's width unless that would make it taller.
+const IMAGE_PX: u16 = 500;
+const IMAGE_PX_EXPANDED: u16 = 1000;
+/// The rows those are in a terminal whose cell height is not known.
+const CELL_PX: u16 = 20;
 
 /// What the pane knows about images: the terminal's cell size and the state of each source.
 /// Without it images stay the one-line placeholder.
@@ -1590,11 +1593,12 @@ fn render(
         shown_above: false,
         theme: key.palette,
         images: key.images.as_ref().map(|i| ImageOptions {
-            max_rows: if key.expanded {
-                IMAGE_ROWS_EXPANDED
+            max_rows: (if key.expanded {
+                IMAGE_PX_EXPANDED
             } else {
-                IMAGE_ROWS
-            },
+                IMAGE_PX
+            } / if i.cell.1 > 0 { i.cell.1 } else { CELL_PX })
+            .max(4),
             cell: i.cell,
             status: i.status.clone(),
             charts: i.charts,
@@ -2614,7 +2618,7 @@ mod tests {
         ImageStatus::Ready { width, height }
     }
 
-    /// Three lines of text, a 400x400 picture (24x12 cells), another line.
+    /// Three lines of text, a 600x240 picture (the pane's 60 columns, 12 rows), another line.
     fn gallery(height: u16) -> Chat {
         let mut c = Chat::new();
         c.apply_snapshot(snapshot(vec![
@@ -2622,7 +2626,7 @@ mod tests {
             picture("p", "/tmp/p.png"),
             item("b", "agent", "after"),
         ]));
-        c.set_images(known(&[("/tmp/p.png", ready(400, 400))]));
+        c.set_images(known(&[("/tmp/p.png", ready(600, 240))]));
         c.layout(60, height, &opts());
         c
     }
@@ -2641,10 +2645,10 @@ mod tests {
         assert_eq!(texts(&c), ["[image pic] loading image…"]);
         assert!(c.placements().is_empty());
         // Known: 12 blank rows and the caption.
-        c.set_images(known(&[("/tmp/p.png", ready(400, 400))]));
+        c.set_images(known(&[("/tmp/p.png", ready(600, 240))]));
         c.layout(60, 20, &opts());
         assert_eq!(c.total_lines(), 13);
-        assert_eq!(texts(&c)[12], "pic · 400×400");
+        assert_eq!(texts(&c)[12], "pic · 600×240");
         // And off again.
         c.set_images(None);
         c.layout(60, 20, &opts());
@@ -2661,7 +2665,7 @@ mod tests {
                 src: "/tmp/p.png".into(),
                 x: 0,
                 y: 2,
-                cols: 24,
+                cols: 60,
                 rows: 12
             }]
         );
@@ -2707,18 +2711,23 @@ mod tests {
     #[test]
     fn a_wider_pane_or_ctrl_o_changes_the_size_and_a_new_status_redraws_only_pictures() {
         let mut c = gallery(30);
-        let size = |c: &Chat| c.placements()[0].rows;
-        assert_eq!(size(&c), 12);
-        // Expanded: up to 30 rows (400x400 is 40x20 cells at most).
+        let size = |c: &Chat| (c.placements()[0].cols, c.placements()[0].rows);
+        // The pane's width, grown from its 60 columns, shrunk, the aspect kept.
+        assert_eq!(size(&c), (60, 12));
+        c.layout(80, 30, &opts());
+        assert_eq!(size(&c), (80, 16));
+        c.layout(16, 30, &opts());
+        assert_eq!(size(&c), (16, 3));
+        // A tall one: at most 500 pixels tall (25 rows of 20), 1000 with Ctrl-O.
+        c.set_images(known(&[("/tmp/p.png", ready(400, 800))]));
+        c.layout(60, 30, &opts());
+        assert_eq!(size(&c), (25, 25));
         let open = ChatOpts {
             expanded: true,
             ..opts()
         };
         c.layout(60, 30, &open);
-        assert_eq!((c.placements()[0].cols, size(&c)), (40, 20));
-        // A narrower pane: capped to the width, the aspect kept.
-        c.layout(16, 30, &opts());
-        assert_eq!((c.placements()[0].cols, size(&c)), (16, 8));
+        assert_eq!(size(&c), (50, 50));
         // The picture's status changing leaves the text items' lines alone.
         c.layout(60, 30, &opts());
         // (Held on to, so a new allocation can't take the same address.)
@@ -2728,7 +2737,7 @@ mod tests {
         c.layout(60, 30, &opts());
         assert!(Rc::ptr_eq(&c.entries[0].lines, &first_again));
         assert!(!Rc::ptr_eq(&c.entries[1].lines, &pic));
-        assert_eq!((c.placements()[0].cols, size(&c)), (40, 10));
+        assert_eq!(size(&c), (60, 15));
     }
 
     #[test]
@@ -2742,14 +2751,53 @@ mod tests {
         c.apply_snapshot(snapshot(vec![read]));
         c.tool_reads("c-r");
         c.set_images(known(&[("/tmp/p.png", ready(400, 400))]));
+        // 400x400 is 40x20 cells of 10x20: 25 rows of 500 pixels; with Ctrl-O as wide as the
+        // result's 58 columns, 29 rows.
         c.layout(60, 30, &opts());
-        assert_eq!(c.placements()[0].rows, 12);
+        assert_eq!(c.placements()[0].rows, 25);
         let open = ChatOpts {
             expanded: true,
             ..opts()
         };
         c.layout(60, 30, &open);
-        assert_eq!(c.placements()[0].rows, 20);
+        assert_eq!(c.placements()[0].rows, 29);
+    }
+
+    #[test]
+    fn pictures_one_after_the_other_share_the_width_at_one_height() {
+        let mut c = Chat::new();
+        let pictures = |srcs: &[&str]| -> ViewItem {
+            let children: Vec<_> = srcs
+                .iter()
+                .map(|s| json!({"type": "image", "src": s, "alt": s}))
+                .collect();
+            serde_json::from_value(json!({
+                "ref": "p", "kind": "agent",
+                "component": {"type": "stack", "gap": "s", "children": children}
+            }))
+            .unwrap()
+        };
+        c.apply_snapshot(snapshot(vec![pictures(&["a", "b"])]));
+        c.set_images(known(&[("a", ready(400, 400)), ("b", ready(600, 240))]));
+        c.layout(60, 40, &opts());
+        let at = |c: &Chat| -> Vec<(u16, i32, u16, u16)> {
+            c.placements()
+                .iter()
+                .map(|p| (p.x, p.y, p.cols, p.rows))
+                .collect()
+        };
+        // Halves of 29 columns, two apart; the wide one is 6 rows there, so both are.
+        assert_eq!(at(&c), [(0, 0, 12, 6), (31, 0, 29, 6)]);
+        assert_eq!(
+            texts(&c)[6],
+            format!("{:<31}{}", "a · 400×400", "b · 600×240")
+        );
+        // Four: three a row, the fourth under them.
+        c.apply_snapshot(snapshot(vec![pictures(&["a", "a", "a", "b"])]));
+        c.layout(60, 40, &opts());
+        let rows: Vec<i32> = at(&c).iter().map(|p| p.1).collect();
+        assert_eq!(rows[..3], [0, 0, 0]);
+        assert!(rows[3] > 0, "{rows:?}");
     }
 
     #[test]
