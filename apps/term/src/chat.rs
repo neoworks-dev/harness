@@ -590,13 +590,15 @@ impl Chat {
             let ckey = CacheKey {
                 rev,
                 width,
-                // What a read read stays folded, unless it is a picture.
+                // What a read read stays folded, unless it is a picture. An edit keeps its
+                // preview: the whole file is the file view's (Enter or Ctrl-O on its row).
                 expanded: opts.expanded
-                    && (!self.reads.contains(r) || self.sources.contains_key(r)),
+                    && (!self.reads.contains(r) || self.sources.contains_key(r))
+                    && !is_edit(item),
                 thoughts: opts.show_thoughts,
                 icons: opts.icons,
                 split_diffs: opts.split_diffs,
-                open_edit: open_edit(index),
+                open_edit: opts.expanded || open_edit(index),
                 focused: active,
                 palette: opts.palette,
                 marker: opts.marker,
@@ -2245,6 +2247,29 @@ mod tests {
         c.layout(100, 40, &split);
         let row = &texts(&c)[5];
         assert!(row.starts_with("-old") && row.contains("│+new"), "{row}");
+    }
+
+    #[test]
+    fn ctrl_o_leaves_a_long_edit_to_the_file_view() {
+        let mut c = Chat::new();
+        c.apply_snapshot(snapshot(vec![
+            item("u1", "user", "go"),
+            edit("e1", "src/b.rs", 1, 0),
+            edit("e2", "src/a.rs", 60, 0),
+            item("a1", "agent", "Done."),
+        ]));
+        let expanded = ChatOpts {
+            expanded: true,
+            hide_edits: true,
+            ..opts()
+        };
+        c.layout(100, 200, &expanded);
+        let t = texts(&c);
+        assert!(
+            t.contains(&"… +21 lines (tab, enter opens the file)".to_string()),
+            "{t:?}"
+        );
+        assert_eq!(t.iter().filter(|l| *l == "+new").count(), 1 + 39);
     }
 
     #[test]

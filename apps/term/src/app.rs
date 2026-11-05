@@ -1995,8 +1995,16 @@ impl App {
     }
 
     /// Keys while the chat's files and replies have focus: move between them, open a file's
-    /// diff or a reply as markdown, copy a reply's markdown or a file's path.
+    /// diff or a reply as markdown, copy a reply's markdown or a file's path. Ctrl-O on a file
+    /// expands it into the file view; elsewhere it expands the chat.
     fn chat_pick_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
+        if key.code == KeyCode::Char('o') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            match self.chat.picked_file().map(str::to_string) {
+                Some(path) => self.widgets.open_path(&path),
+                None => self.toggle_expanded(),
+            }
+            return;
+        }
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => self.focus = None,
             KeyCode::Up | KeyCode::Char('k') => self.chat.move_pick(-1),

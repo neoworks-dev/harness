@@ -272,7 +272,7 @@ impl<'a> Cx<'a> {
                         let more = rows.len() - (EDIT_ROWS - 1);
                         rows.truncate(EDIT_ROWS - 1);
                         rows.push(sline(
-                            format!("… +{more} lines (ctrl-o shows all)"),
+                            format!("… +{more} lines (tab, enter opens the file)"),
                             self.p.muted_style(),
                         ));
                     }

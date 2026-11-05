@@ -3028,6 +3028,32 @@ fn tab_reaches_the_files_in_the_chat_and_enter_opens_one() {
     assert_eq!(app.focus, None);
 }
 
+#[test]
+fn ctrl_o_on_an_edit_in_the_chat_opens_its_file() {
+    let mut app = app();
+    let edit: ViewItem = serde_json::from_value(json!({
+        "ref": "e1", "kind": "tool", "label": "edit src/a.rs", "state": "done",
+        "component": {"type":"diff","path":"src/a.rs","lines":[{"kind":"add","text":"x"}]}
+    }))
+    .unwrap();
+    show(
+        &mut app,
+        vec![item("u1", "user", "go"), edit, item("a1", "agent", "Done.")],
+    );
+    screen_text(&mut app, 80, 24);
+    app.handle_key(key(KeyCode::Tab));
+    assert_eq!(app.chat.picked_file(), Some("src/a.rs"));
+    app.handle_key(ctrl('o'));
+    assert!(app.widgets().overlay_open());
+    assert!(!app.expanded, "the chat stays as it was");
+    // On a reply it expands the chat.
+    app.handle_key(key(KeyCode::Esc));
+    app.handle_key(key(KeyCode::Up));
+    assert_eq!(app.chat.picked_file(), None);
+    app.handle_key(ctrl('o'));
+    assert!(app.expanded);
+}
+
 /// Not a test: writes a frame of a busy session as HTML to `$PREVIEW_HTML` (in the theme
 /// `$PREVIEW_THEME`, dark by default), to look at the design in a browser.
 /// `PREVIEW_HTML=/tmp/term.html cargo test -p neo-term preview -- --ignored`
