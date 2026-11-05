@@ -157,6 +157,8 @@ export interface NewSessionParams {
    * harness's configured default.
    */
   safeSearch?: () => SafeSearch | undefined;
+  /** The user's own words for the system prompt (/system-prompt), after the rest of it. */
+  promptAddition?: string;
   /**
    * Set when this session is a subagent of another (delegate): its hooks run as SubagentStop, not
    * Stop. `definition` names the agent definition (agents.ts) it runs as, if any.

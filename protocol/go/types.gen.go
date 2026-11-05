@@ -1025,6 +1025,8 @@ type UserSettings struct {
 	ChartImages *bool `json:"chartImages,omitempty"`
 	// Only the newest file edit or write in the chat shows its changes; earlier ones are their one line. Off (absent): every edit shows them.
 	HideEdits *bool `json:"hideEdits,omitempty"`
+	// The user's own words that go into every agent's system prompt after the rest of it, from the conversation's start (/system-prompt). Absent: none. Apps that edit it start from this.
+	PromptAddition *string `json:"promptAddition,omitempty"`
 }
 
 // UiActionMessage: Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon.

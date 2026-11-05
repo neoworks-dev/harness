@@ -57,6 +57,9 @@ export function parseSubagents(value: string): Subagents | undefined {
   return SUBAGENTS.find((kind) => kind === value);
 }
 
+/** A guest harness's own system prompt or tools, or neo's in their place. */
+export type GuestPrompt = "own" | "neo";
+
 /** The model that writes session titles: one of a harness's models, or the harness's own default. */
 export interface TitleModel {
   harness: string;
@@ -284,14 +287,55 @@ export class Settings {
     this.store.setMeta(metaKey("daemon", "subagents"), value);
   }
 
+  /**
+   * The user's own words for every agent's system prompt (/system-prompt), after the rest of
+   * it; undefined when there are none. Read when a conversation starts.
+   */
+  promptAddition(): string | undefined {
+    const text = this.store.getMeta(metaKey("daemon", "prompt_addition"));
+    return text === undefined || text.trim() === "" ? undefined : text;
+  }
+
+  /** `undefined` (or only spaces) takes them out. */
+  setPromptAddition(text: string | undefined): void {
+    this.store.setMeta(metaKey("daemon", "prompt_addition"), text?.trim() ?? "");
+    this.togglesChanged();
+  }
+
+  /**
+   * What a guest harness's conversations start with: its own system prompt (with neo's words for
+   * guests after it), or neo's in its place.
+   */
+  guestPrompt(harness: string): GuestPrompt {
+    const value = this.store.getMeta(metaKey(harness, "system_prompt"));
+    return value === "neo" ? "neo" : "own";
+  }
+
+  setGuestPrompt(harness: string, value: GuestPrompt): void {
+    this.store.setMeta(metaKey(harness, "system_prompt"), value);
+  }
+
+  /** Which file tools a guest harness works with: its own, or neo's hashline read, edit and write. */
+  guestTools(harness: string): GuestPrompt {
+    const value = this.store.getMeta(metaKey(harness, "file_tools"));
+    return value === "neo" ? "neo" : "own";
+  }
+
+  setGuestTools(harness: string, value: GuestPrompt): void {
+    this.store.setMeta(metaKey(harness, "file_tools"), value);
+  }
+
   /** The /settings toggles, as apps get them (user.settings). */
   userSettings(): UserSettings {
-    return {
+    const settings: UserSettings = {
       showDontTell: this.showDontTell(),
       splitDiffs: this.splitDiffs(),
       chartImages: this.chartImages(),
       hideEdits: this.hideEdits(),
     };
+    const addition = this.promptAddition();
+    if (addition !== undefined) settings.promptAddition = addition;
+    return settings;
   }
 
   /** Calls `listener` with the toggles after each change. */

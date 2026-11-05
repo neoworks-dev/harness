@@ -399,6 +399,8 @@ pub struct App {
     chart_images: bool,
     /// `/settings hide-edits`: only the newest edit shows its changes.
     hide_edits: bool,
+    /// The user's words in every agent's system prompt (`/system-prompt`), for editing them.
+    prompt_addition: Option<String>,
     /// What Alt-. / Alt-, did to the panes' widths.
     resized: Resized,
     /// The daemon's connectors (apps and services), for the sidebar's servers.
@@ -538,6 +540,7 @@ impl App {
             split_diffs: false,
             chart_images: false,
             hide_edits: false,
+            prompt_addition: None,
             resized: Resized::default(),
             connectors: Vec::new(),
             editor: Editor::default(),
@@ -871,6 +874,7 @@ impl App {
                 self.widgets.set_split_diffs(settings.split_diffs);
                 self.chart_images = settings.chart_images == Some(true);
                 self.hide_edits = settings.hide_edits == Some(true);
+                self.prompt_addition = settings.prompt_addition;
             }
             Event::SessionChanged(info) => {
                 if info.id == self.session {
@@ -3063,6 +3067,13 @@ impl App {
             "files" => self.focus_files(),
             "terminal" => self.toggle_terminal(),
             "quit" => fx.push(Effect::Quit),
+            // Alone, the words there now go into the editor to be changed and sent again.
+            "system-prompt"
+                if text.trim() == "/system-prompt" && self.prompt_addition.is_some() =>
+            {
+                let now = self.prompt_addition.clone().unwrap_or_default();
+                self.editor.set_text(&format!("/system-prompt {now}"));
+            }
             _ => self.send(text.to_string(), fx),
         }
     }

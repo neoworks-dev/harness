@@ -999,6 +999,10 @@
         "hideEdits": {
           "type": "boolean",
           "description": "Only the newest file edit or write in the chat shows its changes; earlier ones are their one line. Off (absent): every edit shows them."
+        },
+        "promptAddition": {
+          "type": "string",
+          "description": "The user's own words that go into every agent's system prompt after the rest of it, from the conversation's start (/system-prompt). Absent: none. Apps that edit it start from this."
         }
       },
       "required": ["showDontTell", "splitDiffs"],

@@ -82,6 +82,11 @@ pub const COMMANDS: &[Command] = &[
         "turn settings on or off, like Show, don't tell. (UI over text)",
     ),
     daemon(
+        "system-prompt",
+        "[text|clear]",
+        "your words in every agent's system prompt (alone: edit them)",
+    ),
+    daemon(
         "login",
         "[provider]",
         "add an API key or an account (ChatGPT, Copilot, Claude Pro/Max)",

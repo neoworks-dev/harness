@@ -191,6 +191,8 @@ export interface SessionManagerOptions {
   requestPermission?: (sessionId: string) => RequestPermission;
   /** The user's safe-search choice for the agent's web search (see Settings.safeSearch). */
   safeSearch?: () => SafeSearch | undefined;
+  /** The user's words for the agent's system prompt (see Settings.promptAddition). */
+  promptAddition?: () => string | undefined;
   /** Called for each new session (it may start on a harness the user chose before). */
   created?: (sessionId: string) => void;
   /**
@@ -923,6 +925,9 @@ export class SessionManager {
       params.requestPermission = this.options.requestPermission(sessionId);
     }
     if (isDefault && this.options.safeSearch) params.safeSearch = this.options.safeSearch;
+    // The user's words for the system prompt (an ACP harness gets them from its adapter).
+    const addition = isDefault ? this.options.promptAddition?.() : undefined;
+    if (addition !== undefined) params.promptAddition = addition;
     const { backgroundEnded } = this.options;
     if (isDefault && backgroundEnded) {
       params.backgroundEnded = (text) => backgroundEnded(sessionId, text);

@@ -13,6 +13,8 @@
 //                 completed tool call with its diff (like an adapter that asks before it writes)
 //   config        reports what session/new (or resume) and set_config_option gave it (the
 //                 instructions, the disallowed tools, the ask rules, the settings)
+//   prompts       reports what the system prompt and the tools came to (see below)
+//   neocall <tool> <json>  calls one of neo's tools through the gateway and replies its result
 //   title <t>     replies {"title": "<t>"} (plus " (<model>)" once a model was set): a title
 //                 generateText asked for (the prompt's last line)
 //   started       reports how the conversation began: "new" or "resume" (resuming a session id
@@ -56,9 +58,15 @@ let nextId = 1000;
 const waiting = new Map<number, (result: unknown) => void>();
 let gateway: HttpServer | undefined;
 let instructions: unknown;
+/** How the instructions end, the system prompt in place of the adapter's own, Codex's. */
+let instructionsEnd: unknown;
+let systemPrompt: unknown;
 let disallowed: unknown;
-/** The ask rules of the settings Claude Code's adapter was given. */
+/** The ask and allow rules of the settings Claude Code's adapter was given. */
 let ask: unknown;
+let allow: unknown;
+/** The gateway's tools (tools/list), as this adapter sees them. */
+let gatewayTools: unknown;
 const config: Record<string, unknown> = {};
 let sessionId = "";
 let started = "new";
@@ -474,6 +482,53 @@ async function prompt(params: {
     update(sessionId, { sessionUpdate: "plan", entries: [] });
     say(sessionId, JSON.stringify({ instructions, disallowed, ask, config, session: sessionId }));
     return { stopReason: "end_turn" };
+  } else if (task === "prompts") {
+    // What the system prompt and the tools came to: how the instructions end, the prompt in
+    // place of the adapter's own (Claude Code's; Codex's base_instructions), the allow rules,
+    // and the gateway's tools.
+    let base: unknown;
+    try {
+      const codex: { base_instructions?: unknown } = JSON.parse(process.env.CODEX_CONFIG ?? "{}");
+      base = codex.base_instructions;
+    } catch {
+      base = undefined;
+    }
+    if (gateway && gatewayTools === undefined) {
+      const requestInit = {
+        headers: Object.fromEntries(gateway.headers.map((h) => [h.name, h.value])),
+      };
+      try {
+        const client = new Client({ name: "fake-guest", version: "1" });
+        await client.connect(
+          new StreamableHTTPClientTransport(new URL(gateway.url), { requestInit }),
+        );
+        gatewayTools = (await client.listTools()).tools.map((t) => t.name);
+        await client.close();
+      } catch (err) {
+        gatewayTools = `failed: ${String(err)}`;
+      }
+    }
+    const start = (v: unknown): unknown => (typeof v === "string" ? v.slice(0, 30) : v);
+    say(
+      sessionId,
+      JSON.stringify({
+        instructionsEnd,
+        systemPrompt: start(systemPrompt),
+        systemPromptEnd: typeof systemPrompt === "string" ? systemPrompt.slice(-20) : undefined,
+        base: start(base),
+        disallowed,
+        allow,
+        tools: gatewayTools,
+      }),
+    );
+    return { stopReason: "end_turn" };
+  } else if (task.startsWith("neocall ")) {
+    // neocall <tool> <json args>: one of neo's tools through the gateway, its result as the reply.
+    const [, name = "", ...rest] = task.split(" ");
+    const args: Record<string, unknown> = JSON.parse(rest.join(" ") || "{}");
+    const result = await neo(name, args);
+    say(sessionId, JSON.stringify(result));
+    return { stopReason: "end_turn" };
   } else if (task.startsWith("title ")) {
     // What generateText asks: the reply is a title (with the model it was asked on, if one was set).
     let title = task.slice(6);
@@ -608,13 +663,20 @@ async function handle(message: Record<string, unknown>): Promise<void> {
       cwd = params.cwd as string;
       const meta = (params._meta ?? {}) as {
         jetbrains?: { air?: { customInstructions?: string } };
+        systemPrompt?: string;
         claudeCode?: {
-          options?: { disallowedTools?: string[]; settings?: { permissions?: { ask?: string[] } } };
+          options?: {
+            disallowedTools?: string[];
+            settings?: { permissions?: { ask?: string[]; allow?: string[] } };
+          };
         };
       };
       instructions = meta.jetbrains?.air?.customInstructions?.slice(0, 40);
+      instructionsEnd = meta.jetbrains?.air?.customInstructions?.slice(-20);
+      systemPrompt = meta.systemPrompt;
       disallowed = meta.claudeCode?.options?.disallowedTools;
       ask = meta.claudeCode?.options?.settings?.permissions?.ask;
+      allow = meta.claudeCode?.options?.settings?.permissions?.allow;
       sessionId = "acp-1";
       result = { sessionId, configOptions: configOptions() };
       if (process.env.FAKE_ACP_COMMANDS_FIRST !== undefined)

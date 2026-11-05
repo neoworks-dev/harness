@@ -404,6 +404,8 @@ export interface UserSettings {
   chartImages?: boolean;
   /** Only the newest file edit or write in the chat shows its changes; earlier ones are their one line. Off (absent): every edit shows them. */
   hideEdits?: boolean;
+  /** The user's own words that go into every agent's system prompt after the rest of it, from the conversation's start (/system-prompt). Absent: none. Apps that edit it start from this. */
+  promptAddition?: string;
 }
 
 /** Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon. */

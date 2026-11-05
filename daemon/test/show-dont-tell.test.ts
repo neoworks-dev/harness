@@ -79,6 +79,7 @@ test("/settings without a toggle shows them with their state, and picking one fl
     "Messages reach a working agent at once · on",
     "Subagents · both",
     "Always ask before starting agents · off",
+    "Your words in the system prompt · none",
   ]);
   expect(choice.options[0]?.description).toContain("cards, tables and forms");
 

@@ -13,6 +13,8 @@
 //                                             diffs, charts as images, which subagents, always ask
 //                                             for agents), for every session; no setting: pick
 //                                             one; no value: its next
+//   /system-prompt [text|clear]               the user's own words in every agent's system prompt,
+//                                             from each conversation's start; none: what they are
 //   /login [provider | key [provider]]        add an API key or an account (login.ts)
 //   /logout [provider], /accounts             remove a login; list what is logged in
 //   /plugin …                                 marketplaces and plugins (plugins.ts)
@@ -36,6 +38,7 @@ import { NotFoundError, type SessionManager } from "./sessions.ts";
 import {
   APPROVALS,
   CATEGORIES,
+  type GuestPrompt,
   type HarnessSettingName,
   isSettingName,
   nextApprovals,
@@ -63,6 +66,7 @@ export const DAEMON_COMMANDS: readonly string[] = [
   "approvals",
   "safesearch",
   "settings",
+  "system-prompt",
   "harness",
   "cd",
   "title",
@@ -115,6 +119,8 @@ interface Toggle {
   set: (value: string) => void;
   /** Said after it was set, with the value: "Agents hear of it with their next prompt." */
   after?: (value: string) => string | undefined;
+  /** Picking it does this instead of stepping its value (a setting that is text). */
+  pick?: () => void;
 }
 
 /** An on/off setting as a Toggle. */
@@ -131,6 +137,12 @@ function onOff(
 
 /** Said when a setting about subagents changed: the agents running now keep how they started. */
 const NEXT_START = "Agents already running keep theirs until they start again (/new, or /clear).";
+
+const GUEST_PROMPTS: readonly GuestPrompt[] = ["own", "neo"];
+
+/** Said when a system prompt setting changed: it is read when a conversation starts. */
+const NEW_CONVERSATIONS =
+  "a conversation going on keeps the prompt it started with (/new or /clear starts another).";
 
 function when(iso: string | undefined): string | undefined {
   if (iso === undefined) return undefined;
@@ -152,6 +164,7 @@ export class Commands {
     if (name === "approvals") return this.approvals(session, args);
     if (name === "safesearch") return this.safeSearch(session, args);
     if (name === "settings") return this.toggleCommand(session, args);
+    if (name === "system-prompt") return this.systemPrompt(session, text.trim().slice(head.length));
     if (name === "harness") return this.harness(session, args);
     if (name === "cd") return this.cd(session, args);
     if (name === "title") return this.titleCommand(session, args);
@@ -442,7 +455,7 @@ export class Commands {
   }
 
   /** The user's settings, as /settings lists them; a description is one short line. */
-  private toggles(): Toggle[] {
+  private toggles(session: string): Toggle[] {
     const { settings } = this.parts;
     return [
       {
@@ -514,6 +527,44 @@ export class Commands {
         ),
         after: () => NEXT_START,
       },
+      {
+        id: "system-prompt",
+        name: "Your words in the system prompt",
+        description: "Every agent's, after the rest of it: /system-prompt <text> sets them",
+        values: [],
+        get: () => {
+          const text = settings.promptAddition();
+          if (text === undefined) return "none";
+          const lines = text.split("\n").length;
+          return lines === 1 ? "1 line" : `${lines} lines`;
+        },
+        set: () => {},
+        pick: () => void this.systemPrompt(session, ""),
+      },
+      ...this.parts.guests.names().flatMap((name): Toggle[] => {
+        if (!this.parts.guests.replacesPrompt(name)) return [];
+        const title = this.parts.guests.title(name);
+        const own: Toggle = {
+          id: `${name}-prompt`,
+          name: `${title}'s system prompt`,
+          description: `${title}'s own (neo's words for guests after it), or neo's in its place`,
+          values: GUEST_PROMPTS,
+          get: () => settings.guestPrompt(name),
+          set: (value) => settings.setGuestPrompt(name, value === "neo" ? "neo" : "own"),
+          after: () => NEW_CONVERSATIONS,
+        };
+        if (!this.parts.guests.swapsFileTools(name)) return [own];
+        const tools: Toggle = {
+          id: `${name}-tools`,
+          name: `${title}'s file tools`,
+          description: "Its own Read, Edit and Write, or neo's hashline read, edit and write",
+          values: GUEST_PROMPTS,
+          get: () => settings.guestTools(name),
+          set: (value) => settings.setGuestTools(name, value === "neo" ? "neo" : "own"),
+          after: () => NEW_CONVERSATIONS,
+        };
+        return [own, tools];
+      }),
     ];
   }
 
@@ -522,7 +573,7 @@ export class Commands {
    * <setting> [value] sets it (no value: the next).
    */
   private toggleCommand(session: string, args: string[]): Promise<void> {
-    const toggles = this.toggles();
+    const toggles = this.toggles(session);
     const [id, value] = args;
     const toggle = id === undefined ? undefined : toggles.find((t) => t.id === id);
     const values = toggle ? toggle.values.join("|") : "value";
@@ -547,6 +598,10 @@ export class Commands {
       if (more !== undefined) text += ` ${more}`;
       this.parts.notice(session, text);
     };
+    if (toggle?.pick !== undefined) {
+      toggle.pick();
+      return Promise.resolve();
+    }
     if (toggle !== undefined) {
       set(toggle, value ?? next(toggle));
       return Promise.resolve();
@@ -564,7 +619,8 @@ export class Commands {
     });
     const change = (picked: string | undefined): void => {
       const t = toggles.find((x) => x.id === picked);
-      if (t) set(t, next(t));
+      if (t?.pick !== undefined) t.pick();
+      else if (t) set(t, next(t));
     };
     // The answer comes later, from a button; the command is done once the choice is shown. A
     // pick with stay (Space) changes the setting and leaves the choice open.
@@ -576,6 +632,35 @@ export class Commands {
       .ask(session, choice(), undefined, stay)
       .then(change)
       .catch((err: unknown) => this.parts.log.warn(`/settings: ${String(err)}`));
+    return Promise.resolve();
+  }
+
+  /**
+   * /system-prompt <text>: the user's own words go into every agent's system prompt (neo's,
+   * Claude Code's, Codex's), after the rest of it, from each conversation's start; several lines
+   * are fine. `clear` takes them out; nothing says what they are now.
+   */
+  private systemPrompt(session: string, rest: string): Promise<void> {
+    const { settings, notice } = this.parts;
+    const text = rest.trim();
+    if (text === "") {
+      const now = settings.promptAddition();
+      notice(
+        session,
+        now === undefined
+          ? "No words of yours in the system prompt. /system-prompt <text> adds them."
+          : `In every agent's system prompt:\n\n${now}\n\n/system-prompt <text> replaces them, /system-prompt clear takes them out.`,
+        "muted",
+      );
+      return Promise.resolve();
+    }
+    const clear = text === "clear";
+    settings.setPromptAddition(clear ? undefined : text);
+    notice(
+      session,
+      `${clear ? "Your words are out of" : "Your words are in"} every agent's system prompt, ` +
+        `from the next conversation on: ${NEW_CONVERSATIONS}`,
+    );
     return Promise.resolve();
   }
 

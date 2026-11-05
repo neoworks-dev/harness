@@ -52,6 +52,18 @@ export function withCodexSubagents(json: string, on: boolean): string {
   return JSON.stringify({ ...config, features });
 }
 
+/** CODEX_CONFIG with `instructions` in place of Codex's own system prompt (base_instructions). */
+export function withCodexInstructions(json: string, instructions: string): string {
+  let config: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (isRecord(parsed)) config = { ...parsed };
+  } catch {
+    // Not JSON: replaced, as codexConfig does.
+  }
+  return JSON.stringify({ ...config, base_instructions: instructions });
+}
+
 function defaults(env: NodeJS.ProcessEnv): Record<string, GuestConfig> {
   // Prefer the user's own Claude Code over the one the adapter bundles.
   const claudeCli = Bun.which("claude");
@@ -61,6 +73,7 @@ function defaults(env: NodeJS.ProcessEnv): Record<string, GuestConfig> {
     route: "claude",
     permissions: "ask",
     subagents: "asks",
+    adapter: "claude",
   };
   if (claudeCli !== null) claude.env = { CLAUDE_CODE_EXECUTABLE: claudeCli };
   return {
@@ -72,6 +85,7 @@ function defaults(env: NodeJS.ProcessEnv): Record<string, GuestConfig> {
       route: "codex",
       permissions: "ask",
       subagents: "silent",
+      adapter: "codex",
     },
   };
 }

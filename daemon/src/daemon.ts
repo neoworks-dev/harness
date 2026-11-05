@@ -17,14 +17,21 @@ import { AssetStore } from "./assets.ts";
 import { FocusManager } from "./focus.ts";
 import { ViewManager } from "./view/views.ts";
 import { Gateway } from "./gateway/gateway.ts";
+import { FileTools } from "./gateway/file-tools.ts";
 import { mcpHandler } from "./gateway/mcp-server.ts";
 import { McpServers, type McpServersOptions } from "./gateway/mcp-servers.ts";
 import { ConnectorRegistry } from "./gateway/registry.ts";
 import { uiLibraryText } from "./gateway/ui-library.ts";
 import { createGuestAccounts } from "./guests/accounts.ts";
 import { createDelegate } from "./guests/delegate.ts";
-import { type GatewayRole, type GuestConfig, GuestManager } from "./guests/guests.ts";
+import {
+  type GatewayRole,
+  type GuestConfig,
+  GuestManager,
+  type GuestPrompts,
+} from "./guests/guests.ts";
 import { loadMcpServers, projectMcpAllowed } from "@neoworks-dev/neo/mcp-config";
+import { SYSTEM_PROMPT } from "@neoworks-dev/neo/system-prompt";
 import {
   loadPluginCommands,
   type PluginCommand,
@@ -163,6 +170,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     ];
     if (role?.guest === true) headers.push({ name: "x-neo-guest", value: role.name });
     if (role?.text === true) headers.push({ name: "x-neo-text", value: "1" });
+    if (role?.files === true) headers.push({ name: "x-neo-files", value: role.name });
     return [{ name: "neo", url: `${url}/mcp`, headers }];
   };
   const settings = new Settings(store, agent.name);
@@ -221,6 +229,15 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     neo: options.neo ?? (agent.name === "neo" ? agent : undefined),
     resolveAsset: (handle) => assets.resolve(handle),
     requestPermission: (session, name) => permissions.hook(session, name),
+    // The user's words, neo's prompt in place of the harness's own, neo's file tools.
+    prompts: (harness) => {
+      const prompts: GuestPrompts = {};
+      const addition = settings.promptAddition();
+      if (addition !== undefined) prompts.addition = addition;
+      if (settings.guestPrompt(harness) === "neo") prompts.replace = SYSTEM_PROMPT;
+      if (settings.guestTools(harness) === "neo") prompts.fileTools = true;
+      return prompts;
+    },
     // Not for a delegation's own session: subagents don't start subagents.
     nativeSubagents: (session) =>
       settings.subagents() !== "delegate" && store.getSession(session)?.parent === undefined,
@@ -315,6 +332,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     requestPermission: (sessionId) =>
       permissions.hook(sessionId, agent.name, () => sessions.stopTurn(sessionId)),
     safeSearch: () => settings.safeSearch(),
+    promptAddition: () => settings.promptAddition(),
     created: (sessionId) => {
       settings.inheritHarness(sessionId, (name) => name === agent.name || guests.has(name));
       // A new directory may bring its own .mcp.json.
@@ -538,7 +556,16 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       paths,
       port: options.port,
       protocol: PROTOCOL_VERSION,
-      mcp: mcpHandler(gateway),
+      mcp: mcpHandler(
+        gateway,
+        // neo's file tools, for a guest that works with them in place of its own.
+        new FileTools({
+          cwd: (session) => store.getSession(session)?.cwd ?? options.defaultCwd,
+          resolveAsset: (handle) => assets.resolve(handle),
+          ask: (session, agent) => permissions.hook(session, agent),
+          changed: (path, session) => hub.fileChanged({ path, app: "agent", session }),
+        }),
+      ),
       assets,
     });
   } catch (err) {

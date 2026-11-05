@@ -35,6 +35,8 @@ export interface SubagentOptions {
   focus: (session: string) => FocusTarget | undefined;
   /** The user's "Show, don't tell." setting, told to each subagent when it changed. */
   showDontTell?: () => ShowDontTellSetting;
+  /** The user's words for the system prompt (/system-prompt), read as a subagent starts. */
+  promptAddition?: () => string | undefined;
 }
 
 interface Subagent {
@@ -123,6 +125,8 @@ export class NeoSubagents {
       subagent: { ...(definition !== undefined && { definition }) },
     };
     if (options.resolveAsset) params.resolveAsset = options.resolveAsset;
+    const addition = options.promptAddition?.();
+    if (addition !== undefined) params.promptAddition = addition;
     const settings = options.settings(session);
     if (Object.keys(settings).length > 0) params.settings = settings;
     const hook = options.requestPermission?.(session);

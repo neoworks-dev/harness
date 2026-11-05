@@ -3226,6 +3226,26 @@ fn a_chat_opened_with_its_latest_items_pages_in_older_ones() {
 }
 
 #[test]
+fn system_prompt_alone_puts_the_words_there_now_in_the_editor() {
+    let mut app = app();
+    let settings: neo_protocol::UserSettings = serde_json::from_value(json!({
+        "showDontTell": false, "splitDiffs": false, "promptAddition": "Be brief."
+    }))
+    .unwrap();
+    app.handle_event(Event::UserSettings(settings));
+    type_str(&mut app, "/system-prompt");
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert!(fx.is_empty(), "{fx:?}");
+    assert_eq!(app.editor_text(), "/system-prompt Be brief.");
+    // Sent again (changed or not), it goes to the daemon.
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert!(
+        matches!(&fx[..], [Effect::Input { text, .. }] if text == "/system-prompt Be brief."),
+        "{fx:?}"
+    );
+}
+
+#[test]
 fn a_draft_waits_for_its_chat_to_be_shown_again() {
     let mut app = app();
     app.set_sessions(vec![info("s1", "One", 2), info("s2", "Two", 1)]);

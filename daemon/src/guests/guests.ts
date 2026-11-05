@@ -46,7 +46,7 @@ import { type Guard, RUN_TITLE, type Touches } from "../permissions.ts";
 import type { Approvals, HarnessSettings } from "../settings.ts";
 import { type FocusTarget, type ShowDontTellSetting, ToldState } from "../told.ts";
 import { AcpConnection, AcpError } from "./acp.ts";
-import { CLAUDE_AGENT_TOOLS, withCodexSubagents } from "./config.ts";
+import { CLAUDE_AGENT_TOOLS, withCodexInstructions, withCodexSubagents } from "./config.ts";
 import type { GuestAccounts, Route, RouteKind } from "./accounts.ts";
 import { GUEST_PROMPT, MAIN_PROMPT } from "./prompt.ts";
 import type { GuestRunResult, RunOptions } from "./run.ts";
@@ -70,6 +70,47 @@ export interface GuestConfig {
    * requests (Claude Code); silent, they start without asking (Codex).
    */
   subagents?: "asks" | "silent";
+  /**
+   * Which adapter it is, for what neo can change of it: its system prompt (both), its file
+   * tools (Claude Code's). Unset: neither.
+   */
+  adapter?: "claude" | "codex";
+}
+
+/** What the user set for a guest's system prompt (/system-prompt, /settings), read as it starts. */
+export interface GuestPrompts {
+  /** The user's own words, after the rest of the system prompt. */
+  addition?: string;
+  /** The harness's own system prompt gives way to this one (neo's). */
+  replace?: string;
+  /** neo's hashline read, edit and write in place of the harness's own (Claude Code). */
+  fileTools?: boolean;
+}
+
+/** Claude Code's file tools, which neo's read, edit and write stand in for. */
+export const CLAUDE_FILE_TOOLS = ["Read", "Edit", "MultiEdit", "Write", "NotebookEdit"];
+
+/** neo's file tools as Claude Code names them (the gateway's MCP server is "neo"). */
+const NEO_FILE_TOOLS = ["mcp__neo__read", "mcp__neo__edit", "mcp__neo__write"];
+
+/**
+ * Claude Code's options: its own subagents ask before they start (when the user lets it have
+ * them) or are off; with neo's file tools, its own are off and neo's don't ask through Claude
+ * Code (they ask themselves, with the diff, like neo's do).
+ */
+function claudeOptions(native: boolean, fileTools: boolean): Record<string, unknown> {
+  const disallowed: string[] = [];
+  const permissions: Record<string, string[]> = {};
+  if (native) permissions.ask = CLAUDE_AGENT_TOOLS;
+  else disallowed.push(...CLAUDE_AGENT_TOOLS);
+  if (fileTools) {
+    disallowed.push(...CLAUDE_FILE_TOOLS);
+    permissions.allow = NEO_FILE_TOOLS;
+  }
+  const options: Record<string, unknown> = {};
+  if (disallowed.length > 0) options.disallowedTools = disallowed;
+  if (Object.keys(permissions).length > 0) options.settings = { permissions };
+  return options;
 }
 
 /** Which client of the gateway an agent is (see Caller in gateway.ts). */
@@ -79,6 +120,8 @@ export interface GatewayRole {
   guest?: boolean;
   /** An ACP client: it gets text-only results. */
   text?: boolean;
+  /** It gets neo's file tools (read, edit, write) from the gateway, in place of its own. */
+  files?: boolean;
 }
 
 export interface GuestManagerOptions {
@@ -140,6 +183,8 @@ export interface GuestManagerOptions {
   stopTurn?: (session: string) => void;
   /** Whether starting a subagent asks in every mode (the user's /settings ask-for-agents). */
   alwaysAskForAgents?: () => boolean;
+  /** What the user set for this harness's system prompt and tools; read as its adapter starts. */
+  prompts?: (harness: string) => GuestPrompts;
 }
 
 /** A conversation the adapter has stored (session/list), for /resume. */
@@ -634,6 +679,8 @@ export class GuestManager {
     };
     if (options.showDontTell) subagents.showDontTell = options.showDontTell;
     if (options.resolveAsset) subagents.resolveAsset = options.resolveAsset;
+    const { prompts } = options;
+    if (prompts) subagents.promptAddition = () => prompts(NEO).addition;
     if (requestPermission)
       subagents.requestPermission = (session) => requestPermission(session, NEO);
     this.subagents = new NeoSubagents(neo, subagents);
@@ -654,6 +701,16 @@ export class GuestManager {
 
   title(name: string): string {
     return this.options.configs[name]?.title ?? name;
+  }
+
+  /** Whether neo can put its own system prompt in place of the guest's (see GuestConfig.adapter). */
+  replacesPrompt(name: string): boolean {
+    return this.options.configs[name]?.adapter !== undefined;
+  }
+
+  /** Whether neo's file tools can stand in for the guest's own (Claude Code's). */
+  swapsFileTools(name: string): boolean {
+    return this.options.configs[name]?.adapter === "claude";
   }
 
   /**
@@ -1116,12 +1173,17 @@ export class GuestManager {
     target: GuestTarget,
     route?: Route,
     native = false,
+    instructions?: string,
   ): AcpConnection {
     const config = this.options.configs[name];
     if (!config) throw new NotFoundError(`no guest ${name}`);
     const env = route ? { ...config.env, ...route.env } : { ...config.env };
     if (env.CODEX_CONFIG !== undefined) {
       env.CODEX_CONFIG = withCodexSubagents(env.CODEX_CONFIG, native);
+      // neo's prompt in place of Codex's own.
+      if (instructions !== undefined && config.adapter === "codex") {
+        env.CODEX_CONFIG = withCodexInstructions(env.CODEX_CONFIG, instructions);
+      }
     }
     return AcpConnection.spawn({
       command: config.command,
@@ -1243,7 +1305,18 @@ export class GuestManager {
     const route = chosen === undefined ? await this.routeFromSettings(session, name) : chosen;
     const native =
       main && this.ownSubagents(name) && this.options.nativeSubagents?.(session) === true;
-    const conn = this.spawn(name, cwd, target, route ?? undefined, native);
+    const adapter = this.options.configs[name]?.adapter;
+    let prompts: GuestPrompts = {};
+    if (adapter !== undefined) prompts = this.options.prompts?.(name) ?? prompts;
+    // Ours after the harness's own prompt, the user's words after that; or, in its place, neo's
+    // prompt and the user's words.
+    const ours = [main ? MAIN_PROMPT : GUEST_PROMPT, prompts.addition];
+    const instead =
+      prompts.replace === undefined
+        ? undefined
+        : [prompts.replace, prompts.addition].filter((p) => p !== undefined).join("\n\n");
+    const fileTools = prompts.fileTools === true && adapter === "claude";
+    const conn = this.spawn(name, cwd, target, route ?? undefined, native, instead);
     void conn.exited.then((code) => {
       log.info(`${name} for ${session} exited (${code})`);
       const { guest } = target;
@@ -1260,25 +1333,24 @@ export class GuestManager {
     });
     try {
       const { steering, backgroundTasks } = await this.initialize(conn, route ?? undefined);
+      const role: GatewayRole = { name, guest: !main, text: true };
+      if (fileTools) role.files = true;
       const mcpServers = this.options
-        .mcpServers(session, { name, guest: !main, text: true })
+        .mcpServers(session, role)
         .map((server) => ({ type: "http", ...server }));
-      const params: Record<string, unknown> = {
-        cwd,
-        mcpServers,
-        _meta: {
-          // Both adapters append this to their own system prompt.
-          jetbrains: { air: { customInstructions: main ? MAIN_PROMPT : GUEST_PROMPT } },
-          // Claude Code's own subagents, when the user lets the agent use them, ask before they
-          // start like any tool (onRequest decides); else they are off and delegate hands work
-          // on. (Codex: CODEX_CONFIG, see spawn.)
-          claudeCode: {
-            options: native
-              ? { settings: { permissions: { ask: CLAUDE_AGENT_TOOLS } } }
-              : { disallowedTools: CLAUDE_AGENT_TOOLS },
-          },
+      const meta: Record<string, unknown> = {
+        // Both adapters append this to their own system prompt.
+        jetbrains: {
+          air: { customInstructions: ours.filter((p) => p !== undefined).join("\n\n") },
         },
+        // Claude Code's own subagents, when the user lets the agent use them, ask before they
+        // start like any tool (onRequest decides); else they are off and delegate hands work
+        // on. (Codex: CODEX_CONFIG, see spawn.)
+        claudeCode: { options: claudeOptions(native, fileTools) },
       };
+      // Claude Code takes neo's prompt as its whole system prompt (Codex: base_instructions).
+      if (instead !== undefined && adapter === "claude") meta.systemPrompt = instead;
+      const params: Record<string, unknown> = { cwd, mcpServers, _meta: meta };
       if (resume !== undefined) params.sessionId = resume;
       const created = await conn.request(
         resume === undefined ? "session/new" : "session/resume",

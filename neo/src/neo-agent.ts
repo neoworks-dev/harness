@@ -309,6 +309,8 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
     // A subagent can't delegate, so it isn't told of the agents.
     let basePrompt = systemPrompt(skills);
     if (!params.subagent) basePrompt = systemPrompt(skills, agentsPrompt(definitions));
+    // The user's own words come last.
+    if (params.promptAddition !== undefined) basePrompt += `\n\n${params.promptAddition}`;
     // Told once per session, in its first prompt (older logs: the first prompt after loading).
     let cwdTold = JSON.stringify(messages).includes("<session cwd=");
     // How the account a request just resolved changes the model (Copilot's base URL).
