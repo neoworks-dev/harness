@@ -966,3 +966,86 @@ fn enter_opens_a_select_with_no_value_and_says_when_it_has_no_options() {
     let screen = select(json!([]));
     assert!(screen.contains("no options"), "{screen}");
 }
+
+/// A reply that shows a commit and a pull request as cards.
+fn cards_item() -> ViewItem {
+    let root = node(
+        "Stack",
+        json!({"children": [
+            node("Commit", json!({"sha": "9eb159e0123456789", "title": "Switching replays light"})),
+            node("PullRequest", json!({"number": 31, "title": "Sticky header", "state": "open"})),
+        ]}),
+    );
+    serde_json::from_value(json!({
+        "ref": "a1", "kind": "agent",
+        "component": {"type": "text", "blocks": [{"type": "neoui", "ui": {"id": "0", "root": root}}]}
+    }))
+    .unwrap()
+}
+
+#[test]
+fn a_commit_or_pull_request_card_is_picked_with_the_keys_and_opened() {
+    let mut app = app();
+    show(&mut app, vec![user("u1", "what changed?"), cards_item()]);
+    text(&mut app);
+    press(&mut app, key(KeyCode::Tab));
+    assert_eq!(app.focus, Some(Focus::Chat));
+    // The reply first, then its cards.
+    press(&mut app, key(KeyCode::Home));
+    assert_eq!(app.chat.picked_reply(), Some("a1"));
+    press(&mut app, key(KeyCode::Down));
+    let commit = DevRef::Commit {
+        sha: "9eb159e0123456789".into(),
+        title: "Switching replays light".into(),
+    };
+    assert_eq!(app.chat.picked_ref(), Some(&commit));
+    assert_eq!(
+        press(&mut app, ch('y')),
+        [Effect::Copy("9eb159e0123456789".into())]
+    );
+    press(&mut app, key(KeyCode::Enter));
+    assert!(app.widgets().overlay_open(), "the commit's diff");
+    press(&mut app, ch('q'));
+    assert!(!app.widgets().overlay_open());
+    press(&mut app, key(KeyCode::Down));
+    assert!(matches!(
+        app.chat.picked_ref(),
+        Some(DevRef::Github {
+            pr: true,
+            number: 31,
+            ..
+        })
+    ));
+    press(&mut app, key(KeyCode::Enter));
+    assert!(app.github.is_open());
+}
+
+#[test]
+fn a_click_on_a_card_opens_it_and_a_click_elsewhere_does_nothing() {
+    use ratatui::crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let mut app = app();
+    show(&mut app, vec![user("u1", "what changed?"), cards_item()]);
+    let lines = screen(&mut app, 80, 36);
+    let click = |app: &mut App, needle: &str| {
+        let y = lines.iter().position(|l| l.contains(needle)).unwrap();
+        let x = lines[y].find(needle).unwrap();
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            app.handle_mouse(MouseEvent {
+                kind,
+                column: x as u16,
+                row: y as u16,
+                modifiers: KeyModifiers::NONE,
+            });
+        }
+    };
+    click(&mut app, "what changed?");
+    assert!(!app.widgets().overlay_open() && !app.github.is_open());
+    click(&mut app, "#31");
+    assert!(app.github.is_open());
+    app.github.close();
+    click(&mut app, "9eb159e");
+    assert!(app.widgets().overlay_open());
+}

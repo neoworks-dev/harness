@@ -482,6 +482,22 @@ fn enter_opens_the_detail_and_escape_goes_back() {
 }
 
 #[test]
+fn opened_at_a_number_it_shows_that_one_once_the_repository_is_known() {
+    let fake = Fake::acme();
+    let mut g = github(&fake);
+    assert_eq!(g.repo(), None);
+    g.open_number(Kind::Pr, 31);
+    assert!(g.is_open());
+    settle(&mut g);
+    assert_eq!(g.repo(), Some("acme/site"));
+    assert_eq!(fake.count("pr view 31"), 1);
+    assert!(screen(&mut g, 80, 10).contains("#31"));
+    // Esc goes on to the list of pull requests.
+    press(&mut g, KeyCode::Esc);
+    assert!(matches!(g.mode, Mode::List) && g.tab == Kind::Pr);
+}
+
+#[test]
 fn a_newer_item_than_the_cached_detail_is_fetched_again() {
     let fake = Fake::acme();
     let mut g = opened_issue(&fake);

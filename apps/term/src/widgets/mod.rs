@@ -705,6 +705,12 @@ impl Widgets {
         self.split_diffs = split;
     }
 
+    /// Opens the diff overlay on what commit `sha` changed.
+    pub fn open_commit(&mut self, sha: &str, title: &str) {
+        let view = DiffView::commit(self.cwd.clone(), sha, title).with_split(self.split_diffs);
+        self.diff = Some(view);
+    }
+
     /// Opens the diff overlay on `path` (as a tool's diff names it), as the files panel would;
     /// a file the panel doesn't list counts as modified.
     pub fn open_path(&mut self, path: &str) {

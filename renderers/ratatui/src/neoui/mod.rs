@@ -469,6 +469,80 @@ pub(crate) fn info(doc: &pb::UiDoc) -> UiDocInfo {
     }
 }
 
+/// A commit, issue or pull request a doc shows as a card: something an app can open.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DevRef {
+    Commit {
+        sha: String,
+        title: String,
+    },
+    /// An issue (`pr` false) or a pull request, with the repository and link when the doc
+    /// gave them.
+    Github {
+        pr: bool,
+        number: u64,
+        repo: Option<String>,
+        url: Option<String>,
+    },
+}
+
+impl DevRef {
+    /// What the card draws of it, to find its line by: the short sha, or `#12`.
+    pub fn token(&self) -> String {
+        match self {
+            DevRef::Commit { sha, .. } => sha.chars().take(7).collect(),
+            DevRef::Github { number, .. } => format!("#{number}"),
+        }
+    }
+}
+
+/// The commits, issues and pull requests the item's docs show as cards, in document order.
+pub fn neoui_refs(item: &pb::ViewItem) -> Vec<DevRef> {
+    let mut docs = Vec::new();
+    docs_of(&item.component, &mut docs);
+    let mut out = Vec::new();
+    for doc in docs.into_iter().filter(|d| d.streaming != Some(true)) {
+        if let Some(root) = &doc.root
+            && let Ok(v) = serde_json::to_value(root)
+        {
+            refs_in(&v, &mut out);
+        }
+    }
+    out
+}
+
+fn refs_in(v: &Value, out: &mut Vec<DevRef>) {
+    match v {
+        Value::Object(map) => {
+            if let Some(n) = N::new(v) {
+                let found = match n.name() {
+                    "Commit" => n
+                        .line("sha")
+                        .filter(|s| s.len() >= 7 && s.chars().all(|c| c.is_ascii_hexdigit()))
+                        .map(|sha| DevRef::Commit {
+                            sha,
+                            title: n.line("title").unwrap_or_default(),
+                        }),
+                    name @ ("Issue" | "PullRequest") => n
+                        .num("number")
+                        .filter(|x| x.is_finite() && *x >= 1.0 && x.fract() == 0.0)
+                        .map(|x| DevRef::Github {
+                            pr: name == "PullRequest",
+                            number: x as u64,
+                            repo: n.line("repo"),
+                            url: n.line("url"),
+                        }),
+                    _ => None,
+                };
+                out.extend(found);
+            }
+            map.values().for_each(|v| refs_in(v, out));
+        }
+        Value::Array(items) => items.iter().for_each(|v| refs_in(v, out)),
+        _ => {}
+    }
+}
+
 /// The docs of an item and what each holds.
 pub fn neoui_docs(item: &pb::ViewItem) -> Vec<UiDocInfo> {
     let mut docs = Vec::new();

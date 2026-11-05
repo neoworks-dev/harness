@@ -12,7 +12,7 @@ use neo_protocol::{
     SettingName, SlashCommand, WaitingInput,
 };
 use neo_renderer_ratatui::{
-    ButtonRef, ImageStatus, Options, Palette, UiKind, UiTarget, neoui_targets,
+    ButtonRef, DevRef, ImageStatus, Options, Palette, UiKind, UiTarget, neoui_targets,
 };
 use neo_sdk::Event;
 use ratatui::Frame;
@@ -26,10 +26,11 @@ use ratatui::widgets::{Clear, Paragraph, Scrollbar, ScrollbarOrientation, Scroll
 
 use crate::agents::{Agents, AgentsAction, MainRow, Transcript};
 use crate::attach;
-use crate::chat::{self, Chat, ChatOpts};
+use crate::chat::{self, Chat, ChatOpts, Pick};
 use crate::choice;
 use crate::editor::Editor;
 use crate::forms::{Forms, Outcome, Pending};
+use crate::github::model::Kind;
 use crate::github::{Github, Outgoing};
 use crate::history::{Histories, HistoryStore};
 use crate::images::Images;
@@ -1922,7 +1923,12 @@ impl App {
                 if let Some(text) = self.chat.selected_text() {
                     self.copy(text, fx);
                 }
+                // A click on a file's line or a card's opens it.
+                let pick = self.chat.clicked().and_then(|at| self.chat.pick_at(at));
                 self.chat.clear_selection();
+                if let Some(pick) = pick {
+                    self.open_pick(pick, fx);
+                }
             }
             _ => {}
         }
@@ -2096,6 +2102,8 @@ impl App {
             KeyCode::Enter | KeyCode::Char(' ' | 'v' | 'V') => {
                 if let Some(path) = self.chat.picked_file().map(str::to_string) {
                     self.widgets.open_path(&path);
+                } else if let Some(dev) = self.chat.picked_ref().cloned() {
+                    self.open_pick(Pick::Ref(dev), fx);
                 } else if let Some(text) = self.picked_markdown() {
                     self.reader = Some(Reader::new("reply", &text));
                 }
@@ -2103,11 +2111,51 @@ impl App {
             KeyCode::Char('y') => {
                 if let Some(path) = self.chat.picked_file().map(str::to_string) {
                     self.copy(path, fx);
+                } else if let Some(dev) = self.chat.picked_ref() {
+                    let text = match dev {
+                        DevRef::Commit { sha, .. } => sha.clone(),
+                        DevRef::Github { url: Some(url), .. } => url.clone(),
+                        DevRef::Github { .. } => dev.token(),
+                    };
+                    self.copy(text, fx);
                 } else if let Some(text) = self.picked_markdown() {
                     self.copy(text, fx);
                 }
             }
             _ => {}
+        }
+    }
+
+    /// Opens a file in the diff view, a commit's changes there too, an issue or pull request
+    /// in the GitHub view; one of another repository in the browser.
+    fn open_pick(&mut self, pick: Pick, fx: &mut Vec<Effect>) {
+        self.dirty = true;
+        match pick {
+            Pick::File(path) => self.widgets.open_path(&path),
+            Pick::Reply => {}
+            Pick::Ref(DevRef::Commit { sha, title }) => self.widgets.open_commit(&sha, &title),
+            Pick::Ref(DevRef::Github {
+                pr,
+                number,
+                repo,
+                url,
+            }) => {
+                let elsewhere = match (repo.as_deref(), self.github.repo()) {
+                    (Some(theirs), Some(ours)) => !theirs.eq_ignore_ascii_case(ours),
+                    _ => false,
+                };
+                match url {
+                    Some(url) if elsewhere => self.open_url(url, fx),
+                    _ if elsewhere => self.notify(
+                        format!("#{number} is in {}", repo.unwrap_or_default()),
+                        false,
+                    ),
+                    _ => {
+                        let kind = if pr { Kind::Pr } else { Kind::Issue };
+                        self.github.open_number(kind, number);
+                    }
+                }
+            }
         }
     }
 

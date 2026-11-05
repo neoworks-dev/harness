@@ -212,6 +212,23 @@ impl Github {
         self.ensure_list();
     }
 
+    /// Shows the view at issue or pull request `number` of the session's repository (Esc goes
+    /// on to its list).
+    pub fn open_number(&mut self, kind: Kind, number: u64) {
+        self.open();
+        self.tab = kind;
+        self.ensure_list();
+        if !self.details.contains_key(&(kind, number)) {
+            self.load_detail(kind, number);
+        }
+        self.mode = Mode::Detail(DetailView::new(kind, number));
+    }
+
+    /// The repository `gh` found for the session's directory, once it has.
+    pub fn repo(&self) -> Option<&str> {
+        self.repo_name()
+    }
+
     pub fn close(&mut self) {
         self.open = false;
         self.typing = None;
@@ -306,6 +323,12 @@ impl Github {
                 Msg::Repo(Ok(name)) => {
                     self.repo = Repo::Ready(name);
                     self.ensure_list();
+                    // Opened at an issue or pull request before the repository was known.
+                    if let Mode::Detail(v) = &self.mode
+                        && !self.details.contains_key(&(v.kind, v.number))
+                    {
+                        self.load_detail(v.kind, v.number);
+                    }
                 }
                 Msg::Repo(Err(e)) => self.repo = Repo::Failed(e),
                 Msg::List(key, result) => {

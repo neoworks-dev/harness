@@ -9,8 +9,8 @@ use neo_protocol::{
     Component, DiffLineKind, ItemKind, ItemState, ViewItem, ViewPage, ViewPatch, ViewSnapshot,
 };
 use neo_renderer_ratatui::{
-    ButtonRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiDocInfo, UiState, buttons,
-    file_icon, image_sources, neoui_docs, relative_path, render_item_images,
+    ButtonRef, DevRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiDocInfo, UiState,
+    buttons, file_icon, image_sources, neoui_docs, neoui_refs, relative_path, render_item_images,
 };
 
 use crate::util::width;
@@ -94,11 +94,21 @@ pub struct Changed {
 struct Target {
     /// The entry it is in.
     r#ref: String,
-    /// The file; None for a reply.
-    path: Option<String>,
+    what: Pick,
     line: usize,
     /// Lines it takes.
     len: usize,
+}
+
+/// What a line that can be picked stands for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pick {
+    /// A changed file, by its path.
+    File(String),
+    /// A reply, all of it.
+    Reply,
+    /// A commit, issue or pull request a card shows.
+    Ref(DevRef),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -127,6 +137,8 @@ struct Cached {
     focus: Option<usize>,
     /// Its code has its syntax colors (else it is plain, from the layout).
     lit: bool,
+    /// The commits, issues and pull requests its cards show, by the line each starts on.
+    refs: Rc<Vec<(usize, DevRef)>>,
 }
 
 struct Entry {
@@ -187,10 +199,10 @@ pub struct Chat {
     app: Option<String>,
     /// The session's directory: paths in it are shown relative to it.
     cwd: Option<String>,
-    /// The files and replies that can be picked, top to bottom, as laid out last.
+    /// The files, replies and refs that can be picked, top to bottom, as laid out last.
     targets: Vec<Target>,
-    /// The target picked with the keys: its entry and the file's path (None: the reply).
-    selected: Option<(String, Option<String>)>,
+    /// The target picked with the keys: its entry and what it stands for.
+    selected: Option<(String, Pick)>,
     /// The picked target is drawn highlighted (the chat has the keys).
     highlight: bool,
     /// Text selected with the mouse: from where the drag started to where it is, as (line,
@@ -566,7 +578,7 @@ impl Chat {
                 for (j, c) in changed.iter().enumerate() {
                     targets.push(Target {
                         r#ref: r.clone(),
-                        path: Some(c.path.clone()),
+                        what: Pick::File(c.path.clone()),
                         line: offset + 1 + j,
                         len: 1,
                     });
@@ -650,7 +662,7 @@ impl Chat {
                     .contains_key(r)
                     .then(|| opts.ui.get(r).cloned().unwrap_or_default()),
             };
-            let (lines, slots, focus, lit) = match self.cache.get(r) {
+            let (lines, slots, focus, lit, refs) = match self.cache.get(r) {
                 // Ctrl-O (everything in full) keeps the whole card, e.g. a long diff.
                 _ if opts.in_panel
                     && active.is_some()
@@ -662,14 +674,22 @@ impl Chat {
                         Rc::new(Vec::new()),
                         None,
                         true,
+                        Rc::new(Vec::new()),
                     )
                 }
-                Some(c) if c.key == ckey => (c.lines.clone(), c.slots.clone(), c.focus, c.lit),
+                Some(c) if c.key == ckey => (
+                    c.lines.clone(),
+                    c.slots.clone(),
+                    c.focus,
+                    c.lit,
+                    c.refs.clone(),
+                ),
                 // Without syntax colors: they are worked out for what comes into view.
                 _ => {
                     let (app, cwd) = (self.app.as_deref(), self.cwd.as_deref());
                     let (lines, slots, focus) = render(item, width, &ckey, app, cwd, false);
-                    let (lines, slots) = (Rc::new(lines), Rc::new(slots));
+                    let refs = ref_lines(&neoui_refs(item), &lines);
+                    let (lines, slots, refs) = (Rc::new(lines), Rc::new(slots), Rc::new(refs));
                     self.cache.insert(
                         r.clone(),
                         Cached {
@@ -678,9 +698,10 @@ impl Chat {
                             slots: slots.clone(),
                             focus,
                             lit: false,
+                            refs: refs.clone(),
                         },
                     );
-                    (lines, slots, focus, false)
+                    (lines, slots, focus, false, refs)
                 }
             };
             if lines.is_empty() {
@@ -693,17 +714,27 @@ impl Chat {
             if tool_row && let Some(first) = changed_files(item).into_iter().next() {
                 targets.push(Target {
                     r#ref: r.clone(),
-                    path: Some(first.path),
+                    what: Pick::File(first.path),
                     line: offset,
                     len: 1,
                 });
             } else if item.kind == ItemKind::Agent && !self.has_targets(r) {
                 targets.push(Target {
                     r#ref: r.clone(),
-                    path: None,
+                    what: Pick::Reply,
                     line: offset,
                     len,
                 });
+            }
+            // A card's ref is picked by its first line; what the item lets the keys reach
+            // (fields, buttons) takes them instead.
+            if !self.has_targets(r) {
+                targets.extend(refs.iter().map(|(at, dev)| Target {
+                    r#ref: r.clone(),
+                    what: Pick::Ref(dev.clone()),
+                    line: offset + at,
+                    len: 1,
+                }));
             }
             entries.push(Entry {
                 r#ref: r.clone(),
@@ -821,9 +852,9 @@ impl Chat {
             .selected_index()
             .filter(|_| self.highlight)
             .map(|i| &self.targets[i]);
-        let picked_file = picked.filter(|t| t.path.is_some()).map(|t| t.line);
+        let picked_file = picked.filter(|t| t.what != Pick::Reply).map(|t| t.line);
         let picked_reply = picked
-            .filter(|t| t.path.is_none())
+            .filter(|t| t.what == Pick::Reply)
             .map(|t| t.line..t.line + t.len);
         let mut at = top;
         for e in &self.entries[first..] {
@@ -968,10 +999,10 @@ impl Chat {
     }
 
     fn selected_index(&self) -> Option<usize> {
-        let (r, path) = self.selected.as_ref()?;
+        let (r, what) = self.selected.as_ref()?;
         self.targets
             .iter()
-            .position(|f| &f.r#ref == r && &f.path == path)
+            .position(|f| &f.r#ref == r && &f.what == what)
     }
 
     /// Whether the picked target is drawn highlighted.
@@ -1051,7 +1082,7 @@ impl Chat {
         }
         let i = if n < 0 { len + n } else { n }.clamp(0, len - 1) as usize;
         let t = &self.targets[i];
-        self.selected = Some((t.r#ref.clone(), t.path.clone()));
+        self.selected = Some((t.r#ref.clone(), t.what.clone()));
         let (line, end) = (t.line, t.line + t.len - 1);
         self.reveal_line(end.min(line + self.height.saturating_sub(2)));
         self.reveal_line(line);
@@ -1067,15 +1098,34 @@ impl Chat {
 
     /// The path of the picked file.
     pub fn picked_file(&self) -> Option<&str> {
-        self.selected_index()
-            .and_then(|i| self.targets[i].path.as_deref())
+        match &self.targets[self.selected_index()?].what {
+            Pick::File(path) => Some(path),
+            _ => None,
+        }
     }
 
     /// The ref of the picked reply.
     pub fn picked_reply(&self) -> Option<&str> {
         self.selected_index()
-            .filter(|&i| self.targets[i].path.is_none())
+            .filter(|&i| self.targets[i].what == Pick::Reply)
             .map(|i| self.targets[i].r#ref.as_str())
+    }
+
+    /// The commit, issue or pull request picked.
+    pub fn picked_ref(&self) -> Option<&DevRef> {
+        match &self.targets[self.selected_index()?].what {
+            Pick::Ref(dev) => Some(dev),
+            _ => None,
+        }
+    }
+
+    /// What a click on the chat's line `at` opens: the file or the ref whose line it is (a
+    /// reply is all of its lines, so a click in one doesn't open it).
+    pub fn pick_at(&self, at: usize) -> Option<Pick> {
+        self.targets
+            .iter()
+            .find(|t| t.line == at && t.what != Pick::Reply)
+            .map(|t| t.what.clone())
     }
 
     // ---- the mouse ----
@@ -1110,6 +1160,12 @@ impl Chat {
         (a != b).then(|| if a <= b { (a, b) } else { (b, a) })
     }
 
+    /// The line of a press let go where it started (a click, not a selection).
+    pub fn clicked(&self) -> Option<usize> {
+        let (a, b) = self.mouse?;
+        (a == b).then_some(a.0)
+    }
+
     /// The text of the mouse's selection, each line's trailing blanks cut.
     pub fn selected_text(&self) -> Option<String> {
         let ((l0, c0), (l1, c1)) = self.selection()?;
@@ -1135,6 +1191,31 @@ impl Chat {
             .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
             .unwrap_or_default()
     }
+}
+
+/// Where the cards of `refs` start in an item's `lines`: the first line, after the last one
+/// found, that shows the ref's sha or number as a word of its own. A card not drawn (in a tab
+/// not shown, say) is left out.
+fn ref_lines(refs: &[DevRef], lines: &[Line<'static>]) -> Vec<(usize, DevRef)> {
+    let mut out = Vec::new();
+    let mut from = 0;
+    for dev in refs {
+        let token = dev.token();
+        let shows = |line: &Line<'_>| {
+            let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+            text.match_indices(&token).any(|(i, _)| {
+                let before = text[..i].chars().next_back();
+                let after = text[i + token.len()..].chars().next();
+                !before.is_some_and(char::is_alphanumeric)
+                    && !after.is_some_and(char::is_alphanumeric)
+            })
+        };
+        if let Some(at) = (from..lines.len()).find(|&i| shows(&lines[i])) {
+            out.push((at, dev.clone()));
+            from = at + 1;
+        }
+    }
+    out
 }
 
 /// The chars of `text` in cells `from..to`; a wide char counts when it starts in them.

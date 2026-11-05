@@ -35,7 +35,8 @@ use ratatui::text::Line;
 pub use chart_image::{CHART_SCHEME, ChartKind, ChartSpec, SpecSeries, draw_chart};
 pub use icons::file_icon;
 pub use neoui::{
-    UiDocInfo, UiEdit, UiKind, UiOption, UiState, UiTarget, is_date, neoui_docs, neoui_targets,
+    DevRef, UiDocInfo, UiEdit, UiKind, UiOption, UiState, UiTarget, is_date, neoui_docs,
+    neoui_refs, neoui_targets,
 };
 pub use palette::Palette;
 

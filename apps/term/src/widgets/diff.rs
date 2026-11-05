@@ -403,6 +403,22 @@ impl DiffView {
         v
     }
 
+    /// What a commit changed (`git show`, a merge against its first parent), fetched on a
+    /// thread.
+    pub(crate) fn commit(cwd: PathBuf, sha: &str, title: &str) -> DiffView {
+        let short: String = sha.chars().take(7).collect();
+        let (tx, rx) = mpsc::channel();
+        let (dir, sha) = (cwd.clone(), sha.to_string());
+        std::thread::spawn(move || {
+            let _ = tx.send(git_show(&dir, &sha));
+        });
+        DiffView {
+            cwd,
+            rx: Some(rx),
+            ..DiffView::blank(format!("{short} {title}").trim_end().to_string())
+        }
+    }
+
     /// A diff somebody else is fetching: loading until [`DiffView::finish`] is given the text.
     pub(crate) fn loading(title: &str) -> DiffView {
         DiffView::blank(title.to_string())
@@ -2555,6 +2571,24 @@ fn run(cmd: &mut std::process::Command, no_index: bool) -> Result<String, String
 
 /// The diff text of one row: against HEAD (staged and unstaged together), or the whole file
 /// for untracked ones. `full` keeps the whole file as context.
+/// What commit `sha` changed, a merge against its first parent.
+fn git_show(cwd: &Path, sha: &str) -> Result<String, String> {
+    let context = format!("-U{CONTEXT}");
+    let show = [
+        "show",
+        "--first-parent",
+        "--format=",
+        "--no-color",
+        "--no-ext-diff",
+    ];
+    let out = run(git(cwd).args(show).arg(&context).arg(sha).arg("--"), false)?;
+    if out.trim().is_empty() {
+        Err(format!("{sha} changed no file"))
+    } else {
+        Ok(out)
+    }
+}
+
 fn load(cwd: &Path, req: &DiffRequest, full: bool) -> Result<String, String> {
     if req.rel.ends_with('/') {
         return Err("untracked directory".into());
