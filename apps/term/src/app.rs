@@ -76,6 +76,36 @@ const WAITING_ROWS: usize = 3;
 /// in most fonts. A frame each [`SPIN_MS`], the rate the screen repaints while one shows.
 const SPINNER: [char; 8] = ['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'];
 const SPIN_MS: i64 = 80;
+/// What the work row says while a turn runs, in place of a plain "working"; a length prime to
+/// 5, the step between them.
+const WORK_WORDS: [&str; 24] = [
+    "noodling…",
+    "herding bytes…",
+    "asking the rubber duck…",
+    "untangling spaghetti…",
+    "reticulating splines…",
+    "bribing the compiler…",
+    "counting semicolons…",
+    "chasing pointers…",
+    "feeding the hamsters…",
+    "shaving a yak…",
+    "consulting the oracle…",
+    "juggling tokens…",
+    "polishing pixels…",
+    "warming up the tubes…",
+    "grepping the void…",
+    "summoning daemons…",
+    "sharpening pencils…",
+    "rearranging electrons…",
+    "reading the manual…",
+    "brewing coffee…",
+    "connecting the dots…",
+    "poking at it…",
+    "thinking very hard…",
+    "making it make sense…",
+];
+/// How long each of them stays.
+const WORK_WORD_MS: i64 = 12_000;
 /// The chat needs at least this much beside the sessions sidebar, else the sidebar is hidden.
 const CHAT_MIN_WIDTH: u16 = 52;
 /// The narrowest the plan / files column gets.
@@ -3206,6 +3236,8 @@ impl App {
         let work_h = u16::from(
             (self.running || self.cache_cold || self.voice != Voice::Off) && chat_h >= gap + 6,
         );
+        // A blank row parts it from the chat.
+        let work_gap = u16::from(work_h > 0 && chat_h >= gap + 8);
         let inset = |r: Rect| {
             if self.styles.fills() {
                 Rect {
@@ -3218,7 +3250,7 @@ impl App {
             }
         };
         Areas {
-            chat: at(0, chat_h - gap - work_h),
+            chat: at(0, chat_h - gap - work_h - work_gap),
             work: at(chat_h - gap - work_h, work_h),
             rule: at(chat_h, rule_h),
             hint: inset(at(top, hint_h)),
@@ -4224,7 +4256,17 @@ impl App {
             .then(|| u64::try_from((self.now_ms - self.turn_started_ms) / 1000).unwrap_or(0))
     }
 
-    /// The row over the input box: `◐ working · 1m08s · esc to interrupt` with a light sweeping
+    /// What the work row says the agent is up to: a phrase from [`WORK_WORDS`], another one every
+    /// [`WORK_WORD_MS`], each turn starting somewhere else in the list.
+    fn work_word(&self) -> &'static str {
+        let turn = usize::try_from(self.turn_started_ms / 1000).unwrap_or(0);
+        let step =
+            usize::try_from((self.now_ms - self.turn_started_ms) / WORK_WORD_MS).unwrap_or(0);
+        // Stepping by a number prime to the length visits every phrase before one comes back.
+        WORK_WORDS[(turn.wrapping_mul(7) + step * 5) % WORK_WORDS.len()]
+    }
+
+    /// The row over the input box: `◐ noodling… · 1m08s · esc to interrupt` with a light sweeping
     /// across it, or while idle a band saying the cache has expired.
     fn draw_work(&self, frame: &mut Frame, area: Rect) {
         if area.height == 0 {
@@ -4275,7 +4317,7 @@ impl App {
         };
         let bold = self.styles.accent.add_modifier(Modifier::BOLD);
         let mut spans = vec![
-            Span::styled(format!("{} working", self.spinner()), bold),
+            Span::styled(format!("{} {}", self.spinner(), self.work_word()), bold),
             Span::styled(
                 format!(" · {}", crate::status::duration(secs)),
                 self.styles.muted,
@@ -4462,12 +4504,17 @@ impl App {
         frame.render_widget(Paragraph::new(lines), area);
     }
 
-    /// The marked sessions, by slot: a dialog in the middle of the chat, the keys in its frame.
+    /// The marked sessions, by slot: a dialog in the middle of the chat. A row per mark, its
+    /// status as the sidebar has it (`!` needs you, the spinner working, `●` done), the title,
+    /// and at the right where it works and when; the selected row on an accent band, the shown
+    /// chat with the sidebar's bar. The keys under them.
     fn draw_marks(&self, frame: &mut Frame, area: Rect) {
+        use crate::sessions::Status as Is;
         use ratatui::widgets::{Block, BorderType, Borders, Padding};
-        let rows = u16::try_from(self.marks.len().max(1)).unwrap_or(u16::MAX);
+        // A blank row over the list and one before the keys.
+        let rows = u16::try_from(self.marks.len().max(1)).unwrap_or(u16::MAX) + 3;
         let dialog = Rect {
-            width: area.width.saturating_sub(4).min(72),
+            width: area.width.saturating_sub(4).min(76),
             height: (rows + 2).min(area.height),
             ..area
         };
@@ -4478,18 +4525,24 @@ impl App {
         };
         // Inside the border and a column of padding each side.
         let w = usize::from(dialog.width.saturating_sub(4));
-        let keys = " enter show · a add · J/K reorder · d unmark · esc ";
+        let mut title = vec![Span::styled(
+            " Marks ",
+            self.styles.accent.add_modifier(Modifier::BOLD),
+        )];
+        if !self.marks.is_empty() {
+            title.push(Span::styled(
+                format!("{} ", self.marks.len()),
+                self.styles.muted,
+            ));
+        }
         let block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(self.styles.accent)
-            .title(Span::styled(
-                " Marks ",
-                self.styles.accent.add_modifier(Modifier::BOLD),
-            ))
-            .title_bottom(Line::from(Span::styled(keys, self.styles.muted)).right_aligned())
+            .border_style(self.styles.border)
+            .title(Line::from(title))
             .style(Style::new().bg(self.styles.raised))
-            .padding(Padding::horizontal(1));
+            .padding(Padding::new(1, 1, 1, 0));
+        let band = chat::mix(self.styles.raised, self.palette.accent, 0.16);
         let mut lines = Vec::new();
         if self.marks.is_empty() {
             lines.push(Line::from(Span::styled(
@@ -4500,30 +4553,87 @@ impl App {
         let sel = self.marks_sel.min(self.marks.len().saturating_sub(1));
         for (i, id) in self.marks.iter().enumerate() {
             let selected = i == sel;
-            let (marker, style) = if selected {
-                ("› ", self.styles.accent.add_modifier(Modifier::BOLD))
+            let bar = if *id == self.session { "▎" } else { " " };
+            let slot = if selected {
+                self.styles.accent.add_modifier(Modifier::BOLD)
             } else {
-                ("  ", Style::new())
+                self.styles.muted
             };
-            let mut spans = vec![
-                Span::styled(marker, self.styles.accent),
-                Span::styled(format!("{} ", i + 1), self.styles.accent),
+            let mut left = vec![
+                Span::styled(bar, self.styles.accent),
+                Span::styled(format!("{} ", i + 1), slot),
             ];
-            let here = if *id == self.session { "● " } else { "  " };
-            spans.push(Span::styled(here, self.styles.success));
+            let mut right = Vec::new();
             match self.sessions.get(id) {
                 Some(info) => {
-                    let (name, rest) = menu::session_label(info, self.home.as_deref(), self.now_ms);
-                    spans.push(Span::styled(truncate(&name, 40.min(w / 2)), style));
-                    spans.push(Span::styled(format!("  {rest}"), self.styles.muted));
+                    let status = self.sessions.status(info);
+                    let (word, tone) = match status {
+                        Is::Asking => ("needs you", self.styles.warning),
+                        Is::Running => ("working", self.styles.info),
+                        Is::Finished => ("done", self.styles.success),
+                        Is::Idle => ("", Style::new()),
+                    };
+                    let age = relative_time(info.last_activity, self.now_ms);
+                    if !word.is_empty() {
+                        right.push(Span::styled(word, tone));
+                        right.push(Span::styled(" · ", self.styles.muted));
+                    }
+                    right.push(Span::styled(age, self.styles.muted));
+                    left.push(status.icon(self.spinner(), &self.styles));
+                    left.push(Span::raw(" "));
+                    let name = match status {
+                        _ if selected => Style::new().add_modifier(Modifier::BOLD),
+                        Is::Asking => self.styles.warning.add_modifier(Modifier::BOLD),
+                        _ => Style::new(),
+                    };
+                    let right_w: usize = right.iter().map(|s| width(&s.content)).sum();
+                    let room = w.saturating_sub(5 + right_w + 2);
+                    let title = truncate(&session_title(info), room.min(44));
+                    let title_w = width(&title);
+                    left.push(Span::styled(title, name));
+                    // The project it works in, by its directory's name, in what is left.
+                    let project = info.cwd.trim_end_matches('/').rsplit('/').next();
+                    let project = project.filter(|p| !p.is_empty()).unwrap_or("/");
+                    let gap = room.saturating_sub(title_w);
+                    if gap >= 6 {
+                        let project = truncate(project, gap - 2);
+                        left.push(Span::styled(format!("  {project}"), self.styles.muted));
+                    }
                 }
-                None => spans.push(Span::styled(
-                    format!("{id} (not listed)"),
+                None => left.push(Span::styled(
+                    format!("  {id} (not listed)"),
                     self.styles.muted,
                 )),
             }
-            lines.push(fit_line(Line::from(spans), w));
+            let used: usize = left.iter().chain(&right).map(|s| width(&s.content)).sum();
+            left.push(Span::raw(" ".repeat(w.saturating_sub(used))));
+            left.extend(right);
+            let mut line = fit_line(Line::from(left), w);
+            if selected && let Some(bg) = band {
+                line = line.style(Style::new().bg(bg));
+            } else if selected {
+                line = line.style(Style::new().add_modifier(Modifier::REVERSED));
+            }
+            lines.push(line);
         }
+        lines.push(Line::default());
+        let key = |k: &'static str| Span::styled(k, self.styles.accent);
+        let what = |d: &'static str| Span::styled(d, self.styles.muted);
+        lines.push(fit_line(
+            Line::from(vec![
+                key("enter"),
+                what(" show  "),
+                key("a"),
+                what(" add  "),
+                key("J/K"),
+                what(" move  "),
+                key("d"),
+                what(" unmark  "),
+                key("esc"),
+                what(" close"),
+            ]),
+            w,
+        ));
         frame.render_widget(Clear, dialog);
         frame.render_widget(Paragraph::new(lines).block(block), dialog);
     }

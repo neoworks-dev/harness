@@ -3217,13 +3217,26 @@ fn a_mark_whose_chat_is_gone_is_dropped() {
 #[test]
 fn the_marks_dialog_lists_the_marked_chats_over_the_chat() {
     let mut app = app();
+    let mut asking = info("s3", "Deploy the site", 3);
+    asking.state = SessionState::Running;
+    asking.asking = Some(1);
+    let mut running = info("s4", "Refactor the router", 4);
+    running.state = SessionState::Running;
     app.set_sessions(vec![
         info("s1", "Fix the parser", 2),
         info("s2", "Write the docs", 1),
+        asking,
+        running,
     ]);
-    app.marks = vec!["s2".into(), "s1".into()];
+    app.marks = vec!["s2".into(), "s1".into(), "s3".into(), "s4".into()];
     app.handle_key(with(KeyCode::Char('\''), KeyModifiers::ALT));
-    snapshot("marks-dialog-90x20", &screen_text(&mut app, 90, 20));
+    let s = screen_text(&mut app, 90, 20);
+    assert!(
+        s.contains("! Deploy the site") && s.contains("needs you"),
+        "{s}"
+    );
+    assert!(s.contains("working"), "{s}");
+    snapshot("marks-dialog-90x20", &s);
 }
 
 #[test]

@@ -38,6 +38,8 @@ pub fn sidebar_width(total: u16) -> u16 {
 const PAGE: usize = 5;
 /// Idle longer than this, a session is drawn faded and folds into its group's older row.
 const STALE_MS: i64 = 24 * 3600 * 1000;
+/// How much of the info blue a working session's band has over the pane's background.
+const RUNNING_TINT: f32 = 0.14;
 
 /// What a key in the focused sidebar asks the app to do.
 #[derive(Debug, Clone, PartialEq)]
@@ -163,7 +165,7 @@ struct Folded {
 
 /// What a session's row says before its title; the first that holds, when several do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum Status {
+pub enum Status {
     /// A permission request or a choice is open for the user.
     Asking,
     Running,
@@ -174,10 +176,10 @@ enum Status {
 
 impl Status {
     /// `!` in amber, the spinner in blue, `●` in green, and a blank for nothing.
-    fn icon(self, look: &Look, styles: &Styles) -> Span<'static> {
+    pub fn icon(self, spinner: char, styles: &Styles) -> Span<'static> {
         match self {
             Status::Asking => Span::styled("!", styles.warning.add_modifier(Modifier::BOLD)),
-            Status::Running => Span::styled(look.spinner.to_string(), styles.info),
+            Status::Running => Span::styled(spinner.to_string(), styles.info),
             Status::Finished => Span::styled("●", styles.success),
             Status::Idle => Span::raw(" "),
         }
@@ -342,7 +344,8 @@ impl Sessions {
         self.finished.contains(id)
     }
 
-    fn status(&self, info: &SessionInfo) -> Status {
+    /// What the session's row leads with: the most pressing of waiting, working and finished.
+    pub fn status(&self, info: &SessionInfo) -> Status {
         if info.asking.unwrap_or(0) > 0 {
             Status::Asking
         } else if info.state == SessionState::Running {
@@ -369,7 +372,7 @@ impl Sessions {
             if !out.is_empty() {
                 out.push(Span::raw(" "));
             }
-            let icon = status.icon(look, styles);
+            let icon = status.icon(look.spinner, styles);
             let count = Span::styled(n.to_string(), icon.style);
             out.extend([icon, count]);
         }
@@ -795,7 +798,7 @@ impl Sessions {
                         tail.push(Span::styled(format!(" · {}", f.count), styles.muted));
                         if f.status != Status::Idle {
                             tail.push(Span::raw(" "));
-                            tail.push(f.status.icon(look, styles));
+                            tail.push(f.status.icon(look.spinner, styles));
                         }
                     }
                     let lead = if folded.is_some() { " ▸ " } else { " " };
@@ -847,6 +850,21 @@ impl Sessions {
                         focused && self.selected.as_ref() == Some(&Pick::Session(info.id.clone()));
                     let status = self.status(info);
                     let mut pair = row(info, status, *child, w, look, styles);
+                    // A session at work sits on a faint blue band, the whole width.
+                    let band = styles
+                        .info
+                        .fg
+                        .filter(|_| status == Status::Running)
+                        .and_then(|info| crate::chat::mix(styles.panel, info, RUNNING_TINT));
+                    if let Some(bg) = band.filter(|_| !selected) {
+                        for line in &mut pair {
+                            let pad = w.saturating_sub(line.width());
+                            line.spans.push(Span::raw(" ".repeat(pad)));
+                            for span in &mut line.spans {
+                                span.style = span.style.bg(bg);
+                            }
+                        }
+                    }
                     if selected {
                         for line in &mut pair {
                             let pad = w.saturating_sub(line.width());
@@ -908,7 +926,7 @@ fn row(
         Status::Idle if stale => styles.muted,
         _ => Style::new(),
     };
-    let mut first = lead(status.icon(look, styles));
+    let mut first = lead(status.icon(look.spinner, styles));
     if child {
         first.push(Span::styled("↳ ", styles.muted));
     }
@@ -1121,6 +1139,31 @@ mod tests {
         let text = neo_renderer_ratatui::plain_text(&s.render(40, 20, &look, &styles())).join("\n");
         assert!(text.contains("1 Beta"), "{text}");
         assert!(!text.contains("1 Alpha"), "{text}");
+    }
+
+    #[test]
+    fn a_working_session_sits_on_a_blue_band() {
+        let mut s = Sessions::default();
+        let mut running = info("b", "Beta", 1);
+        running.state = SessionState::Running;
+        s.set_all(vec![info("a", "Alpha", 2), running]);
+        // A theme that paints the pane.
+        let styles = Styles {
+            panel: ratatui::style::Color::Rgb(0x1c, 0x1d, 0x20),
+            ..styles()
+        };
+        let lines = s.render(40, 20, &look("a", false), &styles);
+        let bg = |title: &str| {
+            let line = lines
+                .iter()
+                .find(|l| l.to_string().contains(title))
+                .unwrap();
+            line.spans.iter().map(|s| s.style.bg).collect::<Vec<_>>()
+        };
+        let band = crate::chat::mix(styles.panel, styles.info.fg.unwrap(), RUNNING_TINT);
+        assert!(band.is_some());
+        assert!(bg("Beta").iter().all(|c| *c == band), "{:?}", bg("Beta"));
+        assert!(bg("Alpha").iter().all(|c| *c != band));
     }
 
     #[test]

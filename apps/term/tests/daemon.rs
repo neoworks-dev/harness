@@ -189,7 +189,9 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
         s.contains("echo #1: hello from the terminal")
     });
     assert!(screen.contains("› hello from the terminal"), "{screen}");
-    ui.until("the turn to end", |s| !s.contains("working"));
+    ui.until("the turn to end", |s| {
+        !s.contains("working") && !s.contains("esc to interrupt")
+    });
 
     // Registered as the app "terminal", and the agent is here with this session.
     let probe = neo_sdk::Client::connect({

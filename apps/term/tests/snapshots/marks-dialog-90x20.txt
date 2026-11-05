@@ -1,15 +1,15 @@
 
- Sessions · 2                    connecting to the session…
-   + New chat
- site ───────────────────────    ╭ Marks ──────────────────────────────────────────────╮
-▎  2 Fix the parser       16m    │ › 1   Write the docs  ~/site  16m ago               │
-                                 │   2 ● Fix the parser  ~/site  16m ago               │
-   1 Write the docs       16m    ╰── enter show · a add · J/K reorder · d unmark · esc ╯
-
-
-
-
-
+ Sessions · 4          !1 ⡿1     connecting to the session…
+   + New chat                    ╭ Marks 4 ────────────────────────────────────────────╮
+ site ───────────────────────    │                                                     │
+ ⡿ 4 Refactor the router  16m    │  1   Write the docs  site                   16m ago │
+                                 │ ▎2   Fix the parser  site                   16m ago │
+ ! 3 Deploy the site      16m    │  3 ! Deploy the site  site      needs you · 16m ago │
+   needs you                     │  4 ⡿ Refactor the router  site    working · 16m ago │
+                                 │                                                     │
+▎  2 Fix the parser       16m    │ enter show  a add  J/K move  d unmark  esc close    │
+                                 ╰─────────────────────────────────────────────────────╯
+   1 Write the docs       16m
 
 
 
