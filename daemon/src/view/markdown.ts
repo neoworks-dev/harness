@@ -1,5 +1,5 @@
 // Markdown → the view format's blocks and spans, so renderers never parse markdown themselves.
-import { Lexer, type Token, type Tokens } from "marked";
+import { Lexer, type Token, Tokenizer, type Tokens } from "marked";
 import type {
   Block,
   ColumnAlign,
@@ -176,11 +176,26 @@ function blocks(tokens: Token[], fences?: Fences): Block[] {
 }
 
 /**
+ * Without setext headings (a line underlined with `===` or `---`): marked's rule for them tries
+ * every paragraph to its end at every block, most of the time a long chat takes to parse. Agents
+ * write `#` headings; a `---` under a line is a rule.
+ */
+class NoSetext extends Tokenizer {
+  override lheading(): undefined {
+    return undefined;
+  }
+}
+
+function lex(source: string): Token[] {
+  return Lexer.lex(source, { gfm: true, tokenizer: new NoSetext() });
+}
+
+/**
  * With `neoui`, the message's top-level neoui fences become `neoui` blocks (the daemon's
  * messages); without it they stay code, as everywhere else (templates, messages between agents).
  */
 export function parseMarkdown(source: string, neoui?: NeoUiHost): Block[] {
-  const tokens = Lexer.lex(source, { gfm: true });
+  const tokens = lex(source);
   return blocks(tokens, neoui && { host: neoui, count: 0 });
 }
 
@@ -206,7 +221,7 @@ export class GrowingMarkdown {
       this.reset();
       return parseMarkdown(source, neoui);
     }
-    const tokens = Lexer.lex(source.slice(this.chars), { gfm: true });
+    const tokens = lex(source.slice(this.chars));
     let last = tokens.length - 1;
     while (last > 0 && tokens[last]?.type === "space") last--;
     const done = tokens.slice(0, Math.max(last, 0));
