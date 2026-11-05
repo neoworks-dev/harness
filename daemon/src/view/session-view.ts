@@ -794,7 +794,9 @@ export class SessionView {
       // A message replay left unparsed goes on: parsed whole first.
       this.fresh(ref);
     }
-    const blocks = this.replaying ? [] : this.blocksOf(stream);
+    // Replayed, its first chunk too waits to be parsed.
+    let blocks: Block[] = [];
+    if (!this.replaying) blocks = this.blocksOf(stream);
     const from = firstChange(stream.blocks, blocks);
     stream.blocks = blocks;
     if (!existing) {

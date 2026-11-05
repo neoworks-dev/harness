@@ -597,17 +597,14 @@ describe("view over the bus", () => {
     expect(snap.payload.items).toEqual(all.slice(4));
     expect(snap.payload.before).toBe(4);
 
-    c.send({
-      topic: "view.page",
-      id: "p",
-      payload: { session, before: all[4]!.ref, count: 3 },
-    });
+    const ref = (i: number): string => all[i]?.ref ?? "";
+    c.send({ topic: "view.page", id: "p", payload: { session, before: ref(4), count: 3 } });
     expect(c.received.at(-1)).toEqual({
       topic: "view.page_result",
       id: "p",
       payload: { session, items: all.slice(1, 4), before: 1 },
     });
-    c.send({ topic: "view.page", id: "q", payload: { session, before: all[1]!.ref, count: 3 } });
+    c.send({ topic: "view.page", id: "q", payload: { session, before: ref(1), count: 3 } });
     expect(c.received.at(-1)).toEqual({
       topic: "view.page_result",
       id: "q",
@@ -618,10 +615,10 @@ describe("view over the bus", () => {
 
     daemon.sessions.input(session, "cli", "four");
     await daemon.sessions.idle(session);
-    const sets = c.received.flatMap((e) =>
-      e.topic === "view.patch" ? e.payload.ops.filter((op) => op.op === "set") : [],
+    const appended = c.received.some(
+      (e) => e.topic === "view.patch" && e.payload.ops.some((op) => op.op === "set" && op.appended),
     );
-    expect(sets.some((op) => op.op === "set" && op.appended === true)).toBe(true);
+    expect(appended).toBe(true);
   });
 
   test("a view built from a long log parses what it sends, as it sends it", () => {
@@ -639,7 +636,7 @@ describe("view over the bus", () => {
     for (const r of store.read(id)) live.apply(r);
     // The tail, then the rest page by page: the same as a view that followed it live.
     const tail = view.snapshot(2);
-    const page = view.page(tail.items[0]!.ref, 10);
+    const page = view.page(tail.items[0]?.ref ?? "", 10);
     expect([...(page?.items ?? []), ...tail.items]).toEqual(live.snapshot().items);
     expect(view.snapshot()).toEqual(live.snapshot());
   });
