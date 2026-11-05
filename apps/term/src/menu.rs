@@ -340,6 +340,7 @@ mod tests {
             queued: 0,
             waiting: None,
             asking: None,
+            unseen: None,
             preview: None,
             added: None,
             removed: None,

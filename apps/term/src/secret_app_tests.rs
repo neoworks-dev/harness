@@ -246,6 +246,7 @@ fn another_session_is_cancelled_a_lost_connection_and_a_switch_drop_it() {
         queued: 0,
         waiting: None,
         asking: None,
+        unseen: None,
         preview: None,
         added: None,
         removed: None,

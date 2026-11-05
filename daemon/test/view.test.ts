@@ -578,6 +578,29 @@ describe("view over the bus", () => {
     expect(fresh?.topic === "view.snapshot" && fresh.payload.items).toEqual(items);
   });
 
+  test("a turn that ends with nobody looking is unseen until the session is opened", async () => {
+    const daemon = await startTestDaemon();
+    cleanups.push(() => daemon.stop());
+    const session = daemon.sessions.create({}).id;
+    expect(daemon.sessions.info(session)?.unseen).toBeUndefined();
+    daemon.sessions.input(session, "cli", "hello");
+    await daemon.sessions.idle(session);
+    expect(daemon.sessions.info(session)?.unseen).toBe(true);
+
+    const c = connect(daemon);
+    c.send({ topic: "view.subscribe", id: "v", payload: { session } });
+    expect(daemon.sessions.info(session)?.unseen).toBeUndefined();
+    // Open while it ends: seen as it happens.
+    daemon.sessions.input(session, "cli", "again");
+    await daemon.sessions.idle(session);
+    expect(daemon.sessions.info(session)?.unseen).toBeUndefined();
+
+    c.send({ topic: "view.unsubscribe", id: "u", payload: { session } });
+    daemon.sessions.input(session, "cli", "once more");
+    await daemon.sessions.idle(session);
+    expect(daemon.sessions.info(session)?.unseen).toBe(true);
+  });
+
   test("ui.action runs an open app's tool and shows the result with its template", async () => {
     const { daemon, app } = await daemonWithNotes();
     const c = connect(daemon);

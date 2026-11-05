@@ -2388,6 +2388,9 @@ pub struct SessionInfo {
     /// Questions open in the session for the user to answer: permission requests and choices, its own and those copied from sessions it delegated to. Absent when none are.
     #[serde(rename = "asking", default, skip_serializing_if = "Option::is_none")]
     pub asking: Option<i64>,
+    /// A turn ended in the session since anyone last had it open (subscribed its view): what it did waits for the user to look. Absent when not. Kept across restarts.
+    #[serde(rename = "unseen", default, skip_serializing_if = "Option::is_none")]
+    pub unseen: Option<bool>,
     /// The latest thing said, on one line and cut to about 120 characters: the agent's last message, else the user's.
     #[serde(rename = "preview", default, skip_serializing_if = "Option::is_none")]
     pub preview: Option<String>,

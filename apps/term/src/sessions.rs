@@ -4,11 +4,10 @@
 //! its `.git` file). Sessions outside a repository group under their directory's name. Groups
 //! are ordered by their latest activity, sessions in a group too; a session that another one
 //! delegated to (`parent`) is indented under its parent when they share a group. Fed by
-//! `list_sessions` at start and `session.changed` events afterwards. A session that finished a
-//! turn while another one was shown stays marked until it is shown. Each session's status leads
+//! `list_sessions` at start and `session.changed` events afterwards. Each session's status leads
 //! its row in its own color, the most pressing one when several hold: `!` it waits for an answer
-//! (amber), a spinner it is working (blue), `●` it finished unseen (green); the header counts
-//! each. Sessions idle for over a day fold into a `▸ N older` row at the end of their group,
+//! (amber), a spinner it is working (blue), `●` it finished a turn nobody has looked at yet, the
+//! daemon's `unseen` (green, `your turn` on its second line); the header counts each. Sessions idle for over a day fold into a `▸ N older` row at the end of their group,
 //! which Enter opens and closes; the shown session and one with a status never fold. Enter on a
 //! repository's header folds the whole of it, worktrees too, into that one line (`▸ name · N`,
 //! with the most pressing status in it); Enter again unfolds it.
@@ -237,8 +236,6 @@ pub struct Sessions {
     minute: i64,
     /// First entry drawn.
     top: usize,
-    /// Finished a turn since it was last shown.
-    finished: HashSet<String>,
 }
 
 /// How the list is drawn this frame.
@@ -301,16 +298,12 @@ impl Sessions {
 
     /// Replaces the whole list (`list_sessions`).
     pub fn set_all(&mut self, list: Vec<SessionInfo>) {
-        for info in &list {
-            self.note_finished(info);
-        }
         self.list = list;
         self.sort();
     }
 
     /// Updates a session, or adds it (`session.changed`, a session just created).
     pub fn upsert(&mut self, info: SessionInfo) {
-        self.note_finished(&info);
         match self.list.iter_mut().find(|s| s.id == info.id) {
             Some(slot) => *slot = info,
             None => self.list.push(info),
@@ -321,7 +314,6 @@ impl Sessions {
     /// Drops a session the daemon deleted (`session.removed`).
     pub fn remove(&mut self, id: &str) {
         self.list.retain(|s| s.id != id);
-        self.finished.remove(id);
         self.places_at.remove(id);
         if self.selected == Some(Pick::Session(id.to_string())) {
             self.selected = None;
@@ -329,28 +321,15 @@ impl Sessions {
         self.sort();
     }
 
-    /// A session that was running and isn't any more finished a turn.
-    fn note_finished(&mut self, info: &SessionInfo) {
-        let was_running = self
-            .get(&info.id)
-            .is_some_and(|old| old.state == SessionState::Running);
-        if was_running && info.state != SessionState::Running {
-            self.finished.insert(info.id.clone());
-        }
-    }
-
-    /// Whether this session finished a turn since it was last shown.
-    pub fn is_finished(&self, id: &str) -> bool {
-        self.finished.contains(id)
-    }
-
     /// What the session's row leads with: the most pressing of waiting, working and finished.
+    /// Finished is the daemon's `unseen`: a turn ended since anybody had it open; the shown one
+    /// is being looked at.
     pub fn status(&self, info: &SessionInfo) -> Status {
         if info.asking.unwrap_or(0) > 0 {
             Status::Asking
         } else if info.state == SessionState::Running {
             Status::Running
-        } else if self.finished.contains(&info.id) {
+        } else if info.unseen == Some(true) && info.id != self.current {
             Status::Finished
         } else {
             Status::Idle
@@ -691,7 +670,7 @@ impl Sessions {
     }
 
     /// The sidebar's lines for a `w` x `h` area: a header, then the groups' headers and two rows
-    /// per session. Showing a session clears its finished mark.
+    /// per session.
     pub fn render(
         &mut self,
         w: usize,
@@ -702,7 +681,6 @@ impl Sessions {
         let Look {
             current, focused, ..
         } = *look;
-        self.finished.remove(current);
         // Which sessions fold depends on the shown one and the time.
         let minute = look.now_ms / 60_000;
         if current != self.current || minute != self.minute {
@@ -883,21 +861,22 @@ impl Sessions {
     }
 }
 
-/// Whether a session has a second row: a question for the user, something waiting, a preview or
-/// changed lines.
+/// Whether a session has a second row: a question for the user, a turn to look at, something
+/// waiting, a preview or changed lines.
 fn tall(info: &SessionInfo) -> bool {
     let preview = info
         .preview
         .as_deref()
         .is_some_and(|p| !p.trim().is_empty());
     let changed = info.added.unwrap_or(0) > 0 || info.removed.unwrap_or(0) > 0;
-    info.asking.unwrap_or(0) > 0 || info.queued > 0 || preview || changed
+    let unseen = info.unseen == Some(true);
+    info.asking.unwrap_or(0) > 0 || unseen || info.queued > 0 || preview || changed
 }
 
-/// Its status, the title and how long ago it was active, then (when there is any) `needs you`,
-/// what is queued, the preview and the changed lines. The shown session has a bar in the margin
-/// and a bold accent title; one waiting for an answer a bold amber title, one that finished unseen
-/// a bold one; one delegated to by another a `↳` before the title.
+/// Its status, the title and how long ago it was active, then (when there is any) `needs you` or
+/// `your turn`, what is queued, the preview and the changed lines. The shown session has a bar in
+/// the margin and a bold accent title; one waiting for an answer a bold amber title, one that
+/// finished unseen a bold one; one delegated to by another a `↳` before the title.
 fn row(
     info: &SessionInfo,
     status: Status,
@@ -964,6 +943,8 @@ fn row(
     let mut labels = Vec::new();
     if info.asking.unwrap_or(0) > 0 {
         labels.push(("needs you".to_string(), styles.warning));
+    } else if status == Status::Finished {
+        labels.push(("your turn".to_string(), styles.success));
     }
     if info.queued > 0 {
         labels.push((format!("{} queued", info.queued), styles.accent));
@@ -1098,6 +1079,7 @@ mod tests {
             queued: 0,
             waiting: None,
             asking: None,
+            unseen: None,
             preview: None,
             added: None,
             removed: None,
@@ -1366,16 +1348,11 @@ mod tests {
     }
 
     #[test]
-    fn a_session_that_finished_unseen_is_marked_until_shown() {
+    fn a_turn_nobody_looked_at_says_it_is_your_turn() {
         let mut s = Sessions::default();
-        let mut a = info("a", "Background job", 20);
-        a.state = SessionState::Running;
-        s.set_all(vec![a.clone(), info("b", "Here", 10)]);
-        assert!(!s.is_finished("a"));
-        a.state = SessionState::Idle;
-        a.last_activity = 30;
-        s.upsert(a);
-        assert!(s.is_finished("a"));
+        let mut a = info("a", "Background job", 30);
+        a.unseen = Some(true);
+        s.set_all(vec![a, info("b", "Here", 10)]);
         let lines = s.render(29, 9, &look("b", false), &styles());
         assert_eq!(lines[0].to_string(), " Sessions · 2             ●1");
         assert_eq!(lines[3].spans[1].content, "●");
@@ -1386,16 +1363,13 @@ mod tests {
                 .add_modifier
                 .contains(Modifier::BOLD)
         );
-        // Shown once, the mark is gone.
-        s.render(29, 9, &look("a", false), &styles());
-        assert!(!s.is_finished("a"));
-        // The shown session finishing doesn't mark it.
-        let mut b = info("b", "Here", 40);
-        b.state = SessionState::Running;
-        s.upsert(b.clone());
-        b.state = SessionState::Idle;
-        s.upsert(b);
-        let lines = s.render(29, 9, &look("b", false), &styles());
+        assert!(
+            lines[4].to_string().contains("your turn"),
+            "{:?}",
+            text(&lines)
+        );
+        // The shown session is being looked at, whatever the daemon said last.
+        let lines = s.render(29, 9, &look("a", false), &styles());
         assert_eq!(lines[0].to_string(), " Sessions · 2");
     }
 
@@ -1409,10 +1383,8 @@ mod tests {
         let mut b = info("b", "Build", 20);
         b.state = SessionState::Running;
         let mut c = info("c", "Tests", 10);
-        c.state = SessionState::Running;
-        s.set_all(vec![a, b, c.clone()]);
-        c.state = SessionState::Idle;
-        s.upsert(c);
+        c.unseen = Some(true);
+        s.set_all(vec![a, b, c]);
         let lines = s.render(29, 20, &look("x", false), &styles());
         let got: Vec<_> = text(&lines)
             .iter()

@@ -140,6 +140,11 @@ export class SessionStore {
     if (!columns.some((column) => column.name === "title_source")) {
       this.db.exec("ALTER TABLE sessions ADD COLUMN title_source TEXT");
     }
+    // What was there when the column came counts as seen.
+    if (!columns.some((column) => column.name === "seen_seq")) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN seen_seq INTEGER");
+      this.db.exec("UPDATE sessions SET seen_seq = last_seq");
+    }
 
     // The counter lives on the session row, so the next seq is derived inside the same
     // transaction that inserts the event: no gaps or reuse, also across restarts.
@@ -245,6 +250,28 @@ export class SessionStore {
   }
 
   /** Whether the session's log has an event of this type. */
+  /** Somebody looked at the session: what it holds now is seen. Whether that changed anything. */
+  markSeen(session: string): boolean {
+    const changes = this.db
+      .query(
+        "UPDATE sessions SET seen_seq = last_seq WHERE id = ? AND coalesce(seen_seq, -1) <> last_seq",
+      )
+      .run(session).changes;
+    return changes > 0;
+  }
+
+  /** A turn ended in the session since it was last seen (`markSeen`). */
+  unseen(session: string): boolean {
+    const row = this.db
+      .query<{ unseen: number | null }, [string]>(
+        `SELECT (SELECT max(seq) FROM events WHERE session = s.id AND type = 'turn_ended')
+           > coalesce(s.seen_seq, 0) AS unseen
+         FROM sessions s WHERE id = ?`,
+      )
+      .get(session);
+    return row?.unseen === 1;
+  }
+
   hasEventOfType(session: string, type: SessionEvent["type"]): boolean {
     const row = this.db
       .query<{ found: number }, [string, string]>(

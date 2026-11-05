@@ -867,6 +867,8 @@ export interface SessionInfo {
   waiting?: WaitingInput[];
   /** Questions open in the session for the user to answer: permission requests and choices, its own and those copied from sessions it delegated to. Absent when none are. */
   asking?: number;
+  /** A turn ended in the session since anyone last had it open (subscribed its view): what it did waits for the user to look. Absent when not. Kept across restarts. */
+  unseen?: boolean;
   /** The latest thing said, on one line and cut to about 120 characters: the agent's last message, else the user's. */
   preview?: string;
   /** Lines added by edits in this session (agent and guests), from their diffs. */

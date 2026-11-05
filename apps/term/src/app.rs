@@ -4586,7 +4586,7 @@ impl App {
                     let (word, tone) = match status {
                         Is::Asking => ("needs you", self.styles.warning),
                         Is::Running => ("working", self.styles.info),
-                        Is::Finished => ("done", self.styles.success),
+                        Is::Finished => ("your turn", self.styles.success),
                         Is::Idle => ("", Style::new()),
                     };
                     let age = relative_time(info.last_activity, self.now_ms);

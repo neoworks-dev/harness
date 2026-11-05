@@ -151,6 +151,10 @@ export class Hub {
     // in its replay or gets it here — never both, never neither.
     store.onAppend((record) => {
       this.broadcast(record);
+      // A turn that ends while somebody has the session open is seen.
+      if (record.event.type === "turn_ended" && this.viewed(record.session)) {
+        store.markSeen(record.session);
+      }
       this.sessionChanged(record.session);
     });
     sessions.onStateChange((id) => this.sessionChanged(id));
@@ -228,6 +232,15 @@ export class Hub {
       return;
     }
     this.sessions.remove(session);
+  }
+
+  /** Whether some client has the session's own view open: somebody is looking at it. */
+  private viewed(session: string): boolean {
+    const key = viewKey(session);
+    for (const client of this.clients) {
+      if (client.views.has(key)) return true;
+    }
+    return false;
   }
 
   /** Whether some client has the session subscribed, or one of its views. */
@@ -526,6 +539,8 @@ export class Hub {
         const snapshot = this.parts.views.get(session, agent).snapshot();
         client.views.add(viewKey(session, agent));
         this.send(client, { topic: "view.snapshot", id: msg.id, payload: snapshot });
+        // Opened: whatever it finished is seen.
+        if (agent === undefined && this.store.markSeen(session)) this.sessionChanged(session);
         return;
       }
       case "view.unsubscribe":

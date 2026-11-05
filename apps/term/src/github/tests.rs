@@ -1016,6 +1016,7 @@ fn a_session_switch_closes_the_view_and_drops_the_cache() {
         queued: 0,
         waiting: None,
         asking: None,
+        unseen: None,
         preview: None,
         added: None,
         removed: None,
