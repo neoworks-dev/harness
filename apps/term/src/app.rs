@@ -3424,6 +3424,7 @@ impl App {
         let hint = self.backgroundable().map(|id| format!("c-{id}"));
         self.chat.set_background_hint(hint);
 
+        let mut menus = false;
         if self.github.is_open() {
             self.github
                 .draw(frame, areas.chat, self.now_ms, &self.styles);
@@ -3460,8 +3461,7 @@ impl App {
                     self.draw_marks(frame, areas.chat);
                 }
             }
-            self.draw_menu(frame, areas.chat);
-            self.draw_mentions(frame, areas.chat);
+            menus = true;
         }
         self.toasts
             .draw(frame.buffer_mut(), areas.chat, self.now_ms, &self.styles);
@@ -3531,6 +3531,15 @@ impl App {
                     .set_symbol("┃")
                     .set_style(bar);
             }
+        }
+        // The command and mention menus sit right on the input box, over the working line.
+        if menus {
+            let above = Rect {
+                height: areas.input.y - areas.chat.y,
+                ..areas.chat
+            };
+            self.draw_menu(frame, above);
+            self.draw_mentions(frame, above);
         }
         self.draw_agents(frame, areas.agents);
         self.draw_jobs(frame, areas.jobs);
@@ -3794,21 +3803,63 @@ impl App {
 
     /// The `@` file list over the bottom of the chat, like the slash menu: a rule, then the
     /// files with their icons, the selected one marked.
-    fn draw_mentions(&mut self, frame: &mut Frame, chat: Rect) {
+    /// Rows a menu over `above` (what is between the chat's top and the input box) has for its
+    /// entries, and how wide they may be: past the accent bar when the box is raised, under a
+    /// rule of their own when it isn't.
+    fn menu_room(&self, above: Rect) -> (usize, usize) {
+        let fills = self.styles.fills();
+        let rows = usize::from(above.height).saturating_sub(usize::from(!fills) + 1);
+        let w = usize::from(above.width).saturating_sub(if fills { 3 } else { 0 });
+        (rows.min(MENU_ROWS), w)
+    }
+
+    /// A menu's entries drawn right on top of the input box, over the chat and the working
+    /// line: raised and barred like the box, or set off by a rule.
+    fn draw_on_input(&self, frame: &mut Frame, above: Rect, lines: Vec<Line<'static>>) {
+        let fills = self.styles.fills();
+        let height = (lines.len() + usize::from(!fills)) as u16;
+        let rect = Rect {
+            y: above.bottom() - height,
+            height,
+            ..above
+        };
+        frame.render_widget(Clear, rect);
+        if fills {
+            crate::style::fill(frame.buffer_mut(), rect, self.styles.raised);
+            let bar = self.styles.accent.bg(self.styles.raised);
+            for y in rect.top()..rect.bottom() {
+                frame.buffer_mut()[(rect.x, y)]
+                    .set_symbol("┃")
+                    .set_style(bar);
+            }
+            let inner = Rect {
+                x: rect.x + 2,
+                width: rect.width.saturating_sub(3),
+                ..rect
+            };
+            frame.render_widget(Paragraph::new(lines), inner);
+        } else {
+            let rule = Line::from(Span::styled(
+                "─".repeat(usize::from(rect.width)),
+                self.styles.border,
+            ));
+            let lines: Vec<Line<'static>> = std::iter::once(rule).chain(lines).collect();
+            frame.render_widget(Paragraph::new(lines), rect);
+        }
+    }
+
+    fn draw_mentions(&mut self, frame: &mut Frame, above: Rect) {
         let matches = self.mention_matches();
-        if matches.is_empty() || chat.height == 0 {
+        if matches.is_empty() {
             return;
         }
         self.mention_sel = self.mention_sel.min(matches.len() - 1);
-        let rows = matches
-            .len()
-            .min(MENU_ROWS)
-            .min(usize::from(chat.height).saturating_sub(1));
+        let (rows, w) = self.menu_room(above);
+        let rows = matches.len().min(rows);
         if rows == 0 {
             return;
         }
         let start = (self.mention_sel + 1).saturating_sub(rows);
-        let w = usize::from(chat.width);
         let sigil =
             mention::at_cursor(self.editor.text(), self.editor.cursor()).map_or("@", |m| m.sigil());
         let lines = matches
@@ -3831,29 +3882,19 @@ impl App {
                 }
                 spans.push(Span::styled(format!("{sigil}{}", c.path), style));
                 fit_line(Line::from(spans), w)
-            });
-        let rule = Line::from(Span::styled("─".repeat(w), self.styles.border));
-        let lines: Vec<Line<'static>> = std::iter::once(rule).chain(lines).collect();
-        let rect = Rect {
-            y: chat.y + chat.height - rows as u16 - 1,
-            height: rows as u16 + 1,
-            ..chat
-        };
-        frame.render_widget(Clear, rect);
-        frame.render_widget(Paragraph::new(lines), rect);
+            })
+            .collect();
+        self.draw_on_input(frame, above, lines);
     }
 
-    fn draw_menu(&mut self, frame: &mut Frame, chat: Rect) {
+    fn draw_menu(&mut self, frame: &mut Frame, above: Rect) {
         let matches = self.menu_matches();
-        if matches.is_empty() || chat.height == 0 {
+        if matches.is_empty() {
             return;
         }
         self.menu_sel = self.menu_sel.min(matches.len() - 1);
-        // A rule above the entries sets them off from the chat.
-        let rows = matches
-            .len()
-            .min(MENU_ROWS)
-            .min(usize::from(chat.height).saturating_sub(1));
+        let (rows, w) = self.menu_room(above);
+        let rows = matches.len().min(rows);
         if rows == 0 {
             return;
         }
@@ -3864,7 +3905,6 @@ impl App {
             .max()
             .unwrap_or(0)
             .min(32);
-        let w = usize::from(chat.width);
         let lines: Vec<Line<'static>> = matches
             .iter()
             .enumerate()
@@ -3894,15 +3934,7 @@ impl App {
                 )
             })
             .collect();
-        let rule = Line::from(Span::styled("─".repeat(w), self.styles.border));
-        let lines: Vec<Line<'static>> = std::iter::once(rule).chain(lines).collect();
-        let rect = Rect {
-            y: chat.y + chat.height - rows as u16 - 1,
-            height: rows as u16 + 1,
-            ..chat
-        };
-        frame.render_widget(Clear, rect);
-        frame.render_widget(Paragraph::new(lines), rect);
+        self.draw_on_input(frame, above, lines);
     }
 
     /// The prompt as it fills the editor's place: the question with a compact preview, the

@@ -6,14 +6,14 @@
   Done. The header now uses `position: sticky`.
 
 
-────────────────────────────────────────────────────────────
-› /clear           clear the agent's context, keep the chat
-  /cd [dir]        move this session to another directory
-  /claude <task>   give a task to Claude Code
-  /codex <task>    give a task to Codex
 
-  ⡿ shaving a yak… · 12s · esc to interrupt
 
+
+
+┃ › /clear           clear the agent's context, keep the c…
+┃   /cd [dir]        move this session to another directory
+┃   /claude <task>   give a task to Claude Code
+┃   /codex <task>    give a task to Codex
 ┃
 ┃ /c
 ┃ site · neo
