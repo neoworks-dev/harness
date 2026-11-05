@@ -905,6 +905,16 @@ pub struct SubscribeParams {
     /// First seq to replay (inclusive). Defaults to 1.
     #[serde(rename = "fromSeq", default, skip_serializing_if = "Option::is_none")]
     pub from_seq: Option<i64>,
+    /// Event types left out of the replay (agent_message_chunk, say, for a client whose view has the messages). Live events all come.
+    #[serde(rename = "skipTypes", default, skip_serializing_if = "Option::is_none")]
+    pub skip_types: Option<Vec<String>>,
+    /// Tool kinds whose replayed tool_call_update events come without content and rawOutput: what a read read, for a client that only needs to know it ran. Live events come whole.
+    #[serde(
+        rename = "withoutResults",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub without_results: Option<Vec<ToolKind>>,
 }
 
 /// Tagged `topic: "session.unsubscribe"` inside [`Envelope`].

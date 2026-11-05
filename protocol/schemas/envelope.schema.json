@@ -493,6 +493,16 @@
           "type": "integer",
           "minimum": 1,
           "description": "First seq to replay (inclusive). Defaults to 1."
+        },
+        "skipTypes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Event types left out of the replay (agent_message_chunk, say, for a client whose view has the messages). Live events all come."
+        },
+        "withoutResults": {
+          "type": "array",
+          "items": { "$ref": "session.schema.json#/$defs/ToolKind" },
+          "description": "Tool kinds whose replayed tool_call_update events come without content and rawOutput: what a read read, for a client that only needs to know it ran. Live events come whole."
         }
       },
       "required": ["session"],

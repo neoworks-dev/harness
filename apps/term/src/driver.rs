@@ -417,7 +417,20 @@ fn switch(
     }
     // The latest items only: a long chat shows at once, older ones are paged in.
     client.subscribe_view_tail(to, crate::app::TAIL_ITEMS)?;
-    client.subscribe(to, 1)?;
+    // The events for the side panels, the status and the subagents: without the messages (the
+    // view has them) and without what reads, searches and fetches returned (most of a long log).
+    use neo_protocol::ToolKind;
+    client.subscribe_light(
+        to,
+        1,
+        &["agent_message_chunk", "agent_thought_chunk"],
+        &[
+            ToolKind::Read,
+            ToolKind::Search,
+            ToolKind::Fetch,
+            ToolKind::Think,
+        ],
+    )?;
     if move_agent {
         client.move_agent(Some(app), Some(to))?;
     }

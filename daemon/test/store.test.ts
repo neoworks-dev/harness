@@ -89,6 +89,37 @@ describe("SessionStore", () => {
     expect(store.read("a", 4)).toEqual([]);
   });
 
+  test("readLight skips the given types and drops what calls of the given kinds returned", () => {
+    const store = new SessionStore(":memory:");
+    store.createSession({ id: "a", cwd: "/" });
+    const call = (id: string, kind: "read" | "execute"): SessionEventRecord =>
+      store.append("a", { type: "tool_call", toolCallId: id, title: id, kind, status: "pending" });
+    const result = (id: string): SessionEventRecord =>
+      store.append("a", {
+        type: "tool_call_update",
+        toolCallId: id,
+        status: "completed",
+        content: [{ type: "text", text: "lots" }],
+        rawOutput: "lots",
+      });
+    store.append("a", chunk("hi"));
+    call("r", "read");
+    call("x", "execute");
+    result("r");
+    result("x");
+
+    const light = store.readLight("a", 1, ["agent_message_chunk"], ["read"]);
+    expect(light.map((r) => r.seq)).toEqual([2, 3, 4, 5]);
+    expect(light[2]?.event).toEqual({
+      type: "tool_call_update",
+      toolCallId: "r",
+      status: "completed",
+    });
+    expect(light[3]?.event).toEqual(store.read("a", 5)[0]?.event);
+    // With nothing to leave out it reads what read does.
+    expect(store.readLight("a", 1, [], [])).toEqual(store.read("a"));
+  });
+
   test("append to an unknown session throws and writes nothing", () => {
     const store = new SessionStore(":memory:");
     expect(() => store.append("nope", chunk("x"))).toThrow();

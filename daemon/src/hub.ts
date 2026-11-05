@@ -436,10 +436,14 @@ export class Hub {
         return;
       }
       case "session.subscribe": {
-        const { session, fromSeq = 1 } = msg.payload;
+        const { session, fromSeq = 1, skipTypes = [], withoutResults = [] } = msg.payload;
         const info = this.sessions.info(session);
         if (!info) throw new NotFoundError(`no session ${session}`);
-        for (const record of this.store.read(session, fromSeq)) {
+        const light = skipTypes.length > 0 || withoutResults.length > 0;
+        const replay = light
+          ? this.store.readLight(session, fromSeq, skipTypes, withoutResults)
+          : this.store.read(session, fromSeq);
+        for (const record of replay) {
           this.send(client, { topic: "session.events", payload: record });
         }
         client.subscriptions.add(session);

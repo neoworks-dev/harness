@@ -228,6 +228,36 @@ export class SessionStore {
       .map(toRecord);
   }
 
+  /**
+   * A lighter replay (session.subscribe's skipTypes and withoutResults): events of `skip` left
+   * out, and the updates of tool calls of the kinds in `bare` without their content and
+   * rawOutput. SQLite drops them before they are read, so they cost nothing to leave out.
+   */
+  readLight(
+    session: string,
+    fromSeq: number,
+    skip: readonly string[],
+    bare: readonly string[],
+  ): SessionEventRecord[] {
+    // Numbered: ?1 the session, ?2 fromSeq, then the skipped types, then the kinds. SQLite takes
+    // an empty `IN ()`, so neither list needs a case of its own.
+    const skipped = skip.map((_, i) => `?${i + 3}`).join(", ");
+    const kinds = bare.map((_, i) => `?${i + 3 + skip.length}`).join(", ");
+    return this.db
+      .query<EventDbRow, (string | number)[]>(
+        `SELECT session, seq, ts,
+           CASE WHEN type = 'tool_call_update'
+                 AND json_extract(data, '$.toolCallId') IN (
+                   SELECT json_extract(data, '$.toolCallId') FROM events
+                   WHERE session = ?1 AND type = 'tool_call' AND json_extract(data, '$.kind') IN (${kinds}))
+             THEN json_remove(data, '$.content', '$.rawOutput')
+             ELSE data END AS data
+         FROM events WHERE session = ?1 AND seq >= ?2 AND type NOT IN (${skipped}) ORDER BY seq`,
+      )
+      .all(session, fromSeq, ...skip, ...bare)
+      .map(toRecord);
+  }
+
   /** Highest seq of an event of the given type, or 0. */
   lastSeqOfType(session: string, type: SessionEvent["type"]): number {
     const r = this.db
@@ -249,7 +279,6 @@ export class SessionStore {
       .map(toRecord);
   }
 
-  /** Whether the session's log has an event of this type. */
   /** Somebody looked at the session: what it holds now is seen. Whether that changed anything. */
   markSeen(session: string): boolean {
     const changes = this.db
@@ -272,6 +301,7 @@ export class SessionStore {
     return row?.unseen === 1;
   }
 
+  /** Whether the session's log has an event of this type. */
   hasEventOfType(session: string, type: SessionEvent["type"]): boolean {
     const row = this.db
       .query<{ found: number }, [string, string]>(

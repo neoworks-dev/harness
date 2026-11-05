@@ -192,6 +192,10 @@ export interface SubscribeParams {
   session: string;
   /** First seq to replay (inclusive). Defaults to 1. */
   fromSeq?: number;
+  /** Event types left out of the replay (agent_message_chunk, say, for a client whose view has the messages). Live events all come. */
+  skipTypes?: string[];
+  /** Tool kinds whose replayed tool_call_update events come without content and rawOutput: what a read read, for a client that only needs to know it ran. Live events come whole. */
+  withoutResults?: ToolKind[];
 }
 
 export interface SessionUnsubscribe {

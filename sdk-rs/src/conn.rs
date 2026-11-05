@@ -428,6 +428,8 @@ impl Io {
                 payload: SubscribeParams {
                     session: session.clone(),
                     from_seq: Some(last + 1),
+                    skip_types: None,
+                    without_results: None,
                 },
             });
             self.send_internal(socket, id, message, Undo::Unsubscribe(session));

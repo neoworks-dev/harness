@@ -27,8 +27,8 @@ use neo_protocol::{
     SessionCreate, SessionCreateParams, SessionEventRecord, SessionInfo, SessionInput,
     SessionInputMessage, SessionList, SessionRef, SessionSubscribe, SessionUnqueue,
     SessionUnqueueParams, SessionUnsubscribe, SpeechAudio, SpeechTranscribeMessage,
-    SubscribeParams, SubscribedPayload, Theme, UiAction, UiActionMessage, UserSettings, ViewPatch,
-    ViewPage, ViewPageParams, ViewPageRequest, ViewRef, ViewSnapshot, ViewSubscribe,
+    SubscribeParams, SubscribedPayload, Theme, ToolKind, UiAction, UiActionMessage, UserSettings,
+    ViewPage, ViewPageParams, ViewPageRequest, ViewPatch, ViewRef, ViewSnapshot, ViewSubscribe,
     ViewSubscribeParams, ViewUnsubscribe, WaitingInput,
 };
 pub use socket::default_socket_path;
@@ -215,6 +215,20 @@ impl Client {
     /// [`Event::Subscribed`]; this call returns at the same point. Subscribing again restarts
     /// the replay at the new `from_seq`.
     pub fn subscribe(&self, session: &str, from_seq: i64) -> Result<SubscribedPayload> {
+        self.subscribe_light(session, from_seq, &[], &[])
+    }
+
+    /// Like [`Client::subscribe`], with a lighter replay: events of the types in `skip_types`
+    /// left out, and the updates of tool calls of the kinds in `without_results` without their
+    /// content and rawOutput (what a read read, for a client that has the view). Live events
+    /// come whole, and so does what a resubscription after a reconnect replays.
+    pub fn subscribe_light(
+        &self,
+        session: &str,
+        from_seq: i64,
+        skip_types: &[&str],
+        without_results: &[ToolKind],
+    ) -> Result<SubscribedPayload> {
         let from_seq = from_seq.max(1);
         let effect = Effect::Subscribe {
             session: session.into(),
@@ -226,6 +240,10 @@ impl Client {
                 payload: SubscribeParams {
                     session: session.into(),
                     from_seq: (from_seq > 1).then_some(from_seq),
+                    skip_types: (!skip_types.is_empty())
+                        .then(|| skip_types.iter().map(|t| (*t).to_string()).collect()),
+                    without_results: (!without_results.is_empty())
+                        .then(|| without_results.to_vec()),
                 },
             })
         };
