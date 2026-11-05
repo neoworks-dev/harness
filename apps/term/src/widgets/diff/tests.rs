@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::widgets::testutil::dump;
 use ratatui::Terminal;

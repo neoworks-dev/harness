@@ -1,4 +1,3 @@
-
 use super::*;
 use neo_renderer_ratatui::Palette;
 
