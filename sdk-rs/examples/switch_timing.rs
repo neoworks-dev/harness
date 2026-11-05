@@ -9,7 +9,11 @@ fn main() {
     let events = client.events();
     let t = Instant::now();
     let view = client.subscribe_view(&session).unwrap();
-    eprintln!("view.subscribe: {:?} ({} items)", t.elapsed(), view.items.len());
+    eprintln!(
+        "view.subscribe: {:?} ({} items)",
+        t.elapsed(),
+        view.items.len()
+    );
     let t = Instant::now();
     let sub = client.subscribe(&session, 1).unwrap();
     let mut records = Vec::new();
