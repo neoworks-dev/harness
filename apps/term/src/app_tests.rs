@@ -3168,6 +3168,20 @@ fn a_background_command_ending_gets_one_card() {
     );
 }
 
+#[test]
+fn a_draft_waits_for_its_chat_to_be_shown_again() {
+    let mut app = app();
+    app.set_sessions(vec![info("s1", "One", 2), info("s2", "Two", 1)]);
+    type_str(&mut app, "half a thought");
+    app.begin_session("s2", "/home/me/site");
+    assert_eq!(app.editor_text(), "");
+    type_str(&mut app, "for two");
+    app.begin_session("s1", "/home/me/site");
+    assert_eq!(app.editor_text(), "half a thought");
+    app.begin_session("s2", "/home/me/site");
+    assert_eq!(app.editor_text(), "for two");
+}
+
 // ---- marks (harpoon) ----
 
 #[test]

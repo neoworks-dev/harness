@@ -395,6 +395,9 @@ pub struct App {
     /// The draft Ctrl-S put aside, with its images; it comes back with Ctrl-S or once the one
     /// written meanwhile is sent.
     stash: Option<(String, Vec<(usize, String)>)>,
+    /// What was in the editor of each session shown before, with its images: it is there again
+    /// when the session is shown again.
+    drafts: HashMap<String, (String, Vec<(usize, String)>)>,
     histories: Histories,
     overlay: Overlay,
     switcher: Switcher,
@@ -525,6 +528,7 @@ impl App {
             editor: Editor::default(),
             attachments: Vec::new(),
             stash: None,
+            drafts: HashMap::new(),
             histories: Histories::new(config.history),
             overlay: Overlay::None,
             switcher: Switcher::new(&session),
@@ -1131,8 +1135,17 @@ impl App {
         fx
     }
 
-    /// Shows another session: everything of the old one is dropped.
+    /// Shows another session: everything of the old one is dropped but its draft, which waits
+    /// for it to be shown again; the new one's draft, if it had one, is back in the editor.
     fn begin_session(&mut self, id: &str, cwd: &str) {
+        let text = self.editor.text().to_string();
+        let attachments = std::mem::take(&mut self.attachments);
+        if text.trim().is_empty() {
+            self.drafts.remove(&self.session);
+        } else {
+            self.drafts
+                .insert(self.session.clone(), (text, attachments));
+        }
         self.session = id.to_string();
         self.cwd = cwd.to_string();
         self.chat = Chat::for_app(&self.app_id).in_dir(cwd);
@@ -1145,7 +1158,10 @@ impl App {
         self.offered.clear();
         self.approvals = Approvals::Ask;
         self.editor.clear();
-        self.attachments.clear();
+        if let Some((text, attachments)) = self.drafts.remove(id) {
+            self.editor.set_text(&text);
+            self.attachments = attachments;
+        }
         self.prompt = PromptState::default();
         self.forms = Forms::default();
         self.note = None;
