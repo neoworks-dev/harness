@@ -865,6 +865,8 @@ export interface SessionInfo {
   queued: number;
   /** The inputs waiting behind the running turn, oldest first (queued of them): what clients show above their input. Absent when none wait. */
   waiting?: WaitingInput[];
+  /** Questions open in the session for the user to answer: permission requests and choices, its own and those copied from sessions it delegated to. Absent when none are. */
+  asking?: number;
   /** The latest thing said, on one line and cut to about 120 characters: the agent's last message, else the user's. */
   preview?: string;
   /** Lines added by edits in this session (agent and guests), from their diffs. */

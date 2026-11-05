@@ -24,6 +24,10 @@ pub struct Palette {
     pub muted: Color,
     pub success: Color,
     pub danger: Color,
+    /// Something waiting on the user, and something informative beside the accent. The
+    /// protocol's themes have neither: theirs are the default's.
+    pub warning: Color,
+    pub info: Color,
 }
 
 impl Palette {
@@ -42,6 +46,8 @@ impl Palette {
             muted: hex(&c.muted).unwrap_or(d.muted),
             success: hex(&c.success).unwrap_or(d.success),
             danger: hex(&c.danger).unwrap_or(d.danger),
+            warning: d.warning,
+            info: d.info,
         }
     }
 
@@ -117,6 +123,8 @@ impl Default for Palette {
             muted: Color::Rgb(0x8a, 0x8f, 0x9c),
             success: Color::Rgb(0x9e, 0xce, 0x6a),
             danger: Color::Rgb(0xf7, 0x76, 0x8e),
+            warning: Color::Rgb(0xe0, 0xaf, 0x68),
+            info: Color::Rgb(0x7d, 0xcf, 0xff),
         }
     }
 }

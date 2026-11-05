@@ -5,11 +5,13 @@
 //! are ordered by their latest activity, sessions in a group too; a session that another one
 //! delegated to (`parent`) is indented under its parent when they share a group. Fed by
 //! `list_sessions` at start and `session.changed` events afterwards. A session that finished a
-//! turn while another one was shown stays marked until it is shown. Sessions idle for over a day
-//! fold into a `▸ N older` row at the end of their group, which Enter opens and closes; the
-//! shown session, a running one and one that finished unseen never fold. Enter on a repository's
-//! header folds the whole of it, worktrees too, into that one line (`▸ name · N`, with a spinner
-//! or a dot when one of them is running or finished unseen); Enter again unfolds it.
+//! turn while another one was shown stays marked until it is shown. Each session's status leads
+//! its row in its own color, the most pressing one when several hold: `!` it waits for an answer
+//! (amber), a spinner it is working (blue), `●` it finished unseen (green); the header counts
+//! each. Sessions idle for over a day fold into a `▸ N older` row at the end of their group,
+//! which Enter opens and closes; the shown session and one with a status never fold. Enter on a
+//! repository's header folds the whole of it, worktrees too, into that one line (`▸ name · N`,
+//! with the most pressing status in it); Enter again unfolds it.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -152,13 +154,34 @@ enum Entry {
     },
 }
 
-/// What a folded repository holds: how many sessions, and whether one is running or finished
-/// unseen.
+/// What a folded repository holds: how many sessions, and the most pressing status among them.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Folded {
     count: usize,
-    running: bool,
-    finished: bool,
+    status: Status,
+}
+
+/// What a session's row says before its title; the first that holds, when several do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Status {
+    /// A permission request or a choice is open for the user.
+    Asking,
+    Running,
+    /// Finished a turn since it was last shown.
+    Finished,
+    Idle,
+}
+
+impl Status {
+    /// `!` in amber, the spinner in blue, `●` in green, and a blank for nothing.
+    fn icon(self, look: &Look, styles: &Styles) -> Span<'static> {
+        match self {
+            Status::Asking => Span::styled("!", styles.warning.add_modifier(Modifier::BOLD)),
+            Status::Running => Span::styled(look.spinner.to_string(), styles.info),
+            Status::Finished => Span::styled("●", styles.success),
+            Status::Idle => Span::raw(" "),
+        }
+    }
 }
 
 impl Entry {
@@ -319,6 +342,40 @@ impl Sessions {
         self.finished.contains(id)
     }
 
+    fn status(&self, info: &SessionInfo) -> Status {
+        if info.asking.unwrap_or(0) > 0 {
+            Status::Asking
+        } else if info.state == SessionState::Running {
+            Status::Running
+        } else if self.finished.contains(&info.id) {
+            Status::Finished
+        } else {
+            Status::Idle
+        }
+    }
+
+    /// The header's count of each status, `!1 ◐2 ●3`, each in its color; empty when none hold.
+    fn tally(&self, look: &Look, styles: &Styles) -> Vec<Span<'static>> {
+        let mut out = Vec::new();
+        for status in [Status::Asking, Status::Running, Status::Finished] {
+            let n = self
+                .list
+                .iter()
+                .filter(|i| self.status(i) == status)
+                .count();
+            if n == 0 {
+                continue;
+            }
+            if !out.is_empty() {
+                out.push(Span::raw(" "));
+            }
+            let icon = status.icon(look, styles);
+            let count = Span::styled(n.to_string(), icon.style);
+            out.extend([icon, count]);
+        }
+        out
+    }
+
     fn sort(&mut self) {
         for info in &self.list {
             self.places_at
@@ -372,8 +429,7 @@ impl Sessions {
         let folds = |info: &SessionInfo| {
             now - info.last_activity > STALE_MS
                 && info.id != self.current
-                && info.state != SessionState::Running
-                && !self.finished.contains(&info.id)
+                && self.status(info) == Status::Idle
         };
         let mut entries = Vec::new();
         let mut starts = Vec::new();
@@ -436,8 +492,11 @@ impl Sessions {
                     .collect();
                 Folded {
                     count: all.len(),
-                    running: all.iter().any(|i| i.state == SessionState::Running),
-                    finished: all.iter().any(|i| self.finished.contains(&i.id)),
+                    status: all
+                        .iter()
+                        .map(|i| self.status(i))
+                        .min()
+                        .unwrap_or(Status::Idle),
                 }
             });
             if folded.is_some() {
@@ -656,18 +715,20 @@ impl Sessions {
         } else {
             styles.muted
         };
-        let mut header = vec![
+        let mut header = Line::from(vec![
             Span::raw(" "),
             Span::styled("Sessions", header_style),
             Span::styled(format!(" · {}", self.list.len()), styles.muted),
-        ];
-        if !self.finished.is_empty() {
-            header.push(Span::styled(
-                format!(" · {} done", self.finished.len()),
-                styles.success,
-            ));
+        ]);
+        // How many wait, work and finished unseen, at the right edge when there is room.
+        let tally = self.tally(look, styles);
+        let tally_w: usize = tally.iter().map(|s| width(&s.content)).sum();
+        if tally_w > 0 && header.width() + tally_w + 2 <= w {
+            let pad = w - header.width() - tally_w - 1;
+            header.spans.push(Span::raw(" ".repeat(pad)));
+            header.spans.extend(tally);
         }
-        let mut out = vec![Line::from(header)];
+        let mut out = vec![header];
         // `+ New chat` under the header, where scrolling doesn't take it.
         if h >= 4 {
             let mut new = Line::from(vec![
@@ -732,10 +793,9 @@ impl Sessions {
                     let mut tail = Vec::new();
                     if let Some(f) = folded {
                         tail.push(Span::styled(format!(" · {}", f.count), styles.muted));
-                        if f.running {
-                            tail.push(Span::styled(format!(" {}", look.spinner), styles.accent));
-                        } else if f.finished {
-                            tail.push(Span::styled(" ●", styles.success));
+                        if f.status != Status::Idle {
+                            tail.push(Span::raw(" "));
+                            tail.push(f.status.icon(look, styles));
                         }
                     }
                     let lead = if folded.is_some() { " ▸ " } else { " " };
@@ -785,14 +845,8 @@ impl Sessions {
                     let info = &self.list[*index];
                     let selected =
                         focused && self.selected.as_ref() == Some(&Pick::Session(info.id.clone()));
-                    let mark = if info.id == current {
-                        Mark::Current
-                    } else if self.finished.contains(&info.id) {
-                        Mark::Finished
-                    } else {
-                        Mark::None
-                    };
-                    let mut pair = row(info, mark, *child, w, look, styles);
+                    let status = self.status(info);
+                    let mut pair = row(info, status, *child, w, look, styles);
                     if selected {
                         for line in &mut pair {
                             let pad = w.saturating_sub(line.width());
@@ -811,51 +865,34 @@ impl Sessions {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum Mark {
-    /// The shown session.
-    Current,
-    /// Finished a turn since it was last shown.
-    Finished,
-    None,
-}
-
-/// Whether a session has a second row: something waiting, a preview or changed lines.
+/// Whether a session has a second row: a question for the user, something waiting, a preview or
+/// changed lines.
 fn tall(info: &SessionInfo) -> bool {
     let preview = info
         .preview
         .as_deref()
         .is_some_and(|p| !p.trim().is_empty());
     let changed = info.added.unwrap_or(0) > 0 || info.removed.unwrap_or(0) > 0;
-    info.queued > 0 || preview || changed
+    info.asking.unwrap_or(0) > 0 || info.queued > 0 || preview || changed
 }
 
-/// Title and how long ago it was active, then (when there is any) what is queued, the preview
-/// and the changed lines. The shown session has a bar in the margin and a bold accent title; a
-/// running one has the spinner; one that finished unseen a green dot and a bold title; one
-/// delegated to by another a `↳` before the title.
+/// Its status, the title and how long ago it was active, then (when there is any) `needs you`,
+/// what is queued, the preview and the changed lines. The shown session has a bar in the margin
+/// and a bold accent title; one waiting for an answer a bold amber title, one that finished unseen
+/// a bold one; one delegated to by another a `↳` before the title.
 fn row(
     info: &SessionInfo,
-    mark: Mark,
+    status: Status,
     child: bool,
     w: usize,
     look: &Look,
     styles: &Styles,
 ) -> Vec<Line<'static>> {
-    let current = mark == Mark::Current;
+    let current = info.id == look.current;
     let bar = Span::styled(if current { "▎" } else { " " }, styles.accent);
-    let state = if info.state == SessionState::Running {
-        Span::styled(look.spinner.to_string(), styles.accent)
-    } else if mark == Mark::Finished {
-        Span::styled("●", styles.success)
-    } else {
-        Span::raw(" ")
-    };
     let lead = |second: Span<'static>| vec![bar.clone(), second, Span::raw(" ")];
     // Sessions idle for over a day fade, so the ones in use stand out.
-    let stale = mark == Mark::None
-        && info.state != SessionState::Running
-        && look.now_ms - info.last_activity > STALE_MS;
+    let stale = !current && status == Status::Idle && look.now_ms - info.last_activity > STALE_MS;
 
     let (title_room, age, left) = title_room(info, child, w, look);
     let age_w = age.as_deref().map_or(0, width);
@@ -864,13 +901,14 @@ fn row(
         (first, Some(rest)) if current => (first, Some(truncate(&rest, left))),
         _ => (truncate(&session_title(info), title_room), None),
     };
-    let title_style = match mark {
-        Mark::Current => styles.accent.add_modifier(Modifier::BOLD),
-        Mark::Finished => Style::new().add_modifier(Modifier::BOLD),
-        Mark::None if stale => styles.muted,
-        Mark::None => Style::new(),
+    let title_style = match status {
+        _ if current => styles.accent.add_modifier(Modifier::BOLD),
+        Status::Asking => styles.warning.add_modifier(Modifier::BOLD),
+        Status::Finished => Style::new().add_modifier(Modifier::BOLD),
+        Status::Idle if stale => styles.muted,
+        _ => Style::new(),
     };
-    let mut first = lead(state);
+    let mut first = lead(status.icon(look, styles));
     if child {
         first.push(Span::styled("↳ ", styles.muted));
     }
@@ -901,18 +939,34 @@ fn row(
         second.push(Span::raw("  "));
     }
     let mut left = left;
-    if info.queued > 0 {
-        let queued = format!("{} queued", info.queued);
-        if width(&queued) + 1 < left {
-            left -= width(&queued) + 3;
-            second.push(Span::styled(queued, styles.accent));
-            second.push(Span::styled(" · ", styles.muted));
-        }
-    }
     let stat = changed(info, styles);
     let stat_w: usize = stat.iter().map(|s| width(&s.content)).sum();
     let preview = info.preview.as_deref().unwrap_or("");
     let preview = preview.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut labels = Vec::new();
+    if info.asking.unwrap_or(0) > 0 {
+        labels.push(("needs you".to_string(), styles.warning));
+    }
+    if info.queued > 0 {
+        labels.push((format!("{} queued", info.queued), styles.accent));
+    }
+    let start = second.len();
+    for (label, style) in labels {
+        let sep = if second.len() > start { 3 } else { 0 };
+        if sep + width(&label) + 1 >= left {
+            break;
+        }
+        if sep > 0 {
+            second.push(Span::styled(" · ", styles.muted));
+        }
+        left -= sep + width(&label);
+        second.push(Span::styled(label, style));
+    }
+    // A dot between the labels and what follows them.
+    if second.len() > start && (stat_w > 0 || !preview.is_empty()) && left > 3 {
+        second.push(Span::styled(" · ", styles.muted));
+        left -= 3;
+    }
     if stat_w > 0 && stat_w + 2 <= left {
         let preview = truncate(&preview, left - stat_w - 1);
         let pad = left - width(&preview) - stat_w;
@@ -1025,6 +1079,7 @@ mod tests {
             state: SessionState::Idle,
             queued: 0,
             waiting: None,
+            asking: None,
             preview: None,
             added: None,
             removed: None,
@@ -1146,7 +1201,7 @@ mod tests {
         assert_eq!(
             got,
             [
-                " Sessions · 3",
+                " Sessions · 3             ◐1",
                 "   + New chat",
                 " w ──────────────────────────",
                 " ◐ Fix the login form     now",
@@ -1160,9 +1215,9 @@ mod tests {
                 "",
             ]
         );
-        // Green and red for the changed lines, the spinner in the accent color.
+        // Green and red for the changed lines, the spinner in blue.
         let st = styles();
-        assert_eq!(lines[3].spans[1].style, st.accent);
+        assert_eq!(lines[3].spans[1].style, st.info);
         let spans = &lines[4].spans;
         assert_eq!(
             spans.iter().find(|s| s.content == "+12").unwrap().style,
@@ -1279,7 +1334,7 @@ mod tests {
         s.upsert(a);
         assert!(s.is_finished("a"));
         let lines = s.render(29, 9, &look("b", false), &styles());
-        assert_eq!(lines[0].to_string(), " Sessions · 2 · 1 done");
+        assert_eq!(lines[0].to_string(), " Sessions · 2             ●1");
         assert_eq!(lines[3].spans[1].content, "●");
         assert_eq!(lines[3].spans[1].style, styles().success);
         assert!(
@@ -1299,6 +1354,52 @@ mod tests {
         s.upsert(b);
         let lines = s.render(29, 9, &look("b", false), &styles());
         assert_eq!(lines[0].to_string(), " Sessions · 2");
+    }
+
+    #[test]
+    fn a_session_waiting_for_an_answer_says_so_over_its_other_states() {
+        let mut s = Sessions::default();
+        let mut a = info("a", "Deploy", 30);
+        a.state = SessionState::Running;
+        a.asking = Some(1);
+        a.preview = Some("Pushing the tag".into());
+        let mut b = info("b", "Build", 20);
+        b.state = SessionState::Running;
+        let mut c = info("c", "Tests", 10);
+        c.state = SessionState::Running;
+        s.set_all(vec![a, b, c.clone()]);
+        c.state = SessionState::Idle;
+        s.upsert(c);
+        let lines = s.render(29, 20, &look("x", false), &styles());
+        let got: Vec<_> = text(&lines)
+            .iter()
+            .map(|l| l.trim_end().to_string())
+            .collect();
+        assert_eq!(
+            got[..7],
+            [
+                " Sessions · 3       !1 ◐1 ●1",
+                "   + New chat",
+                " w ──────────────────────────",
+                " ! Deploy                 now",
+                "   needs you · Pushing the t…",
+                "",
+                " ◐ Build                  now",
+            ]
+        );
+        let st = styles();
+        let warning = st.warning.add_modifier(Modifier::BOLD);
+        assert_eq!(lines[3].spans[1].style, warning);
+        assert_eq!(lines[3].spans[3].style, warning, "the title too");
+        assert_eq!(lines[4].spans[3].style, st.warning);
+        // Folded, the repository shows the most pressing one.
+        s.folded.insert("/w".into());
+        s.build();
+        let lines = s.render(29, 20, &look("x", false), &styles());
+        assert_eq!(
+            lines[2].to_string().trim_end(),
+            " ▸ w · 3 ! ──────────────────"
+        );
     }
 
     #[test]
@@ -1462,7 +1563,7 @@ mod tests {
         assert_eq!(
             got,
             [
-                " Sessions · 6",
+                " Sessions · 6             ◐1",
                 "   + New chat",
                 " site ───────────────────────",
                 "   Docs                   now",
@@ -1576,7 +1677,7 @@ mod tests {
         assert_eq!(
             lines(&mut s, false),
             [
-                " Sessions · 6",
+                " Sessions · 6             ◐1",
                 "   + New chat",
                 " ▸ site · 5 ◐ ───────────────",
                 " notes ──────────────────────",
@@ -1630,7 +1731,7 @@ mod tests {
         assert_eq!(
             got,
             [
-                " Sessions · 6",
+                " Sessions · 6             ◐1",
                 "   + New chat",
                 "   worktree dark",
                 "   Dark mode              now",

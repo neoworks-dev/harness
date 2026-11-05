@@ -11,6 +11,9 @@ pub struct Styles {
     pub muted: Style,
     pub danger: Style,
     pub success: Style,
+    /// Waiting on the user.
+    pub warning: Style,
+    pub info: Style,
     pub border: Style,
     /// The palette's pane and raised backgrounds; `Reset` when the theme paints none.
     pub panel: Color,
@@ -25,6 +28,8 @@ impl Styles {
                 muted: Style::new().add_modifier(Modifier::DIM),
                 danger: Style::new().add_modifier(Modifier::BOLD),
                 success: Style::new(),
+                warning: Style::new().add_modifier(Modifier::BOLD),
+                info: Style::new(),
                 border: Style::new().add_modifier(Modifier::DIM),
                 panel: Color::Reset,
                 raised: Color::Reset,
@@ -35,6 +40,8 @@ impl Styles {
             muted: Style::new().fg(palette.muted),
             danger: Style::new().fg(palette.danger),
             success: Style::new().fg(palette.success),
+            warning: Style::new().fg(palette.warning),
+            info: Style::new().fg(palette.info),
             border: Style::new().fg(palette.border),
             panel: palette.panel,
             raised: palette.raised,
@@ -85,5 +92,7 @@ pub fn plain_palette() -> Palette {
         muted: Color::Reset,
         success: Color::Reset,
         danger: Color::Reset,
+        warning: Color::Reset,
+        info: Color::Reset,
     }
 }

@@ -2013,6 +2013,8 @@ type SessionInfo struct {
 	Queued int64 `json:"queued"`
 	// The inputs waiting behind the running turn, oldest first (queued of them): what clients show above their input. Absent when none wait.
 	Waiting []WaitingInput `json:"waiting,omitempty"`
+	// Questions open in the session for the user to answer: permission requests and choices, its own and those copied from sessions it delegated to. Absent when none are.
+	Asking *int64 `json:"asking,omitempty"`
 	// The latest thing said, on one line and cut to about 120 characters: the agent's last message, else the user's.
 	Preview *string `json:"preview,omitempty"`
 	// Lines added by edits in this session (agent and guests), from their diffs.

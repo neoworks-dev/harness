@@ -3196,18 +3196,7 @@ index 1111111..2222222 100644
         assert_eq!((buf[(4, 4)].symbol(), buf[(54, 4)].symbol()), ("-", "+"));
         assert_eq!(buf[(4, 5)].symbol(), " ");
         // Without colors, the mark is reversed and nothing is painted.
-        let plain = Palette {
-            fg: Color::Reset,
-            bg: Color::Reset,
-            surface: Color::Reset,
-            panel: Color::Reset,
-            raised: Color::Reset,
-            border: Color::Reset,
-            accent: Color::Reset,
-            muted: Color::Reset,
-            success: Color::Reset,
-            danger: Color::Reset,
-        };
+        let plain = crate::style::plain_palette();
         t.draw(|f| v.draw(f, f.area(), &plain)).unwrap();
         let buf = t.backend().buffer();
         assert_eq!(buf[(10, 4)].bg, Color::Reset);

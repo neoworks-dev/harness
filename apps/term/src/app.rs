@@ -72,7 +72,10 @@ const PREVIEW_ROWS: u16 = 6;
 const PREVIEW_COLS: u16 = 24;
 /// Most rows the inputs waiting behind the running turn take above the editor.
 const WAITING_ROWS: usize = 3;
-const SPINNER: [char; 4] = ['◐', '◓', '◑', '◒'];
+/// A gap going round a full braille cell: it fills the cell, where a geometric shape sits small
+/// in most fonts. A frame each [`SPIN_MS`], the rate the screen repaints while one shows.
+const SPINNER: [char; 8] = ['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'];
+const SPIN_MS: i64 = 80;
 /// The chat needs at least this much beside the sessions sidebar, else the sidebar is hidden.
 const CHAT_MIN_WIDTH: u16 = 52;
 /// The narrowest the plan / files column gets.
@@ -656,7 +659,7 @@ impl App {
             self.take_github(out, &mut fx);
         }
         if self.running || self.sessions_shown && self.sessions.any_running() {
-            let frame = now_ms / 80;
+            let frame = now_ms / SPIN_MS;
             if frame != self.last_spin {
                 self.last_spin = frame;
                 self.dirty = true;
@@ -690,8 +693,8 @@ impl App {
                 self.dirty = true;
             }
         }
-        if self.voice == Voice::Transcribing && now_ms / 80 != self.last_spin {
-            self.last_spin = now_ms / 80;
+        if self.voice == Voice::Transcribing && now_ms / SPIN_MS != self.last_spin {
+            self.last_spin = now_ms / SPIN_MS;
             self.dirty = true;
         }
         self.update_engaged();
@@ -3482,11 +3485,10 @@ impl App {
             };
             frame.render_widget(Paragraph::new(details), at);
         }
-        let spinner = SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()];
         let look = Look {
             current: &self.session,
             focused: self.focus == Some(Focus::Sessions),
-            spinner,
+            spinner: self.spinner(),
             now_ms: self.now_ms,
             marks: &self.marks,
         };
@@ -4203,6 +4205,11 @@ impl App {
         self.dirty = true;
     }
 
+    /// The spinner's frame now.
+    fn spinner(&self) -> char {
+        SPINNER[usize::try_from(self.now_ms / SPIN_MS).unwrap_or(0) % SPINNER.len()]
+    }
+
     /// Seconds the running turn has taken; None when idle.
     fn working_secs(&self) -> Option<u64> {
         self.running
@@ -4243,10 +4250,8 @@ impl App {
                 return;
             }
             Voice::Transcribing => {
-                let spinner =
-                    SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()];
                 let line = Line::from(Span::styled(
-                    format!("{spinner} writing out what you said…"),
+                    format!("{} writing out what you said…", self.spinner()),
                     self.styles.accent,
                 ));
                 frame.render_widget(Paragraph::new(fit_line(line, usize::from(at.width))), at);
@@ -4260,10 +4265,9 @@ impl App {
             }
             return;
         };
-        let spinner = SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()];
         let bold = self.styles.accent.add_modifier(Modifier::BOLD);
         let mut spans = vec![
-            Span::styled(format!("{spinner} working"), bold),
+            Span::styled(format!("{} working", self.spinner()), bold),
             Span::styled(
                 format!(" · {}", crate::status::duration(secs)),
                 self.styles.muted,
@@ -4320,7 +4324,7 @@ impl App {
             // The sessions sidebar's foot has them when it shows.
             usage: self.widgets.usage_line().filter(|_| !self.details_shown),
             working_secs: self.working_secs().filter(|_| !self.work_shown),
-            spinner: SPINNER[usize::try_from(self.now_ms / 125).unwrap_or(0) % SPINNER.len()],
+            spinner: self.spinner(),
             queued: self.waiting.len(),
             stashed: self.stash.is_some(),
             cache_cold: self.cache_cold && !self.work_shown,

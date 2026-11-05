@@ -555,6 +555,11 @@
           "items": { "$ref": "#/$defs/WaitingInput" },
           "description": "The inputs waiting behind the running turn, oldest first (queued of them): what clients show above their input. Absent when none wait."
         },
+        "asking": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Questions open in the session for the user to answer: permission requests and choices, its own and those copied from sessions it delegated to. Absent when none are."
+        },
         "preview": {
           "type": "string",
           "description": "The latest thing said, on one line and cut to about 120 characters: the agent's last message, else the user's."

@@ -115,6 +115,8 @@ describe("the agent's own tools by approvals mode", () => {
     const [request] = requests(daemon, session);
     if (request?.type !== "permission_request") throw new Error("no request");
     expect(request).toMatchObject({ kind: "edit", content: [diff] });
+    // The session's info says it waits for an answer, so overviews can show it.
+    expect(daemon.sessions.info(session)?.asking).toBe(1);
 
     // Its card shows the diff above the buttons, then collapses to the answer.
     const item = (): ViewItem | undefined =>
@@ -132,6 +134,7 @@ describe("the agent's own tools by approvals mode", () => {
     });
     await press(daemon, session, request.id, "always");
     expect(await pending).toEqual({ allowed: true });
+    expect(daemon.sessions.info(session)?.asking).toBeUndefined();
     expect(item()).toMatchObject({ state: "done", component: { type: "text" } });
 
     // Edits are remembered for the session; commands and other sessions still ask.

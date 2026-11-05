@@ -292,6 +292,8 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
         ...summaries.get(sessionId),
         harness: harnessOf(sessionId),
       };
+      const asking = asker.asking(sessionId);
+      if (asking > 0) info.asking = asking;
       // A native subagent's session runs no turn of the session manager's.
       if (guests.runsNative(sessionId)) info.state = "running";
       return info;

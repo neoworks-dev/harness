@@ -339,6 +339,7 @@ mod tests {
             state: SessionState::Idle,
             queued: 0,
             waiting: None,
+            asking: None,
             preview: None,
             added: None,
             removed: None,

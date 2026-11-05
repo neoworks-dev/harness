@@ -1015,6 +1015,7 @@ fn a_session_switch_closes_the_view_and_drops_the_cache() {
         state: neo_protocol::SessionState::Idle,
         queued: 0,
         waiting: None,
+        asking: None,
         preview: None,
         added: None,
         removed: None,

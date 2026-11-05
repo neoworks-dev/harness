@@ -130,6 +130,7 @@ fn session_info(id: &str, cwd: &str, parent: Option<&str>) -> SessionInfo {
         state: SessionState::Running,
         queued: 0,
         waiting: None,
+        asking: None,
         preview: None,
         added: None,
         removed: None,

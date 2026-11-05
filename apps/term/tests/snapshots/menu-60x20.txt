@@ -12,7 +12,7 @@
   /cd [dir]        move this session to another directory
   /claude <task>   give a task to Claude Code
   /codex <task>    give a task to Codex
-  ◐ working · 12s · esc to interrupt
+  ⡿ working · 12s · esc to interrupt
 
 ┃
 ┃ /c

@@ -60,8 +60,8 @@ impl Theme {
 }
 
 /// The tokens' dark roles: canvas, text, text-muted, sunken (code), surface (panes), hover (the
-/// input), line, success, danger. The accent is pine-11, not the accent role's pine-9: that one
-/// is made to be filled, and as text on the canvas it is about 3:1.
+/// input), line, success, danger, warning, info. The accent is pine-11, not the accent role's
+/// pine-9: that one is made to be filled, and as text on the canvas it is about 3:1.
 const DARK: Palette = Palette {
     fg: Color::Rgb(0xf1, 0xf0, 0xed),
     bg: Color::Rgb(0x0f, 0x0e, 0x0c),
@@ -73,6 +73,8 @@ const DARK: Palette = Palette {
     muted: Color::Rgb(0xbb, 0xbb, 0xb8),
     success: Color::Rgb(0x9f, 0xc9, 0xb1),
     danger: Color::Rgb(0xff, 0xa1, 0x89),
+    warning: Color::Rgb(0xe9, 0xb2, 0x6d),
+    info: Color::Rgb(0x97, 0xc1, 0xf6),
 };
 
 /// The tokens' light roles, the same ones but the panes: those are sunken, as the raised
@@ -88,6 +90,8 @@ const LIGHT: Palette = Palette {
     muted: Color::Rgb(0x64, 0x63, 0x61),
     success: Color::Rgb(0x22, 0x4f, 0x39),
     danger: Color::Rgb(0x97, 0x37, 0x1f),
+    warning: Color::Rgb(0x84, 0x4c, 0x00),
+    info: Color::Rgb(0x31, 0x5c, 0x91),
 };
 
 /// Gives every cell left on the terminal's default colors the palette's.

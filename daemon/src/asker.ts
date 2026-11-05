@@ -144,6 +144,15 @@ export class Asker {
     return true;
   }
 
+  /** How many questions are open in a session, copies included: what its user has to answer. */
+  asking(session: string): number {
+    let n = 0;
+    for (const pending of this.pending.values()) {
+      if (pending.session === session || pending.mirrors.includes(session)) n += 1;
+    }
+    return n;
+  }
+
   /** Drops every open question of a session (or all). */
   dropAll(session?: string): void {
     for (const [id, pending] of this.pending) {

@@ -2385,6 +2385,9 @@ pub struct SessionInfo {
     /// The inputs waiting behind the running turn, oldest first (queued of them): what clients show above their input. Absent when none wait.
     #[serde(rename = "waiting", default, skip_serializing_if = "Option::is_none")]
     pub waiting: Option<Vec<WaitingInput>>,
+    /// Questions open in the session for the user to answer: permission requests and choices, its own and those copied from sessions it delegated to. Absent when none are.
+    #[serde(rename = "asking", default, skip_serializing_if = "Option::is_none")]
+    pub asking: Option<i64>,
     /// The latest thing said, on one line and cut to about 120 characters: the agent's last message, else the user's.
     #[serde(rename = "preview", default, skip_serializing_if = "Option::is_none")]
     pub preview: Option<String>,
