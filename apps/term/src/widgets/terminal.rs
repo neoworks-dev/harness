@@ -1,5 +1,7 @@
-//! The terminal panel: the commands the agent and its guests ran (`execute` tool calls), as
-//! a shell would show them: `$ command`, its output as it comes, and how it ended.
+//! The terminal panel: the commands the agent and its guests ran (`execute` tool calls). Each
+//! is a header on a faint band (how it stands, what it is for, the command, how it ended and how
+//! long it took) and its output under a gutter, in its own colors, as it comes; long lines are
+//! cut at the edge and the panel scrolls sideways; a blank row between commands.
 //!
 //! A command Claude Code runs in the background ends its call at once, with where its output
 //! goes (`Output is being written to: /tmp/…/<id>.output`); that file is tailed here as the
@@ -14,16 +16,19 @@ use std::path::PathBuf;
 use neo_protocol::{ToolCall, ToolCallContent, ToolCallStatus, ToolCallUpdate, ToolKind};
 use neo_renderer_ratatui::{Palette, highlight_shell, strip_cd};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthChar;
 
+use super::ansi::{Segs, Sgr, parse_line, plain, window};
 use super::text::clean_line;
 use crate::util::fit_line;
 
 /// Commands kept, and lines of output kept per command (the end of it).
 const RUNS: usize = 50;
 const OUTPUT_LINES: usize = 400;
+/// Cells a Left or Right moves the output sideways.
+const HSCROLL: usize = 8;
 
 #[derive(Debug, Clone)]
 struct Run {
@@ -32,14 +37,15 @@ struct Run {
     command: String,
     /// What the agent said it is for.
     description: Option<String>,
-    /// Cleaned lines, the last [`OUTPUT_LINES`].
-    output: Vec<String>,
+    /// Cleaned lines with their colors, the last [`OUTPUT_LINES`].
+    output: Vec<Segs>,
     status: ToolCallStatus,
     exit: Option<i64>,
     /// Running in the background: its output comes from a file.
     job: Option<Job>,
-    /// When its call was logged (ms).
+    /// When its call was logged, and when an update said it ended (ms).
     started_ms: i64,
+    ended_ms: Option<i64>,
 }
 
 /// A background command's output file and what has been read of it.
@@ -49,8 +55,10 @@ struct Job {
     /// Bytes read so far, and the start of a line not ended yet.
     offset: u64,
     partial: Vec<u8>,
-    /// Cleaned lines, the last [`OUTPUT_LINES`].
-    output: Vec<String>,
+    /// Cleaned lines with their colors, the last [`OUTPUT_LINES`].
+    output: Vec<Segs>,
+    /// What the SGR sequences read so far have set, for the next lines.
+    sgr: Sgr,
     started_ms: i64,
     /// From the file's last line; None while it runs.
     exit: Option<i64>,
@@ -94,6 +102,8 @@ pub(crate) struct TerminalState {
     /// The chat is scrolled up: the newest command shown is the one at that point (its run's
     /// id; None: there was none yet). None shows them all.
     upto: Option<Option<String>>,
+    /// Cells the output is scrolled sideways (long lines are cut at the edge, not wrapped).
+    hscroll: usize,
 }
 
 impl TerminalState {
@@ -155,6 +165,7 @@ impl TerminalState {
             exit: None,
             job: None,
             started_ms: 0,
+            ended_ms: None,
         });
         if self.runs.len() > RUNS {
             self.runs.remove(0);
@@ -179,6 +190,10 @@ impl TerminalState {
         }
         if let Some(status) = update.status {
             run.status = status;
+            let ended = matches!(status, ToolCallStatus::Completed | ToolCallStatus::Failed);
+            if ended && run.ended_ms.is_none() {
+                run.ended_ms = Some(ts);
+            }
         }
         if let Some(content) = &update.content {
             let text: Vec<&str> = content
@@ -197,6 +212,7 @@ impl TerminalState {
                     offset: 0,
                     partial: Vec::new(),
                     output: Vec::new(),
+                    sgr: Sgr::default(),
                     started_ms: ts,
                     exit: None,
                     ended_ms: None,
@@ -204,7 +220,7 @@ impl TerminalState {
                     gone: false,
                 });
             }
-            run.output = output_lines(&text);
+            run.output = output_lines(&text, &mut Sgr::default());
         }
         if let Some(out) = update.raw_output.as_ref().and_then(|o| o.as_object()) {
             run.exit = ["exitCode", "exit_code"]
@@ -223,11 +239,12 @@ impl TerminalState {
         p: &Palette,
     ) -> Vec<Line<'static>> {
         let want = height + self.back.unwrap_or(0);
+        let look = Look::new(width, self.hscroll, cwd, p);
         if let Some(run) = self
             .view()
             .and_then(|id| self.runs.iter().find(|r| r.id == id))
         {
-            let all = job_lines(run, width, cwd, p);
+            let all = run_lines(run, &look);
             let max = all.len().saturating_sub(height);
             self.max_back.set(max);
             let back = self.back.unwrap_or(0).min(max);
@@ -248,17 +265,14 @@ impl TerminalState {
                 &self.runs[..end]
             }
         };
-        // From the newest run back, only as many as fill the view; a rule between runs.
+        // From the newest run back, only as many as fill the view; a blank row between runs.
         let mut blocks: Vec<Vec<Line<'static>>> = Vec::new();
         let mut have = 0;
         let mut complete = true;
         for (i, run) in runs.iter().enumerate().rev() {
-            let mut lines = run_lines(run, width, cwd, p);
+            let mut lines = run_lines(run, &look);
             if i + 1 < runs.len() {
-                lines.push(Line::from(Span::styled(
-                    "─".repeat(width),
-                    Style::new().fg(p.border),
-                )));
+                lines.push(Line::default());
             }
             have += lines.len();
             blocks.push(lines);
@@ -267,7 +281,7 @@ impl TerminalState {
                 break;
             }
         }
-        // Where each run starts and how many rows it has before its rule.
+        // Where each run starts and how many rows it has before the blank row.
         let mut runs = Vec::new();
         let mut at = 0;
         for (i, block) in blocks.iter().rev().enumerate() {
@@ -301,6 +315,12 @@ impl TerminalState {
             KeyCode::PageDown => self.back = to(cur.saturating_sub(page)),
             KeyCode::Home | KeyCode::Char('g') => self.back = to(usize::MAX),
             KeyCode::End | KeyCode::Char('G') => self.back = None,
+            // Long lines are cut at the edge: sideways to read them.
+            KeyCode::Left | KeyCode::Char('h') => {
+                self.hscroll = self.hscroll.saturating_sub(HSCROLL);
+            }
+            KeyCode::Right | KeyCode::Char('l') => self.hscroll += HSCROLL,
+            KeyCode::Char('0') => self.hscroll = 0,
             _ => {}
         }
         false
@@ -365,8 +385,8 @@ impl TerminalState {
                     .output
                     .iter()
                     .rev()
-                    .find(|l| !l.trim().is_empty())
-                    .cloned(),
+                    .map(plain)
+                    .find(|l| !l.trim().is_empty()),
             })
             .collect()
     }
@@ -438,9 +458,9 @@ impl Job {
         };
         let done: Vec<u8> = self.partial.drain(..=end).collect();
         let text = String::from_utf8_lossy(&done);
-        let mut lines = output_lines(&text);
+        let mut lines = output_lines(&text, &mut self.sgr);
         // `[exited with code N]` ends the file, after a blank line.
-        match lines.last().and_then(|l| exit_code(l)) {
+        match lines.last().and_then(|l| exit_code(&plain(l))) {
             Some(code) => {
                 lines.pop();
                 if lines.last().is_some_and(|l| l.is_empty()) {
@@ -555,10 +575,10 @@ fn command_of(input: Option<&serde_json::Value>) -> Option<String> {
     }
 }
 
-/// Output as lines to draw: escape sequences gone, a carriage return keeping what came after
-/// it (progress bars), a fence around it (some adapters send one) dropped.
-fn output_lines(text: &str) -> Vec<String> {
-    let text = strip_escapes(text);
+/// Output as lines to draw, with their colors (`sgr` goes on from earlier output): other escape
+/// sequences gone, a carriage return keeping what came after it (progress bars), a fence around
+/// it (some adapters send one) dropped.
+fn output_lines(text: &str, sgr: &mut Sgr) -> Vec<Segs> {
     let mut lines: Vec<&str> = text.trim_end_matches('\n').split('\n').collect();
     if lines.len() >= 2 && lines[0].starts_with("```") && lines[lines.len() - 1] == "```" {
         lines = lines[1..lines.len() - 1].to_vec();
@@ -567,133 +587,202 @@ fn output_lines(text: &str) -> Vec<String> {
         return Vec::new();
     }
     let skip = lines.len().saturating_sub(OUTPUT_LINES);
+    lines[..skip].iter().for_each(|l| drop(parse_line(l, sgr)));
     lines[skip..]
         .iter()
         .map(|l| {
             let l = l.trim_end_matches('\r');
-            clean_line(l.rsplit('\r').next().unwrap_or(l))
+            parse_line(l.rsplit('\r').next().unwrap_or(l), sgr)
         })
         .collect()
 }
 
-/// Drops CSI (`ESC [ … final`) and OSC (`ESC ] … BEL` or `ESC \`) sequences and other
-/// two-character escapes.
-fn strip_escapes(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c != '\u{1b}' {
-            out.push(c);
-            continue;
-        }
-        match chars.next() {
-            Some('[') => {
-                for c in chars.by_ref() {
-                    if ('@'..='~').contains(&c) {
-                        break;
-                    }
-                }
-            }
-            Some(']') => {
-                while let Some(c) = chars.next() {
-                    if c == '\u{7}' {
-                        break;
-                    }
-                    if c == '\u{1b}' {
-                        chars.next();
-                        break;
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    out
+/// How the runs are drawn: the width, how far the output is scrolled sideways, the session's
+/// directory, the colors, and the header's band (none without true colors).
+struct Look<'a> {
+    width: usize,
+    hscroll: usize,
+    cwd: Option<&'a str>,
+    p: &'a Palette,
+    band: Option<Color>,
+    /// Output without colors of its own: a step back from the text color.
+    output: Style,
 }
 
-/// A background command on its own: `$ command`, what it wrote to its file, and `running…`,
-/// `exit 0` or a red `exit 1`.
-fn job_lines(run: &Run, width: usize, cwd: Option<&str>, p: &Palette) -> Vec<Line<'static>> {
-    let mut out = command_lines(run, width, cwd, p);
-    let Some(job) = &run.job else {
-        return out;
+impl<'a> Look<'a> {
+    fn new(width: usize, hscroll: usize, cwd: Option<&'a str>, p: &'a Palette) -> Look<'a> {
+        let base = if p.panel == Color::Reset {
+            p.bg
+        } else {
+            p.panel
+        };
+        let output =
+            crate::chat::mix(p.fg, base, 0.22).map_or(Style::new(), |c| Style::new().fg(c));
+        Look {
+            width,
+            hscroll,
+            cwd,
+            p,
+            band: crate::chat::mix(base, p.fg, 0.07),
+            output,
+        }
+    }
+}
+
+/// How a run went, as its header's right end says it: `✓ 0.8s`, `✗ exit 1`, `● running`.
+fn outcome(run: &Run, p: &Palette) -> (Span<'static>, Span<'static>) {
+    let job = run.job.as_ref().filter(|j| !j.gone);
+    let (status, exit, ended) = match job {
+        Some(j) => {
+            let status = match j.exit {
+                None => ToolCallStatus::InProgress,
+                Some(0) => ToolCallStatus::Completed,
+                Some(_) => ToolCallStatus::Failed,
+            };
+            (status, j.exit, j.ended_ms.map(|e| e - j.started_ms))
+        }
+        None => (
+            run.status,
+            run.exit,
+            // A call whose start wasn't logged (only in tests) says nothing of how long.
+            run.ended_ms
+                .filter(|_| run.started_ms > 0)
+                .map(|e| e - run.started_ms),
+        ),
     };
-    for line in &job.output {
-        out.extend(wrap_spans(vec![Span::raw(line.clone())], width));
-    }
-    let (text, style) = match job.exit {
-        None => ("running…".to_string(), Style::new().fg(p.muted)),
-        Some(0) => ("exit 0".to_string(), Style::new().fg(p.muted)),
-        Some(code) => (format!("exit {code}"), Style::new().fg(p.danger)),
-    };
-    out.push(Line::from(Span::styled(text, style)));
-    out
-}
-
-/// `$ command`, highlighted; one row once it started.
-fn command_lines(run: &Run, width: usize, cwd: Option<&str>, p: &Palette) -> Vec<Line<'static>> {
-    let mut lead = Vec::new();
-    if let Some(agent) = &run.agent {
-        lead.push(Span::styled(format!("{agent} "), Style::new().fg(p.muted)));
-    }
-    // What it is for, in front of it: `Build term  $ cargo build`.
-    if let Some(description) = &run.description {
-        lead.push(Span::styled(
-            format!("{description}  "),
-            Style::new().fg(p.muted).add_modifier(Modifier::ITALIC),
-        ));
-    }
-    lead.push(Span::styled(
-        "$ ",
-        Style::new().fg(p.accent).add_modifier(Modifier::BOLD),
-    ));
-    let mut spans = lead;
-    spans.extend(highlight_shell(
-        &clean_command(strip_cd(&run.command, cwd)),
-        p,
-        Style::new(),
-    ));
-    // What waits for approval is read in full; after that the output is what matters, and the
-    // command is one row: its first line, cut at the edge.
-    if run.status == ToolCallStatus::Pending {
-        return wrap_spans(spans, width);
-    }
-    let mut lines = wrap_spans(spans, usize::MAX);
-    let more = lines.len() > 1;
-    let mut first = lines.swap_remove(0);
-    if more {
-        first
-            .spans
-            .push(Span::styled(" …", Style::new().fg(p.muted)));
-    }
-    vec![fit_line(first, width)]
-}
-
-/// `$ command` (highlighted, continuation lines under it while it waits for approval, one row
-/// once it started), the output, and a muted `exit 1` (danger) or `running…` line.
-/// A background command shows what its file holds instead of its call's result.
-fn run_lines(run: &Run, width: usize, cwd: Option<&str>, p: &Palette) -> Vec<Line<'static>> {
-    if run.job.as_ref().is_some_and(|j| !j.gone) {
-        return job_lines(run, width, cwd, p);
-    }
-    let mut out = command_lines(run, width, cwd, p);
-    for line in &run.output {
-        out.extend(wrap_spans(vec![Span::raw(line.clone())], width));
-    }
-    let muted = Style::new().fg(p.muted);
-    match run.status {
-        ToolCallStatus::Pending => {
-            out.push(Line::from(Span::styled("waiting for approval…", muted)))
-        }
-        ToolCallStatus::InProgress => out.push(Line::from(Span::styled("running…", muted))),
+    let took = ended.filter(|ms| *ms >= 0).map(took);
+    let style = |c: Color| Style::new().fg(c);
+    match status {
+        ToolCallStatus::Pending => (
+            Span::styled("?", style(p.warning).add_modifier(Modifier::BOLD)),
+            Span::styled("waiting for approval", style(p.warning)),
+        ),
+        ToolCallStatus::InProgress => (
+            Span::styled("●", style(p.info)),
+            Span::styled("running", style(p.info)),
+        ),
+        ToolCallStatus::Completed => (
+            Span::styled("✓", style(p.success)),
+            Span::styled(took.unwrap_or_default(), style(p.muted)),
+        ),
         ToolCallStatus::Failed => {
-            let text = run
-                .exit
-                .map_or_else(|| "failed".to_string(), |code| format!("exit {code}"));
-            out.push(Line::from(Span::styled(text, Style::new().fg(p.danger))));
+            let what = exit.map_or_else(|| "failed".to_string(), |code| format!("exit {code}"));
+            let what = match took {
+                Some(t) => format!("{what} · {t}"),
+                None => what,
+            };
+            (
+                Span::styled("✗", style(p.danger).add_modifier(Modifier::BOLD)),
+                Span::styled(what, style(p.danger)),
+            )
         }
-        ToolCallStatus::Completed => {}
     }
+}
+
+/// `0.8s`, `12s`, `1m 12s`.
+fn took(ms: i64) -> String {
+    match ms {
+        ..1000 => format!("{:.1}s", ms as f64 / 1000.0),
+        1000..60_000 => format!("{}s", ms / 1000),
+        _ => format!("{}m {}s", ms / 60_000, ms / 1000 % 60),
+    }
+}
+
+/// The run's header on a band across the panel: its state, what it is for in bold and the
+/// command after it muted (the command highlighted when there is no description), and how it
+/// went at the right end. One row, cut at the edge; a command waiting for approval is read in
+/// full, its lines under it.
+fn header(run: &Run, look: &Look) -> Vec<Line<'static>> {
+    let p = look.p;
+    let (icon, how) = outcome(run, p);
+    let mut spans = vec![icon, Span::raw(" ")];
+    if let Some(agent) = &run.agent {
+        spans.push(Span::styled(format!("{agent} "), Style::new().fg(p.muted)));
+    }
+    let command = clean_command(strip_cd(&run.command, look.cwd));
+    match &run.description {
+        Some(description) => {
+            spans.push(Span::styled(
+                format!("{description}  "),
+                Style::new().add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::styled(command, Style::new().fg(p.muted)));
+        }
+        None => {
+            spans.push(Span::styled(
+                "$ ",
+                Style::new().fg(p.accent).add_modifier(Modifier::BOLD),
+            ));
+            spans.extend(highlight_shell(&command, p, Style::new()));
+        }
+    }
+    let how_w = super::text::width(&how.content);
+    let mut lines = if run.status == ToolCallStatus::Pending {
+        let mut lines = wrap_spans(spans, look.width);
+        lines.push(Line::from(vec![Span::raw("  "), how]));
+        lines
+    } else {
+        let mut lines = wrap_spans(spans, usize::MAX);
+        let more = lines.len() > 1;
+        let mut first = lines.swap_remove(0);
+        if more {
+            first
+                .spans
+                .push(Span::styled(" …", Style::new().fg(p.muted)));
+        }
+        let room = look
+            .width
+            .saturating_sub(if how_w > 0 { how_w + 2 } else { 0 });
+        let mut first = fit_line(first, room);
+        if how_w > 0 {
+            let pad = look.width.saturating_sub(first.width() + how_w);
+            first.spans.push(Span::raw(" ".repeat(pad)));
+            first.spans.push(how);
+        }
+        vec![first]
+    };
+    if let Some(bg) = look.band {
+        for line in &mut lines {
+            let pad = look.width.saturating_sub(line.width());
+            line.spans.push(Span::raw(" ".repeat(pad)));
+            for span in &mut line.spans {
+                span.style = span.style.bg(bg);
+            }
+        }
+    }
+    lines
+}
+
+/// A line of output under a muted gutter, in its own colors, cut at the edge (scrolled sideways
+/// as far as the panel is).
+fn output_row(line: &Segs, look: &Look) -> Line<'static> {
+    let room = look.width.saturating_sub(2);
+    let (mut spans, cut) = window(line, look.hscroll, room, look.output, look.p);
+    if cut && room > 0 {
+        // The last cell says there is more.
+        let less = room - 1;
+        spans = window(line, look.hscroll, less, look.output, look.p).0;
+        spans.push(Span::styled("…", Style::new().fg(look.p.muted)));
+    }
+    let mut out = vec![Span::styled("│ ", Style::new().fg(look.p.border))];
+    out.extend(spans);
+    Line::from(out)
+}
+
+/// The header, then the output under it. A background command shows what its file holds
+/// instead of its call's result.
+fn run_lines(run: &Run, look: &Look) -> Vec<Line<'static>> {
+    let mut out = header(run, look);
+    let output = match run.job.as_ref().filter(|j| !j.gone) {
+        Some(job) => &job.output,
+        None => &run.output,
+    };
+    // Blank lines at the end say nothing.
+    let end = output
+        .iter()
+        .rposition(|l| !plain(l).trim().is_empty())
+        .map_or(0, |i| i + 1);
+    out.extend(output[..end].iter().map(|line| output_row(line, look)));
     out
 }
 
@@ -763,7 +852,10 @@ mod tests {
         let mut c = call("1", "execute", "cargo build");
         c.raw_input = Some(json!({"command": "cargo build", "description": "Build\n  term"}));
         t.on_call(&c);
-        assert_eq!(shown(&t, 60, 10), ["Build term  $ cargo build", "running…"]);
+        assert_eq!(
+            shown(&t, 40, 10),
+            ["● Build term  cargo build        running"]
+        );
     }
 
     fn update(id: &str, status: Option<&str>, text: &str, exit: Option<i64>) -> ToolCallUpdate {
@@ -794,19 +886,60 @@ mod tests {
         assert_eq!(
             shown(&t, 60, 10),
             [
-                "$ gh issue create --body 'a",
+                "? $ gh issue create --body 'a",
                 "b",
                 "c",
                 "d",
                 "e'",
-                "waiting for approval…"
+                "  waiting for approval"
             ]
         );
         t.on_update(&update("1", Some("completed"), "https://x/42", None), 0);
         assert_eq!(
             shown(&t, 60, 10),
-            ["$ gh issue create --body 'a …", "https://x/42"]
+            ["✓ $ gh issue create --body 'a …", "│ https://x/42"]
         );
+    }
+
+    #[test]
+    fn the_header_says_how_long_it_took_and_how_it_ended() {
+        let mut t = TerminalState::default();
+        t.on_call_at(&call("1", "execute", "make"), 1_000);
+        t.on_update(&update("1", Some("completed"), "", None), 1_800);
+        t.on_call_at(&call("2", "execute", "make test"), 2_000);
+        t.on_update(&update("2", Some("failed"), "", Some(2)), 74_000);
+        assert_eq!(
+            shown(&t, 30, 10),
+            [
+                "✓ $ make                  0.8s",
+                "",
+                "✗ $ make test  exit 2 · 1m 12s",
+            ]
+        );
+    }
+
+    #[test]
+    fn output_keeps_its_colors_and_long_lines_scroll_sideways() {
+        let mut t = TerminalState::default();
+        t.on_call(&call("1", "execute", "cargo test"));
+        t.on_update(
+            &update(
+                "1",
+                Some("failed"),
+                "\u{1b}[31mFAILED\u{1b}[0m a_test_with_a_long_name",
+                None,
+            ),
+            0,
+        );
+        let p = Palette::default();
+        let lines = t.render(20, 10, None, &p);
+        let row = &lines[1];
+        assert_eq!(row.to_string(), "│ FAILED a_test_wit…");
+        assert_eq!(row.spans[1].style.fg, Some(p.danger));
+        t.key(KeyEvent::from(KeyCode::Right), 10);
+        assert_eq!(shown(&t, 20, 10)[1], "│ _test_with_a_long…");
+        t.key(KeyEvent::from(KeyCode::Char('0')), 10);
+        assert_eq!(shown(&t, 20, 10)[1], "│ FAILED a_test_wit…");
     }
 
     #[test]
@@ -816,20 +949,22 @@ mod tests {
         assert!(!t.has_any(), "only commands");
         t.on_call(&call("1", "execute", "cargo test\n  --all"));
         t.on_update(&update("1", None, "\u{1b}[32mok\u{1b}[0m 1", None), 0);
-        assert_eq!(shown(&t, 40, 10), ["$ cargo test …", "ok 1", "running…"]);
+        assert_eq!(
+            shown(&t, 30, 10),
+            ["● $ cargo test …       running", "│ ok 1"]
+        );
         t.on_update(&update("1", Some("failed"), "ok 1\nboom\n", Some(101)), 0);
         t.on_call(&call("2", "execute", "ls"));
         t.on_update(&update("2", Some("completed"), "50%\r100%", None), 0);
         assert_eq!(
-            shown(&t, 40, 10),
+            shown(&t, 30, 10),
             [
-                "$ cargo test …",
-                "ok 1",
-                "boom",
-                "exit 101",
-                "─".repeat(40).as_str(),
-                "$ ls",
-                "100%"
+                "✗ $ cargo test …      exit 101",
+                "│ ok 1",
+                "│ boom",
+                "",
+                "✓ $ ls",
+                "│ 100%"
             ]
         );
     }
@@ -842,11 +977,11 @@ mod tests {
             t.on_update(&update(id, Some("completed"), out, None), 0);
         }
         t.set_upto(Some(Some("1".into())));
-        assert_eq!(shown(&t, 20, 10), ["$ echo", "one"]);
+        assert_eq!(shown(&t, 20, 10), ["✓ $ echo", "│ one"]);
         t.set_upto(Some(None));
         assert!(shown(&t, 20, 10).is_empty(), "no command yet there");
         t.set_upto(None);
-        assert_eq!(shown(&t, 20, 10).last().unwrap(), "two");
+        assert_eq!(shown(&t, 20, 10).last().unwrap(), "│ two");
     }
 
     #[test]
@@ -859,12 +994,12 @@ mod tests {
             0,
         );
         // The command stays on top while its output scrolls under it.
-        assert_eq!(shown(&t, 20, 3), ["$ seq 20", "19", "20"]);
+        assert_eq!(shown(&t, 20, 3), ["✓ $ seq 20", "│ 19", "│ 20"]);
         t.key(KeyEvent::from(KeyCode::PageUp), 3);
         assert!(!t.following());
-        assert_eq!(shown(&t, 20, 3), ["$ seq 20", "16", "17"]);
+        assert_eq!(shown(&t, 20, 3), ["✓ $ seq 20", "│ 16", "│ 17"]);
         t.key(KeyEvent::from(KeyCode::Char('g')), 3);
-        assert_eq!(shown(&t, 20, 3), ["$ seq 20", "1", "2"]);
+        assert_eq!(shown(&t, 20, 3), ["✓ $ seq 20", "│ 1", "│ 2"]);
         t.key(KeyEvent::from(KeyCode::Char('G')), 3);
         assert!(t.following());
         assert!(t.key(KeyEvent::from(KeyCode::Esc), 3));
@@ -877,16 +1012,15 @@ mod tests {
         t.on_update(&update("1", Some("completed"), "1\n2\n3\n4\n5", None), 0);
         t.on_call(&call("2", "execute", "seq 2"));
         t.on_update(&update("2", Some("completed"), "1\n2", None), 0);
-        let rule = "─".repeat(10);
-        // On the rule, nothing is pinned: the next command starts right under it.
-        assert_eq!(shown(&t, 10, 4), [rule.as_str(), "$ seq 2", "1", "2"]);
+        // On the blank row between them, nothing is pinned: the next command starts under it.
+        assert_eq!(shown(&t, 10, 4), ["", "✓ $ seq 2", "│ 1", "│ 2"]);
         t.key(KeyEvent::from(KeyCode::Up), 4);
         t.key(KeyEvent::from(KeyCode::Up), 4);
-        assert_eq!(shown(&t, 10, 4), ["$ seq 5", "5", rule.as_str(), "$ seq 2"]);
+        assert_eq!(shown(&t, 10, 4), ["✓ $ seq 5", "│ 5", "", "✓ $ seq 2"]);
     }
 
     #[test]
-    fn long_lines_wrap_and_guests_are_named() {
+    fn long_lines_are_cut_and_guests_are_named() {
         let mut t = TerminalState::default();
         let mut c = call("1", "execute", "echo");
         c.agent = Some("claude".into());
@@ -895,9 +1029,9 @@ mod tests {
             &update("1", Some("completed"), "```\nabcdefghij\n```", None),
             0,
         );
-        // The output wraps; the command that ran is cut to a row.
-        assert_eq!(shown(&t, 6, 10), ["claud…", "abcdef", "ghij"]);
-        assert_eq!(shown(&t, 20, 10), ["claude $ echo", "abcdefghij"]);
+        // The output and the command that ran are cut to a row each.
+        assert_eq!(shown(&t, 8, 10), ["✓ claud…", "│ abcde…"]);
+        assert_eq!(shown(&t, 20, 10), ["✓ claude $ echo", "│ abcdefghij"]);
     }
 
     /// Claude Code's result for a command it runs in the background.
@@ -937,9 +1071,8 @@ mod tests {
         assert_eq!(
             shown(&t, 60, 10),
             [
-                "$ for i in 1 2; do echo tick $i; done",
-                "tick 1",
-                "running…"
+                "● $ for i in 1 2; do echo tick $i; done              running",
+                "│ tick 1"
             ]
         );
 
@@ -960,10 +1093,9 @@ mod tests {
         assert_eq!(
             shown(&t, 60, 10),
             [
-                "$ for i in 1 2; do echo tick $i; done",
-                "tick 1",
-                "tick 2",
-                "exit 3"
+                "✗ $ for i in 1 2; do echo tick $i; done        exit 3 · 0.8s",
+                "│ tick 1",
+                "│ tick 2"
             ]
         );
         // It lingers a moment, then leaves the list.
@@ -1018,7 +1150,11 @@ mod tests {
         assert!(t.jobs(60_000).is_empty());
         // Among all commands it still shows what its file held.
         let all = shown(&t, 200, 20);
-        assert_eq!(all[..3], ["$ make", "ok", "exit 0"]);
+        assert!(
+            all[0].starts_with("✓ $ make ") && all[0].ends_with("1m 0s"),
+            "{all:?}"
+        );
+        assert_eq!(all[1], "│ ok");
         std::fs::remove_file(&ended).unwrap();
     }
 }

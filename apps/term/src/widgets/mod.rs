@@ -55,6 +55,7 @@
 //! - The GitHub view (`crate::github`) reuses the diff view for a pull request's diff.
 //! - Keys the panels don't use return `Redraw` (harmless). Esc and q in a panel return `Leave`.
 
+mod ansi;
 mod diff;
 mod files;
 mod git;
