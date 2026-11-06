@@ -718,6 +718,9 @@ mod tests {
             home: None,
             pid: None,
             context: None,
+            description: None,
+            skills: None,
+            launchable: None,
         }
     }
 

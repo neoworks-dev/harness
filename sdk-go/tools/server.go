@@ -76,6 +76,19 @@ type Result struct {
 	IsError    bool
 }
 
+// Skill is what an agent needs to know to work in the app, loaded when the
+// work calls for it. It is served as an MCP prompt without arguments; agents
+// are told its name and description when the app connects and load the text
+// with skills_load.
+type Skill struct {
+	// Name is unique in the app.
+	Name string
+	// Description says when to load it.
+	Description string
+	// Text is what the agent reads.
+	Text string
+}
+
 // Options configure Start.
 type Options struct {
 	// Name and Version identify the server in initialize (Version defaults to 0.1.0).
@@ -84,6 +97,8 @@ type Options struct {
 	// next to the app's tools.
 	Instructions string
 	Tools        []Tool
+	// Skills are the app's skills.
+	Skills []Skill
 	// Addr is the listen address; empty means 127.0.0.1:0 (a free port).
 	// It must be a loopback address.
 	Addr string
@@ -122,6 +137,14 @@ func Start(opts Options) (*Server, error) {
 			return nil, fmt.Errorf("tools: duplicate tool %q", t.Name)
 		}
 		s.byName[t.Name] = t
+	}
+	for i, sk := range opts.Skills {
+		if sk.Name == "" {
+			return nil, fmt.Errorf("tools: skill %d needs a Name", i)
+		}
+		if slices.IndexFunc(opts.Skills[:i], func(o Skill) bool { return o.Name == sk.Name }) >= 0 {
+			return nil, fmt.Errorf("tools: duplicate skill %q", sk.Name)
+		}
 	}
 	var raw [32]byte
 	if _, err := rand.Read(raw[:]); err != nil {
@@ -279,6 +302,14 @@ func (s *Server) dispatch(ctx context.Context, req request) (any, *rpcError) {
 		return map[string]any{"tools": s.list()}, nil
 	case "tools/call":
 		return s.call(ctx, req.Params)
+	case "prompts/list":
+		if len(s.opts.Skills) > 0 {
+			return map[string]any{"prompts": s.prompts()}, nil
+		}
+	case "prompts/get":
+		if len(s.opts.Skills) > 0 {
+			return s.prompt(req.Params)
+		}
 	}
 	return nil, &rpcError{codeMethodNotFound, "method not found: " + req.Method}
 }
@@ -292,9 +323,13 @@ func (s *Server) initialize(params json.RawMessage) any {
 	if slices.Contains(supportedVersions, p.ProtocolVersion) {
 		version = p.ProtocolVersion
 	}
+	capabilities := map[string]any{"tools": map[string]any{"listChanged": false}}
+	if len(s.opts.Skills) > 0 {
+		capabilities["prompts"] = map[string]any{}
+	}
 	result := map[string]any{
 		"protocolVersion": version,
-		"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
+		"capabilities":    capabilities,
 		"serverInfo":      map[string]any{"name": s.opts.Name, "version": s.opts.Version},
 	}
 	if s.opts.Instructions != "" {
@@ -327,6 +362,34 @@ func (s *Server) list() []map[string]any {
 		out = append(out, entry)
 	}
 	return out
+}
+
+func (s *Server) prompts() []map[string]any {
+	out := make([]map[string]any, 0, len(s.opts.Skills))
+	for _, sk := range s.opts.Skills {
+		out = append(out, map[string]any{"name": sk.Name, "description": sk.Description})
+	}
+	return out
+}
+
+func (s *Server) prompt(raw json.RawMessage) (any, *rpcError) {
+	var p struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil || p.Name == "" {
+		return nil, &rpcError{codeInvalidParams, "prompts/get needs a prompt name"}
+	}
+	i := slices.IndexFunc(s.opts.Skills, func(sk Skill) bool { return sk.Name == p.Name })
+	if i < 0 {
+		return nil, &rpcError{codeInvalidParams, "no skill " + p.Name}
+	}
+	sk := s.opts.Skills[i]
+	return map[string]any{
+		"description": sk.Description,
+		"messages": []map[string]any{
+			{"role": "user", "content": Content{Type: "text", Text: sk.Text}},
+		},
+	}, nil
 }
 
 func (s *Server) call(ctx context.Context, raw json.RawMessage) (any, *rpcError) {

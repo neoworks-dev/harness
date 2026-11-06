@@ -31,6 +31,20 @@ export interface ToolSpec {
   handler(args: Record<string, unknown>): Promise<string | ToolResult>;
 }
 
+/**
+ * What an agent needs to know to work in the app, loaded when the work calls for it. Served as
+ * an MCP prompt without arguments; agents are told its name and description when the app
+ * connects and load the text with `skills_load`.
+ */
+export interface SkillSpec {
+  /** Its name, unique in the app. */
+  name: string;
+  /** When to load it. */
+  description: string;
+  /** What the agent reads. */
+  text: string;
+}
+
 export interface ToolServerOptions {
   /** The app name. */
   name: string;
@@ -39,6 +53,8 @@ export interface ToolServerOptions {
   /** Tells the agent how to use the tools together; the gateway shows it with the app's tools. */
   instructions?: string;
   tools: ToolSpec[];
+  /** The app's skills. */
+  skills?: SkillSpec[];
 }
 
 /** An MCP server on this machine's loopback address, for the daemon's gateway to call. */

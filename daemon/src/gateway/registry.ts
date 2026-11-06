@@ -70,6 +70,19 @@ function hashOf(
   return createHash("sha256").update(JSON.stringify(what)).digest("hex");
 }
 
+/** One line about what the app is for: what it says, else its instructions' first sentence. */
+function describe(connector: StoredConnector): string | undefined {
+  const { description, instructions } = connector;
+  if (description !== undefined && description !== "") return description;
+  if (instructions !== undefined && instructions.trim() !== "") return firstSentence(instructions);
+  return undefined;
+}
+
+/** Its skills as agents and clients are told of them, without their text. */
+function skillsOf(connector: StoredConnector): AppSkill[] {
+  return (connector.skills ?? []).map(({ name, description }) => ({ name, description }));
+}
+
 function sameEndpoint(a: McpEndpoint | undefined, b: McpEndpoint | undefined): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -226,6 +239,11 @@ export class ConnectorRegistry {
       if (live?.presence.home) info.home = true;
       if (live?.presence.pid !== undefined) info.pid = live.presence.pid;
       if (live?.presence.context !== undefined) info.context = live.presence.context;
+      const description = describe(connector);
+      if (description !== undefined) info.description = description;
+      const skills = skillsOf(connector);
+      if (skills.length > 0) info.skills = skills;
+      if (connector.launch !== undefined) info.launchable = true;
       return info;
     });
   }
@@ -235,18 +253,14 @@ export class ConnectorRegistry {
     const out: ConnectorSnapshot[] = [];
     for (const { connector, open } of this.all()) {
       if (!open) continue;
-      const { app, kind, v, tools, instructions } = connector;
+      const { app, kind, v, tools } = connector;
       const snapshot: ConnectorSnapshot = { app, kind, v, tools: tools.map((t) => t.name) };
       const components = callNames(this.library())[app] ?? [];
       if (components.length > 0) snapshot.components = components;
-      const described = this.live.get(app)?.presence.description;
-      if (described !== undefined && described !== "") snapshot.description = described;
-      else if (instructions !== undefined && instructions.trim() !== "") {
-        snapshot.description = firstSentence(instructions);
-      }
-      if (connector.skills?.length) {
-        snapshot.skills = connector.skills.map(({ name, description }) => ({ name, description }));
-      }
+      const description = describe(connector);
+      if (description !== undefined) snapshot.description = description;
+      const skills = skillsOf(connector);
+      if (skills.length > 0) snapshot.skills = skills;
       out.push(snapshot);
     }
     return out;
@@ -293,6 +307,8 @@ export class ConnectorRegistry {
     record.kind = presence.kind;
     if (presence.title !== undefined) record.title = presence.title;
     if (presence.launch !== undefined) record.launch = presence.launch;
+    if (presence.description === undefined) delete record.description;
+    else record.description = presence.description;
     if (presence.templates !== undefined) record.templates = presence.templates;
     if (presence.components !== undefined) {
       const same = JSON.stringify(record.components ?? {}) === JSON.stringify(presence.components);

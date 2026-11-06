@@ -1643,6 +1643,23 @@ pub struct ConnectorInfo {
     /// The app's current context from its presence.
     #[serde(rename = "context", default, skip_serializing_if = "Option::is_none")]
     pub context: Option<BTreeMap<String, String>>,
+    /// One line about what the app is for: its presence's description, else the first sentence of its MCP server's instructions.
+    #[serde(
+        rename = "description",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub description: Option<String>,
+    /// Its skills, by name and when to load them.
+    #[serde(rename = "skills", default, skip_serializing_if = "Option::is_none")]
+    pub skills: Option<Vec<AppSkill>>,
+    /// The daemon knows how to start it when it is closed (apps_launch).
+    #[serde(
+        rename = "launchable",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub launchable: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

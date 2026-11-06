@@ -1,8 +1,14 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   type CallToolResult,
+  type GetPromptResult,
+  type ServerCapabilities,
   CallToolRequestSchema,
+  ErrorCode,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
   ListToolsRequestSchema,
+  McpError,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { ToolServerOptions, ToolSpec } from "./types.ts";
 
@@ -38,13 +44,29 @@ async function runTool(spec: ToolSpec, args: Record<string, unknown>): Promise<C
  * call, so a changed tool list takes effect without reconnecting.
  */
 export function createMcpServer(
-  options: Pick<ToolServerOptions, "name" | "version" | "instructions">,
+  options: Pick<ToolServerOptions, "name" | "version" | "instructions" | "skills">,
   currentTools: () => ToolSpec[],
 ): Server {
+  const skills = options.skills ?? [];
+  const capabilities: ServerCapabilities = { tools: { listChanged: true } };
+  if (skills.length > 0) capabilities.prompts = {};
   const server = new Server(
     { name: options.name, version: options.version ?? "0.1.0" },
-    { capabilities: { tools: { listChanged: true } }, instructions: options.instructions },
+    { capabilities, instructions: options.instructions },
   );
+  if (skills.length > 0) {
+    server.setRequestHandler(ListPromptsRequestSchema, () => ({
+      prompts: skills.map(({ name, description }) => ({ name, description })),
+    }));
+    server.setRequestHandler(GetPromptRequestSchema, (get): GetPromptResult => {
+      const skill = skills.find((s) => s.name === get.params.name);
+      if (!skill) throw new McpError(ErrorCode.InvalidParams, `no skill ${get.params.name}`);
+      return {
+        description: skill.description,
+        messages: [{ role: "user", content: { type: "text", text: skill.text } }],
+      };
+    });
+  }
   server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: currentTools().map(describe) }));
   server.setRequestHandler(CallToolRequestSchema, async (call): Promise<CallToolResult> => {
     const spec = currentTools().find((tool) => tool.name === call.params.name);

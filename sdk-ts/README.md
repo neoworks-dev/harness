@@ -219,4 +219,6 @@ These properties are `Watched<T>`: `.value` is the latest, `.on(callback)` retur
 
 ### `await createToolServer(options)` (Node and Bun)
 
-`{ name, version?, instructions?, tools }` where a tool is `{ name, description, inputSchema, outputSchema?, handler(args) }`. Returns `{ url, headers, endpoint, setTools(tools), close() }`: pass `endpoint` as `presence.mcp`; `setTools` swaps the list and tells the daemon.
+`{ name, version?, instructions?, tools, skills? }` where a tool is `{ name, description, inputSchema, outputSchema?, handler(args) }`. Returns `{ url, headers, endpoint, setTools(tools), close() }`: pass `endpoint` as `presence.mcp`; `setTools` swaps the list and tells the daemon.
+
+What agents need to know to work in the app goes in skills, not in the tools' descriptions or the instructions: `skills: [{ name: "layers", description: "Working with layers", text }]`. They are served as MCP prompts without arguments; agents are told each one's name and description when the app connects and load the text (`skills_load`) when the work calls for it.

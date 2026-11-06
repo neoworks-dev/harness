@@ -1427,6 +1427,12 @@ type ConnectorInfo struct {
 	PID *int64 `json:"pid,omitempty"`
 	// The app's current context from its presence.
 	Context map[string]string `json:"context,omitempty"`
+	// One line about what the app is for: its presence's description, else the first sentence of its MCP server's instructions.
+	Description *string `json:"description,omitempty"`
+	// Its skills, by name and when to load them.
+	Skills []AppSkill `json:"skills,omitempty"`
+	// The daemon knows how to start it when it is closed (apps_launch).
+	Launchable *bool `json:"launchable,omitempty"`
 }
 
 type ConnectorTool struct {

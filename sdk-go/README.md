@@ -40,7 +40,7 @@ The app stays registered while the connection lives. Call `SetPresence` again to
 
 ### Tools: `sdk-go/tools`
 
-`tools.Start` hosts the app's tools as an MCP server, the counterpart of sdk-ts's `createToolServer`. It is a small hand-written Streamable HTTP server on `net/http` (no dependency): stateless, plain `application/json` responses, bound to 127.0.0.1 on a free port, with a random bearer token that the presence carries in `Mcp.Headers` (the gateway sends them with every request). It answers `initialize` (echoing a protocol version it knows), `ping`, `notifications/*` (202), `tools/list` and `tools/call`; protocol errors are JSON-RPC errors, a failing handler is an `isError` result.
+`tools.Start` hosts the app's tools as an MCP server, the counterpart of sdk-ts's `createToolServer`. It is a small hand-written Streamable HTTP server on `net/http` (no dependency): stateless, plain `application/json` responses, bound to 127.0.0.1 on a free port, with a random bearer token that the presence carries in `Mcp.Headers` (the gateway sends them with every request). It answers `initialize` (echoing a protocol version it knows), `ping`, `notifications/*` (202), `tools/list` and `tools/call`, and with skills `prompts/list` and `prompts/get`; protocol errors are JSON-RPC errors, a failing handler is an `isError` result.
 
 ```go
 srv, err := tools.Start(tools.Options{
@@ -63,6 +63,8 @@ srv, err := tools.Start(tools.Options{
 defer srv.Close()
 err = c.SetPresence(ctx, protocol.AppPresence{App: "photo-editor", Kind: protocol.ConnectorKindApp, Open: true, Mcp: srv.Endpoint()})
 ```
+
+What agents need to know to work in the app goes in skills, not in the tools' descriptions or the instructions: `Skills: []tools.Skill{{Name: "layers", Description: "Working with layers", Text: text}}`. They are served as MCP prompts without arguments; agents are told each one's name and description when the app connects and load the text (`skills_load`) when the work calls for it.
 
 `Result.Structured` becomes `structuredContent` (the data view templates get); without `Text` its JSON is the text content. The tool list is fixed once the server started (there is no server-to-client stream, so no `list_changed`); a changed list needs a new server and a new `SetPresence`. Tests can use `sdktest.StartReal(t)`, which runs the real TypeScript daemon (`NEO_AGENT=echo`, temp socket and data dir; skips without `bun`) and calls tools through its `/mcp` with `CallTool("app.tool", args)`.
 

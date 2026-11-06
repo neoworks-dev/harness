@@ -151,6 +151,22 @@ describe("connector registry", () => {
     expect(second.registry.snapshot()[0]?.v).toBe(1);
   });
 
+  test("the list says what a closed app is for, its skills and that it can be started", async () => {
+    const { registry, upstreams } = setup();
+    const layers = { name: "layers", description: "Working with layers", text: "Use layers." };
+    upstreams.set("mem://photo", fakeUpstream(photoTools, [layers]));
+    const owner = {};
+    await registry.presence(owner, { ...photoPresence(), description: "Edits photos." });
+    await registry.disconnect(owner);
+    expect(registry.list()[0]).toMatchObject({
+      connected: false,
+      description: "Edits photos.",
+      skills: [{ name: "layers", description: "Working with layers" }],
+      launchable: true,
+    });
+    expect(registry.list()[0]?.skills?.[0]).not.toHaveProperty("text");
+  });
+
   test("only the registering client can unregister; its disconnect closes its apps", async () => {
     const { registry, upstreams } = setup();
     upstreams.set("mem://photo", fakeUpstream(photoTools));

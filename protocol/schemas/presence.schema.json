@@ -167,6 +167,21 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "description": {
+          "type": "string",
+          "description": "One line about what the app is for: its presence's description, else the first sentence of its MCP server's instructions."
+        },
+        "skills": {
+          "type": "array",
+          "description": "Its skills, by name and when to load them.",
+          "items": {
+            "$ref": "session.schema.json#/$defs/AppSkill"
+          }
+        },
+        "launchable": {
+          "type": "boolean",
+          "description": "The daemon knows how to start it when it is closed (apps_launch)."
         }
       },
       "required": ["app", "kind", "connected", "v", "tools"],

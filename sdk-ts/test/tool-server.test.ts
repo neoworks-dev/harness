@@ -84,6 +84,24 @@ test("lists tools and calls them", async () => {
   expect(text.content).toEqual([{ type: "text", text: "hi" }]);
 });
 
+test("skills are prompts without arguments", async () => {
+  const layers = { name: "layers", description: "Working with layers", text: "Use layers." };
+  const server = await createToolServer({ name: "demo", tools: [echo], skills: [layers] });
+  cleanups.push(() => server.close());
+  const client = await mcpClient(server);
+  const { prompts } = await client.listPrompts();
+  expect(prompts).toEqual([{ name: "layers", description: "Working with layers" }]);
+  const got = await client.getPrompt({ name: "layers" });
+  expect(got.messages).toEqual([{ role: "user", content: { type: "text", text: "Use layers." } }]);
+  const unknown = await client.getPrompt({ name: "letter" }).catch((err: unknown) => err);
+  expect(String(unknown)).toContain("no skill letter");
+});
+
+test("without skills the server offers no prompts", async () => {
+  const client = await mcpClient(await serve([echo]));
+  expect(client.getServerCapabilities()?.prompts).toBeUndefined();
+});
+
 test("a thrown error becomes an isError result", async () => {
   const client = await mcpClient(await serve([boom]));
   const result = await client.callTool({ name: "boom", arguments: {} });

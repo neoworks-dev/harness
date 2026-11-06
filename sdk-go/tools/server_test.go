@@ -193,6 +193,43 @@ func TestListTools(t *testing.T) {
 	}
 }
 
+func TestSkillsArePrompts(t *testing.T) {
+	srv, err := Start(Options{Name: "skilled", Skills: []Skill{
+		{Name: "layers", Description: "Working with layers", Text: "Use layers."},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { srv.Close() })
+	init := rpc(t, srv, `{"jsonrpc":"2.0","id":1,"method":"initialize"}`)["result"].(map[string]any)
+	if _, ok := init["capabilities"].(map[string]any)["prompts"]; !ok {
+		t.Errorf("capabilities %v", init["capabilities"])
+	}
+	list := rpc(t, srv, `{"jsonrpc":"2.0","id":1,"method":"prompts/list"}`)["result"].(map[string]any)["prompts"].([]any)
+	if len(list) != 1 || list[0].(map[string]any)["name"] != "layers" || list[0].(map[string]any)["description"] != "Working with layers" {
+		t.Errorf("prompts %v", list)
+	}
+	got := rpc(t, srv, `{"jsonrpc":"2.0","id":1,"method":"prompts/get","params":{"name":"layers"}}`)["result"].(map[string]any)
+	message := got["messages"].([]any)[0].(map[string]any)
+	if message["role"] != "user" || message["content"].(map[string]any)["text"] != "Use layers." {
+		t.Errorf("prompt %v", got)
+	}
+	unknown := rpc(t, srv, `{"jsonrpc":"2.0","id":1,"method":"prompts/get","params":{"name":"letter"}}`)
+	if e, _ := unknown["error"].(map[string]any); e == nil || e["message"] != "no skill letter" {
+		t.Errorf("unknown skill: %v", unknown)
+	}
+
+	// Without skills there are no prompts.
+	plain := testServer(t)
+	init = rpc(t, plain, `{"jsonrpc":"2.0","id":1,"method":"initialize"}`)["result"].(map[string]any)
+	if _, ok := init["capabilities"].(map[string]any)["prompts"]; ok {
+		t.Errorf("capabilities %v", init["capabilities"])
+	}
+	if e, _ := rpc(t, plain, `{"jsonrpc":"2.0","id":1,"method":"prompts/list"}`)["error"].(map[string]any); e == nil || e["code"] != float64(codeMethodNotFound) {
+		t.Errorf("prompts/list without skills: %v", e)
+	}
+}
+
 func call(t *testing.T, srv *Server, name, args string) map[string]any {
 	t.Helper()
 	if args == "" {
@@ -307,10 +344,12 @@ func TestOtherMethodsRefused(t *testing.T) {
 func TestStartRejectsBadTools(t *testing.T) {
 	h := func(context.Context, map[string]any) (Result, error) { return Result{}, nil }
 	for name, opts := range map[string]Options{
-		"no name":      {Tools: nil},
-		"no handler":   {Name: "x", Tools: []Tool{{Name: "a"}}},
-		"no tool name": {Name: "x", Tools: []Tool{{Handler: h}}},
-		"duplicate":    {Name: "x", Tools: []Tool{{Name: "a", Handler: h}, {Name: "a", Handler: h}}},
+		"no name":       {Tools: nil},
+		"no handler":    {Name: "x", Tools: []Tool{{Name: "a"}}},
+		"no tool name":  {Name: "x", Tools: []Tool{{Handler: h}}},
+		"duplicate":     {Name: "x", Tools: []Tool{{Name: "a", Handler: h}, {Name: "a", Handler: h}}},
+		"no skill name": {Name: "x", Skills: []Skill{{Text: "t"}}},
+		"same skill":    {Name: "x", Skills: []Skill{{Name: "s"}, {Name: "s"}}},
 	} {
 		if srv, err := Start(opts); err == nil {
 			srv.Close()

@@ -50,6 +50,40 @@ fn heading(name: &str, w: usize, styles: &Styles) -> Line<'static> {
     ])
 }
 
+/// `1 tool`, `3 tools`.
+fn count(n: usize, what: &str) -> String {
+    if n == 1 { format!("1 {what}") } else { format!("{n} {what}s") }
+}
+
+/// An app the daemon knows: running or not, by its title, with what it brings when it runs and
+/// whether it can be started when it doesn't.
+fn app_line(c: &ConnectorInfo, styles: &Styles) -> Line<'static> {
+    let (dot, tone) = match (c.connected, &c.error) {
+        (true, None) => ("●", styles.success),
+        (true, Some(_)) => ("●", styles.danger),
+        (false, _) => ("○", styles.muted),
+    };
+    let name = c.title.clone().unwrap_or_else(|| c.app.clone());
+    let note = match (&c.error, c.connected) {
+        (Some(e), true) => e.clone(),
+        (_, true) => {
+            let mut note = count(c.tools.len(), "tool");
+            let skills = c.skills.as_ref().map_or(0, Vec::len);
+            if skills > 0 {
+                note.push_str(&format!(" · {}", count(skills, "skill")));
+            }
+            note
+        }
+        (_, false) if c.launchable == Some(true) => "can start".into(),
+        (_, false) => "closed".into(),
+    };
+    Line::from(vec![
+        Span::styled(format!(" {dot} "), tone),
+        Span::raw(name),
+        Span::styled(format!("  {note}"), styles.muted),
+    ])
+}
+
 /// The block's lines in `w` columns.
 pub fn lines(d: &Details, w: usize, styles: &Styles) -> Vec<Line<'static>> {
     let mut out = vec![heading("Session", w, styles)];
@@ -92,6 +126,18 @@ pub fn lines(d: &Details, w: usize, styles: &Styles) -> Vec<Line<'static>> {
                 format!(" {}", format_cost(cost)),
                 styles.muted,
             )));
+        }
+    }
+    let mut apps: Vec<&ConnectorInfo> = d
+        .connectors
+        .iter()
+        .filter(|c| c.kind == ConnectorKind::App)
+        .collect();
+    apps.sort_by(|a, b| b.connected.cmp(&a.connected).then_with(|| a.app.cmp(&b.app)));
+    if !apps.is_empty() {
+        out.push(heading("Apps", w, styles));
+        for c in apps {
+            out.push(app_line(c, styles));
         }
     }
     let mut servers: Vec<&ConnectorInfo> = d
@@ -154,7 +200,14 @@ mod tests {
         }))
         .unwrap();
         let connectors: Vec<ConnectorInfo> = serde_json::from_value(json!([
-            {"app": "terminal", "kind": "app", "connected": true, "v": 0, "tools": []},
+            {"app": "terminal", "kind": "app", "connected": true, "v": 0,
+             "tools": [{"name": "terminal.run", "description": ""}],
+             "skills": [{"name": "coding", "description": ""}]},
+            {"app": "photo-editor", "kind": "app", "title": "Photo editor", "connected": false,
+             "v": 3, "tools": [], "launchable": true},
+            {"app": "browser", "kind": "app", "connected": false, "v": 1, "tools": []},
+            {"app": "pad", "kind": "app", "connected": true, "v": 1, "tools": [],
+             "error": "can't reach its MCP server"},
             {"app": "mcp-headroom", "kind": "service", "connected": true, "v": 1,
              "tools": [{"name": "a", "description": ""}]},
             {"app": "lsp", "kind": "service", "connected": false, "v": 2, "tools": []}
@@ -174,6 +227,11 @@ mod tests {
                 " ctx 54%  108,312 / 200,000",
                 " in 1,234,567 · out 45,678",
                 " $2.33",
+                " Apps ──────────────────────────────────",
+                " ● pad  can't reach its MCP server",
+                " ● terminal  1 tool · 1 skill",
+                " ○ browser  closed",
+                " ○ Photo editor  can start",
                 " Servers ───────────────────────────────",
                 " ○ lsp  disconnected",
                 " ● mcp-headroom  1 tools",

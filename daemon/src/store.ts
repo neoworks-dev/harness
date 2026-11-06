@@ -53,6 +53,8 @@ export interface StoredConnector {
   schemaHash: string;
   tools: StoredTool[];
   instructions?: string;
+  /** What its presence said it is for, if it said. */
+  description?: string;
   launch?: LaunchSpec;
   /** View templates by tool name (without the app prefix). */
   templates?: Record<string, unknown>;

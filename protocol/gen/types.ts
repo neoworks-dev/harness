@@ -669,6 +669,12 @@ export interface ConnectorInfo {
   pid?: number;
   /** The app's current context from its presence. */
   context?: Record<string, string>;
+  /** One line about what the app is for: its presence's description, else the first sentence of its MCP server's instructions. */
+  description?: string;
+  /** Its skills, by name and when to load them. */
+  skills?: AppSkill[];
+  /** The daemon knows how to start it when it is closed (apps_launch). */
+  launchable?: boolean;
 }
 
 export interface ConnectorTool {
