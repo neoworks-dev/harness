@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::widgets::git::{GitEntry, parse_status};
 

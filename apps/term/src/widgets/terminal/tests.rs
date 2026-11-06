@@ -1,4 +1,3 @@
-
 use super::*;
 use neo_renderer_ratatui::plain_text;
 use serde_json::json;
