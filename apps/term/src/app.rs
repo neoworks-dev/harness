@@ -325,10 +325,9 @@ fn keys_hint(
 ) -> String {
     let mut parts = Vec::new();
     if let Some(button) = focused {
-        // A setting: Space changes it and stays, Enter changes it and closes.
+        // A setting: Enter (or Space) changes it and the card stays, until Esc.
         if button.stays {
-            parts.push("space change".to_string());
-            parts.push("enter change and close".to_string());
+            parts.push("enter change".to_string());
         } else {
             parts.push(format!("enter {}", button.label.to_lowercase()));
         }
@@ -348,6 +347,7 @@ fn keys_hint(
     parts.push(
         match filter {
             Some(f) if !f.is_empty() => "esc clear",
+            _ if focused.is_some_and(|b| b.stays) => "esc close",
             _ => "esc dismiss",
         }
         .to_string(),

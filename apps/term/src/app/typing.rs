@@ -35,8 +35,11 @@ impl App {
                     f.pop();
                 });
             }
-            // A setting changed in place: the card stays, drawn again as it is now.
-            KeyCode::Char(' ') if self.focused_button().is_some_and(|b| b.stays) => {
+            // A setting changed in place (Space, Enter): the card stays, drawn again as it is
+            // now, until Esc.
+            KeyCode::Char(' ') | KeyCode::Enter
+                if self.focused_button().is_some_and(|b| b.stays) =>
+            {
                 self.press_staying(fx);
             }
             // The edit asked about, whole, in the diff view (again).
@@ -47,7 +50,13 @@ impl App {
                 if let Some(n) = c.to_digit(10).filter(|n| (1..=9).contains(n))
                     && (n as usize) <= self.active_buttons().len()
                 {
-                    self.press(n as usize - 1, fx);
+                    let at = n as usize - 1;
+                    if self.active_buttons()[at].stays {
+                        self.prompt.button = at;
+                        self.press_staying(fx);
+                    } else {
+                        self.press(at, fx);
+                    }
                 }
             }
             KeyCode::Enter => {

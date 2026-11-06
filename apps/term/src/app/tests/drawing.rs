@@ -335,16 +335,13 @@ fn settings_choice(app: &mut App, on: [bool; 3]) {
 }
 
 #[test]
-fn space_changes_a_setting_and_the_card_stays_enter_closes_it() {
+fn enter_or_space_changes_a_setting_and_the_card_stays_until_esc() {
     let mut app = app();
     long_chat(&mut app, 3);
     settings_choice(&mut app, [false; 3]);
     app.handle_key(key(KeyCode::Down));
     let s = screen_text(&mut app, 80, 24);
-    assert!(
-        s.contains("space change · ←/→ choose · enter change and close"),
-        "{s}"
-    );
+    assert!(s.contains("enter change · ←/→ choose · esc close"), "{s}");
     match &app.handle_key(key(KeyCode::Char(' ')))[..] {
         [Effect::Action { args: Some(a), .. }] => {
             assert_eq!(a["option"], "charts");
@@ -361,8 +358,14 @@ fn space_changes_a_setting_and_the_card_stays_enter_closes_it() {
         [Effect::Action { args: Some(a), .. }] => assert_eq!(a["option"], "charts"),
         other => panic!("{other:?}"),
     }
-    // Enter changes it and closes the card.
+    // Enter and the digits change it too, and the card stays; Esc closes it.
     let fx = app.handle_key(key(KeyCode::Enter));
-    assert_eq!(picked(&fx), "charts");
+    assert!(matches!(&fx[..], [Effect::Action { args: Some(a), .. }]
+        if a["option"] == "charts" && a["stay"] == true));
+    let fx = app.handle_key(key(KeyCode::Char('3')));
+    assert!(matches!(&fx[..], [Effect::Action { args: Some(a), .. }]
+        if a["option"] == "edits" && a["stay"] == true));
+    assert_eq!(app.active_ref(), Some("q-s"));
+    assert!(app.handle_key(key(KeyCode::Esc)).is_empty());
     assert_eq!(app.active_ref(), None);
 }
