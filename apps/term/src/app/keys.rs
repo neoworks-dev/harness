@@ -153,10 +153,40 @@ impl App {
         self.notify(&said, false);
     }
 
-    /// The sidebar lists all the apps, or the first few again.
+    /// The sidebar lists all the apps, or the first few again (the keys stay on the row that
+    /// does it).
     pub(super) fn toggle_apps(&mut self) {
         self.apps_open = !self.apps_open;
         self.dirty = true;
+    }
+
+    /// Keys on the sidebar's apps: Up/Down (j/k) move, Up from the first goes back to the
+    /// sessions, Enter on `▸ N more` shows the rest (and hides them again); Esc, q, h or Left
+    /// give the keys back to the editor.
+    fn apps_key(&mut self, key: KeyEvent) {
+        let Some(at) = self.apps_sel else {
+            return;
+        };
+        let rows = self.app_rows;
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') if at == 0 => self.apps_sel = None,
+            KeyCode::Up | KeyCode::Char('k') => self.apps_sel = Some(at - 1),
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.apps_sel = Some((at + 1).min(rows.apps.saturating_sub(1)));
+            }
+            KeyCode::Enter if rows.toggle == Some(at) => {
+                self.toggle_apps();
+                // Folded again: the row moved up to just under the first few.
+                if !self.apps_open {
+                    self.apps_sel = Some(crate::details::APPS_SHOWN);
+                }
+            }
+            KeyCode::Esc | KeyCode::Char('q' | 'h') | KeyCode::Left => {
+                self.apps_sel = None;
+                self.focus = None;
+            }
+            _ => {}
+        }
     }
 
     /// The mouse wheel scrolls the chat (or the open diff, or the terminal panel under the
@@ -392,9 +422,15 @@ impl App {
                     }
                     WidgetAction::Todo(args) => self.change_todos(args, fx),
                 },
-                // `a` shows or hides the apps past the first few, under the sessions.
-                Focus::Sessions if key.code == KeyCode::Char('a') && key.modifiers.is_empty() => {
-                    self.toggle_apps();
+                // Down past the last session goes on to the apps under the list.
+                Focus::Sessions if self.apps_sel.is_some() => self.apps_key(key),
+                Focus::Sessions
+                    if matches!(key.code, KeyCode::Down | KeyCode::Char('j'))
+                        && key.modifiers.is_empty()
+                        && self.sessions.at_end()
+                        && self.app_rows.apps > 0 =>
+                {
+                    self.apps_sel = Some(0);
                 }
                 Focus::Sessions => match self.sessions.key(key) {
                     SessionsAction::Redraw => {}

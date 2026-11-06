@@ -82,6 +82,40 @@ fn the_sessions_sidebar_lists_every_session_newest_first() {
 }
 
 #[test]
+fn down_past_the_last_session_reaches_the_apps_and_their_more_row() {
+    let mut app = overview();
+    let apps: Vec<neo_protocol::ConnectorInfo> = serde_json::from_value(json!(
+        (0..9)
+            .map(|i| json!({"app": format!("app-{i}"), "kind": "app", "connected": false,
+                            "v": 0, "tools": []}))
+            .collect::<Vec<_>>()
+    ))
+    .unwrap();
+    app.handle_event(Event::Connectors(apps));
+    screen_text(&mut app, 120, 40);
+    app.handle_key(ctrl('g'));
+    app.handle_key(key(KeyCode::Char('G')));
+    screen_text(&mut app, 120, 40);
+    app.handle_key(key(KeyCode::Char('j')));
+    assert_eq!(app.apps_sel, Some(0));
+    for _ in 0..10 {
+        app.handle_key(key(KeyCode::Char('j')));
+    }
+    // Four apps, then the row for the rest, where the keys stop.
+    assert_eq!(app.apps_sel, Some(4));
+    app.handle_key(key(KeyCode::Enter));
+    assert!(app.apps_open);
+    screen_text(&mut app, 120, 40);
+    assert_eq!(app.app_rows.apps, 10);
+    // Up from the first app is back on the sessions.
+    for _ in 0..5 {
+        app.handle_key(key(KeyCode::Char('k')));
+    }
+    assert_eq!(app.apps_sel, None);
+    assert_eq!(app.focus, Some(Focus::Sessions));
+}
+
+#[test]
 fn session_changed_updates_or_adds_one_entry_live() {
     let mut app = overview();
     let titles = |app: &mut App| {

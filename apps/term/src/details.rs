@@ -19,10 +19,12 @@ pub struct Details<'a> {
     pub connectors: &'a [ConnectorInfo],
     /// All the apps are listed, not just the first few.
     pub apps_open: bool,
+    /// The apps' row the sidebar's keys are on, counted from the first app.
+    pub selected: Option<usize>,
 }
 
 /// The apps listed before a row that shows the rest.
-const APPS_SHOWN: usize = 4;
+pub const APPS_SHOWN: usize = 4;
 
 /// `1234567` as `1,234,567`.
 pub fn grouped(n: i64) -> String {
@@ -91,18 +93,24 @@ fn app_line(c: &ConnectorInfo, styles: &Styles) -> Line<'static> {
 
 /// The block's lines in `w` columns, and the row of the one that shows or hides the apps past
 /// the first few, if there is one.
-pub fn lines(d: &Details, w: usize, styles: &Styles) -> (Vec<Line<'static>>, Option<usize>) {
-    let mut toggle = None;
-    let out = block(d, w, styles, &mut toggle);
-    (out.into_iter().map(|l| fit_line(l, w)).collect(), toggle)
+pub fn lines(d: &Details, w: usize, styles: &Styles) -> (Vec<Line<'static>>, AppRows) {
+    let mut rows = AppRows::default();
+    let out = block(d, w, styles, &mut rows);
+    (out.into_iter().map(|l| fit_line(l, w)).collect(), rows)
 }
 
-fn block(
-    d: &Details,
-    w: usize,
-    styles: &Styles,
-    toggle: &mut Option<usize>,
-) -> Vec<Line<'static>> {
+/// Where the apps are in the block: the keys and the mouse reach them.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct AppRows {
+    /// The block's line of the first app.
+    pub first: usize,
+    /// The apps' rows, the one that shows or hides the rest included.
+    pub apps: usize,
+    /// That row, counted from the first app; None: all of them fit.
+    pub toggle: Option<usize>,
+}
+
+fn block(d: &Details, w: usize, styles: &Styles, rows: &mut AppRows) -> Vec<Line<'static>> {
     let mut out = vec![heading("Session", w, styles)];
     out.push(Line::from(vec![
         Span::raw(" "),
@@ -153,6 +161,7 @@ fn block(
     apps.sort_by(|a, b| b.connected.cmp(&a.connected).then_with(|| a.app.cmp(&b.app)));
     if !apps.is_empty() {
         out.push(heading("Apps", w, styles));
+        let first = out.len();
         let more = apps.len().saturating_sub(APPS_SHOWN);
         // One more is shown rather than a row that hides just it.
         let shown = if d.apps_open || more <= 1 { apps.len() } else { APPS_SHOWN };
@@ -160,13 +169,26 @@ fn block(
             out.push(app_line(c, styles));
         }
         if more > 1 {
-            *toggle = Some(out.len());
+            rows.toggle = Some(out.len() - first);
             let text = if d.apps_open {
                 " ▾ fewer".to_string()
             } else {
                 format!(" ▸ {more} more")
             };
             out.push(Line::from(Span::styled(text, styles.muted)));
+        }
+        rows.first = first;
+        rows.apps = out.len() - first;
+        // The row the sidebar's keys are on.
+        if let Some(line) = d.selected.and_then(|i| out.get_mut(first + i)) {
+            let padded = Line::from(
+                line.spans
+                    .iter()
+                    .cloned()
+                    .chain([Span::raw(" ".repeat(w))])
+                    .collect::<Vec<_>>(),
+            );
+            *line = padded.style(Style::new().add_modifier(Modifier::REVERSED));
         }
     }
     let mut servers: Vec<&ConnectorInfo> = d
@@ -247,6 +269,7 @@ mod tests {
             usage: Some(&usage),
             connectors: &connectors,
             apps_open: false,
+            selected: None,
         };
         let styles = Styles::new(&Palette::default(), false);
         assert_eq!(
@@ -284,14 +307,14 @@ mod tests {
                 usage: None,
                 connectors: &connectors,
                 apps_open,
+                selected: None,
             };
-            let (lines, toggle) = lines(&d, 40, &styles);
-            // The session's two rows and the apps' heading come first.
-            (lines.len() - 3, toggle)
+            let (_, rows) = lines(&d, 40, &styles);
+            (rows.apps, rows.toggle)
         };
         // Five: all of them, rather than a row for one.
         assert_eq!(rows(5, false), (5, None));
-        assert_eq!(rows(9, false), (4 + 1, Some(7)));
-        assert_eq!(rows(9, true), (9 + 1, Some(12)));
+        assert_eq!(rows(9, false), (4 + 1, Some(4)));
+        assert_eq!(rows(9, true), (9 + 1, Some(9)));
     }
 }

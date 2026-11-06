@@ -199,16 +199,23 @@ impl App {
         );
         // The shown session's details at the foot, while the list keeps a dozen rows.
         let dir = shorten_home(&self.cwd, self.home.as_deref());
-        let (details, toggle) = crate::details::lines(
+        // The keys left the sidebar: next time they start on the sessions.
+        if self.focus != Some(Focus::Sessions) {
+            self.apps_sel = None;
+        }
+        let selected = self.apps_sel;
+        let (details, rows) = crate::details::lines(
             &crate::details::Details {
                 dir: &dir,
                 usage: self.widgets.usage(),
                 connectors: &self.connectors,
                 apps_open: self.apps_open,
+                selected,
             },
             usize::from(inner),
             &self.styles,
         );
+        self.app_rows = rows;
         let details_h = u16::try_from(details.len() + 1).unwrap_or(u16::MAX);
         let details_h = if area.height >= details_h + 12 {
             details_h
@@ -233,15 +240,16 @@ impl App {
             };
             frame.render_widget(Paragraph::new(details), at);
             // Where a click shows or hides the rest of the apps.
-            self.apps_toggle_at = toggle.map(|row| Rect {
-                y: at.y + row as u16,
+            self.apps_toggle_at = rows.toggle.map(|row| Rect {
+                y: at.y + (rows.first + row) as u16,
                 height: 1,
                 ..at
             });
         }
         let look = Look {
             current: &self.session,
-            focused: self.focus == Some(Focus::Sessions),
+            // On the apps, the keys aren't on a session.
+            focused: self.focus == Some(Focus::Sessions) && self.apps_sel.is_none(),
             spinner: self.spinner(),
             now_ms: self.now_ms,
             marks: &self.marks,

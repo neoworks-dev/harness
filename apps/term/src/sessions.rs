@@ -578,6 +578,12 @@ impl Sessions {
         }
     }
 
+    /// The selection is on the list's last row: Down goes on to what is under the list.
+    pub fn at_end(&self) -> bool {
+        let at = self.visual_pos(self.selected.as_ref()).unwrap_or(0);
+        at + 1 >= self.visual.len()
+    }
+
     fn move_by(&mut self, delta: isize) {
         if self.visual.is_empty() {
             return;

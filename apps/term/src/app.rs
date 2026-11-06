@@ -488,6 +488,10 @@ pub struct App {
     apps_open: bool,
     /// Where the sidebar's row that shows or hides the rest of the apps is, if it is drawn.
     apps_toggle_at: Option<Rect>,
+    /// The sidebar's keys are on the apps, on this row (counted from the first app).
+    apps_sel: Option<usize>,
+    /// Where the apps were drawn last.
+    app_rows: crate::details::AppRows,
     /// Event cards in the top right of the chat.
     toasts: Toasts,
     /// Background commands whose end got a card already.
@@ -619,6 +623,8 @@ impl App {
             review_shown: false,
             apps_open: false,
             apps_toggle_at: None,
+            apps_sel: None,
+            app_rows: Default::default(),
             toasts: Toasts::default(),
             toasted_jobs: HashSet::new(),
             sessions_wanted: false,
