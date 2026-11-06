@@ -8,9 +8,10 @@ impl App {
     }
 
     /// The daemon's settings came: with nothing chosen yet, the first start walks the user
-    /// through the settings that matter, once.
+    /// through the settings that matter, once. Once done or left it is kept as done here too,
+    /// so a daemon that couldn't take the answer doesn't bring it back every start.
     pub(super) fn maybe_ask_work(&mut self, chosen: bool) {
-        if chosen || self.setup_asked || self.overlay != Overlay::None {
+        if chosen || self.setup_asked || self.overlay != Overlay::None || self.prefs.setup_done() {
             return;
         }
         self.setup_asked = true;
@@ -39,6 +40,9 @@ impl App {
         };
         self.onboarding = None;
         self.overlay = Overlay::None;
+        if let Err(err) = self.prefs.set_setup_done() {
+            self.notify(format!("can't keep the setup as done: {err}"), true);
+        }
         for text in commands {
             fx.push(Effect::Input {
                 session: self.session.clone(),

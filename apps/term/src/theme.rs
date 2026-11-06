@@ -106,7 +106,8 @@ pub fn paint(buf: &mut Buffer, palette: &Palette) {
     }
 }
 
-/// Where the theme and the marked sessions are kept: `{"theme": "light", "marks": […]}`. No file: nothing is kept (tests).
+/// Where the theme, the marked sessions and whether the setup walkthrough was done are kept:
+/// `{"theme": "light", "marks": […], "setup": true}`. No file: nothing is kept (tests).
 #[derive(Debug, Clone, Default)]
 pub struct Prefs {
     file: Option<PathBuf>,
@@ -174,6 +175,15 @@ impl Prefs {
 
     pub fn set_marks(&self, marks: &[String]) -> std::io::Result<()> {
         self.write("marks", marks.to_vec())
+    }
+
+    /// The setup walkthrough was run through or left on this machine: `{"setup": true}`.
+    pub fn setup_done(&self) -> bool {
+        self.read().get("setup").and_then(|v| v.as_bool()) == Some(true)
+    }
+
+    pub fn set_setup_done(&self) -> std::io::Result<()> {
+        self.write("setup", true)
     }
 }
 

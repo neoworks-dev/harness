@@ -224,6 +224,18 @@ fn the_first_start_asks_what_neo_is_for_once() {
         matches!(&fx[..], [Effect::Input { text, .. }] if text == "/settings work coding"),
         "{fx:?}"
     );
+    // Done once on this machine, it isn't asked again, whatever the daemon kept.
+    let file = std::env::temp_dir().join(format!("neo-term-setup-{}.json", std::process::id()));
+    let _ = std::fs::remove_file(&file);
+    let mut first = self::app();
+    first.prefs = crate::theme::Prefs::new(Some(file.clone()));
+    first.handle_event(settings(None));
+    first.handle_key(key(KeyCode::Esc));
+    let mut next = self::app();
+    next.prefs = crate::theme::Prefs::new(Some(file.clone()));
+    next.handle_event(settings(None));
+    assert_eq!(next.overlay, Overlay::None);
+    let _ = std::fs::remove_file(&file);
     // /setup runs it again; left, nothing changes.
     type_str(&mut app, "/setup");
     app.handle_key(key(KeyCode::Enter));
