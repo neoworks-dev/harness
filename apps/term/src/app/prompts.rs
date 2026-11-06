@@ -43,38 +43,55 @@ impl App {
             self.prompt.engaged = engaged;
             self.dirty = true;
         }
-        // An edit to answer opens in the diff view the first time it takes the editor's place,
-        // unless something else is open over the chat.
-        let free = !self.widgets.overlay_open()
-            && !self.github.is_open()
-            && self.transcript.is_none()
-            && self.reader.is_none()
-            && self.overlay == Overlay::None;
-        if let Some(r) = self.active_ref().map(str::to_string)
-            && engaged
-            && free
-            && !self.prompt.reviewed.contains(&r)
-        {
-            self.prompt.reviewed.push(r);
-            self.review_edit();
+        // An edit to answer shows in its own file view above the input while its card has the
+        // editor's place.
+        let edit = self.active_ref().filter(|_| engaged).and_then(|r| {
+            let diff = self.chat.diff_of(r)?;
+            Some((r.to_string(), diff.path.clone()?, diff.lines.clone()))
+        });
+        let before = self.widgets.reviewing().map(str::to_string);
+        match edit {
+            Some((r, path, lines)) => self.widgets.open_review(&r, &path, &lines),
+            None => self.widgets.hide_review(),
+        }
+        // The layout made before this frame's prompt was known: the next one has the view.
+        if self.widgets.reviewing() != before.as_deref() {
+            self.dirty = true;
         }
     }
 
-    /// Opens the active prompt's edit in the diff view: its whole file with the edit marked,
-    /// to comment on (the comments go with the answer). False when it has no edit.
-    pub(super) fn review_edit(&mut self) -> bool {
-        let Some(r) = self.active_ref().map(str::to_string) else {
+    /// The edit of the card answered now, while it is shown: its file view takes the keys
+    /// that don't answer the card.
+    pub(super) fn review_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) -> bool {
+        if !self.review_shown {
+            return false;
+        }
+        let Some(view) = self.widgets.review_mut() else {
             return false;
         };
-        let Some((path, lines)) = self
-            .chat
-            .diff_of(&r)
-            .and_then(|d| Some((d.path.clone()?, d.lines.clone())))
-        else {
-            return false;
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // Enter, Tab, Esc, ←/→ and the digits answer; Ctrl keys are the app's, but for the
+        // ones that scroll. Something started in the view (a comment, a selection) has them all.
+        let answers = match key.code {
+            KeyCode::Enter | KeyCode::Tab | KeyCode::BackTab | KeyCode::Esc => true,
+            KeyCode::Left | KeyCode::Right => true,
+            KeyCode::Char('1'..='9') => !ctrl,
+            KeyCode::Char(c) if ctrl => !matches!(c, 'd' | 'u' | 'f' | 'b' | 'e' | 'y'),
+            _ => false,
         };
-        self.widgets.open_review(&r, &path, &lines);
-        self.dirty = true;
+        if answers && !view.busy() {
+            return false;
+        }
+        // q would close it: it closes with the card instead.
+        view.key(key);
+        if let Some((path, line)) = view.take_edit() {
+            fx.push(Effect::Edit { path, line });
+        }
+        // Its comments go with the answer, not into the prompt.
+        view.take_comment_changes();
+        if let Some(text) = view.take_copy() {
+            self.copy(text, fx);
+        }
         true
     }
 

@@ -83,6 +83,7 @@ impl App {
             }
             menus = true;
         }
+        self.review_shown = areas.review.height > 0 && self.widgets.draw_review(frame, areas.review);
         self.toasts
             .draw(frame.buffer_mut(), areas.chat, self.now_ms, &self.styles);
         self.details_shown = false;

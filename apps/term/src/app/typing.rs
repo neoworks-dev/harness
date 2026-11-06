@@ -7,6 +7,9 @@ impl App {
         if let Some(r) = self.active_form().map(str::to_string) {
             return self.form_key(&r, key, fx);
         }
+        if self.review_key(key, fx) {
+            return;
+        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         match key.code {
@@ -41,10 +44,6 @@ impl App {
                 if self.focused_button().is_some_and(|b| b.stays) =>
             {
                 self.press_setting(self.prompt.button, fx);
-            }
-            // The edit asked about, whole, in the diff view (again).
-            KeyCode::Char('o') => {
-                self.review_edit();
             }
             KeyCode::Char(c) => {
                 if let Some(n) = c.to_digit(10).filter(|n| (1..=9).contains(n))

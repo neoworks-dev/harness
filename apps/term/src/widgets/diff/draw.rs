@@ -138,10 +138,7 @@ impl DiffView {
             ));
         }
         if self.proposed {
-            title.push(Span::styled(
-                "  proposed edit · c comments · q answers",
-                muted,
-            ));
+            title.push(Span::styled("  proposed edit", muted));
         } else if self.full {
             title.push(Span::styled("  full file", muted));
         }

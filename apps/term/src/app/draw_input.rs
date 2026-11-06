@@ -140,7 +140,12 @@ impl App {
     /// The prompt as it fills the editor's place: the question with a compact preview, the
     /// buttons (one focused), "1 of 3" when more wait, and a line of keys (or the note being
     /// typed).
-    pub(super) fn panel_lines(&self, width: u16, max_rows: usize) -> Vec<Line<'static>> {
+    pub(super) fn panel_lines(
+        &self,
+        width: u16,
+        max_rows: usize,
+        review_above: bool,
+    ) -> Vec<Line<'static>> {
         let Some(r) = self.active_ref() else {
             return Vec::new();
         };
@@ -173,10 +178,12 @@ impl App {
         let w = usize::from(width);
         let accent = self.styles.accent;
         let marker = self.panel_marker();
-        // An edit: `o` shows it whole, and how many comments go with the answer.
+        // An edit shown in its file view above: how to comment on it, and how many comments go
+        // with the answer.
         let review = self
-            .active_ref()
-            .filter(|r| self.chat.diff_of(r).is_some())
+            .widgets
+            .reviewing()
+            .filter(|shown| review_above && *shown == r)
             .map(|r| self.widgets.review_note_count(r));
         let tail = match &self.note {
             Some(note) => chat::note_line(&note.text, w.saturating_sub(2), accent),
@@ -219,8 +226,9 @@ impl App {
             body
         };
         let mut body = Vec::new();
-        // Expanded (Ctrl-O), the chat has the card in full: no preview of it here again.
-        let previews: &[usize] = if self.expanded {
+        // Expanded (Ctrl-O), the chat has the card in full, and an edit has its file view above:
+        // no preview of it here again.
+        let previews: &[usize] = if self.expanded || review.is_some() {
             &[0]
         } else {
             &[10, 6, 3, 1, 0]

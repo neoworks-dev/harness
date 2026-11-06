@@ -137,6 +137,8 @@ const TERMINAL_MAX_WIDTH: u16 = 100;
 const RESIZE_STEP: i16 = 4;
 /// Most rows a prompt takes where the editor is (its question, preview, buttons and hint).
 const PANEL_ROWS: u16 = 16;
+/// Fewest rows the file view of an edit a prompt asks about takes; with less room, none.
+const REVIEW_MIN_ROWS: u16 = 6;
 /// How long the editor must have been idle before a prompt takes its place.
 const TYPING_PAUSE_MS: i64 = 800;
 /// The harness a session runs on until a `/harness` setting says otherwise.
@@ -307,8 +309,6 @@ struct PromptState {
     seen: Option<String>,
     /// The prompt has taken the editor's place: keys go to it alone.
     engaged: bool,
-    /// Edit requests whose edit opened in the diff view on their own: once each.
-    reviewed: Vec<String>,
     /// When the user last typed in the editor (ms): a prompt waits for a pause.
     typed_ms: i64,
     /// The first button line shown when the buttons don't fit the panel; None: not drawn yet.
@@ -339,9 +339,9 @@ fn keys_hint(
         parts.insert(1.min(parts.len()), "←/→ choose".to_string());
     }
     match review {
-        Some(0) => parts.push("o review".to_string()),
-        Some(1) => parts.push("o review (1 comment goes along)".to_string()),
-        Some(n) => parts.push(format!("o review ({n} comments go along)")),
+        Some(0) => parts.push("v select · ␣c comment".to_string()),
+        Some(1) => parts.push("␣c comment (1 goes along)".to_string()),
+        Some(n) => parts.push(format!("␣c comment ({n} go along)")),
         None => {}
     }
     parts.push(
@@ -473,6 +473,9 @@ pub struct App {
     details_shown: bool,
     /// The working line is drawn over the input box: the status line leaves it out.
     work_shown: bool,
+    /// The file view of the edit a prompt asks about is drawn: it has the keys that don't
+    /// answer the prompt.
+    review_shown: bool,
     /// Event cards in the top right of the chat.
     toasts: Toasts,
     /// Background commands whose end got a card already.
@@ -599,6 +602,7 @@ impl App {
             sessions_shown: false,
             details_shown: false,
             work_shown: false,
+            review_shown: false,
             toasts: Toasts::default(),
             toasted_jobs: HashSet::new(),
             sessions_wanted: false,
@@ -915,6 +919,8 @@ fn thumbnail_cols(width: u32, height: u32, rows: u16, cell: (u16, u16)) -> u16 {
 
 struct Areas {
     chat: Rect,
+    /// Over the input, under the chat: the file view of the edit the prompt asks about.
+    review: Rect,
     /// One row under the chat while a turn runs: the working line.
     work: Rect,
     rule: Rect,

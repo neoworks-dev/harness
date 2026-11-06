@@ -146,6 +146,21 @@ impl DiffView {
         std::mem::take(&mut self.comments)
     }
 
+    /// How many comments are written on it.
+    pub(crate) fn comment_count(&self) -> usize {
+        self.comments.len()
+    }
+
+    /// A key started something the next keys belong to: a comment or a search being written,
+    /// a selection, a count or the second key of `gg`, `yy` or the leader's.
+    pub(crate) fn busy(&self) -> bool {
+        self.writing.is_some()
+            || self.typing.is_some()
+            || self.visual.get().is_some()
+            || self.pending.is_some()
+            || self.count.is_some()
+    }
+
     /// The comments written on this file before.
     pub(crate) fn with_comments(mut self, comments: Vec<Comment>) -> DiffView {
         self.comments = comments;

@@ -74,6 +74,10 @@ impl App {
         let room = h - status_h - rule_h;
         // An engaged prompt takes the editor's place; a waiting one adds a hint row above it.
         let box_w = main.width.saturating_sub(3 * margin);
+        let review_rows = self.widgets.review_rows().filter(|_| self.prompt.engaged);
+        // Expanded (Ctrl-O), the chat has the edit in full already.
+        let review_wanted = review_rows.is_some() && self.secret.is_none() && !self.expanded;
+        let mut review = false;
         let panel = if let Some(secret) = &self.secret {
             secret.lines(
                 usize::from(box_w),
@@ -82,7 +86,17 @@ impl App {
                 self.styles.muted,
             )
         } else if self.prompt.engaged {
-            self.panel_lines(box_w, usize::from(room.saturating_sub(1).min(PANEL_ROWS)))
+            let rows = usize::from(room.saturating_sub(1).min(PANEL_ROWS));
+            // An edit goes in its own file view above where it leaves the chat a few rows; the
+            // card leaves out its preview of it then.
+            let lines = self.panel_lines(box_w, rows, review_wanted);
+            let fits = usize::from(room) >= lines.len() + 1 + usize::from(REVIEW_MIN_ROWS + 7);
+            review = review_wanted && fits;
+            if review_wanted && !fits {
+                self.panel_lines(box_w, rows, false)
+            } else {
+                lines
+            }
         } else {
             Vec::new()
         };
@@ -134,6 +148,17 @@ impl App {
         );
         // A blank row parts it from the chat.
         let work_gap = u16::from(work_h > 0 && chat_h >= gap + 8);
+        // The edit a card asks about, in its own file view right over the input: as tall as it
+        // is, up to three fifths of what the chat has, the chat keeping a few rows.
+        let free = chat_h.saturating_sub(gap + work_h + work_gap);
+        let review_h = match review_rows {
+            Some(rows) if review && free >= REVIEW_MIN_ROWS + 4 => {
+                let rows = u16::try_from(rows).unwrap_or(u16::MAX);
+                rows.clamp(REVIEW_MIN_ROWS, (free * 3 / 5).max(REVIEW_MIN_ROWS))
+            }
+            _ => 0,
+        };
+        let below = gap + review_h;
         let inset = |r: Rect| {
             if self.styles.fills() {
                 Rect {
@@ -146,8 +171,9 @@ impl App {
             }
         };
         Areas {
-            chat: at(0, chat_h - gap - work_h - work_gap),
-            work: at(chat_h - gap - work_h, work_h),
+            chat: at(0, chat_h - below - work_h - work_gap),
+            work: at(chat_h - below - work_h, work_h),
+            review: at(chat_h - below, review_h),
             rule: at(chat_h, rule_h),
             hint: inset(at(top, hint_h)),
             waiting: inset(at(top + hint_h, waiting_h)),

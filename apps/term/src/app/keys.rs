@@ -26,12 +26,8 @@ impl App {
             if let Some((path, line)) = self.widgets.take_edit() {
                 fx.push(Effect::Edit { path, line });
             }
-            // On an edit waiting for an answer the comments go with the answer instead.
-            let review = self.widgets.reviewing().is_some();
             for (before, after) in self.widgets.take_comment_changes() {
-                if !review {
-                    self.comment_in_prompt(before, after);
-                }
+                self.comment_in_prompt(before, after);
             }
             if let Some(text) = self.widgets.take_copy() {
                 self.copy(text, &mut fx);

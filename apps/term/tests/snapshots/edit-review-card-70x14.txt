@@ -9,6 +9,6 @@ Edited src/a.ts — keep it? · answer below
 ┃   +  return a + b;
 ┃
 ┃   [1 Keep]  [2 Revert]
-┃ enter keep · ←/→ choose · tab add a note · o review · esc dismiss
+┃ enter keep · ←/→ choose · tab add a note · esc dismiss
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

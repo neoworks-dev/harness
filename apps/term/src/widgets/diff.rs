@@ -577,7 +577,6 @@ impl DiffView {
         self.loaded
     }
 
-    #[cfg(test)]
     pub(crate) fn lines(&self) -> &[DiffLine] {
         &self.lines
     }
