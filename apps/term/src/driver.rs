@@ -8,9 +8,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use neo_protocol::{
-    AgentFocus, AppPresence, AudioFormat, ConnectorInfo, ConnectorKind, SessionCreateParams,
-    SessionInfo, SpeechAudio,
+    AgentFocus, AppPresence, AudioFormat, ConnectorInfo, ConnectorKind, McpEndpoint,
+    SessionCreateParams, SessionInfo, SpeechAudio,
 };
+use neo_sdk::tools::{Skill, ToolServer};
 use neo_sdk::{Client, Event};
 
 use crate::app::{App, Config, Effect, Msg};
@@ -128,21 +129,34 @@ pub fn pick_app_id(connectors: &[ConnectorInfo]) -> String {
         .expect("unbounded range")
 }
 
-pub fn presence(app_id: &str, cwd: &str) -> AppPresence {
+pub fn presence(app_id: &str, cwd: &str, mcp: Option<McpEndpoint>) -> AppPresence {
     AppPresence {
         app: app_id.into(),
         kind: ConnectorKind::App,
         title: Some("Terminal".into()),
         open: true,
         context: Some(BTreeMap::from([("cwd".to_string(), cwd.to_string())])),
-        mcp: None,
+        mcp,
         launch: None,
         home: None,
         pid: Some(i64::from(std::process::id())),
         templates: None,
         components: None,
-        description: None,
+        description: Some(
+            "The user's terminal, in a directory of theirs (its cwd): coding work happens here."
+                .into(),
+        ),
     }
+}
+
+/// What the terminal teaches agents: its skills, served as MCP prompts. No tools of its own.
+fn skill_server() -> std::io::Result<ToolServer> {
+    let coding = Skill::new(
+        "coding",
+        "Changing code in the terminal's directory: reading it first, editing, building, testing, committing",
+        include_str!("../skills/coding.md"),
+    );
+    Ok(ToolServer::start("terminal", None, vec![])?.with_skills(vec![coding]))
 }
 
 enum Job {
@@ -156,6 +170,8 @@ pub struct Driver {
     jobs: Option<mpsc::Sender<Job>>,
     msgs: mpsc::Receiver<Msg>,
     worker: Option<thread::JoinHandle<()>>,
+    /// Serves the terminal's skills to the daemon for as long as the app runs.
+    skills: Option<ToolServer>,
 }
 
 /// What the runtime must do itself.
@@ -184,6 +200,7 @@ impl Driver {
             jobs: Some(jobs),
             msgs,
             worker: Some(worker),
+            skills: None,
         }
     }
 
@@ -493,8 +510,14 @@ pub fn start(options: StartOptions) -> Result<Started, StartError> {
         .list_connectors()
         .map_err(|e| other("listing apps", e))?;
     let app_id = pick_app_id(&connectors);
+    // Without it the terminal is still a terminal: agents just aren't told how to code here.
+    let skills = skill_server().ok();
     client
-        .set_presence(presence(&app_id, &options.cwd))
+        .set_presence(presence(
+            &app_id,
+            &options.cwd,
+            skills.as_ref().map(ToolServer::endpoint),
+        ))
         .map_err(|e| other("registering", e))?;
 
     let sessions = client
@@ -525,7 +548,8 @@ pub fn start(options: StartOptions) -> Result<Started, StartError> {
         history: options.history,
         prefs: options.prefs,
     });
-    let driver = Driver::new(Arc::new(client), &app_id);
+    let mut driver = Driver::new(Arc::new(client), &app_id);
+    driver.skills = skills;
     // The sidebar's overview starts from this list; session.changed events keep it current.
     let mut known = sessions;
     if !known.iter().any(|s| s.id == session.id) {
@@ -710,11 +734,19 @@ mod tests {
 
     #[test]
     fn presence_is_an_open_non_home_app_with_the_cwd() {
-        let p = presence("terminal", "/w/site");
+        let p = presence("terminal", "/w/site", None);
         assert_eq!(p.kind, ConnectorKind::App);
         assert!(p.open);
         assert_eq!(p.home, None);
         assert_eq!(p.title.as_deref(), Some("Terminal"));
         assert_eq!(p.context.unwrap()["cwd"], "/w/site");
+        assert!(p.description.is_some_and(|d| d.contains("coding")));
+    }
+
+    #[test]
+    fn the_terminal_serves_its_coding_skill() {
+        let server = skill_server().expect("starts");
+        let p = presence("terminal", "/w/site", Some(server.endpoint()));
+        assert_eq!(p.mcp.map(|m| m.url), Some(server.url().to_string()));
     }
 }

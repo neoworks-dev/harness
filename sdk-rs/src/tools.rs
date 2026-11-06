@@ -84,11 +84,36 @@ impl Tool {
     }
 }
 
+/// Instructions for a kind of work in the app (an MCP prompt without arguments): agents are told
+/// its name and description when the app connects, and load its text when the work calls for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Skill {
+    pub name: String,
+    /// When to load it, in a line.
+    pub description: String,
+    pub text: String,
+}
+
+impl Skill {
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        text: impl Into<String>,
+    ) -> Self {
+        Skill {
+            name: name.into(),
+            description: description.into(),
+            text: text.into(),
+        }
+    }
+}
+
 struct Shared {
     name: String,
     instructions: Option<String>,
     token: String,
     tools: RwLock<Vec<Tool>>,
+    skills: RwLock<Vec<Skill>>,
     stopped: AtomicBool,
 }
 
@@ -112,6 +137,7 @@ impl ToolServer {
             instructions,
             token: random_token()?,
             tools: RwLock::new(tools),
+            skills: RwLock::new(Vec::new()),
             stopped: AtomicBool::new(false),
         });
         let accept = Arc::clone(&shared);
@@ -154,6 +180,14 @@ impl ToolServer {
         if let Ok(mut slot) = self.shared.tools.write() {
             *slot = tools;
         }
+    }
+
+    /// The skills it offers. Like the tools, the gateway sees them when it next lists them.
+    pub fn with_skills(self, skills: Vec<Skill>) -> Self {
+        if let Ok(mut slot) = self.shared.skills.write() {
+            *slot = skills;
+        }
+        self
     }
 }
 
@@ -297,7 +331,7 @@ fn handle(shared: &Shared, message: &Value) -> Option<Value> {
                 .unwrap_or(VERSIONS[0]);
             let mut result = json!({
                 "protocolVersion": version,
-                "capabilities": {"tools": {"listChanged": false}},
+                "capabilities": {"tools": {"listChanged": false}, "prompts": {"listChanged": false}},
                 "serverInfo": {"name": shared.name, "version": env!("CARGO_PKG_VERSION")},
             });
             if let Some(instructions) = &shared.instructions {
@@ -306,6 +340,29 @@ fn handle(shared: &Shared, message: &Value) -> Option<Value> {
             result
         }
         "ping" => json!({}),
+        "prompts/list" => {
+            let skills = shared.skills.read().map(|s| s.clone()).unwrap_or_default();
+            let listed: Vec<Value> = skills
+                .iter()
+                .map(|s| json!({"name": s.name, "description": s.description}))
+                .collect();
+            json!({ "prompts": listed })
+        }
+        "prompts/get" => {
+            let name = params.get("name").and_then(Value::as_str).unwrap_or("");
+            let skill = shared
+                .skills
+                .read()
+                .ok()
+                .and_then(|skills| skills.iter().find(|s| s.name == name).cloned());
+            let Some(skill) = skill else {
+                return Some(rpc_error(id, -32602, &format!("unknown prompt {name}")));
+            };
+            json!({
+                "description": skill.description,
+                "messages": [{"role": "user", "content": {"type": "text", "text": skill.text}}],
+            })
+        }
         "tools/list" => {
             let tools = shared.tools.read().map(|t| t.clone()).unwrap_or_default();
             let listed: Vec<Value> = tools
@@ -438,6 +495,46 @@ mod tests {
         assert_eq!(ok["result"]["structuredContent"]["text"], "hi");
         assert_eq!(ok["result"]["isError"], false);
         assert_eq!(call(json!({}))["result"]["isError"], true);
+    }
+
+    #[test]
+    fn skills_are_prompts_without_arguments() {
+        let server = server().with_skills(vec![Skill::new(
+            "greeting",
+            "Greeting people politely",
+            "Say please.",
+        )]);
+        let token = token(&server);
+        let t = Some(token.as_str());
+        let (_, reply) = post(
+            &server,
+            t,
+            &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+        );
+        assert!(reply.expect("json")["result"]["capabilities"]["prompts"].is_object());
+        let (_, reply) = post(
+            &server,
+            t,
+            &json!({"jsonrpc": "2.0", "id": 2, "method": "prompts/list"}),
+        );
+        assert_eq!(
+            reply.expect("json")["result"]["prompts"],
+            json!([{"name": "greeting", "description": "Greeting people politely"}])
+        );
+        let get = |name: &str| {
+            post(
+                &server,
+                t,
+                &json!({"jsonrpc": "2.0", "id": 3, "method": "prompts/get", "params": {"name": name}}),
+            )
+            .1
+            .expect("json")
+        };
+        assert_eq!(
+            get("greeting")["result"]["messages"][0]["content"]["text"],
+            "Say please."
+        );
+        assert!(get("nope")["error"].is_object());
     }
 
     #[test]
