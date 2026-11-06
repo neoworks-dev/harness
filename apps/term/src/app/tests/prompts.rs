@@ -80,7 +80,7 @@ fn a_prompt_arriving_while_idle_takes_the_editors_place_at_once() {
         "the editor is hidden: {text}"
     );
     assert!(
-        text.contains("enter yes · ←/→ choose · tab add a note · esc dismiss"),
+        text.contains("Enter Yes · ←/→ Choose · Tab Add a note · Esc Dismiss"),
         "{text}"
     );
     // Typed characters go nowhere; the digits answer.

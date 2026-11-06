@@ -212,9 +212,9 @@ impl App {
     pub(super) fn setting_hint(&self) -> Option<String> {
         let input = self.setting_input.as_ref()?;
         let keys = if input.multiline {
-            "enter saves · shift+enter new line · esc cancels"
+            "Enter Save · Shift+Enter New line · Esc Cancel"
         } else {
-            "enter saves · esc cancels"
+            "Enter Save · Esc Cancel"
         };
         Some(format!("{} · {keys}", input.name))
     }

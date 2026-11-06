@@ -172,7 +172,7 @@ fn tab_on_a_card_types_a_note_that_goes_with_the_focused_button() {
     let empty = screen_text(&mut app, 70, 14);
     assert!(empty.contains("note ›"), "{empty}");
     assert!(
-        empty.contains("for the agent · enter sends · esc cancels"),
+        empty.contains("For the agent · Enter Send · Esc Cancel"),
         "{empty}"
     );
     snapshot("edit-review-note-empty-70x14", &empty);
@@ -275,7 +275,8 @@ fn a_long_diff_keeps_the_buttons_in_reach_until_expanded() {
         text.contains("[1 Allow once]  [2 Always allow]  [3 Reject]"),
         "{text}"
     );
-    assert!(text.contains("more lines (expand to see all)"), "{text}");
+    // The edit is in its file view above, which scrolls.
+    assert!(app.review_shown, "{text}");
     assert!(!text.contains("const next50"), "{text}");
     // Ctrl-O shows all of it; the buttons are still at the end, and the layout holds.
     app.handle_key(ctrl('o'));

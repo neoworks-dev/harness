@@ -9,6 +9,6 @@ Edited src/a.ts — keep it? · answer below
 ┃   +  return a + b;
 ┃
 ┃   [1 Keep]  [2 Revert]
-┃ note ›  for the agent · enter sends · esc cancels
+┃ note ›  For the agent · Enter Send · Esc Cancel
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

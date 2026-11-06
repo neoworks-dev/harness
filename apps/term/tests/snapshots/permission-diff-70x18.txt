@@ -1,18 +1,18 @@
-
-  Edit src/app.ts · answer below
-
+Edit src/app.ts · answer below
 
 
 
-┃
-┃ Edit src/app.ts  +2 −2
-┃ @@ -1,40 +1,40 @@
-┃ -const old0 = 0;
-┃ +const next0 = 0;
-┃ -const old1 = 1;
-┃ +const next1 = 1;
+src/app.ts  +2 −2  proposed edit                        lines 1–7 of 7
+    --- a/src/app.ts
+    +++ b/src/app.ts
+    @@ -1 +1 @@
+  1 -const old0 = 0;
+  1 +const next0 = 0;
+  2 -const old1 = 1;
+  2 +const next1 = 1;
+
 ┃
 ┃   [1 Allow once]  [2 Always allow]  [3 Reject]
-┃ enter allow once · ←/→ choose · tab add a note · esc dismiss
+┃ Enter Allow once · ←/→ Choose · Tab Add a note · n/p Next change ·…
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

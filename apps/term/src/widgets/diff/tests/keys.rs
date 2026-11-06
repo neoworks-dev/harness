@@ -192,7 +192,7 @@ fn c_comments_on_a_line_and_the_prompt_gets_it() {
         .position(|r| r.contains("╭ @src/a.rs:11"))
         .expect(&out);
     assert!(rows[head + 1].starts_with("│ use a const"), "{out}");
-    assert!(rows[head + 2].contains("enter keeps it"), "{out}");
+    assert!(rows[head + 2].contains("Enter Save"), "{out}");
     assert!(rows[head + 3].contains("+B"), "{out}");
     // Keys go to the comment while it is written: j is a letter.
     ch(&mut v, 'j');
@@ -205,7 +205,7 @@ fn c_comments_on_a_line_and_the_prompt_gets_it() {
     let out = draw_to(&v, &mut t);
     assert!(out.contains("╭ @src/a.rs:11"), "{out}");
     assert!(out.contains("│ use a const"), "{out}");
-    assert!(!out.contains("enter keeps it"), "{out}");
+    assert!(!out.contains("Enter Save"), "{out}");
     // On the commented line again: edits it; the prompt's copy is replaced.
     typed(&mut v, "c");
     assert_eq!(

@@ -513,7 +513,7 @@ pub fn panel_lines(
 pub fn note_line(text: &str, width: usize, accent: Style) -> Line<'static> {
     input_line(
         "note › ",
-        "for the agent · enter sends · esc cancels",
+        "For the agent · Enter Send · Esc Cancel",
         text,
         width,
         accent,

@@ -323,32 +323,33 @@ fn keys_hint(
     filter: Option<&str>,
     review: Option<usize>,
 ) -> String {
+    // Each key as it is pressed, then what it does.
     let mut parts = Vec::new();
     if let Some(button) = focused {
         // A setting: Enter (or Space) changes it and the card stays, until Esc.
         if button.stays {
-            parts.push("enter change".to_string());
+            parts.push("Enter Change".to_string());
         } else {
-            parts.push(format!("enter {}", button.label.to_lowercase()));
+            parts.push(format!("Enter {}", button.label));
         }
         if takes_note(button) {
-            parts.push("tab add a note".to_string());
+            parts.push("Tab Add a note".to_string());
         }
     }
     if buttons > 1 {
-        parts.insert(1.min(parts.len()), "←/→ choose".to_string());
+        parts.insert(1.min(parts.len()), "←/→ Choose".to_string());
     }
     match review {
-        Some(0) => parts.push("v select · ␣c comment".to_string()),
-        Some(1) => parts.push("␣c comment (1 goes along)".to_string()),
-        Some(n) => parts.push(format!("␣c comment ({n} go along)")),
+        Some(0) => parts.push("n/p Next change · v Select · Space c Comment".to_string()),
+        Some(1) => parts.push("n/p Next change · Space c Comment (1 goes along)".to_string()),
+        Some(n) => parts.push(format!("n/p Next change · Space c Comment ({n} go along)")),
         None => {}
     }
     parts.push(
         match filter {
-            Some(f) if !f.is_empty() => "esc clear",
-            _ if focused.is_some_and(|b| b.stays) => "esc close",
-            _ => "esc dismiss",
+            Some(f) if !f.is_empty() => "Esc Clear",
+            _ if focused.is_some_and(|b| b.stays) => "Esc Close",
+            _ => "Esc Dismiss",
         }
         .to_string(),
     );

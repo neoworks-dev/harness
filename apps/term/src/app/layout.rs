@@ -90,7 +90,7 @@ impl App {
             // An edit goes in its own file view above where it leaves the chat a few rows; the
             // card leaves out its preview of it then.
             let lines = self.panel_lines(box_w, rows, review_wanted);
-            let fits = usize::from(room) >= lines.len() + 1 + usize::from(REVIEW_MIN_ROWS + 7);
+            let fits = usize::from(room) >= lines.len() + 1 + usize::from(REVIEW_MIN_ROWS + 3);
             review = review_wanted && fits;
             if review_wanted && !fits {
                 self.panel_lines(box_w, rows, false)
@@ -149,12 +149,12 @@ impl App {
         // A blank row parts it from the chat.
         let work_gap = u16::from(work_h > 0 && chat_h >= gap + 8);
         // The edit a card asks about, in its own file view right over the input: as tall as it
-        // is, up to three fifths of what the chat has, the chat keeping a few rows.
+        // is, up to all of the chat's rows; a longer one scrolls inside.
         let free = chat_h.saturating_sub(gap + work_h + work_gap);
         let review_h = match review_rows {
-            Some(rows) if review && free >= REVIEW_MIN_ROWS + 4 => {
+            Some(rows) if review && free >= REVIEW_MIN_ROWS => {
                 let rows = u16::try_from(rows).unwrap_or(u16::MAX);
-                rows.clamp(REVIEW_MIN_ROWS, (free * 3 / 5).max(REVIEW_MIN_ROWS))
+                rows.clamp(REVIEW_MIN_ROWS, free)
             }
             _ => 0,
         };

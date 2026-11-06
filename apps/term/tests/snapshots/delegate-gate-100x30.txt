@@ -25,6 +25,6 @@
 ┃   … 24 more lines (expand to see all)
 ┃
 ┃   [1 Start neo]  [2 Allow neo for this session]  [3 Reject]
-┃ enter start neo · ←/→ choose · tab add a note · esc dismiss
+┃ Enter Start neo · ←/→ Choose · Tab Add a note · Esc Dismiss
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

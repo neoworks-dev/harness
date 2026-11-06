@@ -9,6 +9,6 @@
 ┃ Model
 ┃ filter › zzz
 ┃ no match
-┃ esc clear
+┃ Esc Clear
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

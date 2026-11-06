@@ -309,7 +309,7 @@ fn a_long_choice_scrolls_to_the_focused_button() {
     }
     let s = screen_text(&mut app, 80, 24);
     assert!(
-        s.contains("enter model-031") && s.contains("[model-031]"),
+        s.contains("Enter model-031") && s.contains("[model-031]"),
         "{s}"
     );
     assert!(!s.contains("model-000"), "{s}");
@@ -341,7 +341,7 @@ fn enter_or_space_changes_a_setting_and_the_card_stays_until_esc() {
     settings_choice(&mut app, [false; 3]);
     app.handle_key(key(KeyCode::Down));
     let s = screen_text(&mut app, 80, 24);
-    assert!(s.contains("enter change · ←/→ choose · esc close"), "{s}");
+    assert!(s.contains("Enter Change · ←/→ Choose · Esc Close"), "{s}");
     match &app.handle_key(key(KeyCode::Char(' ')))[..] {
         [Effect::Action { args: Some(a), .. }] => {
             assert_eq!(a["option"], "charts");
@@ -398,7 +398,7 @@ fn a_setting_that_is_text_is_written_in_the_editor() {
     assert_eq!(app.editor_text(), "Be brief.");
     let s = screen_text(&mut app, 90, 20);
     assert!(
-        s.contains("Your words · enter saves · shift+enter new line · esc cancels"),
+        s.contains("Your words · Enter Save · Shift+Enter New line · Esc Cancel"),
         "{s}"
     );
     app.handle_key(with(KeyCode::Enter, KeyModifiers::SHIFT));

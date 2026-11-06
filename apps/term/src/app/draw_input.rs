@@ -185,6 +185,14 @@ impl App {
             .reviewing()
             .filter(|shown| review_above && *shown == r)
             .map(|r| self.widgets.review_note_count(r));
+        // The view above has the file, its name and the counts: the card is its buttons.
+        let bare;
+        let item = if review.is_some() {
+            bare = buttons_only(item);
+            &bare
+        } else {
+            item
+        };
         let tail = match &self.note {
             Some(note) => chat::note_line(&note.text, w.saturating_sub(2), accent),
             None => Line::from(Span::styled(
@@ -506,4 +514,22 @@ impl App {
             .find(|(_, started)| self.now_ms - started >= BACKGROUND_AFTER_MS)
             .map(|(id, _)| id)
     }
+}
+
+/// A card without its title and its diffs: what is left is its buttons.
+fn buttons_only(item: &neo_protocol::ViewItem) -> neo_protocol::ViewItem {
+    fn strip(node: &mut serde_json::Value) {
+        if let Some(children) = node.get_mut("children").and_then(|c| c.as_array_mut()) {
+            children.retain(|c| c.get("type").and_then(|t| t.as_str()) != Some("diff"));
+            children.iter_mut().for_each(strip);
+        }
+    }
+    let mut value = serde_json::to_value(item).unwrap_or_default();
+    if let Some(map) = value.as_object_mut() {
+        map.remove("label");
+    }
+    if let Some(component) = value.get_mut("component") {
+        strip(component);
+    }
+    serde_json::from_value(value).unwrap_or_else(|_| item.clone())
 }

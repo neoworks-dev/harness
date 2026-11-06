@@ -244,7 +244,7 @@ fn block(
         lines.push(Line::from(spans));
     }
     let foot = if writing {
-        "╰ enter keeps it · esc gives up · empty deletes it"
+        "╰ Enter Save · Esc Cancel · Saved empty, it's removed"
     } else {
         "╰"
     };

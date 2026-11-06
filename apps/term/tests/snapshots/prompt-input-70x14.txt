@@ -9,6 +9,6 @@
 ┃
 ┃ claude: run ls?
 ┃   [1 Yes]  [2 No]
-┃ enter yes · ←/→ choose · tab add a note · esc dismiss
+┃ Enter Yes · ←/→ Choose · Tab Add a note · Esc Dismiss
 ┃ site · neo
   ? ask before acting (shift+tab to cycle)

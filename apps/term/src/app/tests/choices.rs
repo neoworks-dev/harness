@@ -53,7 +53,7 @@ fn typing_filters_a_long_choice_and_enter_picks_the_match() {
     assert!(s.contains("filter › OPENROUTER sonnet"), "{s}");
     assert!(s.contains("[Sonnet 4.5 · openrouter]"), "{s}");
     assert!(!s.contains("Haiku") && !s.contains("GPT"), "{s}");
-    assert!(s.contains("enter sonnet 4.5 · openrouter"), "{s}");
+    assert!(s.contains("Enter Sonnet 4.5 · openrouter"), "{s}");
     snapshot("choice-filter-70x14", &screen_text(&mut app, 70, 14));
     let fx = app.handle_key(key(KeyCode::Enter));
     assert_eq!(picked(&fx), "openrouter/1/Sonnet 4.5");
@@ -226,6 +226,6 @@ fn a_filtered_list_scrolls_to_the_focused_match() {
         s.contains("filter › model-01") && s.contains("model-019"),
         "{s}"
     );
-    assert!(s.contains("enter model-019"), "{s}");
+    assert!(s.contains("Enter model-019"), "{s}");
     assert_eq!(picked(&app.handle_key(key(KeyCode::Enter))), "m19");
 }
