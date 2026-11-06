@@ -40,7 +40,7 @@ impl App {
             KeyCode::Char(' ') | KeyCode::Enter
                 if self.focused_button().is_some_and(|b| b.stays) =>
             {
-                self.press_staying(fx);
+                self.press_setting(self.prompt.button, fx);
             }
             // The edit asked about, whole, in the diff view (again).
             KeyCode::Char('o') => {
@@ -52,8 +52,7 @@ impl App {
                 {
                     let at = n as usize - 1;
                     if self.active_buttons()[at].stays {
-                        self.prompt.button = at;
-                        self.press_staying(fx);
+                        self.press_setting(at, fx);
                     } else {
                         self.press(at, fx);
                     }
@@ -81,6 +80,9 @@ impl App {
     }
 
     pub(super) fn editor_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
+        if self.setting_input.is_some() && self.setting_key(key, fx) {
+            return;
+        }
         if self.prompt.engaged {
             return self.prompt_key(key, fx);
         }

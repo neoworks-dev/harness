@@ -372,7 +372,11 @@
         },
         "stays": {
           "type": "boolean",
-          "description": "Pressed with args.stay (Space in the terminal), its card stays open and is drawn again as it is now: a setting changed in place. Absent: a press ends the card."
+          "description": "Pressed with args.stay (Enter or Space in the terminal), its card stays open and is drawn again as it is now: a setting changed in place. Absent: a press ends the card."
+        },
+        "input": {
+          "description": "Pressing it asks for text first, sent along as args.value: a setting that is text.",
+          "$ref": "session.schema.json#/$defs/OptionInput"
         }
       },
       "required": ["type", "label", "action"],

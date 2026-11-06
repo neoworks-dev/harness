@@ -1034,9 +1034,27 @@
         },
         "description": {
           "type": "string"
+        },
+        "input": {
+          "$ref": "#/$defs/OptionInput"
         }
       },
       "required": ["id", "name"],
+      "additionalProperties": false
+    },
+    "OptionInput": {
+      "description": "Picking the option asks for text first (a setting that is text): the answer carries it as value (neo.choose {id, option, value}).",
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "description": "The text now, to start from."
+        },
+        "multiline": {
+          "type": "boolean",
+          "description": "Several lines are fine."
+        }
+      },
       "additionalProperties": false
     },
     "Choice": {

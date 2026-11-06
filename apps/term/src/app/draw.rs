@@ -110,14 +110,16 @@ impl App {
             );
         }
         if areas.hint.height > 0 {
-            let hint = if self.active_form().is_some() {
-                "form open · ctrl-p to fill it in · ctrl-s stashes your draft"
+            let hint = if let Some(setting) = self.setting_hint() {
+                setting
+            } else if self.active_form().is_some() {
+                "form open · ctrl-p to fill it in · ctrl-s stashes your draft".into()
             } else {
-                "permission needed · ctrl-p to answer · ctrl-s stashes your draft"
+                "permission needed · ctrl-p to answer · ctrl-s stashes your draft".into()
             };
             frame.render_widget(
                 Paragraph::new(Span::styled(
-                    truncate(hint, usize::from(areas.hint.width)),
+                    truncate(&hint, usize::from(areas.hint.width)),
                     self.styles.accent,
                 )),
                 areas.hint,

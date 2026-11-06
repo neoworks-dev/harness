@@ -369,3 +369,48 @@ fn enter_or_space_changes_a_setting_and_the_card_stays_until_esc() {
     assert!(app.handle_key(key(KeyCode::Esc)).is_empty());
     assert_eq!(app.active_ref(), None);
 }
+
+#[test]
+fn a_setting_that_is_text_is_written_in_the_editor() {
+    let mut app = app();
+    long_chat(&mut app, 1);
+    type_str(&mut app, "half a message");
+    let card: ViewItem = serde_json::from_value(json!({
+        "ref":"q-s","kind":"tool","label":"Settings","state":"pending",
+        "component":{"type":"stack","children":[
+            {"type":"button","label":"Diffs · off","action":"neo.choose",
+             "args":{"id":"c","option":"diffs"},"key":"1","stays":true},
+            {"type":"button","label":"Your words · 1 line","action":"neo.choose",
+             "args":{"id":"c","option":"words"},"key":"2","stays":true,
+             "input":{"value":"Be brief.","multiline":true}}]}}))
+    .unwrap();
+    patch(&mut app, card);
+    app.handle_key(with(KeyCode::Char('p'), KeyModifiers::CONTROL));
+    assert!(app.prompt.engaged);
+    // The digit opens the editor on its text, the draft put aside.
+    assert!(app.handle_key(key(KeyCode::Char('2'))).is_empty());
+    assert_eq!(app.editor_text(), "Be brief.");
+    let s = screen_text(&mut app, 90, 20);
+    assert!(
+        s.contains("Your words · enter saves · shift+enter new line · esc cancels"),
+        "{s}"
+    );
+    app.handle_key(with(KeyCode::Enter, KeyModifiers::SHIFT));
+    type_str(&mut app, "In German.");
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert!(
+        matches!(&fx[..], [Effect::Action { args: Some(a), .. }]
+            if a["option"] == "words" && a["stay"] == true
+                && a["value"] == "Be brief.\nIn German."),
+        "{fx:?}"
+    );
+    // The card is back, the draft under it.
+    assert!(app.prompt.engaged);
+    assert_eq!(app.editor_text(), "half a message");
+    // Esc gives up on it: nothing sent.
+    app.handle_key(key(KeyCode::Char('2')));
+    type_str(&mut app, " Never mind.");
+    assert!(app.handle_key(key(KeyCode::Esc)).is_empty());
+    assert_eq!(app.editor_text(), "half a message");
+    assert_eq!(app.active_ref(), Some("q-s"));
+}

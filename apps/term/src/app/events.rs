@@ -329,6 +329,8 @@ impl App {
     /// Shows another session: everything of the old one is dropped but its draft, which waits
     /// for it to be shown again; the new one's draft, if it had one, is back in the editor.
     pub(super) fn begin_session(&mut self, id: &str, cwd: &str) {
+        // A setting's text half written is dropped: the draft under it is the session's.
+        self.end_setting_input();
         let text = self.editor.text().to_string();
         let attachments = std::mem::take(&mut self.attachments);
         if text.trim().is_empty() {

@@ -135,21 +135,25 @@ export class ActionRunner {
       throw new BadRequestError("copy: actions are handled by the client");
     }
     if (action === "neo.permit" || action === "neo.choose") {
-      // Answers a permission_request or a choice: args {id, option, note?, stay?}; stay keeps
-      // a choice that stays open (it acts on the option and shows again).
+      // Answers a permission_request or a choice: args {id, option, note?, stay?, value?}; stay
+      // keeps a choice that stays open (it acts on the option and shows again), value is the
+      // text an option with an input asked for.
       const fields: Record<string, unknown> = Object.assign({}, args);
-      const { id, option, note, stay } = fields;
+      const { id, option, note, stay, value } = fields;
       if (typeof id !== "string" || typeof option !== "string" || !this.parts.asker) {
         throw new BadRequestError(`${action} needs args {id, option}`);
       }
       if (note !== undefined && typeof note !== "string") {
         throw new BadRequestError(`${action}: note must be a string`);
       }
+      if (value !== undefined && typeof value !== "string") {
+        throw new BadRequestError(`${action}: value must be a string`);
+      }
       const kind = action === "neo.permit" ? "permission" : "choice";
       // An empty note is no note.
       const trimmed = note?.trim();
       const added = trimmed === "" ? undefined : trimmed;
-      this.parts.asker.answer(session, kind, id, option, from, added, stay === true);
+      this.parts.asker.answer(session, kind, id, option, from, added, stay === true, value);
       return;
     }
     if (action === "neoui.input" || action === "neoui.press") {

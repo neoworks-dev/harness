@@ -365,6 +365,17 @@ struct Note {
     text: String,
 }
 
+/// A setting that is text (`/settings`' system prompt words) being written in the editor: the
+/// card and the button it answers, and the draft that waits meanwhile.
+#[derive(Debug)]
+struct SettingInput {
+    r#ref: String,
+    button: usize,
+    multiline: bool,
+    name: String,
+    draft: (String, Vec<(usize, String)>),
+}
+
 /// Buttons whose answer the agent hears can carry a note for it: a permission, a review of its
 /// changes; not a setting (/settings, /model). The daemon marks them.
 fn takes_note(button: &ButtonRef) -> bool {
@@ -473,6 +484,8 @@ pub struct App {
     forms: Forms,
     /// The note typed for the focused button's answer (Tab on a card).
     note: Option<Note>,
+    /// A setting's text is being written in the editor.
+    setting_input: Option<SettingInput>,
     /// A secret the daemon asked for: a masked field that has the keys and the editor's place.
     secret: Option<Secret>,
     menu_sel: usize,
@@ -592,6 +605,7 @@ impl App {
             prompt: PromptState::default(),
             forms: Forms::default(),
             note: None,
+            setting_input: None,
             secret: None,
             menu_sel: 0,
             menu_closed_for: None,

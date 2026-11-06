@@ -81,6 +81,7 @@ mod tests {
             description: description.map(str::to_string),
             note: false,
             stays: false,
+            input: None,
         }
     }
 

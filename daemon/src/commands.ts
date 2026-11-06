@@ -24,7 +24,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 import type { ConfigOption, SafeSearch } from "@neoworks-dev/neo/agent";
-import type { HarnessSettings } from "@neoworks-dev/neo-protocol/types";
+import type { ChoiceOption, HarnessSettings } from "@neoworks-dev/neo-protocol/types";
 
 import type { Asker, Choice } from "./asker.ts";
 import { BadRequestError } from "./focus.ts";
@@ -121,6 +121,10 @@ interface Toggle {
   after?: (value: string) => string | undefined;
   /** Picking it does this instead of stepping its value (a setting that is text). */
   pick?: () => void;
+  /** A setting that is text: the card asks for it (from what it is now), `set` takes it. */
+  input?: { value: () => string; multiline?: boolean; set: (text: string) => void };
+  /** A group of settings: picking it shows them, with a way back. */
+  menu?: Toggle[];
 }
 
 /** An on/off setting as a Toggle. */
@@ -143,6 +147,9 @@ const GUEST_PROMPTS: readonly GuestPrompt[] = ["own", "neo"];
 /** Said when a system prompt setting changed: it is read when a conversation starts. */
 const NEW_CONVERSATIONS =
   "a conversation going on keeps the prompt it started with (/new or /clear starts another).";
+
+/** The option of a group of /settings that goes back to all of them. */
+const BACK = "back";
 
 function when(iso: string | undefined): string | undefined {
   if (iso === undefined) return undefined;
@@ -530,7 +537,7 @@ export class Commands {
       {
         id: "system-prompt",
         name: "Your words in the system prompt",
-        description: "Every agent's, after the rest of it: /system-prompt <text> sets them",
+        description: "Every agent's, after the rest of it",
         values: [],
         get: () => {
           const text = settings.promptAddition();
@@ -540,6 +547,12 @@ export class Commands {
         },
         set: () => {},
         pick: () => void this.systemPrompt(session, ""),
+        input: {
+          value: () => settings.promptAddition() ?? "",
+          multiline: true,
+          // Emptied: out of the system prompt.
+          set: (text) => void this.systemPrompt(session, text.trim() === "" ? "clear" : text),
+        },
       },
       ...this.parts.guests.names().flatMap((name): Toggle[] => {
         if (!this.parts.guests.replacesPrompt(name)) return [];
@@ -553,7 +566,21 @@ export class Commands {
           set: (value) => settings.setGuestPrompt(name, value === "neo" ? "neo" : "own"),
           after: () => NEW_CONVERSATIONS,
         };
-        if (!this.parts.guests.swapsFileTools(name)) return [own];
+        const group = (menu: Toggle[]): Toggle[] => [
+          {
+            id: name,
+            name: title,
+            description:
+              menu.length > 1
+                ? `${title}'s system prompt and file tools`
+                : `${title}'s system prompt`,
+            values: [],
+            get: () => "",
+            set: () => {},
+            menu,
+          },
+        ];
+        if (!this.parts.guests.swapsFileTools(name)) return group([own]);
         const tools: Toggle = {
           id: `${name}-tools`,
           name: `${title}'s file tools`,
@@ -563,7 +590,7 @@ export class Commands {
           set: (value) => settings.setGuestTools(name, value === "neo" ? "neo" : "own"),
           after: () => NEW_CONVERSATIONS,
         };
-        return [own, tools];
+        return group([own, tools]);
       }),
     ];
   }
@@ -574,10 +601,12 @@ export class Commands {
    */
   private toggleCommand(session: string, args: string[]): Promise<void> {
     const toggles = this.toggles(session);
+    // By name, the ones in groups too.
+    const all = toggles.flatMap((t) => t.menu ?? [t]);
     const [id, value] = args;
-    const toggle = id === undefined ? undefined : toggles.find((t) => t.id === id);
+    const toggle = id === undefined ? undefined : all.find((t) => t.id === id);
     const values = toggle ? toggle.values.join("|") : "value";
-    const usage = `usage: /settings [${toggles.map((t) => t.id).join("|")} [${values}]]`;
+    const usage = `usage: /settings [${all.map((t) => t.id).join("|")} [${values}]]`;
     if (
       args.length > 2 ||
       (id !== undefined && toggle === undefined) ||
@@ -606,26 +635,49 @@ export class Commands {
       set(toggle, value ?? next(toggle));
       return Promise.resolve();
     }
-    // Each with its value now: drawn again after one is changed in place.
-    const choice = (): Omit<Choice, "id"> => ({
-      type: "choice",
-      title: "Settings (pick one to change it)",
-      options: toggles.map((t) => ({
-        id: t.id,
-        name: `${t.name} · ${t.get()}`,
-        description: t.description,
-      })),
-      stays: true,
-    });
-    const change = (picked: string | undefined): void => {
-      const t = toggles.find((x) => x.id === picked);
-      if (t?.pick !== undefined) t.pick();
-      else if (t) set(t, next(t));
+    // The group shown, none: the top.
+    let group: Toggle | undefined;
+    const shown = (): Toggle[] => group?.menu ?? toggles;
+    // Each with its value now: drawn again after one is changed in place. A group leads to its
+    // settings (`›`), which start with the way back.
+    const choice = (): Omit<Choice, "id"> => {
+      const options: ChoiceOption[] = shown().map((t) => {
+        const name = t.menu !== undefined ? `${t.name} ›` : `${t.name} · ${t.get()}`;
+        const option: ChoiceOption = { id: t.id, name, description: t.description };
+        if (t.input !== undefined) {
+          option.input = { value: t.input.value() };
+          if (t.input.multiline === true) option.input.multiline = true;
+        }
+        return option;
+      });
+      if (group !== undefined) {
+        options.unshift({ id: BACK, name: "‹ Back", description: "All settings" });
+      }
+      return {
+        type: "choice",
+        title:
+          group === undefined ? "Settings (pick one to change it)" : `Settings › ${group.name}`,
+        options,
+        stays: true,
+      };
+    };
+    const change = (picked: string | undefined, text?: string): void => {
+      if (picked === BACK) {
+        group = undefined;
+        return;
+      }
+      const t = shown().find((x) => x.id === picked);
+      if (t === undefined) return;
+      if (t.menu !== undefined) group = t;
+      else if (t.input !== undefined && text !== undefined) t.input.set(text);
+      else if (t.pick !== undefined) t.pick();
+      else set(t, next(t));
     };
     // The answer comes later, from a button; the command is done once the choice is shown. A
-    // pick with stay (Space) changes the setting and leaves the choice open.
-    const stay = (picked: string): Omit<Choice, "id"> => {
-      change(picked);
+    // pick with stay (Enter in the terminal), or the text an input asked for, changes the
+    // setting (or opens a group) and leaves the choice open.
+    const stay = (picked: string, _id: string, text?: string): Omit<Choice, "id"> => {
+      change(picked, text);
       return choice();
     };
     void this.parts.asker

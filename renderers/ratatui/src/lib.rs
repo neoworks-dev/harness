@@ -244,6 +244,8 @@ pub struct ButtonRef {
     pub note: bool,
     /// Pressed with `args.stay`, its card stays open (a setting changed in place).
     pub stays: bool,
+    /// Pressing it asks for text first, sent as `args.value` (a setting that is text).
+    pub input: Option<pb::OptionInput>,
 }
 
 impl ButtonRef {
@@ -272,6 +274,7 @@ fn collect(c: &pb::Component, out: &mut Vec<ButtonRef>) {
             description: None,
             note: b.note == Some(true),
             stays: b.stays == Some(true),
+            input: b.input.clone(),
         }),
         pb::Component::CardComponent(v) => v.children.iter().for_each(|c| collect(c, out)),
         pb::Component::RowComponent(v) => {

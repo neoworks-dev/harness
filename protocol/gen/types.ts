@@ -1110,6 +1110,15 @@ export interface ChoiceOption {
   id: string;
   name: string;
   description?: string;
+  input?: OptionInput;
+}
+
+/** Picking the option asks for text first (a setting that is text): the answer carries it as value (neo.choose {id, option, value}). */
+export interface OptionInput {
+  /** The text now, to start from. */
+  value?: string;
+  /** Several lines are fine. */
+  multiline?: boolean;
 }
 
 /** Neo asks the user to pick one of several options (a model, a conversation to resume). Panes show them as buttons (action neo.choose {id, option, note?}). */
@@ -1333,8 +1342,10 @@ export interface ButtonComponent {
   current?: boolean;
   /** The answer is the agent's to hear: a note for it may go with the press (args.note). Absent: no note. */
   note?: boolean;
-  /** Pressed with args.stay (Space in the terminal), its card stays open and is drawn again as it is now: a setting changed in place. Absent: a press ends the card. */
+  /** Pressed with args.stay (Enter or Space in the terminal), its card stays open and is drawn again as it is now: a setting changed in place. Absent: a press ends the card. */
   stays?: boolean;
+  /** Pressing it asks for text first, sent along as args.value: a setting that is text. */
+  input?: OptionInput;
 }
 
 /** TUI: underlined text plus the URL. */

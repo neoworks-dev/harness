@@ -21,9 +21,10 @@ interface Pending {
 
 /**
  * Acts on an option picked while the choice stays open; the choice to show now. `id` is the
- * choice's, for an act that takes a while to show its outcome later (see update).
+ * choice's, for an act that takes a while to show its outcome later (see update); `value` the
+ * text an option with an input was given.
  */
-export type Stay = (option: string, id: string) => Omit<Choice, "id">;
+export type Stay = (option: string, id: string, value?: string) => Omit<Choice, "id">;
 
 /** What the user picked (none: dropped before anyone answered) and what they added. */
 export interface Answer {
@@ -106,7 +107,8 @@ export class Asker {
 
   /**
    * A button press: neo.permit or neo.choose with {id, option}. With `stay`, a choice that
-   * stays acts on the option and shows again instead of being answered.
+   * stays acts on the option and shows again instead of being answered; so does one given the
+   * text its option asked for (`value`).
    */
   answer(
     session: string,
@@ -116,6 +118,7 @@ export class Asker {
     by: string,
     note?: string,
     stay = false,
+    value?: string,
   ): void {
     const pending = this.pending.get(id);
     if (
@@ -127,8 +130,8 @@ export class Asker {
     }
     if (!pending.options.includes(option))
       throw new BadRequestError(`${id} has no option ${option}`);
-    if (stay && pending.stay) {
-      this.update(id, pending.stay(option, id));
+    if ((stay || value !== undefined) && pending.stay) {
+      this.update(id, pending.stay(option, id, value));
       return;
     }
     this.settle(id, option, by, note);

@@ -36,7 +36,9 @@ impl App {
     pub(super) fn update_engaged(&mut self) {
         let quiet = self.now_ms - self.prompt.typed_ms >= TYPING_PAUSE_MS;
         let free = self.editor.is_empty() && self.attachments.is_empty();
-        let engaged = self.active_ref().is_some() && (self.prompt.engaged || quiet && free);
+        let engaged = self.active_ref().is_some()
+            && self.setting_input.is_none()
+            && (self.prompt.engaged || quiet && free);
         if engaged != self.prompt.engaged {
             self.prompt.engaged = engaged;
             self.dirty = true;
@@ -89,9 +91,46 @@ impl App {
         self.active_buttons().get(self.prompt.button)
     }
 
-    /// Space on a button whose card stays (`/settings`): pressed with `stay`, the card left
-    /// open and the focus where it is, for the daemon to draw it again as it is now.
-    pub(super) fn press_staying(&mut self, fx: &mut Vec<Effect>) {
+    /// Enter, Space or the digit on a button whose card stays (`/settings`): pressed with
+    /// `stay`, the card left open and the focus on it, for the daemon to draw it again as it is
+    /// now. One that asks for text has it written in the editor first.
+    pub(super) fn press_setting(&mut self, index: usize, fx: &mut Vec<Effect>) {
+        self.prompt.button = index;
+        let Some(button) = self.focused_button().cloned() else {
+            return;
+        };
+        let Some(input) = button.input else {
+            return self.press_staying(None, fx);
+        };
+        let Some(r) = self.active_ref().map(str::to_string) else {
+            return;
+        };
+        // The draft waits; the editor has the setting's text, the card gives it the keys.
+        let draft = (
+            self.editor.text().to_string(),
+            std::mem::take(&mut self.attachments),
+        );
+        self.editor
+            .set_text(input.value.as_deref().unwrap_or_default());
+        let name = button
+            .label
+            .split(" · ")
+            .next()
+            .unwrap_or(&button.label)
+            .to_string();
+        self.setting_input = Some(SettingInput {
+            r#ref: r,
+            button: index,
+            multiline: input.multiline == Some(true),
+            name,
+            draft,
+        });
+        self.prompt.engaged = false;
+        self.dirty = true;
+    }
+
+    /// Presses the focused button with `stay`, and `value`: the text it asked for.
+    fn press_staying(&mut self, value: Option<String>, fx: &mut Vec<Effect>) {
         let (Some(r), Some(button)) = (
             self.active_ref().map(str::to_string),
             self.focused_button().cloned(),
@@ -101,6 +140,9 @@ impl App {
         let mut args = button.args;
         if let Some(serde_json::Value::Object(map)) = args.as_mut() {
             map.insert("stay".into(), true.into());
+            if let Some(value) = value {
+                map.insert("value".into(), value.into());
+            }
         }
         fx.push(Effect::Action {
             session: self.session.clone(),
@@ -108,6 +150,56 @@ impl App {
             action: button.action,
             args,
         });
+    }
+
+    /// Keys while a setting's text is written in the editor: Enter keeps it (Shift-Enter or
+    /// Alt-Enter is a new line where it takes several), Esc gives up; true when the key was
+    /// one of those, else it edits the text like any.
+    pub(super) fn setting_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) -> bool {
+        let Some(input) = self.setting_input.as_ref() else {
+            return false;
+        };
+        let newline = key
+            .modifiers
+            .intersects(KeyModifiers::SHIFT | KeyModifiers::ALT | KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Enter if newline && input.multiline => self.editor.newline(),
+            KeyCode::Enter => {
+                let text = self.editor.text().to_string();
+                if let Some(button) = self.end_setting_input() {
+                    self.prompt.button = button;
+                    self.press_staying(Some(text), fx);
+                }
+            }
+            KeyCode::Esc => {
+                self.end_setting_input();
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// The setting's text is done with: the draft comes back and the card takes the keys
+    /// again. The button it was for, when its card is still the active one.
+    pub(super) fn end_setting_input(&mut self) -> Option<usize> {
+        let input = self.setting_input.take()?;
+        let (text, attachments) = input.draft;
+        self.editor.set_text(&text);
+        self.attachments = attachments;
+        self.prompt.engaged = self.active_ref().is_some();
+        self.dirty = true;
+        (self.active_ref() == Some(input.r#ref.as_str())).then_some(input.button)
+    }
+
+    /// What the line above the editor says while a setting's text is written there.
+    pub(super) fn setting_hint(&self) -> Option<String> {
+        let input = self.setting_input.as_ref()?;
+        let keys = if input.multiline {
+            "enter saves · shift+enter new line · esc cancels"
+        } else {
+            "enter saves · esc cancels"
+        };
+        Some(format!("{} · {keys}", input.name))
     }
 
     /// The active prompt is a choice long enough to be filtered by typing.

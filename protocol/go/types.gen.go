@@ -2446,9 +2446,18 @@ const (
 )
 
 type ChoiceOption struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Description *string `json:"description,omitempty"`
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Description *string      `json:"description,omitempty"`
+	Input       *OptionInput `json:"input,omitempty"`
+}
+
+// OptionInput: Picking the option asks for text first (a setting that is text): the answer carries it as value (neo.choose {id, option, value}).
+type OptionInput struct {
+	// The text now, to start from.
+	Value *string `json:"value,omitempty"`
+	// Several lines are fine.
+	Multiline *bool `json:"multiline,omitempty"`
 }
 
 // Choice: Neo asks the user to pick one of several options (a model, a conversation to resume). Panes show them as buttons (action neo.choose {id, option, note?}).
@@ -2984,8 +2993,10 @@ type ButtonComponent struct {
 	Current *bool `json:"current,omitempty"`
 	// The answer is the agent's to hear: a note for it may go with the press (args.note). Absent: no note.
 	Note *bool `json:"note,omitempty"`
-	// Pressed with args.stay (Space in the terminal), its card stays open and is drawn again as it is now: a setting changed in place. Absent: a press ends the card.
+	// Pressed with args.stay (Enter or Space in the terminal), its card stays open and is drawn again as it is now: a setting changed in place. Absent: a press ends the card.
 	Stays *bool `json:"stays,omitempty"`
+	// Pressing it asks for text first, sent along as args.value: a setting that is text.
+	Input *OptionInput `json:"input,omitempty"`
 }
 
 func (ButtonComponent) isComponent() {}

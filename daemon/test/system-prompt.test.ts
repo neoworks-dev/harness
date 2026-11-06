@@ -115,6 +115,55 @@ describe("the system prompt", () => {
     expect(got.systemPromptEnd).toEndWith(".\n\nBe brief.");
   });
 
+  test("/settings asks for the user's words and groups a guest's settings", async () => {
+    const { daemon } = await setup();
+    const session = daemon.sessions.create({}).id;
+    await daemon.commands.run(session, "/settings");
+    const shown = (): Extract<SessionEvent, { type: "choice" }> => {
+      const choice = events(daemon, session).findLast((e) => e.type === "choice");
+      if (choice?.type !== "choice") throw new Error("no choice was shown");
+      return choice;
+    };
+    const pick = (args: Record<string, unknown>): Promise<void> =>
+      daemon.actions.run(
+        { session, ref: "x", action: "neo.choose", args: { id: shown().id, ...args } },
+        "test",
+      );
+    const words = shown().options.find((o) => o.id === "system-prompt");
+    expect(words?.input).toEqual({ value: "", multiline: true });
+    // The words it was given: in, and the card stays, showing them now.
+    await pick({ option: "system-prompt", value: "Answer in German.\nBe brief." });
+    expect(daemon.settings.promptAddition()).toBe("Answer in German.\nBe brief.");
+    const now = shown().options.find((o) => o.id === "system-prompt");
+    expect(now?.name).toBe("Your words in the system prompt · 2 lines");
+    expect(now?.input?.value).toBe("Answer in German.\nBe brief.");
+    // The view's button asks for them too.
+    const item = daemon.views
+      .get(session)
+      .snapshot()
+      .items.find((i) => i.ref === `q-${shown().id}`);
+    expect(JSON.stringify(item?.component)).toContain('"multiline":true');
+
+    // The guest's settings are a group: picked, they show, after the way back.
+    expect(shown().options.at(-1)).toMatchObject({ id: "fake", name: "Fake ›" });
+    await pick({ option: "fake", stay: true });
+    expect(shown().title).toBe("Settings › Fake");
+    expect(shown().options.map((o) => o.name)).toEqual([
+      "‹ Back",
+      "Fake's system prompt · own",
+      "Fake's file tools · own",
+    ]);
+    await pick({ option: "fake-tools", stay: true });
+    expect(daemon.settings.guestTools("fake")).toBe("neo");
+    expect(shown().options[2]?.name).toBe("Fake's file tools · neo");
+    await pick({ option: "back", stay: true });
+    expect(shown().title).toBe("Settings (pick one to change it)");
+    // Emptied, the words are out.
+    await pick({ option: "system-prompt", value: "  " });
+    expect(daemon.settings.promptAddition()).toBeUndefined();
+    expect(events(daemon, session).some((e) => e.type === "choice_made")).toBe(false);
+  });
+
   test("Codex takes neo's prompt as its base instructions", async () => {
     const { daemon } = await setup({ adapter: "codex", env: { CODEX_CONFIG: "{}" } });
     const session = daemon.sessions.create({}).id;
