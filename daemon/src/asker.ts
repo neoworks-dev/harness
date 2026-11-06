@@ -137,6 +137,22 @@ export class Asker {
     this.settle(id, option, by, note);
   }
 
+  /**
+   * Closes a choice that stays open (`/settings`) without picking anything: the user is done
+   * with it. Anything else is answered, not closed.
+   */
+  close(session: string, id: string): void {
+    const pending = this.pending.get(id);
+    if (
+      !pending ||
+      (pending.session !== session && !pending.mirrors.includes(session)) ||
+      pending.stay === undefined
+    ) {
+      throw new BadRequestError(`${id} isn't an open choice that stays`);
+    }
+    this.settle(id, undefined);
+  }
+
   /** Shows a choice that is still open as it is now; false when it was answered meanwhile. */
   update(id: string, choice: Omit<Choice, "id">): boolean {
     const pending = this.pending.get(id);

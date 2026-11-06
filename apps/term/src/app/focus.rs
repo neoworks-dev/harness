@@ -280,6 +280,17 @@ impl App {
         } else if self.menu_visible() {
             self.menu_closed_for = Some(self.editor.text().to_string());
         } else if let Some(r) = self.active_ref().map(str::to_string) {
+            // A card that stays (`/settings`) is closed for good: the daemon would count it as
+            // a question waiting for the user otherwise. Others wait for an answer, out of the way.
+            let stays = self.active_buttons().iter().find(|b| b.stays);
+            if let Some(id) = stays.and_then(|b| b.args.as_ref()?.get("id")?.as_str()) {
+                fx.push(Effect::Action {
+                    session: self.session.clone(),
+                    item: r.clone(),
+                    action: "neo.close".into(),
+                    args: Some(serde_json::json!({ "id": id })),
+                });
+            }
             self.prompt.dismissed.push(r);
             self.prompt.selected = None;
         } else if self.running {

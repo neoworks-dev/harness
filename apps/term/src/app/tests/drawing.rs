@@ -366,7 +366,13 @@ fn enter_or_space_changes_a_setting_and_the_card_stays_until_esc() {
     assert!(matches!(&fx[..], [Effect::Action { args: Some(a), .. }]
         if a["option"] == "edits" && a["stay"] == true));
     assert_eq!(app.active_ref(), Some("q-s"));
-    assert!(app.handle_key(key(KeyCode::Esc)).is_empty());
+    // Closed in the daemon too, so the session isn't left waiting for the user.
+    let fx = app.handle_key(key(KeyCode::Esc));
+    assert!(
+        matches!(&fx[..], [Effect::Action { action, args: Some(a), .. }]
+            if action == "neo.close" && a == &json!({"id": "c"})),
+        "{fx:?}"
+    );
     assert_eq!(app.active_ref(), None);
 }
 

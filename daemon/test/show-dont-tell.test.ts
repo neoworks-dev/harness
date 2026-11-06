@@ -108,6 +108,25 @@ test("/settings without a toggle shows them with their state, and picking one fl
   expect(events(daemon, session).some((e) => e.type === "choice_made")).toBe(true);
 });
 
+test("closing /settings leaves nothing for the user to answer", async () => {
+  const { daemon } = await setup();
+  const session = daemon.sessions.create({}).id;
+  const asking = (): number | undefined =>
+    daemon.sessions.list().find((s) => s.id === session)?.asking;
+  await daemon.commands.run(session, "/settings");
+  const choice = events(daemon, session).find((e) => e.type === "choice");
+  if (choice?.type !== "choice") throw new Error("no choice was shown");
+  expect(asking()).toBe(1);
+  const close = { session, ref: "x", action: "neo.close", args: { id: choice.id } };
+  await daemon.actions.run(close, "test");
+  expect(asking()).toBeUndefined();
+  const made = events(daemon, session).findLast((e) => e.type === "choice_made");
+  expect(made).toEqual({ type: "choice_made", id: choice.id });
+  // Closed once: there is nothing left to close.
+  const again = await daemon.actions.run(close, "test").catch((err: unknown) => err);
+  expect(again).toBeInstanceOf(Error);
+});
+
 test("side-by-side diffs is a toggle for the apps: they hear of it, the agents don't", async () => {
   const { daemon, agent } = await setup();
   const session = daemon.sessions.create({}).id;

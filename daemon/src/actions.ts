@@ -156,6 +156,16 @@ export class ActionRunner {
       this.parts.asker.answer(session, kind, id, option, from, added, stay === true, value);
       return;
     }
+    if (action === "neo.close") {
+      // Closes a choice that stays open (`/settings`): args {id}.
+      const fields: Record<string, unknown> = Object.assign({}, args);
+      const { id } = fields;
+      if (typeof id !== "string" || !this.parts.asker) {
+        throw new BadRequestError("neo.close needs args {id}");
+      }
+      this.parts.asker.close(session, id);
+      return;
+    }
     if (action === "neoui.input" || action === "neoui.press") {
       await this.neoUi(session, ref, action, args, from);
       return;
