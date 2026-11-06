@@ -108,6 +108,10 @@ pub const COMMANDS: &[Command] = &[
     local("github", "GitHub issues and pull requests (ctrl-r)"),
     local("help", "keys and commands"),
     local(
+        "setup",
+        "walk through the settings that matter: what Neo is for, the agent, Claude Code and Codex",
+    ),
+    local(
         "terminal",
         "show or hide the agent's commands and their output next to the chat (tab focuses it)",
     ),

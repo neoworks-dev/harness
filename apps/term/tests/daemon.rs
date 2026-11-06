@@ -160,10 +160,11 @@ impl Ui {
         self.driver.run(fx);
     }
 
-    /// A fresh daemon has no answer to what neo is for: the first start asks; coding.
+    /// A fresh daemon has no answer to what neo is for: the first start walks through the
+    /// settings; leaving it keeps coding.
     fn answer_setup(&mut self) {
-        self.until("the first start's question", |s| s.contains("Welcome to Neo"));
-        self.key(KeyCode::Enter);
+        self.until("the first start's walkthrough", |s| s.contains("Welcome to Neo"));
+        self.key(KeyCode::Esc);
         self.until("the question gone", |s| !s.contains("Welcome to Neo"));
     }
 

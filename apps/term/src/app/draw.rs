@@ -80,10 +80,8 @@ impl App {
                     self.draw_chat(frame, areas.chat);
                     self.draw_marks(frame, areas.chat);
                 }
-                Overlay::Setup => {
-                    self.draw_chat(frame, areas.chat);
-                    self.draw_setup(frame, areas.chat);
-                }
+                // Over the whole screen, at the end.
+                Overlay::Setup => self.draw_chat(frame, areas.chat),
             }
             menus = true;
         }
@@ -181,6 +179,9 @@ impl App {
         }
         self.draw_agents(frame, areas.agents);
         self.draw_jobs(frame, areas.jobs);
+        if self.overlay == Overlay::Setup {
+            self.draw_setup(frame);
+        }
         if !self.no_color && self.theme.paints() {
             crate::theme::paint(frame.buffer_mut(), &self.palette);
         }

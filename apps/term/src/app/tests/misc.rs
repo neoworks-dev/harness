@@ -195,22 +195,28 @@ fn the_first_start_asks_what_neo_is_for_once() {
     app.handle_event(settings(Some("computer")));
     assert_ne!(app.overlay, Overlay::Setup);
 
-    // Not yet: asked; Down and Enter pick the second, which the daemon is told.
+    // Not yet: the walkthrough. Its picks go to the daemon once the summary is confirmed.
     let mut app = self::app();
     app.handle_event(settings(None));
     assert_eq!(app.overlay, Overlay::Setup);
-    app.handle_key(key(KeyCode::Down));
+    app.handle_key(key(KeyCode::Right));
+    assert!(app.handle_key(key(KeyCode::Enter)).is_empty());
+    assert!(app.handle_key(key(KeyCode::Enter)).is_empty());
     let fx = app.handle_key(key(KeyCode::Enter));
-    assert!(
-        matches!(&fx[..], [Effect::Input { text, .. }] if text == "/settings work computer"),
-        "{fx:?}"
-    );
+    let sent: Vec<&str> = fx
+        .iter()
+        .filter_map(|e| match e {
+            Effect::Input { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sent, ["/settings work computer", "/settings show-dont-tell on"]);
     assert_eq!(app.overlay, Overlay::None);
     // The daemon's settings again, before it has the choice: not asked twice.
     app.handle_event(settings(None));
     assert_eq!(app.overlay, Overlay::None);
 
-    // Esc keeps the first, coding.
+    // Left on the first start: coding, so it doesn't ask again.
     let mut app = self::app();
     app.handle_event(settings(None));
     let fx = app.handle_key(key(KeyCode::Esc));
@@ -218,6 +224,12 @@ fn the_first_start_asks_what_neo_is_for_once() {
         matches!(&fx[..], [Effect::Input { text, .. }] if text == "/settings work coding"),
         "{fx:?}"
     );
+    // /setup runs it again; left, nothing changes.
+    type_str(&mut app, "/setup");
+    app.handle_key(key(KeyCode::Enter));
+    assert_eq!(app.overlay, Overlay::Setup);
+    assert!(app.handle_key(key(KeyCode::Esc)).is_empty());
+    assert_eq!(app.overlay, Overlay::None);
 }
 
 #[test]

@@ -141,6 +141,7 @@ impl App {
             "expand" => self.toggle_expanded(),
             "thoughts" => self.show_thoughts = !self.show_thoughts,
             "help" => self.overlay = Overlay::Help,
+            "setup" => self.open_setup(false),
             "github" => self.github.open(),
             "theme" => self.switch_theme(text),
             "todo" => self.add_todo(text, fx),

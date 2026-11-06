@@ -467,10 +467,14 @@ pub struct App {
     marks: Vec<String>,
     /// The row the marks list is on.
     marks_sel: usize,
-    /// The choice selected in the first start's question.
-    setup_sel: usize,
-    /// The first start's question was asked: not again while this runs.
+    /// The setup walkthrough, while it is open.
+    onboarding: Option<crate::onboarding::Onboarding>,
+    /// It opened on its own, on the first start (not `/setup`).
+    setup_first: bool,
+    /// The first start's walkthrough was opened: not again while this runs.
     setup_asked: bool,
+    /// Claude Code and Codex on this machine, for the walkthrough's steps about them.
+    installed: crate::onboarding::Installed,
     /// The last key was Ctrl-G: a digit now shows a marked chat.
     after_ctrl_g: bool,
     /// The sessions sidebar is switched on (it still needs a wide enough terminal).
@@ -613,8 +617,10 @@ impl App {
             sessions: Sessions::default(),
             marks,
             marks_sel: 0,
-            setup_sel: 0,
+            onboarding: None,
+            setup_first: false,
             setup_asked: false,
+            installed: setup::installed(),
             after_ctrl_g: false,
             sessions_on: true,
             sessions_shown: false,

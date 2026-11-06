@@ -18,6 +18,7 @@ pub mod jobs;
 pub mod markdown;
 pub mod mention;
 pub mod menu;
+pub mod onboarding;
 pub mod reader;
 pub mod runtime;
 pub mod secret;
