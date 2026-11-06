@@ -153,6 +153,7 @@ impl App {
             // move`): follow it. A new conversation starts in the same directory.
             let cwd = self.cwd.clone();
             let from = self.session.clone();
+            self.carry_mark(&from, &focus.session);
             self.cancel_secret(fx);
             self.begin_session(&focus.session, &cwd);
             self.awaiting = None;
@@ -162,6 +163,19 @@ impl App {
                 cwd,
                 move_agent: false,
             });
+        }
+    }
+
+    /// A marked session followed into a fresh one (/new, /clear): the mark goes with it, in its
+    /// slot. A session that has events already (`neo move` to an older one) takes no mark.
+    fn carry_mark(&mut self, from: &str, to: &str) {
+        let fresh = self.sessions.get(to).is_none_or(|s| s.last_seq == 0);
+        if !fresh || self.marks.iter().any(|m| m == to) {
+            return;
+        }
+        if let Some(at) = self.marks.iter().position(|m| m == from) {
+            self.marks[at] = to.to_string();
+            let _ = self.prefs.set_marks(&self.marks);
         }
     }
 

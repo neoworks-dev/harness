@@ -37,6 +37,21 @@ fn alt_m_marks_and_alt_digits_jump_between_marked_chats() {
 }
 
 #[test]
+fn new_carries_the_mark_to_the_fresh_chat_in_its_slot() {
+    let mut app = app();
+    app.set_sessions(vec![info("s1", "One", 2), info("s9", "Old", 1)]);
+    app.marks = vec!["s0".into(), "s1".into()];
+    type_str(&mut app, "/new");
+    app.handle_key(key(KeyCode::Enter));
+    app.handle_event(focus("s2", Some("terminal")));
+    assert_eq!(app.session(), "s2");
+    assert_eq!(app.marks, ["s0", "s2"]);
+    // Moved to a chat that has a history (`neo move`): the mark stays where it was.
+    app.handle_event(focus("s9", Some("terminal")));
+    assert_eq!(app.marks, ["s0", "s2"]);
+}
+
+#[test]
 fn a_mark_whose_chat_is_gone_is_dropped() {
     let mut app = app();
     app.set_sessions(vec![info("s1", "One", 2)]);
