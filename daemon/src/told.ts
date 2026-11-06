@@ -54,7 +54,9 @@ export class ToldState {
       let components = event.components;
       if (components === undefined) components = this.seen.get(event.app)?.components;
       components ??= [];
-      const skills = event.skills ?? this.seen.get(event.app)?.skills ?? [];
+      let skills = event.skills;
+      if (skills === undefined) skills = this.seen.get(event.app)?.skills;
+      skills ??= [];
       this.seen.set(event.app, { v: event.v, tools: event.tools, components, skills });
     } else if (event.type === "app_disconnected") {
       this.told.delete(event.app);
