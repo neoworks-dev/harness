@@ -117,6 +117,9 @@ function parseThinkingLevel(value: string): ThinkingLevel {
 /** How many times Stop hooks may send the agent back to work in one turn. */
 const MAX_STOP_CONTINUES = 20;
 
+/** Tools only for coding: work on the computer goes without a shell. */
+const CODING_ONLY = new Set(["bash"]);
+
 function textOfReply(message: AssistantMessage | undefined): string {
   return (message?.content ?? [])
     .filter((part) => part.type === "text")
@@ -379,7 +382,9 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
           webToolsFor(params),
           skills,
           background,
-        ).filter((tool) => !definition || toolFilter(definition)(tool.name)),
+        )
+          .filter((tool) => !definition || toolFilter(definition)(tool.name))
+          .filter((tool) => params.work !== "computer" || !CODING_ONLY.has(tool.name)),
         messages,
         thinkingLevel: initial.thinkingLevel,
       },

@@ -1,17 +1,38 @@
 // Background services the daemon starts with itself (today: the lsp service), so their tools
 // work before any app opens. Each registers like an app over the bus; the daemon only owns the
 // process. NEO_SERVICES=none starts nothing. Services get NEO_DAEMON_PID and exit when that
-// process is gone, so a killed daemon doesn't leave them behind.
+// process is gone, so a killed daemon doesn't leave them behind. Which ones run follows what
+// the user does with neo (see servicesFor): the language servers are for coding.
 import { join } from "node:path";
 import type { Subprocess } from "bun";
 import type { Logger } from "./log.ts";
+import type { Work } from "@neoworks-dev/neo-protocol/types";
 
-export const DEFAULT_SERVICES: string[][] = [
-  [process.execPath, "run", join(import.meta.dir, "..", "..", "services", "lsp", "main.ts")],
+const LSP: string[] = [
+  process.execPath,
+  "run",
+  join(import.meta.dir, "..", "..", "services", "lsp", "main.ts"),
 ];
 
+export const DEFAULT_SERVICES: string[][] = [LSP];
+
+/** The services for a kind of work: everything for coding, no language servers otherwise. */
+export function servicesFor(work: Work): string[][] {
+  const services: string[][] = [];
+  if (work === "coding") services.push(...DEFAULT_SERVICES);
+  return services;
+}
+
 export interface Services {
+  /** Runs these and only these: starts the new ones, stops the ones not listed any more. */
+  set(commands: string[][]): void;
   stop(): Promise<void>;
+}
+
+async function end(proc: Subprocess): Promise<void> {
+  proc.kill("SIGTERM");
+  await Promise.race([proc.exited, Bun.sleep(3000)]);
+  if (proc.exitCode === null) proc.kill("SIGKILL");
 }
 
 export function startServices(
@@ -19,8 +40,8 @@ export function startServices(
   env: Record<string, string | undefined>,
   log: Logger,
 ): Services {
-  const procs: Subprocess[] = [];
-  for (const command of commands) {
+  const procs = new Map<string, Subprocess>();
+  const start = (command: string[]): void => {
     try {
       const proc = Bun.spawn(command, {
         env,
@@ -28,19 +49,30 @@ export function startServices(
         stdout: "ignore",
         stderr: "inherit",
       });
-      procs.push(proc);
+      procs.set(command.join("\0"), proc);
       void proc.exited.then((code) => {
         if (code !== 0 && code !== null) log.warn(`service ${command.join(" ")} exited (${code})`);
       });
     } catch (err) {
       log.warn(`can't start service ${command.join(" ")}: ${String(err)}`);
     }
-  }
-  return {
+  };
+  const services: Services = {
+    set(next) {
+      const keys = new Set(next.map((command) => command.join("\0")));
+      for (const [key, proc] of procs) {
+        if (keys.has(key)) continue;
+        procs.delete(key);
+        void end(proc);
+      }
+      for (const command of next) if (!procs.has(command.join("\0"))) start(command);
+    },
     async stop() {
-      for (const proc of procs) proc.kill("SIGTERM");
-      await Promise.all(procs.map((p) => Promise.race([p.exited, Bun.sleep(3000)])));
-      for (const proc of procs) if (proc.exitCode === null) proc.kill("SIGKILL");
+      const all = [...procs.values()];
+      procs.clear();
+      await Promise.all(all.map(end));
     },
   };
+  services.set(commands);
+  return services;
 }

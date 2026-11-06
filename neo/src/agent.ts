@@ -24,6 +24,7 @@ import type {
   ToolKind,
   Usage,
   UserNote,
+  Work,
 } from "@neoworks-dev/neo-protocol/types";
 import type { SafeSearch } from "@neoworks/websearch";
 import type { AgentInfo } from "./agents.ts";
@@ -159,6 +160,11 @@ export interface NewSessionParams {
   safeSearch?: () => SafeSearch | undefined;
   /** The user's own words for the system prompt (/system-prompt), after the rest of it. */
   promptAddition?: string;
+  /**
+   * What the user does with neo: for work on the computer (not coding) there is no shell.
+   * Absent: coding, every tool.
+   */
+  work?: Work;
   /**
    * Set when this session is a subagent of another (delegate): its hooks run as SubagentStop, not
    * Stop. `definition` names the agent definition (agents.ts) it runs as, if any.

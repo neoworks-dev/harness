@@ -1245,6 +1245,17 @@ pub struct UserSettings {
         skip_serializing_if = "Option::is_none"
     )]
     pub prompt_addition: Option<String>,
+    #[serde(rename = "work", default, skip_serializing_if = "Option::is_none")]
+    pub work: Option<Work>,
+}
+
+/// What the user does with neo, which decides neo's own tools and the services that run. coding: everything, the language servers too. computer: work on the computer (files, the web, other apps) without a shell or language servers. Absent from UserSettings: not chosen yet (coding meanwhile); apps ask on their first start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Work {
+    #[serde(rename = "coding")]
+    Coding,
+    #[serde(rename = "computer")]
+    Computer,
 }
 
 /// Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon.

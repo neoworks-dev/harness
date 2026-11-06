@@ -1031,7 +1031,16 @@ type UserSettings struct {
 	HideEdits *bool `json:"hideEdits,omitempty"`
 	// The user's own words that go into every agent's system prompt after the rest of it, from the conversation's start (/system-prompt). Absent: none. Apps that edit it start from this.
 	PromptAddition *string `json:"promptAddition,omitempty"`
+	Work           *Work   `json:"work,omitempty"`
 }
+
+// Work: What the user does with neo, which decides neo's own tools and the services that run. coding: everything, the language servers too. computer: work on the computer (files, the web, other apps) without a shell or language servers. Absent from UserSettings: not chosen yet (coding meanwhile); apps ask on their first start.
+type Work string
+
+const (
+	WorkCoding   Work = "coding"
+	WorkComputer Work = "computer"
+)
 
 // UiActionMessage: Client → daemon: a button was pressed (acked). The daemon runs app.tool actions as that app's tool when it is open, otherwise hands the action to the agent as input. copy: actions never reach the daemon.
 type UiActionMessage struct {

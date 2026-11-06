@@ -15,7 +15,7 @@ import { createEchoAgent } from "./echo-agent.ts";
 import { loadGuestConfigs } from "./guests/config.ts";
 import { createLogger, type Logger } from "./log.ts";
 import { resolvePaths } from "./paths.ts";
-import { DEFAULT_SERVICES, startServices } from "./services.ts";
+import { servicesFor, startServices } from "./services.ts";
 import { loadTheme } from "./theme.ts";
 
 async function createAgent(name: string, log: Logger): Promise<Agent> {
@@ -45,10 +45,15 @@ async function main(): Promise<void> {
     mcp: { configFile: join(neoConfigDir(), "config.json") },
   });
   log.info(`listening on ${paths.socket} and ${daemon.info.url}, data in ${paths.dataDir}`);
-  const commands: string[][] = [];
-  if (process.env.NEO_SERVICES !== "none") commands.push(...DEFAULT_SERVICES);
+  const wanted = (): string[][] => {
+    const commands: string[][] = [];
+    if (process.env.NEO_SERVICES !== "none") {
+      commands.push(...servicesFor(daemon.settings.work() ?? "coding"));
+    }
+    return commands;
+  };
   const services = startServices(
-    commands,
+    wanted(),
     {
       ...process.env,
       NEO_SOCKET: paths.socket,
@@ -56,6 +61,8 @@ async function main(): Promise<void> {
     },
     log,
   );
+  // What the user does with neo decides which services run.
+  daemon.settings.onToggle(() => services.set(wanted()));
 
   let stopping = false;
   const stop = async (signal: string): Promise<void> => {

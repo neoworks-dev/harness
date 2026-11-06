@@ -7,7 +7,7 @@
 // are the toggles /settings lists ("Show, don't tell.").
 // Nothing is set that the user didn't choose: each harness keeps its own defaults.
 import type { ConfigCategory, SafeSearch } from "@neoworks-dev/neo/agent";
-import type { SettingName, UserSettings } from "@neoworks-dev/neo-protocol/types";
+import type { SettingName, UserSettings, Work } from "@neoworks-dev/neo-protocol/types";
 import type { SessionStore } from "./store.ts";
 
 /** The settings that belong to a harness (approvals and harness are neo's own). */
@@ -55,6 +55,13 @@ export const SUBAGENTS: readonly Subagents[] = ["both", "delegate", "native"];
 
 export function parseSubagents(value: string): Subagents | undefined {
   return SUBAGENTS.find((kind) => kind === value);
+}
+
+/** What the user does with neo (see Work in the protocol). */
+export const WORKS: readonly Work[] = ["coding", "computer"];
+
+export function parseWork(value: string): Work | undefined {
+  return WORKS.find((work) => work === value);
 }
 
 /** A guest harness's own file tools, or neo's in their place. */
@@ -277,6 +284,17 @@ export class Settings {
     this.store.setMeta(metaKey("daemon", "steer"), on ? "on" : "off");
   }
 
+  /** What the user does with neo; undefined until they chose (then it is coding). */
+  work(): Work | undefined {
+    const value = this.store.getMeta(metaKey("daemon", "work"));
+    return value === undefined ? undefined : parseWork(value);
+  }
+
+  setWork(value: Work): void {
+    this.store.setMeta(metaKey("daemon", "work"), value);
+    this.togglesChanged();
+  }
+
   /** Which subagents the agents may start (both until the user picks). */
   subagents(): Subagents {
     const value = this.store.getMeta(metaKey("daemon", "subagents"));
@@ -322,6 +340,8 @@ export class Settings {
     };
     const addition = this.promptAddition();
     if (addition !== undefined) settings.promptAddition = addition;
+    const work = this.work();
+    if (work !== undefined) settings.work = work;
     return settings;
   }
 

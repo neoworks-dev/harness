@@ -432,6 +432,28 @@ test("the system prompt and tools are sent unchanged on every request", async ()
   expect(seen[1]).toEqual(seen[0]);
 });
 
+test("for work on the computer, not coding, there is no shell", async () => {
+  const tools: string[][] = [];
+  const model = fakeModel([
+    (context: { tools?: { name: string }[] }) => {
+      tools.push((context.tools ?? []).map((t) => t.name));
+      return reply("ok");
+    },
+  ]);
+  const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
+  const cwd = await tempDir();
+  const session = await agent.newSession({
+    sessionId: "s1",
+    cwd,
+    mcpServers: [],
+    work: "computer",
+  });
+  await run(session, "one");
+  expect(tools[0]).not.toContain("bash");
+  expect(tools[0]).toContain("read");
+  expect(tools[0]).toContain("web_search");
+});
+
 test("a session lists its skills in the system prompt, and the skill tool loads one", async () => {
   const root = await tempDir();
   const bundled = join(root, "bundled");

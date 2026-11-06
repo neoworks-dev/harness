@@ -331,6 +331,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       permissions.hook(sessionId, agent.name, () => sessions.stopTurn(sessionId)),
     safeSearch: () => settings.safeSearch(),
     promptAddition: () => settings.promptAddition(),
+    work: () => settings.work(),
     created: (sessionId) => {
       settings.inheritHarness(sessionId, (name) => name === agent.name || guests.has(name));
       // A new directory may bring its own .mcp.json.

@@ -21,6 +21,7 @@ import type {
   SessionInfo,
   TurnEnded,
   WaitingInput,
+  Work,
 } from "@neoworks-dev/neo-protocol/types";
 import type { ConnectorSnapshot } from "./gateway/registry.ts";
 import { handoffSummary } from "./handoff.ts";
@@ -193,6 +194,8 @@ export interface SessionManagerOptions {
   safeSearch?: () => SafeSearch | undefined;
   /** The user's words for the agent's system prompt (see Settings.promptAddition). */
   promptAddition?: () => string | undefined;
+  /** What the user does with neo (see Settings.work); undefined: not chosen, coding. */
+  work?: () => Work | undefined;
   /** Called for each new session (it may start on a harness the user chose before). */
   created?: (sessionId: string) => void;
   /**
@@ -928,6 +931,9 @@ export class SessionManager {
     // The user's words for the system prompt (an ACP harness gets them from its adapter).
     const addition = isDefault ? this.options.promptAddition?.() : undefined;
     if (addition !== undefined) params.promptAddition = addition;
+    // What the user does with neo decides neo's own tools; an ACP harness keeps its own.
+    const work = isDefault ? this.options.work?.() : undefined;
+    if (work !== undefined) params.work = work;
     const { backgroundEnded } = this.options;
     if (isDefault && backgroundEnded) {
       params.backgroundEnded = (text) => backgroundEnded(sessionId, text);

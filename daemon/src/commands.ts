@@ -45,11 +45,13 @@ import {
   parseApprovals,
   parseSafeSearch,
   parseSubagents,
+  parseWork,
   SAFE_SEARCH,
   SUBAGENTS,
   type Settings,
   type TitleModel,
   titleModelText,
+  WORKS,
 } from "./settings.ts";
 import type { Titles } from "./titles.ts";
 
@@ -465,6 +467,19 @@ export class Commands {
   private toggles(session: string): Toggle[] {
     const { settings } = this.parts;
     return [
+      {
+        id: "work",
+        name: "What you do with neo",
+        description:
+          "Coding: everything, language servers too. Computer: files, web, apps; no shell",
+        values: WORKS,
+        get: () => settings.work() ?? "coding",
+        set: (value) => {
+          const work = parseWork(value);
+          if (work !== undefined) settings.setWork(work);
+        },
+        after: () => NEW_CONVERSATIONS,
+      },
       {
         id: "show-dont-tell",
         name: "Show, don't tell.",

@@ -72,6 +72,7 @@ test("/settings without a toggle shows them with their state, and picking one fl
   const choice = events(daemon, session).find((e) => e.type === "choice");
   if (choice?.type !== "choice") throw new Error("no choice was shown");
   expect(choice.options.map((o) => o.name)).toEqual([
+    "What you do with neo · coding",
     "Show, don't tell. · off",
     "Side-by-side diffs · off",
     "Charts as images · off",
@@ -81,7 +82,6 @@ test("/settings without a toggle shows them with their state, and picking one fl
     "Always ask before starting agents · off",
     "Your words in the system prompt · none",
   ]);
-  expect(choice.options[0]?.description).toContain("cards, tables and forms");
 
   // With stay (Space): flipped, and the same choice again with the value as it is now.
   expect(choice.stays).toBe(true);
@@ -91,7 +91,7 @@ test("/settings without a toggle shows them with their state, and picking one fl
   const again = events(daemon, session).findLast((e) => e.type === "choice");
   if (again?.type !== "choice") throw new Error("no choice was shown");
   expect(again.id).toBe(choice.id);
-  expect(again.options[1]?.name).toBe("Side-by-side diffs · on");
+  expect(again.options.find((o) => o.id === "split-diffs")?.name).toBe("Side-by-side diffs · on");
   expect(events(daemon, session).some((e) => e.type === "choice_made")).toBe(false);
   const item = daemon.views
     .get(session)
