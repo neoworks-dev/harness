@@ -130,6 +130,7 @@ impl App {
             Overlay::Help => self.overlay = Overlay::None,
             Overlay::Switcher => self.switcher_key(key, &mut fx),
             Overlay::Marks => self.marks_key(key, &mut fx),
+            Overlay::Setup => self.setup_key(key, &mut fx),
             Overlay::None if self.note.is_some() => self.note_key(key, &mut fx),
             Overlay::None => match self.focus {
                 Some(focus) => self.panel_key(focus, key, &mut fx),
@@ -285,6 +286,7 @@ impl App {
                 .filter(|c| !c.is_control())
                 .for_each(|c| self.switcher.type_char(c)),
             Overlay::Help | Overlay::Marks => self.overlay = Overlay::None,
+            Overlay::Setup => {}
             Overlay::None if self.note.is_some() => {
                 if let Some(note) = self.note.as_mut() {
                     note.text.extend(text.chars().filter(|c| !c.is_control()));

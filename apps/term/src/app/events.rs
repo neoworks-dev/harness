@@ -16,6 +16,7 @@ impl App {
                 self.chart_images = settings.chart_images == Some(true);
                 self.hide_edits = settings.hide_edits == Some(true);
                 self.prompt_addition = settings.prompt_addition;
+                self.maybe_ask_work(settings.work.is_some());
             }
             Event::SessionChanged(info) => {
                 if info.id == self.session {

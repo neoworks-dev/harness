@@ -80,6 +80,10 @@ impl App {
                     self.draw_chat(frame, areas.chat);
                     self.draw_marks(frame, areas.chat);
                 }
+                Overlay::Setup => {
+                    self.draw_chat(frame, areas.chat);
+                    self.draw_setup(frame, areas.chat);
+                }
             }
             menus = true;
         }

@@ -54,6 +54,7 @@ mod draw;
 mod draw_input;
 mod draw_status;
 mod events;
+mod setup;
 mod focus;
 mod keys;
 mod layout;
@@ -253,6 +254,8 @@ enum Overlay {
     Switcher,
     /// The marked sessions (Alt-').
     Marks,
+    /// The first start's question: what the user does with neo.
+    Setup,
 }
 
 /// What has the keyboard besides the editor.
@@ -464,6 +467,10 @@ pub struct App {
     marks: Vec<String>,
     /// The row the marks list is on.
     marks_sel: usize,
+    /// The choice selected in the first start's question.
+    setup_sel: usize,
+    /// The first start's question was asked: not again while this runs.
+    setup_asked: bool,
     /// The last key was Ctrl-G: a digit now shows a marked chat.
     after_ctrl_g: bool,
     /// The sessions sidebar is switched on (it still needs a wide enough terminal).
@@ -602,6 +609,8 @@ impl App {
             sessions: Sessions::default(),
             marks,
             marks_sel: 0,
+            setup_sel: 0,
+            setup_asked: false,
             after_ctrl_g: false,
             sessions_on: true,
             sessions_shown: false,

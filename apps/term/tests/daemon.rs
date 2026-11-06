@@ -160,6 +160,13 @@ impl Ui {
         self.driver.run(fx);
     }
 
+    /// A fresh daemon has no answer to what neo is for: the first start asks; coding.
+    fn answer_setup(&mut self) {
+        self.until("the first start's question", |s| s.contains("Welcome to Neo"));
+        self.key(KeyCode::Enter);
+        self.until("the question gone", |s| !s.contains("Welcome to Neo"));
+    }
+
     fn type_line(&mut self, text: &str) {
         for c in text.chars() {
             self.key(KeyCode::Char(c));
@@ -176,6 +183,7 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
     let work = TempDir::new("work");
     let cwd = work.0.to_string_lossy().into_owned();
     let mut ui = Ui::new(daemon.open(&cwd, Args::default()));
+    ui.answer_setup();
     let first_session = ui.app.session().to_string();
 
     // The chat view of the new session arrives; the status line names the directory.
@@ -304,6 +312,7 @@ fn a_second_terminal_registers_under_its_own_name_and_resumes_the_session() {
     let work = TempDir::new("work2");
     let cwd = work.0.to_string_lossy().into_owned();
     let mut first = Ui::new(daemon.open(&cwd, Args::default()));
+    first.answer_setup();
     first.until("session", |s| s.contains("enter send"));
     first.type_line("one");
     first.until("echo", |s| s.contains("echo #1: one"));

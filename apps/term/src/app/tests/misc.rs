@@ -165,7 +165,7 @@ fn a_chat_opened_with_its_latest_items_pages_in_older_ones() {
 fn system_prompt_alone_puts_the_words_there_now_in_the_editor() {
     let mut app = app();
     let settings: neo_protocol::UserSettings = serde_json::from_value(json!({
-        "showDontTell": false, "splitDiffs": false, "promptAddition": "Be brief."
+        "showDontTell": false, "splitDiffs": false, "promptAddition": "Be brief.", "work": "coding"
     }))
     .unwrap();
     app.handle_event(Event::UserSettings(settings));
@@ -177,6 +177,45 @@ fn system_prompt_alone_puts_the_words_there_now_in_the_editor() {
     let fx = app.handle_key(key(KeyCode::Enter));
     assert!(
         matches!(&fx[..], [Effect::Input { text, .. }] if text == "/system-prompt Be brief."),
+        "{fx:?}"
+    );
+}
+
+#[test]
+fn the_first_start_asks_what_neo_is_for_once() {
+    let settings = |work: Option<&str>| {
+        let mut value = json!({"showDontTell": false, "splitDiffs": false});
+        if let Some(work) = work {
+            value["work"] = json!(work);
+        }
+        Event::UserSettings(serde_json::from_value(value).unwrap())
+    };
+    // Chosen before: not asked.
+    let mut app = app();
+    app.handle_event(settings(Some("computer")));
+    assert_ne!(app.overlay, Overlay::Setup);
+
+    // Not yet: asked; Down and Enter pick the second, which the daemon is told.
+    let mut app = self::app();
+    app.handle_event(settings(None));
+    assert_eq!(app.overlay, Overlay::Setup);
+    app.handle_key(key(KeyCode::Down));
+    let fx = app.handle_key(key(KeyCode::Enter));
+    assert!(
+        matches!(&fx[..], [Effect::Input { text, .. }] if text == "/settings work computer"),
+        "{fx:?}"
+    );
+    assert_eq!(app.overlay, Overlay::None);
+    // The daemon's settings again, before it has the choice: not asked twice.
+    app.handle_event(settings(None));
+    assert_eq!(app.overlay, Overlay::None);
+
+    // Esc keeps the first, coding.
+    let mut app = self::app();
+    app.handle_event(settings(None));
+    let fx = app.handle_key(key(KeyCode::Esc));
+    assert!(
+        matches!(&fx[..], [Effect::Input { text, .. }] if text == "/settings work coding"),
         "{fx:?}"
     );
 }
