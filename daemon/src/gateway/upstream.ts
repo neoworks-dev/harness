@@ -13,10 +13,12 @@ import {
   ToolListChangedNotificationSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { McpEndpoint } from "@neoworks-dev/neo-protocol/types";
-import type { StoredTool } from "../store.ts";
+import type { StoredSkill, StoredTool } from "../store.ts";
 
 export interface Upstream {
   listTools(): Promise<StoredTool[]>;
+  /** Its skills: the prompts it offers that take no arguments, with their text. */
+  listSkills(): Promise<StoredSkill[]>;
   instructions(): string | undefined;
   call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<CallToolResult>;
   /** Called when the app announces that its tool list changed. */
@@ -146,6 +148,34 @@ function upstreamOf(client: Client, closing?: () => void): Upstream {
         cursor = page.nextCursor;
       } while (cursor !== undefined);
       return tools;
+    },
+    async listSkills() {
+      if (client.getServerCapabilities()?.prompts === undefined) return [];
+      const skills: StoredSkill[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await client.listPrompts(cursor === undefined ? undefined : { cursor }, {
+          timeout: TIMEOUT_MS,
+        });
+        for (const prompt of page.prompts) {
+          // One that takes arguments is a template to fill in, not instructions to read.
+          if ((prompt.arguments ?? []).some((a) => a.required === true)) continue;
+          const got = await client.getPrompt({ name: prompt.name }, { timeout: TIMEOUT_MS });
+          const parts: string[] = [];
+          for (const m of got.messages) {
+            if (m.content.type === "text" && m.content.text.trim() !== "")
+              parts.push(m.content.text);
+          }
+          const text = parts.join("\n\n");
+          let description = prompt.description;
+          if (description === undefined) description = got.description;
+          description = description?.trim();
+          if (text === "" || description === undefined || description === "") continue;
+          skills.push({ name: prompt.name, description, text });
+        }
+        cursor = page.nextCursor;
+      } while (cursor !== undefined);
+      return skills;
     },
     instructions: () => client.getInstructions(),
     async call(name, args, signal) {

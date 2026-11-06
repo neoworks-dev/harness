@@ -250,6 +250,10 @@ export class Gateway {
         if (names !== undefined && names.length > 0) return text(uiLookupText(all, open, names));
         return text(uiLibraryText(all, open));
       }
+      case "skills_load":
+        if (typeof args.app !== "string") return text("skills_load: app is required", true);
+        if (typeof args.name !== "string") return text("skills_load: name is required", true);
+        return this.loadSkill(args.app, args.name);
       case "todos":
         if (!this.options.todos || session === undefined) {
           return text("There is no shared todo list here.", true);
@@ -384,6 +388,23 @@ export class Gateway {
       .map((e) => `${e.instancePath || "(root)"} ${e.message ?? "is invalid"}`)
       .join("; ");
     return `Invalid arguments for ${connector.app}.${tool.name}: ${errors}. Input schema: ${JSON.stringify(tool.inputSchema)}`;
+  }
+
+  /** An open app's skill, its text; an unknown one says which there are. */
+  private loadSkill(app: string, name: string): CallToolResult {
+    const connector = this.registry.connector(app);
+    if (!connector) return text(`No connector named "${app}". Known: ${this.knownApps()}.`, true);
+    if (!this.registry.isOpen(app)) return text(closedMessage(connector), true);
+    const skills = connector.skills ?? [];
+    const skill = skills.find((s) => s.name === name);
+    if (skill) return text(skill.text);
+    const known = skills.map((s) => s.name).join(", ");
+    return text(
+      known === ""
+        ? `${displayName(connector)} has no skills.`
+        : `${displayName(connector)} has no skill "${name}". Its skills: ${known}.`,
+      true,
+    );
   }
 
   private async launch({ app }: AppArgs): Promise<CallToolResult> {

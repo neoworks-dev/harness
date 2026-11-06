@@ -1,11 +1,10 @@
 import { expect, test } from "bun:test";
 import { check, COMPONENTS } from "@neoworks/neoui";
-import { UI_BRIEF } from "@neoworks-dev/neo/ui-brief";
 import { GUIDANCE, uiLibraryText, uiLookupText } from "../src/gateway/ui-library.ts";
 
-test("the neoui the brief and the guidance write evaluates without errors", () => {
+test("the neoui the library writes evaluates without errors", () => {
   // Elements written inline: `<Progress value={0.72} label="used"/>`.
-  const inline = [...`${UI_BRIEF}\n${GUIDANCE}`.matchAll(/`(<[A-Z][^`]*\/>)`/g)].map(
+  const inline = [...uiLibraryText({}, new Set()).matchAll(/`(<[A-Z][^`]*\/>)`/g)].map(
     (m) => m[1] ?? "",
   );
   expect(inline.length).toBeGreaterThan(0);
@@ -18,9 +17,9 @@ test("the neoui the brief and the guidance write evaluates without errors", () =
   expect(GUIDANCE).not.toContain("```openui");
 });
 
-test("the brief names every component and stays short; the reference is on demand", () => {
-  for (const c of COMPONENTS.filter((c) => !c.virtual)) expect(UI_BRIEF).toContain(c.name);
-  expect(UI_BRIEF.length / 3.6).toBeLessThan(450);
+test("the whole library names every component; the guidance before it stays short", () => {
+  const all = uiLibraryText({}, new Set());
+  for (const c of COMPONENTS.filter((c) => !c.virtual)) expect(all).toContain(c.name);
   expect(GUIDANCE.length / 3.6).toBeLessThan(450);
 });
 

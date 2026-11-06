@@ -4,8 +4,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { SessionEvent, ViewItem } from "@neoworks-dev/neo-protocol/types";
-import { SYSTEM_PROMPT } from "../../neo/src/system-prompt.ts";
-import { UI_BRIEF } from "../../neo/src/ui-brief.ts";
+import { CORE_PROMPT, SYSTEM_PROMPT } from "../../neo/src/system-prompt.ts";
 import { loadGuestConfigs } from "../src/guests/config.ts";
 import {
   describeCall,
@@ -170,7 +169,7 @@ describe("delegate", () => {
       session,
     );
     expect(JSON.parse((config.content[0] as { text: string }).text)).toEqual({
-      instructions: "You're working as a guest in a suite of ",
+      instructions: GUEST_PROMPT.slice(0, 40),
       // Claude Code's own subagents are off: delegate hands work on.
       disallowed: ["Agent", "Task"],
       config: {},
@@ -973,12 +972,13 @@ describe("/approvals", () => {
   });
 });
 
-test("every prompt tells the harness about UI the same way: the brief", () => {
-  expect(GUEST_PROMPT).toContain(UI_BRIEF);
-  expect(MAIN_PROMPT).toContain(UI_BRIEF);
-  // neo's own prompt says the same, word for word.
-  expect(SYSTEM_PROMPT).toContain(UI_BRIEF);
-  expect(GUEST_PROMPT).toContain("components=…");
+test("every agent gets neo's core prompt, word for word, and its role", () => {
+  expect(GUEST_PROMPT).toStartWith(CORE_PROMPT);
+  expect(MAIN_PROMPT).toStartWith(CORE_PROMPT);
+  expect(SYSTEM_PROMPT).toStartWith(CORE_PROMPT);
+  expect(GUEST_PROMPT).toContain("You're a subagent");
+  expect(MAIN_PROMPT).toContain("You're the session's main agent");
+  expect(GUEST_PROMPT).toContain('"neo" MCP server');
 });
 
 test("a harness resumes its last conversation, unless the context was cleared since", () => {

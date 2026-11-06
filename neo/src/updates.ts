@@ -78,6 +78,8 @@ function describeToolCall(name: string, args: unknown): { title: string; kind: T
       return { title: "update todos", kind: "think" };
     case "skill":
       return { title: `skill ${stringArg(args, "name")}`, kind: "other" };
+    case "skills_load":
+      return { title: `skill ${stringArg(args, "app")}/${stringArg(args, "name")}`, kind: "other" };
     case "delegate": {
       const task = stringArg(args, "task").split("\n")[0] ?? "";
       return {
@@ -119,7 +121,9 @@ function imagesOf(content: unknown, details: unknown): ToolCallContent[] {
  */
 function shownText(toolName: string, output: string, details: unknown): string {
   // The library is for the model too: the chat says it was read.
-  if (toolName === "ui_library") return `${output.split("\n").length} lines`;
+  if (toolName === "ui_library" || toolName === "skills_load") {
+    return `${output.split("\n").length} lines`;
+  }
   if (!isRecord(details)) return output;
   if (toolName === "web_fetch" && typeof details.lines === "number") {
     const parts = [`${details.lines} lines`];

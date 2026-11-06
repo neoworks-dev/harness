@@ -29,6 +29,7 @@ const LABELS: Record<CoreToolName, string> = {
   wait: "Wait",
   todos: "Todos",
   ui_library: "UI library",
+  skills_load: "Load skill",
 };
 
 // A guest can work for a long time, and a wait lasts up to an hour; cancelling the turn aborts

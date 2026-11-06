@@ -5,9 +5,20 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import {
   type CallToolResult,
   CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
   ListToolsRequestSchema,
+  type Prompt,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
+
+/** A prompt the app offers: a skill when it takes no arguments. */
+export interface AppPrompt {
+  name: string;
+  description: string;
+  text: string;
+  arguments?: Prompt["arguments"];
+}
 import type { McpEndpoint } from "@neoworks-dev/neo-protocol/types";
 
 export interface AppTool {
@@ -25,8 +36,13 @@ export interface McpApp {
   close(): Promise<void>;
 }
 
-export function startMcpApp(options: { tools: AppTool[]; instructions?: string }): McpApp {
+export function startMcpApp(options: {
+  tools: AppTool[];
+  instructions?: string;
+  prompts?: AppPrompt[];
+}): McpApp {
   let tools = options.tools;
+  const prompts = options.prompts;
   const calls: McpApp["calls"] = [];
   const sessions = new Map<
     string,
@@ -35,10 +51,28 @@ export function startMcpApp(options: { tools: AppTool[]; instructions?: string }
   const token = crypto.randomUUID();
 
   const createServer = (): Server => {
+    const capabilities: Record<string, unknown> = { tools: { listChanged: true } };
+    if (prompts) capabilities.prompts = {};
     const server = new Server(
       { name: "test-app", version: "1.0.0" },
-      { capabilities: { tools: { listChanged: true } }, instructions: options.instructions },
+      { capabilities, instructions: options.instructions },
     );
+    if (prompts) {
+      server.setRequestHandler(ListPromptsRequestSchema, () => ({
+        prompts: prompts.map(({ name, description, arguments: args }) => ({
+          name,
+          description,
+          arguments: args,
+        })),
+      }));
+      server.setRequestHandler(GetPromptRequestSchema, (req) => {
+        const prompt = prompts.find((p) => p.name === req.params.name);
+        if (!prompt) throw new Error(`no prompt ${req.params.name}`);
+        return {
+          messages: [{ role: "user", content: { type: "text", text: prompt.text } }],
+        };
+      });
+    }
     server.setRequestHandler(ListToolsRequestSchema, () => ({
       tools: tools.map(({ name, description, inputSchema, outputSchema }) => {
         const listed: Tool = { name, description, inputSchema: { type: "object", ...inputSchema } };

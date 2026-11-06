@@ -1,7 +1,7 @@
 // What an agent has been told about connectors and focus, and the events that bring it up to date.
 // The session's own agent learns it from the session log; each guest keeps its own copy.
 import type { ContextEvent } from "@neoworks-dev/neo/agent";
-import type { AppConnected, SessionEvent } from "@neoworks-dev/neo-protocol/types";
+import type { AppConnected, AppSkill, SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import type { ConnectorSnapshot } from "./gateway/registry.ts";
 
 export interface FocusTarget {
@@ -28,8 +28,11 @@ export interface ShowDontTellSetting {
 export class ToldState {
   /** What the agent thinks is open: app → version it was told about. */
   private readonly told = new Map<string, number>();
-  /** Every connector it ever heard of (open or not): the last version, tools and components. */
-  private readonly seen = new Map<string, { v: number; tools: string[]; components: string[] }>();
+  /** Every connector it ever heard of (open or not): the last version, tools, components and skills. */
+  private readonly seen = new Map<
+    string,
+    { v: number; tools: string[]; components: string[]; skills: AppSkill[] }
+  >();
   /** The last focus it was told. */
   private focus?: FocusTarget;
   /** Whether it was last asked to show, not tell (never asked: it wasn't). */
@@ -51,7 +54,8 @@ export class ToldState {
       let components = event.components;
       if (components === undefined) components = this.seen.get(event.app)?.components;
       components ??= [];
-      this.seen.set(event.app, { v: event.v, tools: event.tools, components });
+      const skills = event.skills ?? this.seen.get(event.app)?.skills ?? [];
+      this.seen.set(event.app, { v: event.v, tools: event.tools, components, skills });
     } else if (event.type === "app_disconnected") {
       this.told.delete(event.app);
     } else if (event.type === "focus_changed") {
@@ -90,10 +94,13 @@ export class ToldState {
       };
       const before = this.seen.get(c.app);
       const components = c.components ?? [];
+      const skills = c.skills ?? [];
       if (!before) {
-        // First time it hears of it: say what it is for, and what it adds to the UI library.
+        // First time it hears of it: say what it is for, what it adds to the UI library and
+        // the skills it has.
         if (c.description !== undefined) event.description = c.description;
         if (components.length > 0) event.components = components;
+        if (skills.length > 0) event.skills = skills;
       } else if (before.v === c.v) {
         event.reconnect = true;
       } else {
@@ -101,6 +108,7 @@ export class ToldState {
         if (before.components.join("\0") !== components.join("\0")) {
           event.components = components;
         }
+        if (JSON.stringify(before.skills) !== JSON.stringify(skills)) event.skills = skills;
         const added = c.tools.filter((t) => !before.tools.includes(t));
         const removed = before.tools.filter((t) => !c.tools.includes(t));
         if (added.length > 0) event.added = added;

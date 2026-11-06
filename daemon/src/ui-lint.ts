@@ -1,6 +1,6 @@
 // UI that runs long or is written wrong (docs/neoui.md). The library asks for a few words per title
-// and label and a short line per subtitle; an agent that knows the components by name only (neo's
-// UI_BRIEF) may guess an attribute. When a turn ends, the main agent's neoui blocks in it are
+// and label and a short line per subtitle; an agent that knows the components by name only (it
+// didn't look them up with ui_library) may guess an attribute. When a turn ends, the main agent's neoui blocks in it are
 // measured and evaluated, and what ran long and what was wrong are told to the agent with its next
 // prompt (a user_note, not shown in the chat), a mistake with what its component takes.
 import {

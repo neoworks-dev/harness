@@ -38,7 +38,7 @@ import { NotFoundError, type SessionManager } from "./sessions.ts";
 import {
   APPROVALS,
   CATEGORIES,
-  type GuestPrompt,
+  type GuestTools,
   type HarnessSettingName,
   isSettingName,
   nextApprovals,
@@ -142,7 +142,7 @@ function onOff(
 /** Said when a setting about subagents changed: the agents running now keep how they started. */
 const NEXT_START = "Agents already running keep theirs until they start again (/new, or /clear).";
 
-const GUEST_PROMPTS: readonly GuestPrompt[] = ["own", "neo"];
+const GUEST_TOOLS: readonly GuestTools[] = ["own", "neo"];
 
 /** Said when a system prompt setting changed: it is read when a conversation starts. */
 const NEW_CONVERSATIONS =
@@ -554,43 +554,30 @@ export class Commands {
           set: (text) => void this.systemPrompt(session, text.trim() === "" ? "clear" : text),
         },
       },
+      // Each guest whose settings neo can change, a group of its own.
       ...this.parts.guests.names().flatMap((name): Toggle[] => {
-        if (!this.parts.guests.replacesPrompt(name)) return [];
+        if (!this.parts.guests.swapsFileTools(name)) return [];
         const title = this.parts.guests.title(name);
-        const own: Toggle = {
-          id: `${name}-prompt`,
-          name: `${title}'s system prompt`,
-          description: `${title}'s own (neo's words for guests after it), or neo's in its place`,
-          values: GUEST_PROMPTS,
-          get: () => settings.guestPrompt(name),
-          set: (value) => settings.setGuestPrompt(name, value === "neo" ? "neo" : "own"),
-          after: () => NEW_CONVERSATIONS,
-        };
-        const group = (menu: Toggle[]): Toggle[] => [
-          {
-            id: name,
-            name: title,
-            description:
-              menu.length > 1
-                ? `${title}'s system prompt and file tools`
-                : `${title}'s system prompt`,
-            values: [],
-            get: () => "",
-            set: () => {},
-            menu,
-          },
-        ];
-        if (!this.parts.guests.swapsFileTools(name)) return group([own]);
         const tools: Toggle = {
           id: `${name}-tools`,
           name: `${title}'s file tools`,
           description: "Its own Read, Edit and Write, or neo's hashline read, edit and write",
-          values: GUEST_PROMPTS,
+          values: GUEST_TOOLS,
           get: () => settings.guestTools(name),
           set: (value) => settings.setGuestTools(name, value === "neo" ? "neo" : "own"),
           after: () => NEW_CONVERSATIONS,
         };
-        return group([own, tools]);
+        return [
+          {
+            id: name,
+            name: title,
+            description: `${title}'s file tools`,
+            values: [],
+            get: () => "",
+            set: () => {},
+            menu: [tools],
+          },
+        ];
       }),
     ];
   }

@@ -307,7 +307,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
     if (wanted !== undefined && !definition)
       throw new Error(`There is no agent named "${wanted}".`);
     // A subagent can't delegate, so it isn't told of the agents.
-    let basePrompt = systemPrompt(skills);
+    let basePrompt = systemPrompt(skills, "", true);
     if (!params.subagent) basePrompt = systemPrompt(skills, agentsPrompt(definitions));
     // The user's own words come last.
     if (params.promptAddition !== undefined) basePrompt += `\n\n${params.promptAddition}`;

@@ -1,12 +1,12 @@
 // The user's words in every agent's system prompt (/system-prompt), a guest's own system prompt
-// given way to neo's, and neo's file tools in place of Claude Code's (/settings).
+// with neo's core prompt after it, and neo's file tools in place of Claude Code's (/settings).
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
-import { SYSTEM_PROMPT } from "@neoworks-dev/neo/system-prompt";
 import type { GuestConfig } from "../src/guests/guests.ts";
+import { MAIN_PROMPT } from "../src/guests/prompt.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { FakeAgent } from "./fake-agent.ts";
 
@@ -104,16 +104,20 @@ describe("the system prompt", () => {
     expect(daemon.settings.userSettings().promptAddition).toBeUndefined();
   });
 
-  test("a guest's own system prompt gives way to neo's, the user's words after it", async () => {
-    const { daemon } = await setup();
-    const session = daemon.sessions.create({}).id;
-    expect((await prompts(daemon)).systemPrompt).toBeUndefined();
-    await daemon.commands.run(session, "/settings fake-prompt neo");
-    await daemon.commands.run(session, "/system-prompt Be brief.");
-    const got = await prompts(daemon);
-    expect(got.systemPrompt).toBe(SYSTEM_PROMPT.slice(0, 30));
-    expect(got.systemPromptEnd).toEndWith(".\n\nBe brief.");
-  });
+  for (const adapter of ["claude", "codex"] as const) {
+    test(`${adapter}: a guest keeps its own system prompt, neo's core prompt after it`, async () => {
+      const { daemon } = await setup({ adapter, env: { CODEX_CONFIG: "{}" } });
+      const session = daemon.sessions.create({}).id;
+      await daemon.commands.run(session, "/system-prompt Be brief.");
+      const got = await prompts(daemon);
+      // Nothing in place of its own, Claude Code's or Codex's.
+      expect(got.systemPrompt).toBeUndefined();
+      expect(got.base).toBeUndefined();
+      // The session's own harness: neo's prompt for a main agent, then the user's words.
+      expect(got.instructionsEnd).toBe(`${MAIN_PROMPT}\n\nBe brief.`.slice(-20));
+      expect(await refused(daemon, session, "/settings fake-prompt neo")).toBe(true);
+    });
+  }
 
   test("/settings asks for the user's words and groups a guest's settings", async () => {
     const { daemon } = await setup();
@@ -148,14 +152,10 @@ describe("the system prompt", () => {
     expect(shown().options.at(-1)).toMatchObject({ id: "fake", name: "Fake ›" });
     await pick({ option: "fake", stay: true });
     expect(shown().title).toBe("Settings › Fake");
-    expect(shown().options.map((o) => o.name)).toEqual([
-      "‹ Back",
-      "Fake's system prompt · own",
-      "Fake's file tools · own",
-    ]);
+    expect(shown().options.map((o) => o.name)).toEqual(["‹ Back", "Fake's file tools · own"]);
     await pick({ option: "fake-tools", stay: true });
     expect(daemon.settings.guestTools("fake")).toBe("neo");
-    expect(shown().options[2]?.name).toBe("Fake's file tools · neo");
+    expect(shown().options[1]?.name).toBe("Fake's file tools · neo");
     await pick({ option: "back", stay: true });
     expect(shown().title).toBe("Settings (pick one to change it)");
     // Emptied, the words are out.
@@ -164,14 +164,9 @@ describe("the system prompt", () => {
     expect(events(daemon, session).some((e) => e.type === "choice_made")).toBe(false);
   });
 
-  test("Codex takes neo's prompt as its base instructions", async () => {
+  test("Codex's file tools aren't neo's to swap", async () => {
     const { daemon } = await setup({ adapter: "codex", env: { CODEX_CONFIG: "{}" } });
     const session = daemon.sessions.create({}).id;
-    expect((await prompts(daemon)).base).toBeUndefined();
-    await daemon.commands.run(session, "/settings fake-prompt neo");
-    const got = await prompts(daemon);
-    expect(got.base).toBe(SYSTEM_PROMPT.slice(0, 30));
-    // Codex's file tools aren't neo's to swap.
     expect(await refused(daemon, session, "/settings fake-tools neo")).toBe(true);
   });
 
@@ -214,9 +209,9 @@ describe("the system prompt", () => {
     expect(stale.isError).toBe(true);
   });
 
-  test("a guest without a known adapter keeps its prompt and isn't listed", async () => {
+  test("a guest without a known adapter has no settings of neo's", async () => {
     const { daemon } = await setup({ adapter: undefined });
     const session = daemon.sessions.create({}).id;
-    expect(await refused(daemon, session, "/settings fake-prompt neo")).toBe(true);
+    expect(await refused(daemon, session, "/settings fake-tools neo")).toBe(true);
   });
 });

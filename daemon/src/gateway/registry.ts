@@ -11,12 +11,13 @@ import {
 } from "@neoworks/neoui";
 import type {
   AppPresence,
+  AppSkill,
   ConnectorInfo,
   ConnectorKind,
   McpEndpoint,
 } from "@neoworks-dev/neo-protocol/types";
 import type { Logger } from "../log.ts";
-import type { SessionStore, StoredConnector, StoredTool } from "../store.ts";
+import type { SessionStore, StoredConnector, StoredSkill, StoredTool } from "../store.ts";
 import type { ConnectUpstream, Upstream } from "./upstream.ts";
 
 /** An open connector as sessions are told about it. */
@@ -30,6 +31,8 @@ export interface ConnectorSnapshot {
   components?: string[];
   /** One line for the agent: the presence's description, else the instructions' first sentence. */
   description?: string;
+  /** Its skills, by name and when to load them. */
+  skills?: AppSkill[];
 }
 
 /** The first sentence (or line) of an MCP server's instructions, kept short. */
@@ -55,11 +58,16 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function hashOf(tools: StoredTool[], instructions: string | undefined): string {
+function hashOf(
+  tools: StoredTool[],
+  instructions: string | undefined,
+  skills: StoredSkill[],
+): string {
   const sorted = [...tools].sort((a, b) => a.name.localeCompare(b.name));
-  return createHash("sha256")
-    .update(JSON.stringify({ tools: sorted, instructions }))
-    .digest("hex");
+  const what: Record<string, unknown> = { tools: sorted, instructions };
+  // Without skills, the hash an app had before there were any.
+  if (skills.length > 0) what.skills = [...skills].sort((a, b) => a.name.localeCompare(b.name));
+  return createHash("sha256").update(JSON.stringify(what)).digest("hex");
 }
 
 function sameEndpoint(a: McpEndpoint | undefined, b: McpEndpoint | undefined): boolean {
@@ -236,6 +244,9 @@ export class ConnectorRegistry {
       else if (instructions !== undefined && instructions.trim() !== "") {
         snapshot.description = firstSentence(instructions);
       }
+      if (connector.skills?.length) {
+        snapshot.skills = connector.skills.map(({ name, description }) => ({ name, description }));
+      }
       out.push(snapshot);
     }
     return out;
@@ -318,16 +329,19 @@ export class ConnectorRegistry {
     if (!live.upstream) return;
     try {
       const tools = await live.upstream.listTools();
+      const skills = await live.upstream.listSkills();
       const record = this.stored.get(app);
       if (this.live.get(app) !== live || !record) return;
       const instructions = live.upstream.instructions();
-      const hash = hashOf(tools, instructions);
+      const hash = hashOf(tools, instructions, skills);
       if (record.schemaHash !== hash) {
         record.v += 1;
         record.schemaHash = hash;
         record.tools = tools;
         if (instructions === undefined) delete record.instructions;
         else record.instructions = instructions;
+        if (skills.length === 0) delete record.skills;
+        else record.skills = skills;
         this.store.saveConnector(record);
         this.log.info(`${app}: ${tools.length} tools, v${record.v}`);
       }

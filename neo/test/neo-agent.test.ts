@@ -426,6 +426,7 @@ test("the system prompt and tools are sent unchanged on every request", async ()
       "wait",
       "todos",
       "ui_library",
+      "skills_load",
     ],
   });
   expect(seen[1]).toEqual(seen[0]);

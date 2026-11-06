@@ -58,6 +58,17 @@ export interface StoredConnector {
   templates?: Record<string, unknown>;
   /** The neoui components it offers, by name (written `app.Name`). */
   components?: Record<string, AppComponent>;
+  /** Its skills: the MCP prompts it offers that take no arguments. */
+  skills?: StoredSkill[];
+}
+
+/** Instructions for work in an app, loaded by an agent when the work calls for them. */
+export interface StoredSkill {
+  name: string;
+  /** When to load it: what the agent is told when the app connects. */
+  description: string;
+  /** What skills_load returns. */
+  text: string;
 }
 
 export interface StoredTool {

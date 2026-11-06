@@ -54,7 +54,7 @@ export function createReadTool(
     name: "read",
     label: "read",
     description:
-      "Read a file. Each line of a text file comes tagged with its number and a two-character " +
+      "Read a file (or an asset:// handle another tool returned). Each line of a text file comes tagged with its number and a two-character " +
       'hash of its text, "12:k3|const a = 1;": edit names lines by these tags ("12:k3"). png, ' +
       "jpeg, gif and webp images are returned as images. Output is cut to 2000 lines or 50KB, " +
       "whichever comes first, and says how to continue with offset. Other binary files can't " +

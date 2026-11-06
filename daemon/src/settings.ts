@@ -57,8 +57,8 @@ export function parseSubagents(value: string): Subagents | undefined {
   return SUBAGENTS.find((kind) => kind === value);
 }
 
-/** A guest harness's own system prompt or tools, or neo's in their place. */
-export type GuestPrompt = "own" | "neo";
+/** A guest harness's own file tools, or neo's in their place. */
+export type GuestTools = "own" | "neo";
 
 /** The model that writes session titles: one of a harness's models, or the harness's own default. */
 export interface TitleModel {
@@ -302,26 +302,13 @@ export class Settings {
     this.togglesChanged();
   }
 
-  /**
-   * What a guest harness's conversations start with: its own system prompt (with neo's words for
-   * guests after it), or neo's in its place.
-   */
-  guestPrompt(harness: string): GuestPrompt {
-    const value = this.store.getMeta(metaKey(harness, "system_prompt"));
-    return value === "neo" ? "neo" : "own";
-  }
-
-  setGuestPrompt(harness: string, value: GuestPrompt): void {
-    this.store.setMeta(metaKey(harness, "system_prompt"), value);
-  }
-
   /** Which file tools a guest harness works with: its own, or neo's hashline read, edit and write. */
-  guestTools(harness: string): GuestPrompt {
+  guestTools(harness: string): GuestTools {
     const value = this.store.getMeta(metaKey(harness, "file_tools"));
     return value === "neo" ? "neo" : "own";
   }
 
-  setGuestTools(harness: string, value: GuestPrompt): void {
+  setGuestTools(harness: string, value: GuestTools): void {
     this.store.setMeta(metaKey(harness, "file_tools"), value);
   }
 

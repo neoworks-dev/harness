@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import type { ContextEvent } from "../src/agent.ts";
 import { formatPrompt, SHOW_DONT_TELL_OFF, SHOW_DONT_TELL_ON } from "../src/context-events.ts";
 import { SYSTEM_PROMPT } from "../src/system-prompt.ts";
-import { UI_BRIEF } from "../src/ui-brief.ts";
 
 test("no events leaves the text unchanged", () => {
   expect(formatPrompt("hello\nworld", [])).toBe("hello\nworld");
@@ -180,6 +179,22 @@ test("an app's UI components are in its announcement, and an update says the lis
   ]);
 });
 
+test("an app's skills are named with what they are for", () => {
+  const skills = [
+    { name: "layers", description: "Working with layers" },
+    { name: "export", description: "Exporting for the web" },
+  ];
+  const text = formatPrompt("go", [
+    { type: "app_connected", app: "photo", kind: "app", v: 1, tools: ["crop"], skills },
+    { type: "app_connected", app: "notes", kind: "app", v: 2, tools: [], previous: 1, skills: [] },
+  ]);
+  expect(text.split("\n")).toEqual([
+    '<app connected="photo" kind="app" v="1" tools="crop" skills="layers: Working with layers; export: Exporting for the web"/>',
+    '<app updated="notes" v="2" skills=""/>',
+    "go",
+  ]);
+});
+
 test("Show, don't tell. asks for UI and hands over the library, or takes it back", () => {
   const on = formatPrompt("go", [{ type: "show_dont_tell", on: true, library: "LIBRARY" }]);
   const lines = on.split("\n");
@@ -191,7 +206,12 @@ test("Show, don't tell. asks for UI and hands over the library, or takes it back
   );
 });
 
-test("the system prompt has the UI brief: what neoui is and the components by name", () => {
-  expect(SYSTEM_PROMPT).toContain(UI_BRIEF);
-  expect(UI_BRIEF).toContain("- Dev: Diff FileTree");
+test("the system prompt is short: how neo works, the rest left to tools, ui_library and skills", () => {
+  expect(SYSTEM_PROMPT.length).toBeLessThan(2000);
+  expect(SYSTEM_PROMPT).toContain("```neoui block");
+  expect(SYSTEM_PROMPT).toContain("ui_library");
+  expect(SYSTEM_PROMPT).toContain("skills_load");
+  // What a tool needs said is in its description.
+  expect(SYSTEM_PROMPT).not.toContain("todo_write");
+  expect(SYSTEM_PROMPT).not.toContain("12:k3");
 });

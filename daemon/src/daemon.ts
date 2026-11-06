@@ -31,7 +31,6 @@ import {
   type GuestPrompts,
 } from "./guests/guests.ts";
 import { loadMcpServers, projectMcpAllowed } from "@neoworks-dev/neo/mcp-config";
-import { SYSTEM_PROMPT } from "@neoworks-dev/neo/system-prompt";
 import {
   loadPluginCommands,
   type PluginCommand,
@@ -229,12 +228,11 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     neo: options.neo ?? (agent.name === "neo" ? agent : undefined),
     resolveAsset: (handle) => assets.resolve(handle),
     requestPermission: (session, name) => permissions.hook(session, name),
-    // The user's words, neo's prompt in place of the harness's own, neo's file tools.
+    // The user's words, neo's file tools.
     prompts: (harness) => {
       const prompts: GuestPrompts = {};
       const addition = settings.promptAddition();
       if (addition !== undefined) prompts.addition = addition;
-      if (settings.guestPrompt(harness) === "neo") prompts.replace = SYSTEM_PROMPT;
       if (settings.guestTools(harness) === "neo") prompts.fileTools = true;
       return prompts;
     },

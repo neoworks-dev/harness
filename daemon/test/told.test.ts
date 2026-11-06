@@ -105,3 +105,21 @@ test("a new version lists the components again when they changed, and empty when
     },
   ]);
 });
+
+test("an app's skills come with its first announcement, and again only when they changed", () => {
+  const state = new ToldState();
+  const layers = { name: "layers", description: "Working with layers" };
+  const first = told(state, [photo({ skills: [layers] })]);
+  expect(first[0]?.skills).toEqual([layers]);
+  // Back unchanged: nothing about them.
+  state.apply({ type: "app_disconnected", app: "photo-editor" });
+  expect(told(state, [photo({ skills: [layers] })])[0]?.skills).toBeUndefined();
+  // A new version with the same skills: not repeated; with others: the whole list, empty when none.
+  expect(told(state, [photo({ v: 2, skills: [layers] })])[0]?.skills).toBeUndefined();
+  const exports = { name: "export", description: "Exporting for the web" };
+  expect(told(state, [photo({ v: 3, skills: [layers, exports] })])[0]?.skills).toEqual([
+    layers,
+    exports,
+  ]);
+  expect(told(state, [photo({ v: 4 })])[0]?.skills).toEqual([]);
+});

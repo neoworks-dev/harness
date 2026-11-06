@@ -370,6 +370,20 @@
       "type": "string",
       "enum": ["app", "service"]
     },
+    "AppSkill": {
+      "description": "A skill a connector offers: instructions for work in it, which an agent loads (skills_load) when its description fits the work.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "description"],
+      "additionalProperties": false
+    },
     "AppConnected": {
       "description": "A connector registered, came back, or changed its tools (new v). Rendered to the model as <app connected=…/> the first time, <app reconnected=…/> for the same version, <app updated=… added=… removed=…/> for a new one. tools is always the full current list.",
       "type": "object",
@@ -403,6 +417,13 @@
             "type": "string"
           },
           "description": "What to write to use the neoui components the connector offers, `photo-editor.BrightnessCard` (ui_library has their signatures). The full current list: with the first app_connected a session gets for it when there are any, and with an update when it changed (empty: it has none now). Rendered as components=…."
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AppSkill"
+          },
+          "description": "The connector's skills (its MCP prompts that take no arguments), loaded with skills_load. Like components: the full list with the first app_connected a session gets for it when there are any, and with an update when it changed (empty: it has none now). Rendered as skills=…."
         },
         "reconnect": {
           "type": "boolean",

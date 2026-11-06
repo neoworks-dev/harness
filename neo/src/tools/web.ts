@@ -132,7 +132,8 @@ function createWebSearchTool(
     description:
       "Search the web, news or images with several search engines at once. Returns the merged " +
       "results as they are: title, URL and snippet, and for news the date and publication. " +
-      "Results found by more engines come first. Read a result's page with web_fetch.",
+      "Results found by more engines come first. Read a result's page with web_fetch. Prefer " +
+      "the sources over what you remember for anything that changes (versions, prices, news).",
     parameters: searchParameters,
     async execute(_toolCallId, { query, kind = "web", since, limit }, signal) {
       const count = Math.min(MAX_RESULTS, Math.max(1, Math.floor(limit ?? DEFAULT_RESULTS)));

@@ -46,7 +46,7 @@ import { type Guard, RUN_TITLE, type Touches } from "../permissions.ts";
 import type { Approvals, HarnessSettings } from "../settings.ts";
 import { type FocusTarget, type ShowDontTellSetting, ToldState } from "../told.ts";
 import { AcpConnection, AcpError } from "./acp.ts";
-import { CLAUDE_AGENT_TOOLS, withCodexInstructions, withCodexSubagents } from "./config.ts";
+import { CLAUDE_AGENT_TOOLS, withCodexSubagents } from "./config.ts";
 import type { GuestAccounts, Route, RouteKind } from "./accounts.ts";
 import { GUEST_PROMPT, MAIN_PROMPT } from "./prompt.ts";
 import type { GuestRunResult, RunOptions } from "./run.ts";
@@ -71,8 +71,8 @@ export interface GuestConfig {
    */
   subagents?: "asks" | "silent";
   /**
-   * Which adapter it is, for what neo can change of it: its system prompt (both), its file
-   * tools (Claude Code's). Unset: neither.
+   * Which adapter it is, for what neo can change of it: the user's words after its system prompt
+   * (both), its file tools (Claude Code's). Unset: neither.
    */
   adapter?: "claude" | "codex";
 }
@@ -81,8 +81,6 @@ export interface GuestConfig {
 export interface GuestPrompts {
   /** The user's own words, after the rest of the system prompt. */
   addition?: string;
-  /** The harness's own system prompt gives way to this one (neo's). */
-  replace?: string;
   /** neo's hashline read, edit and write in place of the harness's own (Claude Code). */
   fileTools?: boolean;
 }
@@ -703,11 +701,6 @@ export class GuestManager {
     return this.options.configs[name]?.title ?? name;
   }
 
-  /** Whether neo can put its own system prompt in place of the guest's (see GuestConfig.adapter). */
-  replacesPrompt(name: string): boolean {
-    return this.options.configs[name]?.adapter !== undefined;
-  }
-
   /** Whether neo's file tools can stand in for the guest's own (Claude Code's). */
   swapsFileTools(name: string): boolean {
     return this.options.configs[name]?.adapter === "claude";
@@ -1173,17 +1166,12 @@ export class GuestManager {
     target: GuestTarget,
     route?: Route,
     native = false,
-    instructions?: string,
   ): AcpConnection {
     const config = this.options.configs[name];
     if (!config) throw new NotFoundError(`no guest ${name}`);
     const env = route ? { ...config.env, ...route.env } : { ...config.env };
     if (env.CODEX_CONFIG !== undefined) {
       env.CODEX_CONFIG = withCodexSubagents(env.CODEX_CONFIG, native);
-      // neo's prompt in place of Codex's own.
-      if (instructions !== undefined && config.adapter === "codex") {
-        env.CODEX_CONFIG = withCodexInstructions(env.CODEX_CONFIG, instructions);
-      }
     }
     return AcpConnection.spawn({
       command: config.command,
@@ -1308,15 +1296,10 @@ export class GuestManager {
     const adapter = this.options.configs[name]?.adapter;
     let prompts: GuestPrompts = {};
     if (adapter !== undefined) prompts = this.options.prompts?.(name) ?? prompts;
-    // Ours after the harness's own prompt, the user's words after that; or, in its place, neo's
-    // prompt and the user's words.
+    // Ours after the harness's own prompt, the user's words after that.
     const ours = [main ? MAIN_PROMPT : GUEST_PROMPT, prompts.addition];
-    const instead =
-      prompts.replace === undefined
-        ? undefined
-        : [prompts.replace, prompts.addition].filter((p) => p !== undefined).join("\n\n");
     const fileTools = prompts.fileTools === true && adapter === "claude";
-    const conn = this.spawn(name, cwd, target, route ?? undefined, native, instead);
+    const conn = this.spawn(name, cwd, target, route ?? undefined, native);
     void conn.exited.then((code) => {
       log.info(`${name} for ${session} exited (${code})`);
       const { guest } = target;
@@ -1348,8 +1331,6 @@ export class GuestManager {
         // on. (Codex: CODEX_CONFIG, see spawn.)
         claudeCode: { options: claudeOptions(native, fileTools) },
       };
-      // Claude Code takes neo's prompt as its whole system prompt (Codex: base_instructions).
-      if (instead !== undefined && adapter === "claude") meta.systemPrompt = instead;
       const params: Record<string, unknown> = { cwd, mcpServers, _meta: meta };
       if (resume !== undefined) params.sessionId = resume;
       const created = await conn.request(

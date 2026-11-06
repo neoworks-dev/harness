@@ -26,6 +26,7 @@ function connectedAttrs(
     if (event.added?.length) pairs.push(["added", event.added.join(", ")]);
     if (event.removed?.length) pairs.push(["removed", event.removed.join(", ")]);
     if (event.components !== undefined) pairs.push(["components", event.components.join(", ")]);
+    if (event.skills !== undefined) pairs.push(["skills", skillsText(event.skills)]);
     return pairs;
   }
   const pairs: [string, string][] = [
@@ -36,7 +37,13 @@ function connectedAttrs(
   ];
   if (event.components?.length) pairs.push(["components", event.components.join(", ")]);
   if (event.description !== undefined) pairs.push(["about", event.description]);
+  if (event.skills?.length) pairs.push(["skills", skillsText(event.skills)]);
   return pairs;
+}
+
+/** An app's skills as the agent reads them: `layers: Working with layers; export: …`. */
+function skillsText(skills: { name: string; description: string }[]): string {
+  return skills.map((s) => `${s.name}: ${s.description}`).join("; ");
 }
 
 /** What the agent is asked when the user turns "Show, don't tell." on; the UI library follows. */

@@ -15,8 +15,7 @@
     "./plugin-commands": "./src/plugin-commands.ts",
     "./plugin-install": "./src/plugin-install.ts",
     "./plugins": "./src/plugins.ts",
-    "./system-prompt": "./src/system-prompt.ts",
-    "./ui-brief": "./src/ui-brief.ts"
+    "./system-prompt": "./src/system-prompt.ts"
   },
   "dependencies": {
     "@mariozechner/pi-ai": "0.73.1",

@@ -13,7 +13,7 @@ import { GUIDANCE, uiLibraryText } from "../src/gateway/ui-library.ts";
 import { connectMcp, type Upstream } from "../src/gateway/upstream.ts";
 import { silentLogger } from "../src/log.ts";
 import { SessionManager } from "../src/sessions.ts";
-import { SessionStore, type StoredTool } from "../src/store.ts";
+import { SessionStore, type StoredSkill, type StoredTool } from "../src/store.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { fauxToolCall } from "@mariozechner/pi-ai";
 import { createNeoAgent } from "@neoworks-dev/neo/neo";
@@ -44,13 +44,14 @@ interface Setup {
 }
 
 /** An in-memory upstream whose tools and results the test controls. */
-function fakeUpstream(initial: StoredTool[]): FakeUpstream {
+function fakeUpstream(initial: StoredTool[], skills: StoredSkill[] = []): FakeUpstream {
   let tools = initial;
   const listeners: (() => void)[] = [];
   const calls: string[] = [];
   return {
     calls,
     listTools: () => Promise.resolve(tools),
+    listSkills: () => Promise.resolve(skills),
     instructions: () => "Use crop before export.",
     call: (name, args) => {
       calls.push(`${name} ${JSON.stringify(args)}`);
@@ -503,6 +504,38 @@ describe("over real MCP", () => {
     }),
   };
 
+  test("an app's prompts without arguments are its skills: announced, and loaded by name", async () => {
+    const daemon = await startTestDaemon();
+    cleanups.push(() => daemon.stop());
+    const app = startMcpApp({
+      tools: [greet],
+      prompts: [
+        { name: "manners", description: "Greeting people politely", text: "Say please." },
+        {
+          name: "letter",
+          description: "A letter to someone",
+          text: "Dear …",
+          arguments: [{ name: "to", required: true }],
+        },
+      ],
+    });
+    cleanups.push(() => app.close());
+    await daemon.connectors.presence(
+      {},
+      { app: "greeter", kind: "app", open: true, mcp: app.endpoint },
+    );
+    expect(daemon.connectors.snapshot()[0]?.skills).toEqual([
+      { name: "manners", description: "Greeting people politely" },
+    ]);
+    const loaded = await daemon.gateway.call("skills_load", { app: "greeter", name: "manners" });
+    expect(resultText(loaded)).toBe("Say please.");
+    const unknown = await daemon.gateway.call("skills_load", { app: "greeter", name: "letter" });
+    expect(unknown.isError).toBe(true);
+    expect(resultText(unknown)).toBe('greeter has no skill "letter". Its skills: manners.');
+    const nowhere = await daemon.gateway.call("skills_load", { app: "nope", name: "x" });
+    expect(nowhere.isError).toBe(true);
+  });
+
   test("the gateway lists, calls and follows list_changed on an app's MCP server", async () => {
     const { daemon, app } = await daemonWithApp([greet]);
     expect(daemon.connectors.snapshot()).toEqual([
@@ -541,6 +574,7 @@ describe("over real MCP", () => {
       "wait",
       "todos",
       "ui_library",
+      "skills_load",
     ]);
     const found = await client.callTool({ name: "tools_search", arguments: { query: "hello" } });
     expect(JSON.stringify(found.content)).toContain("greeter.greet");

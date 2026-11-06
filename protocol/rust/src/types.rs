@@ -2350,6 +2350,15 @@ pub enum ConnectorKind {
     Service,
 }
 
+/// A skill a connector offers: instructions for work in it, which an agent loads (skills_load) when its description fits the work.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AppSkill {
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(rename = "description")]
+    pub description: String,
+}
+
 /// A connector registered, came back, or changed its tools (new v). Rendered to the model as <app connected=…/> the first time, <app reconnected=…/> for the same version, <app updated=… added=… removed=…/> for a new one. tools is always the full current list.
 /// Tagged `type: "app_connected"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -2377,6 +2386,9 @@ pub struct AppConnected {
         skip_serializing_if = "Option::is_none"
     )]
     pub components: Option<Vec<String>>,
+    /// The connector's skills (its MCP prompts that take no arguments), loaded with skills_load. Like components: the full list with the first app_connected a session gets for it when there are any, and with an update when it changed (empty: it has none now). Rendered as skills=….
+    #[serde(rename = "skills", default, skip_serializing_if = "Option::is_none")]
+    pub skills: Option<Vec<AppSkill>>,
     /// The session already saw this exact version: earlier schemas still apply. Rendered as <app reconnected=…/>.
     #[serde(rename = "reconnect", default, skip_serializing_if = "Option::is_none")]
     pub reconnect: Option<bool>,

@@ -204,6 +204,25 @@
         },
         "additionalProperties": false
       }
+    },
+    {
+      "name": "skills_load",
+      "description": "Load one of an app's skills: its instructions for a kind of work in it, as the app announced them (skills=…). Load one before you start the work it covers.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "app": {
+            "type": "string",
+            "description": "Connector name, e.g. \"photo-editor\"."
+          },
+          "name": {
+            "type": "string",
+            "description": "The skill's name, as the app announced it."
+          }
+        },
+        "required": ["app", "name"],
+        "additionalProperties": false
+      }
     }
   ]
 }

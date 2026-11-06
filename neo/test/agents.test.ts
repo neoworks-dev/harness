@@ -291,6 +291,7 @@ test("a neo session lists the agents in its prompt; a subagent doesn't, and runs
   const main = await agent.newSession({ sessionId: "m", cwd, mcpServers: [] });
   await main.prompt({ text: "hi", app: "cli", pendingEvents: [], onUpdate: () => {} });
   expect(model.systems[0]).toContain("- reviewer: Reviews a diff.");
+  expect(model.systems[0]).toContain("You're the session's main agent");
   expect(model.tools[0]).toContain("write");
 
   const sub = await agent.newSession({
@@ -300,6 +301,7 @@ test("a neo session lists the agents in its prompt; a subagent doesn't, and runs
     subagent: { definition: "reviewer" },
   });
   await sub.prompt({ text: "look", app: "delegate", pendingEvents: [], onUpdate: () => {} });
+  expect(model.systems[1]).toContain("You're a subagent");
   expect(model.systems[1]).toContain('You are the "reviewer" agent');
   expect(model.systems[1]).toContain("You review diffs.");
   expect(model.systems[1]).not.toContain("- reviewer: Reviews a diff.");

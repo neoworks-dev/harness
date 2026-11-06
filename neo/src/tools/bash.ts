@@ -177,7 +177,9 @@ export function createBashTool(
     name: "bash",
     label: "bash",
     description:
-      "Run a shell command with bash in the session's working directory. Returns stdout and " +
+      "Run a shell command with bash in the session's working directory (no need to cd into " +
+      "it). asset:// handles other tools returned work as paths of the stored file " +
+      "(cp asset://img-7f3 ~/site/logo.png). Returns stdout and " +
       "stderr combined. Output is cut to the last 2000 lines or 50KB; when that happens the " +
       "full output is saved to a temp file and its path is given. A non-zero exit code is " +
       "reported as an error together with the output. Commands cannot read from stdin, so " +

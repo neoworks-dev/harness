@@ -1960,6 +1960,12 @@ const (
 	ConnectorKindService ConnectorKind = "service"
 )
 
+// AppSkill: A skill a connector offers: instructions for work in it, which an agent loads (skills_load) when its description fits the work.
+type AppSkill struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
 // AppConnected: A connector registered, came back, or changed its tools (new v). Rendered to the model as <app connected=…/> the first time, <app reconnected=…/> for the same version, <app updated=… added=… removed=…/> for a new one. tools is always the full current list.
 type AppConnected struct {
 	App  string        `json:"app"`
@@ -1971,6 +1977,8 @@ type AppConnected struct {
 	Description *string `json:"description,omitempty"`
 	// What to write to use the neoui components the connector offers, `photo-editor.BrightnessCard` (ui_library has their signatures). The full current list: with the first app_connected a session gets for it when there are any, and with an update when it changed (empty: it has none now). Rendered as components=….
 	Components []string `json:"components,omitempty"`
+	// The connector's skills (its MCP prompts that take no arguments), loaded with skills_load. Like components: the full list with the first app_connected a session gets for it when there are any, and with an update when it changed (empty: it has none now). Rendered as skills=….
+	Skills []AppSkill `json:"skills,omitempty"`
 	// The session already saw this exact version: earlier schemas still apply. Rendered as <app reconnected=…/>.
 	Reconnect *bool `json:"reconnect,omitempty"`
 	// Tools new since the previous version (omitted when none).
