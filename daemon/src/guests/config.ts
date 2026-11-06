@@ -6,7 +6,7 @@
 // Their own subagents (Claude Code's Agent tool, Codex's multi_agent) are the user's choice
 // (/settings subagents), turned on or off when an adapter starts (see GuestManager.open); off
 // here, so a guest started any other way has only delegate, which asks first.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { GuestConfig } from "./guests.ts";
@@ -62,6 +62,12 @@ function defaults(env: NodeJS.ProcessEnv): Record<string, GuestConfig> {
     permissions: "ask",
     subagents: "asks",
     adapter: "claude",
+    program: "claude",
+    // Its login (Linux keeps it in this file; elsewhere in the keychain, which we can't read)
+    // or a key.
+    signedIn: () =>
+      Boolean(env.ANTHROPIC_API_KEY || env.CLAUDE_CODE_OAUTH_TOKEN) ||
+      existsSync(join(env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude"), ".credentials.json")),
   };
   if (claudeCli !== null) claude.env = { CLAUDE_CODE_EXECUTABLE: claudeCli };
   return {
@@ -74,6 +80,10 @@ function defaults(env: NodeJS.ProcessEnv): Record<string, GuestConfig> {
       permissions: "ask",
       subagents: "silent",
       adapter: "codex",
+      program: "codex",
+      signedIn: () =>
+        Boolean(env.OPENAI_API_KEY || env.CODEX_API_KEY) ||
+        existsSync(join(env.CODEX_HOME ?? join(homedir(), ".codex"), "auth.json")),
     },
   };
 }

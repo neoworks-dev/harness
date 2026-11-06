@@ -71,6 +71,12 @@
           "$ref": "#/$defs/ConnectorsListResult"
         },
         {
+          "$ref": "#/$defs/HarnessesList"
+        },
+        {
+          "$ref": "#/$defs/HarnessesListResult"
+        },
+        {
           "$ref": "#/$defs/AgentFocusMessage"
         },
         {
@@ -680,6 +686,111 @@
       },
       "required": ["topic", "payload"],
       "additionalProperties": false
+    },
+    "HarnessesList": {
+      "description": "Client → daemon: the agents a session can run on. Replied to with harnesses.list_result.",
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "harnesses.list"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": ["topic", "id"],
+      "additionalProperties": false
+    },
+    "HarnessesListResult": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "const": "harnesses.list_result"
+        },
+        "id": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/HarnessesListPayload"
+        }
+      },
+      "required": ["topic", "id", "payload"],
+      "additionalProperties": false
+    },
+    "HarnessesListPayload": {
+      "type": "object",
+      "properties": {
+        "harnesses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HarnessInfo"
+          }
+        }
+      },
+      "required": ["harnesses"],
+      "additionalProperties": false
+    },
+    "HarnessInfo": {
+      "description": "An agent a session can run on: neo's own, or a guest (Claude Code, Codex, others from config.json).",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "What /harness takes."
+        },
+        "title": {
+          "type": "string"
+        },
+        "own": {
+          "type": "boolean",
+          "description": "neo's own agent, not a guest."
+        },
+        "installed": {
+          "type": "boolean",
+          "description": "Its program is on this machine (a guest whose program isn't known counts as installed)."
+        },
+        "signedIn": {
+          "type": "boolean",
+          "description": "It has an account or an API key to work with. Absent: not known."
+        },
+        "tools": {
+          "type": "array",
+          "description": "The tools it can work with: its own, and for those that can, neo's in their place (/settings <name>-tools). One entry for one that can't.",
+          "items": {
+            "$ref": "#/$defs/HarnessTools"
+          }
+        }
+      },
+      "required": ["name", "title", "own", "installed", "tools"],
+      "additionalProperties": false
+    },
+    "HarnessTools": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ToolsChoice"
+        },
+        "current": {
+          "type": "boolean",
+          "description": "The one it works with now."
+        },
+        "startTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Tokens in its context before the first message with these tools (its system prompt and tool definitions), as measured on this machine, else as measured when this version of neo was made. Absent: not known yet."
+        },
+        "measured": {
+          "type": "boolean",
+          "description": "startTokens was measured on this machine."
+        }
+      },
+      "required": ["id"],
+      "additionalProperties": false
+    },
+    "ToolsChoice": {
+      "description": "A harness's own tools, or neo's in their place.",
+      "type": "string",
+      "enum": ["own", "neo"]
     },
     "ConnectorsList": {
       "description": "Client → daemon. Replied to with connectors.list_result.",

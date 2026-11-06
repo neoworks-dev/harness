@@ -8,7 +8,7 @@ import (
 )
 
 // Envelope
-// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionUnqueue, SessionUnqueued, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewPageRequest, ViewPageResult, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UserSettingsMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetFetchMessage, AssetInfoMessage, SpeechTranscribeMessage, SpeechTextMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, SessionRemovedMessage, UnknownEnvelope.
+// Value is one of: BusHello, BusWelcome, BusAck, BusError, SessionCreate, SessionList, SessionListResult, SessionSettings, SessionSettingsResult, SessionSubscribe, SessionUnsubscribe, SessionSubscribed, SessionCancel, SessionUnqueue, SessionUnqueued, SessionInfoMessage, SessionEvents, SessionInputMessage, AppPresenceMessage, ConnectorsList, ConnectorsListResult, HarnessesList, HarnessesListResult, AgentFocusMessage, AgentMoveMessage, ConnectorsChanged, ViewSubscribe, ViewUnsubscribe, ViewPageRequest, ViewPageResult, ViewSnapshotMessage, ViewPatchMessage, ThemeMessage, UserSettingsMessage, UiActionMessage, SecretRequestMessage, SecretAnswerMessage, AssetPutMessage, AssetGetMessage, AssetFetchMessage, AssetInfoMessage, SpeechTranscribeMessage, SpeechTextMessage, FileChangedMessage, AppContextMessage, SessionChangedMessage, SessionRemovedMessage, UnknownEnvelope.
 type Envelope struct {
 	Value EnvelopeVariant
 }
@@ -173,6 +173,18 @@ func (u *Envelope) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "connectors.list_result":
 		var v ConnectorsListResult
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "harnesses.list":
+		var v HarnessesList
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "harnesses.list_result":
+		var v HarnessesListResult
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -749,6 +761,75 @@ func (v AppPresenceMessage) MarshalJSON() ([]byte, error) {
 		plain
 	}{"app.presence", plain(v)})
 }
+
+// HarnessesList: Client → daemon: the agents a session can run on. Replied to with harnesses.list_result.
+type HarnessesList struct {
+	ID string `json:"id"`
+}
+
+func (HarnessesList) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v HarnessesList) MarshalJSON() ([]byte, error) {
+	type plain HarnessesList
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"harnesses.list", plain(v)})
+}
+
+type HarnessesListResult struct {
+	ID      string               `json:"id"`
+	Payload HarnessesListPayload `json:"payload"`
+}
+
+func (HarnessesListResult) isEnvelope() {}
+
+// MarshalJSON adds the "topic" tag.
+func (v HarnessesListResult) MarshalJSON() ([]byte, error) {
+	type plain HarnessesListResult
+	return json.Marshal(struct {
+		Tag string `json:"topic"`
+		plain
+	}{"harnesses.list_result", plain(v)})
+}
+
+type HarnessesListPayload struct {
+	Harnesses []HarnessInfo `json:"harnesses"`
+}
+
+// HarnessInfo: An agent a session can run on: neo's own, or a guest (Claude Code, Codex, others from config.json).
+type HarnessInfo struct {
+	// What /harness takes.
+	Name  string `json:"name"`
+	Title string `json:"title"`
+	// neo's own agent, not a guest.
+	Own bool `json:"own"`
+	// Its program is on this machine (a guest whose program isn't known counts as installed).
+	Installed bool `json:"installed"`
+	// It has an account or an API key to work with. Absent: not known.
+	SignedIn *bool `json:"signedIn,omitempty"`
+	// The tools it can work with: its own, and for those that can, neo's in their place (/settings <name>-tools). One entry for one that can't.
+	Tools []HarnessTools `json:"tools"`
+}
+
+type HarnessTools struct {
+	ID ToolsChoice `json:"id"`
+	// The one it works with now.
+	Current *bool `json:"current,omitempty"`
+	// Tokens in its context before the first message with these tools (its system prompt and tool definitions), as measured on this machine, else as measured when this version of neo was made. Absent: not known yet.
+	StartTokens *int64 `json:"startTokens,omitempty"`
+	// startTokens was measured on this machine.
+	Measured *bool `json:"measured,omitempty"`
+}
+
+// ToolsChoice: A harness's own tools, or neo's in their place.
+type ToolsChoice string
+
+const (
+	ToolsChoiceOwn ToolsChoice = "own"
+	ToolsChoiceNeo ToolsChoice = "neo"
+)
 
 // ConnectorsList: Client → daemon. Replied to with connectors.list_result.
 type ConnectorsList struct {

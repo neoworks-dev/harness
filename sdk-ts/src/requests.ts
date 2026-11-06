@@ -19,6 +19,7 @@ export const REPLY_TOPICS = {
   "app.context": "bus.ack",
   "agent.move": "bus.ack",
   "connectors.list": "connectors.list_result",
+  "harnesses.list": "harnesses.list_result",
   "view.subscribe": "view.snapshot",
   "view.unsubscribe": "bus.ack",
   "ui.action": "bus.ack",

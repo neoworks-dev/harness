@@ -7,6 +7,7 @@ import type {
   Asset,
   AssetPut,
   ConnectorInfo,
+  HarnessInfo,
   Envelope,
   FileChanged,
   SecretRequest,
@@ -206,6 +207,15 @@ export class Client {
   async listConnectors(): Promise<ConnectorInfo[]> {
     const { connectors } = await this.connection.request("connectors.list");
     return connectors;
+  }
+
+  /**
+   * The agents a session can run on: neo's own and the guests, whether each is installed and
+   * signed in, and what it takes of the context before the first message.
+   */
+  async listHarnesses(): Promise<HarnessInfo[]> {
+    const { harnesses } = await this.connection.request("harnesses.list");
+    return harnesses;
   }
 
   /**

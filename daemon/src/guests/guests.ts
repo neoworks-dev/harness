@@ -75,6 +75,10 @@ export interface GuestConfig {
    * (both), its file tools (Claude Code's). Unset: neither.
    */
   adapter?: "claude" | "codex";
+  /** Its own program, looked for on the PATH to tell whether it is installed. Unset: it is. */
+  program?: string;
+  /** Whether it has a login or an API key to work with. Unset: not known. */
+  signedIn?: () => boolean;
 }
 
 /** What the user set for a guest's system prompt (/system-prompt, /settings), read as it starts. */
@@ -699,6 +703,11 @@ export class GuestManager {
 
   title(name: string): string {
     return this.options.configs[name]?.title ?? name;
+  }
+
+  /** How a guest is configured, if there is one of that name. */
+  config(name: string): GuestConfig | undefined {
+    return this.options.configs[name];
   }
 
   /** Whether neo's file tools can stand in for the guest's own (Claude Code's). */

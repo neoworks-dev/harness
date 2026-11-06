@@ -332,6 +332,26 @@ fn assets_and_file_changes() {
 }
 
 #[test]
+fn the_daemon_lists_the_agents_a_session_can_run_on() {
+    let Some(daemon) = Daemon::start() else {
+        return;
+    };
+    let client = daemon.connect("sdk-harnesses", None);
+    let harnesses = client.list_harnesses().expect("list");
+    // The echo agent isn't neo: the guests only, Claude Code with neo's tools as a choice.
+    let names: Vec<&str> = harnesses.iter().map(|h| h.name.as_str()).collect();
+    assert_eq!(names, ["claude", "codex"], "{harnesses:?}");
+    let tools: Vec<_> = harnesses[0].tools.iter().map(|t| t.id).collect();
+    assert_eq!(
+        tools,
+        [
+            neo_sdk::protocol::ToolsChoice::Own,
+            neo_sdk::protocol::ToolsChoice::Neo
+        ]
+    );
+}
+
+#[test]
 fn the_gateway_lists_tools_from_a_rust_tool_server() {
     use neo_sdk::tools::{Tool, ToolResult, ToolServer};
     let Some(daemon) = Daemon::start() else {

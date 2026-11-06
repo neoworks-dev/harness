@@ -23,7 +23,7 @@ use neo_protocol::{
     AgentFocus, AgentMove, AgentMoveMessage, AppContext, AppContextMessage, AppPresence,
     AppPresenceMessage, Asset, AssetFetchMessage, AssetGetMessage, AssetPut, AssetPutMessage,
     AssetRef, AssetUrl, ConnectorInfo, ConnectorsList, Envelope, ErrorInfo, FileChanged,
-    FileChangedMessage, SecretAnswer, SecretAnswerMessage, SecretRequest, SessionCancel,
+    FileChangedMessage, HarnessInfo, HarnessesList, SecretAnswer, SecretAnswerMessage, SecretRequest, SessionCancel,
     SessionCreate, SessionCreateParams, SessionEventRecord, SessionInfo, SessionInput,
     SessionInputMessage, SessionList, SessionRef, SessionSubscribe, SessionUnqueue,
     SessionUnqueueParams, SessionUnsubscribe, SpeechAudio, SpeechTranscribeMessage,
@@ -377,6 +377,17 @@ impl Client {
             Envelope::ConnectorsList(ConnectorsList { id })
         })? {
             Envelope::ConnectorsListResult(reply) => Ok(reply.payload.connectors),
+            _ => Err(Error::Unexpected),
+        }
+    }
+
+    /// The agents a session can run on: neo's own and the guests, whether each is installed
+    /// and signed in, and what it takes of the context before the first message.
+    pub fn list_harnesses(&self) -> Result<Vec<HarnessInfo>> {
+        match self.call(Effect::None, |id| {
+            Envelope::HarnessesList(HarnessesList { id })
+        })? {
+            Envelope::HarnessesListResult(reply) => Ok(reply.payload.harnesses),
             _ => Err(Error::Unexpected),
         }
     }

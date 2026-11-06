@@ -30,6 +30,7 @@ import {
   GuestManager,
   type GuestPrompts,
 } from "./guests/guests.ts";
+import { Harnesses } from "./harnesses.ts";
 import { loadMcpServers, projectMcpAllowed } from "@neoworks-dev/neo/mcp-config";
 import {
   loadPluginCommands,
@@ -118,6 +119,8 @@ export interface Daemon {
   commands: Commands;
   settings: Settings;
   titles: Titles;
+  /** The agents a session can run on (harnesses.list). */
+  harnesses: Harnesses;
   /** The MCP servers it runs; `reload` reads their configuration again (plugins changed). */
   mcp: { servers: McpServers; reload(): Promise<void> };
   /** Cancels running turns (waiting up to timeoutMs), closes listeners and the database. */
@@ -507,6 +510,13 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     harnesses: () => [agent.name, ...guests.names()],
     settingsTimeoutMs: options.settingsTimeoutMs,
   });
+  const harnesses = new Harnesses({
+    store,
+    settings,
+    guests,
+    authPaths: [authPath, piAuthPath],
+    ...(agent.name === "neo" ? { own: agent.name } : {}),
+  });
   const hub = new Hub(
     store,
     sessions,
@@ -531,6 +541,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
         return pluginPrompt(pluginCommands(), text);
       },
       settings: (session, known) => commands.settings(session, known),
+      harnesses: () => harnesses.list(),
     },
   );
   // The agent's write/edit results carry diffs; each one means a file changed on disk.
@@ -587,6 +598,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     commands,
     settings,
     titles,
+    harnesses,
     mcp: { servers: stdioServers, reload: reloadMcp },
     async stop(timeoutMs = 2000) {
       await started.stop();

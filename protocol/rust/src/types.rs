@@ -42,6 +42,8 @@ pub enum Envelope {
     AppPresenceMessage(AppPresenceMessage),
     ConnectorsList(ConnectorsList),
     ConnectorsListResult(ConnectorsListResult),
+    HarnessesList(HarnessesList),
+    HarnessesListResult(HarnessesListResult),
     AgentFocusMessage(AgentFocusMessage),
     AgentMoveMessage(AgentMoveMessage),
     ConnectorsChanged(ConnectorsChanged),
@@ -155,6 +157,14 @@ impl Serialize for Envelope {
             ),
             Envelope::ConnectorsListResult(v) => (
                 "connectors.list_result",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::HarnessesList(v) => (
+                "harnesses.list",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            Envelope::HarnessesListResult(v) => (
+                "harnesses.list_result",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
             Envelope::AgentFocusMessage(v) => (
@@ -328,6 +338,12 @@ impl<'de> Deserialize<'de> for Envelope {
                 .map_err(D::Error::custom),
             "connectors.list_result" => serde_json::from_value(value)
                 .map(Envelope::ConnectorsListResult)
+                .map_err(D::Error::custom),
+            "harnesses.list" => serde_json::from_value(value)
+                .map(Envelope::HarnessesList)
+                .map_err(D::Error::custom),
+            "harnesses.list_result" => serde_json::from_value(value)
+                .map(Envelope::HarnessesListResult)
                 .map_err(D::Error::custom),
             "agent.focus" => serde_json::from_value(value)
                 .map(Envelope::AgentFocusMessage)
@@ -529,6 +545,18 @@ impl From<ConnectorsList> for Envelope {
 impl From<ConnectorsListResult> for Envelope {
     fn from(v: ConnectorsListResult) -> Self {
         Envelope::ConnectorsListResult(v)
+    }
+}
+
+impl From<HarnessesList> for Envelope {
+    fn from(v: HarnessesList) -> Self {
+        Envelope::HarnessesList(v)
+    }
+}
+
+impl From<HarnessesListResult> for Envelope {
+    fn from(v: HarnessesListResult) -> Self {
+        Envelope::HarnessesListResult(v)
     }
 }
 
@@ -1017,6 +1045,79 @@ pub struct AppPresenceMessage {
     pub payload: AppPresence,
     #[serde(rename = "id", default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+}
+
+/// Client → daemon: the agents a session can run on. Replied to with harnesses.list_result.
+/// Tagged `topic: "harnesses.list"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HarnessesList {
+    #[serde(rename = "id")]
+    pub id: String,
+}
+
+/// Tagged `topic: "harnesses.list_result"` inside [`Envelope`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HarnessesListResult {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "payload")]
+    pub payload: HarnessesListPayload,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HarnessesListPayload {
+    #[serde(rename = "harnesses")]
+    pub harnesses: Vec<HarnessInfo>,
+}
+
+/// An agent a session can run on: neo's own, or a guest (Claude Code, Codex, others from config.json).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HarnessInfo {
+    /// What /harness takes.
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(rename = "title")]
+    pub title: String,
+    /// neo's own agent, not a guest.
+    #[serde(rename = "own")]
+    pub own: bool,
+    /// Its program is on this machine (a guest whose program isn't known counts as installed).
+    #[serde(rename = "installed")]
+    pub installed: bool,
+    /// It has an account or an API key to work with. Absent: not known.
+    #[serde(rename = "signedIn", default, skip_serializing_if = "Option::is_none")]
+    pub signed_in: Option<bool>,
+    /// The tools it can work with: its own, and for those that can, neo's in their place (/settings <name>-tools). One entry for one that can't.
+    #[serde(rename = "tools")]
+    pub tools: Vec<HarnessTools>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HarnessTools {
+    #[serde(rename = "id")]
+    pub id: ToolsChoice,
+    /// The one it works with now.
+    #[serde(rename = "current", default, skip_serializing_if = "Option::is_none")]
+    pub current: Option<bool>,
+    /// Tokens in its context before the first message with these tools (its system prompt and tool definitions), as measured on this machine, else as measured when this version of neo was made. Absent: not known yet.
+    #[serde(
+        rename = "startTokens",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub start_tokens: Option<i64>,
+    /// startTokens was measured on this machine.
+    #[serde(rename = "measured", default, skip_serializing_if = "Option::is_none")]
+    pub measured: Option<bool>,
+}
+
+/// A harness's own tools, or neo's in their place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ToolsChoice {
+    #[serde(rename = "own")]
+    Own,
+    #[serde(rename = "neo")]
+    Neo,
 }
 
 /// Client → daemon. Replied to with connectors.list_result.

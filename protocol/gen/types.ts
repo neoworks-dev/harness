@@ -22,6 +22,8 @@ export type Envelope =
   | AppPresenceMessage
   | ConnectorsList
   | ConnectorsListResult
+  | HarnessesList
+  | HarnessesListResult
   | AgentFocusMessage
   | AgentMoveMessage
   | ConnectorsChanged
@@ -268,6 +270,50 @@ export interface AppPresenceMessage {
   payload: AppPresence;
   id?: string;
 }
+
+/** Client → daemon: the agents a session can run on. Replied to with harnesses.list_result. */
+export interface HarnessesList {
+  topic: "harnesses.list";
+  id: string;
+}
+
+export interface HarnessesListResult {
+  topic: "harnesses.list_result";
+  id: string;
+  payload: HarnessesListPayload;
+}
+
+export interface HarnessesListPayload {
+  harnesses: HarnessInfo[];
+}
+
+/** An agent a session can run on: neo's own, or a guest (Claude Code, Codex, others from config.json). */
+export interface HarnessInfo {
+  /** What /harness takes. */
+  name: string;
+  title: string;
+  /** neo's own agent, not a guest. */
+  own: boolean;
+  /** Its program is on this machine (a guest whose program isn't known counts as installed). */
+  installed: boolean;
+  /** It has an account or an API key to work with. Absent: not known. */
+  signedIn?: boolean;
+  /** The tools it can work with: its own, and for those that can, neo's in their place (/settings <name>-tools). One entry for one that can't. */
+  tools: HarnessTools[];
+}
+
+export interface HarnessTools {
+  id: ToolsChoice;
+  /** The one it works with now. */
+  current?: boolean;
+  /** Tokens in its context before the first message with these tools (its system prompt and tool definitions), as measured on this machine, else as measured when this version of neo was made. Absent: not known yet. */
+  startTokens?: number;
+  /** startTokens was measured on this machine. */
+  measured?: boolean;
+}
+
+/** A harness's own tools, or neo's in their place. */
+export type ToolsChoice = "own" | "neo";
 
 /** Client → daemon. Replied to with connectors.list_result. */
 export interface ConnectorsList {

@@ -4,6 +4,7 @@ import type {
   Envelope,
   ErrorCode,
   FileChanged,
+  HarnessInfo,
   HarnessSettings,
   SessionEventRecord,
   SpeechAudio,
@@ -60,6 +61,8 @@ export interface HubParts {
   expand?: (session: string, text: string) => { text: string; shown: string } | undefined;
   /** The harnesses a session can switch to with their options (session.settings). */
   settings?: (session: string, known?: boolean) => Promise<HarnessSettings[]>;
+  /** The agents a session can run on, for the user to pick from (harnesses.list). */
+  harnesses?: () => HarnessInfo[];
 }
 
 /** What a command can do with the client that ran it. */
@@ -585,6 +588,13 @@ export class Hub {
           topic: "connectors.list_result",
           id: msg.id,
           payload: { connectors: this.parts.connectors?.list() ?? [] },
+        });
+        return;
+      case "harnesses.list":
+        this.send(client, {
+          topic: "harnesses.list_result",
+          id: msg.id,
+          payload: { harnesses: this.parts.harnesses?.() ?? [] },
         });
         return;
       case "asset.put": {

@@ -1,0 +1,27 @@
+{
+  "topic": "harnesses.list_result",
+  "id": "11",
+  "payload": {
+    "harnesses": [
+      {
+        "name": "neo",
+        "title": "Neo",
+        "own": true,
+        "installed": true,
+        "signedIn": true,
+        "tools": [{ "id": "own", "current": true, "startTokens": 2600 }]
+      },
+      {
+        "name": "claude",
+        "title": "Claude Code",
+        "own": false,
+        "installed": true,
+        "signedIn": false,
+        "tools": [
+          { "id": "own", "current": true, "startTokens": 17412, "measured": true },
+          { "id": "neo", "current": false }
+        ]
+      }
+    ]
+  }
+}

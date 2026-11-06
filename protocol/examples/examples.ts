@@ -144,6 +144,34 @@ export const examples: Record<string, Envelope> = {
     topic: "app.presence",
     payload: { app: "lsp", kind: "service", open: false },
   },
+  "harnesses-list": { topic: "harnesses.list", id: "11" },
+  "harnesses-list-result": {
+    topic: "harnesses.list_result",
+    id: "11",
+    payload: {
+      harnesses: [
+        {
+          name: "neo",
+          title: "Neo",
+          own: true,
+          installed: true,
+          signedIn: true,
+          tools: [{ id: "own", current: true, startTokens: 2600 }],
+        },
+        {
+          name: "claude",
+          title: "Claude Code",
+          own: false,
+          installed: true,
+          signedIn: false,
+          tools: [
+            { id: "own", current: true, startTokens: 17412, measured: true },
+            { id: "neo", current: false },
+          ],
+        },
+      ],
+    },
+  },
   "connectors-list": { topic: "connectors.list", id: "10" },
   "connectors-list-result": {
     topic: "connectors.list_result",
