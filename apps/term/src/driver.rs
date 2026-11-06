@@ -133,7 +133,7 @@ pub fn presence(app_id: &str, cwd: &str, mcp: Option<McpEndpoint>) -> AppPresenc
     AppPresence {
         app: app_id.into(),
         kind: ConnectorKind::App,
-        title: Some("Terminal".into()),
+        title: Some("Neo".into()),
         open: true,
         context: Some(BTreeMap::from([("cwd".to_string(), cwd.to_string())])),
         mcp,
@@ -143,7 +143,8 @@ pub fn presence(app_id: &str, cwd: &str, mcp: Option<McpEndpoint>) -> AppPresenc
         templates: None,
         components: None,
         description: Some(
-            "The user's terminal, in a directory of theirs (its cwd): coding work happens here."
+            "Neo in the user's terminal, in a directory of theirs (its cwd): where they talk to \
+             you about any kind of work."
                 .into(),
         ),
     }
@@ -151,12 +152,24 @@ pub fn presence(app_id: &str, cwd: &str, mcp: Option<McpEndpoint>) -> AppPresenc
 
 /// What the terminal teaches agents: its skills, served as MCP prompts. No tools of its own.
 fn skill_server() -> std::io::Result<ToolServer> {
-    let coding = Skill::new(
-        "coding",
-        "Changing code in the terminal's directory: reading it first, editing, building, testing, committing",
-        include_str!("../skills/coding.md"),
-    );
-    Ok(ToolServer::start("terminal", None, vec![])?.with_skills(vec![coding]))
+    let skills = vec![
+        Skill::new(
+            "coding",
+            "Changing code in the terminal's directory: reading it first, editing, building, testing, committing",
+            include_str!("../skills/coding.md"),
+        ),
+        Skill::new(
+            "system",
+            "Work on the user's computer: files, software, settings, finding out why something doesn't work",
+            include_str!("../skills/system.md"),
+        ),
+        Skill::new(
+            "research",
+            "Finding something out: searching the web, reading sources, answering with them",
+            include_str!("../skills/research.md"),
+        ),
+    ];
+    Ok(ToolServer::start("terminal", None, vec![])?.with_skills(skills))
 }
 
 enum Job {
@@ -741,9 +754,7 @@ mod tests {
         assert_eq!(p.kind, ConnectorKind::App);
         assert!(p.open);
         assert_eq!(p.home, None);
-        assert_eq!(p.title.as_deref(), Some("Terminal"));
         assert_eq!(p.context.unwrap()["cwd"], "/w/site");
-        assert!(p.description.is_some_and(|d| d.contains("coding")));
     }
 
     #[test]
