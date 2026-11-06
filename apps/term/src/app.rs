@@ -473,8 +473,8 @@ pub struct App {
     setup_first: bool,
     /// The first start's walkthrough was opened: not again while this runs.
     setup_asked: bool,
-    /// Claude Code and Codex on this machine, for the walkthrough's steps about them.
-    installed: crate::onboarding::Installed,
+    /// The agents the daemon can run (harnesses.list), for the walkthrough's steps about them.
+    harnesses: Vec<neo_protocol::HarnessInfo>,
     /// The last key was Ctrl-G: a digit now shows a marked chat.
     after_ctrl_g: bool,
     /// The sessions sidebar is switched on (it still needs a wide enough terminal).
@@ -620,7 +620,7 @@ impl App {
             onboarding: None,
             setup_first: false,
             setup_asked: false,
-            installed: setup::installed(),
+            harnesses: Vec::new(),
             after_ctrl_g: false,
             sessions_on: true,
             sessions_shown: false,

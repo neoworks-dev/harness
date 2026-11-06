@@ -523,6 +523,8 @@ pub fn start(options: StartOptions) -> Result<Started, StartError> {
         .list_connectors()
         .map_err(|e| other("listing apps", e))?;
     let app_id = pick_app_id(&connectors);
+    // For the setup walkthrough; an older daemon has none to offer.
+    let harnesses = client.list_harnesses().unwrap_or_default();
     // Without it the terminal is still a terminal: agents just aren't told how to code here.
     let skills = skill_server().ok();
     client
@@ -569,6 +571,7 @@ pub fn start(options: StartOptions) -> Result<Started, StartError> {
         known.push(session.clone());
     }
     app.set_sessions(known);
+    app.set_harnesses(harnesses);
     // The sidebar's servers start from this list; connectors.changed keeps it current.
     app.handle_event(Event::Connectors(connectors));
     for event in early {

@@ -1,7 +1,12 @@
 use super::*;
-use crate::onboarding::{Installed, Onboarding, Outcome, steps};
+use crate::onboarding::{Onboarding, Outcome, steps};
 
 impl App {
+    /// The agents the daemon can run, for the walkthrough's steps about them.
+    pub fn set_harnesses(&mut self, harnesses: Vec<neo_protocol::HarnessInfo>) {
+        self.harnesses = harnesses;
+    }
+
     /// The daemon's settings came: with nothing chosen yet, the first start walks the user
     /// through the settings that matter, once.
     pub(super) fn maybe_ask_work(&mut self, chosen: bool) {
@@ -14,7 +19,7 @@ impl App {
 
     /// The walkthrough, on the first start or `/setup`.
     pub(super) fn open_setup(&mut self, first: bool) {
-        self.onboarding = Some(Onboarding::new(steps(self.installed)));
+        self.onboarding = Some(Onboarding::new(steps(&self.harnesses)));
         self.setup_first = first;
         self.overlay = Overlay::Setup;
     }
@@ -49,14 +54,5 @@ impl App {
         if let Some(onboarding) = &self.onboarding {
             onboarding.draw(frame, frame.area(), &self.styles);
         }
-    }
-}
-
-/// Where the harnesses are looked for: on the PATH, except in tests.
-pub(super) fn installed() -> Installed {
-    if cfg!(test) {
-        Installed::default()
-    } else {
-        Installed::find()
     }
 }
