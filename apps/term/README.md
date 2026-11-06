@@ -2,7 +2,7 @@
 
 `neo-term`, neo's full-screen terminal app: the shared conversation in a pane that scrolls on its own, an input editor, status lines under the prompt, and the plan / changed-files / usage panels. `neo` with no arguments starts the daemon if needed and opens it in the current directory.
 
-It is only a client. The conversation lives in the daemon, so closing the app never stops work, and the overlay, the desktop app and other terminals show the same session. It registers as the app `terminal` (a second one as `terminal-2`, …; kind app, not home, context `{cwd}`), and the agent moves into it when you start it or type in it.
+It is only a client. The conversation lives in the daemon, so closing the app never stops work, and the overlay, the desktop app and other terminals show the same session. It registers as the app `terminal` (a second one as `terminal-2`, …; kind app, not home, context `{cwd}`), and the agent moves into it when you start it or type in it. It has no tools; it brings agents the `coding` skill (`skills/coding.md`: read first, follow the project's conventions, keep to what was asked, build and test, don't commit unless asked), served by the SDK's tool server, so coding guidance is there where coding happens and not in every agent's prompt.
 
 ```sh
 task build                      # bin/neo-term (next to bin/neo)

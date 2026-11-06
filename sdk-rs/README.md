@@ -44,6 +44,8 @@ let server = ToolServer::start("code-editor", None, vec![open])?;
 presence.mcp = Some(server.endpoint()); // keep `server` alive as long as the app runs
 ```
 
+What agents need to know to work in the app goes in skills, not in the tools' descriptions or the instructions: `server.with_skills(vec![Skill::new("layers", "Working with layers", text)])`. They are served as MCP prompts without arguments; agents are told each one's name and description when the app connects and load the text (`skills_load`) when the work calls for it.
+
 ## Tests
 
 `cargo test -p neo-sdk`: `tests/fake_daemon.rs` runs against a scripted daemon (framing, routing, reconnect); `tests/daemon.rs` starts the real daemon (`bun run daemon/src/main.ts`, echo agent) and is skipped with a message if `bun` is missing.
