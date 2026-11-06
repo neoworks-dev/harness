@@ -100,6 +100,25 @@ export class ConnectorRegistry {
     private readonly log: Logger,
   ) {
     for (const connector of store.loadConnectors()) this.stored.set(connector.app, connector);
+    // Nothing is open yet: the copies are all closed, and gone.
+    for (const app of [...this.stored.keys()]) if (this.isCopy(app)) this.forget(app);
+  }
+
+  /**
+   * A second window of an app that was open already registers as `terminal-2`: a copy of
+   * `terminal`, of the same kind and title, not an app of its own. It is forgotten once it
+   * closes, so the apps the daemon knows are the apps there are.
+   */
+  private isCopy(app: string): boolean {
+    const match = /^(.+)-\d+$/.exec(app);
+    const base = match?.[1] === undefined ? undefined : this.stored.get(match[1]);
+    const copy = this.stored.get(app);
+    return base !== undefined && copy?.kind === base.kind && copy.title === base.title;
+  }
+
+  private forget(app: string): void {
+    this.stored.delete(app);
+    this.store.deleteConnector(app);
   }
 
   /**
@@ -370,7 +389,10 @@ export class ConnectorRegistry {
   }
 
   private async drop(app: string, live: Live): Promise<void> {
-    if (this.live.get(app) === live) this.live.delete(app);
+    if (this.live.get(app) === live) {
+      this.live.delete(app);
+      if (this.isCopy(app)) this.forget(app);
+    }
     this.notify();
     await live.upstream?.close();
   }

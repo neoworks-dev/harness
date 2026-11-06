@@ -345,6 +345,10 @@ export class SessionStore {
       .run(connector.app, JSON.stringify(connector));
   }
 
+  deleteConnector(app: string): void {
+    this.db.query("DELETE FROM connectors WHERE app = ?").run(app);
+  }
+
   loadConnectors(): StoredConnector[] {
     return this.db
       .query<{ data: string }, []>("SELECT data FROM connectors ORDER BY app")

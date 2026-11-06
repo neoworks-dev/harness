@@ -84,6 +84,17 @@ impl App {
             menus = true;
         }
         self.review_shown = areas.review.height > 0 && self.widgets.draw_review(frame, areas.review);
+        if self.review_shown && self.styles.fills() {
+            // On the input box's background, as part of the card; the diff's lines keep theirs.
+            let buf = frame.buffer_mut();
+            for y in areas.review.top()..areas.review.bottom() {
+                for x in areas.review.left()..areas.review.right() {
+                    if buf[(x, y)].bg == ratatui::style::Color::Reset {
+                        buf[(x, y)].set_bg(self.styles.raised);
+                    }
+                }
+            }
+        }
         self.toasts
             .draw(frame.buffer_mut(), areas.chat, self.now_ms, &self.styles);
         self.details_shown = false;
@@ -184,11 +195,12 @@ impl App {
         );
         // The shown session's details at the foot, while the list keeps a dozen rows.
         let dir = shorten_home(&self.cwd, self.home.as_deref());
-        let details = crate::details::lines(
+        let (details, toggle) = crate::details::lines(
             &crate::details::Details {
                 dir: &dir,
                 usage: self.widgets.usage(),
                 connectors: &self.connectors,
+                apps_open: self.apps_open,
             },
             usize::from(inner),
             &self.styles,
@@ -208,6 +220,7 @@ impl App {
             height: area.height - details_h - top,
             ..area
         };
+        self.apps_toggle_at = None;
         if details_h > 0 {
             let at = Rect {
                 y: area.y + area.height - details_h + 1,
@@ -215,6 +228,12 @@ impl App {
                 ..list
             };
             frame.render_widget(Paragraph::new(details), at);
+            // Where a click shows or hides the rest of the apps.
+            self.apps_toggle_at = toggle.map(|row| Rect {
+                y: at.y + row as u16,
+                height: 1,
+                ..at
+            });
         }
         let look = Look {
             current: &self.session,

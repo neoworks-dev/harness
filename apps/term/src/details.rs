@@ -17,7 +17,12 @@ pub struct Details<'a> {
     pub dir: &'a str,
     pub usage: Option<&'a Usage>,
     pub connectors: &'a [ConnectorInfo],
+    /// All the apps are listed, not just the first few.
+    pub apps_open: bool,
 }
+
+/// The apps listed before a row that shows the rest.
+const APPS_SHOWN: usize = 4;
 
 /// `1234567` as `1,234,567`.
 pub fn grouped(n: i64) -> String {
@@ -84,8 +89,20 @@ fn app_line(c: &ConnectorInfo, styles: &Styles) -> Line<'static> {
     ])
 }
 
-/// The block's lines in `w` columns.
-pub fn lines(d: &Details, w: usize, styles: &Styles) -> Vec<Line<'static>> {
+/// The block's lines in `w` columns, and the row of the one that shows or hides the apps past
+/// the first few, if there is one.
+pub fn lines(d: &Details, w: usize, styles: &Styles) -> (Vec<Line<'static>>, Option<usize>) {
+    let mut toggle = None;
+    let out = block(d, w, styles, &mut toggle);
+    (out.into_iter().map(|l| fit_line(l, w)).collect(), toggle)
+}
+
+fn block(
+    d: &Details,
+    w: usize,
+    styles: &Styles,
+    toggle: &mut Option<usize>,
+) -> Vec<Line<'static>> {
     let mut out = vec![heading("Session", w, styles)];
     out.push(Line::from(vec![
         Span::raw(" "),
@@ -136,8 +153,20 @@ pub fn lines(d: &Details, w: usize, styles: &Styles) -> Vec<Line<'static>> {
     apps.sort_by(|a, b| b.connected.cmp(&a.connected).then_with(|| a.app.cmp(&b.app)));
     if !apps.is_empty() {
         out.push(heading("Apps", w, styles));
-        for c in apps {
+        let more = apps.len().saturating_sub(APPS_SHOWN);
+        // One more is shown rather than a row that hides just it.
+        let shown = if d.apps_open || more <= 1 { apps.len() } else { APPS_SHOWN };
+        for c in &apps[..shown] {
             out.push(app_line(c, styles));
+        }
+        if more > 1 {
+            *toggle = Some(out.len());
+            let text = if d.apps_open {
+                " ▾ fewer".to_string()
+            } else {
+                format!(" ▸ {more} more")
+            };
+            out.push(Line::from(Span::styled(text, styles.muted)));
         }
     }
     let mut servers: Vec<&ConnectorInfo> = d
@@ -170,7 +199,7 @@ pub fn lines(d: &Details, w: usize, styles: &Styles) -> Vec<Line<'static>> {
             out.push(Line::from(spans));
         }
     }
-    out.into_iter().map(|l| fit_line(l, w)).collect()
+    out
 }
 
 #[cfg(test)]
@@ -217,10 +246,11 @@ mod tests {
             dir: "~/Documents/neoworks/neoworks-harness",
             usage: Some(&usage),
             connectors: &connectors,
+            apps_open: false,
         };
         let styles = Styles::new(&Palette::default(), false);
         assert_eq!(
-            text(&lines(&d, 40, &styles)),
+            text(&lines(&d, 40, &styles).0),
             [
                 " Session ───────────────────────────────",
                 " ~/Documents/neoworks/neoworks-harness",
@@ -239,5 +269,29 @@ mod tests {
         );
         assert_eq!(grouped(999), "999");
         assert_eq!(grouped(1000), "1,000");
+    }
+
+    #[test]
+    fn past_four_apps_a_row_shows_the_rest() {
+        let app = |i: usize| json!({"app": format!("app-{i}"), "kind": "app", "connected": false,
+                                    "v": 0, "tools": []});
+        let styles = Styles::new(&Palette::default(), false);
+        let rows = |n: usize, apps_open: bool| {
+            let connectors: Vec<ConnectorInfo> =
+                serde_json::from_value((0..n).map(app).collect()).unwrap();
+            let d = Details {
+                dir: "~",
+                usage: None,
+                connectors: &connectors,
+                apps_open,
+            };
+            let (lines, toggle) = lines(&d, 40, &styles);
+            // The session's two rows and the apps' heading come first.
+            (lines.len() - 3, toggle)
+        };
+        // Five: all of them, rather than a row for one.
+        assert_eq!(rows(5, false), (5, None));
+        assert_eq!(rows(9, false), (4 + 1, Some(7)));
+        assert_eq!(rows(9, true), (9 + 1, Some(12)));
     }
 }

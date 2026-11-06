@@ -152,11 +152,25 @@ impl App {
         self.notify(&said, false);
     }
 
+    /// The sidebar lists all the apps, or the first few again.
+    pub(super) fn toggle_apps(&mut self) {
+        self.apps_open = !self.apps_open;
+        self.dirty = true;
+    }
+
     /// The mouse wheel scrolls the chat (or the open diff, or the terminal panel under the
-    /// pointer); dragging over the chat selects text and copies it when let go. Other mouse
-    /// events are ignored.
+    /// pointer); dragging over the chat selects text and copies it when let go; a click on the
+    /// sidebar's `▸ N more` shows the rest of the apps. Other mouse events are ignored.
     pub fn handle_mouse(&mut self, mouse: MouseEvent) -> Vec<Effect> {
         let mut fx = Vec::new();
+        if let MouseEventKind::Down(MouseButton::Left) = mouse.kind
+            && self
+                .apps_toggle_at
+                .is_some_and(|a| a.contains(ratatui::layout::Position::new(mouse.column, mouse.row)))
+        {
+            self.toggle_apps();
+            return fx;
+        }
         let down = match mouse.kind {
             MouseEventKind::ScrollUp => false,
             MouseEventKind::ScrollDown => true,
@@ -376,6 +390,10 @@ impl App {
                     }
                     WidgetAction::Todo(args) => self.change_todos(args, fx),
                 },
+                // `a` shows or hides the apps past the first few, under the sessions.
+                Focus::Sessions if key.code == KeyCode::Char('a') && key.modifiers.is_empty() => {
+                    self.toggle_apps();
+                }
                 Focus::Sessions => match self.sessions.key(key) {
                     SessionsAction::Redraw => {}
                     SessionsAction::Leave => self.focus = None,

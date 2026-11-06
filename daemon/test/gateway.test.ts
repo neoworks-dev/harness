@@ -167,6 +167,41 @@ describe("connector registry", () => {
     expect(registry.list()[0]?.skills?.[0]).not.toHaveProperty("text");
   });
 
+  test("a second window of an app is a copy: forgotten once it closes, and on a restart", async () => {
+    const store = new SessionStore(":memory:");
+    const { registry } = setup(store);
+    const terminal = (app: string): AppPresence => ({
+      app,
+      kind: "app",
+      title: "Terminal",
+      open: true,
+    });
+    const owner = {};
+    await registry.presence(owner, terminal("terminal"));
+    await registry.presence(owner, terminal("terminal-2"));
+    // Another app whose name only looks like a copy's.
+    await registry.presence(owner, { ...terminal("terminal-3"), title: "Other" });
+    expect(registry.list().map((c) => c.app)).toEqual(["terminal", "terminal-2", "terminal-3"]);
+    await registry.presence(owner, { ...terminal("terminal-2"), open: false });
+    expect(registry.list().map((c) => c.app)).toEqual(["terminal", "terminal-3"]);
+
+    // One the daemon remembered from before: gone after a restart.
+    store.saveConnector({
+      app: "terminal-4",
+      kind: "app",
+      title: "Terminal",
+      v: 0,
+      schemaHash: "",
+      tools: [],
+    });
+    await registry.disconnect(owner);
+    expect(
+      setup(store)
+        .registry.list()
+        .map((c) => c.app),
+    ).toEqual(["terminal", "terminal-3"]);
+  });
+
   test("only the registering client can unregister; its disconnect closes its apps", async () => {
     const { registry, upstreams } = setup();
     upstreams.set("mem://photo", fakeUpstream(photoTools));

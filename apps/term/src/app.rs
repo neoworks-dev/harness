@@ -476,6 +476,10 @@ pub struct App {
     /// The file view of the edit a prompt asks about is drawn: it has the keys that don't
     /// answer the prompt.
     review_shown: bool,
+    /// The sidebar lists all the apps, not just the first few.
+    apps_open: bool,
+    /// Where the sidebar's row that shows or hides the rest of the apps is, if it is drawn.
+    apps_toggle_at: Option<Rect>,
     /// Event cards in the top right of the chat.
     toasts: Toasts,
     /// Background commands whose end got a card already.
@@ -603,6 +607,8 @@ impl App {
             details_shown: false,
             work_shown: false,
             review_shown: false,
+            apps_open: false,
+            apps_toggle_at: None,
             toasts: Toasts::default(),
             toasted_jobs: HashSet::new(),
             sessions_wanted: false,
