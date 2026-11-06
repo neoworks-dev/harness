@@ -70,6 +70,17 @@ pub(super) fn changed_files(item: &ViewItem) -> Vec<Changed> {
     out
 }
 
+/// The first diff in an item that names its file.
+pub(super) fn first_diff(c: &Component) -> Option<&DiffComponent> {
+    match c {
+        Component::CardComponent(v) => v.children.iter().find_map(first_diff),
+        Component::RowComponent(v) => v.children.iter().find_map(first_diff),
+        Component::StackComponent(v) => v.children.iter().find_map(first_diff),
+        Component::DiffComponent(v) if v.path.as_deref().is_some_and(|p| !p.is_empty()) => Some(v),
+        _ => None,
+    }
+}
+
 pub(super) fn add_changed(all: &mut Vec<Changed>, c: Changed) {
     match all.iter_mut().find(|x| x.path == c.path) {
         Some(x) => {

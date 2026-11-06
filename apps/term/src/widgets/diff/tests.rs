@@ -653,5 +653,96 @@ fn scrolls_clamped_and_closes() {
     assert!(ch(&mut v, 'q'));
 }
 
+/// A request's diff line: `c`ontext, `-`, `+`, with its old and new numbers.
+fn req_line(kind: char, text: &str, old: Option<i64>, new: Option<i64>) -> neo_protocol::DiffLine {
+    use neo_protocol::DiffLineKind as K;
+    let kind = match kind {
+        '-' => K::Remove,
+        '+' => K::Add,
+        '@' => K::Hunk,
+        _ => K::Context,
+    };
+    neo_protocol::DiffLine {
+        kind,
+        text: text.into(),
+        old,
+        new,
+    }
+}
+
+/// A directory of its own with `rel` holding `text` (none: no such file).
+fn dir_with(name: &str, rel: &str, text: Option<&str>) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("neo-term-proposed-{name}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    if let Some(text) = text {
+        std::fs::write(dir.join(rel), text).unwrap();
+    }
+    dir
+}
+
+#[test]
+fn a_proposed_edit_is_shown_in_its_whole_file_written_or_not() {
+    let lines = [
+        req_line('@', "@@ -2,3 +2,3 @@", None, None),
+        req_line(' ', "b", Some(2), Some(2)),
+        req_line('-', "c", Some(3), None),
+        req_line('+', "C", None, Some(3)),
+        req_line(' ', "d", Some(4), Some(4)),
+    ];
+    let want = "--- a/a.txt\n+++ b/a.txt\n@@ -1,5 +1,5 @@\n a\n b\n-c\n+C\n d\n e\n";
+    // Asked about: the file is the old version.
+    let dir = dir_with("old", "a.txt", Some("a\nb\nc\nd\ne\n"));
+    assert_eq!(proposed_diff(&dir, "a.txt", &lines).unwrap(), want);
+    // Review mode wrote it already: the file is the new one.
+    let dir = dir_with("new", "a.txt", Some("a\nb\nC\nd\ne\n"));
+    assert_eq!(proposed_diff(&dir, "a.txt", &lines).unwrap(), want);
+    // Changed since: the request's diff as it is.
+    let dir = dir_with("other", "a.txt", Some("zzz\n"));
+    let text = proposed_diff(&dir, "a.txt", &lines).unwrap();
+    assert!(text.ends_with("@@ -2 +2 @@\n b\n-c\n+C\n d\n"), "{text}");
+}
+
+#[test]
+fn a_proposed_edit_of_a_snippet_is_found_in_its_file() {
+    // Claude Code's edits: the replaced text and its replacement, numbered from their own top.
+    let lines = [
+        req_line('-', "c", Some(1), None),
+        req_line('-', "d", Some(2), None),
+        req_line('+', "D", None, Some(1)),
+    ];
+    let want = "--- a/a.txt\n+++ b/a.txt\n@@ -1,5 +1,4 @@\n a\n b\n-c\n-d\n+D\n e\n";
+    let dir = dir_with("snippet-old", "a.txt", Some("a\nb\nc\nd\ne\n"));
+    assert_eq!(proposed_diff(&dir, "a.txt", &lines).unwrap(), want);
+    let dir = dir_with("snippet-new", "a.txt", Some("a\nb\nD\ne\n"));
+    assert_eq!(proposed_diff(&dir, "a.txt", &lines).unwrap(), want);
+}
+
+#[test]
+fn a_proposed_new_file_and_a_change_without_context() {
+    let dir = dir_with("create", "n.txt", None);
+    let lines = [
+        req_line('+', "x", None, Some(1)),
+        req_line('+', "y", None, Some(2)),
+    ];
+    assert_eq!(
+        proposed_diff(&dir, "n.txt", &lines).unwrap(),
+        "--- a/n.txt\n+++ b/n.txt\n@@ -1,0 +1,2 @@\n+x\n+y\n"
+    );
+    // An addition is placed by its number when no context comes before it.
+    let dir = dir_with("insert", "a.txt", Some("1\n2\n3\n4\n"));
+    let lines = [req_line('+', "new", None, Some(3))];
+    assert_eq!(
+        proposed_diff(&dir, "a.txt", &lines).unwrap(),
+        "--- a/a.txt\n+++ b/a.txt\n@@ -1,4 +1,5 @@\n 1\n 2\n+new\n 3\n 4\n"
+    );
+    // The view starts on it, with nothing to reload.
+    let mut v = DiffView::proposed(dir, "a.txt", &lines);
+    let text = render(&v, 60, 8);
+    assert!(text.contains("proposed edit"), "{text}");
+    ch(&mut v, 'f');
+    assert!(render(&v, 60, 8).contains("the edit is shown in its whole file"));
+}
+
 // The keys: moving, searching, selecting, commenting, reloading.
 mod keys;

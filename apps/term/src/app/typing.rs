@@ -39,6 +39,10 @@ impl App {
             KeyCode::Char(' ') if self.focused_button().is_some_and(|b| b.stays) => {
                 self.press_staying(fx);
             }
+            // The edit asked about, whole, in the diff view (again).
+            KeyCode::Char('o') => {
+                self.review_edit();
+            }
             KeyCode::Char(c) => {
                 if let Some(n) = c.to_digit(10).filter(|n| (1..=9).contains(n))
                     && (n as usize) <= self.active_buttons().len()

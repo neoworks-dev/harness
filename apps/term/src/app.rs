@@ -307,14 +307,22 @@ struct PromptState {
     seen: Option<String>,
     /// The prompt has taken the editor's place: keys go to it alone.
     engaged: bool,
+    /// Edit requests whose edit opened in the diff view on their own: once each.
+    reviewed: Vec<String>,
     /// When the user last typed in the editor (ms): a prompt waits for a pause.
     typed_ms: i64,
     /// The first button line shown when the buttons don't fit the panel; None: not drawn yet.
     panel_top: Cell<Option<usize>>,
 }
 
-/// The keys line under a prompt in the input area.
-fn keys_hint(focused: Option<&ButtonRef>, buttons: usize, filter: Option<&str>) -> String {
+/// The keys line under a prompt in the input area; `review`: the prompt is an edit, with this
+/// many comments written on it.
+fn keys_hint(
+    focused: Option<&ButtonRef>,
+    buttons: usize,
+    filter: Option<&str>,
+    review: Option<usize>,
+) -> String {
     let mut parts = Vec::new();
     if let Some(button) = focused {
         // A setting: Space changes it and stays, Enter changes it and closes.
@@ -330,6 +338,12 @@ fn keys_hint(focused: Option<&ButtonRef>, buttons: usize, filter: Option<&str>) 
     }
     if buttons > 1 {
         parts.insert(1.min(parts.len()), "←/→ choose".to_string());
+    }
+    match review {
+        Some(0) => parts.push("o review".to_string()),
+        Some(1) => parts.push("o review (1 comment goes along)".to_string()),
+        Some(n) => parts.push(format!("o review ({n} comments go along)")),
+        None => {}
     }
     parts.push(
         match filter {

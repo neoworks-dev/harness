@@ -142,6 +142,11 @@ pub struct Widgets {
     /// The comments written in the diff view, by file, kept while it is closed and until the
     /// message they are in is sent.
     comments: HashMap<String, Vec<Comment>>,
+    /// The permission request whose edit the diff view shows, if it shows one.
+    review: Option<String>,
+    /// The comments written on a request's edit, by request: its file and them. They go with
+    /// the answer, not into the prompt.
+    review_comments: HashMap<String, (String, Vec<Comment>)>,
     /// toolCallId -> the guest that made the call (None: the session's own agent).
     tool_agents: HashMap<String, Option<String>>,
     /// None only in tests that don't want a git process.
@@ -171,6 +176,8 @@ impl Widgets {
             split_diffs: false,
             diff: None,
             comments: HashMap::new(),
+            review: None,
+            review_comments: HashMap::new(),
             tool_agents: HashMap::new(),
             runner,
         }
@@ -192,8 +199,10 @@ impl Widgets {
         self.files = FilesState::default();
         self.files.icons = icons;
         self.diff = None;
+        self.review = None;
         // Their paths were relative to the old directory.
         self.comments.clear();
+        self.review_comments.clear();
         if self.runner.is_some() {
             let mut runner = Runner::for_dir(&cwd, Instant::now());
             runner.poll(Instant::now());
@@ -635,11 +644,18 @@ impl Widgets {
 
     /// Closes the diff view, keeping its comments.
     fn close_diff(&mut self) {
+        let review = self.review.take();
         if let Some(mut d) = self.diff.take()
             && let Some(rel) = d.rel().map(str::to_string)
         {
             let comments = d.take_comments();
-            if comments.is_empty() {
+            if let Some(r) = review {
+                if comments.is_empty() {
+                    self.review_comments.remove(&r);
+                } else {
+                    self.review_comments.insert(r, (rel, comments));
+                }
+            } else if comments.is_empty() {
                 self.comments.remove(&rel);
             } else {
                 self.comments.insert(rel, comments);
@@ -698,6 +714,41 @@ impl Widgets {
             let view = DiffView::open_file(self.cwd.clone(), req).with_split(self.split_diffs);
             self.diff = Some(self.with_comments(view, &rel));
         }
+    }
+
+    /// Opens the diff view on the edit permission request `r` asks about: `path`'s whole file
+    /// with the request's diff in it, and the comments written on it before.
+    pub fn open_review(&mut self, r: &str, path: &str, lines: &[neo_protocol::DiffLine]) {
+        let rel = relativize(&self.cwd, path);
+        let comments = self
+            .review_comments
+            .get(r)
+            .map(|(_, c)| c.clone())
+            .unwrap_or_default();
+        self.diff = Some(DiffView::proposed(self.cwd.clone(), &rel, lines).with_comments(comments));
+        self.review = Some(r.to_string());
+    }
+
+    /// The permission request whose edit the diff view shows.
+    pub fn reviewing(&self) -> Option<&str> {
+        self.review.as_deref()
+    }
+
+    /// The comments written on request `r`'s edit, as `@path:12-14 text`, and forgets them:
+    /// they went with its answer.
+    pub fn take_review_notes(&mut self, r: &str) -> Vec<String> {
+        if self.review.as_deref() == Some(r) {
+            self.close_diff();
+        }
+        self.review_comments
+            .remove(r)
+            .map(|(rel, list)| list.iter().map(|c| c.mention(&rel)).collect())
+            .unwrap_or_default()
+    }
+
+    /// How many comments request `r`'s edit has.
+    pub fn review_note_count(&self, r: &str) -> usize {
+        self.review_comments.get(r).map_or(0, |(_, c)| c.len())
     }
 
     /// `/diff`: whether files open side by side (where they fit) or unified.

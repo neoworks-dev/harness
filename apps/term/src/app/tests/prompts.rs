@@ -250,13 +250,14 @@ fn several_prompts_come_one_at_a_time() {
 fn a_long_diff_stays_compact_in_the_input_area() {
     let mut app = app();
     show(&mut app, vec![permission_with_diff(60)]);
-    let lines = screen(&mut app, 70, 30);
+    close_review(&mut app);
+    let lines = screen(&mut app, 100, 30);
     let text = lines.join("\n");
     // The chat shows the item; the input area shows it again, cut short, with the buttons and
     // the keys under it.
     assert!(text.contains("[1 Allow once]"), "{text}");
     assert!(
-        text.contains("enter allow once · ←/→ choose · tab add a note · esc dismiss"),
+        text.contains("enter allow once · ←/→ choose · tab add a note · o review · esc dismiss"),
         "{text}"
     );
     let panel_rows = lines

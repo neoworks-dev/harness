@@ -6,7 +6,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use neo_protocol::{
-    Component, DiffLineKind, ItemKind, ItemState, ViewItem, ViewPage, ViewPatch, ViewSnapshot,
+    Component, DiffComponent, DiffLineKind, ItemKind, ItemState, ViewItem, ViewPage, ViewPatch,
+    ViewSnapshot,
 };
 use neo_renderer_ratatui::{
     ButtonRef, DevRef, ImageOptions, ImageSlot, ImageStatus, Options, Palette, UiDocInfo, UiState,
@@ -381,6 +382,11 @@ impl Chat {
 
     pub fn item(&self, r: &str) -> Option<&ViewItem> {
         self.state.items.iter().rev().find(|i| i.r#ref == r)
+    }
+
+    /// The edit a prompt asks about: its first diff that names a file.
+    pub fn diff_of(&self, r: &str) -> Option<&DiffComponent> {
+        lines::first_diff(&self.item(r)?.component)
     }
 
     pub fn buttons_of(&self, r: &str) -> &[ButtonRef] {

@@ -137,7 +137,12 @@ impl DiffView {
                 Style::new().fg(look.danger),
             ));
         }
-        if self.full {
+        if self.proposed {
+            title.push(Span::styled(
+                "  proposed edit · c comments · q answers",
+                muted,
+            ));
+        } else if self.full {
             title.push(Span::styled("  full file", muted));
         }
         let used: usize = title.iter().map(|s| width(&s.content)).sum();

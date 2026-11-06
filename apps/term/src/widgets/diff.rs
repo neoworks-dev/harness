@@ -261,6 +261,8 @@ pub(crate) struct DiffView {
     req: Option<DiffRequest>,
     /// Lines of context: the whole file (`f`).
     full: bool,
+    /// An edit waiting for an answer, not git's diff: there is nothing to reload.
+    proposed: bool,
     rx: Option<Receiver<Result<String, String>>>,
     /// The unified view.
     lines: Vec<DiffLine>,
@@ -366,6 +368,7 @@ impl DiffView {
             cwd: PathBuf::new(),
             req: None,
             full: false,
+            proposed: false,
             rx: None,
             lines: Vec::new(),
             numbers: Vec::new(),
@@ -407,6 +410,27 @@ impl DiffView {
             blocks: RefCell::new(Blocks::default()),
             colors: Cell::new((Color::Reset, Color::Reset)),
         }
+    }
+
+    /// An edit a permission request asks about (or, in review mode, made), the whole file
+    /// with it marked, unified: `lines` are the request's diff, the file is read from disk.
+    pub(crate) fn proposed(cwd: PathBuf, rel: &str, lines: &[neo_protocol::DiffLine]) -> DiffView {
+        let text = proposed_diff(&cwd, rel, lines);
+        let mut v = DiffView {
+            cwd,
+            req: Some(DiffRequest {
+                rel: rel.to_string(),
+                orig: None,
+                mark: Mark::Modified,
+                in_repo: false,
+            }),
+            full: true,
+            proposed: true,
+            force: Some(false),
+            ..DiffView::blank(rel.to_string())
+        };
+        v.finish(text);
+        v
     }
 
     /// A diff that is already at hand (the GitHub view's pull request diffs).
@@ -655,6 +679,10 @@ impl DiffView {
         let Some(req) = self.req.clone() else {
             return;
         };
+        if self.proposed {
+            self.message = Some("the edit is shown in its whole file".into());
+            return;
+        }
         self.full = !self.full;
         let split = self.view.get().split;
         self.anchor = self

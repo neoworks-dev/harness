@@ -45,10 +45,72 @@ pub(super) fn permission_with_diff(changed: usize) -> ViewItem {
     .unwrap()
 }
 
+/// An edit request opens in the diff view on its own; `q` goes back to its card.
+pub(super) fn close_review(app: &mut App) {
+    assert!(app.widgets.reviewing().is_some(), "the edit opened");
+    app.handle_key(key(KeyCode::Char('q')));
+    assert!(app.widgets.reviewing().is_none());
+}
+
+#[test]
+fn an_edit_request_opens_whole_in_the_diff_view_and_its_comments_go_with_the_answer() {
+    let dir = std::env::temp_dir().join("neo-term-test-review");
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("src/a.ts"), "one\ntwo\nthree\nfour\n").unwrap();
+    let mut app = app();
+    app.widgets.reset(dir);
+    let mut item = edit_review_card();
+    item.label = Some("Edit src/a.ts".into());
+    item.component = serde_json::from_value(json!({"type":"stack","children":[
+        {"type":"diff","path":"src/a.ts","lines":[
+            {"kind":"context","text":"two","old":2,"new":2},
+            {"kind":"remove","text":"three","old":3},
+            {"kind":"add","text":"3","new":3}]},
+        {"type":"row","children":[
+            {"type":"button","label":"Allow","action":"neo.permit",
+             "args":{"id":"9","option":"allow"},"key":"1","note":true},
+            {"type":"button","label":"Reject","action":"neo.permit",
+             "args":{"id":"9","option":"reject"},"key":"2","note":true}]}]}))
+    .unwrap();
+    show(&mut app, vec![item]);
+    assert_eq!(app.widgets.reviewing(), Some("p-9"));
+    let text = screen_text(&mut app, 80, 30);
+    assert!(text.contains("proposed edit"), "{text}");
+    assert!(
+        text.contains("one") && text.contains("four"),
+        "the whole file: {text}"
+    );
+    // Visual mode and the leader's c: a comment on the lines, above them.
+    type_str(&mut app, "2GVjj");
+    app.handle_key(key(KeyCode::Char(' ')));
+    app.handle_key(key(KeyCode::Char('c')));
+    type_str(&mut app, "keep the word");
+    app.handle_key(key(KeyCode::Enter));
+    let text = screen_text(&mut app, 80, 30);
+    assert!(text.contains("╭ @src/a.ts:2-3"), "{text}");
+    assert!(text.contains("keep the word"), "{text}");
+    app.handle_key(key(KeyCode::Char('q')));
+    // Not into the prompt: with the answer.
+    assert_eq!(app.editor_text(), "");
+    let text = screen_text(&mut app, 120, 20);
+    assert!(text.contains("o review (1 comment goes along)"), "{text}");
+    // `o` shows it again, the comment still there.
+    app.handle_key(key(KeyCode::Char('o')));
+    assert!(screen_text(&mut app, 80, 30).contains("keep the word"));
+    app.handle_key(key(KeyCode::Char('q')));
+    let fx = app.handle_key(key(KeyCode::Char('2')));
+    assert!(
+        matches!(&fx[..], [Effect::Action { args: Some(a), .. }]
+            if a["option"] == "reject" && a["note"] == "@src/a.ts:2-3 keep the word"),
+        "{fx:?}"
+    );
+}
+
 #[test]
 fn a_permission_previews_its_diff_and_the_buttons_answer_from_the_keyboard() {
     let mut app = app();
     show(&mut app, vec![permission_with_diff(2)]);
+    close_review(&mut app);
     let text = screen_text(&mut app, 70, 18);
     snapshot("permission-diff-70x18", &text);
     assert_eq!(app.active_ref(), Some("p-7"));
@@ -62,6 +124,7 @@ fn a_permission_previews_its_diff_and_the_buttons_answer_from_the_keyboard() {
     );
     let mut app = self::app();
     show(&mut app, vec![permission_with_diff(2)]);
+    close_review(&mut app);
     let fx = app.handle_key(key(KeyCode::Char('3')));
     assert!(matches!(&fx[..], [Effect::Action { args: Some(a), .. }] if a["option"] == "reject"));
 }
@@ -96,6 +159,7 @@ fn edit_review_card() -> ViewItem {
 fn the_review_mode_edit_card_shows_its_diff_with_keep_and_revert() {
     let mut app = app();
     show(&mut app, vec![edit_review_card()]);
+    close_review(&mut app);
     let text = screen_text(&mut app, 70, 14);
     snapshot("edit-review-card-70x14", &text);
     assert!(text.contains("[1 Keep]  [2 Revert]"), "{text}");
@@ -113,6 +177,7 @@ fn the_review_mode_edit_card_shows_its_diff_with_keep_and_revert() {
 fn tab_on_a_card_types_a_note_that_goes_with_the_focused_button() {
     let mut app = app();
     show(&mut app, vec![edit_review_card()]);
+    close_review(&mut app);
     // Move to Revert, then Tab: the buttons wait, a one-line input opens under the card.
     app.handle_key(key(KeyCode::Right));
     assert!(app.handle_key(key(KeyCode::Tab)).is_empty());
@@ -151,6 +216,7 @@ fn tab_on_a_card_types_a_note_that_goes_with_the_focused_button() {
 fn esc_leaves_the_note_but_keeps_the_card_and_an_empty_note_is_no_note() {
     let mut app = app();
     show(&mut app, vec![permission_with_diff(1)]);
+    close_review(&mut app);
     app.handle_key(key(KeyCode::Tab));
     type_str(&mut app, "never mind");
     app.handle_key(key(KeyCode::Esc));
@@ -169,6 +235,7 @@ fn esc_leaves_the_note_but_keeps_the_card_and_an_empty_note_is_no_note() {
     // Pasting goes into the note, on one line.
     let mut app = self::app();
     show(&mut app, vec![permission_with_diff(1)]);
+    close_review(&mut app);
     app.handle_key(key(KeyCode::Tab));
     app.handle_paste("use\ntabs");
     let fx = app.handle_key(key(KeyCode::Enter));
@@ -182,6 +249,7 @@ fn esc_leaves_the_note_but_keeps_the_card_and_an_empty_note_is_no_note() {
 fn a_note_is_dropped_when_the_card_is_answered_elsewhere() {
     let mut app = app();
     show(&mut app, vec![edit_review_card()]);
+    close_review(&mut app);
     app.handle_key(key(KeyCode::Tab));
     type_str(&mut app, "hm");
     let mut answered = edit_review_card();
@@ -216,6 +284,7 @@ fn tab_still_moves_between_the_buttons_of_other_prompts() {
 fn a_long_diff_keeps_the_buttons_in_reach_until_expanded() {
     let mut app = app();
     show(&mut app, vec![permission_with_diff(60)]);
+    close_review(&mut app);
     // The prompt scrolls into view: the buttons are on screen, the middle of the diff is not.
     let text = screen_text(&mut app, 70, 30);
     assert!(

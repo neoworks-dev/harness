@@ -230,7 +230,7 @@ mod prompts;
 mod sidebar;
 
 // Helpers of one part that others use too.
-use cards::permission_with_diff;
+use cards::{close_review, permission_with_diff};
 use choices::picked;
 use drawing::plan_event;
 use events::sessions_command;

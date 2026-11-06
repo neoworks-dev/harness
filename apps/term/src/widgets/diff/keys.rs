@@ -35,6 +35,7 @@ impl DiffView {
                     let last = self.len(split).saturating_sub(1);
                     self.yank(cur, (cur + n - 1).min(last), None, split);
                 }
+                (Pending::Leader, KeyCode::Char('c')) => self.start_comment(),
                 (Pending::Leader, KeyCode::Char('w')) => {
                     self.wrap = !self.wrap;
                     self.hscroll = 0;

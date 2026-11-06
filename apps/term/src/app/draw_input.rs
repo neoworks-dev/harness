@@ -173,6 +173,11 @@ impl App {
         let w = usize::from(width);
         let accent = self.styles.accent;
         let marker = self.panel_marker();
+        // An edit: `o` shows it whole, and how many comments go with the answer.
+        let review = self
+            .active_ref()
+            .filter(|r| self.chat.diff_of(r).is_some())
+            .map(|r| self.widgets.review_note_count(r));
         let tail = match &self.note {
             Some(note) => chat::note_line(&note.text, w.saturating_sub(2), accent),
             None => Line::from(Span::styled(
@@ -182,6 +187,7 @@ impl App {
                         .filter(|_| !shown.as_ref().is_some_and(Vec::is_empty)),
                     shown.as_ref().map_or(buttons.len(), Vec::len),
                     filtering.then_some(self.prompt.filter.as_str()),
+                    review,
                 ),
                 self.styles.muted,
             )),

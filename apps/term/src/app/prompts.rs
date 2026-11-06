@@ -41,6 +41,39 @@ impl App {
             self.prompt.engaged = engaged;
             self.dirty = true;
         }
+        // An edit to answer opens in the diff view the first time it takes the editor's place,
+        // unless something else is open over the chat.
+        let free = !self.widgets.overlay_open()
+            && !self.github.is_open()
+            && self.transcript.is_none()
+            && self.reader.is_none()
+            && self.overlay == Overlay::None;
+        if let Some(r) = self.active_ref().map(str::to_string)
+            && engaged
+            && free
+            && !self.prompt.reviewed.contains(&r)
+        {
+            self.prompt.reviewed.push(r);
+            self.review_edit();
+        }
+    }
+
+    /// Opens the active prompt's edit in the diff view: its whole file with the edit marked,
+    /// to comment on (the comments go with the answer). False when it has no edit.
+    pub(super) fn review_edit(&mut self) -> bool {
+        let Some(r) = self.active_ref().map(str::to_string) else {
+            return false;
+        };
+        let Some((path, lines)) = self
+            .chat
+            .diff_of(&r)
+            .and_then(|d| Some((d.path.clone()?, d.lines.clone())))
+        else {
+            return false;
+        };
+        self.widgets.open_review(&r, &path, &lines);
+        self.dirty = true;
+        true
     }
 
     /// A prompt is open but the user is typing: the editor stays, with a hint above it.
@@ -168,6 +201,14 @@ impl App {
         let Some(button) = self.chat.buttons_of(&r).get(index).cloned() else {
             return;
         };
+        // The comments written on its edit, after what was typed as the note.
+        let comments = self.widgets.take_review_notes(&r);
+        let note = match (note, comments.is_empty() || !takes_note(&button)) {
+            (note, true) => note.map(str::to_string),
+            (Some(note), false) => Some(format!("{note}\n{}", comments.join("\n"))),
+            (None, false) => Some(comments.join("\n")),
+        };
+        let note = note.as_deref();
         if let Some(text) = button.copy_text() {
             fx.push(Effect::Copy(text.to_string()));
             self.notify("copied", false);

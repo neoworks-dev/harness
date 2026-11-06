@@ -47,6 +47,179 @@ pub(super) fn file_as_diff(cwd: &Path, rel: &str) -> Result<String, String> {
     Ok(out)
 }
 
+/// A permission request's diff over the whole file, as a diff of one hunk: the file on disk is
+/// the old version (an edit asked about) or the new one (an edit review mode already wrote),
+/// whichever the diff's lines agree with; the rest of it is context. A file that agrees with
+/// neither (changed since) shows the request's diff as it is.
+pub(super) fn proposed_diff(
+    cwd: &Path,
+    rel: &str,
+    lines: &[neo_protocol::DiffLine],
+) -> Result<String, String> {
+    let path = cwd.join(rel);
+    let disk = match std::fs::metadata(&path) {
+        Ok(meta) if meta.len() > FILE_LIMIT => None,
+        Ok(_) => std::fs::read(&path)
+            .ok()
+            .filter(|b| !b.contains(&0))
+            .map(|b| String::from_utf8_lossy(&b).into_owned()),
+        // A file the edit creates.
+        Err(_) => Some(String::new()),
+    };
+    let disk: Vec<&str> = disk
+        .as_deref()
+        .map_or_else(Vec::new, |d| d.lines().collect());
+    // Numbered from the file's top, or (Claude Code's edits: the replaced text and its
+    // replacement) from the snippet's, found in the file.
+    let body = [true, false]
+        .into_iter()
+        .find_map(|old| {
+            splice(&disk, lines, old).or_else(|| {
+                let by = locate(&disk, lines, old)?;
+                splice(&disk, &shifted(lines, by), old)
+            })
+        })
+        .map(|rows| {
+            let old = rows.iter().filter(|r| !r.starts_with('+')).count();
+            let new = rows.iter().filter(|r| !r.starts_with('-')).count();
+            format!("@@ -1,{old} +1,{new} @@\n{}", rows.join("\n"))
+        })
+        .unwrap_or_else(|| as_is(lines));
+    if body.trim().is_empty() {
+        return Err("the edit changes nothing".into());
+    }
+    Ok(format!("--- a/{rel}\n+++ b/{rel}\n{body}\n"))
+}
+
+/// How far the diff's lines of the base (the old file's, or the new one's) are from where they
+/// first occur together in `disk`, in lines; None when they don't or are where they say.
+fn locate(disk: &[&str], lines: &[neo_protocol::DiffLine], old: bool) -> Option<i64> {
+    use neo_protocol::DiffLineKind as K;
+    let base: Vec<&neo_protocol::DiffLine> = lines
+        .iter()
+        .filter(|l| {
+            matches!(
+                (l.kind, old),
+                (K::Context, _) | (K::Remove, true) | (K::Add, false)
+            )
+        })
+        .collect();
+    let first = base.first().and_then(|l| if old { l.old } else { l.new })?;
+    let at = disk.windows(base.len()).position(|w| {
+        w.iter()
+            .zip(&base)
+            .all(|(d, l)| d.trim_end_matches('\r') == l.text.trim_end_matches(['\r', '\n']))
+    })?;
+    let by = i64::try_from(at).ok()? + 1 - first;
+    (by != 0).then_some(by)
+}
+
+/// The diff's lines, their numbers moved by `by`.
+fn shifted(lines: &[neo_protocol::DiffLine], by: i64) -> Vec<neo_protocol::DiffLine> {
+    lines
+        .iter()
+        .map(|l| neo_protocol::DiffLine {
+            old: l.old.map(|n| n + by),
+            new: l.new.map(|n| n + by),
+            ..l.clone()
+        })
+        .collect()
+}
+
+/// The diff's lines placed in `disk`, the old file (`old`) or the new one, as `+`/`-`/` ` rows;
+/// None when a line the base has doesn't match it.
+fn splice(disk: &[&str], lines: &[neo_protocol::DiffLine], old: bool) -> Option<Vec<String>> {
+    use neo_protocol::DiffLineKind as K;
+    let no = |n: Option<i64>| n.and_then(|n| usize::try_from(n).ok());
+    let same = |at: usize, text: &str| {
+        disk.get(at.checked_sub(1)?)
+            .is_some_and(|d| d.trim_end_matches('\r') == text.trim_end_matches(['\r', '\n']))
+            .then_some(())
+    };
+    let mut rows = Vec::new();
+    // The next line of the old and the new file.
+    let (mut o, mut n) = (1usize, 1usize);
+    for l in lines {
+        if l.kind == K::Hunk {
+            continue;
+        }
+        // Where the line is in the base: its own number there, or worked out from the other's.
+        let at = if old {
+            no(l.old).or_else(|| (no(l.new)? + o).checked_sub(n))?
+        } else {
+            no(l.new).or_else(|| (no(l.old)? + n).checked_sub(o))?
+        };
+        loop {
+            let b = if old { o } else { n };
+            if b >= at {
+                break;
+            }
+            rows.push(format!(" {}", disk.get(b - 1)?));
+            (o, n) = (o + 1, n + 1);
+        }
+        // A line of the base out of order: not this base.
+        let in_base = matches!(
+            (l.kind, old),
+            (K::Context, _) | (K::Remove, true) | (K::Add, false)
+        );
+        if in_base && (if old { o } else { n }) != at {
+            return None;
+        }
+        let text = l.text.trim_end_matches(['\r', '\n']);
+        match l.kind {
+            K::Context => {
+                same(at, text)?;
+                rows.push(format!(" {text}"));
+                (o, n) = (o + 1, n + 1);
+            }
+            K::Remove => {
+                if old {
+                    same(at, text)?;
+                }
+                rows.push(format!("-{text}"));
+                o += 1;
+            }
+            K::Add => {
+                if !old {
+                    same(at, text)?;
+                }
+                rows.push(format!("+{text}"));
+                n += 1;
+            }
+            K::Hunk => {}
+        }
+    }
+    let b = if old { o } else { n };
+    rows.extend(disk.iter().skip(b - 1).map(|d| format!(" {d}")));
+    Some(rows)
+}
+
+/// The request's diff by itself, a hunk header before each run.
+fn as_is(lines: &[neo_protocol::DiffLine]) -> String {
+    use neo_protocol::DiffLineKind as K;
+    let mut out = Vec::new();
+    let mut open = false;
+    for l in lines {
+        let text = l.text.trim_end_matches(['\r', '\n']);
+        let sign = match l.kind {
+            K::Hunk => {
+                open = false;
+                continue;
+            }
+            K::Context => ' ',
+            K::Add => '+',
+            K::Remove => '-',
+        };
+        if !open {
+            let (o, n) = (l.old.unwrap_or(1), l.new.unwrap_or(1));
+            out.push(format!("@@ -{o} +{n} @@"));
+            open = true;
+        }
+        out.push(format!("{sign}{text}"));
+    }
+    out.join("\n")
+}
+
 pub(super) fn run(cmd: &mut std::process::Command, no_index: bool) -> Result<String, String> {
     let out = cmd
         .stderr(std::process::Stdio::piped())
