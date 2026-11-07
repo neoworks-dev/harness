@@ -176,6 +176,14 @@ impl<'a> Cx<'a> {
                 }
                 content_above = false;
             } else {
+                // Diffs one after another (a patch of several files) part by a blank row, so
+                // each file's reads as its own.
+                if content_above
+                    && matches!(c, pb::Component::DiffComponent(_))
+                    && v.gap != Some(pb::Space::L)
+                {
+                    parts.push(vec![Line::default()]);
+                }
                 content_above = true;
             }
             parts.push(lines);

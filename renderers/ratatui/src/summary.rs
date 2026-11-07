@@ -46,6 +46,20 @@ pub(crate) fn lone_diff(c: &pb::Component) -> Option<&pb::DiffComponent> {
     }
 }
 
+/// The diffs a result is when it is several and nothing else: one edit of many files (a patch).
+pub(crate) fn only_diffs(c: &pb::Component) -> Option<Vec<&pb::DiffComponent>> {
+    let mut all = Vec::new();
+    leaves(c, &mut all);
+    let diffs: Vec<_> = all
+        .iter()
+        .filter_map(|leaf| match leaf {
+            Leaf::Comp(pb::Component::DiffComponent(v)) => Some(v),
+            _ => None,
+        })
+        .collect();
+    (diffs.len() >= 2 && diffs.len() == all.len()).then_some(diffs)
+}
+
 /// The diff a question is about, when besides its buttons it holds nothing else.
 pub(crate) fn asked_diff(c: &pb::Component) -> Option<&pb::DiffComponent> {
     let mut all = Vec::new();
@@ -193,7 +207,7 @@ impl Cx<'_> {
     }
 
     /// `path  +3 −1`, with the file's icon before it when icons are on.
-    fn diff_line(&self, v: &pb::DiffComponent, w: usize) -> Line<'static> {
+    pub(crate) fn diff_line(&self, v: &pb::DiffComponent, w: usize) -> Line<'static> {
         let icon = v
             .path
             .as_deref()

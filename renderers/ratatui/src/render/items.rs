@@ -182,17 +182,27 @@ impl Cx<'_> {
             if let Some((line, d)) = edit.and_then(|(l, d)| Some((self.edit_line(l, d, w)?, d))) {
                 let mut out = vec![line];
                 if self.o.open_edits {
-                    let lines = around_changes(&d.lines, EDIT_CONTEXT);
-                    let mut rows = self.diff_rows(d.path.as_deref(), &lines, w);
-                    if rows.len() > EDIT_ROWS {
-                        let more = rows.len() - (EDIT_ROWS - 1);
-                        rows.truncate(EDIT_ROWS - 1);
-                        rows.push(sline(
-                            format!("… +{more} lines (tab, enter opens the file)"),
-                            self.p.muted_style(),
-                        ));
+                    out.extend(self.open_edit_rows(d, w));
+                }
+                return out;
+            }
+            // One edit of several files, open: each file's `path  +3 −1` and its changes, a
+            // blank row between the files so they read apart.
+            if let (true, Some(diffs)) = (
+                self.o.open_edits,
+                crate::summary::only_diffs(&it.component),
+            ) {
+                let mut out = match &label {
+                    Some(label) => wrap(&self.tool_label(label), w),
+                    None => Vec::new(),
+                };
+                cut_rows(&mut out, LABEL_ROWS, w);
+                for d in diffs {
+                    if !out.is_empty() {
+                        out.push(Line::default());
                     }
-                    out.extend(rows);
+                    out.push(self.diff_line(d, w));
+                    out.extend(self.open_edit_rows(d, w));
                 }
                 return out;
             }
@@ -301,6 +311,21 @@ impl Cx<'_> {
             out.extend(prefixed(summary, elbow, vec![Span::raw("    ")]));
         }
         out
+    }
+
+    /// An open edit's diff: the lines around its changes, cut after a while.
+    fn open_edit_rows(&self, d: &pb::DiffComponent, w: usize) -> Lines {
+        let lines = around_changes(&d.lines, EDIT_CONTEXT);
+        let mut rows = self.diff_rows(d.path.as_deref(), &lines, w);
+        if rows.len() > EDIT_ROWS {
+            let more = rows.len() - (EDIT_ROWS - 1);
+            rows.truncate(EDIT_ROWS - 1);
+            rows.push(sline(
+                format!("… +{more} lines (tab, enter opens the file)"),
+                self.p.muted_style(),
+            ));
+        }
+        rows
     }
 
     /// The focused option's description after the prompt's title: on its last line when one
