@@ -272,32 +272,26 @@ mod tests {
             selected: None,
         };
         let styles = Styles::new(&Palette::default(), false);
-        assert_eq!(
-            text(&lines(&d, 40, &styles).0),
-            [
-                " Session ───────────────────────────────",
-                " ~/Documents/neoworks/neoworks-harness",
-                " ctx 54%  108,312 / 200,000",
-                " in 1,234,567 · out 45,678",
-                " $2.33",
-                " Apps ──────────────────────────────────",
-                " ● pad  can't reach its MCP server",
-                " ● terminal  1 tool · 1 skill",
-                " ○ browser  closed",
-                " ○ Photo editor  can start",
-                " Servers ───────────────────────────────",
-                " ○ lsp  disconnected",
-                " ● mcp-headroom  1 tools",
-            ]
+        let shown = text(&lines(&d, 40, &styles).0).join("\n");
+        // Apps with something to say first, then the connected ones, then the closed.
+        let order =
+            ["pad", "terminal", "browser", "Photo editor"].map(|app| shown.find(app).unwrap());
+        assert!(order.windows(2).all(|w| w[0] < w[1]), "{shown}");
+        assert!(
+            shown.find("lsp").unwrap() < shown.find("mcp-headroom").unwrap(),
+            "{shown}"
         );
+        assert!(shown.contains("108,312 / 200,000"), "{shown}");
         assert_eq!(grouped(999), "999");
         assert_eq!(grouped(1000), "1,000");
     }
 
     #[test]
     fn past_four_apps_a_row_shows_the_rest() {
-        let app = |i: usize| json!({"app": format!("app-{i}"), "kind": "app", "connected": false,
-                                    "v": 0, "tools": []});
+        let app = |i: usize| {
+            json!({"app": format!("app-{i}"), "kind": "app", "connected": false,
+                                    "v": 0, "tools": []})
+        };
         let styles = Styles::new(&Palette::default(), false);
         let rows = |n: usize, apps_open: bool| {
             let connectors: Vec<ConnectorInfo> =

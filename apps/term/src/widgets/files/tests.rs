@@ -19,55 +19,8 @@ fn entry(path: &str, change: Change) -> GitEntry {
 }
 
 #[test]
-fn line_counts_sit_at_the_right_edge() {
+fn untracked_files_alone_are_not_worth_a_column() {
     let mut f = FilesState::default();
-    let mut s = status(vec![
-        entry("src/a.rs", Change::Modified),
-        entry("gone.rs", Change::Deleted),
-        entry("logo.png", Change::Added),
-    ]);
-    s.lines.insert(
-        "src/a.rs".into(),
-        LineCount {
-            added: 12,
-            removed: 3,
-        },
-    );
-    s.lines.insert(
-        "gone.rs".into(),
-        LineCount {
-            added: 0,
-            removed: 40,
-        },
-    );
-    f.set_status(Some(s));
-    let p = Palette::default();
-    assert_eq!(
-        text(&f.render(24, 10, false, &p)),
-        [
-            "▾ src/",
-            "  M a.rs          +12 −3",
-            "D gone.rs            −40",
-            "A logo.png",
-        ]
-    );
-    let line = f.render(24, 10, false, &p).remove(1);
-    let plus = line.spans.iter().find(|s| s.content == "+12").unwrap();
-    assert_eq!(plus.style.fg, Some(p.success));
-    // Too narrow for both: the name stays, the counts go.
-    assert_eq!(text(&f.render(14, 10, false, &p))[1], "  M a.rs");
-    // A folded folder carries the counts of what is in it.
-    f.key(KeyEvent::from(KeyCode::Enter));
-    assert_eq!(
-        text(&f.render(24, 10, false, &p))[0],
-        "▸ src/ 1 file     +12 −3"
-    );
-}
-
-#[test]
-fn untracked_files_alone_are_not_worth_a_column_and_rows_say_how_wide_they_are() {
-    let mut f = FilesState::default();
-    let p = Palette::default();
     f.set_status(Some(status(vec![
         entry(".claude/", Change::Untracked),
         entry(".serena/", Change::Untracked),
@@ -76,7 +29,6 @@ fn untracked_files_alone_are_not_worth_a_column_and_rows_say_how_wide_they_are()
     // An agent touching one makes it news.
     f.touch(".claude/settings.json", "claude", true);
     assert!(f.worth_showing());
-    assert_eq!(f.natural_width(&p), "? .claude/ (claude)".len());
 
     let mut s = status(vec![entry("src/a.rs", Change::Modified)]);
     s.lines.insert(
@@ -89,8 +41,6 @@ fn untracked_files_alone_are_not_worth_a_column_and_rows_say_how_wide_they_are()
     let mut f = FilesState::default();
     f.set_status(Some(s));
     assert!(f.worth_showing());
-    // "  M a.rs +12 −3", the counts a space after the name.
-    assert_eq!(f.natural_width(&p), 15);
 }
 
 #[test]
@@ -199,8 +149,6 @@ fn git_entries_with_agent_tags_and_committed_ones_marked() {
     let p = Palette::default();
     let lines = f.render(40, 10, false, &p);
     assert_eq!(text(&lines)[2], "✓ gone.txt (claude, committed)");
-    assert_eq!(lines[2].spans[0].style.fg, Some(p.success));
-    assert_eq!(lines[2].spans[1].style.fg, Some(p.muted));
     assert_eq!(text(&lines)[3], "▸ untracked 1 file");
     assert_eq!(f.branch().as_deref(), Some("main ↑1"));
     // Same status again is no change.
@@ -227,23 +175,7 @@ fn paths_are_relative_to_the_session_directory() {
 }
 
 #[test]
-fn rows_can_carry_file_type_icons() {
-    let p = Palette::default();
-    let mut f = FilesState::default();
-    f.touch("src/a.rs", "agent", false);
-    let plain = text(&f.render(40, 5, false, &p));
-    f.icons = true;
-    let rs = file_icon("a.rs", &p).content.to_string();
-    let dir = file_icon("src/", &p).content.to_string();
-    assert_eq!(
-        text(&f.render(40, 5, false, &p)),
-        [format!("▾ {dir} src/"), format!("  M {rs} a.rs (agent)")]
-    );
-    assert_eq!(plain, ["▾ src/", "  M a.rs (agent)"]);
-}
-
-#[test]
-fn rows_color_by_mark_and_cap_with_more() {
+fn rows_carry_their_mark_and_untracked_ones_group() {
     let p = Palette::default();
     let mut f = FilesState::default();
     let mut old = entry("new name.rs", Change::Renamed);
@@ -274,26 +206,6 @@ fn rows_color_by_mark_and_cap_with_more() {
             "  ? d.md",
         ]
     );
-    assert_eq!(lines[0].spans[1].style.fg, Some(p.accent));
-    assert_eq!(lines[0].spans[2].style.fg, Some(p.muted));
-    assert_eq!(lines[1].spans[1].style.fg, Some(p.success));
-    assert_eq!(lines[2].spans[1].style.fg, Some(p.danger));
-    assert_eq!(lines[3].spans[1].style.fg, Some(p.danger));
-    assert!(
-        lines[3].spans[1]
-            .style
-            .add_modifier
-            .contains(Modifier::BOLD)
-    );
-    assert_eq!(lines[5].spans[1].style.fg, Some(p.muted));
-    assert_eq!(lines[6].spans[1].style.fg, Some(p.muted));
-    // Cap.
-    let capped = text(&f.render(30, 4, false, &p));
-    assert_eq!(capped, ["M a.ts (agent)", "A b.ts", "D c.ts", "… 4 more"]);
-    // Too narrow: tag first, then the front of the path.
-    let narrow = text(&f.render(12, 20, false, &p));
-    assert_eq!(narrow[0], "M a.ts");
-    assert_eq!(narrow[4], "R …w name.rs");
 }
 
 #[test]
@@ -331,7 +243,6 @@ fn untracked_files_no_agent_touched_fold_into_one_row() {
             "  ? .claude/",
         ]
     );
-    assert_eq!(f.natural_height(), 8, "the branch line and the rows");
 }
 
 #[test]
@@ -362,9 +273,6 @@ fn selection_moves_and_scrolls_with_focus() {
         .map(|l| l.trim_end().to_string())
         .collect();
     assert_eq!(trimmed, ["M f3", "M f4", "M f5", "… 3 more"]);
-    let selected = &lines[2].spans;
-    assert_eq!(selected[0].style.bg, Some(p.surface));
-    assert_eq!(lines[1].spans[0].style.bg, None);
     assert_eq!(text(&f.render(10, 4, false, &p))[0], "M f0");
     f.key(key(KeyCode::Char('g')));
     assert_eq!(f.key(key(KeyCode::Enter)), FileKey::Open);

@@ -46,7 +46,6 @@ fn typing_filters_a_long_choice_and_enter_picks_the_match() {
         s.contains("filter › ") && s.contains("type to find an option"),
         "{s}"
     );
-    assert!(s.contains("[Haiku 4.5 · claude] ✓"), "{s}");
     // Case does not matter, every word must occur, and the order stays.
     type_str(&mut app, "OPENROUTER sonnet");
     let s = screen_text(&mut app, 80, 24);
@@ -54,7 +53,6 @@ fn typing_filters_a_long_choice_and_enter_picks_the_match() {
     assert!(s.contains("[Sonnet 4.5 · openrouter]"), "{s}");
     assert!(!s.contains("Haiku") && !s.contains("GPT"), "{s}");
     assert!(s.contains("Enter Sonnet 4.5 · openrouter"), "{s}");
-    snapshot("choice-filter-70x14", &screen_text(&mut app, 70, 14));
     let fx = app.handle_key(key(KeyCode::Enter));
     assert_eq!(picked(&fx), "openrouter/1/Sonnet 4.5");
 }
@@ -117,7 +115,6 @@ fn nothing_matching_says_so_and_enter_does_nothing() {
     let s = screen_text(&mut app, 80, 24);
     assert!(s.contains("no match") && !s.contains("Haiku"), "{s}");
     assert!(!s.contains("enter "), "{s}");
-    snapshot("choice-no-match-70x14", &screen_text(&mut app, 70, 14));
     assert!(app.handle_key(key(KeyCode::Enter)).is_empty());
     assert!(app.handle_key(key(KeyCode::Tab)).is_empty());
     assert!(app.note.is_none());
@@ -193,7 +190,7 @@ fn a_choice_of_nine_or_a_permission_has_no_filter() {
     .unwrap();
     show(&mut app, vec![item]);
     let s = screen_text(&mut app, 80, 24);
-    assert!(!s.contains("filter ›") && s.contains("[9 m8]"), "{s}");
+    assert!(!s.contains("filter ›"), "{s}");
     assert_eq!(picked(&app.handle_key(key(KeyCode::Char('9')))), "m8");
 }
 

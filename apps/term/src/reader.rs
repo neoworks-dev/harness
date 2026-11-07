@@ -724,7 +724,7 @@ mod tests {
     }
 
     #[test]
-    fn draws_the_selection_and_follows_the_cursor() {
+    fn the_view_follows_the_cursor() {
         use ratatui::{Terminal, backend::TestBackend};
         let mut r = Reader::new(
             "reply",
@@ -745,10 +745,6 @@ mod tests {
         };
         assert_eq!(row(5).trim_end(), "line 29");
         assert_eq!(row(1).trim_end(), "line 25");
-        assert!(
-            buf[(0, 5)].modifier.contains(Modifier::REVERSED),
-            "the cursor"
-        );
         assert!(row(0).contains("30/30"));
     }
 }

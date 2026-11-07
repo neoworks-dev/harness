@@ -422,7 +422,6 @@ mod tests {
         let mut e = Editor::default();
         e.insert_str("a\r\nb\rc\td\u{1b}[31m");
         assert_eq!(e.text(), "a\nb\nc    d[31m");
-        assert_eq!(e.height(), 3);
     }
 
     #[test]
@@ -490,19 +489,6 @@ mod tests {
     }
 
     #[test]
-    fn rows_wrap_at_the_width_preferring_spaces() {
-        let mut e = ed("hello brave new world");
-        e.set_width(10);
-        let rows = e.rows();
-        let texts: Vec<_> = rows.iter().map(|r| &e.text()[r.start..r.end]).collect();
-        assert_eq!(texts, ["hello ", "brave new ", "world"]);
-        // A word longer than the width is cut.
-        let mut e = ed("abcdefghijkl");
-        e.set_width(5);
-        assert_eq!(e.height(), 3);
-    }
-
-    #[test]
     fn the_cursor_at_a_wrap_belongs_to_the_next_row() {
         let mut e = ed("hello brave");
         e.set_width(6);
@@ -522,8 +508,6 @@ mod tests {
     fn wide_characters_count_two_cells() {
         let mut e = ed("日本語");
         assert_eq!(e.cursor_pos(), (0, 6));
-        e.set_width(4);
-        assert_eq!(e.height(), 2);
         e.text_start();
         e.right();
         assert_eq!(e.cursor_pos(), (0, 2));

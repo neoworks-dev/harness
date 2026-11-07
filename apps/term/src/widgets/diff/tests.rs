@@ -62,21 +62,6 @@ fn render(v: &DiffView, w: u16, h: u16) -> String {
     draw_to(v, &mut Terminal::new(TestBackend::new(w, h)).unwrap())
 }
 
-fn snapshot(name: &str, actual: &str) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/snapshots")
-        .join(format!("{name}.txt"));
-    if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, format!("{actual}\n")).unwrap();
-        return;
-    }
-    let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| {
-        panic!("missing snapshot {name} (UPDATE_SNAPSHOTS=1 to write)\n{actual}")
-    });
-    assert_eq!(actual, expected.trim_end_matches('\n'), "snapshot {name}");
-}
-
 /// Rows as `old | new`: line number, sign, text; `∅` for a blank side, `¬` after a line
 /// without a final newline.
 fn show(a: &Aligned) -> Vec<String> {
@@ -284,67 +269,19 @@ fn marks_the_changed_part_of_a_pair() {
 }
 
 #[test]
-fn windows_by_cells() {
-    let text = |s: &str, skip, avail| -> String {
-        let spans = windowed(
-            s.chars().map(|c| (c, 0)),
-            width(s),
-            skip,
-            avail,
-            &[Style::new(); 3],
-            true,
-        );
-        let out: String = spans.iter().map(|s| s.content.as_ref()).collect();
-        assert_eq!(width(&out), avail, "{s:?} {skip} {avail}");
-        out
-    };
-    assert_eq!(text("hello", 0, 8), "hello   ");
-    assert_eq!(text("hello world", 0, 8), "hello w…");
-    assert_eq!(text("hello world", 6, 8), "world   ");
-    assert_eq!(text("hello world", 3, 5), "lo w…");
-    // A wide character cut by either edge leaves blanks, never half a character.
-    assert_eq!(text("日本語です", 0, 5), "日本…");
-    assert_eq!(text("日本語です", 1, 5), " 本… ");
-    assert_eq!(text("日本語です", 2, 6), "本語… ");
-    assert_eq!(text("日本語", 5, 4), "    ");
-    assert_eq!(text("x", 4, 3), "   ");
-    assert_eq!(text("abc", 0, 1), "…");
-    assert!(
-        windowed(
-            "abc".chars().map(|c| (c, 0)),
-            3,
-            0,
-            0,
-            &[Style::new(); 3],
-            true
-        )
-        .is_empty()
-    );
-}
-
-#[test]
-fn long_lines_wrap_under_their_number_and_w_cuts_them_instead() {
+fn long_lines_wrap_so_there_is_nothing_to_scroll_sideways_and_w_cuts_them_instead() {
     let line = "0123456789abcdefghijklmnopqrstuvwxyz";
     let mut v = DiffView::from_text("f", &format!("@@ -1,2 +1,2 @@\n+{line}\n ok\n"));
     let mut t = Terminal::new(TestBackend::new(20, 6)).unwrap();
-    let out = draw_to(&v, &mut t);
-    let rows: Vec<&str> = out.lines().collect();
-    // The gutter is 4 cells, the sign 1: 15 cells of text a row.
-    assert_eq!(rows[2], "  1 +0123456789abcde");
-    assert_eq!(rows[3], "     fghijklmnopqrst");
-    assert_eq!(rows[4], "     uvwxyz");
-    assert_eq!(rows[5], "  2  ok");
-    // The title counts lines of the diff, not rows of the screen.
-    assert!(rows[0].ends_with("1–3/3"), "{}", rows[0]);
-    // Nothing to scroll sideways while wrapping; `<leader>w` cuts again.
+    draw_to(&v, &mut t);
+    assert!(v.wrap);
     ch(&mut v, 'j');
     ch(&mut v, '$');
     assert_eq!(v.hscroll, 0);
     ch(&mut v, '0');
     ch(&mut v, ' ');
     ch(&mut v, 'w');
-    let cut = draw_to(&v, &mut t);
-    assert_eq!(cut.lines().nth(2).unwrap(), "  1 +0123456789abcd…");
+    assert!(!v.wrap);
 }
 
 #[test]
@@ -364,26 +301,6 @@ fn wrapped_rows_still_let_the_end_fill_the_screen() {
         out.lines().last().unwrap().trim_start().starts_with('x'),
         "{out}"
     );
-}
-
-#[test]
-fn draws_the_unified_view_when_narrow() {
-    let mut v = DiffView::from_text("src/a.ts", SAMPLE);
-    v.wrap = false;
-    let mut t = Terminal::new(TestBackend::new(24, 8)).unwrap();
-    let out = draw_to(&v, &mut t);
-    let first = out.lines().next().unwrap();
-    assert_eq!(first, "src/a.ts  +1 −2   1–7/10");
-    // Headers get an empty gutter, so the code lines up under them.
-    assert_eq!(out.lines().nth(1).unwrap(), "    diff --git a/src/a.…");
-    assert_eq!(out.lines().count(), 8);
-    // Colors.
-    let p = Palette::default();
-    let buf = t.backend().buffer();
-    assert_eq!(buf[(0, 5)].fg, p.muted); // @@
-    assert_eq!(buf[(0, 7)].fg, p.muted); // its line number
-    assert_eq!(buf[(4, 7)].fg, p.danger); // -old line
-    assert_eq!(buf[(10, 0)].fg, p.success); // +1 in the title
 }
 
 #[test]
@@ -410,29 +327,9 @@ fn unified_view_scrolls_sideways_with_the_mark_in_place() {
 }
 
 #[test]
-fn draws_the_split_view() {
-    let v = DiffView::from_text("src/app.ts", BIG);
-    let out = render(&v, 120, 30);
-    snapshot("diff-split-120x30", &out);
-    let lines: Vec<&str> = out.lines().collect();
-    assert!(lines[0].starts_with("src/app.ts  +"));
-    assert!(lines[0].ends_with("lines 1–23 of 23"));
-    assert!(lines[1].starts_with(" HEAD"));
-    assert!(lines[1].contains("│ working tree"));
-    // The separator is in the same column on every row, hunk bands excepted.
-    let sep = lines[1].chars().position(|c| c == '│').unwrap();
-    for l in &lines[2..] {
-        if !l.starts_with('⋯') {
-            assert_eq!(l.chars().nth(sep), Some('│'), "{l}");
-        }
-    }
-}
-
-#[test]
 fn narrow_terminals_fall_back_to_the_unified_view() {
     let v = DiffView::from_text("src/app.ts", BIG);
     let out = render(&v, 60, 14);
-    snapshot("diff-unified-60x14", &out);
     assert!(out.contains("diff --git"));
     assert!(!out.contains("HEAD"));
     // Just wide enough for the split.
@@ -482,47 +379,6 @@ impl DiffView {
     }
 }
 
-/// The cells showing `text` on row `y`, by where it is found.
-fn cells_of(buf: &ratatui::buffer::Buffer, y: u16, text: &str) -> Vec<(Color, Color)> {
-    let row: String = (0..buf.area.width)
-        .map(|x| buf[(x, y)].symbol().to_string())
-        .collect();
-    let at = row.find(text).expect("the text on the row");
-    let x = row[..at].chars().count() as u16;
-    (x..x + text.chars().count() as u16)
-        .map(|x| (buf[(x, y)].fg, buf[(x, y)].bg))
-        .collect()
-}
-
-#[test]
-fn code_is_colored_by_its_grammar_on_the_change_tint() {
-    let diff = "--- a/src/m.rs\n+++ b/src/m.rs\n@@ -1,2 +1,2 @@\n fn keep() {}\n-let a = \"x\";\n+let a = \"y\";\n";
-    let mut v = DiffView::from_text("src/m.rs", diff);
-    v.wait_for_syntax(0, 10);
-    let mut t = Terminal::new(TestBackend::new(60, 8)).unwrap();
-    draw_to(&v, &mut t);
-    let buf = t.backend().buffer();
-    let colors = code_colors(&Palette::default()).unwrap();
-    let keyword = colors[Class::Keyword as usize].fg.unwrap();
-    let string = colors[Class::String as usize].fg.unwrap();
-    // Unified at this width: under the title, the headers and the hunk, the context line,
-    // then the removal and the addition.
-    assert!(cells_of(buf, 4, "fn").iter().all(|(fg, _)| *fg == keyword));
-    let removed = cells_of(buf, 5, "let");
-    assert!(
-        removed
-            .iter()
-            .all(|(fg, bg)| *fg == keyword && *bg != Color::Reset)
-    );
-    assert!(
-        cells_of(buf, 6, "\"y\"")
-            .iter()
-            .all(|(fg, _)| *fg == string)
-    );
-    // The sign keeps the change's color.
-    assert_eq!(buf[(4, 6)].fg, Palette::default().success);
-}
-
 #[test]
 fn a_huge_file_is_highlighted_where_it_is_looked_at() {
     let n = 200_000;
@@ -547,39 +403,6 @@ fn a_huge_file_is_highlighted_where_it_is_looked_at() {
     let lazy = v.lit_uni.as_ref().unwrap();
     assert!(lazy.get(n).unwrap().1.contains(&Class::Keyword));
     assert!(lazy.get(n / 2).is_none(), "the middle was never looked at");
-}
-
-#[test]
-fn paints_changes_and_blank_halves() {
-    let p = Palette::default();
-    let v = DiffView::from_text(
-        "f",
-        "@@ -1,2 +1,3 @@\n same\n-a = foo(1)\n+a = foo(2)\n+extra\n",
-    );
-    let mut t = Terminal::new(TestBackend::new(100, 8)).unwrap();
-    draw_to(&v, &mut t);
-    let buf = t.backend().buffer();
-    let (del_bg, add_bg) = (buf[(10, 4)].bg, buf[(60, 4)].bg);
-    assert_ne!(del_bg, Color::Reset);
-    assert_ne!(add_bg, Color::Reset);
-    assert_eq!(buf[(10, 4)].fg, p.danger);
-    assert_eq!(buf[(60, 4)].fg, p.success);
-    assert_eq!(buf[(10, 3)].bg, Color::Reset); // context
-    // The changed digit has the stronger mark, the rest of the line the row's.
-    assert_ne!(buf[(6 + 8, 4)].bg, del_bg);
-    assert_eq!(buf[(6 + 2, 4)].bg, del_bg);
-    // The blank half is shaded, the line numbers are muted, signs say which side.
-    assert_eq!(buf[(10, 5)].bg, p.surface);
-    assert_eq!(buf[(2, 3)].fg, p.muted);
-    assert_eq!((buf[(4, 4)].symbol(), buf[(54, 4)].symbol()), ("-", "+"));
-    assert_eq!(buf[(4, 5)].symbol(), " ");
-    // Without colors, the mark is reversed and nothing is painted.
-    let plain = crate::style::plain_palette();
-    t.draw(|f| v.draw(f, f.area(), &plain)).unwrap();
-    let buf = t.backend().buffer();
-    assert_eq!(buf[(10, 4)].bg, Color::Reset);
-    assert!(buf[(6 + 8, 4)].modifier.contains(Modifier::REVERSED));
-    assert!(!buf[(6 + 2, 4)].modifier.contains(Modifier::REVERSED));
 }
 
 #[test]

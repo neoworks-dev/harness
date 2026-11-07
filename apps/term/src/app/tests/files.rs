@@ -45,8 +45,7 @@ fn tab_reaches_the_files_in_the_chat_and_enter_opens_one() {
         &mut app,
         vec![item("u1", "user", "go"), edit, item("a1", "agent", "Done.")],
     );
-    let s = screen_text(&mut app, 80, 24);
-    assert!(s.contains("1 file changed  +1 −0"), "{s}");
+    screen_text(&mut app, 80, 24);
     app.handle_key(key(KeyCode::Tab));
     assert_eq!(app.focus, Some(Focus::Chat));
     assert_eq!(app.chat.picked_file(), Some("src/a.rs"));

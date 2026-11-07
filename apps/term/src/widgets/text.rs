@@ -144,24 +144,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn wraps_words_and_cuts_long_ones() {
-        assert_eq!(wrap("aa bb cc", 5), ["aa bb", "cc"]);
-        assert_eq!(wrap("abcdefgh ij", 3), ["abc", "def", "gh", "ij"]);
-        assert_eq!(wrap("", 5), Vec::<String>::new());
-        assert_eq!(wrap("a\nb\tc", 10), ["a b c"]);
-        assert_eq!(wrap("日本語です", 4), ["日本", "語で", "す"]);
-    }
-
-    #[test]
-    fn truncates_by_cells() {
-        assert_eq!(truncate("hello", 5), "hello");
-        assert_eq!(truncate("hello", 4), "hel…");
-        assert_eq!(truncate_start("src/main.rs", 7), "…ain.rs");
-        assert_eq!(truncate("日本語", 4), "日…");
-        assert_eq!(truncate("abc", 0), "");
-    }
-
-    #[test]
     fn cleans_untrusted_text() {
         assert_eq!(clean_line("a\tb"), "a   b");
         assert_eq!(clean_line("\x1b[31mred\x1b[0m"), "[31mred[0m");

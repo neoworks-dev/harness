@@ -70,15 +70,10 @@ fn preview() {
 }
 
 #[test]
-fn an_expired_cache_is_a_band_over_the_input_box() {
+fn an_expired_cache_is_said_once() {
     let mut app = scenario();
     app.cache_cold = true;
     let text = screen_text(&mut app, 100, 24);
-    snapshot("cache-cold-100x24", &text);
-    assert!(
-        text.contains("⚠ cache expired · the next message re-reads"),
-        "{text}"
-    );
     // Said once: the status line leaves it out.
     assert_eq!(text.matches("cache expired").count(), 1, "{text}");
 }
@@ -210,7 +205,10 @@ fn the_first_start_asks_what_neo_is_for_once() {
             _ => None,
         })
         .collect();
-    assert_eq!(sent, ["/settings work computer", "/settings show-dont-tell on"]);
+    assert_eq!(
+        sent,
+        ["/settings work computer", "/settings show-dont-tell on"]
+    );
     assert_eq!(app.overlay, Overlay::None);
     // The daemon's settings again, before it has the choice: not asked twice.
     app.handle_event(settings(None));

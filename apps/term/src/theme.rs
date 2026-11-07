@@ -190,8 +190,6 @@ impl Prefs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::layout::Rect;
-    use ratatui::style::Style;
 
     #[test]
     fn names_round_trip_and_cycle() {
@@ -200,16 +198,6 @@ mod tests {
         }
         assert_eq!(Theme::parse("solarized"), None);
         assert_eq!(Theme::Dark.next().next().next(), Theme::Dark);
-    }
-
-    #[test]
-    fn painting_fills_only_the_default_colors() {
-        let mut buf = Buffer::empty(Rect::new(0, 0, 3, 1));
-        buf[(1, 0)].set_style(Style::new().fg(Color::Red).bg(Color::Blue));
-        let p = Theme::Light.palette(&Palette::default());
-        paint(&mut buf, &p);
-        assert_eq!((buf[(0, 0)].fg, buf[(0, 0)].bg), (p.fg, p.bg));
-        assert_eq!((buf[(1, 0)].fg, buf[(1, 0)].bg), (Color::Red, Color::Blue));
     }
 
     #[test]

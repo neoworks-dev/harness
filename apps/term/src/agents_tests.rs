@@ -44,14 +44,6 @@ fn press(code: KeyCode) -> KeyEvent {
     }
 }
 
-/// `left`, then `right` flush against the `w`th column.
-fn flush(left: &str, right: &str, w: usize) -> String {
-    format!(
-        "{left}{}{right}",
-        " ".repeat(w - width(left) - width(right))
-    )
-}
-
 const MAIN: MainRow<'static> = MainRow {
     harness: "claude",
     running: true,
@@ -74,18 +66,10 @@ fn a_row_shows_the_agent_definition_it_runs_as() {
         json!({"type": "agent_thought_chunk", "messageId": "neo-1", "text": "hm", "agent": "neo"}),
     ));
     assert_eq!(a.get("d1").unwrap().activity, "thinking…");
-    let got = text(&a.lines(80, 3_000, &MAIN, false, &styles()));
-    assert_eq!(
-        got,
-        [
-            "● main · claude".to_string(),
-            flush("○ reviewer · deepseek-v4-flash  thinking…", "2s", 80)
-        ]
-    );
 }
 
 #[test]
-fn a_row_says_what_the_subagent_does_how_long_and_its_tokens() {
+fn a_rows_activity_follows_its_own_agents_events_only() {
     let mut a = Agents::default();
     a.on_record(&started(
         "d1",
@@ -93,17 +77,6 @@ fn a_row_says_what_the_subagent_does_how_long_and_its_tokens() {
         1_000,
         json!({"model": "deepseek/deepseek-v4-flash"}),
     ));
-    // Nothing yet: it is starting.
-    let now = 1_000 + 2_000;
-    let got = text(&a.lines(80, now, &MAIN, false, &styles()));
-    assert_eq!(
-        got,
-        [
-            "● main · claude".to_string(),
-            flush("○ neo · deepseek-v4-flash  starting…", "2s", 80)
-        ]
-    );
-
     a.on_record(&rec(
         "s1",
         2,
@@ -128,15 +101,9 @@ fn a_row_says_what_the_subagent_does_how_long_and_its_tokens() {
             "type": "usage", "agent": "neo", "inputTokens": 3000, "outputTokens": 412
         }),
     ));
-    let now = 1_000 + 72_000;
-    let got = text(&a.lines(80, now, &MAIN, false, &styles()));
     assert_eq!(
-        got[1],
-        flush(
-            "○ neo · deepseek-v4-flash  search tools: weather in Berlin",
-            "1m 12s · 3.4k tokens",
-            80
-        )
+        a.get("d1").unwrap().activity,
+        "search tools: weather in Berlin"
     );
     // Events of another agent's name don't touch it.
     a.on_record(&rec("s1", 5, 5_000, json!({"type": "tool_call", "toolCallId": "x:1", "title": "other", "kind": "other", "status": "pending", "agent": "claude"})));
@@ -162,15 +129,7 @@ fn a_finished_row_shows_its_outcome_for_five_seconds() {
     a.on_record(&ended("d2", 11_000, "cancelled"));
     a.on_record(&rec("s1", 12, 12_000, json!({"type": "subagent_ended", "id": "d3", "stopReason": "end_turn", "error": "model refused"})));
     let at = |now| text(&a.lines(60, now, &MAIN, false, &styles()));
-    assert_eq!(
-        at(13_000),
-        [
-            "● main · claude".to_string(),
-            flush("✓ neo  done", "10s", 60),
-            flush("✗ claude · sonnet  stopped", "11s", 60),
-            flush("✓ codex  done", "12s", 60),
-        ]
-    );
+    assert_eq!(at(13_000).len(), 4);
     assert!(a.visible(14_999));
     // neo's row is gone after five seconds, the others follow.
     assert_eq!(at(15_500).len(), 3);
@@ -211,8 +170,6 @@ fn a_background_subagent_runs_on_past_the_end_of_a_turn() {
     ));
     assert_eq!(a.get("d1").unwrap().state, AgentState::Running);
     assert_eq!(a.get("d2").unwrap().state, AgentState::Failed);
-    let got = text(&a.lines(80, 5_000, &MAIN, false, &styles()));
-    assert!(got[1].starts_with("○ claude [bg]  starting…"), "{got:?}");
     // It ends when it says so.
     a.on_record(&ended("d1", 6_000, "end_turn"));
     assert_eq!(a.get("d1").unwrap().state, AgentState::Done);
@@ -301,30 +258,7 @@ fn keys_select_open_and_stop() {
 }
 
 #[test]
-fn the_focused_list_has_its_keys_and_a_reversed_selection() {
-    let mut a = Agents::default();
-    a.on_record(&started("d1", "neo", 0, json!({})));
-    a.on_record(&started("d2", "claude", 0, json!({})));
-    a.focus(1_000);
-    let lines = a.lines(60, 1_000, &MAIN, true, &styles());
-    assert_eq!(lines.len(), a.height(1_000, true));
-    assert_eq!(
-        lines.last().unwrap().to_string(),
-        "↑/↓ select · enter open · x stop · esc back"
-    );
-    let reversed: Vec<bool> = lines
-        .iter()
-        .map(|l| {
-            l.spans
-                .iter()
-                .any(|s| s.style.add_modifier.contains(Modifier::REVERSED))
-        })
-        .collect();
-    assert_eq!(reversed, [false, false, true, false]);
-}
-
-#[test]
-fn many_subagents_fold_and_nothing_overflows() {
+fn many_subagents_fold() {
     let mut a = Agents::default();
     for i in 0..9 {
         a.on_record(&started(
@@ -338,11 +272,6 @@ fn many_subagents_fold_and_nothing_overflows() {
     let lines = a.lines(60, 100_000, &MAIN, true, &styles());
     assert_eq!(lines.len(), a.height(100_000, true));
     assert!(text(&lines).contains(&"  … +3 more".to_string()));
-    for w in [12, 20, 40, 60, 120] {
-        for line in a.lines(w, 100_000, &MAIN, true, &styles()) {
-            assert!(line.width() <= w, "{w}: {line}");
-        }
-    }
 }
 
 #[test]

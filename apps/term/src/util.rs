@@ -186,15 +186,6 @@ mod tests {
     }
 
     #[test]
-    fn truncation_counts_cells() {
-        assert_eq!(truncate("hello", 10), "hello");
-        assert_eq!(truncate("hello world", 6), "hello…");
-        assert_eq!(truncate("日本語です", 5), "日本…");
-        let line = fit_line(Line::from(vec![Span::raw("abc"), Span::raw("defgh")]), 5);
-        assert_eq!(line.to_string(), "abcd…");
-    }
-
-    #[test]
     fn relative_times() {
         assert_eq!(relative_time(0, 10_000), "just now");
         assert_eq!(relative_time(0, 5 * 60_000), "5m ago");

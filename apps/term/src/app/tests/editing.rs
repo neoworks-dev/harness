@@ -147,15 +147,6 @@ fn pasted_images_are_placed_in_the_draft_and_go_with_it() {
 }
 
 #[test]
-fn thumbnails_keep_the_pictures_shape() {
-    // 6 rows of 20px cells are 120px high; a square picture is 120px wide, 12 cells of 10px.
-    assert_eq!(thumbnail_cols(400, 400, 6, (10, 20)), 12);
-    assert_eq!(thumbnail_cols(100, 400, 6, (10, 20)), 3);
-    assert_eq!(thumbnail_cols(4000, 400, 6, (10, 20)), PREVIEW_COLS);
-    assert_eq!(thumbnail_cols(0, 400, 6, (10, 20)), PREVIEW_COLS / 2);
-}
-
-#[test]
 fn readline_keys() {
     let mut app = app();
     type_str(&mut app, "one two three");

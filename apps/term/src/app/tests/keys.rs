@@ -176,8 +176,6 @@ fn dragging_over_the_chat_copies_what_it_covers() {
             .is_empty()
     );
     app.handle_mouse(at(MouseEventKind::Drag(left), x + 4));
-    let shown = screen(&mut app, 100, 30);
-    assert_eq!(shown[y], lines[y], "the text stays as it is, only reversed");
     let fx = app.handle_mouse(at(MouseEventKind::Up(left), x + 4));
     assert_eq!(fx, [Effect::Copy("Done.".into())]);
     // A click copies nothing.

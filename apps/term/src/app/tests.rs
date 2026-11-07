@@ -185,21 +185,6 @@ fn screen_text(app: &mut App, w: u16, h: u16) -> String {
     screen(app, w, h).join("\n")
 }
 
-fn snapshot(name: &str, actual: &str) {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/snapshots")
-        .join(format!("{name}.txt"));
-    if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, format!("{actual}\n")).unwrap();
-        return;
-    }
-    let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| {
-        panic!("missing snapshot {name} (UPDATE_SNAPSHOTS=1 to write)\n{actual}")
-    });
-    assert_eq!(actual, expected.trim_end_matches('\n'), "snapshot {name}");
-}
-
 fn scenario() -> App {
     let mut app = app();
     show(

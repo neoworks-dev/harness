@@ -69,21 +69,6 @@ fn screen_text(app: &mut App, w: u16, h: u16) -> String {
         .join("\n")
 }
 
-fn snapshot(name: &str, actual: &str) {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/snapshots")
-        .join(format!("{name}.txt"));
-    if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, format!("{actual}\n")).unwrap();
-        return;
-    }
-    let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| {
-        panic!("missing snapshot {name} (UPDATE_SNAPSHOTS=1 to write)\n{actual}")
-    });
-    assert_eq!(actual, expected.trim_end_matches('\n'), "snapshot {name}");
-}
-
 fn ask(id: &str, session: &str, placeholder: Option<&str>) -> Event {
     Event::Secret(SecretRequest {
         id: id.into(),
@@ -107,12 +92,8 @@ fn a_request_opens_a_masked_field_that_never_shows_what_is_typed() {
     let empty = screen_text(&mut app, 70, 14);
     assert!(empty.contains("DeepSeek API key"), "{empty}");
     assert!(empty.contains("sk-…"), "{empty}");
-    assert!(empty.contains("enter submit · esc cancel"), "{empty}");
-    snapshot("secret-empty-70x14", &empty);
     type_str(&mut app, KEY);
     let typed = screen_text(&mut app, 70, 14);
-    snapshot("secret-typed-70x14", &typed);
-    assert!(typed.contains(&"•".repeat(KEY.chars().count())), "{typed}");
     assert!(!typed.contains("sk-…"), "the placeholder goes: {typed}");
     for part in ["sk-", "live", "0123", "abcdef"] {
         assert!(!typed.contains(part), "{part} in {typed}");

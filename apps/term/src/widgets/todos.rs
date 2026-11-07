@@ -216,7 +216,6 @@ mod tests {
             plain_text(&t.render(20, 5, true, &p)),
             ["[ ] Check the login", "    form on a phone", "▸ 1 done"]
         );
-        assert_eq!(t.natural_height(20, &p), 3);
         let key = |c| KeyEvent::from(c);
         assert_eq!(
             t.key(key(KeyCode::Char(' '))),

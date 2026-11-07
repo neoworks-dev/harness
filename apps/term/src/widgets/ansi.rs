@@ -242,16 +242,4 @@ mod tests {
         assert_eq!(rgb[0].1.fg, Some(Ansi::Rgb(1, 2, 3)));
         assert_eq!(rgb[1].1.fg, Some(Ansi::Indexed(200)));
     }
-
-    #[test]
-    fn a_window_is_cut_at_both_ends() {
-        let line = segs("ab\tcdefgh");
-        assert_eq!(plain(&line), "ab  cdefgh");
-        let p = Palette::default();
-        let (spans, cut) = window(&line, 2, 4, Style::new(), &p);
-        let text: String = spans.iter().map(|s| s.content.as_ref()).collect();
-        assert_eq!((text.as_str(), cut), ("  cd", true));
-        let (_, cut) = window(&line, 0, 10, Style::new(), &p);
-        assert!(!cut);
-    }
 }

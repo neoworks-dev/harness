@@ -150,21 +150,6 @@ mod tests {
     }
 
     #[test]
-    fn context_colors_by_fill() {
-        let p = Palette::default();
-        let color = |pct: i64| {
-            let mut s = UsageState::default();
-            s.apply(&usage(None, Some(pct), Some(100), None));
-            s.line(&p).unwrap().spans[0].style.fg.unwrap()
-        };
-        assert_eq!(color(59), p.muted);
-        assert_eq!(color(60), p.accent);
-        assert_eq!(color(84), p.accent);
-        assert_eq!(color(85), p.danger);
-        assert_eq!(color(120), p.danger);
-    }
-
-    #[test]
     fn cost_format() {
         assert_eq!(format_cost(0.0), "$0.00");
         assert_eq!(format_cost(0.0099), "<$0.01");

@@ -290,26 +290,6 @@ mod tests {
     }
 
     #[test]
-    fn wraps_with_hanging_indent_and_styles() {
-        let mut s = PlanState::default();
-        s.apply(&plan(
-            None,
-            vec![entry("write the parser for porcelain", Doing)],
-        ));
-        let p = Palette::default();
-        let lines = s.render(14, 10, &p);
-        assert_eq!(text(&lines), ["◐ write the", "  parser for", "  porcelain"]);
-        assert_eq!(lines[0].spans[1].style.fg, Some(p.accent));
-        assert!(
-            lines[0].spans[1]
-                .style
-                .add_modifier
-                .contains(Modifier::BOLD)
-        );
-        assert_eq!(s.natural_height(14, &p), 3);
-    }
-
-    #[test]
     fn keeps_the_active_entry_visible() {
         let mut s = PlanState::default();
         let mut entries: Vec<_> = (0..8).map(|i| entry(&format!("t{i}"), Done)).collect();

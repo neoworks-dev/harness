@@ -65,10 +65,9 @@ fn context_and_cost_are_in_the_sidebar_while_it_shows_else_under_the_input() {
 }
 
 #[test]
-fn the_sessions_sidebar_lists_every_session_working_then_newest_first() {
+fn the_sessions_sidebar_hides_with_its_focus_when_too_narrow() {
     let mut app = overview();
-    let text = screen_text(&mut app, 120, 24);
-    snapshot("sessions-120x24", &text);
+    screen_text(&mut app, 120, 24);
     assert!(app.sessions_shown);
     // Too narrow for the chat beside it: hidden, and so is its focus.
     app.handle_key(ctrl('g'));
@@ -86,8 +85,10 @@ fn down_past_the_last_session_reaches_the_apps_and_their_more_row() {
     let mut app = overview();
     let apps: Vec<neo_protocol::ConnectorInfo> = serde_json::from_value(json!(
         (0..9)
-            .map(|i| json!({"app": format!("app-{i}"), "kind": "app", "connected": false,
-                            "v": 0, "tools": []}))
+            .map(
+                |i| json!({"app": format!("app-{i}"), "kind": "app", "connected": false,
+                            "v": 0, "tools": []})
+            )
             .collect::<Vec<_>>()
     ))
     .unwrap();

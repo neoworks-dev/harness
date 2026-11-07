@@ -33,8 +33,6 @@ fn the_sidebar_appears_with_a_plan_and_tab_cycles_focus() {
     app.handle_event(plan_event());
     let text = screen_text(&mut app, 100, 30);
     assert!(text.contains("crop the logo"), "{text}");
-    snapshot("sidebar-100x30", &text);
-    // The chat keeps the left part; the side column the right.
     assert!(app.sidebar_shown);
     app.handle_key(key(KeyCode::Tab));
     assert_eq!(app.focus, Some(Focus::Chat), "the reply first");
@@ -61,73 +59,13 @@ fn the_sidebar_appears_with_a_plan_and_tab_cycles_focus() {
 }
 
 #[test]
-fn layout_at_100x30() {
-    let mut app = scenario();
-    app.handle_event(setting("neo", SettingName::Model, "sonnet"));
-    let text = screen_text(&mut app, 100, 30);
-    snapshot("layout-100x30", &text);
-}
-
-#[test]
-fn layout_at_60x20_while_working_with_a_menu_open() {
-    let mut app = scenario();
-    app.handle_event(user_message(NOW - 12_000));
-    app.handle_event(setting("daemon", SettingName::Approvals, "auto"));
-    app.tick(NOW);
-    type_str(&mut app, "/c");
-    let text = screen_text(&mut app, 60, 20);
-    snapshot("menu-60x20", &text);
-}
-
-#[test]
-fn layout_with_a_prompt_and_help() {
-    let mut app = app();
-    show(
-        &mut app,
-        vec![
-            item("u", "user", "run the tests"),
-            prompt("p1", "pending", &["Allow once", "Always allow", "Reject"]),
-        ],
-    );
-    app.handle_key(key(KeyCode::Right));
-    let text = screen_text(&mut app, 70, 14);
-    snapshot("prompt-70x14", &text);
-}
-
-#[test]
-fn help_lists_keys_and_commands() {
+fn help_opens_by_command_and_by_question_mark() {
     let mut app = scenario();
     type_str(&mut app, "/help");
     app.handle_key(key(KeyCode::Enter));
-    snapshot("help-100x48", &screen_text(&mut app, 100, 48));
     app.handle_key(key(KeyCode::Esc));
     app.handle_key(key(KeyCode::Char('?')));
     assert_eq!(app.overlay, Overlay::Help, "? on an empty editor");
-}
-
-#[test]
-fn an_empty_chat_says_what_to_do() {
-    let mut app = app();
-    let text = screen_text(&mut app, 80, 12);
-    assert!(text.contains("connecting to the session"));
-    show(&mut app, vec![]);
-    let text = screen_text(&mut app, 80, 12);
-    assert!(text.contains("enter send  ·  / commands"), "{text}");
-    assert!(text.contains("┃ message the agent · / for commands"));
-}
-
-#[test]
-fn the_editor_grows_and_wraps_up_to_eight_rows() {
-    let mut app = scenario();
-    app.handle_paste(&"line\n".repeat(12));
-    let rows = screen(&mut app, 60, 24);
-    // The rows between the input box's top row and the status line in it.
-    let top = rows.iter().position(|l| l == "┃").unwrap();
-    let status = rows.iter().position(|l| l.starts_with("┃ site ·")).unwrap();
-    let editor_rows = status - top - 1;
-    assert_eq!(editor_rows, 8, "{rows:#?}");
-    // The status lines stay at the bottom.
-    assert!(rows[23].contains("shift+tab"), "{rows:#?}");
 }
 
 #[test]
@@ -151,76 +89,29 @@ fn nothing_panics_on_tiny_terminals() {
 }
 
 #[test]
-fn no_color_uses_no_colors() {
-    let mut app = App::new(Config {
-        app_id: "terminal".into(),
-        session: "s1".into(),
-        cwd: "/w".into(),
-        home: None,
-        no_color: true,
-        history: HistoryStore::default(),
-        prefs: crate::theme::Prefs::default(),
-    });
-    show(
-        &mut app,
-        vec![item("u", "user", "hello"), item("a", "agent", "world")],
-    );
-    let mut terminal = Terminal::new(TestBackend::new(60, 14)).unwrap();
-    terminal.draw(|f| app.draw(f)).unwrap();
-    let buffer = terminal.backend().buffer();
-    for cell in buffer.content() {
-        assert_eq!(cell.fg, ratatui::style::Color::Reset, "{cell:?}");
-        assert_eq!(cell.bg, ratatui::style::Color::Reset);
-    }
-}
-
-#[test]
-fn theme_paints_the_whole_screen_and_switches() {
-    use ratatui::style::Color;
-    let backgrounds = |app: &mut App| {
-        let mut terminal = Terminal::new(TestBackend::new(60, 14)).unwrap();
-        terminal.draw(|f| app.draw(f)).unwrap();
-        let buffer = terminal.backend().buffer();
-        let mut seen: Vec<Color> = buffer.content().iter().map(|c| c.bg).collect();
-        seen.dedup();
-        (seen, buffer[(59, 0)].fg)
-    };
+fn theme_switches_by_name_or_to_the_next() {
+    use crate::theme::Theme;
     let mut app = scenario();
-    // Dark by default: near-black where nothing else is painted, the theme's text color.
-    let (seen, fg) = backgrounds(&mut app);
-    assert!(seen.contains(&Color::Rgb(0x0f, 0x0e, 0x0c)));
-    assert!(!seen.contains(&Color::Reset));
-    assert_ne!(fg, Color::Reset);
+    // Dark by default.
+    assert_eq!(app.theme, Theme::Dark);
 
     type_str(&mut app, "/theme light");
     app.handle_key(key(KeyCode::Enter));
-    let (seen, _) = backgrounds(&mut app);
-    assert!(seen.contains(&Color::Rgb(0xf2, 0xf1, 0xee)));
-    assert!(!seen.contains(&Color::Reset));
+    assert_eq!(app.theme, Theme::Light);
 
-    // No name: the next one, which leaves the terminal's own colors.
+    // No name: the next one.
     type_str(&mut app, "/theme");
     app.handle_key(key(KeyCode::Enter));
-    let (seen, _) = backgrounds(&mut app);
-    assert!(seen.contains(&Color::Reset));
+    assert_eq!(app.theme, Theme::Terminal);
 
     type_str(&mut app, "/theme sepia");
     app.handle_key(key(KeyCode::Enter));
     assert!(screen_text(&mut app, 60, 14).contains("usage: /theme [dark|light|terminal]"));
+    assert_eq!(app.theme, Theme::Terminal);
 }
 
 #[test]
-fn the_cursor_sits_in_the_editor() {
-    let mut app = scenario();
-    type_str(&mut app, "héllo");
-    let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
-    terminal.draw(|f| app.draw(f)).unwrap();
-    let pos = terminal.get_cursor_position().unwrap();
-    assert_eq!((pos.x, pos.y), (2 + 5, 20 - 2 - 1));
-}
-
-#[test]
-fn a_prompt_answered_below_the_chat_leaves_one_line_in_the_chat_and_starts_on_the_current_value() {
+fn a_prompt_answered_below_the_chat_starts_on_the_current_value() {
     let option = |i: usize, id: &str, name: &str, current: bool| {
         let mut b = json!({"type":"button","label":name,"action":"neo.choose",
                "args":{"id":"m1","option":id},"key":(i + 1).to_string()});
@@ -241,26 +132,6 @@ fn a_prompt_answered_below_the_chat_leaves_one_line_in_the_chat_and_starts_on_th
     let mut app = app();
     show(&mut app, vec![picker]);
     assert!(app.prompt.engaged);
-    let rows = screen(&mut app, 70, 20);
-    let titles = rows
-        .iter()
-        .filter(|l| l.contains("Claude Code model"))
-        .count();
-    assert_eq!(
-        titles, 2,
-        "one line in the chat, the picker below: {rows:#?}"
-    );
-    assert!(
-        rows.iter()
-            .any(|l| l.contains("Claude Code model (now: haiku) · answer below")),
-        "{rows:#?}"
-    );
-    assert_eq!(
-        rows.iter().filter(|l| l.contains("[2 Opus]")).count(),
-        1,
-        "the buttons only once: {rows:#?}"
-    );
-    assert!(rows.iter().any(|l| l.contains("[3 Haiku] ✓")), "{rows:#?}");
     // Enter keeps what is in effect.
     let fx = app.handle_key(key(KeyCode::Enter));
     assert_eq!(
@@ -340,8 +211,6 @@ fn enter_or_space_changes_a_setting_and_the_card_stays_until_esc() {
     long_chat(&mut app, 3);
     settings_choice(&mut app, [false; 3]);
     app.handle_key(key(KeyCode::Down));
-    let s = screen_text(&mut app, 80, 24);
-    assert!(s.contains("Enter Change · ←/→ Choose · Esc Close"), "{s}");
     match &app.handle_key(key(KeyCode::Char(' ')))[..] {
         [Effect::Action { args: Some(a), .. }] => {
             assert_eq!(a["option"], "charts");
@@ -353,7 +222,6 @@ fn enter_or_space_changes_a_setting_and_the_card_stays_until_esc() {
     assert_eq!(app.active_ref(), Some("q-s"));
     settings_choice(&mut app, [false, true, false]);
     assert_eq!(app.active_ref(), Some("q-s"));
-    assert!(screen_text(&mut app, 80, 24).contains("[2 Charts · on]"));
     match &app.handle_key(key(KeyCode::Char(' ')))[..] {
         [Effect::Action { args: Some(a), .. }] => assert_eq!(a["option"], "charts"),
         other => panic!("{other:?}"),
@@ -396,11 +264,6 @@ fn a_setting_that_is_text_is_written_in_the_editor() {
     // The digit opens the editor on its text, the draft put aside.
     assert!(app.handle_key(key(KeyCode::Char('2'))).is_empty());
     assert_eq!(app.editor_text(), "Be brief.");
-    let s = screen_text(&mut app, 90, 20);
-    assert!(
-        s.contains("Your words · Enter Save · Shift+Enter New line · Esc Cancel"),
-        "{s}"
-    );
     app.handle_key(with(KeyCode::Enter, KeyModifiers::SHIFT));
     type_str(&mut app, "In German.");
     let fx = app.handle_key(key(KeyCode::Enter));

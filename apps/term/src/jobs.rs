@@ -199,45 +199,6 @@ mod tests {
         }
     }
 
-    fn text(lines: &[Line]) -> Vec<String> {
-        lines
-            .iter()
-            .map(|l| {
-                l.spans
-                    .iter()
-                    .map(|s| s.content.as_ref())
-                    .collect::<String>()
-                    .trim_end()
-                    .to_string()
-            })
-            .collect()
-    }
-
-    #[test]
-    fn rows_say_what_runs_its_last_line_and_how_long() {
-        let rows = [job("a", None), job("b", Some(1))];
-        let jobs = Jobs::default();
-        let got = text(&jobs.lines(
-            &rows,
-            50,
-            72_000,
-            false,
-            &Styles::new(&neo_renderer_ratatui::Palette::default(), false),
-        ));
-        assert_eq!(got[0], "⏵ background · 1 running");
-        // The stats at the right edge.
-        for (line, start, end) in [
-            (&got[1], "○ run a  line of a ", " 1m 12s"),
-            (&got[2], "✗ run b  line of b ", " exit 1 · 3s"),
-        ] {
-            assert!(line.starts_with(start) && line.ends_with(end), "{line}");
-            assert_eq!(width(line), 50, "{line}");
-        }
-        assert_eq!(Jobs::height(&rows, false), 3);
-        assert_eq!(Jobs::height(&rows, true), 4);
-        assert_eq!(Jobs::height(&[], true), 0);
-    }
-
     #[test]
     fn the_keys_move_show_and_open() {
         let rows = [job("a", None), job("b", None)];

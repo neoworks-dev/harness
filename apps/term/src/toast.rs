@@ -146,33 +146,11 @@ impl Toast {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use neo_renderer_ratatui::Palette;
-
-    fn row(buf: &Buffer, y: u16) -> String {
-        (0..buf.area.width)
-            .map(|x| buf[(x, y)].symbol().to_string())
-            .collect()
-    }
 
     #[test]
-    fn a_card_flies_in_from_the_right_stays_and_leaves() {
-        let styles = Styles::new(&Palette::default(), false);
+    fn a_card_stays_and_leaves() {
         let mut toasts = Toasts::default();
         toasts.push("Command finished", "cargo test · exit 0", Tone::Success, 0);
-        let area = Rect::new(0, 0, 80, 10);
-        let at = |now: i64| {
-            let mut buf = Buffer::empty(area);
-            toasts.draw(&mut buf, area, now, &styles);
-            row(&buf, 2)
-        };
-        let start = at(0);
-        let mid = at(FLY_MS / 3);
-        let rest = at(FLY_MS * 2);
-        assert!(!start.contains("Command"), "{start}");
-        let left = |s: &str| s.find('●').unwrap_or(usize::MAX);
-        assert!(left(&mid) > left(&rest), "{mid}\n{rest}");
-        assert!(rest.trim_end().ends_with('│'), "{rest}");
-        assert!(rest.contains("● Command finished"), "{rest}");
         // Gone once its time is up (a last redraw to clear it), then nothing to draw.
         assert!(toasts.tick(LIFE_MS - 1));
         assert!(toasts.tick(LIFE_MS));

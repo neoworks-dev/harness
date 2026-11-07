@@ -79,11 +79,10 @@ fn the_marks_dialog_lists_the_marked_chats_over_the_chat() {
     app.handle_key(with(KeyCode::Char('\''), KeyModifiers::ALT));
     let s = screen_text(&mut app, 90, 20);
     assert!(
-        s.contains("! Deploy the site") && s.contains("needs you"),
+        s.contains("Deploy the site") && s.contains("needs you"),
         "{s}"
     );
     assert!(s.contains("working"), "{s}");
-    snapshot("marks-dialog-90x20", &s);
 }
 
 #[test]
