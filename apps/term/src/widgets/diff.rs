@@ -736,10 +736,12 @@ impl Look {
             border: Style::new().fg(p.border),
             success: p.success,
             danger: p.danger,
-            del_bg: blend(p.bg, p.danger, 16),
-            del_hl: blend(p.bg, p.danger, 38),
-            add_bg: blend(p.bg, p.success, 16),
-            add_hl: blend(p.bg, p.success, 38),
+            // Strong enough to see a changed line from across the overlay, in any theme; the
+            // changed part of it stronger still.
+            del_bg: blend(p.bg, p.danger, 26),
+            del_hl: blend(p.bg, p.danger, 50),
+            add_bg: blend(p.bg, p.success, 26),
+            add_hl: blend(p.bg, p.success, 50),
             band: matches!(p.surface, Color::Rgb(..)).then_some(p.surface),
             syntax: code_colors(p),
             selection: match blend(p.bg, p.accent, 35) {
