@@ -2387,13 +2387,13 @@ type SubagentStarted struct {
 	Effort *string `json:"effort,omitempty"`
 	// The directory it works in, when that is not the session's.
 	Cwd *string `json:"cwd,omitempty"`
-	// A subagent working in another directory, or a native one, runs as its own session (parent = this one); its id.
+	// A subagent working in another directory runs as its own session (parent = this one); its id.
 	Child *string `json:"child,omitempty"`
 	// The delegate call returned at once and the subagent outlives the turn: a turn's end does not close it, and its final reply reaches the main agent as an agent_message.
 	Background *bool `json:"background,omitempty"`
-	// A native subagent's id in its harness (Claude Code's agentId): what its agent addresses it by (SendMessage), so what the user writes in its session can be passed on.
+	// A native subagent's id in its harness (Claude Code's agentId): what its agent addresses it by (SendMessage), so a message to it can be shown with it.
 	Handle *string `json:"handle,omitempty"`
-	// A subagent of the harness's own (Claude Code's Agent tool, Codex's spawn_agent), not one delegate started. `agent` is then a label unique to it (`claude/1a2b3c4d`), which its questions carry, and `name` what it is called. Its work is in its `child` session; logs from before that carry the label on its events instead.
+	// A subagent of the harness's own (Claude Code's Agent tool, Codex's spawn_agent), not one delegate started. `agent` is then the label its events carry, unique to it (`claude/1a2b3c4d`), and `name` what it is called.
 	Native *bool `json:"native,omitempty"`
 }
 

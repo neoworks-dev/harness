@@ -205,11 +205,6 @@ export interface SessionManagerOptions {
    */
   takeMessages?: (sessionId: string) => string[];
   /**
-   * Takes what is sent to a session whose agent can't be prompted in it (a native subagent's)
-   * and gets it there another way; true when it did, and the session runs no turn for it.
-   */
-  relay?: (sessionId: string, app: string, text: string) => boolean;
-  /**
    * Whether what the user sends while a turn runs goes into that turn at once, for a harness
    * that can take it (steering), instead of waiting for the next turn. Default: it waits.
    */
@@ -374,7 +369,6 @@ export class SessionManager {
     shown?: string,
     steer = false,
   ): void {
-    if (this.options.relay?.(sessionId, app, text) === true) return;
     const rt = this.runtime(sessionId);
     const input: QueuedInput = images?.length ? { app, text, images } : { app, text };
     if (shown !== undefined) input.shown = shown;

@@ -198,18 +198,6 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   });
   const authPath = options.accounts?.authPath ?? join(paths.dataDir, "auth.json");
   const piAuthPath = options.accounts?.piAuthPath ?? join(paths.dataDir, "pi-auth.json");
-  type SubagentStarted = Extract<SessionEvent, { type: "subagent_started" }>;
-  /** The latest start of a native subagent of `session` that `which` picks. */
-  const nativeStart = (
-    session: string,
-    which: (event: SubagentStarted) => boolean,
-  ): SubagentStarted | undefined => {
-    let found: SubagentStarted | undefined;
-    for (const { event } of store.readTypes(session, ["subagent_started"])) {
-      if (event.type === "subagent_started" && event.native === true && which(event)) found = event;
-    }
-    return found;
-  };
   const guests = new GuestManager({
     accounts: createGuestAccounts({ authPath, piAuthPath }),
     configs: options.guests ?? {},
@@ -242,20 +230,6 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     // Not for a delegation's own session: subagents don't start subagents.
     nativeSubagents: (session) =>
       settings.subagents() !== "delegate" && store.getSession(session)?.parent === undefined,
-    // A native subagent works as a session of its own, like a delegation into a directory.
-    childSession: (session, harness, handle) => {
-      const before = nativeStart(session, (e) => e.handle === handle)?.child;
-      if (before !== undefined && store.getSession(before)) return before;
-      const cwd = store.getSession(session)?.cwd ?? options.defaultCwd;
-      const child = sessions.create({ cwd, parent: session }).id;
-      store.append(child, {
-        type: "setting_changed",
-        harness: "daemon",
-        option: "harness",
-        value: harness,
-      });
-      return child;
-    },
     // Claude Code going on by itself once a background command or subagent ended.
     stopTurn: (session) => sessions.stopTurn(session),
     ownTurn: (session, title) =>
@@ -313,8 +287,6 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       const asking = asker.asking(sessionId);
       if (asking > 0) info.asking = asking;
       if (store.unseen(sessionId)) info.unseen = true;
-      // A native subagent's session runs no turn of the session manager's.
-      if (guests.runsNative(sessionId)) info.state = "running";
       return info;
     },
     defaultCwd: options.defaultCwd,
@@ -342,27 +314,6 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       announceCommands(sessionId);
     },
     takeMessages: (sessionId) => messenger.take(sessionId, undefined),
-    // What the user writes in a native subagent's session is for that subagent: its harness
-    // can't be prompted there, so the agent that started it is asked to pass it on.
-    relay: (sessionId, app, text) => {
-      const parent = store.getSession(sessionId)?.parent;
-      if (parent === undefined || text.trimStart().startsWith("/")) return false;
-      const started = nativeStart(parent, (e) => e.child === sessionId);
-      if (started?.handle === undefined) return false;
-      store.append(sessionId, { type: "user_message", app, text });
-      guests.relayed(sessionId, parent);
-      const name = started.name ?? started.agent;
-      const how =
-        harnessOf(parent) === "claude"
-          ? `SendMessage to "${started.handle}" with exactly this message`
-          : `your tool for messaging subagents, to "${started.handle}", with exactly this message`;
-      messenger.tell(
-        parent,
-        "user",
-        `I wrote this to your subagent ${name} (${started.handle}) in its own chat. Pass it on unchanged, with ${how}, and add nothing:\n\n${text}`,
-      );
-      return true;
-    },
     steer: () => settings.steer(),
     backgroundEnded: (sessionId, text) => messenger.tell(sessionId, "background", text),
   });
@@ -420,8 +371,6 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   // The user cancelling a turn stops the session's background subagents with it.
   sessions.onCancel((session) => {
     delegate.stopBackground(session);
-    // Cancelling a native subagent's own session stops it.
-    guests.cancelNativeSession(session);
   });
   const todos = new Todos(store);
   const gateway = new Gateway(connectors, {
