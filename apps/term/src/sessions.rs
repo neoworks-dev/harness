@@ -543,8 +543,12 @@ impl Sessions {
         }
         // No blank row between a session and its child, nor between two children of one parent.
         for at in 0..entries.len().saturating_sub(1) {
-            let (Entry::Session { index: a, .. }, Entry::Session { index: b, child, .. }) =
-                (&entries[at], &entries[at + 1])
+            let (
+                Entry::Session { index: a, .. },
+                Entry::Session {
+                    index: b, child, ..
+                },
+            ) = (&entries[at], &entries[at + 1])
             else {
                 continue;
             };
