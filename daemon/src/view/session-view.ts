@@ -49,6 +49,44 @@ interface Call {
   rawInput?: unknown;
   content?: ToolCallContent[];
   rawOutput?: unknown;
+  /** A message it sent to another agent (see sentMessage): that agent's answer, once it came. */
+  reply?: string;
+}
+
+/**
+ * A call that sends another agent a message: Claude Code's SendMessage `{to, message}` (to its
+ * subagent's handle), neo's send_message `{to, text}` (as any harness names it).
+ */
+function sentMessage(call: Call): { to: string; text: string } | undefined {
+  if (!isRecord(call.rawInput)) return undefined;
+  const input = isRecord(call.rawInput.arguments) ? call.rawInput.arguments : call.rawInput;
+  const title = call.agent === undefined ? call.title : call.title.slice(call.agent.length + 2);
+  const { to, message, text } = input;
+  if (typeof to !== "string") return undefined;
+  if (title === "SendMessage" && typeof message === "string") return { to, text: message };
+  if (/^message /.test(title) && typeof text === "string") return { to, text };
+  return undefined;
+}
+
+/** Why a sent message didn't arrive: Claude Code answers `{"success": false, "message": …}`. */
+function sendFailure(call: Call): string | undefined {
+  const said = (call.content ?? [])
+    .filter((c) => c.type === "text")
+    .map((c) => c.text)
+    .join("");
+  const raw = said === "" ? call.rawOutput : said;
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return call.status === "failed" ? raw : undefined;
+    }
+  }
+  if (isRecord(parsed) && parsed.success === false) {
+    return typeof parsed.message === "string" ? parsed.message : "not delivered";
+  }
+  return call.status === "failed" ? (typeof raw === "string" ? raw : "not delivered") : undefined;
 }
 
 type Plan = Extract<SessionEvent, { type: "plan" }>;
@@ -210,6 +248,12 @@ export class SessionView {
   private readonly background = new Set<string>();
   /** What the harness's own subagents are called, by the label of their events. */
   private readonly names = new Map<string, string>();
+  /** The label of each of the harness's own subagents, by its id in the harness (SendMessage's `to`). */
+  private readonly handles = new Map<string, string>();
+  /** Each labelled agent's latest message so far: its stream's ref and text. */
+  private readonly lastSaid = new Map<string, { ref: string; text: string }>();
+  /** The calls that sent an agent a message and wait for its answer, by that agent's label. */
+  private readonly asked = new Map<string, Call>();
   private readonly docs: NeoUiDocs;
   /** The line of app news that is last in the chat, and what it says per app. */
   private appNews: { ref: string; parts: Map<string, string> } | undefined;
@@ -350,13 +394,28 @@ export class SessionView {
         if (event.native === true && event.name !== undefined) {
           this.names.set(event.agent, event.name);
         }
+        if (event.handle !== undefined) this.handles.set(event.handle, event.agent);
+        // What it says this run, not last time.
+        this.lastSaid.delete(event.agent);
         return [];
-      case "subagent_ended":
+      case "subagent_ended": {
+        const agent = this.windows.get(event.id);
         this.windows.delete(event.id);
         this.background.delete(event.id);
-        return [];
-      case "agent_message":
+        // A run of a subagent that was sent a message: its last message is the answer.
+        const said = agent === undefined ? undefined : this.lastSaid.get(agent);
+        if (agent === undefined || said === undefined) return [];
+        return this.answered(agent, said.text);
+      }
+      case "agent_message": {
+        // The answer to a message the session's agent sent: it shows with that message.
+        // (send_message names a delegated subagent by its id, which the answer comes from.)
+        const from = [event.from, event.fromAgent].find(
+          (f) => f !== undefined && this.asked.has(f),
+        );
+        if (from !== undefined) return this.answered(from, event.text);
         return [this.messageOp(event, seq)];
+      }
       case "user_message": {
         this.prompted = true;
         // The turn that messages from other agents start: their rows are what the chat shows.
@@ -369,6 +428,12 @@ export class SessionView {
         return [{ op: "set", item: { ref: `u${seq}`, kind: "user", label: event.app, component } }];
       }
       case "agent_message_chunk":
+        if (event.agent !== undefined) {
+          const ref = `m-${event.messageId}`;
+          const last = this.lastSaid.get(event.agent);
+          const text = last?.ref === ref ? last.text + event.text : event.text;
+          this.lastSaid.set(event.agent, { ref, text });
+        }
         if (!this.shows(event.agent)) return [];
         return this.stream(`m-${event.messageId}`, "agent", event.text, event.agent);
       case "agent_thought_chunk":
@@ -473,6 +538,38 @@ export class SessionView {
     if (event.tool !== undefined) call.tool = event.tool;
     if (event.agent !== undefined) call.agent = event.agent;
     this.calls.set(event.toolCallId, call);
+    this.awaitAnswer(call);
+    return [{ op: "set", item: this.toolItem(call) }];
+  }
+
+  /** The agent a sent message went to, by its label: a subagent's handle stands for it. */
+  private recipient(to: string): string {
+    return this.handles.get(to) ?? to;
+  }
+
+  /** A call that sent a message waits for its answer, unless it wasn't delivered. */
+  private awaitAnswer(call: Call): void {
+    const sent = sentMessage(call);
+    if (sent === undefined || call.reply !== undefined) return;
+    const to = this.recipient(sent.to);
+    if (sendFailure(call) !== undefined) {
+      if (this.asked.get(to) === call) this.asked.delete(to);
+      return;
+    }
+    this.asked.set(to, call);
+  }
+
+  /** The agent that was sent a message answered: the call that sent it shows the answer. */
+  private answered(agent: string, reply: string): ViewOp[] {
+    const call = this.asked.get(agent);
+    if (call === undefined) return [];
+    this.asked.delete(agent);
+    call.reply = reply.trim();
+    if (this.replaying) {
+      this.unbuilt.set(call.ref, call);
+      return [];
+    }
+    this.unbuilt.delete(call.ref);
     return [{ op: "set", item: this.toolItem(call) }];
   }
 
@@ -488,6 +585,7 @@ export class SessionView {
     if (event.status !== undefined) call.status = event.status;
     if (event.content !== undefined) call.content = event.content;
     if (event.rawOutput !== undefined) call.rawOutput = event.rawOutput;
+    this.awaitAnswer(call);
     if (this.replaying) {
       this.unbuilt.set(call.ref, call);
       return [];
@@ -858,6 +956,8 @@ export class SessionView {
       state: call.status === "pending" ? "running" : STATES[call.status],
       component: this.resultView(call),
     };
+    const sent = sentMessage(call);
+    if (sent !== undefined) return this.messageItem(call, item, sent);
     const command = call.kind === "execute" ? commandOf(call.rawInput) : undefined;
     if (command !== undefined) {
       item.command = command;
@@ -890,6 +990,28 @@ export class SessionView {
         if (recognized !== undefined) item.component = recognized;
       }
     }
+    return item;
+  }
+
+  /**
+   * A message sent to another agent: `message Explore`, the message in full, then that agent's
+   * answer once it came (or why the message didn't arrive), instead of the tool's receipt.
+   */
+  private messageItem(call: Call, item: ViewItem, sent: { to: string; text: string }): ViewItem {
+    const to = this.recipient(sent.to);
+    const name = this.names.get(to) ?? to;
+    const label = `message ${name}`;
+    item.label =
+      call.agent !== undefined && this.only === undefined ? `${call.agent}: ${label}` : label;
+    const children: Component[] = [text(parseMarkdown(sent.text))];
+    const failure = sendFailure(call);
+    if (failure !== undefined) {
+      children.push(text(plain(failure), { tone: "danger" }));
+    } else if (call.reply !== undefined) {
+      children.push(text(plain(`${name} answered:`), { tone: "muted" }));
+      children.push(text(parseMarkdown(call.reply)));
+    }
+    item.component = { type: "stack", gap: "s", children };
     return item;
   }
 

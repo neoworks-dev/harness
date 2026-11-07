@@ -90,6 +90,98 @@ describe("in the chat", () => {
   });
 });
 
+describe("a message the agent sends with a tool", () => {
+  // Claude Code's own subagent, then its SendMessage to it, which runs it again.
+  const explore: SessionEvent = {
+    type: "subagent_started",
+    id: "c-1",
+    agent: "claude/1a2b3c4d",
+    name: "Explore",
+    task: "List them.",
+    native: true,
+    handle: "a7e6",
+  };
+  const ended = (id: string): SessionEvent => ({
+    type: "subagent_ended",
+    id,
+    stopReason: "end_turn",
+  });
+  const send = (status: "completed" | "failed", result: string): SessionEvent[] => [
+    {
+      type: "tool_call",
+      toolCallId: "t-send",
+      title: "SendMessage",
+      kind: "other",
+      status: "pending",
+      rawInput: { to: "a7e6", message: "Now count them." },
+    },
+    {
+      type: "tool_call_update",
+      toolCallId: "t-send",
+      status,
+      content: [{ type: "text", text: result }],
+    },
+  ];
+  const said = (text: string): SessionEvent => ({
+    type: "agent_message_chunk",
+    messageId: "m-2",
+    text,
+    agent: "claude/1a2b3c4d",
+  });
+  const json = (item: unknown): string => JSON.stringify(item);
+
+  test("names the subagent, shows the message, and its answer once that run ends", () => {
+    const before = feed([explore, ended("c-1"), ...send("completed", '{"success":true}')]);
+    const item = before.snapshot().items.find((i) => i.ref === "c-t-send");
+    expect(item?.label).toBe("message Explore");
+    expect(json(item)).toContain("Now count them.");
+    expect(json(item)).not.toContain("success");
+
+    const after = feed([
+      explore,
+      ended("c-1"),
+      ...send("completed", '{"success":true}'),
+      { ...explore, id: "t-send" },
+      said("Found 3 tests."),
+      ended("t-send"),
+    ]);
+    const answeredItem = after.snapshot().items.find((i) => i.ref === "c-t-send");
+    expect(json(answeredItem)).toContain("Found 3 tests.");
+  });
+
+  test("one that didn't arrive says why and waits for nothing", () => {
+    const refused = '{"success":false,"message":"Agent was stopped by the user"}';
+    const view = feed([
+      explore,
+      ended("c-1"),
+      ...send("completed", refused),
+      { ...explore, id: "t-send" },
+      said("unrelated"),
+      ended("t-send"),
+    ]);
+    const item = view.snapshot().items.find((i) => i.ref === "c-t-send");
+    expect(json(item)).toContain("Agent was stopped by the user");
+    expect(json(item)).not.toContain("unrelated");
+  });
+
+  test("neo's send_message to a delegated subagent gets its reply, not a row of its own", () => {
+    const items = feed([
+      started,
+      {
+        type: "tool_call",
+        toolCallId: "t-1",
+        title: "message d_1: Use staging",
+        kind: "other",
+        status: "completed",
+        rawInput: { to: "d_1", text: "Use staging." },
+      },
+      reply,
+    ]).snapshot().items;
+    expect(items.map((i) => i.ref)).toEqual(["c-t-1"]);
+    expect(json(items[0])).toContain("Done.");
+  });
+});
+
 describe("in an agent's transcript", () => {
   test("what was written to it is input like its task; what it sent is a row", () => {
     const items = feed([started, answer, ask], "claude").snapshot().items;
