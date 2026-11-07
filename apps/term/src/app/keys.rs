@@ -208,7 +208,9 @@ impl App {
             MouseEventKind::Down(MouseButton::Left)
             | MouseEventKind::Drag(MouseButton::Left)
             | MouseEventKind::Up(MouseButton::Left) => {
-                self.mouse_select(mouse, &mut fx);
+                if !self.terminal_select(mouse, &mut fx) {
+                    self.mouse_select(mouse, &mut fx);
+                }
                 return fx;
             }
             _ => return fx,
@@ -242,6 +244,25 @@ impl App {
             self.chat.scroll_up(WHEEL_LINES);
         }
         fx
+    }
+
+    /// Dragging over the terminal panel selects its text and copies it when let go, as over
+    /// the chat; false when the mouse isn't the panel's.
+    fn terminal_select(&mut self, mouse: MouseEvent, fx: &mut Vec<Effect>) -> bool {
+        let at = Position::new(mouse.column, mouse.row);
+        let over =
+            self.terminal_area.is_some_and(|a| a.contains(at)) && !self.widgets.overlay_open();
+        let what = match mouse.kind {
+            MouseEventKind::Down(_) if over => Select::Start,
+            MouseEventKind::Drag(_) if self.widgets.terminal_selecting() => Select::Extend,
+            MouseEventKind::Up(_) if self.widgets.terminal_selecting() => Select::End,
+            _ => return false,
+        };
+        self.dirty = true;
+        if let Some(text) = self.widgets.terminal_select(what, at) {
+            self.copy(text, fx);
+        }
+        true
     }
 
     /// The left button over the chat: pressed starts a selection, dragged extends it (past the

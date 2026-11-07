@@ -71,6 +71,7 @@ pub(crate) use text::truncate_start;
 #[cfg(test)]
 mod testutil;
 
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -79,7 +80,7 @@ use neo_protocol::{SessionEvent, SessionEventRecord, ToolCallContent};
 use neo_renderer_ratatui::Palette;
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyEvent, KeyEventKind};
-use ratatui::layout::Rect;
+use ratatui::layout::{Position, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
@@ -152,6 +153,20 @@ pub struct Widgets {
     tool_agents: HashMap<String, Option<String>>,
     /// None only in tests that don't want a git process.
     runner: Option<Runner>,
+    /// Where the terminal panel's commands were drawn last, and their rows as text: what a
+    /// drag over them selects.
+    terminal_body: Cell<Option<Rect>>,
+    terminal_rows: RefCell<Vec<String>>,
+    /// A drag over the terminal panel: where it started and where it is now, in cells.
+    terminal_select: Option<(Position, Position)>,
+}
+
+/// What the mouse does to a selection in the terminal panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Select {
+    Start,
+    Extend,
+    End,
 }
 
 impl Widgets {
@@ -181,6 +196,9 @@ impl Widgets {
             review_comments: HashMap::new(),
             tool_agents: HashMap::new(),
             runner,
+            terminal_body: Cell::new(None),
+            terminal_rows: RefCell::new(Vec::new()),
+            terminal_select: None,
         }
     }
 
@@ -594,7 +612,82 @@ impl Widgets {
             self.cwd.to_str(),
             p,
         );
+        *self.terminal_rows.borrow_mut() = lines.iter().map(Line::to_string).collect();
+        self.terminal_body.set(Some(body));
         frame.render_widget(Paragraph::new(lines), body);
+        // What a drag selected, reversed.
+        if let Some((from, to)) = self.terminal_select.filter(|(a, b)| a != b) {
+            let (from, to) = ordered(from, to);
+            let buf = frame.buffer_mut();
+            for y in from.y..=to.y {
+                let start = if y == from.y { from.x } else { body.x };
+                let end = if y == to.y { to.x } else { body.right() };
+                for x in start..end.min(body.right()) {
+                    let cell = &mut buf[(x, y)];
+                    cell.set_style(cell.style().add_modifier(Modifier::REVERSED));
+                }
+            }
+        }
+    }
+
+    /// A drag over the terminal panel at `at` (the screen's cells): starts, moves or ends a
+    /// selection of its text; its end gives what was selected, to copy.
+    pub fn terminal_select(&mut self, what: Select, at: Position) -> Option<String> {
+        let body = self.terminal_body.get()?;
+        let at = Position::new(
+            at.x.clamp(body.x, body.right().saturating_sub(1)),
+            at.y.clamp(body.y, body.bottom().saturating_sub(1)),
+        );
+        match what {
+            Select::Start => {
+                self.terminal_select = Some((at, at));
+                None
+            }
+            Select::Extend => {
+                if let Some((_, to)) = &mut self.terminal_select {
+                    *to = at;
+                }
+                None
+            }
+            Select::End => {
+                let (from, to) = self.terminal_select.take()?;
+                // A click, not a drag: nothing to copy.
+                if from == to {
+                    return None;
+                }
+                // One past the cell let go on, so the last character is in it.
+                let to = Position::new(to.x + 1, to.y);
+                let (from, to) = ordered(from, to);
+                let rows = self.terminal_rows.borrow();
+                let mut out = Vec::new();
+                for y in from.y..=to.y {
+                    let row = rows.get(usize::from(y - body.y)).map_or("", String::as_str);
+                    let start = if y == from.y { from.x - body.x } else { 0 };
+                    let end = if y == to.y { to.x - body.x } else { body.width };
+                    let text = columns(row, usize::from(start), usize::from(end));
+                    // Output rows have a rule before them, which isn't the output's.
+                    let text = text.strip_prefix("│ ").unwrap_or(&text);
+                    out.push(text.trim_end().to_string());
+                }
+                let text = out.join("\n");
+                (!text.trim().is_empty()).then_some(text)
+            }
+        }
+    }
+
+    /// Whether a drag over the terminal panel is going on.
+    pub fn terminal_selecting(&self) -> bool {
+        self.terminal_select.is_some()
+    }
+
+    /// Whether the terminal panel was scrolled since the last time this was asked.
+    pub fn take_terminal_scrolled(&mut self) -> bool {
+        self.terminal.take_scrolled()
+    }
+
+    /// The toolCallId of the command on the terminal panel's bottom row.
+    pub fn terminal_bottom_run(&self) -> Option<String> {
+        self.terminal.bottom_run()
     }
 
     /// A diff the user opened from the files panel, drawn over `area` (the chat's area), if
@@ -813,6 +906,32 @@ impl Widgets {
         let view = DiffView::open_file(self.cwd.clone(), req).with_split(self.split_diffs);
         self.diff = Some(self.with_comments(view, &rel));
     }
+}
+
+/// A selection's two ends, the one that comes first in reading order first.
+fn ordered(a: Position, b: Position) -> (Position, Position) {
+    if (a.y, a.x) <= (b.y, b.x) {
+        (a, b)
+    } else {
+        (b, a)
+    }
+}
+
+/// The part of `row` from display column `from` up to `to`.
+fn columns(row: &str, from: usize, to: usize) -> String {
+    use unicode_width::UnicodeWidthChar;
+    let mut col = 0;
+    let mut out = String::new();
+    for ch in row.chars() {
+        if col >= to {
+            break;
+        }
+        if col >= from {
+            out.push(ch);
+        }
+        col += ch.width().unwrap_or(0);
+    }
+    out
 }
 
 /// A pane at the right: its first column a gap (a border without fills), the rest filled.

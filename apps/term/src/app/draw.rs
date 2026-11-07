@@ -85,7 +85,8 @@ impl App {
             }
             menus = true;
         }
-        self.review_shown = areas.review.height > 0 && self.widgets.draw_review(frame, areas.review);
+        self.review_shown =
+            areas.review.height > 0 && self.widgets.draw_review(frame, areas.review);
         if self.review_shown && self.styles.fills() {
             // On the input box's background, as part of the card; the diff's lines keep theirs.
             let buf = frame.buffer_mut();
@@ -108,10 +109,31 @@ impl App {
                 Some(Focus::Panel(panel)) => Some(panel),
                 _ => None,
             };
-            // Scrolled up, the terminal shows the commands as they were at that point.
-            self.widgets.follow_chat(self.chat.items_through_view());
+            // Whichever was scrolled last leads: the chat scrolled up, the terminal shows the
+            // commands as they were at that point; the terminal scrolled, the chat goes to the
+            // command on its bottom row.
+            if self.widgets.take_terminal_scrolled() {
+                self.terminal_leads = Some(self.chat.top());
+            } else if self
+                .terminal_leads
+                .is_some_and(|top| top != self.chat.top())
+            {
+                self.terminal_leads = None;
+            }
+            if self.terminal_leads.is_none() {
+                self.widgets.follow_chat(self.chat.items_through_view());
+            }
             self.widgets
                 .draw_sidebar(frame, side, panel, areas.terminal);
+            if self.terminal_leads.is_some()
+                && let Some(run) = self.widgets.terminal_bottom_run()
+            {
+                let before = self.chat.top();
+                self.chat.reveal(&format!("c-{run}"));
+                self.terminal_leads = Some(self.chat.top());
+                // The chat was drawn already: once more, where it went.
+                self.dirty |= self.chat.top() != before;
+            }
         }
         let fills = self.styles.fills();
         if fills {

@@ -8,7 +8,7 @@
 //! command's output, until the line `[exited with code N]` it ends with. The panel shows all the
 //! commands, or one background command on its own.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
@@ -104,6 +104,10 @@ pub(crate) struct TerminalState {
     upto: Option<Option<String>>,
     /// Cells the output is scrolled sideways (long lines are cut at the edge, not wrapped).
     hscroll: usize,
+    /// The keys scrolled it up or down since the app last asked (the chat then follows it).
+    scrolled: bool,
+    /// The run on the bottom row of the last draw: where the chat follows it to.
+    bottom: RefCell<Option<String>>,
 }
 
 impl TerminalState {
@@ -247,6 +251,7 @@ impl TerminalState {
             let all = run_lines(run, &look);
             let max = all.len().saturating_sub(height);
             self.max_back.set(max);
+            *self.bottom.borrow_mut() = Some(run.id.clone());
             let back = self.back.unwrap_or(0).min(max);
             let end = all.len() - back;
             let start = end.saturating_sub(height);
@@ -267,6 +272,7 @@ impl TerminalState {
         };
         // From the newest run back, only as many as fill the view; a blank row between runs.
         let mut blocks: Vec<Vec<Line<'static>>> = Vec::new();
+        let mut ids: Vec<&str> = Vec::new();
         let mut have = 0;
         let mut complete = true;
         for (i, run) in runs.iter().enumerate().rev() {
@@ -276,6 +282,7 @@ impl TerminalState {
             }
             have += lines.len();
             blocks.push(lines);
+            ids.push(&run.id);
             if have >= want {
                 complete = i == 0;
                 break;
@@ -297,9 +304,23 @@ impl TerminalState {
         let back = self.back.unwrap_or(0).min(max);
         let end = all.len() - back;
         let start = end.saturating_sub(height);
+        // The run the bottom row is in (or the blank row after).
+        ids.reverse();
+        let last = runs.iter().rposition(|&(at, _)| at < end);
+        *self.bottom.borrow_mut() = last.and_then(|i| ids.get(i)).map(|id| id.to_string());
         let mut shown = all[start..end].to_vec();
         pin_head(&mut shown, &all, &runs, start);
         shown
+    }
+
+    /// Whether the keys scrolled it since the last time this was asked.
+    pub(crate) fn take_scrolled(&mut self) -> bool {
+        std::mem::take(&mut self.scrolled)
+    }
+
+    /// The run on the bottom row of the last draw (its toolCallId).
+    pub(crate) fn bottom_run(&self) -> Option<String> {
+        self.bottom.borrow().clone()
     }
 
     /// Keys while focused; true leaves the panel.
@@ -307,6 +328,21 @@ impl TerminalState {
         let cur = self.back.unwrap_or(0);
         let max = self.max_back.get();
         let to = |n: usize| (n > 0).then_some(n.min(max));
+        let before = self.back;
+        let leave = self.move_by(key, cur, page, to);
+        if self.back != before {
+            self.scrolled = true;
+        }
+        leave
+    }
+
+    fn move_by(
+        &mut self,
+        key: KeyEvent,
+        cur: usize,
+        page: usize,
+        to: impl Fn(usize) -> Option<usize>,
+    ) -> bool {
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => return true,
             KeyCode::Up | KeyCode::Char('k') => self.back = to(cur + 1),

@@ -46,7 +46,7 @@ use crate::theme::{Prefs, Theme};
 use crate::toast::{self, Toasts};
 use crate::util::{fit_line, relative_time, shorten_home, split_line, truncate, width};
 use crate::voice::{SpaceKey, SpaceRun, Voice};
-use crate::widgets::{Panel, WidgetAction, Widgets};
+use crate::widgets::{Panel, Select, WidgetAction, Widgets};
 
 // The rest of `impl App`, by what it does.
 mod commands;
@@ -557,6 +557,9 @@ pub struct App {
     terminal_on: bool,
     /// Where the terminal panel was drawn last (the wheel scrolls it there).
     terminal_area: Option<Rect>,
+    /// The terminal panel was scrolled last, not the chat: the chat follows it to the command
+    /// on its bottom row (the chat's top then, to tell when the chat is scrolled itself).
+    terminal_leads: Option<usize>,
     /// Where the chat's lines were drawn last (the mouse selects text there).
     chat_area: Option<Rect>,
     dirty: bool,
@@ -669,6 +672,7 @@ impl App {
             sidebar_shown: false,
             terminal_on: true,
             terminal_area: None,
+            terminal_leads: None,
             chat_area: None,
             dirty: true,
             clear: false,

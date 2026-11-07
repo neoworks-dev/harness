@@ -228,6 +228,7 @@ mod marks;
 mod misc;
 mod prompts;
 mod sidebar;
+mod terminal;
 
 // Helpers of one part that others use too.
 use cards::permission_with_diff;
