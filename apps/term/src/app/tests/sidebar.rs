@@ -65,7 +65,7 @@ fn context_and_cost_are_in_the_sidebar_while_it_shows_else_under_the_input() {
 }
 
 #[test]
-fn the_sessions_sidebar_lists_every_session_newest_first() {
+fn the_sessions_sidebar_lists_every_session_working_then_newest_first() {
     let mut app = overview();
     let text = screen_text(&mut app, 120, 24);
     snapshot("sessions-120x24", &text);
@@ -129,9 +129,10 @@ fn session_changed_updates_or_adds_one_entry_live() {
             })
             .collect::<Vec<_>>()
     };
+    // The working one first, then newest first.
     assert_eq!(
         titles(&mut app),
-        ["Sticky header", "Fix the login form", "Docs"]
+        ["Fix the login form", "Sticky header", "Docs"]
     );
     // Docs got a message: it shows what was said but keeps its place.
     let mut docs = info("s3", "Docs", NOW);
@@ -140,7 +141,7 @@ fn session_changed_updates_or_adds_one_entry_live() {
     app.handle_event(Event::SessionChanged(docs));
     assert_eq!(
         titles(&mut app),
-        ["Sticky header", "Fix the login form", "Docs"]
+        ["Fix the login form", "Sticky header", "Docs"]
     );
     let text = screen_text(&mut app, 120, 24);
     assert!(text.contains("Rewrote the README"), "{text}");
@@ -148,11 +149,11 @@ fn session_changed_updates_or_adds_one_entry_live() {
     // A session nobody listed yet appears.
     app.handle_event(Event::SessionChanged(info("s9", "Brand new", NOW + 1)));
     assert_eq!(app.sessions().len(), 4);
-    assert_eq!(titles(&mut app)[0], "Brand new");
+    assert_eq!(titles(&mut app)[1], "Brand new");
     // One the daemon deleted goes again.
     app.handle_event(Event::SessionRemoved("s9".into()));
     assert_eq!(app.sessions().len(), 3);
-    assert_eq!(titles(&mut app)[0], "Sticky header");
+    assert_eq!(titles(&mut app)[1], "Sticky header");
     // The shown session's own queue and turn state follow it too.
     app.running = true;
     app.turn_started_ms = NOW - 10_000;
@@ -213,10 +214,11 @@ fn ctrl_g_focuses_the_sidebar_and_enter_switches() {
     // The keys are the sidebar's: typing does not reach the editor.
     type_str(&mut app, "x");
     assert_eq!(app.editor_text(), "");
-    // Starts on the shown session (s1, the first row); j goes to s2 and s3, k back to s2.
+    // Starts on the shown session (s1, under the working s2); j goes to s3, k back to s1, k
+    // again to s2.
     app.handle_key(key(KeyCode::Char('j')));
-    app.handle_key(key(KeyCode::Down));
     app.handle_key(key(KeyCode::Char('k')));
+    app.handle_key(key(KeyCode::Up));
     let text = screen_text(&mut app, 120, 24);
     assert!(text.contains("Fix the login form"), "{text}");
     let fx = app.handle_key(key(KeyCode::Enter));

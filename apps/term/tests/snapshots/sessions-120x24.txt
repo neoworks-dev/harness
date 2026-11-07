@@ -2,11 +2,11 @@
  Sessions · 3             ⡿1     ┃
    + New chat                    ┃ make the header sticky
  site ───────────────────────    ┃
-▎  Sticky header          now
-▎  Done. The header now uses…    Done. The header now uses `position: sticky`.
-
  ⡿ Fix the login form      1m
-   Looking at the val… +12 −3
+   Looking at the val… +12 −3    Done. The header now uses `position: sticky`.
+
+▎  Sticky header          now
+▎  Done. The header now uses…
 
    Docs                    1h
 

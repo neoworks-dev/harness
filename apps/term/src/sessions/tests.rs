@@ -254,8 +254,8 @@ fn sessions_idle_for_over_a_day_fold_into_an_older_row_that_enter_opens() {
             })
             .collect::<Vec<_>>()
     };
-    // The shown and the running session stay; the two idle ones fold.
-    assert_eq!(rows(&mut s, &l), ["Fresh", "◐ Busy", "Shown", "▸ 2 older"]);
+    // The shown and the running session stay, the running one first; the two idle ones fold.
+    assert_eq!(rows(&mut s, &l), ["◐ Busy", "Fresh", "Shown", "▸ 2 older"]);
     l.focused = true;
     s.focus("shown");
     s.key(press(KeyCode::Down));
@@ -263,7 +263,7 @@ fn sessions_idle_for_over_a_day_fold_into_an_older_row_that_enter_opens() {
     assert_eq!(s.key(press(KeyCode::Enter)), SessionsAction::Redraw);
     assert_eq!(
         rows(&mut s, &l),
-        ["Fresh", "◐ Busy", "Shown", "▾ 2 older", "Stale", "Staler"]
+        ["◐ Busy", "Fresh", "Shown", "▾ 2 older", "Stale", "Staler"]
     );
     s.key(press(KeyCode::Down));
     match s.key(press(KeyCode::Enter)) {
@@ -272,7 +272,7 @@ fn sessions_idle_for_over_a_day_fold_into_an_older_row_that_enter_opens() {
     }
     s.key(press(KeyCode::Up));
     s.key(press(KeyCode::Enter));
-    assert_eq!(rows(&mut s, &l), ["Fresh", "◐ Busy", "Shown", "▸ 2 older"]);
+    assert_eq!(rows(&mut s, &l), ["◐ Busy", "Fresh", "Shown", "▸ 2 older"]);
 }
 
 #[test]
@@ -495,6 +495,7 @@ fn grouped() -> Sessions {
     login.preview = Some("Editing the form".into());
     let mut child = at("d", "Write tests", "/w/site/.worktrees/fix-login", 45);
     child.parent = Some("c".into());
+    child.state = SessionState::Running;
     s.set_all(vec![
         at("a", "Plan the release", "/w/site", 10),
         at("b", "Docs", "/w/site", 20),
@@ -514,7 +515,7 @@ fn sessions_group_by_repository_and_worktree_newest_group_first() {
     assert_eq!(
         got,
         [
-            " Sessions · 6             ◐1",
+            " Sessions · 6             ◐2",
             "   + New chat",
             " site ───────────────────────",
             "   Docs                   now",
@@ -524,8 +525,7 @@ fn sessions_group_by_repository_and_worktree_newest_group_first() {
             "   worktree fix-login",
             " ◐ Fix the login          now",
             "   Editing the form",
-            "",
-            "   ↳ Write tests          now",
+            " ◐ ↳ Write tests          now",
             "",
             "   worktree dark",
             "   Dark mode              now",
@@ -558,8 +558,12 @@ fn the_cluster_with_the_newest_session_leads_and_worktrees_follow_their_repo() {
     // Activity in the notes directory doesn't move its cluster.
     s.upsert(at("f", "Scratch", "/w/notes", 99));
     assert_eq!(order(&s), ["site", "  fix-login", "  dark", "notes"]);
-    // A new session there does.
+    // A new session there doesn't pass a repository where one works.
     s.upsert(at("g", "Ideas", "/w/notes", 100));
+    assert_eq!(order(&s), ["site", "  fix-login", "  dark", "notes"]);
+    // Once nothing works there, the newer one leads.
+    s.upsert(at("c", "Fix the login", "/w/site/.worktrees/fix-login", 50));
+    s.upsert(at("d", "Write tests", "/w/site/.worktrees/fix-login", 45));
     assert_eq!(order(&s), ["notes", "site", "  fix-login", "  dark"]);
     // Within a repo, the worktree with the newest session comes first.
     s.upsert(at("h", "Contrast", "/w/site/.worktrees/dark", 200));
@@ -628,7 +632,7 @@ fn enter_on_a_repositorys_header_folds_it_and_its_worktrees() {
     assert_eq!(
         lines(&mut s, false),
         [
-            " Sessions · 6             ◐1",
+            " Sessions · 6             ◐2",
             "   + New chat",
             " ▸ site · 5 ◐ ───────────────",
             " notes ──────────────────────",
@@ -646,7 +650,28 @@ fn enter_on_a_repositorys_header_folds_it_and_its_worktrees() {
     assert_eq!(s.selected, Some(Pick::Cluster("/w/site".into())));
     s.key(press(KeyCode::Enter));
     assert_eq!(lines(&mut s, false)[2], " site ───────────────────────");
-    assert_eq!(lines(&mut s, false).len(), 19);
+    assert_eq!(lines(&mut s, false).len(), 18);
+}
+
+#[test]
+fn a_delegated_session_leaves_once_its_work_is_done_unless_it_is_shown() {
+    let mut s = Sessions::default();
+    let mut child = at("k", "Run the build", "/w/site", 20);
+    child.parent = Some("p".into());
+    child.state = SessionState::Running;
+    s.set_all(vec![at("p", "Main chat", "/w/site", 30), child.clone()]);
+    let titles = |s: &mut Sessions, current: &str| {
+        text(&s.render(29, 20, &look(current, false), &styles()))
+            .join("\n")
+            .contains("Run the build")
+    };
+    assert!(titles(&mut s, "p"));
+    child.state = SessionState::Idle;
+    child.unseen = Some(true);
+    s.upsert(child);
+    assert!(!titles(&mut s, "p"));
+    assert_eq!(s.shown_count(), 1);
+    assert!(titles(&mut s, "k"), "the shown one stays");
 }
 
 #[test]
@@ -654,19 +679,21 @@ fn a_child_of_a_session_elsewhere_is_marked_but_stays_in_its_own_group() {
     let mut s = Sessions::default();
     let mut child = at("k", "Run the build", "/w/site/.worktrees/ci", 20);
     child.parent = Some("p".into());
+    child.asking = Some(1);
     s.set_all(vec![at("p", "Main chat", "/w/site", 30), child]);
     let lines = text(&s.render(29, 20, &look("p", false), &styles()));
     let got: Vec<_> = lines.iter().map(|l| l.trim_end().to_string()).collect();
     assert_eq!(
         got,
         [
-            " Sessions · 2",
+            " Sessions · 2             !1",
             "   + New chat",
             " site ───────────────────────",
             "▎  Main chat              now",
             "",
             "   worktree ci",
-            "   ↳ Run the build        now",
+            " ! ↳ Run the build        now",
+            "     needs you",
             "",
         ]
     );
@@ -682,7 +709,7 @@ fn the_list_scrolls_to_show_the_selected_sessions_group_header() {
     assert_eq!(
         got,
         [
-            " Sessions · 6             ◐1",
+            " Sessions · 6             ◐2",
             "   + New chat",
             "   worktree dark",
             "   Dark mode              now",

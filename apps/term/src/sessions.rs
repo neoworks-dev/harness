@@ -2,8 +2,10 @@
 //! and the lines its edits changed, grouped by where it works: a repository (its main checkout),
 //! and under it each worktree (`<repo>/.worktrees/<name>`, or any linked worktree, found from
 //! its `.git` file). Sessions outside a repository group under their directory's name. Groups
-//! are ordered by their latest activity, sessions in a group too; a session that another one
-//! delegated to (`parent`) is indented under its parent when they share a group. Fed by
+//! are ordered by their latest activity, sessions in a group too, except that where a session
+//! works or waits for an answer comes first; a session that another one delegated to (`parent`)
+//! is indented under its parent, with no blank row between, when they share a group, and leaves
+//! the list once its work is done (unless it is the one shown). Fed by
 //! `list_sessions` at start and `session.changed` events afterwards. Each session's status leads
 //! its row in its own color, the most pressing one when several hold: `!` it waits for an answer
 //! (amber), a spinner it is working (blue), `●` it finished a turn nobody has looked at yet, the
@@ -143,13 +145,15 @@ enum Entry {
     /// A worktree of the cluster above.
     Group(String),
     /// A session: index into the list, whether it is drawn as a child of the one above,
-    /// whether it has a second row (a preview, a queue or changed lines), and whether its title
-    /// takes two rows (the shown session's, when it doesn't fit; set as it is drawn).
+    /// whether it has a second row (a preview, a queue or changed lines), whether its title
+    /// takes two rows (the shown session's, when it doesn't fit; set as it is drawn), and
+    /// whether a blank row follows it (not before its own child or its sibling).
     Session {
         index: usize,
         child: bool,
         tall: bool,
         wraps: bool,
+        gap: bool,
     },
     /// The group's sessions idle for over a day: how many, and whether they are shown (after it).
     Older {
@@ -193,7 +197,9 @@ impl Entry {
     fn height(&self) -> usize {
         match self {
             // Title, preview and a blank row, so sessions read apart.
-            Entry::Session { tall, wraps, .. } => 2 + usize::from(*tall) + usize::from(*wraps),
+            Entry::Session {
+                tall, wraps, gap, ..
+            } => 1 + usize::from(*tall) + usize::from(*wraps) + usize::from(*gap),
             Entry::Older { .. } => 2,
             _ => 1,
         }
@@ -347,7 +353,7 @@ impl Sessions {
             let n = self
                 .list
                 .iter()
-                .filter(|i| self.status(i) == status)
+                .filter(|i| !self.gone(i) && self.status(i) == status)
                 .count();
             if n == 0 {
                 continue;
@@ -396,6 +402,9 @@ impl Sessions {
             let Some(place) = self.places.get(&info.cwd) else {
                 continue;
             };
+            if self.gone(info) {
+                continue;
+            }
             let at = self.places_at[&info.id];
             let cluster = clusters.entry(&place.repo).or_default();
             cluster.latest = cluster.latest.max(at);
@@ -408,8 +417,16 @@ impl Sessions {
                 }
             }
         }
+        // Where something works or waits for the user comes first, so it never scrolls away.
+        let busy = |group: &Group| group.iter().any(|&i| self.busy(&self.list[i]));
         let mut ordered: Vec<_> = clusters.into_iter().collect();
-        ordered.sort_by(|a, b| b.1.latest.cmp(&a.1.latest).then_with(|| a.0.cmp(b.0)));
+        ordered.sort_by(|a, b| {
+            let busy_of = |c: &Cluster| busy(&c.main) || c.worktrees.values().any(|g| busy(&g.1));
+            busy_of(&b.1)
+                .cmp(&busy_of(&a.1))
+                .then_with(|| b.1.latest.cmp(&a.1.latest))
+                .then_with(|| a.0.cmp(b.0))
+        });
         let now = self.minute * 60_000;
         // Idle for over a day, and nothing to see on it: it folds.
         let folds = |info: &SessionInfo| {
@@ -446,6 +463,7 @@ impl Sessions {
                 child,
                 tall: tall(&self.list[index]),
                 wraps: false,
+                gap: true,
             };
             for (index, child) in recent {
                 visual.push(Pick::Session(self.list[index].id.clone()));
@@ -506,7 +524,12 @@ impl Sessions {
                 &mut starts,
             );
             let mut trees: Vec<_> = cluster.worktrees.into_iter().collect();
-            trees.sort_by(|a, b| b.1.0.cmp(&a.1.0).then_with(|| a.0.cmp(b.0)));
+            trees.sort_by(|a, b| {
+                busy(&b.1.1)
+                    .cmp(&busy(&a.1.1))
+                    .then_with(|| b.1.0.cmp(&a.1.0))
+                    .then_with(|| a.0.cmp(b.0))
+            });
             for (name, (_, group)) in trees {
                 entries.push(Entry::Group(name.to_string()));
                 put(
@@ -518,13 +541,43 @@ impl Sessions {
                 );
             }
         }
+        // No blank row between a session and its child, nor between two children of one parent.
+        for at in 0..entries.len().saturating_sub(1) {
+            let (Entry::Session { index: a, .. }, Entry::Session { index: b, child, .. }) =
+                (&entries[at], &entries[at + 1])
+            else {
+                continue;
+            };
+            let (a, b) = (&self.list[*a], &self.list[*b]);
+            let joined = *child
+                && (b.parent.as_deref() == Some(a.id.as_str())
+                    || (a.parent.is_some() && a.parent == b.parent));
+            if let Entry::Session { gap, .. } = &mut entries[at] {
+                *gap = !joined;
+            }
+        }
         self.entries = entries;
         self.visual = visual;
         self.group_starts = starts;
     }
 
+    /// How many sessions the list holds: not the delegated ones that are done.
+    fn shown_count(&self) -> usize {
+        self.list.iter().filter(|i| !self.gone(i)).count()
+    }
+
+    /// Working, or waiting for an answer.
+    fn busy(&self, info: &SessionInfo) -> bool {
+        matches!(self.status(info), Status::Asking | Status::Running)
+    }
+
+    /// A delegated session whose work is done: it leaves the list unless it is the one shown.
+    fn gone(&self, info: &SessionInfo) -> bool {
+        info.parent.is_some() && info.id != self.current && !self.busy(info)
+    }
+
     /// A group's sessions in drawn order: each session whose parent is in the group right after
-    /// that parent (indented), the others by recency.
+    /// that parent (indented), the others by recency, those at work (or theirs) first.
     fn family(&self, group: &[usize]) -> Vec<(usize, bool)> {
         let id_of = |i: usize| self.list[i].id.as_str();
         let parent_in_group = |i: usize| {
@@ -533,8 +586,20 @@ impl Sessions {
                 .as_deref()
                 .is_some_and(|p| group.iter().any(|&j| id_of(j) == p))
         };
+        let busy = |i: usize| {
+            self.busy(&self.list[i])
+                || group.iter().any(|&j| {
+                    self.list[j].parent.as_deref() == Some(id_of(i)) && self.busy(&self.list[j])
+                })
+        };
+        let mut roots: Vec<usize> = group
+            .iter()
+            .copied()
+            .filter(|&i| !parent_in_group(i))
+            .collect();
+        roots.sort_by_key(|&i| !busy(i));
         let mut out = Vec::new();
-        for &i in group.iter().filter(|&&i| !parent_in_group(i)) {
+        for i in roots {
             // A session that delegated here but whose parent is elsewhere still wears the mark.
             out.push((i, self.list[i].parent.is_some()));
             let id = id_of(i);

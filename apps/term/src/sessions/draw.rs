@@ -31,7 +31,7 @@ impl Sessions {
         let mut header = Line::from(vec![
             Span::raw(" "),
             Span::styled("Sessions", header_style),
-            Span::styled(format!(" · {}", self.list.len()), styles.muted),
+            Span::styled(format!(" · {}", self.shown_count()), styles.muted),
         ]);
         // How many wait, work and finished unseen, at the right edge when there is room.
         let tally = self.tally(look, styles);
@@ -154,7 +154,9 @@ impl Sessions {
                     out.push(line);
                     out.push(Line::default());
                 }
-                Entry::Session { index, child, .. } => {
+                Entry::Session {
+                    index, child, gap, ..
+                } => {
                     let info = &self.list[*index];
                     let selected =
                         focused && self.selected.as_ref() == Some(&Pick::Session(info.id.clone()));
@@ -185,7 +187,9 @@ impl Sessions {
                         }
                     }
                     out.extend(pair);
-                    out.push(Line::default());
+                    if *gap {
+                        out.push(Line::default());
+                    }
                 }
             }
         }
