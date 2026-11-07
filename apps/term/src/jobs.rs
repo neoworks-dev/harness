@@ -52,12 +52,10 @@ impl Jobs {
         self.selected.as_deref()
     }
 
-    /// The list gets focus: the keys start on the newest running command.
+    /// The list gets focus, coming down from the editor: the keys start on its top row shown.
     pub fn focus(&mut self, rows: &[JobRow]) -> Option<String> {
         self.selected = rows
-            .iter()
-            .rfind(|r| r.ended_ms.is_none())
-            .or(rows.last())
+            .get(rows.len().saturating_sub(MAX_ROWS))
             .map(|r| r.id.clone());
         self.selected.clone()
     }
@@ -71,14 +69,16 @@ impl Jobs {
             .as_ref()
             .and_then(|s| rows.iter().position(|r| r.id == *s))
         else {
-            // The selected one has gone: start again from the newest.
+            // The selected one has gone: start again from the top.
             return match self.focus(rows) {
                 Some(id) => JobsAction::Show(id),
                 None => JobsAction::Leave,
             };
         };
+        // The folded rows aren't shown: Up from the top row shown leaves the list.
+        let top = rows.len().saturating_sub(MAX_ROWS);
         let to = match key.code {
-            KeyCode::Up | KeyCode::Char('k') if at == 0 => return JobsAction::Up,
+            KeyCode::Up | KeyCode::Char('k') if at <= top => return JobsAction::Up,
             KeyCode::Up | KeyCode::Char('k') => at - 1,
             KeyCode::Down | KeyCode::Char('j') => (at + 1).min(rows.len() - 1),
             KeyCode::Esc | KeyCode::Char('q') | KeyCode::Left | KeyCode::Char('h') => {
@@ -242,12 +242,12 @@ mod tests {
     fn the_keys_move_show_and_open() {
         let rows = [job("a", None), job("b", None)];
         let mut jobs = Jobs::default();
-        assert_eq!(
-            jobs.focus(&rows).as_deref(),
-            Some("b"),
-            "the newest running"
-        );
+        assert_eq!(jobs.focus(&rows).as_deref(), Some("a"), "the top row");
         let key = |c| KeyEvent::from(c);
+        assert_eq!(
+            jobs.key(key(KeyCode::Down), &rows),
+            JobsAction::Show("b".into())
+        );
         assert_eq!(
             jobs.key(key(KeyCode::Up), &rows),
             JobsAction::Show("a".into())
@@ -263,5 +263,11 @@ mod tests {
             jobs.key(key(KeyCode::Down), &rows[1..]),
             JobsAction::Show("b".into())
         );
+        // Folded past a few rows: the top one shown, not one folded away.
+        let many: Vec<_> = ["a", "b", "c", "d", "e", "f"]
+            .iter()
+            .map(|id| job(id, None))
+            .collect();
+        assert_eq!(jobs.focus(&many).as_deref(), Some("c"));
     }
 }
