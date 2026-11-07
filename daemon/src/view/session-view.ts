@@ -86,7 +86,8 @@ function sendFailure(call: Call): string | undefined {
   if (isRecord(parsed) && parsed.success === false) {
     return typeof parsed.message === "string" ? parsed.message : "not delivered";
   }
-  return call.status === "failed" ? (typeof raw === "string" ? raw : "not delivered") : undefined;
+  if (call.status !== "failed") return undefined;
+  return typeof raw === "string" ? raw : "not delivered";
 }
 
 type Plan = Extract<SessionEvent, { type: "plan" }>;

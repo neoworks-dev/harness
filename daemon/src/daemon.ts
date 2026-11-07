@@ -4,12 +4,7 @@ import { join } from "node:path";
 import { findEnvKeys, getProviders } from "@mariozechner/pi-ai";
 import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import type { Agent, McpServer } from "@neoworks-dev/neo/agent";
-import type {
-  SessionEvent,
-  SessionInfo,
-  SlashCommand,
-  Theme,
-} from "@neoworks-dev/neo-protocol/types";
+import type { SessionInfo, SlashCommand, Theme } from "@neoworks-dev/neo-protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
 import { ActionRunner, neoUiTools } from "./actions.ts";
 import { Todos, todosTool } from "./todos.ts";
