@@ -211,6 +211,25 @@ describe("the agents' own subagents show like delegate's", () => {
     expect(JSON.stringify(own)).toContain("asked: no");
   });
 
+  test("a turn left open for a subagent in the background says it only waits on it", async () => {
+    const daemon = await setup();
+    const session = await onFake(daemon);
+    daemon.sessions.input(session, "cli", "background subagent");
+    // Its reply is done and the subagent works on: the turn runs, waiting on it.
+    await until(
+      () => daemon.sessions.info(session)?.waitingOn !== undefined,
+      "the turn to wait on the subagent",
+    );
+    expect(daemon.sessions.info(session)).toMatchObject({
+      state: "running",
+      waitingOn: ["Research the cache"],
+    });
+    // The subagent done and the agent writing again: no longer only waiting.
+    await daemon.sessions.idle(session);
+    expect(daemon.sessions.info(session)?.waitingOn).toBeUndefined();
+    expect(reply(daemon, session)).toContain("It says five minutes.");
+  });
+
   test("Codex's (AIR's form): spawned with its prompt, and its failure ends it", async () => {
     const daemon = await setup({ subagents: "silent" });
     const session = await onFake(daemon);

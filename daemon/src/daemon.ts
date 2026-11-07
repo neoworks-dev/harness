@@ -230,6 +230,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     ownTurn: (session, title) =>
       sessions.ownTurn(session, "background", `${title} went on by itself`),
     alwaysAskForAgents: () => settings.alwaysAskForAgents(),
+    changed: (session) => sessions.changed(session),
   });
   /** The names a plugin's command may not take: what the daemon answers itself, and the guests'. */
   const reservedCommands = (): Set<string> => new Set([...DAEMON_COMMANDS, ...guests.names()]);
@@ -282,6 +283,8 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
       const asking = asker.asking(sessionId);
       if (asking > 0) info.asking = asking;
       if (store.unseen(sessionId)) info.unseen = true;
+      const waitingOn = guests.waitingOn(sessionId);
+      if (waitingOn !== undefined) info.waitingOn = waitingOn;
       return info;
     },
     defaultCwd: options.defaultCwd,

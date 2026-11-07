@@ -525,6 +525,9 @@ pub struct App {
     turn_started_ms: i64,
     /// The inputs waiting behind the running turn (the daemon's list; ours until it answers).
     waiting: Vec<WaitingInput>,
+    /// The agent is done for now and the running turn only waits on these subagents working in
+    /// the background (the daemon's `waitingOn`): the work row says so instead.
+    waiting_on: Vec<String>,
     settings: Vec<HarnessSettings>,
     /// The session's agent, from `/harness`.
     harness: String,
@@ -652,6 +655,7 @@ impl App {
             running: false,
             turn_started_ms: now,
             waiting: Vec::new(),
+            waiting_on: Vec::new(),
             settings: Vec::new(),
             harness: DEFAULT_HARNESS.to_string(),
             offered: HashMap::new(),

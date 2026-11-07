@@ -35,6 +35,8 @@
 //   subagent      runs Claude Code's Agent tool as the ACP RFD has it: an Explore subagent in a
 //                 session of its own (sub-1), announced and ended with subagent_update ("subagent
 //                 ask": it asks for permission in its session first)
+//   background subagent  an Agent call run in the background: the reply and its cost come at
+//                 once, the prompt stays open until the subagent is done (some 400 ms)
 //   spawn         Codex's spawn_agent as AIR has it: subagent_spawned, then it fails
 // It lists slash commands (available_commands_update) when a conversation starts or resumes: after
 // the answer to session/new, or before it with FAKE_ACP_COMMANDS_FIRST in the environment.
@@ -559,6 +561,57 @@ async function prompt(params: {
       status: "completed",
     });
     say(sessionId, "It found them.");
+    return { stopReason: "end_turn" };
+  } else if (task === "background subagent") {
+    // Claude Code with an Agent call run in the background: its reply and result (the usage with
+    // the cost) come at once, but the prompt stays open until the subagent is done.
+    const input = {
+      subagent_type: "general-purpose",
+      description: "Research the cache",
+      prompt: "Find out.",
+      run_in_background: true,
+    };
+    const call = { toolCallId: "t-bg", title: "Agent", kind: "think", rawInput: input };
+    update(sessionId, { sessionUpdate: "tool_call", ...call, status: "pending" });
+    const child = "sub-bg";
+    update(sessionId, {
+      sessionUpdate: "subagent_update",
+      sessionId: child,
+      title: "general-purpose",
+      description: "Research the cache",
+      state: { state: "running" },
+    });
+    update(child, {
+      sessionUpdate: "session_message",
+      messageId: "t-bg",
+      content: [{ type: "text", text: "Find out." }],
+    });
+    update(sessionId, {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "t-bg",
+      status: "completed",
+    });
+    say(sessionId, "It runs in the background.");
+    update(sessionId, {
+      sessionUpdate: "usage_update",
+      used: 100,
+      size: 2000,
+      cost: { amount: 0.01, currency: "USD" },
+    });
+    await Bun.sleep(400);
+    say(child, "Five minutes.");
+    update(sessionId, {
+      sessionUpdate: "subagent_update",
+      sessionId: child,
+      state: { state: "idle", stopReason: "end_turn" },
+    });
+    say(sessionId, "It says five minutes.");
+    update(sessionId, {
+      sessionUpdate: "usage_update",
+      used: 120,
+      size: 2000,
+      cost: { amount: 0.02, currency: "USD" },
+    });
     return { stopReason: "end_turn" };
   } else if (task === "spawn") {
     // Codex's spawn_agent in AIR's form.

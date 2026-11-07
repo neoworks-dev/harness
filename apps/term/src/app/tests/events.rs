@@ -14,6 +14,35 @@ fn turn_state_follows_user_message_and_turn_ended() {
 }
 
 #[test]
+fn a_turn_left_open_for_a_background_subagent_says_the_subagent_works() {
+    let mut app = app();
+    app.handle_event(user_message(NOW - 12_000));
+    let waiting = |on: Option<Vec<&str>>| {
+        let info: SessionInfo = serde_json::from_value(json!({
+            "id": "s1", "cwd": "/home/me/site", "createdAt": 0, "lastActivity": NOW,
+            "lastSeq": 2, "state": "running", "queued": 0,
+            "waitingOn": on,
+        }))
+        .unwrap();
+        Event::SessionChanged(info)
+    };
+    app.handle_event(waiting(Some(vec!["Research the cache"])));
+    let text = screen_text(&mut app, 100, 30);
+    assert!(
+        text.contains("a subagent is still working: Research the cache"),
+        "{text}"
+    );
+    assert!(!text.contains("esc to interrupt"), "{text}");
+    // The agent writes again: its own work row is back.
+    app.handle_event(waiting(None));
+    assert!(screen_text(&mut app, 100, 30).contains("esc to interrupt"));
+    // The turn's end takes both away.
+    app.handle_event(waiting(Some(vec!["Research the cache"])));
+    app.handle_event(turn_ended());
+    assert!(!screen_text(&mut app, 100, 30).contains("still working"));
+}
+
+#[test]
 fn events_of_other_sessions_are_ignored() {
     let mut app = app();
     app.handle_event(record(
@@ -165,6 +194,7 @@ fn queued_inputs_are_counted_while_a_turn_runs() {
                 .to_vec(),
         ),
         asking: None,
+        waiting_on: None,
         unseen: None,
         preview: None,
         added: None,
@@ -392,6 +422,7 @@ fn the_switcher_lists_filters_and_switches() {
         queued: 0,
         waiting: None,
         asking: None,
+        waiting_on: None,
         unseen: None,
         preview: None,
         added: None,
@@ -442,6 +473,7 @@ fn the_switcher_can_start_a_new_session_and_follow_it() {
         queued: 0,
         waiting: None,
         asking: None,
+        waiting_on: None,
         unseen: None,
         preview: None,
         added: None,

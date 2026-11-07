@@ -16,6 +16,7 @@ pub(super) fn info(id: &str, title: &str, last: i64) -> SessionInfo {
         queued: 0,
         waiting: None,
         asking: None,
+        waiting_on: None,
         unseen: None,
         preview: None,
         added: None,

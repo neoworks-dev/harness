@@ -115,6 +115,7 @@ fn session_info(id: &str, cwd: &str, parent: Option<&str>) -> SessionInfo {
         queued: 0,
         waiting: None,
         asking: None,
+        waiting_on: None,
         unseen: None,
         preview: None,
         added: None,

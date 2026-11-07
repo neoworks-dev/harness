@@ -2620,6 +2620,9 @@ pub struct SessionInfo {
     /// Questions open in the session for the user to answer: permission requests and choices, its own and those copied from sessions it delegated to. Absent when none are.
     #[serde(rename = "asking", default, skip_serializing_if = "Option::is_none")]
     pub asking: Option<i64>,
+    /// The agent's reply is done, but its turn stays open while subagents it started in the background run (Claude Code keeps its prompt open for them): what they are working on. Absent while the agent itself works, or no turn runs.
+    #[serde(rename = "waitingOn", default, skip_serializing_if = "Option::is_none")]
+    pub waiting_on: Option<Vec<String>>,
     /// A turn ended in the session since anyone last had it open (subscribed its view): what it did waits for the user to look. Absent when not. Kept across restarts.
     #[serde(rename = "unseen", default, skip_serializing_if = "Option::is_none")]
     pub unseen: Option<bool>,

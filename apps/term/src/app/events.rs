@@ -210,7 +210,10 @@ impl App {
                     self.waiting.remove(at);
                 }
             }
-            SessionEvent::TurnEnded(_) => self.running = false,
+            SessionEvent::TurnEnded(_) => {
+                self.running = false;
+                self.waiting_on.clear();
+            }
             SessionEvent::ContextCleared(_) => self.context_cleared = true,
             SessionEvent::CommandsAvailable(offer) => {
                 self.offered
@@ -256,6 +259,7 @@ impl App {
             self.github.reset(PathBuf::from(&info.cwd));
         }
         self.waiting = info.waiting.clone().unwrap_or_default();
+        self.waiting_on = info.waiting_on.clone().unwrap_or_default();
         if self.running
             && info.state == SessionState::Idle
             && self.now_ms - self.turn_started_ms > 3000
@@ -347,6 +351,7 @@ impl App {
         self.context_cleared = false;
         self.turn_started_ms = self.now_ms;
         self.waiting.clear();
+        self.waiting_on.clear();
         self.settings.clear();
         self.harness = DEFAULT_HARNESS.to_string();
         self.offered.clear();

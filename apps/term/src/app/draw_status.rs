@@ -114,6 +114,10 @@ impl App {
             }
             return;
         };
+        if !self.waiting_on.is_empty() {
+            self.draw_waiting_on(frame, at, secs);
+            return;
+        }
         let bold = self.styles.accent.add_modifier(Modifier::BOLD);
         let mut spans = vec![
             Span::styled(format!("{} {}", self.spinner(), self.work_word()), bold),
@@ -127,6 +131,35 @@ impl App {
         }
         let line = chat::sweep(&Line::from(spans), self.now_ms, &self.palette);
         frame.render_widget(Paragraph::new(fit_line(line, usize::from(at.width))), at);
+    }
+
+    /// The agent is done, but its turn stays open for subagents working in the background: a
+    /// band the row's whole width, tinted with the info color, saying what still works.
+    pub(super) fn draw_waiting_on(&self, frame: &mut Frame, at: Rect, secs: u64) {
+        let band = chat::mix(self.palette.bg, self.palette.info, 0.18);
+        let tone = |s: Style| match band {
+            Some(bg) => s.bg(bg),
+            None => s,
+        };
+        let who = match self.waiting_on.as_slice() {
+            [one] => format!("a subagent is still working: {one}"),
+            many => format!("{} subagents are still working", many.len()),
+        };
+        let line = Line::from(vec![
+            Span::styled(
+                format!(" {} {who} ", self.spinner()),
+                tone(self.styles.info.add_modifier(Modifier::BOLD)),
+            ),
+            Span::styled(
+                format!("· {} · the reply above is done ", crate::status::duration(secs)),
+                tone(self.styles.muted),
+            ),
+        ]);
+        let mut line = fit_line(line, usize::from(at.width));
+        if let Some(bg) = band {
+            line = line.style(Style::new().bg(bg));
+        }
+        frame.render_widget(Paragraph::new(line), at);
     }
 
     /// `⚠ cache expired · …` on a band tinted with the danger color, the row's whole width.

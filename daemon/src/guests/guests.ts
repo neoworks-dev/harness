@@ -178,6 +178,8 @@ export interface GuestManagerOptions {
   stopTurn?: (session: string) => void;
   /** Whether starting a subagent asks in every mode (the user's /settings ask-for-agents). */
   alwaysAskForAgents?: () => boolean;
+  /** What the session lists about itself changed (its agent is only waiting, or not any more). */
+  changed?: (session: string) => void;
   /** What the user set for this harness's system prompt and tools; read as its adapter starts. */
   prompts?: (harness: string) => GuestPrompts;
 }
@@ -321,6 +323,8 @@ interface Guest {
   backgroundCalls: Map<string, boolean>;
   /** What it does on its own right now, as the session's agent. */
   own?: OwnTurn;
+  /** Its reply is done but its prompt stays open for subagents in the background (noteIdle). */
+  idle?: boolean;
 }
 
 const KINDS = new Set<string>([
@@ -1481,6 +1485,10 @@ export class GuestManager {
       opts.signal?.removeEventListener("abort", onAbort);
       run.done.abort();
       guest.run = undefined;
+      if (guest.idle) {
+        guest.idle = false;
+        this.options.changed?.(guest.session);
+      }
     }
   }
 
@@ -1533,8 +1541,47 @@ export class GuestManager {
       guest.backgroundCalls.set(call, update.rawInput.run_in_background === true);
     }
     this.streamUpdate(run, update);
+    this.noteIdle(guest, update);
     const own = guest.own;
     if (own?.run === run) this.ownTurnGoesOn(guest, own, update);
+  }
+
+  /**
+   * Claude Code keeps a prompt open while a subagent it started in the background runs, after
+   * its own reply is done (its result's usage, with the cost, says that). Then the turn only
+   * waits: the session says on what (see waitingOn) until the agent writes again.
+   */
+  private noteIdle(guest: Guest, update: Record<string, unknown>): void {
+    if (!guest.main) return;
+    let idle = guest.idle;
+    if (update.sessionUpdate === "usage_update" && update.cost !== undefined) {
+      idle = this.backgroundNames(guest).length > 0;
+    } else if (OWN_TURN_STARTS.has(String(update.sessionUpdate))) {
+      idle = false;
+    }
+    if (idle === guest.idle) return;
+    guest.idle = idle;
+    this.options.changed?.(guest.session);
+  }
+
+  /** What the session's subagents running in the background are called. */
+  private backgroundNames(guest: Guest): string[] {
+    const named = (c: NativeChild): string => {
+      if (c.description !== undefined) return c.description;
+      if (c.name !== undefined) return c.name;
+      return this.title(guest.name);
+    };
+    return [...guest.children.values()].filter((c) => c.running && c.background).map(named);
+  }
+
+  /**
+   * The subagents a session's turn only waits on, its agent being done for now (see noteIdle);
+   * undefined while the agent works or no turn runs.
+   */
+  waitingOn(session: string): string[] | undefined {
+    const guest = [...this.live].find((g) => g.main && g.session === session && g.idle);
+    if (!guest?.run) return undefined;
+    return this.backgroundNames(guest);
   }
 
   /**
