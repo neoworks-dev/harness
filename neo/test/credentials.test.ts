@@ -53,7 +53,7 @@ async function configWith(
   if (pi) await writeFile(piAuthPath, JSON.stringify(pi));
   return {
     provider: "deepseek",
-    modelId: "deepseek-v4-flash",
+    modelId: "deepseek-flash",
     thinkingLevel: "off",
     authPath,
     piAuthPath,
@@ -132,8 +132,8 @@ test("/model lists the models of every provider that has a credential, the curre
   await withEnv({}, async () => {
     const option = modelOption(await sessionFor(config));
     const values = option.values.map((v) => v.value);
-    expect(values[0]).toBe("deepseek/deepseek-v4-flash");
-    expect(option.current).toBe("deepseek/deepseek-v4-flash");
+    expect(values[0]).toBe("deepseek/deepseek-flash");
+    expect(option.current).toBe("deepseek/deepseek-flash");
     expect(new Set(values).size).toBe(values.length);
     const providers = new Set(values.map((v) => v.slice(0, v.indexOf("/"))));
     expect([...providers].sort((a, b) => a.localeCompare(b))).toEqual([
@@ -205,8 +205,8 @@ test("a listed value from another provider can be set, also when its id contains
     expect(modelOption(onRouter).current).toBe("openrouter/openai/gpt-4o");
     await onRouter.setConfigOption?.("model", "openrouter/anthropic/claude-haiku-4.5");
     expect(modelOption(onRouter).current).toBe("openrouter/anthropic/claude-haiku-4.5");
-    await onRouter.setConfigOption?.("model", "anthropic/claude-3.5-haiku"); // bare openrouter id
-    expect(modelOption(onRouter).current).toBe("openrouter/anthropic/claude-3.5-haiku");
+    await onRouter.setConfigOption?.("model", "anthropic/claude-haiku-5.5"); // bare openrouter id
+    expect(modelOption(onRouter).current).toBe("openrouter/anthropic/claude-haiku-5.5");
     await onRouter.setConfigOption?.("model", "openai/gpt-4o"); // explicit provider wins
     expect(modelOption(onRouter).current).toBe("openai/gpt-4o");
     const failure = await errorMessage(

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { fauxToolCall, type Message } from "@mariozechner/pi-ai";
+import { fauxToolCall, type Message } from "@earendil-works/pi-ai";
 import type { SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import type { AgentSession, AgentUpdate } from "../src/agent.ts";
 import { createNeoAgent } from "../src/neo-agent.ts";

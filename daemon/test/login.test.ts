@@ -1,14 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
+import type { OAuthCredential, ProviderAuthInteraction } from "@earendil-works/pi-ai";
 import {
-  type OAuthCredentials,
-  type OAuthLoginCallbacks,
-  type OAuthProviderInterface,
-  registerOAuthProvider,
-  resetOAuthProviders,
-} from "@mariozechner/pi-ai/oauth";
-import { readAccounts, setAccount } from "@neoworks-dev/neo/auth";
+  type OAuthProvider,
+  oauthProviders,
+  readAccounts,
+  setAccount,
+} from "@neoworks-dev/neo/auth";
 import type { Envelope, SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import { validateEnvelope } from "@neoworks-dev/neo-protocol/validate";
 import type { ClientHandle } from "../src/hub.ts";
@@ -42,6 +41,8 @@ interface Setup {
 
 const daemons: TestDaemon[] = [];
 const saved: Record<string, string | undefined> = {};
+/** Account providers offered next to pi-ai's (fakeOAuth). */
+const fakes: OAuthProvider[] = [];
 
 /** Variables that would change what /accounts says: set by the developer's shell, not by us. */
 function keyVars(): string[] {
@@ -56,7 +57,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  resetOAuthProviders();
+  fakes.length = 0;
   for (const name of keyVars()) delete process.env[name];
   for (const [name, value] of Object.entries(saved)) {
     if (value !== undefined) process.env[name] = value;
@@ -85,7 +86,10 @@ async function setup(): Promise<Setup> {
     warn: (m: string) => logged.push(m),
     error: (m: string) => logged.push(m),
   };
-  const daemon = await startTestDaemon({ log });
+  const daemon = await startTestDaemon({
+    log,
+    oauthProviders: () => [...oauthProviders(), ...fakes],
+  });
   daemons.push(daemon);
   const session = daemon.sessions.create({}).id;
   const authPath = join(daemon.dir, "data", "auth.json");
@@ -174,16 +178,20 @@ function expectNoLeakOnDisk(s: Setup, ...secrets: string[]): void {
 
 function fakeOAuth(
   id: string,
-  login: (callbacks: OAuthLoginCallbacks) => Promise<OAuthCredentials>,
-): OAuthProviderInterface {
-  const provider: OAuthProviderInterface = {
+  login: (interaction: ProviderAuthInteraction) => Promise<OAuthCredential>,
+): OAuthProvider {
+  const name = `Fake ${id}`;
+  const provider: OAuthProvider = {
     id,
-    name: `Fake ${id}`,
-    login,
-    refreshToken: (credentials) => Promise.resolve(credentials),
-    getApiKey: (credentials) => credentials.access,
+    name,
+    oauth: {
+      name,
+      login,
+      refresh: (credential) => Promise.resolve(credential),
+      toAuth: (credential) => Promise.resolve({ apiKey: credential.access }),
+    },
   };
-  registerOAuthProvider(provider);
+  fakes.push(provider);
   return provider;
 }
 
@@ -333,10 +341,24 @@ describe("/login with an account", () => {
     const s = await setup();
     let seenCode = "";
     fakeOAuth("fake-oauth", async (cb) => {
-      cb.onAuth({ url: "https://example.test/authorize?x=1", instructions: "Sign in there." });
-      cb.onProgress?.("Waiting for the browser...");
-      seenCode = await cb.onPrompt({ message: "Paste the code", placeholder: "code" });
-      return { access: ACCESS, refresh: REFRESH, expires: Date.now() + 3_600_000, extra: "kept" };
+      cb.notify({
+        type: "auth_url",
+        url: "https://example.test/authorize?x=1",
+        instructions: "Sign in there.",
+      });
+      cb.notify({ type: "progress", message: "Waiting for the browser..." });
+      seenCode = await cb.prompt({
+        type: "secret",
+        message: "Paste the code",
+        placeholder: "code",
+      });
+      return {
+        type: "oauth",
+        access: ACCESS,
+        refresh: REFRESH,
+        expires: Date.now() + 3_600_000,
+        extra: "kept",
+      };
     });
     const c = s.client();
     c.type("/login fake-oauth");
@@ -367,14 +389,15 @@ describe("/login with an account", () => {
     const s = await setup();
     let chosen: string | undefined;
     fakeOAuth("fake-oauth", async (cb) => {
-      chosen = await cb.onSelect?.({
+      chosen = await cb.prompt({
+        type: "select",
         message: "Which account?",
         options: [
           { id: "a", label: "Account A" },
           { id: "b", label: "Account B" },
         ],
       });
-      return { access: ACCESS, refresh: REFRESH, expires: Date.now() + 3_600_000 };
+      return { type: "oauth", access: ACCESS, refresh: REFRESH, expires: Date.now() + 3_600_000 };
     });
     const c = s.client();
     c.type("/login fake-oauth");
@@ -396,10 +419,12 @@ describe("/login with an account", () => {
     let release: () => void = () => {};
     const browser = new Promise<void>((resolve) => (release = resolve));
     fakeOAuth("fake-oauth", async (cb) => {
-      cb.onAuth({ url: "https://example.test/a" });
-      void cb.onManualCodeInput?.();
+      cb.notify({ type: "auth_url", url: "https://example.test/a" });
+      const manual = new AbortController();
+      void cb.prompt({ type: "manual_code", message: "Paste the code", signal: manual.signal });
       await browser;
-      return { access: ACCESS, refresh: REFRESH, expires: Date.now() + 3_600_000 };
+      manual.abort();
+      return { type: "oauth", access: ACCESS, refresh: REFRESH, expires: Date.now() + 3_600_000 };
     });
     const c = s.client();
     c.type("/login fake-oauth");
@@ -419,8 +444,8 @@ describe("/login with an account", () => {
   test("cancelling the code prompt cancels the login", async () => {
     const s = await setup();
     fakeOAuth("fake-oauth", async (cb) => {
-      await cb.onPrompt({ message: "Paste the code" });
-      return { access: ACCESS, refresh: REFRESH, expires: Date.now() + 3_600_000 };
+      await cb.prompt({ type: "secret", message: "Paste the code" });
+      return { type: "oauth", access: ACCESS, refresh: REFRESH, expires: Date.now() + 3_600_000 };
     });
     const c = s.client();
     c.type("/login fake-oauth");
@@ -438,9 +463,9 @@ describe("/login with an account", () => {
     const s = await setup();
     let aborted = false;
     fakeOAuth("fake-oauth", async (cb) => {
-      cb.signal?.addEventListener("abort", () => (aborted = true));
-      await cb.onManualCodeInput?.();
-      return { access: ACCESS, refresh: REFRESH, expires: Date.now() + 3_600_000 };
+      cb.signal.addEventListener("abort", () => (aborted = true));
+      await cb.prompt({ type: "manual_code", message: "Paste the code" });
+      return { type: "oauth", access: ACCESS, refresh: REFRESH, expires: Date.now() + 3_600_000 };
     });
     const c = s.client();
     c.type("/login fake-oauth");
@@ -455,7 +480,7 @@ describe("/login with an account", () => {
   test("an error never carries what was pasted or received", async () => {
     const s = await setup();
     fakeOAuth("fake-oauth", async (cb) => {
-      const code = await cb.onPrompt({ message: "Paste the code" });
+      const code = await cb.prompt({ type: "secret", message: "Paste the code" });
       throw new Error(`token exchange rejected ${code} (refresh ${REFRESH})`);
     });
     const c = s.client();
@@ -471,8 +496,8 @@ describe("/login with an account", () => {
   test("a second login to the same provider is refused while one runs", async () => {
     const s = await setup();
     fakeOAuth("fake-oauth", async (cb) => {
-      await cb.onPrompt({ message: "Paste the code" });
-      return { access: ACCESS, refresh: REFRESH, expires: Date.now() + 3_600_000 };
+      await cb.prompt({ type: "secret", message: "Paste the code" });
+      return { type: "oauth", access: ACCESS, refresh: REFRESH, expires: Date.now() + 3_600_000 };
     });
     const c = s.client();
     c.type("/login fake-oauth");

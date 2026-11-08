@@ -9,10 +9,10 @@ import {
   type Context,
   type KnownProvider,
   type Model,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import { loadHarnessConfig } from "../src/config.ts";
 import { createNeoAgent } from "../src/neo-agent.ts";
-import { pinnedTo } from "../src/openrouter.ts";
+import { pinnedTo, withRouting } from "../src/openrouter.ts";
 import { proxiedModel, throughProxy } from "../src/proxy.ts";
 import type { AgentUpdate } from "../src/agent.ts";
 import { TEST_CONFIG } from "./fake-model.ts";
@@ -135,7 +135,7 @@ test("a proxied model asks the proxy, at the proxy's path, with its key", async 
 
 test("only the providers with a proxy are rerouted", () => {
   const [deepseek] = getModels("deepseek");
-  const [openrouter] = getModels("openrouter");
+  const openrouter = getModels("openrouter").find((m) => m.api === "openai-completions");
   if (!deepseek || !openrouter) throw new Error("no models");
   const proxy = { openrouter: "http://localhost:8787/v1" };
   expect(proxiedModel(deepseek, proxy)).toBe(deepseek);
@@ -188,6 +188,43 @@ test("an OpenRouter model pinned to a host keeps its provider routing through a 
   expect(body).toEqual(direct);
 });
 
+test("an OpenRouter Claude model, on the Messages API, reaches the proxy's messages path", async () => {
+  const model = getModels("openrouter").find((m) => m.api === "anthropic-messages");
+  if (!model) throw new Error("no openrouter messages model");
+  const proxy = fakeProxy();
+  const [via, options] = throughProxy(
+    model,
+    { apiKey: "k", maxRetries: 0 },
+    { openrouter: proxy.url },
+  );
+  await streamSimple(via, CONTEXT, options).result();
+  expect(proxy.seen[0]?.path).toBe("/v1/messages");
+});
+
+test("a pinned OpenRouter Claude model sends its routing, directly and through a proxy", async () => {
+  const model = getModels("openrouter").find((m) => m.api === "anthropic-messages");
+  if (!model) throw new Error("no openrouter messages model");
+  const pinned = pinnedTo(model, "anthropic");
+  const routing = { only: ["anthropic"], allow_fallbacks: false };
+  // Directly: the hook puts it into the body pi-ai built, after a hook the options had.
+  const hook = withRouting(pinned, {
+    onPayload: (payload) => ({ ...(payload as object), marker: 1 }),
+  })?.onPayload;
+  expect(await hook?.({ model: pinned.id }, pinned)).toEqual({
+    model: pinned.id,
+    marker: 1,
+    provider: routing,
+  });
+  const proxy = fakeProxy();
+  const [via, options] = throughProxy(pinned, withRouting(pinned, { apiKey: "k", maxRetries: 0 }), {
+    openrouter: proxy.url,
+  });
+  await streamSimple(via, CONTEXT, options).result();
+  expect(proxy.seen[0]?.body).toMatchObject({ provider: routing });
+  // An unpinned model sends none.
+  expect(withRouting(model, undefined)).toBeUndefined();
+});
+
 test("DeepSeek's own API still gets what it understands: no store, system not developer", async () => {
   const model = getModels("deepseek")[0];
   if (!model) throw new Error("no deepseek model");
@@ -198,7 +235,7 @@ test("DeepSeek's own API still gets what it understands: no store, system not de
 });
 
 test("a payload hook the options had still runs, before the body is put right", async () => {
-  const model = getModels("openrouter")[0];
+  const model = getModels("openrouter").find((m) => m.api === "openai-completions");
   if (!model) throw new Error("no model");
   const pinned = pinnedTo(model, "deepinfra/fp8");
   const proxy = fakeProxy();

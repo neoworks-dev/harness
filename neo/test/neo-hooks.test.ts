@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fauxToolCall } from "@mariozechner/pi-ai";
+import { fauxToolCall } from "@earendil-works/pi-ai";
 import type {
   AgentSession,
   AgentUpdate,

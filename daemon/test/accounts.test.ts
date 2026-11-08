@@ -275,8 +275,8 @@ describe("Codex on neo's API keys", () => {
     // DeepSeek is not a Responses provider: its value is just an unknown model.
     await setAccount(s.authPath, "deepseek", { type: "api_key", key: "ds-key-888999000111" });
     expect(
-      s.daemon.commands.run(s.session, "/model codex deepseek/deepseek-v4-flash"),
-    ).rejects.toThrow("no model deepseek/deepseek-v4-flash");
+      s.daemon.commands.run(s.session, "/model codex deepseek/deepseek-flash"),
+    ).rejects.toThrow("no model deepseek/deepseek-flash");
     expect(s.daemon.settings.get(s.session, "codex")).toEqual({});
   });
 
@@ -377,19 +377,19 @@ describe("Claude Code on neo's API keys", () => {
     process.env.ANTHROPIC_API_KEY = "ambient-api-key";
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "ambient-oauth";
     process.env.CLAUDE_CODE_USE_BEDROCK = "1";
-    await s.daemon.commands.run(s.session, "/model claude deepseek/deepseek-v4-flash");
+    await s.daemon.commands.run(s.session, "/model claude deepseek/deepseek-flash");
     expect(s.daemon.settings.get(s.session, "claude")).toEqual({
-      model: "deepseek/deepseek-v4-flash",
+      model: "deepseek/deepseek-flash",
     });
     const report = await routeReport(s, "claude");
     expect(report.env).toEqual({
       CLAUDE_CODE_EXECUTABLE: "/usr/bin/claude",
       ANTHROPIC_BASE_URL: "https://api.deepseek.com/anthropic",
       ANTHROPIC_AUTH_TOKEN: DS_KEY,
-      ANTHROPIC_MODEL: "deepseek-v4-flash",
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek-v4-flash",
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek-v4-flash",
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "deepseek-v4-flash",
+      ANTHROPIC_MODEL: "deepseek-flash",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek-flash",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek-flash",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "deepseek-flash",
     });
     // Claude Code has no gateway sign-in to make; that is Codex's.
     expect(report.authenticated).toBeUndefined();
@@ -462,7 +462,7 @@ describe("Claude Code on neo's API keys", () => {
     await setAccount(s.authPath, "deepseek", { type: "api_key", key: DS_KEY });
     await setAccount(s.authPath, "groq", { type: "api_key", key: OTHER_KEY });
     const ids = (await modelCard(s, "claude")).map((o) => o.id);
-    expect(ids).toContain("deepseek/deepseek-v4-flash");
+    expect(ids).toContain("deepseek/deepseek-flash");
     expect(ids).toContain("deepseek/deepseek-v4-pro");
     // Groq only has the OpenAI API, so it is Codex's.
     expect(ids.some((id) => id.startsWith("groq/"))).toBe(false);
@@ -512,7 +512,7 @@ describe("Claude Code on neo's API keys", () => {
     });
     cleanups.push(() => broken.stop());
     const session = broken.sessions.create({}).id;
-    broken.settings.set(session, "claude", "model", "deepseek/deepseek-v4-flash");
+    broken.settings.set(session, "claude", "model", "deepseek/deepseek-flash");
     let message = "";
     try {
       await broken.guests.configOptions(session, "claude");

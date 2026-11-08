@@ -2,12 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fauxToolCall } from "@mariozechner/pi-ai";
-import {
-  getOAuthProvider,
-  registerOAuthProvider,
-  unregisterOAuthProvider,
-} from "@mariozechner/pi-ai/oauth";
+import { fauxToolCall } from "@earendil-works/pi-ai";
 import type { PlanEntry, SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import type {
   AgentSession,
@@ -251,11 +246,11 @@ test("a tool call produces tool_call, updates and a diff in order", async () => 
 });
 
 test("todo_write emits the plan when the call is made, then answers with a summary", async () => {
-  const todos: PlanEntry[] = [
+  const todos = [
     { content: "read the code", status: "completed" },
     { content: "fix the bug", status: "in_progress" },
     { content: "run the tests", status: "pending" },
-  ];
+  ] satisfies PlanEntry[];
   const model = fakeModel([
     reply([fauxToolCall("todo_write", { todos }, { id: "t1" })], "toolUse"),
     reply("ok"),
@@ -691,7 +686,7 @@ test("invalid stored settings fall back to the defaults", async () => {
       mcpServers: [],
       settings,
     });
-    expect(optionOf(session, "model")?.current).toBe("deepseek/deepseek-v4-flash");
+    expect(optionOf(session, "model")?.current).toBe("deepseek/deepseek-flash");
     expect(optionOf(session, "thought_level")?.current).toBe("off");
   }
   expect(warnings.length).toBe(3);
@@ -700,7 +695,7 @@ test("invalid stored settings fall back to the defaults", async () => {
 test("configOptions lists the provider's models and the thinking levels", async () => {
   const session = await sessionWith(fakeModel([]));
   const model = optionOf(session, "model");
-  expect(model?.current).toBe("deepseek/deepseek-v4-flash");
+  expect(model?.current).toBe("deepseek/deepseek-flash");
   expect(model?.values).toContainEqual({
     value: "deepseek/deepseek-v4-pro",
     name: expect.any(String),
@@ -732,7 +727,7 @@ test("setConfigOption changes the model and thinking level for the next prompt",
   expect(optionOf(session, "model")?.current).toBe("deepseek/deepseek-v4-pro");
   expect(optionOf(session, "thought_level")?.current).toBe("medium");
   await run(session, "b");
-  expect(model.models.map((m) => m.id)).toEqual(["deepseek-v4-flash", "deepseek-v4-pro"]);
+  expect(model.models.map((m) => m.id)).toEqual(["deepseek-flash", "deepseek-v4-pro"]);
   expect(model.reasoning[1]).toBe("medium");
 });
 
@@ -800,30 +795,26 @@ test("a Copilot login is sent as its token, to the base URL its token names", as
 });
 
 test("a login that can't be refreshed ends the turn with an error, without calling the model", async () => {
-  const original = getOAuthProvider("openai-codex");
-  if (!original) throw new Error("pi-ai has no openai-codex provider");
-  registerOAuthProvider({
-    ...original,
-    refreshToken: () => Promise.reject(new Error("invalid_grant")),
-  });
-  try {
-    const account = { type: "oauth", access: "a", refresh: "r", expires: Date.now() - 1000 };
-    await withAccount("openai-codex", account, async (config) => {
-      const model = fakeModel([reply("never")]);
-      const agent = createNeoAgent({ config, streamFn: model.streamFn });
-      const session = await agent.newSession({
-        sessionId: "s",
-        cwd: await tempDir(),
-        mcpServers: [],
-      });
-      const { result } = await run(session, "hi");
-      expect(result.stopReason).toBe("error");
-      expect(result.error).toContain("Log in again");
-      expect(model.requests).toEqual([]);
+  const auth = {
+    oauthProvider: () => ({
+      refresh: () => Promise.reject(new Error("invalid_grant")),
+      toAuth: () => Promise.resolve({ apiKey: "unused" }),
+    }),
+  };
+  const account = { type: "oauth", access: "a", refresh: "r", expires: Date.now() - 1000 };
+  await withAccount("openai-codex", account, async (config) => {
+    const model = fakeModel([reply("never")]);
+    const agent = createNeoAgent({ config, streamFn: model.streamFn, auth });
+    const session = await agent.newSession({
+      sessionId: "s",
+      cwd: await tempDir(),
+      mcpServers: [],
     });
-  } finally {
-    unregisterOAuthProvider("openai-codex");
-  }
+    const { result } = await run(session, "hi");
+    expect(result.stopReason).toBe("error");
+    expect(result.error).toContain("Log in again");
+    expect(model.requests).toEqual([]);
+  });
 });
 
 async function rejection(promise: Promise<void>): Promise<string> {
@@ -844,7 +835,7 @@ test("setConfigOption rejects values it can't use", async () => {
     'Unknown model provider "nope"',
   );
   expect(await rejection(setOption(session, "mode", "plan"))).toContain("neo has no mode setting");
-  expect(optionOf(session, "model")?.current).toBe("deepseek/deepseek-v4-flash");
+  expect(optionOf(session, "model")?.current).toBe("deepseek/deepseek-flash");
   expect(optionOf(session, "thought_level")?.current).toBe("off");
 });
 
@@ -878,7 +869,7 @@ test("generateText asks the configured model, or the one given, with the system 
   ]);
   const agent = createNeoAgent({ config: TEST_CONFIG, streamFn: model.streamFn });
   expect(await agent.generateText?.({ system: "Be brief.", prompt: "Hello" })).toBe("one");
-  expect(model.models[0]).toEqual({ provider: "deepseek", id: "deepseek-v4-flash" });
+  expect(model.models[0]).toEqual({ provider: "deepseek", id: "deepseek-flash" });
   expect(model.requests[0]).toMatchObject([{ role: "user", content: "Hello" }]);
   expect(model.reasoning[0]).toBeUndefined();
   const given = { system: "s", prompt: "p", model: "deepseek/deepseek-v4" };

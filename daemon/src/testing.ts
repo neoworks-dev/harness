@@ -45,6 +45,8 @@ export async function startTestDaemon(
     neo?: Agent;
     /** Default: a file in `dir`'s data directory and no pi file. */
     accounts?: { authPath?: string; piAuthPath?: string };
+    /** DaemonOptions.oauthProviders. */
+    oauthProviders?: DaemonOptions["oauthProviders"];
     /** Default: silent. */
     log?: Logger;
     /** A model writes titles after a first message: off unless a test is about them. */
@@ -67,6 +69,7 @@ export async function startTestDaemon(
     guests: options.guests,
     neo: options.neo,
     accounts: options.accounts,
+    oauthProviders: options.oauthProviders,
     titles: options.titles ?? false,
     settingsTimeoutMs: options.settingsTimeoutMs,
     mcp: options.mcp,

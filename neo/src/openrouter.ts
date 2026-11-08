@@ -1,6 +1,11 @@
 // OpenRouter's public catalog: the live model list (pi-ai's bundled one lags) and the hosts
 // ("endpoints") a model runs on. Neither endpoint needs a key.
-import { getModels, type Api, type Model } from "@mariozechner/pi-ai";
+import {
+  getModels,
+  type Api,
+  type Model,
+  type SimpleStreamOptions,
+} from "@earendil-works/pi-ai/compat";
 import type { Logger } from "./logger.ts";
 import { isRecord } from "./util.ts";
 
@@ -60,7 +65,10 @@ function perMillion(value: unknown): number | undefined {
   return Number((perToken * 1e6).toPrecision(10));
 }
 
-/** One entry of GET /models as a pi-ai Model, built from a template for what the list lacks. */
+/**
+ * One entry of GET /models as a pi-ai Model, built from a template (a completions model without
+ * settings of its own) for what the list lacks.
+ */
 function liveModel(entry: Record<string, unknown>, template: Model<Api>): Model<Api> | undefined {
   const id = str(entry.id);
   if (id === undefined) return undefined;
@@ -99,8 +107,10 @@ function liveModel(entry: Record<string, unknown>, template: Model<Api>): Model<
 export function mergeLiveModels(body: unknown, bundled: Model<Api>[]): Model<Api>[] {
   const data = isRecord(body) ? body.data : undefined;
   if (!Array.isArray(data)) throw new Error("OpenRouter's model list has no data array");
-  const template = bundled.find((m) => !m.compat && !m.thinkingLevelMap) ?? bundled[0];
-  if (!template) throw new Error("pi-ai has no openrouter template");
+  const completions = bundled.find((m) => m.api === "openai-completions");
+  if (!completions) throw new Error("pi-ai has no openrouter template");
+  // Its compat and thinking levels are that model's; pi-ai works out a plain one's from the URL.
+  const { compat: _compat, thinkingLevelMap: _levels, ...template } = completions;
   const known = new Map(bundled.map((model) => [model.id, model]));
   const merged: Model<Api>[] = [];
   const seen = new Set<string>();
@@ -172,12 +182,41 @@ export function endpointLabel(endpoint: OpenRouterEndpoint): string {
   return parts.join(" · ");
 }
 
+interface Routing {
+  only?: string[];
+  allow_fallbacks?: boolean;
+}
+
+function routingOf(model: Model<Api>): Routing | undefined {
+  if (model.provider !== PROVIDER) return undefined;
+  return (model.compat as { openRouterRouting?: Routing } | undefined)?.openRouterRouting;
+}
+
 /** The host a model value pins, if any: "openrouter/a/b@deepinfra/fp8" → "deepinfra/fp8". */
 export function hostOf(model: Model<Api>): string | undefined {
-  if (model.provider !== PROVIDER) return undefined;
-  const only = (model.compat as { openRouterRouting?: { only?: string[] } } | undefined)
-    ?.openRouterRouting?.only;
+  const only = routingOf(model)?.only;
   return only?.length === 1 ? only[0] : undefined;
+}
+
+/**
+ * The options that send a pinned model's routing along. pi-ai sends `compat.openRouterRouting`
+ * on the completions API only; OpenRouter's Claude models are on the Messages API, whose body
+ * takes the same `provider` field.
+ */
+export function withRouting(
+  model: Model<Api>,
+  options: SimpleStreamOptions | undefined,
+): SimpleStreamOptions | undefined {
+  const routing = routingOf(model);
+  if (!routing || model.api === "openai-completions") return options;
+  const before = options?.onPayload;
+  return {
+    ...options,
+    onPayload: async (payload, payloadModel) => {
+      const changed = before ? ((await before(payload, payloadModel)) ?? payload) : payload;
+      return isRecord(changed) ? { ...changed, provider: routing } : changed;
+    },
+  };
 }
 
 /** The model that sends its requests to this host only (a copy; registry objects are shared). */

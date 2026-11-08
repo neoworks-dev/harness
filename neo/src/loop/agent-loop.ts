@@ -8,10 +8,12 @@ import {
   type AssistantMessage,
   type Context,
   EventStream,
+  type JsonObject,
+  type JsonValue,
   streamSimple,
   type ToolResultMessage,
   validateToolArguments,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import type {
   AgentContext,
   AgentEvent,
@@ -563,7 +565,7 @@ function prepareToolCallArguments(tool: AgentTool, toolCall: AgentToolCall): Age
   }
   return {
     ...toolCall,
-    arguments: preparedArguments as Record<string, unknown>,
+    arguments: preparedArguments as JsonObject,
   };
 }
 
@@ -727,7 +729,8 @@ function createToolResultMessage(finalized: FinalizedToolCallOutcome): ToolResul
     toolCallId: finalized.toolCall.id,
     toolName: finalized.toolCall.name,
     content: finalized.result.content,
-    details: finalized.result.details,
+    // Tools' details are JSON: the session log stores them with the message.
+    details: finalized.result.details as JsonValue | undefined,
     isError: finalized.isError,
     timestamp: Date.now(),
   };

@@ -9,7 +9,7 @@ import {
   type TextContent,
   type ThinkingBudgets,
   type Transport,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import { runAgentLoop, runAgentLoopContinue } from "./agent-loop.ts";
 import type {
   AfterToolCallContext,

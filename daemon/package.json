@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@mariozechner/pi-ai": "0.73.1",
+    "@earendil-works/pi-ai": "1.5.0",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@neoworks/neoui": "link:@neoworks/neoui",
     "@neoworks-dev/neo": "workspace:*",

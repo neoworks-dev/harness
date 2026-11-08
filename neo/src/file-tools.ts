@@ -1,6 +1,6 @@
 // neo's file tools on their own: hashline read, edit and write, for a harness that works with
 // them in place of its own (the daemon serves them to Claude Code over MCP).
-import { validateToolArguments } from "@mariozechner/pi-ai";
+import { type JsonObject, validateToolArguments } from "@earendil-works/pi-ai";
 import type { RequestPermission } from "./agent.ts";
 import type { AgentTool, AgentToolResult } from "./loop/index.ts";
 import { createEditTool } from "./tools/edit.ts";
@@ -30,7 +30,7 @@ export function runFileTool(
     type: "toolCall",
     id: toolCallId,
     name: tool.name,
-    arguments: args,
+    arguments: args as JsonObject, // parsed from a tool call's JSON
   });
   return tool.execute(toolCallId, checked, signal);
 }

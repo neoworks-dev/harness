@@ -4,7 +4,7 @@
 // machine: the first usage of an agent in a conversation that has one user message so far is
 // its system prompt, its tool definitions and that message; the smallest one seen is kept.
 // Until there is one, the numbers measured when this version was made stand in.
-import { findEnvKeys, getProviders } from "@mariozechner/pi-ai";
+import { findEnvKeys, getProviders } from "@earendil-works/pi-ai/compat";
 import type { HarnessInfo, HarnessTools, ToolsChoice } from "@neoworks-dev/neo-protocol/types";
 import { accountProviders } from "@neoworks-dev/neo/auth";
 import type { GuestManager } from "./guests/guests.ts";

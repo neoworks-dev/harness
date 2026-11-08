@@ -217,7 +217,7 @@ You review diffs.`;
     expect(model.models[0]).toMatchObject({ provider: "deepseek", id: "deepseek-flash" });
     await call(daemon, session, { agent: "quick" });
     // TEST_CONFIG's own model.
-    expect(model.models[1]).toMatchObject({ provider: "deepseek", id: "deepseek-v4-flash" });
+    expect(model.models[1]).toMatchObject({ provider: "deepseek", id: "deepseek-flash" });
     const started = events(daemon, session).filter((e) => e.type === "subagent_started");
     expect(started[1]).toMatchObject({ name: "quick" });
     expect(started[1]).not.toHaveProperty("model");

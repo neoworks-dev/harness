@@ -2,8 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { chmod, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Api, Model } from "@mariozechner/pi-ai";
-import type { OAuthCredentials } from "@mariozechner/pi-ai/oauth";
+import type { Api, Model, OAuthCredential } from "@earendil-works/pi-ai";
 import lockfile from "proper-lockfile";
 import {
   readAccounts,
@@ -35,24 +34,25 @@ const login = (
 function fakeProvider(options: { delayMs?: number; fail?: boolean; path?: string } = {}): {
   provider: OAuthRefresher;
   deps: AuthDeps;
-  calls: OAuthCredentials[];
+  calls: OAuthCredential[];
   lockDuringRefresh: () => boolean | undefined;
 } {
-  const calls: OAuthCredentials[] = [];
+  const calls: OAuthCredential[] = [];
   let lockDuringRefresh: boolean | undefined;
   const provider: OAuthRefresher = {
-    async refreshToken(credentials) {
+    async refresh(credentials) {
       calls.push(credentials);
       if (options.path) lockDuringRefresh = existsSync(`${options.path}.lock`);
       if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs));
       if (options.fail) throw new Error("invalid_grant");
       return {
+        type: "oauth",
         access: `access-${calls.length}`,
         refresh: `refresh-${calls.length}`,
         expires: NOW + HOUR,
       };
     },
-    getApiKey: (credentials) => `key:${credentials.access}`,
+    toAuth: (credentials) => Promise.resolve({ apiKey: `key:${credentials.access}` }),
   };
   const deps: AuthDeps = { oauthProvider: () => provider, now: () => NOW };
   return { provider, deps, calls, lockDuringRefresh: () => lockDuringRefresh };
@@ -223,8 +223,11 @@ test("providers that change the model (Copilot's base URL) get to", async () => 
     copilot: login("tok", NOW + HOUR, { enterpriseUrl: "ghe.example" }),
   });
   const { provider, deps } = fakeProvider();
-  provider.modifyModels = (models, credentials) =>
-    models.map((model) => ({ ...model, baseUrl: `https://${String(credentials.enterpriseUrl)}` }));
+  provider.toAuth = (credentials) =>
+    Promise.resolve({
+      apiKey: `key:${credentials.access}`,
+      baseUrl: `https://${String(credentials.enterpriseUrl)}`,
+    });
   const resolved = await resolveAccount(path, "copilot", deps);
   const model = { id: "m", baseUrl: "https://default" } as Model<Api>;
   expect(resolved?.adjustModel?.(model).baseUrl).toBe("https://ghe.example");

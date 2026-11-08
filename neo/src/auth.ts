@@ -11,8 +11,8 @@
 import { readFileSync } from "node:fs";
 import { chmod, mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { Api, Model } from "@mariozechner/pi-ai";
-import { getOAuthProvider, type OAuthCredentials } from "@mariozechner/pi-ai/oauth";
+import type { Api, Model, OAuthAuth, OAuthCredential } from "@earendil-works/pi-ai";
+import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import lockfile from "proper-lockfile";
 import { isRecord } from "./util.ts";
 
@@ -21,23 +21,42 @@ export interface ApiKeyAccount {
   key: string;
 }
 
-export type OAuthAccount = { type: "oauth" } & OAuthCredentials;
+export type OAuthAccount = OAuthCredential;
 
 export type Account = ApiKeyAccount | OAuthAccount;
 
 /** Valid entries by provider id. */
 export type Accounts = Record<string, Account>;
 
-/** What the refresh needs from pi-ai's OAuth provider; tests pass their own. */
-export interface OAuthRefresher {
-  refreshToken(credentials: OAuthCredentials): Promise<OAuthCredentials>;
-  getApiKey(credentials: OAuthCredentials): string;
-  /** Provider quirks, e.g. Copilot's base URL; applied to the model of each request. */
-  modifyModels?(models: Model<Api>[], credentials: OAuthCredentials): Model<Api>[];
+/** A provider that logs in with an account, and its login flow. */
+export interface OAuthProvider {
+  id: string;
+  name: string;
+  oauth: OAuthAuth;
 }
 
+let builtinOAuth: OAuthProvider[] | undefined;
+
+/** pi-ai's providers that log in with an account. */
+export function oauthProviders(): OAuthProvider[] {
+  if (builtinOAuth) return builtinOAuth;
+  builtinOAuth = [];
+  for (const provider of builtinProviders()) {
+    const oauth = provider.auth.oauth;
+    if (oauth) builtinOAuth.push({ id: provider.id, name: oauth.name, oauth });
+  }
+  return builtinOAuth;
+}
+
+function builtinRefresher(id: string): OAuthRefresher | undefined {
+  return oauthProviders().find((provider) => provider.id === id)?.oauth;
+}
+
+/** What the refresh needs from pi-ai's OAuth provider; tests pass their own. */
+export type OAuthRefresher = Pick<OAuthAuth, "refresh" | "toAuth">;
+
 export interface AuthDeps {
-  /** Default: pi-ai's registry. */
+  /** Default: pi-ai's providers. */
   oauthProvider?: (id: string) => OAuthRefresher | undefined;
   /** Default: Date.now. */
   now?: () => number;
@@ -122,7 +141,7 @@ export async function readAccounts(path: string): Promise<Accounts> {
  */
 export function accountProviders(
   path: string,
-  oauthProvider: AuthDeps["oauthProvider"] = getOAuthProvider,
+  oauthProvider: AuthDeps["oauthProvider"] = builtinRefresher,
 ): string[] {
   let parsed: unknown;
   try {
@@ -198,13 +217,15 @@ function isFresh(account: OAuthAccount, now: number): boolean {
   return now < account.expires - EXPIRY_MARGIN_MS;
 }
 
-function oauthKey(account: OAuthAccount, refresher: OAuthRefresher): ResolvedAccount {
-  return {
-    apiKey: refresher.getApiKey(account),
-    adjustModel: refresher.modifyModels
-      ? (model) => refresher.modifyModels?.([model], account)[0] ?? model
-      : undefined,
-  };
+/** The key a login stands for; undefined if the provider makes none of it. */
+async function oauthKey(
+  account: OAuthAccount,
+  refresher: OAuthRefresher,
+): Promise<ResolvedAccount | undefined> {
+  const { apiKey, baseUrl } = await refresher.toAuth(account);
+  if (apiKey === undefined) return undefined;
+  if (baseUrl === undefined) return { apiKey };
+  return { apiKey, adjustModel: (model) => ({ ...model, baseUrl }) };
 }
 
 async function refreshLocked(
@@ -218,14 +239,14 @@ async function refreshLocked(
       // Someone may have refreshed (or logged out) while we waited for the lock.
       const current = parseAccount(raw[provider]);
       if (current?.type !== "oauth") return { result: undefined };
-      if (isFresh(current, now())) return { result: oauthKey(current, refresher) };
+      if (isFresh(current, now())) return { result: await oauthKey(current, refresher) };
       const refreshed: OAuthAccount = {
         ...current,
-        ...(await refresher.refreshToken(current)),
+        ...(await refresher.refresh(current, new AbortController().signal)),
         type: "oauth",
       };
       return {
-        result: oauthKey(refreshed, refresher),
+        result: await oauthKey(refreshed, refresher),
         next: { ...raw, [provider]: refreshed },
       };
     });
@@ -256,7 +277,7 @@ export async function resolveAccount(
   }
   if (!account) return undefined;
   if (account.type === "api_key") return { apiKey: account.key };
-  const refresher = (deps.oauthProvider ?? getOAuthProvider)(provider);
+  const refresher = (deps.oauthProvider ?? builtinRefresher)(provider);
   if (!refresher) return undefined;
   if (isFresh(account, now())) return oauthKey(account, refresher);
   return refreshLocked(path, provider, refresher, now);

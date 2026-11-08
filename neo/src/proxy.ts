@@ -8,14 +8,14 @@
 //
 //   - the completions API's compatibility flags (no `store`, no developer role for DeepSeek, the
 //     reasoning format, …) are written into `model.compat`, worked out from the real URL;
-//   - OpenRouter's host routing (`provider: {only: […]}`, how a model is pinned to a host) and the
-//     OpenAI prompt cache key, which pi-ai only puts in a request that goes to openrouter.ai or
-//     api.openai.com, are put into the request body by `restoreBody`.
+//   - the OpenAI prompt cache key, which pi-ai only puts in a request that goes to api.openai.com,
+//     is put into the request body by `restoreBody`.
 //
-// `detectCompat` copies pi-ai's (0.73.1, pinned in package.json); proxy.test.ts compares the
-// request bodies of every model pi-ai knows with and without a proxy, so a pi-ai that changes
-// its detection fails there.
-import type { Api, Model, SimpleStreamOptions } from "@mariozechner/pi-ai";
+// `detectCompat` copies the URL-dependent part of pi-ai's (1.5.0, pinned in package.json);
+// proxy.test.ts compares the request bodies of every model pi-ai knows with and without a proxy,
+// so a pi-ai that changes its detection fails there.
+import type { Api, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
+import { clampOpenAIPromptCacheKey } from "@earendil-works/pi-ai/api/openai-prompt-cache";
 import { isRecord } from "./util.ts";
 
 /** Provider name → the base URL its models use instead of their own. */
@@ -27,7 +27,10 @@ function isCompletions(model: Model<Api>): model is Model<"openai-completions"> 
   return model.api === "openai-completions";
 }
 
-/** pi-ai's `detectCompat`: what the provider and the base URL make of a completions model. */
+/**
+ * pi-ai's `detectCompat`, the flags that depend on the base URL: what the provider and the URL
+ * make of a completions model.
+ */
 export function detectCompat(
   model: Model<"openai-completions">,
 ): Required<
@@ -39,50 +42,88 @@ export function detectCompat(
     | "maxTokensField"
     | "requiresReasoningContentOnAssistantMessages"
     | "thinkingFormat"
-    | "supportsStrictMode"
+    | "sendSessionAffinityHeaders"
+    | "sessionAffinityFormat"
     | "supportsLongCacheRetention"
   >
 > &
   Pick<Completions, "cacheControlFormat"> {
   const { provider, baseUrl } = model;
-  const isZai = provider === "zai" || baseUrl.includes("api.z.ai");
+  const isZai =
+    provider === "zai" ||
+    provider === "zai-coding-cn" ||
+    baseUrl.includes("api.z.ai") ||
+    baseUrl.includes("open.bigmodel.cn");
+  const isTogether =
+    provider === "together" ||
+    baseUrl.includes("api.together.ai") ||
+    baseUrl.includes("api.together.xyz");
   const isMoonshot =
     provider === "moonshotai" || provider === "moonshotai-cn" || baseUrl.includes("api.moonshot.");
+  const isOpenRouter = provider === "openrouter" || baseUrl.includes("openrouter.ai");
   const isCloudflareWorkersAI =
     provider === "cloudflare-workers-ai" || baseUrl.includes("api.cloudflare.com");
   const isCloudflareAiGateway =
     provider === "cloudflare-ai-gateway" || baseUrl.includes("gateway.ai.cloudflare.com");
+  const isNvidia = provider === "nvidia" || baseUrl.includes("integrate.api.nvidia.com");
+  const isAntLing = provider === "ant-ling" || baseUrl.includes("api.ant-ling.com");
+  const isCerebras = provider === "cerebras" || baseUrl.includes("cerebras.ai");
+  const isDeepSeek = provider === "deepseek" || baseUrl.toLowerCase().includes("deepseek.com");
+  const isGrok = provider === "xai" || baseUrl.includes("api.x.ai");
   const isNonStandard =
-    provider === "cerebras" ||
-    baseUrl.includes("cerebras.ai") ||
-    provider === "xai" ||
-    baseUrl.includes("api.x.ai") ||
+    isNvidia ||
+    isCerebras ||
+    isGrok ||
+    isTogether ||
     baseUrl.includes("chutes.ai") ||
-    baseUrl.includes("deepseek.com") ||
+    isDeepSeek ||
     isZai ||
     isMoonshot ||
     provider === "opencode" ||
     baseUrl.includes("opencode.ai") ||
     isCloudflareWorkersAI ||
-    isCloudflareAiGateway;
-  const useMaxTokens = baseUrl.includes("chutes.ai") || isMoonshot || isCloudflareAiGateway;
-  const isGrok = provider === "xai" || baseUrl.includes("api.x.ai");
-  const isDeepSeek = provider === "deepseek" || baseUrl.includes("deepseek.com");
+    isCloudflareAiGateway ||
+    isAntLing;
+  const useMaxTokens =
+    baseUrl.includes("chutes.ai") ||
+    isDeepSeek ||
+    isMoonshot ||
+    isCloudflareAiGateway ||
+    isTogether ||
+    isNvidia ||
+    isAntLing ||
+    isZai;
+  const isOpenRouterDeveloperRoleModel =
+    isOpenRouter && (model.id.startsWith("anthropic/") || model.id.startsWith("openai/"));
   let thinkingFormat: Completions["thinkingFormat"] = "openai";
   if (isDeepSeek) thinkingFormat = "deepseek";
   else if (isZai) thinkingFormat = "zai";
-  else if (provider === "openrouter" || baseUrl.includes("openrouter.ai")) {
-    thinkingFormat = "openrouter";
-  }
+  else if (isTogether) thinkingFormat = "together";
+  else if (isAntLing) thinkingFormat = "ant-ling";
+  else if (isOpenRouter) thinkingFormat = "openrouter";
   const detected = {
     supportsStore: !isNonStandard,
-    supportsDeveloperRole: !isNonStandard,
-    supportsReasoningEffort: !isGrok && !isZai && !isMoonshot && !isCloudflareAiGateway,
+    supportsDeveloperRole: isOpenRouterDeveloperRoleModel || (!isNonStandard && !isOpenRouter),
+    supportsReasoningEffort:
+      !isGrok &&
+      !isZai &&
+      !isMoonshot &&
+      !isTogether &&
+      !isCloudflareAiGateway &&
+      !isNvidia &&
+      !isAntLing,
     maxTokensField: useMaxTokens ? ("max_tokens" as const) : ("max_completion_tokens" as const),
     requiresReasoningContentOnAssistantMessages: isDeepSeek,
-    thinkingFormat: thinkingFormat ?? "openai",
-    supportsStrictMode: !isMoonshot && !isCloudflareAiGateway,
-    supportsLongCacheRetention: !(isCloudflareWorkersAI || isCloudflareAiGateway),
+    thinkingFormat,
+    sendSessionAffinityHeaders: isOpenRouter,
+    sessionAffinityFormat: isOpenRouter ? ("openrouter" as const) : ("openai" as const),
+    supportsLongCacheRetention: !(
+      isTogether ||
+      isCloudflareWorkersAI ||
+      isCloudflareAiGateway ||
+      isNvidia ||
+      isAntLing
+    ),
   };
   if (provider === "openrouter" && model.id.startsWith("anthropic/")) {
     return { ...detected, cacheControlFormat: "anthropic" };
@@ -106,6 +147,8 @@ function definedOnly(value: Completions | undefined): Completions {
 export function proxiedModel(model: Model<Api>, proxy: ProxyConfig | undefined): Model<Api> {
   const url = proxy?.[model.provider];
   if (url === undefined || url === model.baseUrl) return model;
+  // The setting is the provider's `…/v1` base; Anthropic's SDK adds `/v1/messages` itself.
+  if (model.api === "anthropic-messages") return { ...model, baseUrl: url.replace(/\/v1\/?$/, "") };
   if (!isCompletions(model)) return { ...model, baseUrl: url };
   const proxied: Model<"openai-completions"> = {
     ...model,
@@ -125,20 +168,10 @@ export function restoreBody(
   options: Pick<SimpleStreamOptions, "cacheRetention" | "sessionId"> | undefined,
 ): unknown {
   if (!isCompletions(original) || !isRecord(payload)) return payload;
-  const routing = original.compat?.openRouterRouting;
-  if (original.baseUrl.includes("openrouter.ai") && routing) payload.provider = routing;
-  const gateway = original.compat?.vercelGatewayRouting;
-  if (original.baseUrl.includes("ai-gateway.vercel.sh") && gateway) {
-    if (gateway.only || gateway.order) {
-      const only = gateway.only && { only: gateway.only };
-      const order = gateway.order && { order: gateway.order };
-      payload.providerOptions = { gateway: { ...only, ...order } };
-    }
-  }
   const retention =
     options?.cacheRetention ?? (process.env.PI_CACHE_RETENTION === "long" ? "long" : "short");
   if (original.baseUrl.includes("api.openai.com") && retention !== "none") {
-    payload.prompt_cache_key = options?.sessionId;
+    payload.prompt_cache_key = clampOpenAIPromptCacheKey(options?.sessionId);
   }
   return payload;
 }

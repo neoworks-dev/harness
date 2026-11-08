@@ -18,7 +18,7 @@ const fixture = async (name: string): Promise<unknown> =>
 const MODELS = await fixture("openrouter-models.json");
 const ENDPOINTS = await fixture("openrouter-endpoints.json");
 
-const NEW = "openrouter/deepseek/deepseek-v4.1-flash-1017";
+const NEW = "openrouter/deepseek/deepseek-v9-flash-1017";
 const CONFIG = { ...TEST_CONFIG, provider: "openrouter", modelId: "anthropic/claude-haiku-4.5" };
 
 async function setup(offline = false): Promise<{ daemon: TestDaemon; session: string }> {
@@ -96,7 +96,7 @@ test("a model typed without a host asks for one; the pick is set with its @tag",
   const { daemon, session } = await setup();
   await daemon.commands.run(session, `/model ${NEW}`);
   const card = await openChoice(daemon, session);
-  expect(card.title).toBe("Host for DeepSeek: DeepSeek V4.1 Flash 1017");
+  expect(card.title).toBe("Host for DeepSeek: DeepSeek V9 Flash 1017");
   expect(card.options[0]).toEqual({ id: NEW, name: "Any (OpenRouter chooses)" });
   expect(card.options.map((o) => o.id)).toContain(`${NEW}@deepinfra/fp8`);
   expect(models(daemon, session)).toEqual([NEW]);

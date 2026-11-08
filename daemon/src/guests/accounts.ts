@@ -7,7 +7,7 @@
 //
 // Only API keys are handed out, never an account: a Claude Pro/Max login may be used by neo only,
 // and Codex keeps its own ChatGPT login.
-import { findEnvKeys, getModels, type KnownProvider } from "@mariozechner/pi-ai";
+import { findEnvKeys, getModels, type KnownProvider } from "@earendil-works/pi-ai/compat";
 import { type Accounts, readAccounts } from "@neoworks-dev/neo/auth";
 import { BadRequestError } from "../focus.ts";
 import { codexConfig } from "./config.ts";
@@ -173,11 +173,12 @@ async function readOr(path: string): Promise<Accounts> {
 
 /**
  * The API key for a provider: its environment variable, neo's file, then pi's. Never an
- * OAuth login (so never a Claude subscription) and never NEO_API_KEY, which is neo's own.
+ * OAuth login (so never a Claude subscription), never a gateway's token (ANTHROPIC_AUTH_TOKEN
+ * belongs to the gateway at ANTHROPIC_BASE_URL) and never NEO_API_KEY, which is neo's own.
  */
 export async function apiKey(files: AccountFiles, provider: string): Promise<string | undefined> {
   for (const name of findEnvKeys(provider) ?? []) {
-    if (name.includes("OAUTH")) continue;
+    if (name.includes("OAUTH") || name.endsWith("_AUTH_TOKEN")) continue;
     const value = process.env[name];
     if (value && !isSubscriptionToken(value)) return value;
   }

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { fauxToolCall } from "@mariozechner/pi-ai";
+import { fauxToolCall } from "@earendil-works/pi-ai";
 import { createNeoAgent } from "@neoworks-dev/neo/neo";
 import type { Envelope, HarnessSettings, SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import { validateEnvelope } from "@neoworks-dev/neo-protocol/validate";
@@ -997,19 +997,19 @@ describe("neo subagents", () => {
     expect(resultOf(unknown)).toStartWith(
       'Unknown model "deepseek v9 turbo" for neo. Valid models: ',
     );
-    expect(resultOf(unknown)).toContain("deepseek/deepseek-v4-flash");
+    expect(resultOf(unknown)).toContain("deepseek/deepseek-flash");
     // Nothing was asked or run.
     expect(events(daemon, session).some((e) => e.type === "permission_request")).toBe(false);
     expect(model.requests).toHaveLength(0);
 
     const spaced = await daemon.gateway.call(
       "delegate",
-      { agent: "neo", task: "x", model: "DeepSeek V4 Flash", effort: "LOW" },
+      { agent: "neo", task: "x", model: "DeepSeek V4.1 Flash", effort: "LOW" },
       undefined,
       { session, text: true },
     );
     expect(resultOf(spaced)).toBe("Hi.");
-    expect(model.models[0]).toEqual({ provider: "deepseek", id: "deepseek-v4-flash" });
+    expect(model.models[0]).toEqual({ provider: "deepseek", id: "deepseek-flash" });
   });
 
   test("a neo subagent may not delegate", async () => {

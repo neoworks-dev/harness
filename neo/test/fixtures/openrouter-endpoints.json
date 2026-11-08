@@ -1,11 +1,11 @@
 {
   "data": {
-    "id": "deepseek/deepseek-v4.1-flash-1017",
-    "name": "DeepSeek: DeepSeek V4.1 Flash 1017",
+    "id": "deepseek/deepseek-v9-flash-1017",
+    "name": "DeepSeek: DeepSeek V9 Flash 1017",
     "endpoints": [
       {
-        "name": "Relace | deepseek/deepseek-v4.1-flash-20261017",
-        "model_id": "deepseek/deepseek-v4.1-flash-1017",
+        "name": "Relace | deepseek/deepseek-v9-flash-20261017",
+        "model_id": "deepseek/deepseek-v9-flash-1017",
         "context_length": 1048576,
         "pricing": {
           "prompt": "0.00000005",
@@ -19,8 +19,8 @@
         "uptime_last_30m": 100
       },
       {
-        "name": "DeepInfra | deepseek/deepseek-v4.1-flash-20261017",
-        "model_id": "deepseek/deepseek-v4.1-flash-1017",
+        "name": "DeepInfra | deepseek/deepseek-v9-flash-20261017",
+        "model_id": "deepseek/deepseek-v9-flash-1017",
         "context_length": 1048576,
         "pricing": {
           "prompt": "0.000000098",
@@ -34,8 +34,8 @@
         "uptime_last_30m": 100
       },
       {
-        "name": "Wafer | deepseek/deepseek-v4.1-flash-20261017",
-        "model_id": "deepseek/deepseek-v4.1-flash-1017",
+        "name": "Wafer | deepseek/deepseek-v9-flash-20261017",
+        "model_id": "deepseek/deepseek-v9-flash-1017",
         "context_length": 1048576,
         "pricing": {
           "prompt": "0.0000001",
@@ -49,8 +49,8 @@
         "uptime_last_30m": 100
       },
       {
-        "name": "DeepInfra | deepseek/deepseek-v4.1-flash-20261017",
-        "model_id": "deepseek/deepseek-v4.1-flash-1017",
+        "name": "DeepInfra | deepseek/deepseek-v9-flash-20261017",
+        "model_id": "deepseek/deepseek-v9-flash-1017",
         "context_length": 1048576,
         "pricing": {
           "prompt": "0.000000147",
@@ -64,8 +64,8 @@
         "uptime_last_30m": 100
       },
       {
-        "name": "DeepSeek | deepseek/deepseek-v4.1-flash-20261017",
-        "model_id": "deepseek/deepseek-v4.1-flash-1017",
+        "name": "DeepSeek | deepseek/deepseek-v9-flash-20261017",
+        "model_id": "deepseek/deepseek-v9-flash-1017",
         "context_length": 1048576,
         "pricing": {
           "prompt": "0.00000015",
@@ -79,8 +79,8 @@
         "uptime_last_30m": 100
       },
       {
-        "name": "Parasail | deepseek/deepseek-v4.1-flash-20261017",
-        "model_id": "deepseek/deepseek-v4.1-flash-1017",
+        "name": "Parasail | deepseek/deepseek-v9-flash-20261017",
+        "model_id": "deepseek/deepseek-v9-flash-1017",
         "context_length": 1048576,
         "pricing": {
           "prompt": "0.0000003",

@@ -4,8 +4,14 @@
 //
 // A login can take minutes (a browser, a device code), so the command returns once it has
 // started; what happens next is told with notices and cards in the session.
-import type { OAuthProviderInterface } from "@mariozechner/pi-ai/oauth";
-import { type Accounts, readAccounts, removeAccount, setAccount } from "@neoworks-dev/neo/auth";
+import type { AuthEvent } from "@earendil-works/pi-ai";
+import {
+  type Accounts,
+  type OAuthProvider,
+  readAccounts,
+  removeAccount,
+  setAccount,
+} from "@neoworks-dev/neo/auth";
 import type { Asker } from "./asker.ts";
 import { BadRequestError } from "./focus.ts";
 import type { CommandContext } from "./hub.ts";
@@ -41,8 +47,8 @@ export interface LoginParts {
   authPath: string;
   /** pi's accounts file: read only, only to tell where an account comes from. */
   piAuthPath: string;
-  /** Providers that log in with an account, e.g. pi-ai's getOAuthProviders. */
-  oauthProviders: () => OAuthProviderInterface[];
+  /** Providers that log in with an account, e.g. neo's oauthProviders. */
+  oauthProviders: () => OAuthProvider[];
   /** Providers an API key works for, e.g. pi-ai's getProviders. */
   apiProviders: () => string[];
   /** The environment variables set with an API key for a provider (pi-ai's findEnvKeys). */
@@ -50,8 +56,24 @@ export interface LoginParts {
   now?: () => number;
 }
 
-function oauthName(provider: OAuthProviderInterface): string {
+function oauthName(provider: OAuthProvider): string {
   return OAUTH_NAMES[provider.id] ?? provider.name;
+}
+
+/** A login flow's event as a line in the chat; undefined for one not shown. */
+function eventText(event: AuthEvent, name: string): string | undefined {
+  switch (event.type) {
+    case "auth_url":
+      return [`Open this address to log in to ${name}:`, event.url, event.instructions]
+        .filter((line) => line !== undefined && line !== "")
+        .join("\n");
+    case "device_code":
+      return `To log in to ${name}, open ${event.verificationUri} and enter the code ${event.userCode}.`;
+    case "info":
+      return [event.message, ...(event.links ?? []).map((link) => link.url)].join("\n");
+    case "progress":
+      return event.message;
+  }
 }
 
 function when(ms: number): string {
@@ -207,7 +229,7 @@ export class Login {
 
   private startOAuth(
     session: string,
-    provider: OAuthProviderInterface,
+    provider: OAuthProvider,
     context: CommandContext,
   ): Promise<void> {
     if (this.running.has(provider.id)) {
@@ -224,7 +246,7 @@ export class Login {
 
   private async oauth(
     session: string,
-    provider: OAuthProviderInterface,
+    provider: OAuthProvider,
     context: CommandContext,
   ): Promise<void> {
     const name = oauthName(provider);
@@ -233,50 +255,66 @@ export class Login {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), LOGIN_TIMEOUT_MS);
     let finished = false;
-    /** A prompt the user answers privately. Cancelling it cancels the login. */
+    const cancel = (): never => {
+      controller.abort();
+      throw new Cancelled();
+    };
+    /**
+     * A prompt the user answers privately. Cancelling it cancels the login; `closed` ends it
+     * without, once the flow no longer waits for it (the browser finished first).
+     */
     const secret = async (
       title: string,
-      placeholder?: string,
-      allowEmpty = false,
+      placeholder: string | undefined,
+      allowEmpty: boolean,
+      closed?: AbortSignal,
     ): Promise<string> => {
-      const value = await context.askSecret(title, placeholder, controller.signal);
-      if (finished) return new Promise<never>(() => {}); // the login ended while this was open
-      if (value === undefined || (!allowEmpty && value.trim() === "")) {
-        controller.abort();
-        throw new Cancelled();
-      }
+      const signal = closed ? AbortSignal.any([controller.signal, closed]) : controller.signal;
+      const value = await context.askSecret(title, placeholder, signal);
+      if (finished || closed?.aborted) return new Promise<never>(() => {}); // nobody waits for it
+      if (value === undefined || (!allowEmpty && value.trim() === "")) return cancel();
       secrets.add(value.trim());
       return value;
     };
     try {
-      const credentials = await provider.login({
-        onAuth: ({ url, instructions }) =>
-          notice(
-            session,
-            [`Open this address to log in to ${name}:`, url, instructions]
-              .filter((line) => line !== undefined && line !== "")
-              .join("\n"),
-          ),
-        onPrompt: (prompt) => secret(prompt.message, prompt.placeholder, prompt.allowEmpty),
-        onManualCodeInput: () =>
-          secret("Paste the code or the address you were sent to (or finish in the browser)"),
-        onSelect: (prompt) =>
-          asker.ask(
-            session,
-            {
-              type: "choice",
-              title: prompt.message,
-              options: prompt.options.map((o) => ({ id: o.id, name: o.label })),
-            },
-            controller.signal,
-          ),
-        onProgress: (text) => notice(session, text),
+      const credentials = await provider.oauth.login({
         signal: controller.signal,
+        notify: (event) => {
+          const text = eventText(event, name);
+          if (text !== undefined) notice(session, text);
+        },
+        prompt: async (prompt) => {
+          switch (prompt.type) {
+            case "select": {
+              const picked = await asker.ask(
+                session,
+                {
+                  type: "choice",
+                  title: prompt.message,
+                  options: prompt.options.map((o) => ({ id: o.id, name: o.label })),
+                },
+                controller.signal,
+              );
+              return picked ?? cancel();
+            }
+            case "manual_code":
+              return secret(
+                "Paste the code or the address you were sent to (or finish in the browser)",
+                prompt.placeholder,
+                false,
+                prompt.signal,
+              );
+            case "text":
+              return secret(prompt.message, prompt.placeholder, true, prompt.signal);
+            case "secret":
+              return secret(prompt.message, prompt.placeholder, false, prompt.signal);
+          }
+        },
       });
       finished = true;
       secrets.add(credentials.access);
       secrets.add(credentials.refresh);
-      await setAccount(this.parts.authPath, provider.id, { type: "oauth", ...credentials });
+      await setAccount(this.parts.authPath, provider.id, credentials);
       let text = `Logged in to ${name}.`;
       if (provider.id === "anthropic") text += " It is used by neo only.";
       notice(session, text + this.envNote(provider.id));

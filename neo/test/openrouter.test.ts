@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { getModels } from "@mariozechner/pi-ai";
+import { getModels } from "@earendil-works/pi-ai/compat";
 import type { AgentSession, ConfigOption } from "../src/agent.ts";
 import type { StreamFn } from "../src/loop/index.ts";
 import { createNeoAgent } from "../src/neo-agent.ts";
@@ -22,8 +22,8 @@ const fixture = async (name: string): Promise<unknown> =>
 const MODELS = await fixture("openrouter-models.json");
 const ENDPOINTS = await fixture("openrouter-endpoints.json");
 
-const NEW = "openrouter/deepseek/deepseek-v4.1-flash-1017";
-const NEW_NAME = "DeepSeek: DeepSeek V4.1 Flash 1017";
+const NEW = "openrouter/deepseek/deepseek-v9-flash-1017";
+const NEW_NAME = "DeepSeek: DeepSeek V9 Flash 1017";
 const CONFIG = { ...TEST_CONFIG, provider: "openrouter", modelId: "anthropic/claude-haiku-4.5" };
 
 interface FakeNetwork {
@@ -77,7 +77,7 @@ test("the live list adds models pi-ai lacks, keeps pi-ai's entry where it has on
   const bundled = getModels("openrouter");
   const merged = mergeLiveModels(MODELS, bundled);
   expect(merged.map((m) => m.id)).toEqual([
-    "deepseek/deepseek-v4.1-flash-1017",
+    "deepseek/deepseek-v9-flash-1017",
     "anthropic/claude-haiku-4.5",
     "openai/gpt-4o-mini",
     "openrouter/auto",
@@ -125,7 +125,7 @@ test("the catalog fetches once, serves the list from memory and refreshes after 
   const catalog = new OpenRouterCatalog({ fetch: net.fetch, now: () => now });
   expect(catalog.cached()).toBeUndefined(); // starts the fetch, does not wait for it
   await catalog.refresh();
-  expect(catalog.cached()?.[0]?.id).toBe("deepseek/deepseek-v4.1-flash-1017");
+  expect(catalog.cached()?.[0]?.id).toBe("deepseek/deepseek-v9-flash-1017");
   catalog.cached();
   now += 59 * 60_000;
   catalog.cached();
@@ -181,14 +181,14 @@ test("/model lists the live models once they arrived, pi-ai's until then and whe
   expect(modelOption(session).values.find((v) => v.value === NEW)?.name).toBe(NEW_NAME);
   expect(listed(session, "openrouter/anthropic/claude-haiku-4.5")).toBe(true);
   // Only what the live list has.
-  expect(listed(session, "openrouter/ai21/jamba-large-1.7")).toBe(false);
+  expect(listed(session, "openrouter/cohere/command-r-08-2024")).toBe(false);
 
   const down = network({ fail: true });
   const offline = await openRouterSession(down);
   await until(() => down.urls.length > 0, "the fetch");
   await Bun.sleep(10);
   expect(listed(offline, NEW)).toBe(false);
-  expect(listed(offline, "openrouter/ai21/jamba-large-1.7")).toBe(true);
+  expect(listed(offline, "openrouter/cohere/command-r-08-2024")).toBe(true);
 });
 
 test("a model only the live list knows is set with its live metadata", async () => {
@@ -237,7 +237,7 @@ test("a model value may end in @host; the request pins that host and nothing els
   expect(listed(session, NEW)).toBe(true);
   await say(session);
   expect(seen.models[0]).toEqual({
-    id: "deepseek/deepseek-v4.1-flash-1017",
+    id: "deepseek/deepseek-v9-flash-1017",
     compat: { openRouterRouting: { only: ["deepinfra/fp8"], allow_fallbacks: false } },
   });
   // Back to the plain model: no routing.
@@ -319,7 +319,7 @@ test("setting an openrouter model without a host offers the hosts; 'Any' is the 
   await session.setConfigOption?.("model", NEW);
   const next = await session.followUp?.("model", NEW);
   expect(net.urls.at(-1)).toBe(
-    "https://openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash-1017/endpoints",
+    "https://openrouter.ai/api/v1/models/deepseek/deepseek-v9-flash-1017/endpoints",
   );
   expect(next?.notice).toBeUndefined();
   expect(next?.choice?.title).toBe(`Host for ${NEW_NAME}`);

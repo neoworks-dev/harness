@@ -1,9 +1,9 @@
 // Wires the daemon's parts together. Used by main.ts and by tests (startTestDaemon).
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { findEnvKeys, getProviders } from "@mariozechner/pi-ai";
-import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
+import { findEnvKeys, getProviders } from "@earendil-works/pi-ai/compat";
 import type { Agent, McpServer } from "@neoworks-dev/neo/agent";
+import { type OAuthProvider, oauthProviders } from "@neoworks-dev/neo/auth";
 import type { SessionInfo, SlashCommand, Theme } from "@neoworks-dev/neo-protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
 import { ActionRunner, neoUiTools } from "./actions.ts";
@@ -83,6 +83,8 @@ export interface DaemonOptions {
    * only). Default: auth.json in the data dir and no pi file; main.ts passes the harness's paths.
    */
   accounts?: { authPath?: string; piAuthPath?: string };
+  /** The providers /login offers an account login for. Default: pi-ai's. */
+  oauthProviders?: () => OAuthProvider[];
   /**
    * Where plugins are installed (neo/src/plugins.ts): /plugin works on it, and the enabled
    * plugins' commands, MCP servers and language servers are used. No plugins without.
@@ -422,7 +424,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     notice,
     authPath,
     piAuthPath,
-    oauthProviders: getOAuthProviders,
+    oauthProviders: options.oauthProviders ?? oauthProviders,
     apiProviders: getProviders,
     envKeys: (provider) => findEnvKeys(provider) ?? [],
   });

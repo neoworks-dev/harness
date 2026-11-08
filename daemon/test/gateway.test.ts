@@ -15,7 +15,7 @@ import { silentLogger } from "../src/log.ts";
 import { SessionManager } from "../src/sessions.ts";
 import { SessionStore, type StoredSkill, type StoredTool } from "../src/store.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
-import { fauxToolCall } from "@mariozechner/pi-ai";
+import { fauxToolCall } from "@earendil-works/pi-ai";
 import { createNeoAgent } from "@neoworks-dev/neo/neo";
 import { fakeModel, reply, TEST_CONFIG } from "../../neo/test/fake-model.ts";
 import { FakeAgent } from "./fake-agent.ts";

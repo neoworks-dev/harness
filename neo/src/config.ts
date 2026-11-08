@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ThinkingLevel } from "./loop/index.ts";
-import { getEnvApiKey, getProviders } from "@mariozechner/pi-ai";
+import { getEnvApiKey, getProviders } from "@earendil-works/pi-ai/compat";
 import type { SafeSearch } from "@neoworks/websearch";
 import { accountProviders, resolveAccount, type AuthDeps, type ResolvedAccount } from "./auth.ts";
 import type { SkillDirs } from "./skills.ts";

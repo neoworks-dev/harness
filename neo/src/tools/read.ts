@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import type { AgentTool } from "../loop/index.ts";
-import type { ImageContent } from "@mariozechner/pi-ai";
+import type { ImageContent } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import type { RequestPermission } from "../agent.ts";
 import { type AssetResolver, resolvePath } from "./paths.ts";

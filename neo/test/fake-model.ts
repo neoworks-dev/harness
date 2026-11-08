@@ -6,12 +6,12 @@ import {
   type AssistantMessageEventStream,
   type Context,
   type Message,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
 import type { HarnessConfig } from "../src/config.ts";
 
 export const TEST_CONFIG: HarnessConfig = {
   provider: "deepseek",
-  modelId: "deepseek-v4-flash",
+  modelId: "deepseek-flash",
   thinkingLevel: "off",
   apiKey: "test-key-not-real",
   authPath: "/nonexistent/neo-auth.json",
@@ -79,7 +79,7 @@ function streamMessage(message: AssistantMessage): AssistantMessageEventStream {
     });
     if (message.stopReason === "error" || message.stopReason === "aborted") {
       stream.push({ type: "error", reason: message.stopReason, error: message });
-    } else {
+    } else if (message.stopReason !== "pending") {
       stream.push({ type: "done", reason: message.stopReason, message });
     }
   });

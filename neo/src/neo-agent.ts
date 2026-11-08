@@ -12,7 +12,7 @@ import {
   type AssistantMessageEventStream,
   type KnownProvider,
   type Model,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import type {
   Agent as HarnessAgent,
   AgentSession,
@@ -37,6 +37,7 @@ import {
   loadAgents,
   toolFilter,
 } from "./agents.ts";
+import type { AuthDeps } from "./auth.ts";
 import { formatPrompt } from "./context-events.ts";
 import { Hooks, loadHooks } from "./hooks.ts";
 import {
@@ -54,6 +55,7 @@ import {
   hostOf,
   OpenRouterCatalog,
   pinnedTo,
+  withRouting,
   type FetchFn,
   type OpenRouterEndpoint,
 } from "./openrouter.ts";
@@ -83,6 +85,8 @@ export interface NeoAgentOptions {
   streamFn?: StreamFn;
   /** Replaces the network for OpenRouter's model and host lists; for tests. */
   fetch?: FetchFn;
+  /** Replaces pi-ai's OAuth refresh; for tests. */
+  auth?: AuthDeps;
 }
 
 /** A request that is not made: the turn was stopped before it. */
@@ -177,7 +181,7 @@ function settle<T>(make: () => T): Promise<T> {
 
 /** The harness built on our loop: one Agent per session, the session log owns history. */
 export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
-  const { config, logger, streamFn } = options;
+  const { config, logger, streamFn, auth } = options;
   const catalog = new OpenRouterCatalog({ logger, fetch: options.fetch });
   /** OpenRouter's live models once fetched (never waits for them), else pi-ai's. */
   const openRouterModels = (): Model<Api>[] => catalog.cached() ?? bundledOpenRouterModels();
@@ -391,7 +395,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       beforeToolCall: sessionHooks.beforeToolCall,
       afterToolCall: sessionHooks.afterToolCall,
       getApiKey: async (provider) => {
-        const account = await resolveAuth(config, provider);
+        const account = await resolveAuth(config, provider, auth);
         adjustModels.set(provider, account?.adjustModel);
         return account?.apiKey;
       },
@@ -401,7 +405,11 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
         // Stopped after a tool (a declined command): the model isn't asked again.
         if (options?.signal?.aborted) return abortedReply(model);
         const adjusted = adjustModels.get(model.provider)?.(model) ?? model;
-        const [via, withOptions] = throughProxy(adjusted, options, config.proxy);
+        const [via, withOptions] = throughProxy(
+          adjusted,
+          withRouting(adjusted, options),
+          config.proxy,
+        );
         return (streamFn ?? streamSimple)(via, context, withOptions);
       },
     });
@@ -425,7 +433,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       if (running) return { stopReason: "error", error: "A turn is already running." };
       const provider = agent.state.model.provider;
       try {
-        if (!(await resolveAuth(config, provider))) {
+        if (!(await resolveAuth(config, provider, auth))) {
           return { stopReason: "error", error: missingApiKeyMessage(config, provider) };
         }
       } catch (error) {
@@ -541,7 +549,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
       const currentValue = modelValue(current);
       const providers = [
         current.provider,
-        ...providersWithCredential(config)
+        ...providersWithCredential(config, auth)
           .map((credential) => credential.provider)
           .filter((provider) => provider !== current.provider),
       ];
@@ -627,7 +635,7 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
     // The live model list is fetched in the background; start it before /model asks.
     if (
       initial.model.provider === OPENROUTER ||
-      providersWithCredential(config).some((credential) => credential.provider === OPENROUTER)
+      providersWithCredential(config, auth).some((credential) => credential.provider === OPENROUTER)
     ) {
       void catalog.refresh();
     }
@@ -656,11 +664,12 @@ export function createNeoAgent(options: NeoAgentOptions): HarnessAgent {
     signal,
   }: GenerateTextParams): Promise<string> {
     const model = setting === undefined ? defaultModel : modelFromSetting(setting);
-    const account = await resolveAuth(config, model.provider);
+    const account = await resolveAuth(config, model.provider, auth);
     if (!account) throw new Error(missingApiKeyMessage(config, model.provider));
+    const adjusted = account.adjustModel?.(model) ?? model;
     const [via, options] = throughProxy(
-      account.adjustModel?.(model) ?? model,
-      { apiKey: account.apiKey, signal },
+      adjusted,
+      withRouting(adjusted, { apiKey: account.apiKey, signal }),
       config.proxy,
     );
     const stream = await (streamFn ?? streamSimple)(

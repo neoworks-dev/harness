@@ -3,7 +3,7 @@
 // definitions from protocol/core-tools.json (so the tool list is fixed whatever is connected),
 // executed by the daemon's MCP gateway. The harness is an MCP client of the gateway (design §4).
 import type { AgentTool, AgentToolResult } from "../loop/index.ts";
-import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
+import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { type CallToolResult, CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";

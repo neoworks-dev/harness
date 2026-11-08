@@ -14,7 +14,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { Message } from "@mariozechner/pi-ai";
+import type { Message } from "@earendil-works/pi-ai";
 import type { AgentUpdate } from "./agent.ts";
 import type { HookEvent, HookResult, Hooks } from "./hooks.ts";
 import type { AgentOptions } from "./loop/agent.ts";
@@ -60,6 +60,7 @@ export function transcriptOf(messages: readonly Message[], sessionId: string): s
       const body = { role: "user", content: [block] };
       return [JSON.stringify({ type: "user", message: body, ...common })];
     }
+    if (message.role === "system") return []; // the prompt isn't part of a transcript
     const content = message.content.flatMap((part): unknown[] => {
       if (part.type === "text") return [{ type: "text", text: part.text }];
       if (part.type === "thinking") return [{ type: "thinking", thinking: part.thinking }];

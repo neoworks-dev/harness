@@ -1,8 +1,8 @@
 {
   "data": [
     {
-      "id": "deepseek/deepseek-v4.1-flash-1017",
-      "name": "DeepSeek: DeepSeek V4.1 Flash 1017",
+      "id": "deepseek/deepseek-v9-flash-1017",
+      "name": "DeepSeek: DeepSeek V9 Flash 1017",
       "context_length": 1048576,
       "architecture": {
         "input_modalities": ["text", "image"],
