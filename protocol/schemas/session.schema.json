@@ -611,9 +611,38 @@
         "harness": {
           "type": "string",
           "description": "The harness the session's next turn runs on: pi, claude, codex… (/harness)."
+        },
+        "usage": {
+          "$ref": "#/$defs/SessionUsage",
+          "description": "What the session's agents (its own and guests) used, from their usage events. Absent before the first one."
         }
       },
       "required": ["id", "cwd", "createdAt", "lastActivity", "lastSeq", "state", "queued"],
+      "additionalProperties": false
+    },
+    "SessionUsage": {
+      "description": "A session's usage over all its agents: each agent's newest numbers, summed. The context is the agent's that reported last, the one working now.",
+      "type": "object",
+      "properties": {
+        "cost": {
+          "type": "number",
+          "minimum": 0,
+          "description": "USD spent in this session so far."
+        },
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "outputTokens": { "type": "integer", "minimum": 0 },
+        "contextUsed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Tokens in the context window of the agent that reported last."
+        },
+        "contextSize": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "That agent's model's context window in tokens."
+        }
+      },
+      "required": ["cost", "inputTokens", "outputTokens"],
       "additionalProperties": false
     },
     "WaitingInput": {

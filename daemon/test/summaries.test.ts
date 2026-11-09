@@ -49,6 +49,42 @@ test("session info carries a title from the first message, a preview and lines c
   expect(d.sessions.info(id)).toMatchObject({ title: "Fix the header", preview: "and the footer" });
 });
 
+test("session info sums each agent's newest usage, with the context of the last to report", async () => {
+  const d = await daemon();
+  const id = d.sessions.create({}).id;
+  expect(d.sessions.info(id)?.usage).toBeUndefined();
+  d.store.append(id, {
+    type: "usage",
+    cost: 0.1,
+    inputTokens: 100,
+    outputTokens: 10,
+    contextUsed: 50,
+    contextSize: 1000,
+  });
+  d.store.append(id, {
+    type: "usage",
+    cost: 0.3,
+    inputTokens: 300,
+    outputTokens: 30,
+    contextUsed: 80,
+  });
+  d.store.append(id, { type: "usage", agent: "claude", cost: 1, contextUsed: 7, contextSize: 200 });
+  expect(d.sessions.info(id)?.usage).toEqual({
+    cost: 1.3,
+    inputTokens: 300,
+    outputTokens: 30,
+    contextUsed: 7,
+    contextSize: 200,
+  });
+  // The session's own agent reports again: its context is shown, and its contextSize stays known.
+  d.store.append(id, { type: "usage", cost: 0.4, contextUsed: 90 });
+  expect(d.sessions.info(id)?.usage).toMatchObject({
+    cost: 1.4,
+    contextUsed: 90,
+    contextSize: 1000,
+  });
+});
+
 test("summaries rebuild from the log", async () => {
   const d = await daemon();
   const id = d.sessions.create({ title: "Given" }).id;

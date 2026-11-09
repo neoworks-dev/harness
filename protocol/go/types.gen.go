@@ -2202,6 +2202,20 @@ type SessionInfo struct {
 	Parent *string `json:"parent,omitempty"`
 	// The harness the session's next turn runs on: pi, claude, codex… (/harness).
 	Harness *string `json:"harness,omitempty"`
+	// What the session's agents (its own and guests) used, from their usage events. Absent before the first one.
+	Usage *SessionUsage `json:"usage,omitempty"`
+}
+
+// SessionUsage: A session's usage over all its agents: each agent's newest numbers, summed. The context is the agent's that reported last, the one working now.
+type SessionUsage struct {
+	// USD spent in this session so far.
+	Cost         float64 `json:"cost"`
+	InputTokens  int64   `json:"inputTokens"`
+	OutputTokens int64   `json:"outputTokens"`
+	// Tokens in the context window of the agent that reported last.
+	ContextUsed *int64 `json:"contextUsed,omitempty"`
+	// That agent's model's context window in tokens.
+	ContextSize *int64 `json:"contextSize,omitempty"`
 }
 
 // WaitingInput: An input queued behind the running turn. neo takes it into the running turn after its next tool calls (it is logged as user_message then); other harnesses get it when the turn ends.

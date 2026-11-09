@@ -984,6 +984,20 @@ export interface SessionInfo {
   parent?: string;
   /** The harness the session's next turn runs on: pi, claude, codex… (/harness). */
   harness?: string;
+  /** What the session's agents (its own and guests) used, from their usage events. Absent before the first one. */
+  usage?: SessionUsage;
+}
+
+/** A session's usage over all its agents: each agent's newest numbers, summed. The context is the agent's that reported last, the one working now. */
+export interface SessionUsage {
+  /** USD spent in this session so far. */
+  cost: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** Tokens in the context window of the agent that reported last. */
+  contextUsed?: number;
+  /** That agent's model's context window in tokens. */
+  contextSize?: number;
 }
 
 /** An input queued behind the running turn. neo takes it into the running turn after its next tool calls (it is logged as user_message then); other harnesses get it when the turn ends. */

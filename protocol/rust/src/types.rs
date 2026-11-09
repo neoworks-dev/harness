@@ -2641,6 +2641,35 @@ pub struct SessionInfo {
     /// The harness the session's next turn runs on: pi, claude, codex… (/harness).
     #[serde(rename = "harness", default, skip_serializing_if = "Option::is_none")]
     pub harness: Option<String>,
+    /// What the session's agents (its own and guests) used, from their usage events. Absent before the first one.
+    #[serde(rename = "usage", default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<SessionUsage>,
+}
+
+/// A session's usage over all its agents: each agent's newest numbers, summed. The context is the agent's that reported last, the one working now.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionUsage {
+    /// USD spent in this session so far.
+    #[serde(rename = "cost")]
+    pub cost: f64,
+    #[serde(rename = "inputTokens")]
+    pub input_tokens: i64,
+    #[serde(rename = "outputTokens")]
+    pub output_tokens: i64,
+    /// Tokens in the context window of the agent that reported last.
+    #[serde(
+        rename = "contextUsed",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub context_used: Option<i64>,
+    /// That agent's model's context window in tokens.
+    #[serde(
+        rename = "contextSize",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub context_size: Option<i64>,
 }
 
 /// An input queued behind the running turn. neo takes it into the running turn after its next tool calls (it is logged as user_message then); other harnesses get it when the turn ends.
