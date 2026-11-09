@@ -10,7 +10,8 @@
     "sdk-ts",
     "renderers/web",
     "services/lsp",
-    "apps/gui"
+    "apps/gui",
+    "apps/shell-widget"
   ],
   "scripts": {
     "codegen": "bun run --cwd protocol codegen",

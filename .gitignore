@@ -8,6 +8,7 @@ apps/cli/cli.exe
 .env
 target/
 apps/gui/dist/
+apps/shell-widget/dist/
 .worktrees/
 sdk-ts/dist/
 protocol/dist/

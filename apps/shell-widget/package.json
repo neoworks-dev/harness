@@ -1,0 +1,19 @@
+{
+  "name": "@neoworks-dev/neo-shell-widget",
+  "private": true,
+  "type": "module",
+  "description": "neo's agents on the neoshell desktop: a D-Bus source for the shell and the widget it draws.",
+  "scripts": {
+    "build": "bun build.mjs",
+    "start": "bun src/main.ts"
+  },
+  "dependencies": {
+    "@neoworks-dev/neo-protocol": "workspace:*",
+    "@neoworks-dev/neo-sdk": "workspace:*",
+    "dbus-next": "0.10.2"
+  },
+  "devDependencies": {
+    "@neoworks/neoshell-sdk": "link:@neoworks/neoshell-sdk",
+    "svelte": "^5.57.0"
+  }
+}

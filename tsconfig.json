@@ -25,6 +25,10 @@
     "renderers/web",
     "services",
     "apps/gui/test",
+    "apps/shell-widget/src",
+    "apps/shell-widget/test",
+    "apps/shell-widget/widget/view.ts",
+    "apps/shell-widget/install.ts",
     "tools"
   ],
   "exclude": ["**/node_modules"]

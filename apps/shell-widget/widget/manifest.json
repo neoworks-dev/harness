@@ -1,0 +1,17 @@
+{
+  "id": "dev.neoworks.agents",
+  "name": "neo",
+  "dbus": "dev.neoworks.Neo.Agents",
+  "topics": ["agents", "usage"],
+  "calls": ["open"],
+  "widgets": [
+    {
+      "view": "agents",
+      "name": "Agents",
+      "category": "Developer & services",
+      "description": "What your agents are doing, what waits for you, and what today cost.",
+      "sizes": ["small", "medium", "large"],
+      "defaultSize": "medium"
+    }
+  ]
+}
