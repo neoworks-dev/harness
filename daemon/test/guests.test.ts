@@ -438,7 +438,7 @@ describe("config", () => {
     const base = { HOME: dir, XDG_CONFIG_HOME: dir };
     const all = loadGuestConfigs(base);
     expect(Object.keys(all)).toEqual(["claude", "codex"]);
-    expect(all.claude?.command).toEqual(["bunx", "@agentclientprotocol/claude-agent-acp@0.91.0"]);
+    expect(all.claude?.command).toEqual(["bunx", "@agentclientprotocol/claude-agent-acp@0.103.0"]);
     const env = loadGuestConfigs({
       ...base,
       NEO_GUESTS: "claude",

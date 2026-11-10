@@ -57,7 +57,7 @@ function defaults(env: NodeJS.ProcessEnv): Record<string, GuestConfig> {
   const claudeCli = Bun.which("claude");
   const claude: GuestConfig = {
     title: "Claude Code",
-    command: ["bunx", "@agentclientprotocol/claude-agent-acp@0.91.0"],
+    command: ["bunx", "@agentclientprotocol/claude-agent-acp@0.103.0"],
     route: "claude",
     permissions: "ask",
     subagents: "asks",
