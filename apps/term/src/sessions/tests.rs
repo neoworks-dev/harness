@@ -4,6 +4,7 @@ use neo_renderer_ratatui::Palette;
 fn info(id: &str, title: &str, last: i64) -> SessionInfo {
     SessionInfo {
         harness: None,
+        usage: None,
         parent: None,
         id: id.into(),
         title: (!title.is_empty()).then(|| title.into()),

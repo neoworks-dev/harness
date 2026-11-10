@@ -283,6 +283,30 @@ impl App {
         body
     }
 
+    /// What the empty input says. While the agent works: what Enter and Alt-Enter do. In a
+    /// session nothing was said in yet: asks what to do, and where the commands are. After
+    /// that: asks what is next. Which of a few wordings is the session's own (it does not
+    /// change while it is open).
+    pub(super) fn placeholder(&self) -> String {
+        const FRESH: [&str; 3] = [
+            "What are we building today?",
+            "What are we working on?",
+            "Where should we start?",
+        ];
+        const AFTER: [&str; 2] = ["What's next?", "Anything to change?"];
+        let pick = self
+            .session
+            .bytes()
+            .fold(5381usize, |h, b| h.wrapping_mul(33) ^ usize::from(b));
+        if self.running {
+            "Queue a message · alt-enter sends now".to_string()
+        } else if self.chat.items().is_empty() {
+            format!("{} · / for commands", FRESH[pick % FRESH.len()])
+        } else {
+            AFTER[pick % AFTER.len()].to_string()
+        }
+    }
+
     pub(super) fn draw_editor(&mut self, frame: &mut Frame, area: Rect) {
         if area.height == 0 || area.width == 0 {
             return;
@@ -295,7 +319,7 @@ impl App {
         };
         if self.editor.is_empty() {
             let hint = truncate(
-                "message the agent · / for commands",
+                &self.placeholder(),
                 usize::from(area.width.saturating_sub(2)),
             );
             frame.render_widget(

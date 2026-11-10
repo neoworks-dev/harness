@@ -201,6 +201,7 @@ impl App {
             cwd,
             branch: branch.as_deref(),
             settings: &self.settings,
+            names: &self.model_names,
             harness: &self.harness,
             agent_in,
             // The sessions sidebar's foot has them when it shows.

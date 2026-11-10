@@ -71,9 +71,10 @@ fn a_prompt_arriving_while_idle_takes_the_editors_place_at_once() {
     let mut app = app();
     show(&mut app, vec![prompt("p1", "pending", &["Yes", "No"])]);
     assert!(app.prompt.engaged);
+    let placeholder = app.placeholder();
     let text = screen_text(&mut app, 70, 14);
     assert!(
-        !text.contains("message the agent"),
+        !text.contains(&placeholder),
         "the editor is hidden: {text}"
     );
     // Typed characters go nowhere; the digits answer.
@@ -83,7 +84,8 @@ fn a_prompt_arriving_while_idle_takes_the_editors_place_at_once() {
     assert!(matches!(&fx[..], [Effect::Action { args: Some(a), .. }] if a["option"] == "No"));
     // Answered: the editor is back.
     assert!(!app.prompt.engaged);
-    assert!(screen_text(&mut app, 70, 14).contains("message the agent"));
+    let placeholder = app.placeholder();
+    assert!(screen_text(&mut app, 70, 14).contains(&placeholder));
 }
 
 #[test]
@@ -314,4 +316,17 @@ fn a_new_pending_prompt_scrolls_into_view() {
     patch(&mut app, prompt("p9", "pending", &["Yes", "No"]));
     assert!(app.chat().following());
     assert!(screen_text(&mut app, 80, 24).contains("Yes"));
+}
+
+#[test]
+fn the_placeholder_follows_what_the_session_is_doing_and_keeps_to_one_wording() {
+    let mut app = app();
+    let fresh = app.placeholder();
+    assert!(fresh.ends_with("· / for commands"), "{fresh}");
+    assert_eq!(app.placeholder(), fresh, "it does not change while the session is open");
+    show(&mut app, vec![item("a1", "agent", "hello")]);
+    let after = app.placeholder();
+    assert!(["What's next?", "Anything to change?"].contains(&after.as_str()), "{after}");
+    app.running = true;
+    assert_eq!(app.placeholder(), "Queue a message · alt-enter sends now");
 }

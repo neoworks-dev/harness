@@ -40,7 +40,7 @@ use crate::menu::{self, Entry, Item, Switcher, session_title};
 use crate::reader::{Reader, ReaderAction};
 use crate::secret::{self, Secret, SecretValue};
 use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction, sidebar_width};
-use crate::status::{Approvals, HarnessSettings, Status, record_setting};
+use crate::status::{Approvals, HarnessSettings, ModelNames, Status, record_setting};
 use crate::style::{Styles, plain_palette};
 use crate::theme::{Prefs, Theme};
 use crate::toast::{self, Toasts};
@@ -211,6 +211,10 @@ pub enum Effect {
         before: String,
         count: i64,
     },
+    /// The names of the session's models, as the daemon knows them (`Msg::Names`).
+    Names {
+        session: String,
+    },
     /// Open a link of a neoui button in the browser (xdg-open).
     OpenUrl(String),
     /// Open a file in the user's editor at a line, the screen handed over until it exits.
@@ -244,6 +248,11 @@ pub enum Msg {
     Page {
         session: String,
         page: Result<neo_protocol::ViewPage, String>,
+    },
+    /// What each harness of `session` offers, with the names of its values.
+    Names {
+        session: String,
+        harnesses: Result<Vec<neo_protocol::HarnessSettings>, String>,
     },
 }
 
@@ -529,6 +538,10 @@ pub struct App {
     /// the background (the daemon's `waitingOn`): the work row says so instead.
     waiting_on: Vec<String>,
     settings: Vec<HarnessSettings>,
+    /// What the daemon calls the models of this session's harnesses.
+    model_names: ModelNames,
+    /// The names are asked for again: the session or what it runs on changed.
+    names_stale: bool,
     /// The session's agent, from `/harness`.
     harness: String,
     /// The slash commands each harness listed in this session (`commands_available`).
@@ -657,6 +670,8 @@ impl App {
             waiting: Vec::new(),
             waiting_on: Vec::new(),
             settings: Vec::new(),
+            model_names: ModelNames::new(),
+            names_stale: true,
             harness: DEFAULT_HARNESS.to_string(),
             offered: HashMap::new(),
             approvals: Approvals::Ask,
@@ -790,6 +805,12 @@ impl App {
         self.dirty |= gh.changed;
         if let Some(out) = gh.out {
             self.take_github(out, &mut fx);
+        }
+        if self.names_stale && self.connected {
+            self.names_stale = false;
+            fx.push(Effect::Names {
+                session: self.session.clone(),
+            });
         }
         // The chat opened with its latest items: older ones come as they are needed.
         if let Some(before) = self.chat.wants_page().map(str::to_string) {

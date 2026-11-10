@@ -105,6 +105,7 @@ fn busy() -> App {
 fn session_info(id: &str, cwd: &str, parent: Option<&str>) -> SessionInfo {
     SessionInfo {
         harness: None,
+        usage: None,
         id: id.into(),
         title: Some("Fix the login".into()),
         cwd: cwd.into(),
@@ -272,7 +273,8 @@ fn enter_opens_the_transcript_of_the_selected_subagent_and_esc_closes_it() {
         }]
     );
     assert!(app.transcript.is_none());
-    assert!(screen_text(&mut app, 100, 24).contains("message the agent"));
+    let placeholder = app.placeholder();
+    assert!(screen_text(&mut app, 100, 24).contains(&placeholder));
 }
 
 #[test]

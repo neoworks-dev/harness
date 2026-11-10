@@ -369,6 +369,13 @@ fn work(client: &Arc<Client>, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc
                     .map_err(|e| e.to_string());
                 let _ = msgs.send(Msg::Page { session, page });
             }
+            Effect::Names { session } => {
+                // Nothing is started for this: only what is already running names its models.
+                let harnesses = client
+                    .session_settings(&session, true)
+                    .map_err(|e| e.to_string());
+                let _ = msgs.send(Msg::Names { session, harnesses });
+            }
             Effect::OpenUrl(url) => open_url(&url, msgs),
             Effect::Unqueue { session } => match client.unqueue(&session, app) {
                 Ok(inputs) => {
@@ -610,6 +617,7 @@ mod tests {
     fn info(id: &str, cwd: &str, last: i64) -> SessionInfo {
         SessionInfo {
             harness: None,
+            usage: None,
             parent: None,
             id: id.into(),
             title: None,

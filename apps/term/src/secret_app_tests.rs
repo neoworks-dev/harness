@@ -217,6 +217,7 @@ fn another_session_is_cancelled_a_lost_connection_and_a_switch_drop_it() {
     app.handle_event(ask("z", "s1", None));
     let info = SessionInfo {
         harness: None,
+        usage: None,
         id: "s2".into(),
         title: None,
         cwd: "/w".into(),

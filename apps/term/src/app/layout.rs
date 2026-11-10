@@ -70,7 +70,14 @@ impl App {
         let jobs_h = self.jobs_rows(main.height - agents_h);
         let h = main.height - agents_h - jobs_h;
         let status_h = h.saturating_sub(3).min(2);
-        let rule_h = h.saturating_sub(status_h).min(1);
+        // The GitHub view has the keys: the input box would only sit there unused, so it goes
+        // until the view closes (a question the agent waits on keeps its place).
+        let hidden = self.github.is_open() && self.secret.is_none() && !self.prompt.engaged;
+        let rule_h = if hidden {
+            0
+        } else {
+            h.saturating_sub(status_h).min(1)
+        };
         let room = h - status_h - rule_h;
         // An engaged prompt takes the editor's place; a waiting one adds a hint row above it.
         let box_w = main.width.saturating_sub(3 * margin);
@@ -119,7 +126,11 @@ impl App {
         } else {
             panel.len() as u16
         };
-        let editor_h = wanted.min(room.saturating_sub(1)).max(room.min(1));
+        let editor_h = if hidden {
+            0
+        } else {
+            wanted.min(room.saturating_sub(1)).max(room.min(1))
+        };
         let chat_h = room - editor_h;
         let at = |y: u16, height: u16| Rect {
             y: main.y + y,
@@ -140,7 +151,7 @@ impl App {
         // With fills, the rule's row, the editor and the first status line are one raised box
         // with the accent bar on its left, a row of the chat's above it; what is in the box
         // starts past the bar.
-        let gap = u16::from(self.styles.fills() && chat_h > 1);
+        let gap = u16::from(self.styles.fills() && chat_h > 1 && !hidden);
         // While a turn runs, a row of its own says so, over the input box; while idle, that the
         // cache has gone.
         let work_h = u16::from(
@@ -180,7 +191,14 @@ impl App {
             attached: inset(at(top + hint_h + waiting_h, attached_h)),
             editor: at(chat_h + rule_h + above, editor_h - above),
             panel,
-            input: at(chat_h, rule_h + editor_h + status_h.min(1)),
+            input: at(
+                chat_h,
+                if hidden {
+                    0
+                } else {
+                    rule_h + editor_h + status_h.min(1)
+                },
+            ),
             status: at(chat_h + rule_h + editor_h, status_h),
             agents: at(h, agents_h),
             jobs: at(h + agents_h, jobs_h),

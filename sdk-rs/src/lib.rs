@@ -381,6 +381,30 @@ impl Client {
         }
     }
 
+    /// What each harness of the session offers to set, with the names to show for the values
+    /// (`Sonnet 5.5` for `sonnet`). With `known` nothing is started: only what neo and the
+    /// adapters already running can say, which is enough for a client that shows the name of
+    /// what the session uses.
+    pub fn session_settings(
+        &self,
+        session: &str,
+        known: bool,
+    ) -> Result<Vec<protocol::HarnessSettings>> {
+        let ask = |id| {
+            Envelope::SessionSettings(protocol::SessionSettings {
+                id,
+                payload: protocol::SessionSettingsQuery {
+                    session: session.into(),
+                    known: Some(known),
+                },
+            })
+        };
+        match self.call(Effect::None, ask)? {
+            Envelope::SessionSettingsResult(reply) => Ok(reply.payload.harnesses),
+            _ => Err(Error::Unexpected),
+        }
+    }
+
     /// The agents a session can run on: neo's own and the guests, whether each is installed
     /// and signed in, and what it takes of the context before the first message.
     pub fn list_harnesses(&self) -> Result<Vec<HarnessInfo>> {

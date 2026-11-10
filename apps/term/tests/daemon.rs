@@ -190,7 +190,7 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
     // The chat view of the new session arrives; the status line names the directory.
     let screen = ui.until("an empty session", |s| s.contains("enter send"));
     let project = cwd.rsplit('/').next().unwrap();
-    assert!(screen.contains(&format!("{project} · neo")), "{screen}");
+    assert!(screen.contains(&format!("{project} · ◆ Neo")), "{screen}");
 
     // Typing sends input; the echo agent's reply is drawn in the chat.
     ui.type_line("hello from the terminal");
@@ -244,7 +244,7 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
             && side.contains("[app_connected]")
     });
     assert!(screen.contains("Sessions · "), "{screen}");
-    assert!(screen.contains("· neo"), "the session's harness: {screen}");
+    assert!(screen.contains("· ◆ Neo"), "the session's harness: {screen}");
 
     // Approvals: shift-tab goes through the daemon (ask, review, edits, auto, ask) and the mode
     // comes back as a setting event.

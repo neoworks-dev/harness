@@ -75,11 +75,36 @@ pub fn record_setting(all: &mut Vec<HarnessSettings>, harness: &str, option: &st
     }
 }
 
+/// The names to show for model values, by (harness, value): `Sonnet 5.5` for `sonnet`.
+pub type ModelNames = std::collections::HashMap<(String, String), String>;
+
+/// The harness's name for the status line: a glyph for it and its name capitalized.
+fn harness_label(harness: &str) -> String {
+    let glyph = match harness {
+        "neo" => "◆",
+        "claude" => "✻",
+        "codex" => "⬡",
+        _ => "◈",
+    };
+    format!("{glyph} {}", capitalized(harness))
+}
+
+/// The first letter in capitals: `high` is `High`.
+fn capitalized(word: &str) -> String {
+    let mut chars = word.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
 pub struct Status<'a> {
     /// The working directory, as its last segment (the project).
     pub cwd: &'a str,
     pub branch: Option<&'a str>,
     pub settings: &'a [HarnessSettings],
+    /// What the daemon calls the models, for the ones it knows.
+    pub names: &'a ModelNames,
     /// The session's agent (`neo`, `claude`, `codex`).
     pub harness: &'a str,
     /// The app the agent is in, when that isn't this one.
@@ -118,12 +143,21 @@ impl Status<'_> {
             spans.push(Span::styled(branch.to_string(), s.muted));
         }
         spans.push(sep());
-        spans.push(Span::raw(self.harness.to_string()));
+        spans.push(Span::raw(harness_label(self.harness)));
         for h in self.settings.iter().filter(|h| h.harness == self.harness) {
             for (option, value) in &h.values {
                 spans.push(sep());
                 spans.push(Span::styled(format!("{option} "), s.muted));
-                spans.push(Span::raw(value.clone()));
+                let shown = match option.as_str() {
+                    "model" => self
+                        .names
+                        .get(&(h.harness.clone(), value.clone()))
+                        .cloned()
+                        .unwrap_or_else(|| value.clone()),
+                    "effort" => capitalized(value),
+                    _ => value.clone(),
+                };
+                spans.push(Span::raw(shown));
             }
         }
         if let Some(app) = self.agent_in {
@@ -231,6 +265,7 @@ mod tests {
             cwd: "site",
             branch: Some("main ↑1"),
             settings,
+            names: Box::leak(Box::default()),
             harness: "neo",
             agent_in: None,
             usage: None,
@@ -252,25 +287,25 @@ mod tests {
         let styles = Styles::new(&Palette::default(), false);
         let mut settings = Vec::new();
         let s = status(&styles, &settings);
-        assert_eq!(s.lines(80)[0].to_string(), "site · main ↑1 · neo");
+        assert_eq!(s.lines(80)[0].to_string(), "site · main ↑1 · ◆ Neo");
         record_setting(&mut settings, "neo", "model", "sonnet");
         record_setting(&mut settings, "daemon", "approvals", "auto");
         let mut s = status(&styles, &settings);
         assert_eq!(
             s.lines(80)[0].to_string(),
-            "site · main ↑1 · neo · model sonnet"
+            "site · main ↑1 · ◆ Neo · model sonnet"
         );
         s.agent_in = Some("photo-editor");
         s.branch = None;
         assert_eq!(
             s.lines(80)[0].to_string(),
-            "site · neo · model sonnet · in photo-editor"
+            "site · ◆ Neo · model sonnet · in photo-editor"
         );
         record_setting(&mut settings, "neo", "effort", "high");
         record_setting(&mut settings, "neo", "model", "opus");
         assert_eq!(
             status(&styles, &settings).lines(80)[0].to_string(),
-            "site · main ↑1 · neo · model opus · effort high"
+            "site · main ↑1 · ◆ Neo · model opus · effort High"
         );
         // Another harness's settings stay out of sight until it is the session's.
         record_setting(&mut settings, "claude", "model", "opus-4");
@@ -279,8 +314,21 @@ mod tests {
         s.harness = "claude";
         assert_eq!(
             s.lines(80)[0].to_string(),
-            "site · main ↑1 · claude · model opus-4"
+            "site · main ↑1 · ✻ Claude · model opus-4"
         );
+    }
+
+    #[test]
+    fn a_model_shows_under_the_name_the_daemon_gives_it() {
+        let styles = Styles::new(&Palette::default(), false);
+        let mut settings = Vec::new();
+        record_setting(&mut settings, "claude", "model", "sonnet");
+        let mut names = ModelNames::new();
+        names.insert(("claude".into(), "sonnet".into()), "Sonnet 5.5".into());
+        let mut s = status(&styles, &settings);
+        s.harness = "claude";
+        s.names = &names;
+        assert!(s.lines(80)[0].to_string().ends_with("model Sonnet 5.5"));
     }
 
     #[test]

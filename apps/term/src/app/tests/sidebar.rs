@@ -5,6 +5,7 @@ use super::*;
 pub(super) fn info(id: &str, title: &str, last: i64) -> SessionInfo {
     SessionInfo {
         harness: None,
+        usage: None,
         parent: None,
         id: id.into(),
         title: Some(title.into()),

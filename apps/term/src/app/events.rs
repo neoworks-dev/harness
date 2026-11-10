@@ -213,6 +213,16 @@ impl App {
             SessionEvent::TurnEnded(_) => {
                 self.running = false;
                 self.waiting_on.clear();
+                // A guest that wasn't running when the names were asked for is by now.
+                let unnamed = self
+                    .settings
+                    .iter()
+                    .filter(|h| h.harness == self.harness)
+                    .flat_map(|h| h.values.iter().map(move |(o, v)| (&h.harness, o, v)))
+                    .any(|(h, o, v)| {
+                        o == "model" && !self.model_names.contains_key(&(h.clone(), v.clone()))
+                    });
+                self.names_stale |= unnamed;
             }
             SessionEvent::ContextCleared(_) => self.context_cleared = true,
             SessionEvent::CommandsAvailable(offer) => {
@@ -242,9 +252,17 @@ impl App {
                     self.approvals = mode;
                 }
             }
-            ("daemon", "harness") => self.harness = value.to_string(),
+            ("daemon", "harness") => {
+                self.harness = value.to_string();
+                self.names_stale = true;
+            }
             ("daemon", _) | (_, "approvals" | "harness") => {}
-            _ => record_setting(&mut self.settings, harness, option, value),
+            _ => {
+                if option == "model" {
+                    self.names_stale = true;
+                }
+                record_setting(&mut self.settings, harness, option, value);
+            }
         }
     }
 
@@ -327,6 +345,22 @@ impl App {
                 }
             },
             Msg::Page { .. } => {}
+            Msg::Names { session, harnesses } if session == self.session => {
+                // Not being able to name a model is fine: the status line shows its value.
+                for h in harnesses.unwrap_or_default() {
+                    for option in h
+                        .options
+                        .iter()
+                        .filter(|o| o.category == neo_protocol::ConfigCategory::Model)
+                    {
+                        for v in &option.values {
+                            self.model_names
+                                .insert((h.name.clone(), v.value.clone()), v.name.clone());
+                        }
+                    }
+                }
+            }
+            Msg::Names { .. } => {}
         }
         fx
     }
@@ -353,6 +387,8 @@ impl App {
         self.waiting.clear();
         self.waiting_on.clear();
         self.settings.clear();
+        self.model_names.clear();
+        self.names_stale = true;
         self.harness = DEFAULT_HARNESS.to_string();
         self.offered.clear();
         self.approvals = Approvals::Ask;

@@ -198,8 +198,9 @@ fn a_form_takes_the_editor_s_place_and_starts_on_its_first_field() {
     assert!(app.prompt.engaged);
     assert_eq!(focused(&app).as_deref(), Some("service"));
     // The editor is gone.
+    let placeholder = app.placeholder();
     let screen = text(&mut app);
-    assert!(!screen.contains("message the agent"), "{screen}");
+    assert!(!screen.contains(&placeholder), "{screen}");
 }
 
 #[test]

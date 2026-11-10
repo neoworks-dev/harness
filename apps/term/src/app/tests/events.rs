@@ -76,7 +76,7 @@ fn settings_and_approvals_come_from_setting_changed() {
     assert_eq!(app.approvals(), Approvals::Auto);
     let line = app.status_lines(100)[0].to_string();
     assert!(
-        line.ends_with("neo · model sonnet"),
+        line.ends_with("Neo · model sonnet"),
         "only the harness's own: {line}"
     );
     assert!(!line.contains("daemon") && !line.contains("auto"));
@@ -98,14 +98,14 @@ fn settings_and_approvals_come_from_setting_changed() {
 fn the_harness_comes_from_its_setting_and_defaults_to_pi() {
     let mut app = app();
     assert_eq!(app.harness(), "neo");
-    assert!(app.status_lines(100)[0].to_string().ends_with("· neo"));
+    assert!(app.status_lines(100)[0].to_string().ends_with("· ◆ Neo"));
     app.handle_event(setting("claude", SettingName::Model, "opus"));
     app.on_setting("daemon", "harness", "claude");
     assert_eq!(app.harness(), "claude");
     assert!(
         app.status_lines(100)[0]
             .to_string()
-            .ends_with("· claude · model opus")
+            .ends_with("· ✻ Claude · model opus")
     );
     app.begin_session("s2", "/w");
     assert_eq!(app.harness(), "neo", "a new session starts over");
@@ -175,6 +175,7 @@ fn queued_inputs_are_counted_while_a_turn_runs() {
     assert!(app.status_lines(100)[1].to_string().contains("1 queued"));
     let fx = app.handle_msg(Msg::Sessions(Ok(vec![SessionInfo {
         harness: None,
+        usage: None,
         parent: None,
         id: "s1".into(),
         title: None,
@@ -411,6 +412,7 @@ fn the_switcher_lists_filters_and_switches() {
     assert!(text.contains("loading…"), "{text}");
     let info = |id: &str, title: &str, cwd: &str, last: i64| SessionInfo {
         harness: None,
+        usage: None,
         parent: None,
         id: id.into(),
         title: Some(title.into()),
@@ -462,6 +464,7 @@ fn the_switcher_can_start_a_new_session_and_follow_it() {
     );
     let fx = app.handle_msg(Msg::Created(Ok(Box::new(SessionInfo {
         harness: None,
+        usage: None,
         parent: None,
         id: "s9".into(),
         title: None,
