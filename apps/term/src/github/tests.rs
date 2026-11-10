@@ -19,6 +19,8 @@ struct Fake {
     calls: Mutex<Vec<Vec<String>>>,
     /// The writes asked for, with what went on their stdin.
     writes: Mutex<Vec<(Vec<String>, Option<String>)>>,
+    /// Writes fail with this, when set.
+    refuse: Mutex<Option<GhError>>,
 }
 
 impl Fake {
@@ -32,6 +34,7 @@ impl Fake {
             ),
             calls: Mutex::new(Vec::new()),
             writes: Mutex::new(Vec::new()),
+            refuse: Mutex::new(None),
         })
     }
 
@@ -98,7 +101,10 @@ impl Gh for Fake {
             .lock()
             .unwrap()
             .push((args.to_vec(), input.map(str::to_string)));
-        Ok(String::new())
+        match self.refuse.lock().unwrap().clone() {
+            Some(e) => Err(e),
+            None => Ok(String::new()),
+        }
     }
 }
 
@@ -722,6 +728,87 @@ fn a_file_is_picked_from_the_files_and_f_shows_it_whole() {
     ch(&mut g, 'f');
     ch(&mut g, 'f');
     assert_eq!(fake.count("contents/"), 1, "kept");
+}
+
+/// The view's own (unposted) comments in the open diff.
+fn own_comments(g: &Github) -> usize {
+    match &g.mode {
+        Mode::Detail(v) => v.diff.as_ref().map_or(0, |d| d.comment_count()),
+        Mode::List => 0,
+    }
+}
+
+#[test]
+fn a_comment_written_in_a_files_diff_is_posted_as_a_review_comment() {
+    let fake = Fake::acme();
+    let mut g = opened_pr(&fake);
+    ch(&mut g, 'd');
+    settle(&mut g);
+    screen(&mut g, 100, 30);
+    // Down from the hunk header to line 1, which is in both versions: the new one's.
+    keys(&mut g, "jcnit");
+    press(&mut g, KeyCode::Enter);
+    settle(&mut g);
+    let writes = fake.writes();
+    assert_eq!(writes.len(), 1, "{writes:?}");
+    let (args, json) = writes[0].split_once(" <<< ").unwrap();
+    assert_eq!(args, "api -X POST repos/acme/site/pulls/31/comments --input -");
+    let v: serde_json::Value = serde_json::from_str(json).unwrap();
+    assert_eq!(v["body"], "nit");
+    assert_eq!(v["path"], "src/header.css");
+    assert_eq!(v["commit_id"], "abc123");
+    assert_eq!((v["line"].as_u64(), v["side"].as_str()), (Some(1), Some("RIGHT")));
+    assert!(v["start_line"].is_null());
+    // It is GitHub's now: not the view's own, and the pull request was fetched again.
+    assert_eq!(own_comments(&g), 0);
+    assert_eq!(fake.count("pr view 31"), 2);
+    assert!(screen(&mut g, 100, 30).contains("review comment posted"));
+}
+
+#[test]
+fn a_review_comment_that_could_not_be_posted_is_back_on_its_lines() {
+    let fake = Fake::acme();
+    *fake.refuse.lock().unwrap() = Some(GhError::Other("HTTP 422: line not in the diff".into()));
+    let mut g = opened_pr(&fake);
+    ch(&mut g, 'd');
+    settle(&mut g);
+    screen(&mut g, 100, 30);
+    // Lines 2 and 3 of the new version, selected.
+    keys(&mut g, "jjvjcmore");
+    press(&mut g, KeyCode::Enter);
+    settle(&mut g);
+    let json = fake.writes()[0].split_once(" <<< ").unwrap().1.to_string();
+    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!((v["start_line"].as_u64(), v["line"].as_u64()), (Some(2), Some(3)));
+    assert_eq!(own_comments(&g), 1, "kept to try again");
+    assert!(screen(&mut g, 100, 30).contains("line not in the diff"));
+}
+
+#[test]
+fn a_reload_after_a_push_fetches_the_diff_again() {
+    let fake = Fake::acme();
+    let mut g = opened_pr(&fake);
+    ch(&mut g, 'd');
+    settle(&mut g);
+    // Nothing new: the diff is kept.
+    g.load_detail(Kind::Pr, 31);
+    settle(&mut g);
+    assert_eq!(fake.count("pr diff"), 1);
+    // A push: a new head commit. The diff is fetched again, the file stays open.
+    let pushed = PR_31.replace("abc123", "def456");
+    fake.replies
+        .lock()
+        .unwrap()
+        .insert(0, ("pr view 31".into(), Ok(pushed)));
+    g.load_detail(Kind::Pr, 31);
+    settle(&mut g);
+    assert_eq!(fake.count("pr diff"), 2);
+    assert!(screen(&mut g, 100, 30).contains("src/header.css  1/2"));
+    // And from the detail too: `d` after `r` uses the new one.
+    press(&mut g, KeyCode::Esc);
+    ch(&mut g, 'd');
+    settle(&mut g);
+    assert_eq!(fake.count("pr diff"), 2, "the new diff is the one cached");
 }
 
 #[test]

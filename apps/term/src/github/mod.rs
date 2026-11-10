@@ -233,6 +233,9 @@ pub struct Github {
     body_edit: crate::editor::Editor,
     /// A comment on its way, to put back in the draft if it does not arrive.
     unsent: Option<String>,
+    /// A review comment on its way from a file's diff (by the file's path), to put back on its
+    /// lines if it does not arrive.
+    unsent_line: Option<(String, crate::widgets::DiffComment)>,
     /// What milestones, types, fields and projects there are, once a list asked for them.
     cache: edit::Cache,
     /// The repository's owner has no issue fields (asking said so): not asked again.
@@ -288,6 +291,7 @@ impl Github {
             draft: crate::editor::Editor::default(),
             body_edit: crate::editor::Editor::default(),
             unsent: None,
+            unsent_line: None,
             sending: false,
             mine_asked: 0,
             list_rows: 10,
@@ -529,9 +533,12 @@ impl Github {
                     let data = self.details.entry((kind, number)).or_default();
                     data.loading = false;
                     let waiting = self.pending.filter(|p| (p.0, p.1) == (kind, number));
+                    let mut refreshed = None;
                     match result {
                         Ok(detail) => {
                             data.error = None;
+                            let before = data.detail.as_ref().map(|d| d.head_sha.clone());
+                            refreshed = Some(before.is_some_and(|b| b != detail.head_sha));
                             data.detail = Some(*detail);
                             data.version += 1;
                             if let Some((_, _, intent)) = waiting {
@@ -550,6 +557,9 @@ impl Github {
                             }
                             data.error = Some(e);
                         }
+                    }
+                    if let Some(pushed) = refreshed {
+                        self.pull_refreshed(number, pushed);
                     }
                     self.ask_mine(kind, number);
                     self.ask_fields(kind, number);

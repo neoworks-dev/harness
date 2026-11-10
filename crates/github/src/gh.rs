@@ -1,7 +1,8 @@
 //! Talking to GitHub through the `gh` CLI. [`Gh`] is what the view runs commands through (tests
 //! feed recorded JSON instead); [`GhCli`] is the real one. `run` reads and refuses any command
 //! [`is_read_only`] doesn't know; `write` runs only the few the user can ask for in an app
-//! (a comment, a reaction, closing and reopening: [`is_allowed_write`]).
+//! (a comment, a review comment on lines, a reaction, closing and reopening, edits:
+//! [`is_allowed_write`]).
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -296,8 +297,13 @@ pub fn is_allowed_write(args: &[String]) -> bool {
         }
         ["api", "-X", "POST", path, "--input", "-"] => {
             let parts: Vec<&str> = path.split('/').collect();
-            matches!(parts.as_slice(), ["repos", o, n, "issues", i, "issue-field-values"]
-                if repo(&format!("{o}/{n}")) && number(i))
+            match parts.as_slice() {
+                ["repos", o, n, "issues", i, "issue-field-values"]
+                | ["repos", o, n, "pulls", i, "comments"] => {
+                    repo(&format!("{o}/{n}")) && number(i)
+                }
+                _ => false,
+            }
         }
         ["issue" | "pr", "reopen", num, "-R", r] => number(num) && repo(r),
         ["api", "-X", "POST", path, "-f", content] => {
@@ -433,6 +439,18 @@ pub fn edit_body_args(kind: Kind, repo: &str, number: u64) -> Vec<String> {
 }
 
 /// A new text for a comment (REST; `{"body": …}` on stdin).
+/// A review comment on lines of a pull request's diff (REST, the comment as JSON on stdin).
+pub fn review_comment_args(repo: &str, number: u64) -> Vec<String> {
+    vec![
+        "api".into(),
+        "-X".into(),
+        "POST".into(),
+        format!("repos/{repo}/pulls/{number}/comments"),
+        "--input".into(),
+        "-".into(),
+    ]
+}
+
 pub fn edit_comment_args(repo: &str, id: u64) -> Vec<String> {
     vec![
         "api".into(),

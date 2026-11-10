@@ -4,7 +4,9 @@ impl DiffView {
     /// `c`: writes a comment on the selection's lines, or the cursor's; on a line a
     /// comment is about (no selection), edits that one.
     pub(super) fn start_comment(&mut self) {
-        if self.req.is_none() {
+        // A file of git's here, or one from elsewhere whose maker takes the comments (a pull
+        // request's, where they become review comments).
+        if self.req.is_none() && self.remote.is_none() {
             self.message = Some("no file here to comment on".into());
             return;
         }
@@ -170,7 +172,18 @@ impl DiffView {
 
     /// The path the view shows, as the prompt names it.
     pub(crate) fn rel(&self) -> Option<&str> {
-        self.req.as_ref().map(|r| r.rel.as_str())
+        self.req.as_ref().map(|r| r.rel.as_str()).or(self.lang.as_deref())
+    }
+
+    /// A comment back on its lines (one that could not be posted), to be tried again.
+    pub(crate) fn restore_comment(&mut self, c: Comment) {
+        self.comments.push(c);
+        self.comments_gen += 1;
+    }
+
+    /// Says something in the title line until the next key.
+    pub(crate) fn tell(&mut self, text: &str) {
+        self.message = Some(text.to_string());
     }
 
     /// The cursor and selection on row `i`, for drawing.

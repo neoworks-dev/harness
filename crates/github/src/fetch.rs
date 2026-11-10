@@ -159,6 +159,43 @@ pub fn edit_comment(
         .map(drop)
 }
 
+/// A review comment to post on lines of a pull request's diff.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LineComment {
+    /// The commit the lines are of: the head the diff was made from.
+    pub sha: String,
+    pub path: String,
+    /// The first and last line, of the new version, or of the old one with `old`.
+    pub start: u64,
+    pub end: u64,
+    pub old: bool,
+    pub body: String,
+}
+
+/// Posts a review comment on lines of a pull request's diff (one comment, not a review).
+pub fn review_comment(
+    gh: &dyn Gh,
+    cwd: &Path,
+    repo: &str,
+    number: u64,
+    c: &LineComment,
+) -> Result<(), GhError> {
+    let side = if c.old { "LEFT" } else { "RIGHT" };
+    let mut json = serde_json::json!({
+        "body": c.body,
+        "commit_id": c.sha,
+        "path": c.path,
+        "line": c.end,
+        "side": side,
+    });
+    if c.start < c.end {
+        json["start_line"] = c.start.into();
+        json["start_side"] = side.into();
+    }
+    gh.write(cwd, &gh::review_comment_args(repo, number), Some(&json.to_string()))
+        .map(drop)
+}
+
 /// Sets one issue field to a value (the name of an option for a single select).
 pub fn set_field(
     gh: &dyn Gh,

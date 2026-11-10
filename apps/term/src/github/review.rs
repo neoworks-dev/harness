@@ -3,7 +3,8 @@
 //!
 //! - **A file**: its part of the diff in the diff view, the review comments on their lines;
 //!   `[` / `]` go to the previous or next file, `f` fetches the file at the head commit and
-//!   shows all of it around the changes (and back).
+//!   shows all of it around the changes (and back). A comment written there (`c`, Enter) is
+//!   posted as a review comment on those lines.
 //! - **A check**: a GitHub Actions job's log in a reader, only the failed steps first, `f` for
 //!   all of it; a check from elsewhere has no log here, Enter copies its link.
 //!
@@ -14,7 +15,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use super::model::{Detail, Kind};
 use super::{Github, GhError, Log, Mode, Msg, Outgoing, Part, pr};
 use crate::reader::{Reader, ReaderAction};
-use crate::widgets::DiffView;
+use crate::widgets::{DiffComment, DiffView};
 use neo_github::fetch;
 
 const LOG_HINT: &str = "/ search · f all/failed · v V select · y copy · q back";
@@ -164,10 +165,125 @@ impl Github {
         }
         let asked = diff.take_full_ask();
         let copy = diff.take_copy();
+        // A comment written on lines (`c`, Enter) is a review comment: it is posted.
+        let written = diff.take_comments();
+        diff.take_comment_changes();
         if asked {
             self.fetch_whole();
         }
+        for c in written {
+            self.post_line_comment(c);
+        }
         copy.map(Outgoing::Copy)
+    }
+
+    fn tell_diff(&mut self, text: &str) {
+        if let Mode::Detail(v) = &mut self.mode
+            && let Some(diff) = &mut v.diff
+        {
+            diff.tell(text);
+        }
+    }
+
+    /// Posts a comment written on lines of the file shown, on the head commit's lines.
+    fn post_line_comment(&mut self, c: DiffComment) {
+        let Mode::Detail(v) = &self.mode else {
+            return;
+        };
+        let (Some(i), number) = (v.file, v.number) else {
+            return;
+        };
+        let Some(d) = self.pull() else {
+            return;
+        };
+        let (path, sha) = (d.files[i].path.clone(), d.head_sha.clone());
+        let why_not = if self.sending {
+            Some("a write is on its way: save the comment again in a moment")
+        } else if sha.is_empty() {
+            Some("the head commit is not known: r reloads")
+        } else {
+            None
+        };
+        let repo = self.repo_name().map(str::to_string);
+        let (Some(repo), None) = (repo, why_not) else {
+            if let Mode::Detail(v) = &mut self.mode
+                && let Some(diff) = &mut v.diff
+            {
+                diff.restore_comment(c);
+                diff.tell(why_not.unwrap_or("no repository"));
+            }
+            return;
+        };
+        let line = fetch::LineComment {
+            sha,
+            path: path.clone(),
+            start: c.start as u64,
+            end: c.end as u64,
+            old: c.old,
+            body: c.text.clone(),
+        };
+        self.unsent_line = Some((path, c));
+        self.send(
+            "review comment posted",
+            "could not post the review comment",
+            move |gh, cwd| fetch::review_comment(gh, cwd, &repo, number, &line),
+        );
+        self.tell_diff("posting the review comment…");
+    }
+
+    /// A write finished: a review comment from a diff that did not go is back on its lines
+    /// (when its file is still shown); either way the diff says how it went.
+    pub(super) fn line_comment_done(&mut self, result: &Result<String, GhError>) {
+        let Some((path, c)) = self.unsent_line.take() else {
+            return;
+        };
+        let shown = matches!(&self.mode, Mode::Detail(v)
+            if v.diff.is_some()
+                && v.file.is_some_and(|i| self.pull().is_some_and(|d| d.files[i].path == path)));
+        if !shown {
+            return;
+        }
+        match result {
+            Ok(done) => self.tell_diff(done),
+            Err(e) => {
+                let text = format!("not posted: {}", e.message());
+                if let Mode::Detail(v) = &mut self.mode
+                    && let Some(diff) = &mut v.diff
+                {
+                    diff.restore_comment(c);
+                    diff.tell(&text);
+                }
+            }
+        }
+    }
+
+    /// The pull request was fetched again: after a push (`pushed`, a new head commit) its
+    /// diff is out of date and the file shown is shown again from a new one; otherwise the
+    /// file shown gets the review comments as they are now.
+    pub(super) fn pull_refreshed(&mut self, number: u64, pushed: bool) {
+        if pushed {
+            self.diffs.remove(&number);
+        }
+        let Mode::Detail(v) = &self.mode else {
+            return;
+        };
+        let (Some(i), true, true) = (v.file, v.number == number, v.diff.is_some()) else {
+            return;
+        };
+        if pushed {
+            self.open_file(i);
+            self.tell_diff("new commits: the diff is fetched again");
+            return;
+        }
+        let remarks = match self.pull() {
+            Some(d) if i < d.files.len() => pr::remarks(&d.review_comments, &d.files[i].path, self.now_ms),
+            _ => return,
+        };
+        if let Mode::Detail(v) = &mut self.mode
+            && let Some(diff) = &mut v.diff
+        {
+            diff.set_remarks(remarks);
+        }
     }
 
     /// `f` in a file's diff: the whole file, from the cache, from the diff itself (a file

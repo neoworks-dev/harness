@@ -362,6 +362,7 @@ fn only_the_apps_own_writes_are_allowed() {
         gh::react_args("a/b", gh::ReactOn::Comment(99), "heart"),
         gh::unreact_args("a/b", gh::ReactOn::Item(7), 123),
         gh::unreact_args("a/b", gh::ReactOn::Comment(99), 123),
+        gh::review_comment_args("a/b", 7),
     ];
     for args in &ok {
         assert!(gh::is_allowed_write(args), "{args:?}");
@@ -383,6 +384,9 @@ fn only_the_apps_own_writes_are_allowed() {
         s(&["api", "-X", "DELETE", "repos/a/b/releases/7/reactions/1"]),
         s(&["api", "-X", "POST", "repos/a/b/issues/7/reactions", "-f", "content=bomb"]),
         s(&["api", "-X", "POST", "repos/a/b/issues", "-f", "title=x"]),
+        s(&["api", "-X", "POST", "repos/a/b/pulls/7/reviews", "--input", "-"]),
+        s(&["api", "-X", "POST", "repos/a/b/pulls/x/comments", "--input", "-"]),
+        s(&["api", "-X", "POST", "repos/a/b/pulls/7/comments/1/replies", "--input", "-"]),
         s(&["api", "graphql"]),
     ] {
         assert!(!gh::is_allowed_write(&args), "{args:?}");

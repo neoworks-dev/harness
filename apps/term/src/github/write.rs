@@ -516,6 +516,7 @@ impl Github {
     /// list under it (its state and counts may have changed).
     pub(super) fn wrote(&mut self, failed: String, result: Result<String, super::GhError>) {
         self.sending = false;
+        self.line_comment_done(&result);
         match result {
             Ok(done) => {
                 self.unsent = None;
