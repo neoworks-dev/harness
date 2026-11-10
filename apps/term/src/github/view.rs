@@ -45,9 +45,12 @@ pub(super) fn draw(
         Mode::List => (h.saturating_sub(3), true),
         Mode::Detail(_) => (h.saturating_sub(2), false),
     };
-    // What is being written takes the bottom of the detail; the item scrolls above it.
+    // The input, or what is being chosen in its place, takes the bottom of a loaded detail; the
+    // item scrolls above it.
+    let loaded = matches!(&g.mode, Mode::Detail(v)
+        if g.details.get(&(v.kind, v.number)).is_some_and(|d| d.detail.is_some()));
     let panel = match g.mode {
-        Mode::Detail(_) if g.writing.is_some() => g.panel(w, body_h, st),
+        Mode::Detail(_) if loaded => g.panel(w, body_h, st),
         _ => write::Panel {
             lines: Vec::new(),
             cursor: None,
@@ -89,7 +92,7 @@ pub(super) fn draw(
             if a.line >= v.scroll && a.line < v.scroll + v.rows.min(above) {
                 avatars.push((
                     head_h + a.line - v.scroll,
-                    a.x,
+                    a.x + GUTTER as u16,
                     doc::avatar_url(&a.login),
                 ));
             }
@@ -468,73 +471,83 @@ pub(super) fn detail_body(
         };
     };
     let minute = now_ms / 60_000;
-    let stale = !v
-        .doc
-        .as_ref()
-        .is_some_and(|d| {
-            d.width == w
-                && d.version == data.version
-                && d.minute == minute
-                && d.colors == colors.len()
-                && d.pictures == pictures
-                && d.sel == v.sel
-        });
+    // The lines leave room on the left for the mark of the block in focus.
+    let inner = w.saturating_sub(GUTTER).max(1);
+    let stale = !v.doc.as_ref().is_some_and(|d| {
+        d.width == inner
+            && d.version == data.version
+            && d.minute == minute
+            && d.colors == colors.len()
+            && d.pictures == pictures
+    });
     if stale {
         let with = doc::With {
             colors: &colors,
             pictures,
-            sel: v.sel,
             fields: &data.fields,
         };
-        let built = doc::build(detail, w, now_ms, st, &with);
+        let built = doc::build(detail, inner, now_ms, st, &with);
         v.doc = Some(Doc {
-            width: w,
+            width: inner,
             version: data.version,
             minute,
             colors: colors.len(),
             pictures,
-            sel: v.sel,
             lines: built.lines,
             avatars: built.avatars,
-            comments: built.comments,
+            blocks: built.blocks,
         });
+        // The block in focus is gone (a comment deleted): the header instead.
+        if v.index().is_none() {
+            v.focus = doc::Part::Head;
+            v.cur = None;
+        }
+        // Inside a block, the cursor walks its new lines.
+        if let Some(b) = v.block()
+            && v.cur.is_some()
+        {
+            let text = v.block_text(&b);
+            if let Some(cur) = &mut v.cur {
+                cur.set_lines(text);
+            }
+        }
+    }
+    v.scroll = v.scroll.min(v.max_scroll());
+    let focused = v.block();
+    // The wheel moved the view away from the cursor: it comes along, within its block.
+    if let (Some(b), Some(cur)) = (focused, v.cur.as_mut()) {
+        let top = v.scroll.max(b.start);
+        let bottom = (v.scroll + v.rows).min(b.end).saturating_sub(1);
+        let row = b.start + cur.row();
+        if top <= bottom && (row < top || row > bottom) {
+            cur.go_to_row(row.clamp(top, bottom) - b.start);
+        }
     }
     let doc = v.doc.as_ref().expect("built above");
-    // The cursor walks what is shown: the lines as text, one buffer.
-    if stale || v.cur.is_none() {
-        let text: Vec<Vec<char>> = doc
-            .lines
-            .iter()
-            .map(|l| l.spans.iter().flat_map(|s| s.content.chars()).collect())
-            .collect();
-        match &mut v.cur {
-            Some(cur) => cur.set_lines(text),
-            None => v.cur = Some(visual::Cursor::new(text)),
-        }
-    }
-    let lines = &doc.lines;
-    v.scroll = v.scroll.min(lines.len().saturating_sub(v.rows));
-    // The wheel moved the view away from the cursor: it comes along.
-    if let Some(cur) = v.cur.as_mut()
-        && cur.active
-    {
-        let (top, bottom) = (v.scroll, (v.scroll + v.rows).saturating_sub(1));
-        if cur.row() < top || cur.row() > bottom {
-            cur.go_to_row(cur.row().clamp(top, bottom));
-        }
-    }
-    let active = v.cur.as_ref().filter(|c| c.active);
-    lines
+    doc.lines
         .iter()
         .enumerate()
         .skip(v.scroll)
         .take(v.rows)
-        .map(|(r, line)| match active {
-            Some(cur) => mark_cursor(line, r, cur),
-            None => line.clone(),
+        .map(|(r, line)| {
+            let within = focused.filter(|b| r >= b.start && r < b.end);
+            let mut out = match (within, &v.cur) {
+                (Some(b), Some(cur)) => mark_cursor(line, r - b.start, cur),
+                _ => line.clone(),
+            };
+            let mark = if within.is_some() {
+                Span::styled("▎", st.accent)
+            } else {
+                Span::raw(" ")
+            };
+            out.spans.insert(0, mark);
+            out
         })
         .collect()
 }
+
+/// Columns on the left of the detail for the mark of the block in focus.
+const GUTTER: usize = 1;
 
 /// The line with the selection and the cursor drawn on it: the selected characters reversed,
 /// the cursor a block (bold and underlined within a selection). An empty line shows the cursor
@@ -618,6 +631,13 @@ fn footer(g: &Github, w: usize, st: &Styles) -> Line<'static> {
     if let Some(info) = &g.info {
         return Line::from(Span::styled(truncate(info, w), st.muted));
     }
+    if matches!(g.writing, Some(write::Writing::Comment)) {
+        return hints(
+            &["ctrl-s post", "enter new line", "tab back to reading", "ctrl-d discard"],
+            w,
+            st,
+        );
+    }
     if g.writing.is_some() {
         return hints(&["esc cancel"], w, st);
     }
@@ -641,21 +661,42 @@ fn footer(g: &Github, w: usize, st: &Styles) -> Line<'static> {
         Mode::Detail(v) if v.cur.as_ref().is_some_and(|c| c.visual()) => {
             hints(&["a add to message", "v V o select", "esc leave visual"], w, st)
         }
+        Mode::Detail(v) if v.cur.is_some() => hints(
+            &["v V select", "hjkl w b e move", "tab write", "esc leave the block"],
+            w,
+            st,
+        ),
+        // What the block in focus allows first, then what works everywhere.
         Mode::Detail(v) => {
-            let draft = if g.draft.is_empty() { "c comment" } else { "c comment (draft)" };
-            let mut parts = vec![
-                "v V select",
-                draft,
-                "E edit text",
-                "m more edits",
-                "+ react",
-                "x close",
-                "[ ] comments",
-            ];
-            if v.kind == Kind::Pr {
+            use doc::Part;
+            let pr = v.kind == Kind::Pr;
+            let closed = g
+                .details
+                .get(&(v.kind, v.number))
+                .and_then(|d| d.detail.as_ref())
+                .is_some_and(|d| d.state == State::Closed);
+            let mut parts = match v.focus {
+                Part::Head => vec![
+                    if closed { "x reopen" } else { "x close" },
+                    "S title",
+                    "m edit labels, assignees…",
+                ],
+                Part::Description | Part::Comment(_) => {
+                    vec!["enter select", "E edit", "+ react", "> quote"]
+                }
+                Part::Review(_) | Part::DiffComment(_) => vec!["enter select", "> quote"],
+                Part::Checks => vec!["enter select"],
+                Part::Files => vec!["d diff", "enter select"],
+            };
+            if pr && v.focus == Part::Head {
                 parts.push("d diff");
             }
-            parts.extend(["enter attach", "s send", "esc back", "q close"]);
+            if v.focus == Part::Head {
+                parts.push("enter select");
+            }
+            parts.push("j k move");
+            parts.push(if g.draft.is_empty() { "tab write" } else { "tab write (draft)" });
+            parts.extend(["a attach", "s send", "esc back", "q close"]);
             hints(&parts, w, st)
         }
     }

@@ -1,7 +1,6 @@
-//! A cursor that walks the detail's text with vim's keys, the whole detail (description and
-//! comments) being one buffer, and visual mode to select in it. Pure state over the lines the
-//! detail shows; `view.rs` draws the cursor and the selection, `write.rs` adds a selection to
-//! the comment being written.
+//! A cursor that walks the text of one block of the detail (Enter goes into it) with vim's
+//! keys, and visual mode to select in it. Pure state over the lines the block shows; `view.rs`
+//! draws the cursor and the selection, `write.rs` adds a selection to the comment being written.
 //!
 //! - **Move**: `h j k l` (and the arrows), `w b e`, `0 ^ $`, `gg G` and `5G`, Ctrl-D / Ctrl-U,
 //!   PageUp / PageDown, all with a count (`3w`).
@@ -35,8 +34,6 @@ pub(super) struct Cursor {
     count: String,
     /// `g` is waiting for its second key.
     g: bool,
-    /// A cursor key was used: the cursor is drawn from then on.
-    pub active: bool,
 }
 
 fn class(c: char) -> u8 {
@@ -59,7 +56,6 @@ impl Cursor {
             linewise: false,
             count: String::new(),
             g: false,
-            active: false,
         };
         c.set_lines(lines);
         c
@@ -87,7 +83,6 @@ impl Cursor {
     pub fn go_to_row(&mut self, row: usize) {
         self.row = row.min(self.lines.len() - 1);
         self.clamp();
-        self.active = true;
     }
 
     /// Visual mode is on.
@@ -256,7 +251,6 @@ impl Cursor {
             && (d != '0' || !self.count.is_empty())
         {
             self.count.push(d);
-            self.active = true;
             return Keyed::Handled;
         }
         let typed = std::mem::take(&mut self.count).parse::<usize>().ok();
@@ -326,7 +320,6 @@ impl Cursor {
             }
             _ => return self.pass(),
         }
-        self.active = true;
         Keyed::Handled
     }
 

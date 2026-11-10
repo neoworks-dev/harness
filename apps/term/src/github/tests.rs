@@ -517,43 +517,139 @@ fn a_newer_item_than_the_cached_detail_is_fetched_again() {
     assert_eq!(fake.count("issue view"), 2);
 }
 
-#[test]
-fn the_detail_scrolls_by_keys_and_wheel() {
-    let mut g = opened_pr(&Fake::acme());
-    let top = |g: &Github| match &g.mode {
+fn top(g: &Github) -> usize {
+    match &g.mode {
         Mode::Detail(v) => v.scroll,
         Mode::List => unreachable!(),
-    };
-    let cursor = |g: &Github| match &g.mode {
-        Mode::Detail(v) => v.cur.as_ref().unwrap().row(),
+    }
+}
+
+fn focus(g: &Github) -> doc::Part {
+    match &g.mode {
+        Mode::Detail(v) => v.focus,
         Mode::List => unreachable!(),
+    }
+}
+
+/// The block in focus is in view, all of it when it fits.
+fn focus_in_view(g: &Github) -> bool {
+    let Mode::Detail(v) = &g.mode else {
+        return false;
     };
+    let b = v.block().unwrap();
+    if b.end - b.start <= v.rows {
+        b.start >= v.scroll && b.end <= v.scroll + v.rows
+    } else {
+        b.end > v.scroll && b.start < v.scroll + v.rows
+    }
+}
+
+#[test]
+fn j_and_k_step_through_the_blocks_and_the_view_follows() {
+    use doc::Part;
+    let mut g = opened_pr(&Fake::acme());
     let first = screen(&mut g, 60, 12);
     assert!(first.contains("lines 1–"), "{first}");
-    // The keys walk a cursor, the view stays until the cursor leaves it.
+    assert_eq!(focus(&g), Part::Head);
     ch(&mut g, 'j');
-    assert_eq!((cursor(&g), top(&g)), (1, 0));
-    press(&mut g, KeyCode::PageDown);
-    screen(&mut g, 60, 12);
-    assert!(top(&g) > 0 && cursor(&g) >= top(&g) && cursor(&g) < top(&g) + 10);
-    // The wheel moves the view, and the cursor comes along if it was left behind.
-    let before = top(&g);
-    g.wheel(true);
-    screen(&mut g, 60, 12);
-    assert_eq!(top(&g), before + 3);
-    assert!(cursor(&g) >= top(&g));
+    assert_eq!(focus(&g), Part::Description);
+    // Down to the files at the end, each block in view on the way.
+    let mut seen = vec![Part::Head, Part::Description];
+    for _ in 0..40 {
+        ch(&mut g, 'j');
+        screen(&mut g, 60, 12);
+        assert!(focus_in_view(&g), "{:?}", focus(&g));
+        if seen.last() != Some(&focus(&g)) {
+            seen.push(focus(&g));
+        }
+    }
+    assert_eq!(seen.last(), Some(&Part::Files));
+    assert!(seen.iter().any(|p| matches!(p, Part::Comment(_))));
+    assert!(seen.contains(&Part::Checks));
+    assert!(screen(&mut g, 60, 12).contains("src/layout.css"));
+    // `k` goes back, `g` is the header again.
+    ch(&mut g, 'k');
+    assert_eq!(focus(&g), Part::Checks);
+    ch(&mut g, 'g');
+    assert_eq!((focus(&g), top(&g)), (Part::Head, 0));
     ch(&mut g, 'G');
-    let end = screen(&mut g, 60, 12);
-    assert!(end.contains("src/layout.css"), "{end}");
-    let last = top(&g);
-    ch(&mut g, 'j');
-    assert_eq!(top(&g), last);
-    // `gg` is the top, `g` alone waits for the second.
-    ch(&mut g, 'g');
-    ch(&mut g, 'g');
-    assert_eq!((cursor(&g), top(&g)), (0, 0));
-    g.wheel(false);
+    assert_eq!(focus(&g), Part::Files);
+}
+
+#[test]
+fn the_wheel_scrolls_and_the_focus_stays_in_view() {
+    let mut g = opened_pr(&Fake::acme());
+    screen(&mut g, 60, 12);
+    for _ in 0..4 {
+        g.wheel(true);
+        screen(&mut g, 60, 12);
+    }
+    assert!(top(&g) > 0);
+    assert_ne!(focus(&g), doc::Part::Head, "the header left the view");
+    let Mode::Detail(v) = &g.mode else { unreachable!() };
+    let b = v.block().unwrap();
+    assert!(b.end > v.scroll && b.start < v.scroll + v.rows);
+    for _ in 0..10 {
+        g.wheel(false);
+    }
     assert_eq!(top(&g), 0);
+}
+
+#[test]
+fn keys_only_act_on_the_block_they_belong_to() {
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    screen(&mut g, 70, 24);
+    // On the header: no reacting or editing text, only where it goes says the footer.
+    ch(&mut g, '+');
+    assert!(g.writing.is_none());
+    assert!(screen(&mut g, 70, 24).contains("+ works on the description or a comment"));
+    ch(&mut g, 'E');
+    assert!(g.writing.is_none());
+    // On the description: no closing, no title.
+    ch(&mut g, 'j');
+    ch(&mut g, 'x');
+    ch(&mut g, 'S');
+    assert!(g.writing.is_none() && g.note.is_some());
+    ch(&mut g, '+');
+    assert!(matches!(g.writing, Some(write::Writing::React)));
+    press(&mut g, KeyCode::Esc);
+    // The footer offers what the block takes.
+    let shown = screen(&mut g, 200, 24);
+    assert!(shown.contains("E edit") && !shown.contains("x close"), "{shown}");
+    ch(&mut g, 'k');
+    let shown = screen(&mut g, 200, 24);
+    assert!(shown.contains("x close") && !shown.contains("E edit"), "{shown}");
+    assert!(fake.writes().is_empty());
+}
+
+#[test]
+fn greater_than_quotes_the_whole_block_into_the_input() {
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    screen(&mut g, 70, 24);
+    ch(&mut g, 'j');
+    ch(&mut g, 'j');
+    ch(&mut g, '>');
+    assert_eq!(g.draft.text(), "> I can reproduce this.\n\n");
+    assert!(matches!(g.writing, Some(write::Writing::Comment)));
+}
+
+#[test]
+fn the_input_is_always_there_and_tab_moves_in_and_out() {
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    assert!(screen(&mut g, 70, 24).contains("tab to comment on #12"));
+    press(&mut g, KeyCode::Tab);
+    type_str(&mut g, "hi");
+    press(&mut g, KeyCode::Tab);
+    assert!(g.writing.is_none());
+    // Still shown while reading, and kept.
+    assert!(screen(&mut g, 70, 24).contains("› hi"));
+    // Keys read the detail again: j moves the focus, not the text.
+    ch(&mut g, 'j');
+    assert_eq!(g.draft.text(), "hi");
+    assert_eq!(focus(&g), doc::Part::Description);
 }
 
 #[test]
@@ -636,9 +732,9 @@ fn attach_text(out: Option<Outgoing>) -> String {
 }
 
 #[test]
-fn enter_in_a_detail_attaches_the_issue() {
+fn a_in_a_detail_attaches_the_issue() {
     let mut g = opened_issue(&Fake::acme());
-    let text = attach_text(press(&mut g, KeyCode::Enter));
+    let text = attach_text(ch(&mut g, 'a'));
     assert!(!g.is_open());
     assert!(text.starts_with(
         "<github-issue repo=\"acme/site\" number=\"12\" url=\"https://github.com/acme/site/issues/12\" state=\"open\">\n"
@@ -832,7 +928,7 @@ fn attaching_puts_the_block_in_the_editor_for_instructions() {
     app_settle(&mut app);
     app_key(&mut app, KeyCode::Enter);
     app_settle(&mut app);
-    assert!(app_key(&mut app, KeyCode::Enter).is_empty());
+    assert!(app_key(&mut app, KeyCode::Char('a')).is_empty());
     assert!(!app.github_mut().is_open());
     let text = app.editor_text().to_string();
     assert!(
@@ -946,7 +1042,6 @@ fn the_detail_leaves_room_for_the_avatars_of_its_people_when_pictures_are_drawn(
     let mut options = doc::With {
         colors: &colors,
         pictures: false,
-        sel: None,
         fields: &[],
     };
     let plain = doc::build(&detail, 60, NOW, &st, &options);
@@ -955,7 +1050,8 @@ fn the_detail_leaves_room_for_the_avatars_of_its_people_when_pictures_are_drawn(
     let with = doc::build(&detail, 60, NOW, &st, &options);
     let avatars = with.avatars;
     assert_eq!(with.lines.len(), plain.lines.len(), "the room is in the lines, not more of them");
-    assert_eq!(with.comments.len(), detail.comments.len());
+    let comments = with.blocks.iter().filter(|b| matches!(b.part, doc::Part::Comment(_)));
+    assert_eq!(comments.count(), detail.comments.len());
     // The creator first, then each commenter, each on a line of its own.
     assert_eq!(avatars.len(), 1 + detail.comments.len());
     assert_eq!(avatars[0].login, detail.author);
@@ -1007,7 +1103,7 @@ fn a_comment_is_typed_in_a_box_and_posted_with_ctrl_s() {
     press(&mut g, KeyCode::Enter);
     type_str(&mut g, "second");
     let shown = screen(&mut g, 70, 24);
-    assert!(shown.contains("Comment on #12") && shown.contains("second"), "{shown}");
+    assert!(shown.contains("ctrl-s post") && shown.contains("second"), "{shown}");
     ctrl(&mut g, 's');
     settle(&mut g);
     assert_eq!(
@@ -1039,9 +1135,9 @@ fn a_line_of_a_comment_is_selected_and_added_to_the_message() {
     let fake = with_links();
     let mut g = opened_issue(&fake);
     screen(&mut g, 70, 24);
-    // `]` jumps to the next comment; down one line is its text; `V` selects it, `a` adds it.
-    ch(&mut g, ']');
-    ch(&mut g, ']');
+    // Down to the second comment and into it; its second line is its text, `V` selects it,
+    // `a` adds it.
+    keys(&mut g, "jjj\n");
     ch(&mut g, 'j');
     ch(&mut g, 'V');
     ch(&mut g, 'a');
@@ -1057,7 +1153,8 @@ fn a_line_of_a_comment_is_selected_and_added_to_the_message() {
     assert!(g.draft.is_empty(), "posted, so the draft is empty");
 }
 
-/// Puts the vim cursor on the first line that has `text` in it, as after walking there.
+/// Goes into the block with the first line that has `text` in it, the vim cursor on that line,
+/// as after walking there.
 fn goto_text(g: &mut Github, text: &str) {
     let Mode::Detail(v) = &mut g.mode else {
         panic!("a detail");
@@ -1068,11 +1165,16 @@ fn goto_text(g: &mut Github, text: &str) {
         .iter()
         .position(|l| l.spans.iter().any(|s| s.content.contains(text)))
         .unwrap_or_else(|| panic!("{text:?} on screen"));
-    v.cur.as_mut().unwrap().go_to_row(row);
+    let b = *doc.blocks.iter().find(|b| row >= b.start && row < b.end).expect("in a block");
+    if v.focus != b.part || v.cur.is_none() {
+        v.focus = b.part;
+        v.enter();
+    }
+    v.cur.as_mut().unwrap().go_to_row(row - b.start);
 }
 
 #[test]
-fn the_detail_is_one_buffer_walked_with_vim_keys_and_selected_in_visual_mode() {
+fn a_block_is_walked_with_vim_keys_and_selected_in_visual_mode() {
     let fake = with_links();
     let mut g = opened_issue(&fake);
     screen(&mut g, 70, 24);
@@ -1103,39 +1205,43 @@ fn the_detail_is_one_buffer_walked_with_vim_keys_and_selected_in_visual_mode() {
 }
 
 #[test]
-fn a_and_esc_keep_their_other_meanings_outside_visual_mode_and_ctrl_d_discards_a_draft() {
+fn esc_leaves_visual_mode_then_the_block_then_the_detail_and_ctrl_d_discards_a_draft() {
     let fake = with_links();
     let mut g = opened_issue(&fake);
     screen(&mut g, 70, 24);
-    // Not selecting: Esc goes back to the list, as before.
+    // Not in a block: Esc goes back to the list.
     press(&mut g, KeyCode::Esc);
     assert!(matches!(g.mode, Mode::List));
     let mut g = opened_issue(&fake);
     screen(&mut g, 70, 24);
-    // `v` then Esc only leaves visual mode.
-    ch(&mut g, 'v');
+    let inside = |g: &Github| matches!(&g.mode, Mode::Detail(v) if v.cur.is_some());
+    keys(&mut g, "j\nv");
     press(&mut g, KeyCode::Esc);
-    assert!(matches!(g.mode, Mode::Detail(_)));
+    assert!(inside(&g), "only out of visual mode");
+    press(&mut g, KeyCode::Esc);
+    assert!(!inside(&g) && matches!(g.mode, Mode::Detail(_)), "out of the block");
     // A draft stays until it is posted or thrown away.
     ch(&mut g, 'c');
     type_str(&mut g, "half");
     press(&mut g, KeyCode::Esc);
     assert_eq!(g.draft.text(), "half");
-    assert!(screen(&mut g, 70, 24).contains("c comment (draft)"));
+    assert!(screen(&mut g, 120, 24).contains("tab write (draft)"));
     ch(&mut g, 'c');
     ctrl(&mut g, 'd');
     assert!(g.draft.is_empty() && g.writing.is_none());
 }
 
 #[test]
-fn reactions_go_on_the_comment_the_cursor_is_in_or_the_item() {
+fn reactions_go_on_the_comment_in_focus_or_the_description() {
     let fake = with_links();
     let mut g = opened_issue(&fake);
     screen(&mut g, 70, 24);
+    ch(&mut g, 'j');
     ch(&mut g, '+');
     ch(&mut g, '6');
     settle(&mut g);
-    ch(&mut g, ']');
+    screen(&mut g, 70, 24);
+    ch(&mut g, 'j');
     ch(&mut g, '+');
     ch(&mut g, '1');
     settle(&mut g);
@@ -1229,6 +1335,8 @@ fn the_same_reaction_again_takes_it_back_and_only_the_users_own_is_removed() {
         ),
     ]);
     let mut g = opened_issue(&fake);
+    screen(&mut g, 70, 24);
+    ch(&mut g, 'j');
     ch(&mut g, '+');
     ch(&mut g, '6');
     settle(&mut g);
@@ -1497,6 +1605,7 @@ fn the_description_is_edited_in_a_box_that_starts_with_its_text() {
     let fake = with_links();
     let mut g = opened_issue(&fake);
     screen(&mut g, 70, 24);
+    ch(&mut g, 'j');
     ch(&mut g, 'E');
     assert_eq!(g.body_edit.text(), "Opening the menu shifts the header.\nSecond line.");
     assert!(screen(&mut g, 70, 24).contains("Edit the description of #12"));
@@ -1511,6 +1620,7 @@ fn the_description_is_edited_in_a_box_that_starts_with_its_text() {
     let fake = with_links();
     let mut g = opened_issue(&fake);
     screen(&mut g, 70, 24);
+    ch(&mut g, 'j');
     ch(&mut g, 'E');
     type_str(&mut g, "x");
     press(&mut g, KeyCode::Esc);
@@ -1518,12 +1628,11 @@ fn the_description_is_edited_in_a_box_that_starts_with_its_text() {
 }
 
 #[test]
-fn the_comment_the_cursor_is_in_is_edited_by_its_number() {
+fn the_comment_in_focus_is_edited_by_its_number() {
     let fake = with_links();
     let mut g = opened_issue(&fake);
     screen(&mut g, 70, 24);
-    ch(&mut g, ']');
-    ch(&mut g, 'E');
+    keys(&mut g, "jjE");
     assert_eq!(g.body_edit.text(), "I can reproduce this.");
     type_str(&mut g, "!");
     ctrl(&mut g, 's');

@@ -1,18 +1,20 @@
-//! Writing to GitHub from the detail, as the user `gh` is logged in as: a comment (new, or
-//! quoting what is shown), a reaction, closing an issue (completed, not planned or duplicate)
-//! and reopening. Each is one thing the user asked for with a key and confirmed in the panel
-//! at the bottom; the work runs on a thread like everything else here.
+//! Writing to GitHub from the detail, as the user `gh` is logged in as: a comment, a reaction,
+//! closing an issue (completed, not planned or duplicate) and reopening, editing text. Each key
+//! works on the block in focus ([`allowed`] says which where), and is confirmed in the panel at
+//! the bottom; the work runs on a thread like everything else here.
 //!
-//! - `c` a new comment, `>` a comment quoting the picked comment (or the description),
-//! - `e` a reaction on the picked comment (or the item), `x` close or reopen,
-//! - `[` and `]` pick a comment; none picked means the issue or pull request itself.
+//! - The header: `x` close or reopen, `S` the title and `m` the other edits (see `edit.rs`).
+//! - The description or a comment: `E` edit it, `+` react to it, `>` quote it.
+//! - A review or a comment on the diff: `>` quote it.
 //!
-//! The comment box is the prompt's editor: Enter is a new line, Ctrl-S posts, Esc gives up.
+//! The input under the detail is always there: Tab or `c` types in it (Enter is a new line,
+//! Ctrl-S posts), Tab or Esc goes back to reading and keeps what was typed.
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
+use super::doc::Part;
 use super::gh::{CloseReason, ReactOn};
 use super::model::{Comment, Detail, Kind, REACTIONS, State};
 use super::{Github, Mode, Msg};
@@ -134,12 +136,46 @@ impl Github {
         self.details.get(&(kind, number))?.detail.as_ref()
     }
 
-    /// The comment the keys act on, if one is picked.
+    /// The block in focus; the header until the lines are built.
+    pub(super) fn part(&self) -> Part {
+        match &self.mode {
+            Mode::Detail(v) => v.focus,
+            Mode::List => Part::Head,
+        }
+    }
+
+    /// The comment the keys act on, when one is in focus.
     fn picked(&self) -> Option<&Comment> {
-        let Mode::Detail(v) = &self.mode else {
+        let Part::Comment(i) = self.part() else {
             return None;
         };
-        self.shown()?.comments.get(v.sel?)
+        self.shown()?.comments.get(i)
+    }
+
+    /// Whether a key may act on the block in focus. When it acts somewhere else, the footer
+    /// says where and the key does nothing.
+    pub(super) fn in_scope(&mut self, key: KeyEvent) -> bool {
+        if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::ALT)
+        {
+            return true;
+        }
+        let KeyCode::Char(c) = key.code else {
+            return true;
+        };
+        let pr = matches!(&self.mode, Mode::Detail(v) if v.kind == Kind::Pr);
+        match allowed(self.part(), c, pr) {
+            Some(true) | None => true,
+            Some(false) => {
+                let place = match c {
+                    'E' | '+' => "the description or a comment",
+                    '>' => "the description, a comment or a review",
+                    'd' => "the header or the files",
+                    _ => "the header",
+                };
+                self.note = Some(format!("{c} works on {place}: j k to move there"));
+                false
+            }
+        }
     }
 
     /// Whom the picked comment, or the item, is by.
@@ -162,17 +198,19 @@ impl Github {
         if matches!(c, 'm' | 'A' | 'L' | 'M' | 'T' | 'F' | 'P' | 'R' | 'S') {
             return self.edit_hotkey(c);
         }
-        if !matches!(c, 'c' | '+' | 'x' | '[' | ']' | 'E') {
+        if !matches!(c, '+' | 'x' | 'E' | '>') {
             return false;
         }
         if self.shown().is_none() {
             return true;
         }
         match c {
-            '[' => self.jump_comment(-1),
-            ']' => self.jump_comment(1),
-            'c' => self.writing = Some(Writing::Comment),
-            // The text the cursor is in: the comment, or the description above them.
+            '>' => {
+                if let Some(text) = self.focused_text() {
+                    self.add_to_message(&text);
+                }
+            }
+            // The comment in focus, or the description.
             'E' => {
                 let (target, text) = match self.picked() {
                     Some(c) if c.id == 0 => {
@@ -204,40 +242,17 @@ impl Github {
         true
     }
 
-    /// Takes the cursor to the start of the previous or next comment; before the first is the
-    /// top, the item itself.
-    fn jump_comment(&mut self, by: isize) {
-        let Mode::Detail(v) = &mut self.mode else {
-            return;
+    /// The markdown of the block in focus, to quote whole.
+    fn focused_text(&self) -> Option<String> {
+        let d = self.shown()?;
+        let text = match self.part() {
+            Part::Description => &d.body,
+            Part::Comment(i) => &d.comments.get(i)?.body,
+            Part::Review(i) => &d.reviews.get(i)?.body,
+            Part::DiffComment(i) => &d.review_comments.get(i)?.body,
+            Part::Head | Part::Checks | Part::Files => return None,
         };
-        let (Some(doc), Some(cur)) = (&v.doc, &mut v.cur) else {
-            return;
-        };
-        let at = doc.comments.iter().rposition(|&l| l <= cur.row());
-        let to = match (at, by) {
-            (Some(i), -1) if doc.comments[i] < cur.row() => Some(i),
-            (Some(i), -1) => i.checked_sub(1),
-            (Some(i), _) => (i + 1 < doc.comments.len()).then_some(i + 1),
-            (None, -1) => None,
-            (None, _) => (!doc.comments.is_empty()).then_some(0),
-        };
-        match to {
-            Some(i) => cur.go_to_row(doc.comments[i]),
-            None if by < 0 => cur.go_to_row(0),
-            None => {}
-        }
-        self.sync_pick();
-    }
-
-    /// The comment the cursor is in is the one the keys act on (none: the item itself).
-    pub(super) fn sync_pick(&mut self) {
-        let Mode::Detail(v) = &mut self.mode else {
-            return;
-        };
-        v.sel = match (&v.doc, &v.cur) {
-            (Some(doc), Some(cur)) => doc.comments.iter().rposition(|&l| l <= cur.row()),
-            _ => None,
-        };
+        (!text.trim().is_empty()).then(|| text.clone())
     }
 
     /// Adds text to the message being written, as a quote, and opens the box on it: after what
@@ -280,7 +295,7 @@ impl Github {
                 let editor = &mut self.draft;
                 match key.code {
                     // Back to reading; what was typed waits in the draft.
-                    KeyCode::Esc => return,
+                    KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab => return,
                     KeyCode::Char('d') if ctrl => {
                         editor.clear();
                         return;
@@ -521,7 +536,59 @@ impl Github {
         }
     }
 
-    /// The panel for what is being written, `h` rows of the body at most.
+    /// The input under the detail, always there: the comment being written, from one row up
+    /// to [`BOX_ROWS`]. Its cursor shows while it has the keys.
+    fn input(&mut self, w: usize, h: usize, st: &Styles) -> Panel {
+        let typing = matches!(self.writing, Some(Writing::Comment));
+        let number = self.target().map_or(0, |t| t.1);
+        let bg = if st.raised == Color::Reset {
+            Style::new()
+        } else {
+            Style::new().bg(st.raised)
+        };
+        // A space in, then the prompt mark or its room.
+        const IN: usize = 3;
+        self.draft.set_width(w.saturating_sub(IN + 1).max(1));
+        if self.draft.is_empty() && !typing {
+            let hint = format!("tab to comment on #{number}");
+            return Panel {
+                lines: vec![row_line(
+                    vec![Span::styled("› ", st.muted), Span::styled(hint, st.muted)],
+                    w,
+                    bg,
+                )],
+                cursor: None,
+            };
+        }
+        let rows = self.draft.rows();
+        let room = BOX_ROWS.min(h.saturating_sub(1)).max(1);
+        let (cursor_row, cursor_col) = self.draft.cursor_pos();
+        let top = if typing { (cursor_row + 1).saturating_sub(room) } else { 0 };
+        let mark = if typing { st.accent } else { st.muted };
+        let text = if typing { Style::new() } else { st.muted };
+        let mut lines = Vec::new();
+        for (i, r) in rows.iter().skip(top).take(room).enumerate() {
+            let lead = if i == 0 && top == 0 { "› " } else { "  " };
+            lines.push(row_line(
+                vec![
+                    Span::styled(lead, mark),
+                    Span::styled(self.draft.text()[r.start..r.end].to_string(), text),
+                ],
+                w,
+                bg,
+            ));
+        }
+        if lines.is_empty() {
+            lines.push(row_line(vec![Span::styled("› ", mark)], w, bg));
+        }
+        Panel {
+            cursor: typing.then(|| (cursor_row - top, IN + cursor_col)),
+            lines,
+        }
+    }
+
+    /// The panel at the bottom of the detail, `h` rows of the body at most: the input, or what
+    /// a key asked for in its place.
     pub(super) fn panel(&mut self, w: usize, h: usize, st: &Styles) -> Panel {
         let who = self.picked_author();
         let number = self.target().map_or(0, |t| t.1);
@@ -554,23 +621,13 @@ impl Github {
                 return panel;
             }
         }
-        let Some(writing) = &mut self.writing else {
-            return Panel {
-                lines: Vec::new(),
-                cursor: None,
-            };
+        // Reading or typing a comment: the input.
+        let Some(writing) = self.writing.as_ref().filter(|w| !matches!(w, Writing::Comment))
+        else {
+            return self.input(w, h, st);
         };
         match writing {
-            Writing::Comment => editor_panel(
-                &mut self.draft,
-                vec![
-                    Span::styled(format!("Comment on #{number}"), bold),
-                    Span::styled("  ctrl-s post · esc back to reading · ctrl-d discard", st.muted),
-                ],
-                w,
-                h,
-                &row,
-            ),
+            Writing::Comment => unreachable!("the input, above"),
             Writing::Body(target) => {
                 let what = match target {
                     BodyOf::Item => format!("Edit the description of #{number}"),
@@ -660,6 +717,19 @@ impl Github {
             },
         }
     }
+}
+
+/// Whether the key `c` acts on a block that is `part`; None when it is not a key that belongs
+/// to blocks (it works everywhere, or is nobody's).
+pub(super) fn allowed(part: Part, c: char, pr: bool) -> Option<bool> {
+    let text = matches!(part, Part::Description | Part::Comment(_));
+    Some(match c {
+        'x' | 'S' | 'm' | 'A' | 'L' | 'M' | 'T' | 'F' | 'P' | 'R' => part == Part::Head,
+        'E' | '+' => text,
+        '>' => text || matches!(part, Part::Review(_) | Part::DiffComment(_)),
+        'd' if pr => matches!(part, Part::Head | Part::Files),
+        _ => return None,
+    })
 }
 
 /// The text as a markdown quote, with the empty line after it that a reply starts on.

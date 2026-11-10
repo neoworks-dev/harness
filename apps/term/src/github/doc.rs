@@ -37,20 +37,6 @@ fn heading(text: &str, w: usize, st: &Styles) -> Line<'static> {
     Line::from(spans)
 }
 
-/// Markdown, with a bar down the left side when it is somebody's comment.
-fn gutter(text: &str, w: usize, st: &Styles, bar: bool) -> Vec<Line<'static>> {
-    if !bar {
-        return body(text, w, 0, st);
-    }
-    body(text, w.saturating_sub(2).max(1), 0, st)
-        .into_iter()
-        .map(|mut l| {
-            l.spans.insert(0, Span::styled("▎ ", st.border));
-            l
-        })
-        .collect()
-}
-
 /// Labels as chips, wrapped to the width.
 fn chips(
     labels: &[String],
@@ -145,12 +131,36 @@ pub(super) fn avatar_url(login: &str) -> String {
     format!("https://avatars.githubusercontent.com/{login}?size=64")
 }
 
+/// What a block of the detail is: the keys of the detail act on the one in focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Part {
+    /// Title, state, labels and what is set on the item.
+    Head,
+    Description,
+    /// A comment, by its place in the conversation.
+    Comment(usize),
+    /// A review of a pull request, by its place among the reviews.
+    Review(usize),
+    /// A comment on the diff, by its place among them.
+    DiffComment(usize),
+    Checks,
+    Files,
+}
+
+/// One part of the detail and the lines it takes, `start..end`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Block {
+    pub part: Part,
+    pub start: usize,
+    pub end: usize,
+}
+
 /// What [`build`] makes.
 pub(super) struct Built {
     pub lines: Vec<Line<'static>>,
     pub avatars: Vec<Avatar>,
-    /// The first line of each comment.
-    pub comments: Vec<usize>,
+    /// The parts, in order, the lines between them (headings, gaps) in none.
+    pub blocks: Vec<Block>,
 }
 
 /// The reactions as a line: `👍 2  ❤️ 1`, the ones the user gave in the accent.
@@ -213,25 +223,23 @@ pub(super) struct With<'a> {
     pub colors: &'a super::view::Colors,
     /// The terminal draws avatars: room is left for them.
     pub pictures: bool,
-    /// The comment the keys act on, marked.
-    pub sel: Option<usize>,
     /// What the organization's issue fields are set to.
     pub fields: &'a [(String, String)],
 }
 
-/// The lines of the detail, and where the avatars of the people in it go when `pictures` (the
-/// terminal can draw them): the creator's beside the state, each commenter's before their name.
-/// The comment `sel` is marked with the accent.
+/// The lines of the detail, its blocks, and where the avatars of the people in it go when
+/// `pictures` (the terminal can draw them): the creator's beside the state, each commenter's
+/// before their name.
 pub(super) fn build(d: &Detail, w: usize, now_ms: i64, st: &Styles, with: &With) -> Built {
     let With {
         colors,
         pictures,
-        sel,
         fields,
     } = *with;
     let w = w.max(1);
     let mut avatars = Vec::new();
-    let mut comment_lines = Vec::new();
+    let mut blocks = Vec::new();
+    let mut part = |part: Part, start: usize, end: usize| blocks.push(Block { part, start, end });
     // The content sits on a background of its own, a space in from each side, so the headings
     // and the gaps between the parts stand out from it.
     let panel = st.raised != Color::Reset;
@@ -256,18 +264,19 @@ pub(super) fn build(d: &Detail, w: usize, now_ms: i64, st: &Styles, with: &With)
         head.extend(pr_facts(d, inner, st));
     }
     let mut out = block(head, w, st);
+    part(Part::Head, 0, out.len());
     out.push(Line::default());
     out.push(heading("Description", w, st));
+    let start = out.len();
     if d.body.trim().is_empty() {
         out.push(Line::from(Span::styled("no description", st.muted)));
+        out.extend(block(reactions_line(&d.reactions, st).into_iter().collect(), w, st));
     } else {
-        let mut lines = gutter(&d.body, inner, st, false);
+        let mut lines = body(&d.body, inner, 0, st);
         lines.extend(reactions_line(&d.reactions, st));
         out.extend(block(lines, w, st));
     }
-    if d.body.trim().is_empty() && !d.reactions.is_empty() {
-        out.extend(block(reactions_line(&d.reactions, st).into_iter().collect(), w, st));
-    }
+    part(Part::Description, start, out.len());
 
     out.push(Line::default());
     out.push(heading(&format!("Comments ({})", d.comments.len()), w, st));
@@ -275,7 +284,7 @@ pub(super) fn build(d: &Detail, w: usize, now_ms: i64, st: &Styles, with: &With)
         out.push(Line::from(Span::styled("no comments", st.muted)));
     }
     for (i, c) in d.comments.iter().enumerate() {
-        comment_lines.push(out.len());
+        let start = out.len();
         let mut by = byline(&c.author, &[], c.at_ms, now_ms, st);
         if pictures {
             by.spans
@@ -287,26 +296,14 @@ pub(super) fn build(d: &Detail, w: usize, now_ms: i64, st: &Styles, with: &With)
             });
         }
         let mut lines = vec![fit_line(by, inner)];
-        let mut text = gutter(&c.body, inner, st, true);
-        if let Some(reactions) = reactions_line(&c.reactions, st) {
-            let mut reactions = reactions;
-            reactions.spans.insert(0, Span::styled("▎ ", st.border));
-            text.push(reactions);
-        }
-        if sel == Some(i) {
-            // The comment the keys act on: its bar in the accent.
-            for line in &mut text {
-                if let Some(bar) = line.spans.first_mut() {
-                    bar.style = st.accent;
-                }
-            }
-        }
-        lines.extend(text);
+        lines.extend(body(&c.body, inner, 0, st));
+        lines.extend(reactions_line(&c.reactions, st));
         out.extend(block(lines, w, st));
+        part(Part::Comment(i), start, out.len());
         out.push(Line::default());
     }
     if d.kind == Kind::Pr {
-        out.extend(pr_sections(d, w, now_ms, st));
+        pr_sections(d, w, now_ms, st, &mut out, &mut part);
     }
     while out.last().is_some_and(|l| l.spans.is_empty()) {
         out.pop();
@@ -314,7 +311,7 @@ pub(super) fn build(d: &Detail, w: usize, now_ms: i64, st: &Styles, with: &With)
     Built {
         lines: out.into_iter().map(|l| fit_line(l, w)).collect(),
         avatars,
-        comments: comment_lines,
+        blocks,
     }
 }
 
@@ -398,18 +395,25 @@ fn pr_facts(d: &Detail, w: usize, st: &Styles) -> Vec<Line<'static>> {
     out
 }
 
-/// Reviews, comments on the diff, checks and files.
-fn pr_sections(d: &Detail, w: usize, now_ms: i64, st: &Styles) -> Vec<Line<'static>> {
-    let mut out = Vec::new();
-    // A review that only says "commented" with no text is noise.
-    let reviews: Vec<_> = d
-        .reviews
-        .iter()
-        .filter(|r| !(r.state == "COMMENTED" && r.body.trim().is_empty()))
-        .collect();
-    if !reviews.is_empty() {
-        out.push(heading(&format!("Reviews ({})", reviews.len()), w, st));
-        for r in reviews {
+/// Whether a review is worth showing: one that only says "commented" with no text is noise.
+pub(super) fn shown_review(r: &super::model::Review) -> bool {
+    !(r.state == "COMMENTED" && r.body.trim().is_empty())
+}
+
+/// Reviews, comments on the diff, checks and files, after `out`, each a block.
+fn pr_sections(
+    d: &Detail,
+    w: usize,
+    now_ms: i64,
+    st: &Styles,
+    out: &mut Vec<Line<'static>>,
+    part: &mut impl FnMut(Part, usize, usize),
+) {
+    let shown = d.reviews.iter().filter(|r| shown_review(r)).count();
+    if shown > 0 {
+        out.push(heading(&format!("Reviews ({shown})"), w, st));
+        for (i, r) in d.reviews.iter().enumerate().filter(|(_, r)| shown_review(r)) {
+            let start = out.len();
             let (word, style) = match r.state.as_str() {
                 "APPROVED" => ("approved", st.success),
                 "CHANGES_REQUESTED" => ("requested changes", st.danger),
@@ -424,6 +428,7 @@ fn pr_sections(d: &Detail, w: usize, now_ms: i64, st: &Styles) -> Vec<Line<'stat
             if !r.body.trim().is_empty() {
                 out.extend(body(&r.body, w, 2, st));
             }
+            part(Part::Review(i), start, out.len());
             out.push(Line::default());
         }
     }
@@ -433,7 +438,8 @@ fn pr_sections(d: &Detail, w: usize, now_ms: i64, st: &Styles) -> Vec<Line<'stat
             w,
             st,
         ));
-        for c in &d.review_comments {
+        for (i, c) in d.review_comments.iter().enumerate() {
+            let start = out.len();
             let place = match c.line {
                 Some(l) => format!("{}:{l}", c.path),
                 None => c.path.clone(),
@@ -444,11 +450,13 @@ fn pr_sections(d: &Detail, w: usize, now_ms: i64, st: &Styles) -> Vec<Line<'stat
                 w,
             ));
             out.extend(body(&c.body, w, indent, st));
+            part(Part::DiffComment(i), start, out.len());
             out.push(Line::default());
         }
     }
     if !d.checks.is_empty() {
         out.push(heading(&format!("Checks ({})", d.checks.len()), w, st));
+        let start = out.len();
         let c = d.check_counts();
         for check in d
             .checks
@@ -473,10 +481,12 @@ fn pr_sections(d: &Detail, w: usize, now_ms: i64, st: &Styles) -> Vec<Line<'stat
             tail.push(Span::styled(format!("  – {} skipped", c.skipped), st.muted));
         }
         out.push(Line::from(tail));
+        part(Part::Checks, start, out.len());
         out.push(Line::default());
     }
     if !d.files.is_empty() {
         out.push(heading(&format!("Files ({})", d.files.len()), w, st));
+        let start = out.len();
         for f in &d.files {
             out.push(fit_line(
                 Line::from(vec![
@@ -487,6 +497,6 @@ fn pr_sections(d: &Detail, w: usize, now_ms: i64, st: &Styles) -> Vec<Line<'stat
                 w,
             ));
         }
+        part(Part::Files, start, out.len());
     }
-    out
 }

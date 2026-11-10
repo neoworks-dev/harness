@@ -10,9 +10,12 @@
 //!
 //! - **List**: tabs Issues / Pull requests (Tab, 1, 2), Up/Down/j/k, PgUp/PgDn, g/G, Enter opens,
 //!   `/` searches (GitHub search syntax), `o` toggles open / all, `r` reloads, Esc or q close.
-//! - **Detail**: scrolls like the diff overlay; Esc goes back, q closes. `d` shows a pull
-//!   request's diff in the diff overlay's view.
-//! - **To the model**: `a` (Enter in a detail) puts the item as a `<github-issue>` /
+//! - **Detail**: blocks (the header, the description, each comment, review and comment on the
+//!   diff, the checks, the files) stepped through with j/k, g/G; the keys act on the one in
+//!   focus (see `write.rs`). Enter goes into it to select text (`visual.rs`), Esc comes out,
+//!   then goes back to the list; q closes. Under it the input for a comment, Tab to type.
+//!   `d` shows a pull request's diff in the diff overlay's view.
+//! - **To the model**: `a` puts the item as a `<github-issue>` /
 //!   `<github-pr>` block into the prompt and closes the view; `s` sends it right away with a
 //!   short instruction. Both are [`Outgoing`] values for the shell to carry out.
 
@@ -42,6 +45,7 @@ use ratatui::layout::Rect;
 use ratatui::text::Line;
 
 use crate::widgets::DiffView;
+use doc::Part;
 use gh::{Gh, GhCli, GhError};
 use model::{Detail, Kind, Label, Person, Summary};
 use neo_github::fetch;
@@ -116,12 +120,9 @@ struct Doc {
     colors: usize,
     /// Room was left for avatars (the terminal draws pictures).
     pictures: bool,
-    /// The comment that was marked when it was built.
-    sel: Option<usize>,
     lines: Vec<Line<'static>>,
     avatars: Vec<doc::Avatar>,
-    /// The first line of each comment.
-    comments: Vec<usize>,
+    blocks: Vec<doc::Block>,
 }
 
 struct DetailView {
@@ -132,9 +133,10 @@ struct DetailView {
     rows: usize,
     doc: Option<Doc>,
     diff: Option<DiffView>,
-    /// The comment the write keys act on: the one the cursor is in; none is the item itself.
-    sel: Option<usize>,
-    /// The vim cursor over the lines of the doc (see `visual.rs`), once there are some.
+    /// The block in focus, which the keys act on. Kept by what it is, so it stays when the
+    /// lines are built again.
+    focus: Part,
+    /// Inside the block in focus (Enter): the vim cursor over its lines (see `visual.rs`).
     cur: Option<visual::Cursor>,
 }
 
@@ -658,7 +660,7 @@ impl Github {
                         diff.key(KeyEvent::from(code));
                     }
                 }
-                None => v.scroll_by(delta * WHEEL_ROWS as isize),
+                None => v.scroll_freely(delta * WHEEL_ROWS as isize),
             },
         }
     }
@@ -807,7 +809,7 @@ impl Github {
             }
             return None;
         }
-        if self.write_hotkey(key) {
+        if !self.in_scope(key) || self.write_hotkey(key) {
             return None;
         }
         match self.cursor_key(key) {
@@ -822,22 +824,29 @@ impl Github {
             return None;
         };
         let (kind, number) = (v.kind, v.number);
+        let inside = v.cur.is_some();
         let page = v.rows.saturating_sub(1).max(1) as isize;
         match (key.code, ctrl) {
+            // Out of the block, then back to the list.
+            (KeyCode::Esc, _) if inside => v.cur = None,
             (KeyCode::Esc, _) => self.mode = Mode::List,
             (KeyCode::Char('q'), false) => self.close(),
-            (KeyCode::Up | KeyCode::Char('k'), _) => v.scroll_by(-1),
-            (KeyCode::Down | KeyCode::Char('j'), _) => v.scroll_by(1),
-            (KeyCode::PageUp | KeyCode::Char('b'), _) => v.scroll_by(-page),
-            (KeyCode::PageDown | KeyCode::Char(' '), _) => v.scroll_by(page),
-            (KeyCode::Char('u'), true) => v.scroll_by(-(page / 2).max(1)),
-            (KeyCode::Char('d'), true) => v.scroll_by((page / 2).max(1)),
-            (KeyCode::Home | KeyCode::Char('g'), _) => v.scroll_by(isize::MIN / 2),
-            (KeyCode::End | KeyCode::Char('G'), _) => v.scroll_by(isize::MAX / 2),
-            (KeyCode::Char('r'), false) => self.load_detail(kind, number),
-            (KeyCode::Enter | KeyCode::Char('a'), _) => {
-                return self.request(kind, number, 0, Intent::Attach);
+            (KeyCode::Up | KeyCode::Char('k'), _) => v.step(false),
+            (KeyCode::Down | KeyCode::Char('j'), _) => v.step(true),
+            (KeyCode::PageUp | KeyCode::Char('b'), _) => v.scroll_freely(-page),
+            (KeyCode::PageDown | KeyCode::Char(' '), _) => v.scroll_freely(page),
+            (KeyCode::Char('u'), true) => v.scroll_freely(-(page / 2).max(1)),
+            (KeyCode::Char('d'), true) => v.scroll_freely((page / 2).max(1)),
+            (KeyCode::Home | KeyCode::Char('g'), _) => v.focus_at(0, true),
+            (KeyCode::End | KeyCode::Char('G'), _) => v.focus_at(usize::MAX, false),
+            (KeyCode::Enter, _) if !inside => v.enter(),
+            (KeyCode::Tab | KeyCode::Char('c'), _) => {
+                if self.details.get(&(kind, number)).is_some_and(|d| d.detail.is_some()) {
+                    self.writing = Some(write::Writing::Comment);
+                }
             }
+            (KeyCode::Char('r'), false) => self.load_detail(kind, number),
+            (KeyCode::Char('a'), false) => return self.request(kind, number, 0, Intent::Attach),
             (KeyCode::Char('s'), false) => return self.request(kind, number, 0, Intent::Send),
             (KeyCode::Char('d'), false) if kind == Kind::Pr => self.open_diff(number),
             _ => {}
@@ -845,29 +854,23 @@ impl Github {
         None
     }
 
-    /// A key for the vim cursor, if there are lines for it to walk: what it did. The view
-    /// follows the cursor.
+    /// Inside a block, a key for the vim cursor: what it did. The view follows the cursor.
     fn cursor_key(&mut self, key: KeyEvent) -> Option<visual::Keyed> {
         let Mode::Detail(v) = &mut self.mode else {
             return None;
         };
         let page = v.rows.saturating_sub(1).max(1);
+        let start = v.block().map_or(0, |b| b.start);
         let cur = v.cur.as_mut()?;
-        if !cur.active {
-            // The first key starts at the top of what is on screen.
-            cur.go_to_row(v.scroll);
-            cur.active = false;
-        }
         let keyed = cur.key(key, page);
         if keyed != visual::Keyed::Pass {
-            let row = cur.row();
+            let row = start + cur.row();
             if row < v.scroll {
                 v.scroll = row;
             } else if row >= v.scroll + v.rows {
                 v.scroll = row + 1 - v.rows;
             }
         }
-        self.sync_pick();
         Some(keyed)
     }
 
@@ -910,7 +913,7 @@ impl DetailView {
             rows: 10,
             doc: None,
             diff: None,
-            sel: None,
+            focus: Part::Head,
             cur: None,
         }
     }
@@ -921,10 +924,123 @@ impl DetailView {
             .map_or(0, |d| d.lines.len().saturating_sub(self.rows))
     }
 
-    fn scroll_by(&mut self, delta: isize) {
+    fn blocks(&self) -> &[doc::Block] {
+        self.doc.as_ref().map_or(&[], |d| &d.blocks)
+    }
+
+    /// Where the block in focus is among the blocks.
+    fn index(&self) -> Option<usize> {
+        self.blocks().iter().position(|b| b.part == self.focus)
+    }
+
+    /// The block in focus, once the lines are built.
+    fn block(&self) -> Option<doc::Block> {
+        self.index().map(|i| self.blocks()[i])
+    }
+
+    /// The first line that goes with block `i`: the gap and heading above it too.
+    fn top_of(&self, i: usize) -> usize {
+        match i.checked_sub(1) {
+            Some(prev) => self.blocks()[prev].end,
+            None => 0,
+        }
+    }
+
+    /// Focuses block `i` (the last when past the end) and scrolls it into view: its top when
+    /// coming from above, its bottom from below.
+    fn focus_at(&mut self, i: usize, from_above: bool) {
+        let n = self.blocks().len();
+        if n == 0 {
+            return;
+        }
+        let i = i.min(n - 1);
+        let b = self.blocks()[i];
+        let top = self.top_of(i);
+        self.focus = b.part;
+        self.cur = None;
+        let rows = self.rows.max(1);
+        if b.end - top <= rows {
+            if top < self.scroll {
+                self.scroll = top;
+            } else if b.end > self.scroll + rows {
+                self.scroll = b.end - rows;
+            }
+        } else if from_above {
+            self.scroll = top;
+        } else {
+            self.scroll = b.end - rows;
+        }
+        self.scroll = self.scroll.min(self.max_scroll());
+    }
+
+    /// `j` / `k`: through the rest of a block taller than the view, half a view at a time,
+    /// then on to the next one.
+    fn step(&mut self, down: bool) {
+        let Some(i) = self.index() else {
+            if !self.blocks().is_empty() {
+                self.focus_at(0, true);
+            }
+            return;
+        };
+        let b = self.blocks()[i];
+        let half = (self.rows / 2).max(1);
+        if down {
+            if b.end > self.scroll + self.rows {
+                self.scroll = (self.scroll + half).min(b.end - self.rows).min(self.max_scroll());
+            } else if i + 1 < self.blocks().len() {
+                self.focus_at(i + 1, true);
+            }
+        } else if b.start < self.scroll {
+            self.scroll = self.scroll.saturating_sub(half).max(self.top_of(i));
+        } else if i > 0 {
+            self.focus_at(i - 1, false);
+        } else {
+            self.scroll = 0;
+        }
+    }
+
+    /// Scrolls without stepping (wheel, pages): the focus moves to a block in view when its
+    /// own leaves it, and out of the block when inside it.
+    fn scroll_freely(&mut self, delta: isize) {
         self.scroll = self
             .scroll
             .saturating_add_signed(delta)
             .min(self.max_scroll());
+        let (top, bottom) = (self.scroll, self.scroll + self.rows);
+        let seen = |b: &doc::Block| b.end > top && b.start < bottom;
+        if self.block().is_some_and(|b| seen(&b)) {
+            return;
+        }
+        let pick = if delta > 0 {
+            self.blocks().iter().find(|b| seen(b))
+        } else {
+            self.blocks().iter().rev().find(|b| seen(b))
+        };
+        if let Some(b) = pick {
+            self.focus = b.part;
+            self.cur = None;
+        }
+    }
+
+    /// Enter: into the block in focus, the cursor at its start.
+    fn enter(&mut self) {
+        let Some(b) = self.block() else {
+            return;
+        };
+        self.cur = Some(visual::Cursor::new(self.block_text(&b)));
+        if b.start < self.scroll {
+            self.scroll = b.start;
+        }
+    }
+
+    /// The lines of a block as text, for the cursor to walk.
+    fn block_text(&self, b: &doc::Block) -> Vec<Vec<char>> {
+        let Some(doc) = &self.doc else {
+            return Vec::new();
+        };
+        doc.lines[b.start..b.end]
+            .iter()
+            .map(|l| l.spans.iter().flat_map(|s| s.content.chars()).collect())
+            .collect()
     }
 }
