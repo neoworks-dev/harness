@@ -17,6 +17,8 @@ use neo_github::fixtures::*;
 struct Fake {
     replies: Mutex<Vec<(String, Result<String, GhError>)>>,
     calls: Mutex<Vec<Vec<String>>>,
+    /// The writes asked for, with what went on their stdin.
+    writes: Mutex<Vec<(Vec<String>, Option<String>)>>,
 }
 
 impl Fake {
@@ -29,7 +31,22 @@ impl Fake {
                     .collect(),
             ),
             calls: Mutex::new(Vec::new()),
+            writes: Mutex::new(Vec::new()),
         })
+    }
+
+    /// The writes as one line each (`issue close 12 -R acme/site --reason completed`), with
+    /// the text sent to stdin after ` <<< `.
+    fn writes(&self) -> Vec<String> {
+        self.writes
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(args, input)| match input {
+                Some(text) => format!("{} <<< {text}", args.join(" ")),
+                None => args.join(" "),
+            })
+            .collect()
     }
 
     /// The usual repository.
@@ -71,6 +88,15 @@ impl Gh for Fake {
             .map(|(_, r)| r.clone())
             .unwrap_or_else(|| Err(GhError::Other(format!("no recorded reply for: {line}"))))
     }
+
+    fn write(&self, _cwd: &Path, args: &[String], input: Option<&str>) -> Result<String, GhError> {
+        assert!(super::gh::is_allowed_write(args), "not an allowed write: {args:?}");
+        self.writes
+            .lock()
+            .unwrap()
+            .push((args.to_vec(), input.map(str::to_string)));
+        Ok(String::new())
+    }
 }
 
 fn github(fake: &Arc<Fake>) -> Github {
@@ -89,6 +115,8 @@ fn busy(g: &Github) -> bool {
     matches!(g.repo, Repo::Loading)
         || g.lists.values().any(|l| l.loading)
         || g.details.values().any(|d| d.loading)
+        || g.sending
+        || g.mine_asked > 0
         || matches!(&g.mode, Mode::Detail(DetailView { diff: Some(d), .. }) if !d.is_loaded())
 }
 
@@ -143,7 +171,7 @@ fn opened(fake: &Arc<Fake>) -> Github {
 fn screen(g: &mut Github, w: u16, h: u16) -> String {
     let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
     let st = styles();
-    terminal.draw(|f| g.draw(f, f.area(), NOW, &st)).unwrap();
+    terminal.draw(|f| g.draw(f, f.area(), NOW, &st, None)).unwrap();
     let buf = terminal.backend().buffer();
     (0..h)
         .map(|y| {
@@ -200,8 +228,11 @@ fn opening_loads_the_repository_then_the_issues() {
     settle(&mut g);
     let calls = fake.calls();
     assert!(calls[0].starts_with("repo view"));
-    assert!(calls[1].starts_with("issue list -R acme/site"));
-    assert_eq!(calls.len(), 2);
+    assert!(calls.iter().any(|c| c.starts_with("issue list -R acme/site")));
+    // The labels (their colors) and the people (the search) come beside the list.
+    assert!(calls.iter().any(|c| c.contains("acme/site/labels")));
+    assert!(calls.iter().any(|c| c.contains("acme/site/assignees")));
+    assert_eq!(calls.len(), 4);
     let list = g.lists.get(&g.current()).unwrap();
     assert_eq!(list.rows.len(), 3);
 }
@@ -493,23 +524,34 @@ fn the_detail_scrolls_by_keys_and_wheel() {
         Mode::Detail(v) => v.scroll,
         Mode::List => unreachable!(),
     };
+    let cursor = |g: &Github| match &g.mode {
+        Mode::Detail(v) => v.cur.as_ref().unwrap().row(),
+        Mode::List => unreachable!(),
+    };
     let first = screen(&mut g, 60, 12);
     assert!(first.contains("lines 1–"), "{first}");
+    // The keys walk a cursor, the view stays until the cursor leaves it.
     ch(&mut g, 'j');
-    assert_eq!(top(&g), 1);
+    assert_eq!((cursor(&g), top(&g)), (1, 0));
     press(&mut g, KeyCode::PageDown);
-    assert_eq!(top(&g), 1 + 9);
-    ch(&mut g, 'k');
+    screen(&mut g, 60, 12);
+    assert!(top(&g) > 0 && cursor(&g) >= top(&g) && cursor(&g) < top(&g) + 10);
+    // The wheel moves the view, and the cursor comes along if it was left behind.
+    let before = top(&g);
     g.wheel(true);
-    assert_eq!(top(&g), 9 + 3);
+    screen(&mut g, 60, 12);
+    assert_eq!(top(&g), before + 3);
+    assert!(cursor(&g) >= top(&g));
     ch(&mut g, 'G');
     let end = screen(&mut g, 60, 12);
     assert!(end.contains("src/layout.css"), "{end}");
     let last = top(&g);
     ch(&mut g, 'j');
     assert_eq!(top(&g), last);
+    // `gg` is the top, `g` alone waits for the second.
     ch(&mut g, 'g');
-    assert_eq!(top(&g), 0);
+    ch(&mut g, 'g');
+    assert_eq!((cursor(&g), top(&g)), (0, 0));
     g.wheel(false);
     assert_eq!(top(&g), 0);
 }
@@ -871,6 +913,7 @@ fn a_session_switch_closes_the_view_and_drops_the_cache() {
     // Another session in another directory.
     let info = neo_protocol::SessionInfo {
         harness: None,
+        usage: None,
         id: "s2".into(),
         title: None,
         cwd: "/work/other".into(),
@@ -893,4 +936,622 @@ fn a_session_switch_closes_the_view_and_drops_the_cache() {
     ctrl_r(&mut app);
     app_settle(&mut app);
     assert_eq!(fake.count("repo view"), 2);
+}
+
+#[test]
+fn the_detail_leaves_room_for_the_avatars_of_its_people_when_pictures_are_drawn() {
+    let detail = neo_github::model::parse_detail(Kind::Issue, ISSUE_12).unwrap();
+    let st = crate::style::Styles::new(&neo_renderer_ratatui::Palette::default(), false);
+    let colors = view::Colors::new();
+    let mut options = doc::With {
+        colors: &colors,
+        pictures: false,
+        sel: None,
+        fields: &[],
+    };
+    let plain = doc::build(&detail, 60, NOW, &st, &options);
+    assert!(plain.avatars.is_empty());
+    options.pictures = true;
+    let with = doc::build(&detail, 60, NOW, &st, &options);
+    let avatars = with.avatars;
+    assert_eq!(with.lines.len(), plain.lines.len(), "the room is in the lines, not more of them");
+    assert_eq!(with.comments.len(), detail.comments.len());
+    // The creator first, then each commenter, each on a line of its own.
+    assert_eq!(avatars.len(), 1 + detail.comments.len());
+    assert_eq!(avatars[0].login, detail.author);
+    for (a, c) in avatars[1..].iter().zip(&detail.comments) {
+        assert_eq!(a.login, c.author);
+    }
+    assert!(avatars.windows(2).all(|w| w[0].line < w[1].line));
+}
+
+// ---- writing ----
+
+/// An issue whose comments have links, so they can be reacted to.
+const ISSUE_WITH_LINKS: &str = r#"{
+ "number":12,"title":"Header jumps","state":"OPEN","author":{"login":"alice"},"labels":[],
+ "url":"https://github.com/acme/site/issues/12",
+ "createdAt":"2026-10-10T09:00:00Z","updatedAt":"2026-10-16T12:00:00Z",
+ "body":"Opening the menu shifts the header.\nSecond line.",
+ "comments":[
+  {"url":"https://github.com/acme/site/issues/12#issuecomment-501","author":{"login":"bob"},"createdAt":"2026-10-11T09:00:00Z","body":"I can reproduce this."},
+  {"url":"https://github.com/acme/site/issues/12#issuecomment-502","author":{"login":"carol"},"createdAt":"2026-10-16T12:00:00Z","body":"The scrollbar gutter."}
+ ]}"#;
+
+fn with_links() -> Arc<Fake> {
+    Fake::new(&[
+        ("repo view", Ok(REPO)),
+        ("issue list", Ok(ISSUES)),
+        ("pr list", Ok(PRS)),
+        ("issue view 12", Ok(ISSUE_WITH_LINKS)),
+        ("labels", Ok("[]")),
+        ("assignees", Ok("[]")),
+        ("api user", Ok(r#"{"login":"me"}"#)),
+        ("/reactions?per_page=100", Ok("[]")),
+    ])
+}
+
+fn ctrl(g: &mut Github, c: char) {
+    g.key(KeyEvent {
+        modifiers: KeyModifiers::CONTROL,
+        ..key(KeyCode::Char(c))
+    });
+}
+
+#[test]
+fn a_comment_is_typed_in_a_box_and_posted_with_ctrl_s() {
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    ch(&mut g, 'c');
+    type_str(&mut g, "first");
+    press(&mut g, KeyCode::Enter);
+    type_str(&mut g, "second");
+    let shown = screen(&mut g, 70, 24);
+    assert!(shown.contains("Comment on #12") && shown.contains("second"), "{shown}");
+    ctrl(&mut g, 's');
+    settle(&mut g);
+    assert_eq!(
+        fake.writes(),
+        ["issue comment 12 -R acme/site --body-file - <<< first\nsecond"]
+    );
+    // The issue is fetched again to show it, and the box is gone.
+    assert_eq!(fake.count("issue view 12"), 2);
+    assert!(g.writing.is_none());
+    assert!(screen(&mut g, 70, 24).contains("comment posted"));
+}
+
+#[test]
+fn esc_gives_up_a_comment_and_an_empty_one_is_not_posted() {
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    ch(&mut g, 'c');
+    ctrl(&mut g, 's');
+    assert!(g.writing.is_some(), "still open: it needs some text");
+    assert!(g.note.is_some());
+    type_str(&mut g, "x");
+    press(&mut g, KeyCode::Esc);
+    assert!(g.writing.is_none());
+    assert!(fake.writes().is_empty());
+}
+
+#[test]
+fn a_line_of_a_comment_is_selected_and_added_to_the_message() {
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    screen(&mut g, 70, 24);
+    // `]` jumps to the next comment; down one line is its text; `V` selects it, `a` adds it.
+    ch(&mut g, ']');
+    ch(&mut g, ']');
+    ch(&mut g, 'j');
+    ch(&mut g, 'V');
+    ch(&mut g, 'a');
+    assert!(matches!(g.writing, Some(write::Writing::Comment)));
+    assert_eq!(g.draft.text(), "> The scrollbar gutter.\n\n");
+    type_str(&mut g, "agreed");
+    ctrl(&mut g, 's');
+    settle(&mut g);
+    assert_eq!(
+        fake.writes(),
+        ["issue comment 12 -R acme/site --body-file - <<< > The scrollbar gutter.\n\nagreed"]
+    );
+    assert!(g.draft.is_empty(), "posted, so the draft is empty");
+}
+
+/// Puts the vim cursor on the first line that has `text` in it, as after walking there.
+fn goto_text(g: &mut Github, text: &str) {
+    let Mode::Detail(v) = &mut g.mode else {
+        panic!("a detail");
+    };
+    let doc = v.doc.as_ref().expect("drawn");
+    let row = doc
+        .lines
+        .iter()
+        .position(|l| l.spans.iter().any(|s| s.content.contains(text)))
+        .unwrap_or_else(|| panic!("{text:?} on screen"));
+    v.cur.as_mut().unwrap().go_to_row(row);
+}
+
+#[test]
+fn the_detail_is_one_buffer_walked_with_vim_keys_and_selected_in_visual_mode() {
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    screen(&mut g, 70, 24);
+    goto_text(&mut g, "Opening the menu");
+    // `the menu` out of `Opening the menu shifts the header.`
+    for c in "^wvwe".chars() {
+        ch(&mut g, c);
+    }
+    assert!(screen(&mut g, 70, 24).contains("a add to message"));
+    ch(&mut g, 'a');
+    assert_eq!(g.draft.text(), "> the menu\n\n");
+    // Esc goes back to reading, the draft kept; another selection is added after it.
+    press(&mut g, KeyCode::Esc);
+    assert!(g.writing.is_none());
+    goto_text(&mut g, "Second line.");
+    for c in "^V".chars() {
+        ch(&mut g, c);
+    }
+    ch(&mut g, 'a');
+    assert_eq!(g.draft.text(), "> the menu\n\n> Second line.\n\n");
+    type_str(&mut g, "both");
+    ctrl(&mut g, 's');
+    settle(&mut g);
+    assert_eq!(
+        fake.writes(),
+        ["issue comment 12 -R acme/site --body-file - <<< > the menu\n\n> Second line.\n\nboth"]
+    );
+}
+
+#[test]
+fn a_and_esc_keep_their_other_meanings_outside_visual_mode_and_ctrl_d_discards_a_draft() {
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    screen(&mut g, 70, 24);
+    // Not selecting: Esc goes back to the list, as before.
+    press(&mut g, KeyCode::Esc);
+    assert!(matches!(g.mode, Mode::List));
+    let mut g = opened_issue(&fake);
+    screen(&mut g, 70, 24);
+    // `v` then Esc only leaves visual mode.
+    ch(&mut g, 'v');
+    press(&mut g, KeyCode::Esc);
+    assert!(matches!(g.mode, Mode::Detail(_)));
+    // A draft stays until it is posted or thrown away.
+    ch(&mut g, 'c');
+    type_str(&mut g, "half");
+    press(&mut g, KeyCode::Esc);
+    assert_eq!(g.draft.text(), "half");
+    assert!(screen(&mut g, 70, 24).contains("c comment (draft)"));
+    ch(&mut g, 'c');
+    ctrl(&mut g, 'd');
+    assert!(g.draft.is_empty() && g.writing.is_none());
+}
+
+#[test]
+fn reactions_go_on_the_comment_the_cursor_is_in_or_the_item() {
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    screen(&mut g, 70, 24);
+    ch(&mut g, '+');
+    ch(&mut g, '6');
+    settle(&mut g);
+    ch(&mut g, ']');
+    ch(&mut g, '+');
+    ch(&mut g, '1');
+    settle(&mut g);
+    assert_eq!(
+        fake.writes(),
+        [
+            "api -X POST repos/acme/site/issues/12/reactions -f content=heart",
+            "api -X POST repos/acme/site/issues/comments/501/reactions -f content=+1",
+        ]
+    );
+    // Not one of the eight: nothing happens, the choice stays.
+    ch(&mut g, '+');
+    ch(&mut g, '9');
+    assert!(g.writing.is_some());
+    press(&mut g, KeyCode::Esc);
+    assert_eq!(fake.writes().len(), 2);
+}
+
+#[test]
+fn an_issue_closes_as_completed_not_planned_or_duplicate() {
+    for (keys, expected) in [
+        ("x1", "issue close 12 -R acme/site --reason completed"),
+        ("x2", "issue close 12 -R acme/site --reason not planned"),
+        (
+            "x37\n",
+            "issue close 12 -R acme/site --reason duplicate --duplicate-of 7",
+        ),
+    ] {
+        let fake = with_links();
+        let mut g = opened_issue(&fake);
+        for c in keys.chars() {
+            match c {
+                '\n' => press(&mut g, KeyCode::Enter),
+                c => ch(&mut g, c),
+            };
+        }
+        settle(&mut g);
+        assert_eq!(fake.writes(), [expected], "{keys:?}");
+    }
+    // Esc gives up, a duplicate of itself is refused.
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    ch(&mut g, 'x');
+    press(&mut g, KeyCode::Esc);
+    ch(&mut g, 'x');
+    ch(&mut g, '3');
+    ch(&mut g, '1');
+    ch(&mut g, '2');
+    press(&mut g, KeyCode::Enter);
+    assert!(fake.writes().is_empty());
+    assert!(g.note.is_some());
+}
+
+#[test]
+fn a_closed_issue_is_reopened_and_a_pull_request_closes_without_a_reason() {
+    let closed = ISSUE_WITH_LINKS.replace(r#""state":"OPEN""#, r#""state":"CLOSED""#);
+    let fake = Fake::new(&[
+        ("repo view", Ok(REPO)),
+        ("issue list", Ok(ISSUES)),
+        ("issue view 12", Ok(&closed)),
+        ("labels", Ok("[]")),
+        ("assignees", Ok("[]")),
+    ]);
+    let mut g = opened_issue(&fake);
+    ch(&mut g, 'x');
+    ch(&mut g, '1');
+    settle(&mut g);
+    assert_eq!(fake.writes(), ["issue reopen 12 -R acme/site"]);
+
+    let fake = Fake::acme();
+    let mut g = opened_pr(&fake);
+    ch(&mut g, 'x');
+    ch(&mut g, '1');
+    settle(&mut g);
+    assert_eq!(fake.writes(), ["pr close 31 -R acme/site"]);
+}
+
+#[test]
+fn the_same_reaction_again_takes_it_back_and_only_the_users_own_is_removed() {
+    let fake = Fake::new(&[
+        ("repo view", Ok(REPO)),
+        ("issue list", Ok(ISSUES)),
+        ("issue view 12", Ok(ISSUE_WITH_LINKS)),
+        ("labels", Ok("[]")),
+        ("assignees", Ok("[]")),
+        ("api user", Ok(r#"{"login":"Me"}"#)),
+        (
+            "issues/12/reactions?per_page=100",
+            Ok(r#"[{"id":5,"user":{"login":"bob"},"content":"heart"},
+                   {"id":77,"user":{"login":"me"},"content":"heart"}]"#),
+        ),
+    ]);
+    let mut g = opened_issue(&fake);
+    ch(&mut g, '+');
+    ch(&mut g, '6');
+    settle(&mut g);
+    assert_eq!(
+        fake.writes(),
+        ["api -X DELETE repos/acme/site/issues/12/reactions/77"]
+    );
+    assert!(screen(&mut g, 70, 24).contains("reaction taken back"));
+    // Somebody else's heart is not the user's: a thumbs up is new.
+    ch(&mut g, '+');
+    ch(&mut g, '1');
+    settle(&mut g);
+    assert_eq!(fake.writes().len(), 2);
+    assert!(fake.writes()[1].ends_with("content=+1"));
+}
+
+#[test]
+fn the_users_own_reactions_are_found_and_marked() {
+    let json = ISSUE_WITH_LINKS
+        .replacen(
+            r#""body":"Opening"#,
+            r#""reactionGroups":[{"content":"HEART","users":{"totalCount":2}}],"body":"Opening"#,
+            1,
+        )
+        .replace(
+            r#""author":{"login":"bob"},"#,
+            r#""reactionGroups":[{"content":"THUMBS_UP","users":{"totalCount":1}},{"content":"EYES","users":{"totalCount":1}}],"author":{"login":"bob"},"#,
+        );
+    let fake = Fake::new(&[
+        ("repo view", Ok(REPO)),
+        ("issue list", Ok(ISSUES)),
+        ("issue view 12", Ok(&json)),
+        ("labels", Ok("[]")),
+        ("assignees", Ok("[]")),
+        ("api user", Ok(r#"{"login":"me"}"#)),
+        (
+            "issues/12/reactions?per_page=100",
+            Ok(r#"[{"id":1,"user":{"login":"bob"},"content":"heart"},{"id":2,"user":{"login":"me"},"content":"heart"}]"#),
+        ),
+        (
+            "comments/501/reactions?per_page=100",
+            Ok(r#"[{"id":3,"user":{"login":"me"},"content":"eyes"},{"id":4,"user":{"login":"bob"},"content":"+1"}]"#),
+        ),
+    ]);
+    let g = opened_issue(&fake);
+    let detail = g.details[&(Kind::Issue, 12)].detail.as_ref().unwrap();
+    assert!(
+        detail.reactions[0].mine,
+        "the item's heart is the user's: {:?} {:?}",
+        fake.calls(),
+        detail.reactions
+    );
+    let comment = &detail.comments[0].reactions;
+    let mine: Vec<(&str, bool)> = comment.iter().map(|r| (r.content.as_str(), r.mine)).collect();
+    assert_eq!(mine, [("THUMBS_UP", false), ("EYES", true)]);
+    // An item nobody reacted to costs no extra asks.
+    let quiet = Fake::acme();
+    opened_issue(&quiet);
+    assert_eq!(quiet.count("api user"), 0);
+}
+
+// ---- editing: assignees, labels, milestone, type, fields, relations ----
+
+const ISSUE_SETUP: &str = r#"{
+ "number":12,"title":"Header jumps","state":"OPEN","author":{"login":"alice"},
+ "labels":[{"name":"bug"}],"assignees":[{"login":"bob"}],
+ "milestone":{"title":"v1"},"issueType":{"name":"Bug"},"projectItems":[{"project":{"title":"Roadmap"}}],
+ "parent":{"number":3},"blockedBy":[{"number":4}],"blocking":[],
+ "url":"https://github.com/acme/site/issues/12",
+ "createdAt":"2026-10-10T09:00:00Z","updatedAt":"2026-10-16T12:00:00Z",
+ "body":"The header jumps.","comments":[]}"#;
+
+const ORG_FIELDS: &str = r#"[
+ {"id":11,"name":"Priority","data_type":"single_select","options":[{"name":"High"},{"name":"Low"}]},
+ {"id":12,"name":"Target date","data_type":"date","options":[]}]"#;
+
+fn editable() -> Arc<Fake> {
+    Fake::new(&[
+        ("repo view", Ok(REPO)),
+        ("issue list", Ok(ISSUES)),
+        ("issue view 12", Ok(ISSUE_SETUP)),
+        ("repos/acme/site/labels", Ok(r#"[{"name":"bug","color":"d73a4a"},{"name":"docs","color":"0075ca"}]"#)),
+        ("assignees", Ok(r#"[{"login":"alice","avatar_url":""},{"login":"bob","avatar_url":""}]"#)),
+        ("orgs/acme/issue-fields", Ok(ORG_FIELDS)),
+        ("orgs/acme/issue-types", Ok(r#"[{"name":"Bug"},{"name":"Feature"}]"#)),
+        ("repos/acme/site/milestones", Ok(r#"[{"title":"v1"},{"title":"v2"}]"#)),
+        (
+            "issue-field-values",
+            Ok(r#"[{"issue_field_name":"Priority","single_select_option":{"name":"Low"},"value":2}]"#),
+        ),
+        ("project list", Ok(r#"{"projects":[{"title":"Roadmap"},{"title":"Ideas"}]}"#)),
+    ])
+}
+
+fn keys(g: &mut Github, text: &str) {
+    for c in text.chars() {
+        match c {
+            '\n' => press(g, KeyCode::Enter),
+            c => ch(g, c),
+        };
+    }
+}
+
+#[test]
+fn the_detail_says_what_is_set_on_the_issue() {
+    let fake = editable();
+    let mut g = opened_issue(&fake);
+    let shown = screen(&mut g, 140, 24);
+    for part in ["assigned to bob", "milestone v1", "type Bug", "Priority Low", "projects Roadmap", "parent #3", "blocked by #4"] {
+        assert!(shown.contains(part), "{part}\n{shown}");
+    }
+}
+
+#[test]
+fn you_or_someone_is_assigned_from_a_list_that_toggles() {
+    let fake = editable();
+    let mut g = opened_issue(&fake);
+    // Yourself is first in the list: Space toggles it, Enter applies.
+    keys(&mut g, "A");
+    assert!(screen(&mut g, 80, 24).contains("@me (yourself)"));
+    keys(&mut g, " \n");
+    settle(&mut g);
+    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --add-assignee @me"]);
+    // Filter by typing, toggle, and take bob (already on) off.
+    let fake = editable();
+    let mut g = opened_issue(&fake);
+    keys(&mut g, "Aalice ");
+    keys(&mut g, "\n");
+    settle(&mut g);
+    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --add-assignee alice"]);
+    let fake = editable();
+    let mut g = opened_issue(&fake);
+    keys(&mut g, "Abob \n");
+    settle(&mut g);
+    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --remove-assignee bob"]);
+    // Nothing toggled is no write.
+    let fake = editable();
+    let mut g = opened_issue(&fake);
+    keys(&mut g, "A\n");
+    assert!(fake.writes().is_empty());
+}
+
+#[test]
+fn labels_toggle_in_their_own_colors() {
+    let fake = editable();
+    let mut g = opened_issue(&fake);
+    settle(&mut g);
+    keys(&mut g, "Ldocs ");
+    keys(&mut g, "\n");
+    settle(&mut g);
+    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --add-label docs"]);
+    let fake = editable();
+    let mut g = opened_issue(&fake);
+    settle(&mut g);
+    keys(&mut g, "Lbug \n");
+    settle(&mut g);
+    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --remove-label bug"]);
+}
+
+#[test]
+fn milestone_and_type_are_chosen_or_taken_away() {
+    for (keys_to_press, expected) in [
+        ("Mv2\n", "issue edit 12 -R acme/site --milestone v2"),
+        ("M(none)\n", "issue edit 12 -R acme/site --remove-milestone"),
+        ("TFeature\n", "issue edit 12 -R acme/site --type Feature"),
+        ("T(none)\n", "issue edit 12 -R acme/site --remove-type"),
+    ] {
+        let fake = editable();
+        let mut g = opened_issue(&fake);
+        keys(&mut g, &keys_to_press[..1]);
+        settle(&mut g);
+        keys(&mut g, &keys_to_press[1..]);
+        settle(&mut g);
+        assert_eq!(fake.writes(), [expected], "{keys_to_press:?}");
+    }
+}
+
+#[test]
+fn an_issue_field_is_set_from_its_options_or_a_typed_value() {
+    let fake = editable();
+    let mut g = opened_issue(&fake);
+    keys(&mut g, "F");
+    settle(&mut g);
+    let shown = screen(&mut g, 80, 24);
+    assert!(shown.contains("Priority: Low"), "{shown}");
+    keys(&mut g, "Prio\n");
+    keys(&mut g, "High\n");
+    settle(&mut g);
+    assert_eq!(
+        fake.writes(),
+        ["api -X POST repos/acme/site/issues/12/issue-field-values --input - <<< {\"issue_field_values\":[{\"field_id\":11,\"value\":\"High\"}]}"]
+    );
+    // A field that is not a single select takes what is typed.
+    let fake = editable();
+    let mut g = opened_issue(&fake);
+    keys(&mut g, "F");
+    settle(&mut g);
+    keys(&mut g, "Target\n");
+    keys(&mut g, "2026-12-01\n");
+    settle(&mut g);
+    assert!(fake.writes()[0].ends_with("{\"issue_field_values\":[{\"field_id\":12,\"value\":\"2026-12-01\"}]}"));
+}
+
+#[test]
+fn relations_take_the_number_of_another_issue() {
+    let fake = editable();
+    let mut g = opened_issue(&fake);
+    keys(&mut g, "RSet the parent\n7\n");
+    settle(&mut g);
+    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --parent 7"]);
+    let fake = editable();
+    let mut g = opened_issue(&fake);
+    keys(&mut g, "RAdd blocked by\n12\n");
+    // Not itself: it asks again.
+    assert!(g.writing.is_some() && fake.writes().is_empty());
+    press(&mut g, KeyCode::Backspace);
+    press(&mut g, KeyCode::Backspace);
+    keys(&mut g, "9\n");
+    settle(&mut g);
+    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --add-blocked-by 9"]);
+    let fake = editable();
+    let mut g = opened_issue(&fake);
+    keys(&mut g, "RRemove the parent\n");
+    settle(&mut g);
+    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --remove-parent"]);
+}
+
+#[test]
+fn projects_come_from_gh_and_a_failure_says_how_to_fix_it() {
+    let fake = editable();
+    let mut g = opened_issue(&fake);
+    keys(&mut g, "P");
+    settle(&mut g);
+    keys(&mut g, "Ideas \n");
+    settle(&mut g);
+    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --add-project Ideas"]);
+    // Without the project scope.
+    let fake = Fake::new(&[
+        ("repo view", Ok(REPO)),
+        ("issue list", Ok(ISSUES)),
+        ("issue view 12", Ok(ISSUE_SETUP)),
+        ("labels", Ok("[]")),
+        ("assignees", Ok("[]")),
+        ("project list", Err(GhError::Other("missing required scopes [read:project]".into()))),
+    ]);
+    let mut g = opened_issue(&fake);
+    keys(&mut g, "P");
+    settle(&mut g);
+    assert!(g.note.as_deref().unwrap_or("").contains("gh auth refresh -s project"));
+    assert!(g.writing.is_none());
+}
+
+#[test]
+fn m_shows_the_keys_that_edit() {
+    let fake = editable();
+    let mut g = opened_issue(&fake);
+    keys(&mut g, "m");
+    let shown = screen(&mut g, 100, 24);
+    assert!(shown.contains("assignees") && shown.contains("relations"), "{shown}");
+    keys(&mut g, "A");
+    assert!(matches!(g.writing, Some(write::Writing::Pick(_))));
+}
+
+#[test]
+fn the_description_is_edited_in_a_box_that_starts_with_its_text() {
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    screen(&mut g, 70, 24);
+    ch(&mut g, 'E');
+    assert_eq!(g.body_edit.text(), "Opening the menu shifts the header.\nSecond line.");
+    assert!(screen(&mut g, 70, 24).contains("Edit the description of #12"));
+    type_str(&mut g, " More.");
+    ctrl(&mut g, 's');
+    settle(&mut g);
+    assert_eq!(
+        fake.writes(),
+        ["issue edit 12 -R acme/site --body-file - <<< Opening the menu shifts the header.\nSecond line. More."]
+    );
+    // Esc drops the changes.
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    screen(&mut g, 70, 24);
+    ch(&mut g, 'E');
+    type_str(&mut g, "x");
+    press(&mut g, KeyCode::Esc);
+    assert!(g.writing.is_none() && fake.writes().is_empty());
+}
+
+#[test]
+fn the_comment_the_cursor_is_in_is_edited_by_its_number() {
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    screen(&mut g, 70, 24);
+    ch(&mut g, ']');
+    ch(&mut g, 'E');
+    assert_eq!(g.body_edit.text(), "I can reproduce this.");
+    type_str(&mut g, "!");
+    ctrl(&mut g, 's');
+    settle(&mut g);
+    assert_eq!(
+        fake.writes(),
+        ["api -X PATCH repos/acme/site/issues/comments/501 --input - <<< {\"body\":\"I can reproduce this.!\"}"]
+    );
+    assert!(screen(&mut g, 70, 24).contains("comment saved"));
+}
+
+#[test]
+fn the_title_is_a_line_that_starts_with_the_old_one() {
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    ch(&mut g, 'S');
+    assert!(screen(&mut g, 70, 24).contains("Title: Header jumps"));
+    for _ in 0.."jumps".len() {
+        press(&mut g, KeyCode::Backspace);
+    }
+    type_str(&mut g, "flickers");
+    press(&mut g, KeyCode::Enter);
+    settle(&mut g);
+    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --title Header flickers"]);
+    // The same title, or none, is not a write.
+    let fake = with_links();
+    let mut g = opened_issue(&fake);
+    ch(&mut g, 'S');
+    press(&mut g, KeyCode::Enter);
+    assert!(fake.writes().is_empty());
 }

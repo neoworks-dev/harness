@@ -316,6 +316,16 @@ impl Images {
     /// relative to it, rows outside it are cut (scrolled away). Until the encoded image is
     /// there it says so on the first row.
     pub fn draw(&mut self, buf: &mut Buffer, area: Rect, at: &Placement, wait: Style) {
+        self.draw_with(buf, area, at, Some(wait));
+    }
+
+    /// Like [`Images::draw`] but says nothing while the image is not there: for small pictures
+    /// next to text, where a message would not fit.
+    pub fn draw_quiet(&mut self, buf: &mut Buffer, area: Rect, at: &Placement) {
+        self.draw_with(buf, area, at, None);
+    }
+
+    fn draw_with(&mut self, buf: &mut Buffer, area: Rect, at: &Placement, wait: Option<Style>) {
         let key: Key = (at.src.clone(), at.cols, at.rows);
         match self.protos.get(&key) {
             Some(Proto::Ready(proto)) => {
@@ -340,7 +350,10 @@ impl Images {
                 let _ = self.encode_tx.send(EncodeJob { key, source });
             }
         }
-        if at.y >= 0 && at.y < i32::from(area.height) {
+        if let Some(wait) = wait
+            && at.y >= 0
+            && at.y < i32::from(area.height)
+        {
             let x = area.x + at.x.min(area.width);
             let room = usize::from(area.width.saturating_sub(at.x));
             buf.set_stringn(x, area.y + at.y as u16, "loading image…", room, wait);

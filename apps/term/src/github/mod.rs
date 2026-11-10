@@ -1,7 +1,9 @@
 //! The GitHub view: a full-screen overlay (`/github`, Ctrl-R) to read a repository's issues and
-//! pull requests with their comments, and to hand one to the model.
+//! pull requests with their comments, to hand one to the model, and to comment, react and close
+//! (see `write.rs`).
 //!
-//! Everything comes from the `gh` CLI, read-only, on background threads: the UI thread only
+//! Everything comes from the `gh` CLI, reads checked against an allowlist and the few writes
+//! named there, on background threads: the UI thread only
 //! starts jobs ([`Github::key`]) and picks up their answers ([`Github::tick`]), so it never
 //! blocks. The repository is the one `gh` finds for the session's directory. Lists (per tab,
 //! state filter and search) and details are cached until the directory changes; `r` reloads.
@@ -14,9 +16,13 @@
 //!   `<github-pr>` block into the prompt and closes the view; `s` sends it right away with a
 //!   short instruction. Both are [`Outgoing`] values for the shell to carry out.
 
+mod complete;
 mod doc;
 mod md;
+mod edit;
 mod view;
+mod visual;
+mod write;
 
 // The read-only `gh` boundary and its data are shared with the desktop app.
 pub use neo_github::{format, gh, model};
@@ -37,7 +43,7 @@ use ratatui::text::Line;
 
 use crate::widgets::DiffView;
 use gh::{Gh, GhCli, GhError};
-use model::{Detail, Kind, Summary};
+use model::{Detail, Kind, Label, Person, Summary};
 use neo_github::fetch;
 
 /// Rows one wheel notch moves.
@@ -91,6 +97,8 @@ struct DetailData {
     error: Option<GhError>,
     /// Bumped when `detail` changes, so the shown lines are rebuilt.
     version: u64,
+    /// What the organization's issue fields are set to (issues only, once asked).
+    fields: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,7 +112,16 @@ struct Doc {
     width: usize,
     version: u64,
     minute: i64,
+    /// How many label colors were known: the lines are built again when more come.
+    colors: usize,
+    /// Room was left for avatars (the terminal draws pictures).
+    pictures: bool,
+    /// The comment that was marked when it was built.
+    sel: Option<usize>,
     lines: Vec<Line<'static>>,
+    avatars: Vec<doc::Avatar>,
+    /// The first line of each comment.
+    comments: Vec<usize>,
 }
 
 struct DetailView {
@@ -115,6 +132,10 @@ struct DetailView {
     rows: usize,
     doc: Option<Doc>,
     diff: Option<DiffView>,
+    /// The comment the write keys act on: the one the cursor is in; none is the item itself.
+    sel: Option<usize>,
+    /// The vim cursor over the lines of the doc (see `visual.rs`), once there are some.
+    cur: Option<visual::Cursor>,
 }
 
 /// One value lives in the state, so the size difference costs nothing.
@@ -130,6 +151,20 @@ enum Msg {
     List(ListKey, Result<Vec<Summary>, GhError>),
     Detail(Kind, u64, Result<Box<Detail>, GhError>),
     Diff(u64, Result<String, GhError>),
+    /// Which reactions on an item (of the version updated at the time) are the user's, as
+    /// `fetch::my_reactions` finds them.
+    Mine(Kind, u64, i64, Result<fetch::MyReactions, GhError>),
+    /// A write finished: what the footer says when it worked, or after `failed` when it did not.
+    Wrote {
+        failed: String,
+        result: Result<String, GhError>,
+    },
+    /// What a list needed from GitHub (milestones, types, fields, projects).
+    Loaded(edit::Which, Result<edit::Loaded, GhError>),
+    /// What the issue fields of an item are set to.
+    Fields(Kind, u64, Result<Vec<(String, String)>, GhError>),
+    Labels(Result<Vec<Label>, GhError>),
+    People(Result<Vec<Person>, GhError>),
 }
 
 pub struct Github {
@@ -143,6 +178,12 @@ pub struct Github {
     query: String,
     /// The search being typed (`/`).
     typing: Option<String>,
+    /// The suggestion chosen with Up / Down while typing; Tab or Enter takes it.
+    pick: Option<usize>,
+    /// What the search suggests from: asked for once per repository, when typing starts.
+    labels: Vec<Label>,
+    people: Vec<Person>,
+    facets_asked: bool,
     lists: HashMap<ListKey, ListData>,
     details: HashMap<(Kind, u64), DetailData>,
     diffs: HashMap<u64, String>,
@@ -151,6 +192,25 @@ pub struct Github {
     pending: Option<(Kind, u64, Intent)>,
     /// An error to show in the footer until the next key.
     note: Option<String>,
+    /// What the footer says about a write that worked, until the next key.
+    info: Option<String>,
+    /// Typing a comment, or choosing among what a key offers (see `write.rs`).
+    writing: Option<write::Writing>,
+    /// The comment being written. It stays while the box is left with Esc, to be added to
+    /// (selections are quoted into it) and to be come back to with `c`.
+    draft: crate::editor::Editor,
+    /// The description or comment being edited.
+    body_edit: crate::editor::Editor,
+    /// A comment on its way, to put back in the draft if it does not arrive.
+    unsent: Option<String>,
+    /// What milestones, types, fields and projects there are, once a list asked for them.
+    cache: edit::Cache,
+    /// The repository's owner has no issue fields (asking said so): not asked again.
+    no_fields: bool,
+    /// A write is on its way.
+    sending: bool,
+    /// Asks for which reactions are the user's that have not been answered yet.
+    mine_asked: usize,
     /// Body rows of the last list draw.
     list_rows: usize,
     tx: Sender<Msg>,
@@ -176,12 +236,25 @@ impl Github {
             all: false,
             query: String::new(),
             typing: None,
+            pick: None,
+            labels: Vec::new(),
+            people: Vec::new(),
+            facets_asked: false,
             lists: HashMap::new(),
             details: HashMap::new(),
             diffs: HashMap::new(),
             mode: Mode::List,
             pending: None,
             note: None,
+            info: None,
+            writing: None,
+            cache: edit::Cache::default(),
+            no_fields: false,
+            draft: crate::editor::Editor::default(),
+            body_edit: crate::editor::Editor::default(),
+            unsent: None,
+            sending: false,
+            mine_asked: 0,
             list_rows: 10,
             tx,
             rx,
@@ -232,6 +305,10 @@ impl Github {
     pub fn close(&mut self) {
         self.open = false;
         self.typing = None;
+        // A comment half written goes with it; one on its way finishes.
+        if !self.sending {
+            self.writing = None;
+        }
     }
 
     // ---- jobs ----
@@ -307,6 +384,68 @@ impl Github {
         });
     }
 
+    /// Asks for the labels and people the search suggests from, once. Failing is fine: the
+    /// search then suggests only qualifiers.
+    fn ask_facets(&mut self) {
+        let Some(repo) = self.repo_name().map(str::to_string) else {
+            return;
+        };
+        if std::mem::replace(&mut self.facets_asked, true) {
+            return;
+        }
+        let r = repo.clone();
+        self.spawn(move |gh, cwd| Msg::Labels(fetch::labels(gh, cwd, &r)));
+        self.spawn(move |gh, cwd| Msg::People(fetch::people(gh, cwd, &repo)));
+    }
+
+    /// The colors of the repository's labels, by name.
+    fn label_colors(&self) -> view::Colors {
+        self.labels.iter().map(|l| (l.name.clone(), l.rgb)).collect()
+    }
+
+    /// What the search being typed suggests.
+    fn suggestions(&self) -> Vec<complete::Candidate> {
+        match &self.typing {
+            Some(text) => complete::suggest(text, self.tab, &self.labels, &self.people),
+            None => Vec::new(),
+        }
+    }
+
+    /// Asks what the organization's issue fields of a loaded issue are set to.
+    fn ask_fields(&mut self, kind: Kind, number: u64) {
+        if kind != Kind::Issue || self.no_fields {
+            return;
+        }
+        let Some(repo) = self.repo_name().map(str::to_string) else {
+            return;
+        };
+        self.mine_asked += 1;
+        self.spawn(move |gh, cwd| {
+            Msg::Fields(kind, number, fetch::field_values(gh, cwd, &repo, number))
+        });
+    }
+
+    /// Asks which of the reactions on a loaded item are the user's, if it has any.
+    fn ask_mine(&mut self, kind: Kind, number: u64) {
+        let Some(repo) = self.repo_name().map(str::to_string) else {
+            return;
+        };
+        let Some(detail) = self
+            .details
+            .get(&(kind, number))
+            .and_then(|d| d.detail.as_ref())
+            .filter(|d| !d.reactions.is_empty() || d.comments.iter().any(|c| !c.reactions.is_empty()))
+            .cloned()
+        else {
+            return;
+        };
+        let updated = detail.updated_ms;
+        self.mine_asked += 1;
+        self.spawn(move |gh, cwd| {
+            Msg::Mine(kind, number, updated, fetch::my_reactions(gh, cwd, &repo, &detail))
+        });
+    }
+
     fn load_diff(&mut self, number: u64) {
         let Some(repo) = self.repo_name().map(str::to_string) else {
             return;
@@ -323,6 +462,8 @@ impl Github {
                 Msg::Repo(Ok(name)) => {
                     self.repo = Repo::Ready(name);
                     self.ensure_list();
+                    // The labels give the chips their colors, and the search its choices.
+                    self.ask_facets();
                     // Opened at an issue or pull request before the repository was known.
                     if let Mode::Detail(v) = &self.mode
                         && !self.details.contains_key(&(v.kind, v.number))
@@ -372,7 +513,48 @@ impl Github {
                             data.error = Some(e);
                         }
                     }
+                    self.ask_mine(kind, number);
+                    self.ask_fields(kind, number);
                 }
+                Msg::Loaded(which, result) => self.loaded(which, result),
+                Msg::Fields(kind, number, result) => match result {
+                    Ok(values) => {
+                        self.mine_asked = self.mine_asked.saturating_sub(1);
+                        if let Some(data) = self.details.get_mut(&(kind, number)) {
+                            data.fields = values;
+                            data.version += 1;
+                        }
+                    }
+                    // Not an organization with issue fields: not asked again.
+                    Err(_) => {
+                        self.mine_asked = self.mine_asked.saturating_sub(1);
+                        self.no_fields = true;
+                    }
+                },
+                Msg::Mine(kind, number, updated_ms, found) => {
+                    // gh does not say which reactions are the user's: they come separately,
+                    // and only count for the version of the item they were asked about.
+                    self.mine_asked = self.mine_asked.saturating_sub(1);
+                    if let Some(data) = self.details.get_mut(&(kind, number))
+                        && let Some(detail) = &mut data.detail
+                        && detail.updated_ms == updated_ms
+                        && let Ok(found) = found
+                    {
+                        for (who, words) in found {
+                            let reactions = match who {
+                                None => Some(&mut detail.reactions),
+                                Some(i) => detail.comments.get_mut(i).map(|c| &mut c.reactions),
+                            };
+                            for r in reactions.into_iter().flatten() {
+                                r.mine = words.contains(&r.content);
+                            }
+                        }
+                        data.version += 1;
+                    }
+                }
+                Msg::Wrote { failed, result } => self.wrote(failed, result),
+                Msg::Labels(result) => self.labels = result.unwrap_or_default(),
+                Msg::People(result) => self.people = result.unwrap_or_default(),
                 Msg::Diff(number, result) => {
                     let result = result.map_err(|e| e.message());
                     if let Ok(text) = &result {
@@ -431,6 +613,13 @@ impl Github {
             return None;
         }
         self.note = None;
+        if !self.sending {
+            self.info = None;
+        }
+        if self.writing.is_some() {
+            self.writing_key(key);
+            return None;
+        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let diff_open = matches!(&self.mode, Mode::Detail(v) if v.diff.is_some());
         if self.typing.is_some() {
@@ -448,8 +637,12 @@ impl Github {
     }
 
     pub fn paste(&mut self, text: &str) {
+        if self.paste_into_comment(text) {
+            return;
+        }
         if let Some(t) = &mut self.typing {
             t.extend(text.chars().filter(|c| !c.is_control()));
+            self.pick = None;
         }
     }
 
@@ -472,25 +665,49 @@ impl Github {
 
     fn typing_key(&mut self, key: KeyEvent) {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let suggestions = self.suggestions();
+        let n = suggestions.len();
         let Some(text) = &mut self.typing else {
             return;
         };
+        // The suggestion Tab takes, and Enter once one was chosen with the arrows.
+        let chosen = self.pick.filter(|i| *i < n);
         match key.code {
             KeyCode::Esc => self.typing = None,
             KeyCode::Char('c') if ctrl => self.typing = None,
-            KeyCode::Char('u') if ctrl => text.clear(),
-            KeyCode::Backspace => {
-                text.pop();
+            KeyCode::Up if n > 0 => {
+                self.pick = Some(chosen.map_or(n - 1, |i| i.checked_sub(1).unwrap_or(n - 1)));
+            }
+            KeyCode::Down if n > 0 => self.pick = Some(chosen.map_or(0, |i| (i + 1) % n)),
+            KeyCode::Tab if n > 0 => {
+                *text = complete::accept(text, &suggestions[chosen.unwrap_or(0)]);
+                self.pick = None;
+            }
+            KeyCode::Enter if chosen.is_some() => {
+                *text = complete::accept(text, &suggestions[chosen.unwrap_or(0)]);
+                self.pick = None;
             }
             KeyCode::Enter => {
                 self.query = text.trim().to_string();
                 self.typing = None;
                 self.ensure_list();
             }
+            KeyCode::Char('u') if ctrl => {
+                text.clear();
+                self.pick = None;
+            }
+            KeyCode::Backspace => {
+                text.pop();
+                self.pick = None;
+            }
             KeyCode::Char(c) if !ctrl && !key.modifiers.contains(KeyModifiers::ALT) => {
                 text.push(c);
+                self.pick = None;
             }
             _ => {}
+        }
+        if self.typing.is_none() {
+            self.pick = None;
         }
     }
 
@@ -515,7 +732,11 @@ impl Github {
             (KeyCode::Char('d'), true) => self.move_selection((page / 2).max(1)),
             (KeyCode::Home | KeyCode::Char('g'), _) => self.move_selection(isize::MIN / 2),
             (KeyCode::End | KeyCode::Char('G'), _) => self.move_selection(isize::MAX / 2),
-            (KeyCode::Char('/'), _) => self.typing = Some(self.query.clone()),
+            (KeyCode::Char('/'), _) => {
+                self.typing = Some(self.query.clone());
+                self.pick = None;
+                self.ask_facets();
+            }
             (KeyCode::Char('o'), false) => {
                 self.all = !self.all;
                 self.ensure_list();
@@ -586,6 +807,20 @@ impl Github {
             }
             return None;
         }
+        if self.write_hotkey(key) {
+            return None;
+        }
+        match self.cursor_key(key) {
+            Some(visual::Keyed::Add(text)) => {
+                self.add_to_message(&text);
+                return None;
+            }
+            Some(visual::Keyed::Handled) => return None,
+            _ => {}
+        }
+        let Mode::Detail(v) = &mut self.mode else {
+            return None;
+        };
         let (kind, number) = (v.kind, v.number);
         let page = v.rows.saturating_sub(1).max(1) as isize;
         match (key.code, ctrl) {
@@ -610,6 +845,32 @@ impl Github {
         None
     }
 
+    /// A key for the vim cursor, if there are lines for it to walk: what it did. The view
+    /// follows the cursor.
+    fn cursor_key(&mut self, key: KeyEvent) -> Option<visual::Keyed> {
+        let Mode::Detail(v) = &mut self.mode else {
+            return None;
+        };
+        let page = v.rows.saturating_sub(1).max(1);
+        let cur = v.cur.as_mut()?;
+        if !cur.active {
+            // The first key starts at the top of what is on screen.
+            cur.go_to_row(v.scroll);
+            cur.active = false;
+        }
+        let keyed = cur.key(key, page);
+        if keyed != visual::Keyed::Pass {
+            let row = cur.row();
+            if row < v.scroll {
+                v.scroll = row;
+            } else if row >= v.scroll + v.rows {
+                v.scroll = row + 1 - v.rows;
+            }
+        }
+        self.sync_pick();
+        Some(keyed)
+    }
+
     fn open_diff(&mut self, number: u64) {
         let title = format!("#{number} {}", self.repo_name().unwrap_or(""));
         let cached = self.diffs.get(&number).cloned();
@@ -628,8 +889,15 @@ impl Github {
     // ---- drawing ----
 
     /// Fills `area` (the chat's).
-    pub fn draw(&mut self, frame: &mut Frame, area: Rect, now_ms: i64, st: &crate::style::Styles) {
-        view::draw(self, frame, area, now_ms, st);
+    pub fn draw(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        now_ms: i64,
+        st: &crate::style::Styles,
+        images: Option<&mut crate::images::Images>,
+    ) {
+        view::draw(self, frame, area, now_ms, st, images);
     }
 }
 
@@ -642,6 +910,8 @@ impl DetailView {
             rows: 10,
             doc: None,
             diff: None,
+            sel: None,
+            cur: None,
         }
     }
 

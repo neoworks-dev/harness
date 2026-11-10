@@ -2,26 +2,34 @@
 
 use ratatui::Frame;
 use ratatui::layout::{Position, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, Paragraph};
 
+use super::complete::Look;
 use super::doc::{self, state_style};
 use super::gh::GhError;
-use super::model::{Kind, Summary, short_age};
-use super::{Doc, Github, Mode, Repo};
+use super::model::{Kind, State, Summary, short_age};
+use super::{Doc, Github, Mode, Repo, visual, write};
 use crate::style::Styles;
 use crate::util::{fit_line, split_line, truncate, width};
+use crate::chat::Placement;
+use crate::images::Images;
 use crate::widgets::DiffView;
 
-/// Columns of a row that are fixed: marker, number, state.
-const STATE_W: usize = 6;
-/// A title is not worth less than this; narrower and the extra columns go.
-const TITLE_MIN: usize = 24;
-const LABELS_MAX: usize = 24;
-const AUTHOR_MAX: usize = 16;
+/// Where an avatar is drawn in a suggestion row, and how many cells wide: a cell is about
+/// twice as tall as wide, so two across one down is square.
+const AVATAR_X: u16 = 2;
+const AVATAR_COLS: u16 = 2;
 
-pub(super) fn draw(g: &mut Github, frame: &mut Frame, area: Rect, now_ms: i64, st: &Styles) {
+pub(super) fn draw(
+    g: &mut Github,
+    frame: &mut Frame,
+    area: Rect,
+    now_ms: i64,
+    st: &Styles,
+    images: Option<&mut Images>,
+) {
     if area.width == 0 || area.height == 0 {
         return;
     }
@@ -37,10 +45,19 @@ pub(super) fn draw(g: &mut Github, frame: &mut Frame, area: Rect, now_ms: i64, s
         Mode::List => (h.saturating_sub(3), true),
         Mode::Detail(_) => (h.saturating_sub(2), false),
     };
+    // What is being written takes the bottom of the detail; the item scrolls above it.
+    let panel = match g.mode {
+        Mode::Detail(_) if g.writing.is_some() => g.panel(w, body_h, st),
+        _ => write::Panel {
+            lines: Vec::new(),
+            cursor: None,
+        },
+    };
+    let above = body_h.saturating_sub(panel.lines.len());
     // The body first: it learns how many rows there are, which the head reports on.
     let body = match g.mode {
         Mode::List => list_body(g, w, body_h, now_ms, st),
-        Mode::Detail(_) => detail_body(g, w, body_h, now_ms, st),
+        Mode::Detail(_) => detail_body(g, w, above, now_ms, st, images.is_some()),
     };
     let head = match g.mode {
         Mode::List => list_head(g, w, st),
@@ -49,7 +66,35 @@ pub(super) fn draw(g: &mut Github, frame: &mut Frame, area: Rect, now_ms: i64, s
     let mut lines = head;
     let head_h = lines.len();
     lines.extend(body);
+    lines.resize(head_h + above, Line::default());
+    lines.extend(panel.lines);
     lines.resize(head_h + body_h, Line::default());
+    // Where the pictures of people go: (row, column, address).
+    let mut avatars: Vec<(usize, u16, String)> = Vec::new();
+    if cursor {
+        for (i, (row, avatar)) in dropdown(g, w, st, images.is_some())
+            .into_iter()
+            .enumerate()
+        {
+            if let Some(slot) = lines.get_mut(head_h + i) {
+                *slot = row;
+                avatars.extend(avatar.map(|url| (head_h + i, AVATAR_X, url)));
+            }
+        }
+    }
+    if let Mode::Detail(v) = &g.mode
+        && let Some(doc) = &v.doc
+    {
+        for a in &doc.avatars {
+            if a.line >= v.scroll && a.line < v.scroll + v.rows.min(above) {
+                avatars.push((
+                    head_h + a.line - v.scroll,
+                    a.x,
+                    doc::avatar_url(&a.login),
+                ));
+            }
+        }
+    }
     lines.push(footer(g, w, st));
     lines.truncate(h);
     frame.render_widget(
@@ -61,9 +106,26 @@ pub(super) fn draw(g: &mut Github, frame: &mut Frame, area: Rect, now_ms: i64, s
         ),
         area,
     );
+    if let Some(images) = images {
+        images.request(avatars.iter().map(|(_, _, url)| url.as_str()));
+        for (row, x, url) in avatars {
+            let at = Placement {
+                src: url,
+                x,
+                y: row as i32,
+                cols: AVATAR_COLS,
+                rows: 1,
+            };
+            images.draw_quiet(frame.buffer_mut(), area, &at);
+        }
+    }
     if cursor && let Some(text) = &g.typing {
         let x = (2 + width(text)).min(w - 1) as u16;
         frame.set_cursor_position(Position::new(area.x + x, area.y + 1));
+    }
+    if let Some((row, col)) = panel.cursor {
+        let x = col.min(w.saturating_sub(1)) as u16;
+        frame.set_cursor_position(Position::new(area.x + x, area.y + (head_h + above + row) as u16));
     }
 }
 
@@ -126,6 +188,7 @@ pub(super) fn list_body(
     st: &Styles,
 ) -> Vec<Line<'static>> {
     g.list_rows = h.max(1);
+    let colors = g.label_colors();
     let key = g.current();
     match &g.repo {
         Repo::Unknown | Repo::Loading => return vec![note("loading…", st)],
@@ -151,22 +214,187 @@ pub(super) fn list_body(
         };
         return vec![note(text, st)];
     }
-    // Keep the selection in view.
-    let rows = h.max(1);
-    data.selected = data.selected.min(data.rows.len() - 1);
-    if data.selected < data.top {
-        data.top = data.selected;
-    } else if data.selected >= data.top + rows {
-        data.top = data.selected + 1 - rows;
-    }
-    data.top = data.top.min(data.rows.len().saturating_sub(rows));
-    let layout = Columns::new(&data.rows, w);
-    data.rows
+    // Each issue is a block of lines, so the selection is kept in view by blocks.
+    let h = h.max(1);
+    let blocks: Vec<Vec<Line<'static>>> = data
+        .rows
         .iter()
         .enumerate()
-        .skip(data.top)
-        .take(rows)
-        .map(|(i, s)| layout.row(s, i == data.selected, now_ms, st))
+        .map(|(i, s)| item(s, i == data.selected, w, now_ms, st, &colors))
+        .collect();
+    data.selected = data.selected.min(data.rows.len() - 1);
+    data.top = data.top.min(data.selected);
+    // The last block has no gap under it, so it needs one line less.
+    let span = |from: usize, to: usize| -> usize {
+        blocks[from..=to].iter().map(Vec::len).sum::<usize>() - 1
+    };
+    while data.top < data.selected && span(data.top, data.selected) > h {
+        data.top += 1;
+    }
+    let mut out = Vec::new();
+    let mut shown = 0;
+    for block in &blocks[data.top..] {
+        if !out.is_empty() && out.len() + block.len() - 1 > h {
+            break;
+        }
+        out.extend(block.iter().cloned());
+        shown += 1;
+    }
+    g.list_rows = shown.max(1);
+    out
+}
+
+/// One issue or pull request: its title in full, a muted line of facts and label chips, and
+/// an empty line to set it apart from the next.
+fn item(
+    s: &Summary,
+    selected: bool,
+    w: usize,
+    now_ms: i64,
+    st: &Styles,
+    colors: &Colors,
+) -> Vec<Line<'static>> {
+    let bar = if selected {
+        Span::styled("▎ ", st.accent)
+    } else {
+        Span::raw("  ")
+    };
+    let glyph = match s.state {
+        State::Open => "●",
+        State::Closed => "✓",
+        State::Merged => "◆",
+        State::Draft => "○",
+    };
+    let number = format!("#{} ", s.number);
+    let lead = 2 + 2 + width(&number);
+    let title_style = if selected {
+        Style::new().add_modifier(Modifier::BOLD)
+    } else {
+        Style::new()
+    };
+    let mut out = Vec::new();
+    for (i, line) in super::md::paragraph(&s.title, w.saturating_sub(lead).max(1), title_style)
+        .into_iter()
+        .enumerate()
+    {
+        let mut spans = vec![bar.clone()];
+        if i == 0 {
+            spans.push(Span::styled(format!("{glyph} "), state_style(s.state, st)));
+            spans.push(Span::styled(number.clone(), st.muted));
+        } else {
+            spans.push(Span::raw(" ".repeat(lead - 2)));
+        }
+        spans.extend(line.spans);
+        out.push(Line::from(spans));
+    }
+    let mut facts = vec![s.author.clone()];
+    if s.comments > 0 {
+        let n = s.comments;
+        facts.push(format!("{n} comment{}", if n == 1 { "" } else { "s" }));
+    }
+    let age = short_age(s.updated_ms, now_ms);
+    if !age.is_empty() {
+        facts.push(format!("{age} ago"));
+    }
+    let mut meta = vec![bar, Span::raw(" ".repeat(lead - 2))];
+    meta.push(Span::styled(facts.join(" · "), st.muted));
+    for label in &s.labels {
+        meta.push(Span::raw(" "));
+        meta.push(Span::styled(
+            format!(" {label} "),
+            chip_style(colors.get(label).copied(), st),
+        ));
+    }
+    out.push(fit_line(Line::from(meta), w));
+    // The issue sits on a background of its own; the empty line under it is the gap.
+    if st.raised != Color::Reset {
+        for line in &mut out {
+            fill(line, w, st.raised);
+        }
+    }
+    out.push(Line::default());
+    out
+}
+
+/// The label colors of the repository, by name.
+pub(super) type Colors = std::collections::HashMap<String, u32>;
+
+/// A label as a chip: in the color GitHub gives it (the text black or white to read on it), or
+/// reversed muted while that is not known.
+pub(super) fn chip_style(rgb: Option<u32>, st: &Styles) -> Style {
+    let Some(rgb) = rgb else {
+        return st.muted.add_modifier(Modifier::REVERSED);
+    };
+    let (r, g, b) = ((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8);
+    let luma = (u32::from(r) * 299 + u32::from(g) * 587 + u32::from(b) * 114) / 1000;
+    let fg = if luma > 140 { Color::Black } else { Color::White };
+    Style::new().fg(fg).bg(Color::Rgb(r, g, b))
+}
+
+/// The line padded to `w` and every part of it that has no background on `bg`.
+pub(super) fn fill(line: &mut Line<'static>, w: usize, bg: Color) {
+    let pad = w.saturating_sub(line.width());
+    line.spans.push(Span::raw(" ".repeat(pad)));
+    for span in &mut line.spans {
+        if span.style.bg.is_none() {
+            span.style = span.style.bg(bg);
+        }
+    }
+}
+
+/// The suggestions for the search being typed, one row each over the top of the list: labels
+/// in their own colors, qualifiers and people in the accent.
+///
+/// With `pictures` the people get room for their avatar; the address of each comes along with
+/// its row, to be drawn over the blank.
+fn dropdown(
+    g: &Github,
+    w: usize,
+    st: &Styles,
+    pictures: bool,
+) -> Vec<(Line<'static>, Option<String>)> {
+    let chosen = g.pick;
+    g.suggestions()
+        .into_iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let on = chosen == Some(i);
+            let mut avatar = None;
+            let mut row = Style::new().bg(st.raised);
+            if on {
+                row = row.add_modifier(Modifier::BOLD);
+            }
+            let mut spans = vec![Span::styled(
+                if on { "› " } else { "  " },
+                row.patch(st.accent),
+            )];
+            match &c.look {
+                Look::Label(rgb) => spans.push(Span::styled(
+                    format!(" {} ", c.shown),
+                    chip_style(Some(*rgb), st),
+                )),
+                Look::Key => spans.push(Span::styled(c.shown.clone(), row.patch(st.accent))),
+                Look::Person(url) => {
+                    if pictures {
+                        spans.push(Span::styled(" ".repeat(usize::from(AVATAR_COLS) + 1), row));
+                        avatar = url.clone();
+                    }
+                    spans.push(Span::styled(c.shown.clone(), row.patch(st.accent)));
+                }
+                Look::Word => spans.push(Span::styled(c.shown.clone(), row)),
+            }
+            if !c.note.is_empty() {
+                spans.push(Span::styled(
+                    format!("  {}", c.note),
+                    row.patch(st.muted),
+                ));
+            }
+            let mut line = fit_line(Line::from(spans), w);
+            let used = line.width();
+            line.spans
+                .push(Span::styled(" ".repeat(w.saturating_sub(used)), row));
+            (line, avatar)
+        })
         .collect()
 }
 
@@ -180,168 +408,6 @@ fn error_lines(e: &GhError, w: usize, st: &Styles) -> Vec<Line<'static>> {
     out.push(Line::default());
     out.push(note("r to try again", st));
     out
-}
-
-/// Which optional columns fit at this width, and how wide each is.
-pub(super) struct Columns {
-    number: usize,
-    labels: usize,
-    author: usize,
-    comments: usize,
-    age: usize,
-    width: usize,
-}
-
-impl Columns {
-    pub(super) fn new(rows: &[Summary], width: usize) -> Columns {
-        let number = rows
-            .iter()
-            .map(|r| r.number.to_string().len() + 1)
-            .max()
-            .unwrap_or(2);
-        let labels = rows
-            .iter()
-            .map(|r| crate::util::width(&r.labels.join(", ")))
-            .max()
-            .unwrap_or(0)
-            .min(LABELS_MAX);
-        let author = rows
-            .iter()
-            .map(|r| crate::util::width(&r.author))
-            .max()
-            .unwrap_or(0)
-            .min(AUTHOR_MAX);
-        let comments = rows
-            .iter()
-            .map(|r| format!("✎{}", r.comments).chars().count())
-            .max()
-            .unwrap_or(2);
-        let mut c = Columns {
-            number,
-            labels,
-            author,
-            comments,
-            age: 4,
-            width,
-        };
-        // Drop columns, labels first, until the title has room.
-        let fixed = 2 + number + 1 + STATE_W + 1;
-        let mut level: u8 = 3;
-        while level > 0 && fixed + c.right(level) + TITLE_MIN > width {
-            level -= 1;
-        }
-        if fixed + c.right(0) + TITLE_MIN > width {
-            c.age = 0;
-        }
-        if level < 3 {
-            c.labels = 0;
-        }
-        if level < 2 {
-            c.author = 0;
-        }
-        if level < 1 {
-            c.comments = 0;
-        }
-        c
-    }
-
-    /// Width of the columns right of the title at a level (3: all, 0: only the age).
-    fn right(&self, level: u8) -> usize {
-        let mut w = 2 + self.age;
-        if level >= 1 {
-            w += 2 + self.comments;
-        }
-        if level >= 2 {
-            w += 2 + self.author;
-        }
-        if level >= 3 && self.labels > 0 {
-            w += 2 + self.labels;
-        }
-        w
-    }
-
-    pub(super) fn row(
-        &self,
-        s: &Summary,
-        selected: bool,
-        now_ms: i64,
-        st: &Styles,
-    ) -> Line<'static> {
-        let fixed = 2 + self.number + 1 + STATE_W + 1;
-        let right = self.right_width();
-        let title_w = self.width.saturating_sub(fixed + right).max(1);
-        let title_style = if selected {
-            Style::new().add_modifier(Modifier::BOLD)
-        } else {
-            Style::new()
-        };
-        let mut spans = vec![
-            Span::styled(if selected { "› " } else { "  " }, st.accent),
-            Span::styled(
-                format!("{:>w$} ", format!("#{}", s.number), w = self.number),
-                st.muted,
-            ),
-            Span::styled(
-                format!("{:<w$} ", s.state.word(), w = STATE_W),
-                state_style(s.state, st),
-            ),
-            Span::styled(pad(&truncate(&s.title, title_w), title_w), title_style),
-        ];
-        if self.labels > 0 {
-            spans.push(Span::styled(
-                format!(
-                    "  {}",
-                    pad(&truncate(&s.labels.join(", "), self.labels), self.labels)
-                ),
-                st.muted,
-            ));
-        }
-        if self.author > 0 {
-            spans.push(Span::raw(format!(
-                "  {}",
-                pad(&truncate(&s.author, self.author), self.author)
-            )));
-        }
-        if self.comments > 0 {
-            let c = if s.comments > 0 {
-                format!("✎{}", s.comments)
-            } else {
-                String::new()
-            };
-            spans.push(Span::styled(
-                format!("  {:>w$}", c, w = self.comments),
-                st.muted,
-            ));
-        }
-        if self.age > 0 {
-            spans.push(Span::styled(
-                format!("  {:>w$}", short_age(s.updated_ms, now_ms), w = self.age),
-                st.muted,
-            ));
-        }
-        Line::from(spans)
-    }
-
-    fn right_width(&self) -> usize {
-        let mut w = 0;
-        if self.labels > 0 {
-            w += 2 + self.labels;
-        }
-        if self.author > 0 {
-            w += 2 + self.author;
-        }
-        if self.comments > 0 {
-            w += 2 + self.comments;
-        }
-        if self.age > 0 {
-            w += 2 + self.age;
-        }
-        w
-    }
-}
-
-fn pad(s: &str, w: usize) -> String {
-    format!("{s}{}", " ".repeat(w.saturating_sub(width(s))))
 }
 
 // ---- detail ----
@@ -385,7 +451,9 @@ pub(super) fn detail_body(
     h: usize,
     now_ms: i64,
     st: &Styles,
+    pictures: bool,
 ) -> Vec<Line<'static>> {
+    let colors = g.label_colors();
     let Mode::Detail(v) = &mut g.mode else {
         return Vec::new();
     };
@@ -403,18 +471,109 @@ pub(super) fn detail_body(
     let stale = !v
         .doc
         .as_ref()
-        .is_some_and(|d| d.width == w && d.version == data.version && d.minute == minute);
+        .is_some_and(|d| {
+            d.width == w
+                && d.version == data.version
+                && d.minute == minute
+                && d.colors == colors.len()
+                && d.pictures == pictures
+                && d.sel == v.sel
+        });
     if stale {
+        let with = doc::With {
+            colors: &colors,
+            pictures,
+            sel: v.sel,
+            fields: &data.fields,
+        };
+        let built = doc::build(detail, w, now_ms, st, &with);
         v.doc = Some(Doc {
             width: w,
             version: data.version,
             minute,
-            lines: doc::build(detail, w, now_ms, st),
+            colors: colors.len(),
+            pictures,
+            sel: v.sel,
+            lines: built.lines,
+            avatars: built.avatars,
+            comments: built.comments,
         });
     }
-    let lines = &v.doc.as_ref().expect("built above").lines;
+    let doc = v.doc.as_ref().expect("built above");
+    // The cursor walks what is shown: the lines as text, one buffer.
+    if stale || v.cur.is_none() {
+        let text: Vec<Vec<char>> = doc
+            .lines
+            .iter()
+            .map(|l| l.spans.iter().flat_map(|s| s.content.chars()).collect())
+            .collect();
+        match &mut v.cur {
+            Some(cur) => cur.set_lines(text),
+            None => v.cur = Some(visual::Cursor::new(text)),
+        }
+    }
+    let lines = &doc.lines;
     v.scroll = v.scroll.min(lines.len().saturating_sub(v.rows));
-    lines.iter().skip(v.scroll).take(v.rows).cloned().collect()
+    // The wheel moved the view away from the cursor: it comes along.
+    if let Some(cur) = v.cur.as_mut()
+        && cur.active
+    {
+        let (top, bottom) = (v.scroll, (v.scroll + v.rows).saturating_sub(1));
+        if cur.row() < top || cur.row() > bottom {
+            cur.go_to_row(cur.row().clamp(top, bottom));
+        }
+    }
+    let active = v.cur.as_ref().filter(|c| c.active);
+    lines
+        .iter()
+        .enumerate()
+        .skip(v.scroll)
+        .take(v.rows)
+        .map(|(r, line)| match active {
+            Some(cur) => mark_cursor(line, r, cur),
+            None => line.clone(),
+        })
+        .collect()
+}
+
+/// The line with the selection and the cursor drawn on it: the selected characters reversed,
+/// the cursor a block (bold and underlined within a selection). An empty line shows the cursor
+/// as a space.
+fn mark_cursor(line: &Line<'static>, row: usize, cur: &visual::Cursor) -> Line<'static> {
+    let at_cursor = |c: usize| row == cur.row() && c == cur.col();
+    let on_row = row == cur.row();
+    if !on_row && !cur.visual() {
+        return line.clone();
+    }
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut c = 0;
+    let mut push = |ch: char, base: Style, c: usize| {
+        let mut style = base;
+        if cur.selects(row, c) {
+            style = style.add_modifier(Modifier::REVERSED);
+        }
+        if at_cursor(c) {
+            style = if cur.selects(row, c) {
+                style.add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+            } else {
+                style.add_modifier(Modifier::REVERSED)
+            };
+        }
+        match spans.last_mut() {
+            Some(last) if last.style == style => last.content.to_mut().push(ch),
+            _ => spans.push(Span::styled(ch.to_string(), style)),
+        }
+    };
+    for span in &line.spans {
+        for ch in span.content.chars() {
+            push(ch, span.style, c);
+            c += 1;
+        }
+    }
+    if on_row && cur.col() >= c {
+        push(' ', Style::new(), cur.col());
+    }
+    Line::from(spans)
 }
 
 // ---- footer ----
@@ -450,7 +609,17 @@ fn footer(g: &Github, w: usize, st: &Styles) -> Line<'static> {
         ));
     }
     if g.typing.is_some() {
-        return hints(&["enter search", "esc cancel", "ctrl-u clear"], w, st);
+        return hints(
+            &["enter search", "tab complete", "↑↓ choose", "esc cancel", "ctrl-u clear"],
+            w,
+            st,
+        );
+    }
+    if let Some(info) = &g.info {
+        return Line::from(Span::styled(truncate(info, w), st.muted));
+    }
+    if g.writing.is_some() {
+        return hints(&["esc cancel"], w, st);
     }
     match &g.mode {
         Mode::List => hints(
@@ -468,30 +637,26 @@ fn footer(g: &Github, w: usize, st: &Styles) -> Line<'static> {
             w,
             st,
         ),
-        Mode::Detail(v) if v.kind == Kind::Pr => hints(
-            &[
-                "enter attach",
-                "s send",
-                "d diff",
-                "↑↓ scroll",
-                "r reload",
-                "esc back",
-                "q close",
-            ],
-            w,
-            st,
-        ),
-        Mode::Detail(_) => hints(
-            &[
-                "enter attach",
-                "s send",
-                "↑↓ scroll",
-                "r reload",
-                "esc back",
-                "q close",
-            ],
-            w,
-            st,
-        ),
+        // Selecting: what to do with it.
+        Mode::Detail(v) if v.cur.as_ref().is_some_and(|c| c.visual()) => {
+            hints(&["a add to message", "v V o select", "esc leave visual"], w, st)
+        }
+        Mode::Detail(v) => {
+            let draft = if g.draft.is_empty() { "c comment" } else { "c comment (draft)" };
+            let mut parts = vec![
+                "v V select",
+                draft,
+                "E edit text",
+                "m more edits",
+                "+ react",
+                "x close",
+                "[ ] comments",
+            ];
+            if v.kind == Kind::Pr {
+                parts.push("d diff");
+            }
+            parts.extend(["enter attach", "s send", "esc back", "q close"]);
+            hints(&parts, w, st)
+        }
     }
 }

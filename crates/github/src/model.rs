@@ -66,9 +66,43 @@ pub struct Summary {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Comment {
+    /// The number in the comment's link: what reacting to it needs. 0 when it has none.
+    pub id: u64,
     pub author: String,
     pub at_ms: i64,
     pub body: String,
+    pub reactions: Vec<Reaction>,
+}
+
+/// The reactions of one kind on an item or comment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Reaction {
+    /// GitHub's word: `THUMBS_UP`, `HEART`…
+    pub content: String,
+    pub count: u64,
+    /// The user is among them.
+    pub mine: bool,
+}
+
+/// The reactions GitHub offers: its word for each, REST's word, and the emoji.
+pub const REACTIONS: [(&str, &str, &str); 8] = [
+    ("THUMBS_UP", "+1", "👍"),
+    ("THUMBS_DOWN", "-1", "👎"),
+    ("LAUGH", "laugh", "😄"),
+    ("HOORAY", "hooray", "🎉"),
+    ("CONFUSED", "confused", "😕"),
+    ("HEART", "heart", "❤️"),
+    ("ROCKET", "rocket", "🚀"),
+    ("EYES", "eyes", "👀"),
+];
+
+/// The emoji of a reaction by GitHub's word.
+pub fn emoji_of(content: &str) -> &'static str {
+    REACTIONS
+        .iter()
+        .find(|r| r.0 == content)
+        .map_or("•", |r| r.2)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -132,6 +166,20 @@ pub struct Detail {
     pub created_ms: i64,
     pub updated_ms: i64,
     pub comments: Vec<Comment>,
+    pub reactions: Vec<Reaction>,
+    /// Why it was closed: `completed`, `not planned`, `duplicate`; empty when open or unknown.
+    pub state_reason: String,
+    pub assignees: Vec<String>,
+    pub milestone: String,
+    /// The issue type (`Bug`); empty without one.
+    pub issue_type: String,
+    pub projects: Vec<String>,
+    /// People asked to review (pull requests).
+    pub reviewers: Vec<String>,
+    /// The parent issue's number, 0 without one, and the issues it is blocked by or blocks.
+    pub parent: u64,
+    pub blocked_by: Vec<u64>,
+    pub blocking: Vec<u64>,
     // Pull requests only from here on.
     pub reviews: Vec<Review>,
     pub review_comments: Vec<ReviewComment>,
@@ -230,10 +278,50 @@ pub fn parse_detail(kind: Kind, text: &str) -> Result<Detail, String> {
         comments: array(&v["comments"])
             .iter()
             .map(|c| Comment {
+                id: comment_id(str_of(&c["url"])),
                 author: author_of(&c["author"]),
                 at_ms: time_of(&c["createdAt"]),
                 body: sane(str_of(&c["body"])),
+                reactions: reactions_of(&c["reactionGroups"]),
             })
+            .collect(),
+        reactions: reactions_of(&v["reactionGroups"]),
+        state_reason: sane_line(str_of(&v["stateReason"]))
+            .to_lowercase()
+            .replace('_', " "),
+        assignees: array(&v["assignees"])
+            .iter()
+            .map(author_of)
+            .filter(|a| !a.is_empty())
+            .collect(),
+        milestone: sane_line(str_of(&v["milestone"]["title"])),
+        issue_type: sane_line(str_of(&v["issueType"]["name"])),
+        projects: array(&v["projectItems"])
+            .iter()
+            .map(|p| {
+                let title = &p["project"]["title"];
+                sane_line(str_of(if title.is_null() { &p["title"] } else { title }))
+            })
+            .filter(|p| !p.is_empty())
+            .collect(),
+        reviewers: array(&v["reviewRequests"])
+            .iter()
+            .map(|r| {
+                let who = &r["requestedReviewer"];
+                let login = if who["login"].is_null() { &r["login"] } else { &who["login"] };
+                let name = if login.is_null() { &r["name"] } else { login };
+                sane_line(str_of(name))
+            })
+            .filter(|r| !r.is_empty())
+            .collect(),
+        parent: v["parent"]["number"].as_u64().unwrap_or(0),
+        blocked_by: array(&v["blockedBy"])
+            .iter()
+            .filter_map(|i| i["number"].as_u64())
+            .collect(),
+        blocking: array(&v["blocking"])
+            .iter()
+            .filter_map(|i| i["number"].as_u64())
             .collect(),
         reviews: array(&v["reviews"])
             .iter()
@@ -284,6 +372,178 @@ pub fn parse_review_comments(text: &str) -> Vec<ReviewComment> {
         .collect();
     out.sort_by_key(|c| c.at_ms);
     out
+}
+
+/// An issue field the organization defines (`Priority`), with the options of a single select.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct OrgField {
+    pub id: u64,
+    pub name: String,
+    /// `single_select`, `text`, `number`, `date`.
+    pub data_type: String,
+    pub options: Vec<String>,
+}
+
+/// `gh api orgs/o/issue-fields`.
+pub fn parse_org_fields(text: &str) -> Vec<OrgField> {
+    let Ok(v) = json(text) else {
+        return Vec::new();
+    };
+    array(&v)
+        .iter()
+        .filter_map(|f| {
+            Some(OrgField {
+                id: f["id"].as_u64()?,
+                name: sane_line(str_of(&f["name"])),
+                data_type: sane_line(str_of(&f["data_type"])),
+                options: array(&f["options"])
+                    .iter()
+                    .map(|o| sane_line(str_of(&o["name"])))
+                    .filter(|o| !o.is_empty())
+                    .collect(),
+            })
+        })
+        .filter(|f| !f.name.is_empty())
+        .collect()
+}
+
+/// The `key` of each entry of a REST list: `name` for issue types, `title` for milestones.
+pub fn parse_names(text: &str, key: &str) -> Vec<String> {
+    let Ok(v) = json(text) else {
+        return Vec::new();
+    };
+    array(&v)
+        .iter()
+        .map(|e| sane_line(str_of(&e[key])))
+        .filter(|n| !n.is_empty())
+        .collect()
+}
+
+/// `gh api repos/o/r/issues/N/issue-field-values`: each field's name and what it is set to.
+pub fn parse_field_values(text: &str) -> Vec<(String, String)> {
+    let Ok(v) = json(text) else {
+        return Vec::new();
+    };
+    array(&v)
+        .iter()
+        .filter_map(|f| {
+            let name = sane_line(str_of(&f["issue_field_name"]));
+            let value = match f["single_select_option"]["name"].as_str() {
+                Some(option) => sane_line(option),
+                None => match &f["value"] {
+                    Value::String(s) => sane_line(s),
+                    Value::Number(n) => n.to_string(),
+                    _ => String::new(),
+                },
+            };
+            (!name.is_empty() && !value.is_empty()).then_some((name, value))
+        })
+        .collect()
+}
+
+/// `gh project list --format json`: the titles.
+pub fn parse_projects(text: &str) -> Vec<String> {
+    let Ok(v) = json(text) else {
+        return Vec::new();
+    };
+    array(&v["projects"])
+        .iter()
+        .map(|p| sane_line(str_of(&p["title"])))
+        .filter(|t| !t.is_empty())
+        .collect()
+}
+
+/// `gh api …/reactions`: each reaction's id, who gave it and its REST word (`heart`).
+pub fn parse_reaction_list(text: &str) -> Vec<(u64, String, String)> {
+    let Ok(v) = json(text) else {
+        return Vec::new();
+    };
+    array(&v)
+        .iter()
+        .filter_map(|r| {
+            Some((
+                r["id"].as_u64()?,
+                sane_line(str_of(&r["user"]["login"])),
+                sane_line(str_of(&r["content"])),
+            ))
+        })
+        .collect()
+}
+
+/// `gh api user`: the login.
+pub fn parse_login(text: &str) -> Option<String> {
+    let v = json(text).ok()?;
+    let login = sane_line(str_of(&v["login"]));
+    (!login.is_empty()).then_some(login)
+}
+
+/// The number after `#issuecomment-` in a comment's link.
+fn comment_id(url: &str) -> u64 {
+    url.rsplit_once('-')
+        .and_then(|(_, id)| id.parse().ok())
+        .unwrap_or(0)
+}
+
+/// `reactionGroups`: one entry per kind that somebody used.
+fn reactions_of(v: &Value) -> Vec<Reaction> {
+    array(v)
+        .iter()
+        .map(|g| Reaction {
+            content: sane_line(str_of(&g["content"])),
+            count: g["users"]["totalCount"].as_u64().unwrap_or(0),
+            mine: g["viewerHasReacted"].as_bool().unwrap_or(false),
+        })
+        .filter(|r| r.count > 0)
+        .collect()
+}
+
+/// A label of the repository, with the color GitHub gives it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Label {
+    pub name: String,
+    /// `0xRRGGBB`.
+    pub rgb: u32,
+    pub description: String,
+}
+
+/// Somebody who can be assigned in the repository.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Person {
+    pub login: String,
+    pub avatar_url: String,
+}
+
+/// `gh api repos/o/r/labels`. Unreadable output is no labels: they only help typing.
+pub fn parse_labels(text: &str) -> Vec<Label> {
+    let Ok(v) = json(text) else {
+        return Vec::new();
+    };
+    array(&v)
+        .iter()
+        .filter(|l| l["name"].is_string())
+        .map(|l| Label {
+            name: sane_line(str_of(&l["name"])),
+            rgb: u32::from_str_radix(str_of(&l["color"]).trim_start_matches('#'), 16)
+                .unwrap_or(0x808080),
+            description: sane_line(str_of(&l["description"])),
+        })
+        .collect()
+}
+
+/// `gh api repos/o/r/assignees`.
+pub fn parse_people(text: &str) -> Vec<Person> {
+    let Ok(v) = json(text) else {
+        return Vec::new();
+    };
+    array(&v)
+        .iter()
+        .filter(|p| p["login"].is_string())
+        .map(|p| Person {
+            login: sane_line(str_of(&p["login"])),
+            avatar_url: sane_line(str_of(&p["avatar_url"])),
+        })
+        .collect()
 }
 
 fn str_of(v: &Value) -> &str {

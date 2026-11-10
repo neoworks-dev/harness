@@ -1,5 +1,5 @@
-//! GitHub, read-only, for neo's apps (the terminal's and the desktop's): what to ask the
-//! `gh` CLI for ([`gh`], which refuses anything that could write), what it answers
+//! GitHub for neo's apps (the terminal's and the desktop's): what to ask the `gh` CLI for
+//! ([`gh`], which reads freely and writes only what an allowlist names), what it answers
 //! ([`model`]) and the text block that hands an issue or pull request to the model
 //! ([`format`]). [`fetch`] runs the usual asks end to end.
 

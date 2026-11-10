@@ -46,8 +46,13 @@ impl App {
 
         let mut menus = false;
         if self.github.is_open() {
-            self.github
-                .draw(frame, areas.chat, self.now_ms, &self.styles);
+            self.github.draw(
+                frame,
+                areas.chat,
+                self.now_ms,
+                &self.styles,
+                self.images.as_mut(),
+            );
         } else if self.widgets.overlay_open() {
             self.widgets.draw_overlay(frame, areas.chat);
         } else if self.transcript.is_some() {

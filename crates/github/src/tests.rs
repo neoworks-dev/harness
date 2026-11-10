@@ -115,6 +115,8 @@ fn only_reads_are_allowed() {
         gh::view_args(Kind::Issue, "a/b", 1),
         gh::view_args(Kind::Pr, "a/b", 1),
         gh::review_comments_args("a/b", 1),
+        gh::labels_args("a/b"),
+        gh::people_args("a/b"),
         gh::diff_args("a/b", 1),
         s(&["pr", "checks", "3"]),
     ];
@@ -184,9 +186,11 @@ fn the_block_is_trimmed_dropping_the_oldest_comments() {
     d.body = "b".repeat(9_000);
     d.comments = (1..=40)
         .map(|n| Comment {
+            id: 0,
             author: format!("user{n}"),
             at_ms: NOW - (41 - n) * 3_600_000,
             body: format!("comment {n} {}", "x".repeat(900)),
+            reactions: Vec::new(),
         })
         .collect();
     let text = format::block("acme/site", &d);
@@ -273,4 +277,183 @@ fn the_model_serialises_for_the_desktop_app() {
     assert_eq!(json["state"], "open");
     assert_eq!(json["checks"][1]["state"], "fail");
     assert_eq!(json["reviews"][0]["state"], "CHANGES_REQUESTED");
+}
+
+#[test]
+fn labels_and_people_parse_leniently() {
+    let labels = parse_labels(
+        r#"[{"name":"bug","color":"d73a4a","description":"Broken"},{"name":"odd","color":"zz"},{"color":"fff"}]"#,
+    );
+    assert_eq!(labels.len(), 2);
+    assert_eq!((labels[0].rgb, labels[0].description.as_str()), (0xd73a4a, "Broken"));
+    assert_eq!(labels[1].rgb, 0x808080);
+    let people = parse_people(r#"[{"login":"moritz","avatar_url":"https://x/y.png"},{"id":1}]"#);
+    assert_eq!(people.len(), 1);
+    assert_eq!(people[0].avatar_url, "https://x/y.png");
+    assert!(parse_labels("not json").is_empty());
+    assert!(parse_people("").is_empty());
+}
+
+#[test]
+fn only_the_apps_own_writes_are_allowed() {
+    let ok = [
+        gh::comment_args(Kind::Issue, "a/b", 7),
+        gh::comment_args(Kind::Pr, "a/b", 7),
+        gh::close_args(Kind::Issue, "a/b", 7, gh::CloseReason::Completed),
+        gh::close_args(Kind::Issue, "a/b", 7, gh::CloseReason::NotPlanned),
+        gh::close_args(Kind::Issue, "a/b", 7, gh::CloseReason::Duplicate(3)),
+        gh::close_args(Kind::Pr, "a/b", 7, gh::CloseReason::Completed),
+        gh::reopen_args(Kind::Issue, "a/b", 7),
+        gh::react_args("a/b", gh::ReactOn::Item(7), "+1"),
+        gh::react_args("a/b", gh::ReactOn::Comment(99), "heart"),
+        gh::unreact_args("a/b", gh::ReactOn::Item(7), 123),
+        gh::unreact_args("a/b", gh::ReactOn::Comment(99), 123),
+    ];
+    for args in &ok {
+        assert!(gh::is_allowed_write(args), "{args:?}");
+        // What may be written is not for the read-only runner.
+        assert!(!is_read_only(args), "{args:?}");
+    }
+    let s = |a: &[&str]| a.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
+    for args in [
+        s(&["issue", "delete", "7", "-R", "a/b"]),
+        s(&["issue", "comment", "7", "-R", "a/b", "--body", "x"]),
+        s(&["issue", "comment", "x", "-R", "a/b", "--body-file", "-"]),
+        s(&["issue", "close", "7", "-R", "a/b", "--reason", "whatever"]),
+        s(&["issue", "comment", "7", "-R", "--web", "--body-file", "-"]),
+        s(&["api", "-X", "DELETE", "repos/a/b/issues/7/reactions", "-f", "content=heart"]),
+        s(&["api", "-X", "DELETE", "repos/a/b/issues/7"]),
+        s(&["api", "-X", "DELETE", "repos/a/b/issues/comments/7"]),
+        s(&["api", "-X", "DELETE", "repos/a/b/issues/7/reactions"]),
+        s(&["api", "-X", "DELETE", "repos/a/b/issues/7/reactions/x"]),
+        s(&["api", "-X", "DELETE", "repos/a/b/releases/7/reactions/1"]),
+        s(&["api", "-X", "POST", "repos/a/b/issues/7/reactions", "-f", "content=bomb"]),
+        s(&["api", "-X", "POST", "repos/a/b/issues", "-f", "title=x"]),
+        s(&["api", "graphql"]),
+    ] {
+        assert!(!gh::is_allowed_write(&args), "{args:?}");
+    }
+    assert_eq!(
+        gh::close_args(Kind::Issue, "a/b", 7, gh::CloseReason::NotPlanned),
+        s(&["issue", "close", "7", "-R", "a/b", "--reason", "not planned"])
+    );
+}
+
+#[test]
+fn reactions_and_the_comment_number_are_read_from_the_view() {
+    let json = r#"{"number":1,"title":"t","state":"CLOSED","stateReason":"NOT_PLANNED",
+      "reactionGroups":[{"content":"HEART","users":{"totalCount":2}},{"content":"EYES","users":{"totalCount":0}}],
+      "comments":[{"url":"https://github.com/a/b/issues/1#issuecomment-4242","author":{"login":"x"},
+        "createdAt":"2026-10-11T09:00:00Z","body":"hi",
+        "reactionGroups":[{"content":"THUMBS_UP","users":{"totalCount":1},"viewerHasReacted":true}]}]}"#;
+    let d = parse_detail(Kind::Issue, json).unwrap();
+    assert_eq!(d.state_reason, "not planned");
+    assert_eq!(d.reactions.len(), 1, "a kind nobody used is left out");
+    assert_eq!((d.reactions[0].content.as_str(), d.reactions[0].count), ("HEART", 2));
+    assert_eq!(d.comments[0].id, 4242);
+    assert!(d.comments[0].reactions[0].mine);
+}
+
+#[test]
+fn edits_are_built_and_allowed_only_in_the_shapes_the_app_makes() {
+    let s = |a: &[&str]| a.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
+    let changes = gh::Changes {
+        add_assignees: vec!["@me".into(), "bob".into()],
+        remove_labels: vec!["help wanted".into()],
+        milestone: Some(None),
+        issue_type: Some(Some("Bug".into())),
+        parent: Some(Some(3)),
+        add_blocked_by: vec![4],
+        ..gh::Changes::default()
+    };
+    let issue = gh::edit_args(Kind::Issue, "a/b", 7, &changes);
+    assert_eq!(
+        issue,
+        s(&[
+            "issue", "edit", "7", "-R", "a/b", "--add-assignee", "@me", "--add-assignee", "bob",
+            "--remove-label", "help wanted", "--remove-milestone", "--type", "Bug", "--parent",
+            "3", "--add-blocked-by", "4"
+        ])
+    );
+    assert!(gh::is_allowed_write(&issue));
+    // A pull request has no type, parent or blocking: they are left out.
+    let pr = gh::edit_args(Kind::Pr, "a/b", 7, &changes);
+    assert_eq!(pr, s(&["pr", "edit", "7", "-R", "a/b", "--add-assignee", "@me", "--add-assignee", "bob", "--remove-label", "help wanted", "--remove-milestone"]));
+    assert!(gh::is_allowed_write(&pr));
+    assert!(gh::is_allowed_write(&gh::field_values_write_args("a/b", 7)));
+    for bad in [
+        s(&["issue", "edit", "7", "-R", "a/b"]),
+        s(&["issue", "edit", "7", "-R", "a/b", "--body", "x"]),
+        s(&["issue", "edit", "7", "-R", "a/b", "--add-label"]),
+        s(&["issue", "edit", "7", "-R", "a/b", "--parent", "x"]),
+        s(&["pr", "edit", "7", "-R", "a/b", "--type", "Bug"]),
+        s(&["issue", "edit", "x", "-R", "a/b", "--add-label", "y"]),
+        s(&["api", "-X", "POST", "repos/a/b/issues/7/issue-field-values", "-f", "x=y"]),
+        s(&["api", "-X", "POST", "repos/a/b/issues/7/labels", "--input", "-"]),
+    ] {
+        assert!(!gh::is_allowed_write(&bad), "{bad:?}");
+    }
+    // What lists need is read: organization listings, milestones, field values, projects.
+    for read in [
+        gh::org_fields_args("acme"),
+        gh::issue_types_args("acme"),
+        gh::milestones_args("a/b"),
+        gh::field_values_args("a/b", 7),
+        gh::projects_args("acme"),
+    ] {
+        assert!(is_read_only(&read), "{read:?}");
+    }
+    assert!(!is_read_only(&s(&["api", "orgs/acme/members"])));
+}
+
+#[test]
+fn what_is_set_on_an_item_and_what_the_organization_offers_are_parsed() {
+    let json = r#"{"number":1,"title":"t","state":"OPEN","assignees":[{"login":"bob"},{"login":"app/bot"}],
+      "milestone":{"title":"v1"},"issueType":{"name":"Bug"},"projectItems":[{"project":{"title":"Roadmap"}}],
+      "parent":{"number":3},"blockedBy":[{"number":4},{"number":5}],"blocking":[{"number":6}]}"#;
+    let d = parse_detail(Kind::Issue, json).unwrap();
+    assert_eq!(d.assignees, ["bob", "bot"]);
+    assert_eq!((d.milestone.as_str(), d.issue_type.as_str()), ("v1", "Bug"));
+    assert_eq!((d.projects, d.parent, d.blocked_by, d.blocking), (vec!["Roadmap".to_string()], 3, vec![4, 5], vec![6]));
+    let fields = parse_org_fields(
+        r#"[{"id":1,"name":"Priority","data_type":"single_select","options":[{"name":"High"}]},{"name":"nope"}]"#,
+    );
+    assert_eq!(fields.len(), 1);
+    assert_eq!((fields[0].id, fields[0].options.clone()), (1, vec!["High".to_string()]));
+    assert_eq!(parse_names(r#"[{"name":"Bug"},{"id":2}]"#, "name"), ["Bug"]);
+    let values = parse_field_values(
+        r#"[{"issue_field_name":"Priority","single_select_option":{"name":"High"}},
+            {"issue_field_name":"Target date","value":"2026-12-01"},{"issue_field_name":"Empty"}]"#,
+    );
+    assert_eq!(values, [("Priority".into(), "High".into()), ("Target date".into(), "2026-12-01".into())]);
+    assert_eq!(parse_projects(r#"{"projects":[{"title":"Roadmap"}]}"#), ["Roadmap"]);
+}
+
+#[test]
+fn text_edits_are_allowed_as_the_app_makes_them() {
+    for args in [
+        gh::edit_body_args(Kind::Issue, "a/b", 7),
+        gh::edit_body_args(Kind::Pr, "a/b", 7),
+        gh::edit_comment_args("a/b", 501),
+        gh::edit_args(
+            Kind::Pr,
+            "a/b",
+            7,
+            &gh::Changes {
+                title: Some("New title".into()),
+                ..gh::Changes::default()
+            },
+        ),
+    ] {
+        assert!(gh::is_allowed_write(&args), "{args:?}");
+    }
+    let s = |a: &[&str]| a.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
+    for bad in [
+        s(&["api", "-X", "PATCH", "repos/a/b/issues/7", "--input", "-"]),
+        s(&["api", "-X", "PATCH", "repos/a/b/issues/comments/x", "--input", "-"]),
+        s(&["api", "-X", "PATCH", "repos/a/b/issues/comments/1", "-f", "body=x"]),
+        s(&["issue", "edit", "7", "-R", "a/b", "--body", "x"]),
+    ] {
+        assert!(!gh::is_allowed_write(&bad), "{bad:?}");
+    }
 }
