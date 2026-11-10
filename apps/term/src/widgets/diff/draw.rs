@@ -161,19 +161,23 @@ impl DiffView {
             .req
             .as_ref()
             .and_then(|r| r.orig.as_ref().map(|o| (o, &r.rel)));
+        let (old, new) = match &self.sides {
+            Some((old, new)) => (clean_line(old), clean_line(new)),
+            None => ("HEAD".to_string(), "working tree".to_string()),
+        };
         let left = if self.aligned.new_file {
             "(new file)".to_string()
         } else if let Some((orig, _)) = rename {
-            format!("HEAD · {}", clean_line(orig))
+            format!("{old} · {}", clean_line(orig))
         } else {
-            "HEAD".to_string()
+            old
         };
         let right = if self.aligned.deleted {
             "(deleted)".to_string()
         } else if let Some((_, rel)) = rename {
-            format!("working tree · {}", clean_line(rel))
+            format!("{new} · {}", clean_line(rel))
         } else {
-            "working tree".to_string()
+            new
         };
         let style = with_bg(look.muted.add_modifier(Modifier::BOLD), look.band);
         Line::from(vec![
@@ -391,7 +395,7 @@ impl DiffView {
 
     /// Screen rows row `i` of the shown mode takes: one, or more when it wraps.
     pub(super) fn height(&self, i: usize, split: bool) -> usize {
-        let blocks: usize = if self.comments.is_empty() && self.writing.is_none() {
+        let blocks: usize = if self.no_blocks() {
             0
         } else {
             self.blocks_at(i, split).iter().map(Vec::len).sum()

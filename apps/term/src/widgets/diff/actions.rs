@@ -217,18 +217,28 @@ impl DiffView {
             let rel = self.rel().unwrap_or("");
             let editing = self.writing.as_ref().and_then(|w| w.editing);
             let mut put = |start: usize, old: bool, block: Vec<Line<'static>>| {
-                let row = (0..self.len(split)).find(|&r| {
-                    let (o, n) = self.row_nos(r, split);
-                    if old {
-                        n.is_none() && o == Some(start)
-                    } else {
-                        n == Some(start)
-                    }
-                });
+                let row = (0..self.len(split))
+                    .find(|&r| {
+                        let (o, n) = self.row_nos(r, split);
+                        if old {
+                            n.is_none() && o == Some(start)
+                        } else {
+                            n == Some(start)
+                        }
+                    })
+                    // An old line that is in both versions (context).
+                    .or_else(|| {
+                        (0..self.len(split))
+                            .find(|&r| old && self.row_nos(r, split).0 == Some(start))
+                    });
                 if let Some(row) = row {
                     cache.at.entry(row).or_default().push(block);
                 }
             };
+            let (_, muted) = colors;
+            for r in &self.remarks {
+                put(r.line, r.old, block(&r.head, &r.text, width, false, (muted, muted)));
+            }
             for (i, c) in self.comments.iter().enumerate() {
                 if Some(i) != editing {
                     let head = c.mention(rel);

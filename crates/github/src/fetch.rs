@@ -268,3 +268,35 @@ pub fn my_reactions(
 pub fn diff(gh: &dyn Gh, cwd: &Path, repo: &str, number: u64) -> Result<String, GhError> {
     gh.run(cwd, &gh::diff_args(repo, number))
 }
+
+/// The log of a GitHub Actions job, as `gh` prints it (`job\tstep\ttime line` per line):
+/// only the failed steps with `failed`.
+pub fn job_log(
+    gh: &dyn Gh,
+    cwd: &Path,
+    repo: &str,
+    job: u64,
+    failed: bool,
+) -> Result<String, GhError> {
+    gh.run(cwd, &gh::job_log_args(repo, job, failed))
+}
+
+/// A file's text at a commit. A binary file, or one too big for the API (over 1 MB), is an
+/// error that says so.
+pub fn file_at(
+    gh: &dyn Gh,
+    cwd: &Path,
+    repo: &str,
+    path: &str,
+    sha: &str,
+) -> Result<String, GhError> {
+    let out = gh.run(cwd, &gh::file_args(repo, path, sha))?;
+    let v: serde_json::Value = serde_json::from_str(&out)
+        .map_err(|_| GhError::Other("the file came back unreadable".into()))?;
+    if v["encoding"] != "base64" {
+        return Err(GhError::Other("the file is too big to show whole".into()));
+    }
+    let bytes = model::base64(v["content"].as_str().unwrap_or(""))
+        .ok_or_else(|| GhError::Other("the file came back unreadable".into()))?;
+    String::from_utf8(bytes).map_err(|_| GhError::Other("a binary file has no text".into()))
+}

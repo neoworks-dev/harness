@@ -85,7 +85,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-pub(crate) use diff::DiffView;
+pub(crate) use ansi::{Sgr, parse_line, plain};
+pub(crate) use diff::{DiffView, Remark};
 use diff::{Comment, DiffRequest};
 use files::{FileKey, FilesState};
 use git::Runner;

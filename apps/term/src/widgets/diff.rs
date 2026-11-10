@@ -162,6 +162,28 @@ impl Comment {
     }
 }
 
+/// A comment from elsewhere on a line of the file: a review comment of a pull request. Drawn
+/// like a [`Comment`] in the muted color, never edited or put in the prompt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Remark {
+    /// The new version's line, or the old one's with `old` (a removed line).
+    pub line: usize,
+    pub old: bool,
+    /// Who and when, for its first line.
+    pub head: String,
+    pub text: String,
+}
+
+/// The two texts of a diff from elsewhere: the changes with a few lines around them, and the
+/// whole file once fetched.
+#[derive(Debug, Clone)]
+struct Remote {
+    hunks: String,
+    whole: Option<String>,
+    /// `f` asked for `whole`, which is not there yet.
+    asked: bool,
+}
+
 /// A comment being written: its lines, the text so far, and the comment it replaces.
 #[derive(Debug, Clone)]
 struct Writing {
@@ -314,6 +336,15 @@ pub(crate) struct DiffView {
     pending: Option<Pending>,
     /// The comments on this file, in the order written.
     comments: Vec<Comment>,
+    /// Comments from elsewhere, shown above the view's own on the same line.
+    remarks: Vec<Remark>,
+    /// A diff from elsewhere whose whole file is fetched by its maker.
+    remote: Option<Remote>,
+    /// The path that picks the colors when there is no `req` (a pull request's file).
+    lang: Option<String>,
+    /// What the two columns are called, when not `HEAD` and `working tree` (a pull request's
+    /// branches).
+    sides: Option<(String, String)>,
     writing: Option<Writing>,
     /// What the comments changed since the app last asked: each as the prompt had it and has
     /// it now (none: not there).
@@ -404,6 +435,10 @@ impl DiffView {
             visual: Cell::new(None),
             pending: None,
             comments: Vec::new(),
+            remarks: Vec::new(),
+            remote: None,
+            lang: None,
+            sides: None,
             writing: None,
             changes: Vec::new(),
             comments_gen: 0,
@@ -433,9 +468,20 @@ impl DiffView {
         v
     }
 
-    /// A diff that is already at hand (the GitHub view's pull request diffs).
+    /// A diff that is already at hand.
+    #[cfg(test)]
     pub(crate) fn from_text(title: &str, text: &str) -> DiffView {
         let mut v = DiffView::blank(title.to_string());
+        v.finish(Ok(text.to_string()));
+        v
+    }
+
+    /// One file's diff that is already at hand (a pull request's), colored by its path.
+    pub(crate) fn from_file_text(title: &str, path: &str, text: &str) -> DiffView {
+        let mut v = DiffView {
+            lang: Some(path.to_string()),
+            ..DiffView::blank(title.to_string())
+        };
         v.finish(Ok(text.to_string()));
         v
     }
@@ -485,7 +531,7 @@ impl DiffView {
             self.aligned = Aligned::default();
         }
         self.uni_w = lines.iter().map(|l| width(&l.text)).max().unwrap_or(0);
-        let path = self.req.as_ref().map(|r| r.rel.as_str());
+        let path = self.req.as_ref().map(|r| r.rel.as_str()).or(self.lang.as_deref());
         let (grammar, uni, split) = steps(path, &lines, &self.aligned);
         self.lit_uni = Lazy::start(grammar, uni);
         self.lit_split = Lazy::start(grammar, split);
@@ -586,6 +632,65 @@ impl DiffView {
         (self.adds, self.dels)
     }
 
+    /// Names the old and the new column (a pull request's base and head branch).
+    pub(crate) fn with_sides(mut self, old: &str, new: &str) -> DiffView {
+        self.sides = Some((old.to_string(), new.to_string()));
+        self
+    }
+
+    /// A diff from elsewhere whose whole file (`f`) its maker fetches: `f` asks
+    /// ([`DiffView::take_full_ask`]), [`DiffView::give_full`] answers.
+    pub(crate) fn with_remote_full(mut self, hunks: &str) -> DiffView {
+        self.remote = Some(Remote {
+            hunks: hunks.to_string(),
+            whole: None,
+            asked: false,
+        });
+        self
+    }
+
+    /// `f` asked for the whole file, once.
+    pub(crate) fn take_full_ask(&mut self) -> bool {
+        self.remote.as_mut().is_some_and(|r| std::mem::take(&mut r.asked))
+    }
+
+    /// The whole file with the changes in it (a diff with all its lines as context), shown at
+    /// once; or why there is none.
+    pub(crate) fn give_full(&mut self, result: Result<String, String>) {
+        match result {
+            Ok(text) => {
+                if let Some(remote) = &mut self.remote {
+                    remote.whole = Some(text.clone());
+                }
+                self.swap_text(text, true);
+            }
+            Err(why) => self.message = Some(why),
+        }
+    }
+
+    /// Shows another text of the same file, the cursor's line kept.
+    fn swap_text(&mut self, text: String, full: bool) {
+        let split = self.view.get().split;
+        self.anchor = self
+            .row_nos(self.cursor.get(), split)
+            .1
+            .or_else(|| self.top_new_line());
+        self.full = full;
+        self.finish(Ok(text));
+    }
+
+    /// Nothing is drawn above any row: no comments, written or remarked.
+    fn no_blocks(&self) -> bool {
+        self.comments.is_empty() && self.writing.is_none() && self.remarks.is_empty()
+    }
+
+    /// Comments from elsewhere to show on their lines (a pull request's review comments);
+    /// they are read, not edited, and are not the view's own [`Comment`]s.
+    pub(crate) fn set_remarks(&mut self, remarks: Vec<Remark>) {
+        self.remarks = remarks;
+        self.comments_gen += 1;
+    }
+
     /// Rows of the shown mode.
     fn len(&self, split: bool) -> usize {
         if split {
@@ -610,7 +715,7 @@ impl DiffView {
     fn max_scroll(&self) -> usize {
         let v = self.view.get();
         let len = self.len(v.split);
-        if !self.wrap && self.comments.is_empty() && self.writing.is_none() {
+        if !self.wrap && self.no_blocks() {
             return len.saturating_sub(v.rows.max(1));
         }
         let (mut top, mut used) = (len, 0);
@@ -674,7 +779,20 @@ impl DiffView {
 
     /// Asks git again with the whole file as context, or back with a few lines.
     fn toggle_full(&mut self) {
-        // A diff that did not come from git here (a pull request's) is all there is.
+        // A diff from elsewhere: its whole file comes from whoever made the view.
+        if let Some(remote) = &mut self.remote {
+            if self.full {
+                let text = remote.hunks.clone();
+                self.swap_text(text, false);
+            } else if let Some(text) = remote.whole.clone() {
+                self.swap_text(text, true);
+            } else {
+                remote.asked = true;
+                self.message = Some("fetching the whole file…".into());
+            }
+            return;
+        }
+        // Any other diff that did not come from git here is all there is.
         let Some(req) = self.req.clone() else {
             return;
         };

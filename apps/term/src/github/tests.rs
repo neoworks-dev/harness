@@ -59,6 +59,9 @@ impl Fake {
             ("pr view 31", Ok(PR_31)),
             ("pulls/31/comments", Ok(PR_31_COMMENTS)),
             ("pr diff 31", Ok(DIFF_31)),
+            ("contents/src/header.css?ref=abc123", Ok(HEADER_CSS_AT_HEAD)),
+            ("--job 7001 -R acme/site --log-failed", Ok(JOB_7001_FAILED)),
+            ("--job 7001 -R acme/site --log", Ok(JOB_7001)),
         ])
     }
 
@@ -118,6 +121,7 @@ fn busy(g: &Github) -> bool {
         || g.sending
         || g.mine_asked > 0
         || matches!(&g.mode, Mode::Detail(DetailView { diff: Some(d), .. }) if !d.is_loaded())
+        || g.in_flight.get() > 0
 }
 
 /// Ticks until the background jobs are done; what they produced for the shell.
@@ -653,15 +657,26 @@ fn the_input_is_always_there_and_tab_moves_in_and_out() {
 }
 
 #[test]
-fn the_pull_request_diff_opens_in_the_diff_view() {
+fn the_pull_request_diff_opens_a_file_at_a_time() {
     let fake = Fake::acme();
     let mut g = opened_pr(&fake);
     ch(&mut g, 'd');
     assert!(screen(&mut g, 80, 12).contains("…"));
     settle(&mut g);
-    let s = screen(&mut g, 100, 14);
-    assert!(s.contains("scrollbar-gutter: stable"), "{s}");
-    assert!(s.contains("+2"), "{s}");
+    // The first file, only it, with its review comments on their lines.
+    let s = screen(&mut g, 100, 30);
+    assert!(s.contains("src/header.css  1/2"), "{s}");
+    assert!(s.contains("scrollbar-gutter: stable") && !s.contains("margin: 0"), "{s}");
+    assert!(s.contains("Use a variable here.") && s.contains("↳ bob"), "{s}");
+    assert!(s.contains("Why not fixed?"), "on the removed line: {s}");
+    // `]` is the next file, `[` back; past the ends they stay.
+    ch(&mut g, ']');
+    let s = screen(&mut g, 100, 30);
+    assert!(s.contains("src/layout.css  2/2") && s.contains("margin: 0"), "{s}");
+    ch(&mut g, ']');
+    assert!(screen(&mut g, 100, 30).contains("2/2"));
+    ch(&mut g, '[');
+    assert!(screen(&mut g, 100, 30).contains("1/2"));
     // The diff's own keys work; Esc comes back to the detail, not out of the view.
     ch(&mut g, 's');
     g.wheel(true);
@@ -672,6 +687,79 @@ fn the_pull_request_diff_opens_in_the_diff_view() {
     ch(&mut g, 'd');
     assert!(matches!(&g.mode, Mode::Detail(v) if v.diff.as_ref().is_some_and(|d| d.is_loaded())));
     assert_eq!(fake.count("pr diff"), 1);
+}
+
+/// Walks the detail's focus to `part`.
+fn focus_on(g: &mut Github, part: doc::Part) {
+    screen(g, 100, 40);
+    for _ in 0..40 {
+        if focus(g) == part {
+            return;
+        }
+        ch(g, 'j');
+        screen(g, 100, 40);
+    }
+    panic!("no {part:?}");
+}
+
+#[test]
+fn a_file_is_picked_from_the_files_and_f_shows_it_whole() {
+    let fake = Fake::acme();
+    let mut g = opened_pr(&fake);
+    focus_on(&mut g, doc::Part::Files);
+    assert!(screen(&mut g, 100, 40).contains("3 comments"));
+    keys(&mut g, "\nj\n");
+    settle(&mut g);
+    assert!(screen(&mut g, 100, 30).contains("src/layout.css  2/2"));
+    ch(&mut g, '[');
+    // The whole file, from GitHub at the head commit, once; the changes stay marked.
+    ch(&mut g, 'f');
+    settle(&mut g);
+    let calls = fake.calls();
+    assert!(calls.iter().any(|c| c.contains("contents/src/header.css?ref=abc123")), "{calls:?}");
+    let s = screen(&mut g, 100, 30);
+    assert!(s.contains("scrollbar-gutter: stable") && s.contains("Use a variable here."), "{s}");
+    ch(&mut g, 'f');
+    ch(&mut g, 'f');
+    assert_eq!(fake.count("contents/"), 1, "kept");
+}
+
+#[test]
+fn a_check_opens_its_log_failed_steps_first_or_copies_its_link() {
+    let fake = Fake::acme();
+    let mut g = opened_pr(&fake);
+    focus_on(&mut g, doc::Part::Checks);
+    let s = screen(&mut g, 100, 40);
+    assert!(s.contains("✗ test (ubuntu)  3m 20s"), "{s}");
+    // The failed one is first: Enter picks it, Enter opens its log.
+    keys(&mut g, "\n\n");
+    settle(&mut g);
+    assert!(fake.calls().iter().any(|c| c == "run view --job 7001 -R acme/site --log-failed"));
+    let s = screen(&mut g, 100, 20);
+    assert!(s.contains("test (ubuntu) · failed steps") && s.contains("FAIL header"), "{s}");
+    assert!(!s.contains("2026-10-16T"), "no times: {s}");
+    // `f` is the whole log; `y` copies the line.
+    ch(&mut g, 'f');
+    settle(&mut g);
+    assert!(screen(&mut g, 100, 20).contains("all steps"));
+    let copied = keys_out(&mut g, "yy");
+    assert!(matches!(copied, Some(Outgoing::Copy(_))), "{copied:?}");
+    // q is back to the detail, the check still picked.
+    ch(&mut g, 'q');
+    assert!(g.is_open() && screen(&mut g, 100, 40).contains("Pull request #31"));
+    // A status from another CI: its link is copied.
+    keys(&mut g, "jj");
+    let out = press(&mut g, KeyCode::Enter);
+    assert!(matches!(out, Some(Outgoing::Copy(url)) if url == "https://deploy.example.com/31"));
+}
+
+/// Presses the keys, what the last one gave.
+fn keys_out(g: &mut Github, text: &str) -> Option<Outgoing> {
+    let mut out = None;
+    for c in text.chars() {
+        out = ch(g, c);
+    }
+    out
 }
 
 #[test]
@@ -763,7 +851,7 @@ fn a_attaches_the_pull_request_with_reviews_and_checks() {
     assert!(text.contains(
         "alice (2026-10-16, review changes requested): The gutter should be a variable."
     ));
-    assert!(text.contains("alice (2026-10-16, on src/header.css:12): Use a variable here."));
+    assert!(text.contains("alice (2026-10-16, on src/header.css:3): Use a variable here."));
     // A review that only says "commented" is left out.
     assert!(!text.contains("carol (2026-10-16, review commented)"));
     snapshot("github-attach-pr", &text);

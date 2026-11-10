@@ -125,6 +125,10 @@ pub struct ReviewComment {
     pub line: Option<u64>,
     pub body: String,
     pub reply: bool,
+    /// On the old version's line (a removed line): GitHub's `LEFT` side.
+    pub old: bool,
+    /// The line moved on since (a later push): `line` is where it was.
+    pub outdated: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -141,6 +145,15 @@ pub enum CheckState {
 pub struct Check {
     pub name: String,
     pub state: CheckState,
+    /// Where it is on the web (`detailsUrl` of a check run, `targetUrl` of a status); may be
+    /// empty.
+    pub url: String,
+    /// The GitHub Actions job it is, by id, when the link says so: its log can be read with
+    /// `gh run view --job`. 0 for anything else (another CI's status).
+    pub job: u64,
+    /// When it started and finished, 0 when not (yet) known.
+    pub started_ms: i64,
+    pub finished_ms: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -187,6 +200,8 @@ pub struct Detail {
     pub files: Vec<FileChange>,
     pub base: String,
     pub head: String,
+    /// The commit the head branch is at: the files as the pull request has them.
+    pub head_sha: String,
     pub decision: String,
     pub additions: u64,
     pub deletions: u64,
@@ -347,6 +362,7 @@ pub fn parse_detail(kind: Kind, text: &str) -> Result<Detail, String> {
             .collect(),
         base: sane_line(str_of(&v["baseRefName"])),
         head: sane_line(str_of(&v["headRefName"])),
+        head_sha: sane_line(str_of(&v["headRefOid"])),
         decision: sane_line(str_of(&v["reviewDecision"])),
         additions: v["additions"].as_u64().unwrap_or(0),
         deletions: v["deletions"].as_u64().unwrap_or(0),
@@ -368,6 +384,8 @@ pub fn parse_review_comments(text: &str) -> Vec<ReviewComment> {
             line: c["line"].as_u64().or_else(|| c["original_line"].as_u64()),
             body: sane(str_of(&c["body"])),
             reply: !c["in_reply_to_id"].is_null(),
+            old: str_of(&c["side"]) == "LEFT",
+            outdated: c["line"].is_null(),
         })
         .collect();
     out.sort_by_key(|c| c.at_ms);
@@ -607,10 +625,60 @@ fn check_of(c: &Value) -> Option<Check> {
             _ => CheckState::Fail,
         }
     };
+    let url = if c["__typename"] == "StatusContext" {
+        str_of(&c["targetUrl"])
+    } else {
+        str_of(&c["detailsUrl"])
+    };
     Some(Check {
         name: sane_line(name),
         state,
+        url: sane_line(url),
+        job: job_of(url),
+        started_ms: time_of(&c["startedAt"]),
+        finished_ms: time_of(&c["completedAt"]),
     })
+}
+
+/// Standard base64 (line breaks and padding allowed, as the contents API sends it); None when
+/// it is not.
+pub fn base64(text: &str) -> Option<Vec<u8>> {
+    let value = |c: u8| match c {
+        b'A'..=b'Z' => Some(c - b'A'),
+        b'a'..=b'z' => Some(c - b'a' + 26),
+        b'0'..=b'9' => Some(c - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    };
+    let mut out = Vec::with_capacity(text.len() * 3 / 4);
+    let (mut acc, mut bits) = (0u32, 0);
+    for c in text.bytes() {
+        if c.is_ascii_whitespace() || c == b'=' {
+            continue;
+        }
+        acc = (acc << 6) | u32::from(value(c)?);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+            acc &= (1 << bits) - 1;
+        }
+    }
+    Some(out)
+}
+
+/// The job id in the link of a GitHub Actions check:
+/// `https://github.com/o/r/actions/runs/123/job/456` is 456; 0 for any other link.
+pub fn job_of(url: &str) -> u64 {
+    let Some(rest) = url.strip_prefix("https://github.com/") else {
+        return 0;
+    };
+    let parts: Vec<&str> = rest.split(['/', '?', '#']).collect();
+    match parts.as_slice() {
+        [_, _, "actions", "runs", _, "job", id, ..] => id.parse().unwrap_or(0),
+        _ => 0,
+    }
 }
 
 /// Text from the network made safe to show and to put in the prompt: `\r` and control

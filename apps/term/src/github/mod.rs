@@ -14,7 +14,8 @@
 //!   diff, the checks, the files) stepped through with j/k, g/G; the keys act on the one in
 //!   focus (see `write.rs`). Enter goes into it to select text (`visual.rs`), Esc comes out,
 //!   then goes back to the list; q closes. Under it the input for a comment, Tab to type.
-//!   `d` shows a pull request's diff in the diff overlay's view.
+//!   A pull request's files open one at a time in the diff view and its checks' logs in a
+//!   reader (see `review.rs`).
 //! - **To the model**: `a` puts the item as a `<github-issue>` /
 //!   `<github-pr>` block into the prompt and closes the view; `s` sends it right away with a
 //!   short instruction. Both are [`Outgoing`] values for the shell to carry out.
@@ -23,6 +24,8 @@ mod complete;
 mod doc;
 mod md;
 mod edit;
+mod pr;
+mod review;
 mod view;
 mod visual;
 mod write;
@@ -60,6 +63,8 @@ pub enum Outgoing {
     Attach(String),
     /// Send this text as a user message now.
     Send(String),
+    /// Put this text on the clipboard; the view stays open.
+    Copy(String),
 }
 
 /// The result of [`Github::tick`].
@@ -138,6 +143,19 @@ struct DetailView {
     focus: Part,
     /// Inside the block in focus (Enter): the vim cursor over its lines (see `visual.rs`).
     cur: Option<visual::Cursor>,
+    /// Inside the checks or the files (Enter): the one picked, by its row in the block.
+    row: Option<usize>,
+    /// The file of the pull request `diff` shows, by its place in the detail's files.
+    file: Option<usize>,
+    /// A check's log, over the detail.
+    log: Option<Log>,
+}
+
+/// A check's log being read: which check, whether only its failed steps, and the text.
+struct Log {
+    check: usize,
+    failed: bool,
+    reader: crate::reader::Reader,
 }
 
 /// One value lives in the state, so the size difference costs nothing.
@@ -153,6 +171,10 @@ enum Msg {
     List(ListKey, Result<Vec<Summary>, GhError>),
     Detail(Kind, u64, Result<Box<Detail>, GhError>),
     Diff(u64, Result<String, GhError>),
+    /// A job's log (by job id; only the failed steps or all).
+    Log(u64, bool, Result<String, GhError>),
+    /// A file of a pull request at its head commit (by number and path).
+    File(u64, String, Result<String, GhError>),
     /// Which reactions on an item (of the version updated at the time) are the user's, as
     /// `fetch::my_reactions` finds them.
     Mine(Kind, u64, i64, Result<fetch::MyReactions, GhError>),
@@ -189,6 +211,12 @@ pub struct Github {
     lists: HashMap<ListKey, ListData>,
     details: HashMap<(Kind, u64), DetailData>,
     diffs: HashMap<u64, String>,
+    /// Jobs' logs, by job and whether only the failed steps.
+    logs: HashMap<(u64, bool), String>,
+    /// Files of pull requests as they are at a head commit (`f`), by commit and path.
+    whole_files: HashMap<(String, String), String>,
+    /// The time of the last draw, for how old the review comments in a diff are.
+    now_ms: i64,
     mode: Mode,
     /// A fetch an attach / send waits for.
     pending: Option<(Kind, u64, Intent)>,
@@ -215,6 +243,8 @@ pub struct Github {
     mine_asked: usize,
     /// Body rows of the last list draw.
     list_rows: usize,
+    /// Jobs started whose answer has not come yet (each sends one).
+    in_flight: std::cell::Cell<usize>,
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
 }
@@ -245,6 +275,9 @@ impl Github {
             lists: HashMap::new(),
             details: HashMap::new(),
             diffs: HashMap::new(),
+            logs: HashMap::new(),
+            whole_files: HashMap::new(),
+            now_ms: 0,
             mode: Mode::List,
             pending: None,
             note: None,
@@ -258,6 +291,7 @@ impl Github {
             sending: false,
             mine_asked: 0,
             list_rows: 10,
+            in_flight: std::cell::Cell::new(0),
             tx,
             rx,
         }
@@ -317,6 +351,7 @@ impl Github {
 
     fn spawn(&self, job: impl FnOnce(&dyn Gh, &std::path::Path) -> Msg + Send + 'static) {
         let (gh, cwd, tx) = (self.gh.clone(), self.cwd.clone(), self.tx.clone());
+        self.in_flight.set(self.in_flight.get() + 1);
         std::thread::spawn(move || {
             let _ = tx.send(job(&*gh, &cwd));
         });
@@ -460,6 +495,7 @@ impl Github {
         let mut tick = Tick::default();
         while let Ok(msg) = self.rx.try_recv() {
             tick.changed = true;
+            self.in_flight.set(self.in_flight.get().saturating_sub(1));
             match msg {
                 Msg::Repo(Ok(name)) => {
                     self.repo = Repo::Ready(name);
@@ -557,18 +593,9 @@ impl Github {
                 Msg::Wrote { failed, result } => self.wrote(failed, result),
                 Msg::Labels(result) => self.labels = result.unwrap_or_default(),
                 Msg::People(result) => self.people = result.unwrap_or_default(),
-                Msg::Diff(number, result) => {
-                    let result = result.map_err(|e| e.message());
-                    if let Ok(text) = &result {
-                        self.diffs.insert(number, text.clone());
-                    }
-                    if let Mode::Detail(v) = &mut self.mode
-                        && v.number == number
-                        && let Some(diff) = &mut v.diff
-                    {
-                        diff.finish(result);
-                    }
-                }
+                Msg::Diff(number, result) => self.diff_arrived(number, result),
+                Msg::Log(job, failed, result) => self.log_arrived(job, failed, result),
+                Msg::File(number, path, result) => self.file_arrived(number, &path, result),
             }
         }
         if let Mode::Detail(DetailView { diff: Some(d), .. }) = &mut self.mode {
@@ -653,6 +680,11 @@ impl Github {
         let delta = if down { 1 } else { -1 };
         match &mut self.mode {
             Mode::List => self.move_selection(delta * WHEEL_ROWS as isize),
+            Mode::Detail(v) if v.log.is_some() => {
+                if let Some(log) = &mut v.log {
+                    log.reader.wheel(down);
+                }
+            }
             Mode::Detail(v) => match &mut v.diff {
                 Some(diff) => {
                     let code = if down { KeyCode::Down } else { KeyCode::Up };
@@ -803,11 +835,17 @@ impl Github {
         let Mode::Detail(v) = &mut self.mode else {
             return None;
         };
-        if let Some(diff) = &mut v.diff {
-            if diff.key(key) {
-                v.diff = None;
-            }
-            return None;
+        // Over the detail: a check's log, a file's diff.
+        if v.log.is_some() {
+            return self.log_key(key);
+        }
+        if v.diff.is_some() {
+            return self.diff_key(key);
+        }
+        if v.row.is_some()
+            && let Some(out) = self.row_key(key)
+        {
+            return out;
         }
         if !self.in_scope(key) || self.write_hotkey(key) {
             return None;
@@ -848,7 +886,7 @@ impl Github {
             (KeyCode::Char('r'), false) => self.load_detail(kind, number),
             (KeyCode::Char('a'), false) => return self.request(kind, number, 0, Intent::Attach),
             (KeyCode::Char('s'), false) => return self.request(kind, number, 0, Intent::Send),
-            (KeyCode::Char('d'), false) if kind == Kind::Pr => self.open_diff(number),
+            (KeyCode::Char('d'), false) if kind == Kind::Pr => self.open_file(0),
             _ => {}
         }
         None
@@ -872,21 +910,6 @@ impl Github {
             }
         }
         Some(keyed)
-    }
-
-    fn open_diff(&mut self, number: u64) {
-        let title = format!("#{number} {}", self.repo_name().unwrap_or(""));
-        let cached = self.diffs.get(&number).cloned();
-        let diff = match &cached {
-            Some(text) => DiffView::from_text(&title, text),
-            None => DiffView::loading(&title),
-        };
-        if cached.is_none() {
-            self.load_diff(number);
-        }
-        if let Mode::Detail(v) = &mut self.mode {
-            v.diff = Some(diff);
-        }
     }
 
     // ---- drawing ----
@@ -915,6 +938,9 @@ impl DetailView {
             diff: None,
             focus: Part::Head,
             cur: None,
+            row: None,
+            file: None,
+            log: None,
         }
     }
 
@@ -958,6 +984,7 @@ impl DetailView {
         let top = self.top_of(i);
         self.focus = b.part;
         self.cur = None;
+        self.row = None;
         let rows = self.rows.max(1);
         if b.end - top <= rows {
             if top < self.scroll {
@@ -1019,17 +1046,38 @@ impl DetailView {
         if let Some(b) = pick {
             self.focus = b.part;
             self.cur = None;
+            self.row = None;
         }
     }
 
-    /// Enter: into the block in focus, the cursor at its start.
+    /// Enter: into the block in focus. The checks and the files pick one of their rows; the
+    /// rest has the cursor at its start.
     fn enter(&mut self) {
         let Some(b) = self.block() else {
             return;
         };
+        if matches!(b.part, Part::Checks | Part::Files) {
+            self.pick_row(0);
+            return;
+        }
         self.cur = Some(visual::Cursor::new(self.block_text(&b)));
         if b.start < self.scroll {
             self.scroll = b.start;
+        }
+    }
+
+    /// Picks row `i` of the block in focus (the last when past the end) and keeps it in view.
+    fn pick_row(&mut self, i: usize) {
+        let Some(b) = self.block() else {
+            return;
+        };
+        let i = i.min((b.end - b.start).saturating_sub(1));
+        self.row = Some(i);
+        let line = b.start + i;
+        if line < self.scroll {
+            self.scroll = line;
+        } else if line >= self.scroll + self.rows {
+            self.scroll = line + 1 - self.rows;
         }
     }
 

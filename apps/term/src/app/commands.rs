@@ -173,6 +173,7 @@ impl App {
                 self.histories.of(&self.session).reset();
             }
             Outgoing::Send(text) => self.send(text, fx),
+            Outgoing::Copy(text) => self.copy(text, fx),
         }
     }
 

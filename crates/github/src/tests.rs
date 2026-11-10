@@ -71,12 +71,66 @@ fn parses_a_pull_request_with_reviews_checks_and_files() {
     assert_eq!((c.pass, c.fail, c.pending, c.skipped), (2, 1, 1, 1));
     assert_eq!(d.files[0].path, "src/header.css");
     assert_eq!((d.additions, d.deletions), (14, 3));
+    assert_eq!(d.head_sha, "abc123");
     d.review_comments = parse_review_comments(PR_31_COMMENTS);
-    assert_eq!(d.review_comments.len(), 2);
-    assert_eq!(d.review_comments[0].line, Some(12));
+    assert_eq!(d.review_comments.len(), 3);
+    assert_eq!(d.review_comments[0].line, Some(3));
     assert!(!d.review_comments[0].reply && d.review_comments[1].reply);
+    assert!(!d.review_comments[0].old && d.review_comments[2].old);
+    assert!(!d.review_comments[0].outdated);
     // Garbage is no comments, not an error.
     assert!(parse_review_comments("oops").is_empty());
+}
+
+#[test]
+fn checks_know_their_link_their_job_and_their_times() {
+    let d = parse_detail(Kind::Pr, PR_31).unwrap();
+    let failed = d.checks.iter().find(|c| c.state == CheckState::Fail).unwrap();
+    assert_eq!(failed.job, 7001);
+    assert_eq!(failed.finished_ms - failed.started_ms, 200_000);
+    let deploy = d.checks.iter().find(|c| c.name == "ci/deploy").unwrap();
+    assert_eq!((deploy.job, deploy.url.as_str()), (0, "https://deploy.example.com/31"));
+    assert_eq!(job_of("https://github.com/o/r/actions/runs/1/job/22?pr=3"), 22);
+    assert_eq!(job_of("https://github.com/o/r/runs/22"), 0);
+    assert_eq!(job_of("https://example.com/o/r/actions/runs/1/job/22"), 0);
+}
+
+#[test]
+fn base64_decodes_what_the_contents_api_sends() {
+    assert_eq!(base64("aGk=\n").unwrap(), b"hi");
+    assert_eq!(base64("aGVsbG8gd29ybGQ=").unwrap(), b"hello world");
+    assert!(base64("a*b").is_none());
+}
+
+#[test]
+fn a_job_log_and_a_file_are_read_only_asks_in_one_shape() {
+    for failed in [true, false] {
+        assert!(is_read_only(&gh::job_log_args("acme/site", 7001, failed)));
+    }
+    let no = |a: &[&str]| !is_read_only(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+    assert!(no(&["run", "rerun", "700"]));
+    assert!(no(&["run", "cancel", "700"]));
+    assert!(no(&["run", "view", "--job", "7001", "-R", "acme/site", "--log", "--web"]));
+    assert!(no(&["run", "view", "--job", "1;2", "-R", "acme/site", "--log"]));
+    assert!(no(&["run", "download", "700"]));
+    // Everything in a path is encoded: no query, no walking up.
+    let args = gh::file_args("acme/site", "a b/../x?ref=evil#", "abc123");
+    assert_eq!(args[1], "repos/acme/site/contents/a%20b/%2E%2E/x%3Fref%3Devil%23?ref=abc123");
+    assert!(is_read_only(&args));
+}
+
+#[test]
+fn a_file_at_a_commit_is_its_text_or_says_why_not() {
+    struct One(&'static str);
+    impl Gh for One {
+        fn run(&self, _: &Path, _: &[String]) -> Result<String, GhError> {
+            Ok(self.0.to_string())
+        }
+    }
+    let text = fetch::file_at(&One(HEADER_CSS_AT_HEAD), Path::new("."), "acme/site", "src/header.css", "abc123");
+    assert_eq!(text.unwrap(), "header {\n  position: sticky;\n  scrollbar-gutter: stable;\n}\n");
+    let big = fetch::file_at(&One(r#"{"encoding":"none","content":""}"#), Path::new("."), "a/b", "f", "s");
+    assert!(big.unwrap_err().message().contains("too big"));
 }
 
 #[test]
@@ -250,7 +304,7 @@ fn the_asks_run_end_to_end_with_reads_only() {
     let issues = fetch::list(&Recorded, cwd, Kind::Issue, "acme/site", false, "").unwrap();
     assert_eq!(issues.len(), 3);
     let pr = fetch::detail(&Recorded, cwd, Kind::Pr, "acme/site", 31).unwrap();
-    assert_eq!(pr.review_comments.len(), 2, "line comments come along");
+    assert_eq!(pr.review_comments.len(), 3, "line comments come along");
     assert_eq!(
         fetch::diff(&Recorded, cwd, "acme/site", 31).unwrap(),
         DIFF_31

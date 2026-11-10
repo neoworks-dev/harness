@@ -133,8 +133,8 @@ pub fn classify(stderr: &str) -> GhError {
 }
 
 /// Whether these `gh` arguments only read: viewing and listing issues and pull requests, a pull
-/// request's diff and checks, the repository's name, and a GET of one `repos/…` API path (no
-/// method, field or input flags).
+/// request's diff and checks, the log of a workflow job, the repository's name, and a GET of
+/// one `repos/…` API path (no method, field or input flags).
 pub fn is_read_only(args: &[String]) -> bool {
     let a: Vec<&str> = args.iter().map(String::as_str).collect();
     if a.iter().any(|s| matches!(*s, "--web" | "-w")) {
@@ -145,6 +145,10 @@ pub fn is_read_only(args: &[String]) -> bool {
         ["project", "list", ..] => true,
         ["issue", "list" | "view", ..] => true,
         ["pr", "list" | "view" | "diff" | "checks", ..] => true,
+        // A job's log, and nothing else of `run` (no rerun, cancel, download).
+        ["run", "view", "--job", job, "-R", _, "--log" | "--log-failed"] => {
+            !job.is_empty() && job.bytes().all(|b| b.is_ascii_digit())
+        }
         ["api", path] => {
             path.starts_with("repos/") && !path.starts_with('-')
                 || *path == "user"
@@ -527,7 +531,7 @@ pub fn repo_args() -> Vec<String> {
 const ISSUE_LIST: &str = "number,title,state,author,labels,comments,updatedAt";
 const PR_LIST: &str = "number,title,state,isDraft,author,labels,comments,updatedAt";
 const ISSUE_VIEW: &str = "number,title,state,author,labels,body,comments,url,createdAt,updatedAt,reactionGroups,stateReason,assignees,milestone,issueType,projectItems,parent,blockedBy,blocking";
-const PR_VIEW: &str = "number,title,state,isDraft,author,labels,body,comments,reviews,statusCheckRollup,files,additions,deletions,url,createdAt,updatedAt,baseRefName,headRefName,reviewDecision,reactionGroups,assignees,milestone,projectItems,reviewRequests";
+const PR_VIEW: &str = "number,title,state,isDraft,author,labels,body,comments,reviews,statusCheckRollup,files,additions,deletions,url,createdAt,updatedAt,baseRefName,headRefName,reviewDecision,reactionGroups,assignees,milestone,projectItems,reviewRequests,headRefOid";
 /// Rows asked for per list.
 pub const LIST_LIMIT: &str = "50";
 
@@ -573,6 +577,37 @@ pub fn labels_args(repo: &str) -> Vec<String> {
 /// Who can be assigned in the repository (REST).
 pub fn people_args(repo: &str) -> Vec<String> {
     vec!["api".into(), format!("repos/{repo}/assignees?per_page=100")]
+}
+
+/// The log of a GitHub Actions job: only its failed steps with `failed`, else all of it.
+pub fn job_log_args(repo: &str, job: u64, failed: bool) -> Vec<String> {
+    let mut args = strings(&["run", "view", "--job"]);
+    args.push(job.to_string());
+    args.extend(strings(&["-R", repo, if failed { "--log-failed" } else { "--log" }]));
+    args
+}
+
+/// A file as it is at a commit (REST contents, base64 in JSON). Each part of the path is
+/// percent-encoded, so nothing in it can change what is asked for.
+pub fn file_args(repo: &str, path: &str, sha: &str) -> Vec<String> {
+    let encode = |part: &str| {
+        // `.` and `..` would walk the path: their dots are encoded too.
+        let dots = matches!(part, "." | "..");
+        part.bytes()
+            .map(|b| match b {
+                b'.' if dots => "%2E".to_string(),
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                    (b as char).to_string()
+                }
+                _ => format!("%{b:02X}"),
+            })
+            .collect::<String>()
+    };
+    let path: Vec<String> = path.split('/').map(encode).collect();
+    vec![
+        "api".into(),
+        format!("repos/{repo}/contents/{}?ref={}", path.join("/"), encode(sha)),
+    ]
 }
 
 pub fn diff_args(repo: &str, number: u64) -> Vec<String> {

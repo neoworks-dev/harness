@@ -34,7 +34,14 @@ pub(super) fn draw(
         return;
     }
     frame.render_widget(Clear, area);
+    g.now_ms = now_ms;
     let (w, h) = (usize::from(area.width), usize::from(area.height));
+    if let Mode::Detail(v) = &mut g.mode
+        && let Some(log) = &mut v.log
+    {
+        log.reader.draw(frame, area, &g.palette);
+        return;
+    }
     if let Mode::Detail(v) = &g.mode
         && let Some(diff) = &v.diff
     {
@@ -535,11 +542,19 @@ pub(super) fn detail_body(
                 (Some(b), Some(cur)) => mark_cursor(line, r - b.start, cur),
                 _ => line.clone(),
             };
-            let mark = if within.is_some() {
+            let picked = focused.zip(v.row).is_some_and(|(b, i)| r == b.start + i);
+            let mark = if picked {
+                Span::styled("›", st.accent.add_modifier(Modifier::BOLD))
+            } else if within.is_some() {
                 Span::styled("▎", st.accent)
             } else {
                 Span::raw(" ")
             };
+            if picked {
+                for span in &mut out.spans {
+                    span.style = span.style.add_modifier(Modifier::BOLD);
+                }
+            }
             out.spans.insert(0, mark);
             out
         })
@@ -661,6 +676,10 @@ fn footer(g: &Github, w: usize, st: &Styles) -> Line<'static> {
         Mode::Detail(v) if v.cur.as_ref().is_some_and(|c| c.visual()) => {
             hints(&["a add to message", "v V o select", "esc leave visual"], w, st)
         }
+        Mode::Detail(v) if v.row.is_some() => {
+            let open = if v.focus == doc::Part::Checks { "enter log" } else { "enter diff" };
+            hints(&[open, "j k choose", "esc leave", "a attach", "q close"], w, st)
+        }
         Mode::Detail(v) if v.cur.is_some() => hints(
             &["v V select", "hjkl w b e move", "tab write", "esc leave the block"],
             w,
@@ -685,8 +704,8 @@ fn footer(g: &Github, w: usize, st: &Styles) -> Line<'static> {
                     vec!["enter select", "E edit", "+ react", "> quote"]
                 }
                 Part::Review(_) | Part::DiffComment(_) => vec!["enter select", "> quote"],
-                Part::Checks => vec!["enter select"],
-                Part::Files => vec!["d diff", "enter select"],
+                Part::Checks => vec!["enter pick a check"],
+                Part::Files => vec!["enter pick a file", "d diff"],
             };
             if pr && v.focus == Part::Head {
                 parts.push("d diff");

@@ -454,33 +454,31 @@ fn pr_sections(
             out.push(Line::default());
         }
     }
+    // One line per check and per file: the block's rows are what Enter picks from.
     if !d.checks.is_empty() {
         out.push(heading(&format!("Checks ({})", d.checks.len()), w, st));
         let start = out.len();
-        let c = d.check_counts();
-        for check in d
-            .checks
-            .iter()
-            .filter(|c| matches!(c.state, CheckState::Fail | CheckState::Pending))
-        {
-            let (mark, style) = if check.state == CheckState::Fail {
-                ("✗", st.danger)
-            } else {
-                ("◌", st.muted)
+        for i in super::pr::check_order(&d.checks) {
+            let check = &d.checks[i];
+            let (mark, style) = match check.state {
+                CheckState::Fail => ("✗", st.danger),
+                CheckState::Pending => ("◌", st.muted),
+                CheckState::Pass => ("✓", st.success),
+                CheckState::Skipped => ("–", st.muted),
             };
-            out.push(fit_line(
-                Line::from(vec![
-                    Span::styled(format!("{mark} "), style),
-                    Span::raw(check.name.clone()),
-                ]),
-                w,
-            ));
+            let mut spans = vec![
+                Span::styled(format!("{mark} "), style),
+                Span::raw(check.name.clone()),
+            ];
+            let took = super::pr::took(check);
+            if !took.is_empty() {
+                spans.push(Span::styled(format!("  {took}"), st.muted));
+            }
+            if check.job == 0 && !check.url.is_empty() {
+                spans.push(Span::styled("  link", st.muted));
+            }
+            out.push(fit_line(Line::from(spans), w));
         }
-        let mut tail = vec![Span::styled(format!("✓ {} passed", c.pass), st.success)];
-        if c.skipped > 0 {
-            tail.push(Span::styled(format!("  – {} skipped", c.skipped), st.muted));
-        }
-        out.push(Line::from(tail));
         part(Part::Checks, start, out.len());
         out.push(Line::default());
     }
@@ -488,14 +486,17 @@ fn pr_sections(
         out.push(heading(&format!("Files ({})", d.files.len()), w, st));
         let start = out.len();
         for f in &d.files {
-            out.push(fit_line(
-                Line::from(vec![
-                    Span::styled(format!("{:>5}", format!("+{}", f.additions)), st.success),
-                    Span::styled(format!("{:>6} ", format!("−{}", f.deletions)), st.danger),
-                    Span::raw(f.path.clone()),
-                ]),
-                w,
-            ));
+            let mut spans = vec![
+                Span::styled(format!("{:>5}", format!("+{}", f.additions)), st.success),
+                Span::styled(format!("{:>6} ", format!("−{}", f.deletions)), st.danger),
+                Span::raw(f.path.clone()),
+            ];
+            let n = super::pr::remark_count(&d.review_comments, &f.path);
+            if n > 0 {
+                let s = if n == 1 { "" } else { "s" };
+                spans.push(Span::styled(format!("  {n} comment{s}"), st.muted));
+            }
+            out.push(fit_line(Line::from(spans), w));
         }
         part(Part::Files, start, out.len());
     }

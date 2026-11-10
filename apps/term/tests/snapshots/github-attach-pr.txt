@@ -8,9 +8,10 @@ Files:
   src/layout.css (+4 -0)
 Description:
 Fixes #12 by reserving the scrollbar gutter.
-Conversation (4):
+Conversation (5):
 alice (2026-10-16, review changes requested): The gutter should be a variable.
-alice (2026-10-16, on src/header.css:12): Use a variable here.
-bob (2026-10-16, on src/header.css:12): Done.
+alice (2026-10-16, on src/header.css:3): Use a variable here.
+bob (2026-10-16, on src/header.css:3): Done.
+carol (2026-10-16, on src/header.css:2): Why not fixed?
 alice (2026-10-16): Thanks, looking.
 </github-pr>

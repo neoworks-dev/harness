@@ -60,6 +60,10 @@ pub struct Reader {
     /// `g` or `y` waiting for the rest of the command.
     pending: Option<char>,
     copy: Option<String>,
+    /// What the title line says about the keys.
+    hint: String,
+    /// The next draw shows the end (it knows how tall the view is).
+    end: bool,
 }
 
 impl Reader {
@@ -75,7 +79,26 @@ impl Reader {
             }
             None => lines.iter().map(|l| vec![Class::Plain; l.len()]).collect(),
         };
+        Reader::with(title, lines, classes, "markdown · v/V select · y copy · q close")
+    }
+
+    /// Plain text (a log), with `hint` for the keys in the title line.
+    pub fn plain(title: &str, text: &str, hint: &str) -> Reader {
+        let lines: Vec<Vec<char>> = text.split('\n').map(|l| l.chars().collect()).collect();
+        let classes = lines.iter().map(|l| vec![Class::Plain; l.len()]).collect();
+        Reader::with(title, lines, classes, hint)
+    }
+
+    /// Puts the cursor on the last line, the end of the text in view.
+    pub fn to_end(&mut self) {
+        self.cur = (self.lines.len().saturating_sub(1), 0);
+        self.end = true;
+    }
+
+    fn with(title: &str, lines: Vec<Vec<char>>, classes: Vec<Vec<Class>>, hint: &str) -> Reader {
         Reader {
+            hint: hint.to_string(),
+            end: false,
             title: title.to_string(),
             lines,
             classes,
@@ -528,6 +551,9 @@ impl Reader {
         }
         self.width = usize::from(area.width);
         self.height = usize::from(area.height) - 1;
+        if std::mem::take(&mut self.end) {
+            self.top = self.lines.len().saturating_sub(self.height);
+        }
         self.reveal();
         let muted = Style::new().fg(p.muted);
         let colors = syntax::block_colors(p);
@@ -594,8 +620,8 @@ impl Reader {
             Mode::VisualLine => "-- VISUAL LINE --".to_string(),
             Mode::Normal => format!("{}/{}", self.cur.0 + 1, self.lines.len()),
         };
-        let hint = "  markdown · v/V select · y copy · q close";
-        let room = w.saturating_sub(width(&right) + 2 + width(hint)).max(1);
+        let hint = format!("  {}", self.hint);
+        let room = w.saturating_sub(width(&right) + 2 + width(&hint)).max(1);
         let title = truncate_start(&self.title, room);
         let mut spans = vec![
             Span::styled(title, Style::new().add_modifier(Modifier::BOLD)),

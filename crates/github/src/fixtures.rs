@@ -43,6 +43,7 @@ pub const PR_31: &str = r#"{
  "labels":[{"name":"ui"}],"url":"https://github.com/acme/site/pull/31",
  "createdAt":"2026-10-15T09:00:00Z","updatedAt":"2026-10-16T14:30:00Z",
  "baseRefName":"main","headRefName":"fix-header","reviewDecision":"CHANGES_REQUESTED",
+ "headRefOid":"abc123",
  "additions":14,"deletions":3,
  "body":"Fixes #12 by reserving the scrollbar gutter.",
  "comments":[{"id":"c1","author":{"login":"alice"},"createdAt":"2026-10-16T14:30:00Z","body":"Thanks, looking."}],
@@ -52,10 +53,12 @@ pub const PR_31: &str = r#"{
  ],
  "statusCheckRollup":[
   {"__typename":"CheckRun","name":"lint","status":"COMPLETED","conclusion":"SUCCESS"},
-  {"__typename":"CheckRun","name":"test (ubuntu)","status":"COMPLETED","conclusion":"FAILURE"},
+  {"__typename":"CheckRun","name":"test (ubuntu)","status":"COMPLETED","conclusion":"FAILURE",
+   "detailsUrl":"https://github.com/acme/site/actions/runs/700/job/7001",
+   "startedAt":"2026-10-16T14:00:00Z","completedAt":"2026-10-16T14:03:20Z"},
   {"__typename":"CheckRun","name":"test (macos)","status":"IN_PROGRESS","conclusion":""},
   {"__typename":"CheckRun","name":"docs","status":"COMPLETED","conclusion":"SKIPPED"},
-  {"__typename":"StatusContext","context":"ci/deploy","state":"SUCCESS"}
+  {"__typename":"StatusContext","context":"ci/deploy","state":"SUCCESS","targetUrl":"https://deploy.example.com/31"}
  ],
  "files":[
   {"path":"src/header.css","additions":10,"deletions":3,"changeType":"MODIFIED"},
@@ -63,8 +66,19 @@ pub const PR_31: &str = r#"{
  ]}"#;
 
 pub const PR_31_COMMENTS: &str = r#"[
- {"user":{"login":"alice"},"body":"Use a variable here.","path":"src/header.css","line":12,"created_at":"2026-10-16T14:00:30Z","in_reply_to_id":null},
- {"user":{"login":"bob"},"body":"Done.","path":"src/header.css","line":12,"created_at":"2026-10-16T14:20:00Z","in_reply_to_id":991}
+ {"user":{"login":"alice"},"body":"Use a variable here.","path":"src/header.css","line":3,"side":"RIGHT","created_at":"2026-10-16T14:00:30Z","in_reply_to_id":null},
+ {"user":{"login":"bob"},"body":"Done.","path":"src/header.css","line":3,"side":"RIGHT","created_at":"2026-10-16T14:20:00Z","in_reply_to_id":991},
+ {"user":{"login":"carol"},"body":"Why not fixed?","path":"src/header.css","line":2,"side":"LEFT","created_at":"2026-10-16T14:25:00Z","in_reply_to_id":null}
 ]"#;
 
-pub const DIFF_31: &str = "diff --git a/src/header.css b/src/header.css\nindex 1..2 100644\n--- a/src/header.css\n+++ b/src/header.css\n@@ -1,3 +1,4 @@\n header {\n-  position: fixed;\n+  position: sticky;\n+  scrollbar-gutter: stable;\n }\n";
+pub const DIFF_31: &str = "diff --git a/src/header.css b/src/header.css\nindex 1..2 100644\n--- a/src/header.css\n+++ b/src/header.css\n@@ -1,3 +1,4 @@\n header {\n-  position: fixed;\n+  position: sticky;\n+  scrollbar-gutter: stable;\n }\ndiff --git a/src/layout.css b/src/layout.css\nindex 3..4 100644\n--- a/src/layout.css\n+++ b/src/layout.css\n@@ -8,2 +8,3 @@\n main {\n+  margin: 0;\n }\n";
+
+/// The failed steps of the job behind pull request 31's failing check, as `gh run view --log-failed`
+/// prints them.
+pub const JOB_7001_FAILED: &str = "test (ubuntu)\tRun tests\t2026-10-16T14:03:01.0000000Z \u{1b}[31mFAIL\u{1b}[0m header sticks\ntest (ubuntu)\tRun tests\t2026-10-16T14:03:02.0000000Z ##[error]Process completed with exit code 1.\n";
+
+/// All of that job's log.
+pub const JOB_7001: &str = "test (ubuntu)\tSet up job\t2026-10-16T14:00:00.0000000Z Runner ubuntu-24.04\ntest (ubuntu)\tRun tests\t2026-10-16T14:03:01.0000000Z \u{1b}[31mFAIL\u{1b}[0m header sticks\ntest (ubuntu)\tRun tests\t2026-10-16T14:03:02.0000000Z ##[error]Process completed with exit code 1.\n";
+
+/// `src/header.css` at the head of pull request 31, as the contents API sends it.
+pub const HEADER_CSS_AT_HEAD: &str = r#"{"encoding":"base64","content":"aGVhZGVyIHsKICBwb3Np\ndGlvbjogc3RpY2t5Owog\nIHNjcm9sbGJhci1ndXR0\nZXI6IHN0YWJsZTsKfQo=\n"}"#;
