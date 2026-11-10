@@ -48,6 +48,7 @@ fn opts() -> ChatOpts {
         split_diffs: false,
         hide_edits: false,
         dismissed: Vec::new(),
+        linked: None,
     }
 }
 
@@ -362,6 +363,7 @@ fn ctrl_o_timing() {
         open_edit: false,
         icons: false,
         focused: None,
+        linked: false,
         palette: expanded.palette,
         marker: Style::new(),
         images: None,

@@ -87,6 +87,9 @@ pub struct ChatOpts {
     pub hide_edits: bool,
     /// The choices the user dismissed (Esc), by ref: not drawn while they are.
     pub dismissed: Vec<String>,
+    /// The item the terminal panel is at (a command's ref): drawn with the bar in the margin
+    /// that the panel puts on that command's rows, so the two can be told apart from the rest.
+    pub linked: Option<String>,
 }
 
 /// A file a turn changed, as the tools' diffs name it, and the lines added and removed.
@@ -131,6 +134,8 @@ struct CacheKey {
     /// An edit that shows what it changed: every one, or with hide-edits the newest.
     open_edit: bool,
     focused: Option<usize>,
+    /// The item is the one the terminal panel is at.
+    linked: bool,
     palette: Palette,
     marker: Style,
     /// Only for items that hold images: they redraw when an image's state changes.
@@ -587,6 +592,22 @@ impl Chat {
             self.top = Some(start.min(self.max_top()));
         }
         if self.top == Some(self.max_top()) {
+            self.follow();
+        }
+    }
+
+    /// Scrolls so the item starts at the top of the view (as far as the end of the chat lets
+    /// it): the terminal panel moving through the commands takes the chat along with it.
+    pub fn scroll_to(&mut self, r: &str) {
+        let Some(e) = self.entries.iter().find(|e| e.r#ref == r) else {
+            return;
+        };
+        let top = e.offset.min(self.max_top());
+        if self.top() == top {
+            return;
+        }
+        self.top = Some(top);
+        if top == self.max_top() {
             self.follow();
         }
     }

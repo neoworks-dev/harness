@@ -137,6 +137,7 @@ impl Chat {
                 split_diffs: opts.split_diffs,
                 open_edit: opts.expanded || open_edit(index),
                 focused: active,
+                linked: opts.linked.as_ref() == Some(r),
                 palette: opts.palette,
                 marker: opts.marker,
                 images: self

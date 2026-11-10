@@ -130,7 +130,9 @@ fn scrolled_with_the_chat_the_commands_end_where_it_is() {
         t.on_update(&update(id, Some("completed"), out, None), 0);
     }
     t.set_upto(Some(Some("1".into())));
-    assert_eq!(shown(&t, 20, 10), ["✓ $ echo", "│ one"]);
+    // The command the chat is at has the bar the chat's item has.
+    assert_eq!(shown(&t, 20, 10), ["▎ ✓ $ echo", "▎ one"]);
+    assert_eq!(t.linked_run().as_deref(), Some("1"));
     t.set_upto(Some(None));
     assert!(shown(&t, 20, 10).is_empty(), "no command yet there");
     t.set_upto(None);
@@ -150,9 +152,9 @@ fn the_end_shows_until_scrolled_back() {
     assert_eq!(shown(&t, 20, 3), ["✓ $ seq 20", "│ 19", "│ 20"]);
     t.key(KeyEvent::from(KeyCode::PageUp), 3);
     assert!(!t.following());
-    assert_eq!(shown(&t, 20, 3), ["✓ $ seq 20", "│ 16", "│ 17"]);
+    assert_eq!(shown(&t, 20, 3), ["▎ ✓ $ seq 20", "▎ 16", "▎ 17"]);
     t.key(KeyEvent::from(KeyCode::Char('g')), 3);
-    assert_eq!(shown(&t, 20, 3), ["✓ $ seq 20", "│ 1", "│ 2"]);
+    assert_eq!(shown(&t, 20, 3), ["▎ ✓ $ seq 20", "▎ 1", "▎ 2"]);
     t.key(KeyEvent::from(KeyCode::Char('G')), 3);
     assert!(t.following());
     assert!(t.key(KeyEvent::from(KeyCode::Esc), 3));
@@ -169,7 +171,7 @@ fn the_command_on_top_is_the_one_whose_output_shows() {
     assert_eq!(shown(&t, 10, 4), ["", "✓ $ seq 2", "│ 1", "│ 2"]);
     t.key(KeyEvent::from(KeyCode::Up), 4);
     t.key(KeyEvent::from(KeyCode::Up), 4);
-    assert_eq!(shown(&t, 10, 4), ["✓ $ seq 5", "│ 5", "", "✓ $ seq 2"]);
+    assert_eq!(shown(&t, 10, 4), ["✓ $ seq 5", "│ 5", "", "▎ ✓ $ seq…"]);
 }
 
 #[test]
@@ -248,6 +250,29 @@ fn a_background_commands_file_is_tailed_until_it_ends() {
     assert_eq!(rows[1..], ["│ tick 1", "│ tick 2"]);
     // It lingers a moment, then leaves the list.
     assert!(t.jobs(1_750 + JOB_LINGER_MS).is_empty());
+    std::fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn a_killed_background_command_is_dropped() {
+    let path = temp("killed.output");
+    std::fs::write(&path, "tick 1\n").unwrap();
+    let mut t = TerminalState::default();
+    let start = call("1", "execute", "sleep 100");
+    t.on_call(&start);
+    t.on_update(
+        &update("1", Some("completed"), &backgrounded(&path), None),
+        1_000,
+    );
+    assert!(t.poll_jobs(1_250));
+    assert_eq!(t.jobs(1_250).len(), 1);
+    std::fs::write(&path, "tick 1\n\n[killed]\n").unwrap();
+    assert!(t.poll_jobs(1_500));
+    assert!(t.jobs(1_500).is_empty());
+    assert!(!t.has_run("1"), "not kept in the panel either");
+    // Its call being logged again doesn't bring it back.
+    t.on_call(&start);
+    assert!(!t.has_any());
     std::fs::remove_file(&path).unwrap();
 }
 

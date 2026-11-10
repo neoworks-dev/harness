@@ -666,7 +666,10 @@ impl Widgets {
                     let end = if y == to.y { to.x - body.x } else { body.width };
                     let text = columns(row, usize::from(start), usize::from(end));
                     // Output rows have a rule before them, which isn't the output's.
-                    let text = text.strip_prefix("│ ").unwrap_or(&text);
+                    let text = text
+                        .strip_prefix("│ ")
+                        .or_else(|| text.strip_prefix("▎ "))
+                        .unwrap_or(&text);
                     out.push(text.trim_end().to_string());
                 }
                 let text = out.join("\n");
@@ -683,6 +686,11 @@ impl Widgets {
     /// Whether the terminal panel was scrolled since the last time this was asked.
     pub fn take_terminal_scrolled(&mut self) -> bool {
         self.terminal.take_scrolled()
+    }
+
+    /// The command the terminal panel and the chat are both at, while they are tied together.
+    pub fn terminal_linked_run(&self) -> Option<String> {
+        self.terminal.linked_run()
     }
 
     /// The toolCallId of the command on the terminal panel's bottom row.

@@ -68,6 +68,8 @@ struct Job {
     seen_running: bool,
     /// The file isn't there (cleaned up, or on another machine).
     gone: bool,
+    /// The file ends with `[killed]`: the command was stopped, and it is dropped.
+    killed: bool,
 }
 
 /// A background command, as the list under the prompt shows it.
@@ -142,8 +144,11 @@ impl TerminalState {
     }
 
     pub(crate) fn on_call(&mut self, call: &ToolCall) {
+        // Not a command, or one that was killed and dropped: passed over from now on.
         if call.kind != ToolKind::Execute {
             self.others.insert(call.tool_call_id.clone());
+        }
+        if self.others.contains(&call.tool_call_id) {
             return;
         }
         let command = command_of(call.raw_input.as_ref()).unwrap_or_else(|| {
@@ -222,6 +227,7 @@ impl TerminalState {
                     ended_ms: None,
                     seen_running: false,
                     gone: false,
+                    killed: false,
                 });
             }
             run.output = output_lines(&text, &mut Sgr::default());
@@ -256,7 +262,9 @@ impl TerminalState {
             let end = all.len() - back;
             let start = end.saturating_sub(height);
             let mut shown = all[start..end].to_vec();
-            pin_head(&mut shown, &all, &[(0, all.len())], start);
+            if pinned(shown.len(), &[(0, all.len())], start).is_some() {
+                shown[0] = pin_line(run, &look, false);
+            }
             return shown;
         }
         // Where the chat is scrolled to, the commands up to there.
@@ -309,7 +317,24 @@ impl TerminalState {
         let last = runs.iter().rposition(|&(at, _)| at < end);
         *self.bottom.borrow_mut() = last.and_then(|i| ids.get(i)).map(|id| id.to_string());
         let mut shown = all[start..end].to_vec();
-        pin_head(&mut shown, &all, &runs, start);
+        let linked = self.is_linked();
+        let run_at = |i: usize| {
+            ids.get(i)
+                .and_then(|id| self.runs.iter().find(|r| r.id == *id))
+        };
+        let mut from = 0;
+        if let Some(i) = pinned(shown.len(), &runs, start)
+            && let Some(run) = run_at(i)
+        {
+            shown[0] = pin_line(run, &look, linked && last == Some(i));
+            from = 1;
+        }
+        if linked
+            && let Some(i) = last
+            && let Some(run) = run_at(i)
+        {
+            mark_run(&mut shown, runs[i], start, from, run, &look);
+        }
         shown
     }
 
@@ -321,6 +346,17 @@ impl TerminalState {
     /// The run on the bottom row of the last draw (its toolCallId).
     pub(crate) fn bottom_run(&self) -> Option<String> {
         self.bottom.borrow().clone()
+    }
+
+    /// Whether the panel and the chat are at the same command: one was scrolled away from the
+    /// end and the other follows it. Following the newest output they are not tied together.
+    fn is_linked(&self) -> bool {
+        self.view().is_none() && (self.back.is_some() || self.upto.is_some())
+    }
+
+    /// The run both the panel and the chat mark, while they are tied together.
+    pub(crate) fn linked_run(&self) -> Option<String> {
+        self.is_linked().then(|| self.bottom_run()).flatten()
     }
 
     /// Keys while focused; true leaves the panel.
@@ -395,7 +431,17 @@ impl TerminalState {
                 changed |= job.poll(now_ms);
             }
         }
-        changed
+        // A command that was killed isn't kept: not in the panel, not in the list.
+        let before = self.runs.len();
+        let others = &mut self.others;
+        self.runs.retain(|r| {
+            let killed = r.job.as_ref().is_some_and(|j| j.killed);
+            if killed {
+                others.insert(r.id.clone());
+            }
+            !killed
+        });
+        changed || self.runs.len() != before
     }
 
     /// The background commands to list: those running, and those that ended a moment ago.
@@ -495,6 +541,11 @@ impl Job {
         let done: Vec<u8> = self.partial.drain(..=end).collect();
         let text = String::from_utf8_lossy(&done);
         let mut lines = output_lines(&text, &mut self.sgr);
+        // A command that was stopped ends its file with `[killed]`.
+        if lines.iter().any(|l| plain(l).trim() == "[killed]") {
+            self.killed = true;
+            return true;
+        }
         // `[exited with code N]` ends the file, after a blank line.
         match lines.last().and_then(|l| exit_code(&plain(l))) {
             Some(code) => {
@@ -558,23 +609,50 @@ fn pgid_of(pid: &str) -> Option<i64> {
     rest.split_whitespace().nth(2)?.parse().ok()
 }
 
-/// When the top of `shown` (row `start` of `all`) is inside a run whose `$ command` row has
-/// scrolled off, that row takes the top's place, so the output keeps saying whose it is. `runs`
-/// are each run's first row in `all` and its rows before the rule under it.
-fn pin_head(
-    shown: &mut [Line<'static>],
-    all: &[Line<'static>],
-    runs: &[(usize, usize)],
-    start: usize,
-) {
-    if shown.len() < 2 {
-        return;
+/// Which run (its place in `runs`) the top row, row `start` of the rows, is inside when that
+/// run's header has scrolled off: its pinned line then takes the top's place, so the output
+/// keeps saying whose it is. `runs` are each run's first row and its rows before the rule
+/// under it; `shown` is how many rows are on screen.
+fn pinned(shown: usize, runs: &[(usize, usize)], start: usize) -> Option<usize> {
+    if shown < 2 {
+        return None;
     }
-    let inside = runs
-        .iter()
-        .find(|&&(first, rows)| start > first && start < first + rows);
-    if let Some(&(first, _)) = inside {
-        shown[0] = all[first].clone();
+    runs.iter()
+        .position(|&(first, rows)| start > first && start < first + rows)
+}
+
+/// The line that stays at the top while a run's output scrolls: what the command is for, or
+/// the command itself when nobody said.
+fn pin_line(run: &Run, look: &Look, linked: bool) -> Line<'static> {
+    header(run, look, true, linked).swap_remove(0)
+}
+
+/// Puts the bar in the margin of the run the chat is at: on its header and down its output's
+/// gutter, as the chat marks its item. `at` is the run's first row among the rows, `start` the
+/// first row shown, `from` the first shown row that isn't a pinned line.
+fn mark_run(
+    shown: &mut [Line<'static>],
+    (at, rows): (usize, usize),
+    start: usize,
+    from: usize,
+    run: &Run,
+    look: &Look,
+) {
+    let head = header(run, look, false, true);
+    let bar = Span::styled("▎ ", Style::new().fg(look.p.accent));
+    for (i, line) in shown.iter_mut().enumerate().skip(from) {
+        let row = start + i;
+        if row < at || row >= at + rows {
+            continue;
+        }
+        match head.get(row - at) {
+            Some(h) => *line = h.clone(),
+            None => {
+                if !line.spans.is_empty() {
+                    line.spans[0] = bar.clone();
+                }
+            }
+        }
     }
 }
 
@@ -728,8 +806,11 @@ fn took(ms: i64) -> String {
 /// command after it muted (the command highlighted when there is no description), and how it
 /// went at the right end. One row, cut at the edge; a command waiting for approval is read in
 /// full, its lines under it.
-fn header(run: &Run, look: &Look) -> Vec<Line<'static>> {
+fn header(run: &Run, look: &Look, pin: bool, linked: bool) -> Vec<Line<'static>> {
     let p = look.p;
+    // The run the chat is at has the bar in the margin, as the chat's item has.
+    let bar = if linked { 2 } else { 0 };
+    let width = look.width.saturating_sub(bar);
     let (icon, how) = outcome(run, p);
     let mut spans = vec![icon, Span::raw(" ")];
     if let Some(agent) = &run.agent {
@@ -742,7 +823,10 @@ fn header(run: &Run, look: &Look) -> Vec<Line<'static>> {
                 format!("{description}  "),
                 Style::new().add_modifier(Modifier::BOLD),
             ));
-            spans.push(Span::styled(command, Style::new().fg(p.muted)));
+            // The pinned line says what it is for; the command is under it in the header.
+            if !pin {
+                spans.push(Span::styled(command, Style::new().fg(p.muted)));
+            }
         }
         None => {
             spans.push(Span::styled(
@@ -754,7 +838,7 @@ fn header(run: &Run, look: &Look) -> Vec<Line<'static>> {
     }
     let how_w = super::text::width(&how.content);
     let mut lines = if run.status == ToolCallStatus::Pending {
-        let mut lines = wrap_spans(spans, look.width);
+        let mut lines = wrap_spans(spans, width);
         lines.push(Line::from(vec![Span::raw("  "), how]));
         lines
     } else {
@@ -766,17 +850,20 @@ fn header(run: &Run, look: &Look) -> Vec<Line<'static>> {
                 .spans
                 .push(Span::styled(" …", Style::new().fg(p.muted)));
         }
-        let room = look
-            .width
-            .saturating_sub(if how_w > 0 { how_w + 2 } else { 0 });
+        let room = width.saturating_sub(if how_w > 0 { how_w + 2 } else { 0 });
         let mut first = fit_line(first, room);
         if how_w > 0 {
-            let pad = look.width.saturating_sub(first.width() + how_w);
+            let pad = width.saturating_sub(first.width() + how_w);
             first.spans.push(Span::raw(" ".repeat(pad)));
             first.spans.push(how);
         }
         vec![first]
     };
+    if linked {
+        for line in &mut lines {
+            line.spans.insert(0, Span::styled("▎ ", Style::new().fg(p.accent)));
+        }
+    }
     if let Some(bg) = look.band {
         for line in &mut lines {
             let pad = look.width.saturating_sub(line.width());
@@ -808,7 +895,7 @@ fn output_row(line: &Segs, look: &Look) -> Line<'static> {
 /// The header, then the output under it. A background command shows what its file holds
 /// instead of its call's result.
 fn run_lines(run: &Run, look: &Look) -> Vec<Line<'static>> {
-    let mut out = header(run, look);
+    let mut out = header(run, look, false, false);
     let output = match run.job.as_ref().filter(|j| !j.gone) {
         Some(job) => &job.output,
         None => &run.output,

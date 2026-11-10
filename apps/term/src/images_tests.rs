@@ -74,6 +74,7 @@ fn opts() -> ChatOpts {
         split_diffs: false,
         hide_edits: false,
         dismissed: Vec::new(),
+        linked: None,
     }
 }
 

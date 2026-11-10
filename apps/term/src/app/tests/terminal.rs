@@ -88,6 +88,10 @@ fn scrolling_the_terminal_panel_takes_the_chat_to_that_command() {
     let seen = app.chat.items_through_view().expect("scrolled up");
     let last_command = seen.iter().rev().find(|i| i.r#ref.starts_with("c-"));
     assert_eq!(last_command.map(|i| i.r#ref.as_str()), Some("c-t1"));
+    // The chat's line for it and the panel's rows for it carry the same bar.
+    let rows = screen(&mut app, 120, 24);
+    let line = rows.iter().find(|r| r.contains("make t1") && !r.contains("$")).expect("in chat");
+    assert!(line.trim_start().starts_with('▎'), "{line:?}");
 
     // The chat scrolled again leads again: the panel follows it.
     app.focus = None;

@@ -65,6 +65,7 @@ impl App {
                 split_diffs: self.split_diffs,
                 hide_edits: self.hide_edits,
                 dismissed: Vec::new(),
+                linked: None,
             };
             if let Some(t) = self.transcript.as_mut() {
                 t.draw(frame, areas.chat, &opts, &self.styles);
@@ -129,7 +130,7 @@ impl App {
                 && let Some(run) = self.widgets.terminal_bottom_run()
             {
                 let before = self.chat.top();
-                self.chat.reveal(&format!("c-{run}"));
+                self.chat.scroll_to(&format!("c-{run}"));
                 self.terminal_leads = Some(self.chat.top());
                 // The chat was drawn already: once more, where it went.
                 self.dirty |= self.chat.top() != before;
@@ -303,6 +304,11 @@ impl App {
             split_diffs: self.split_diffs,
             hide_edits: self.hide_edits,
             dismissed: self.prompt.dismissed.clone(),
+            // Only while the panel is on screen.
+            linked: self
+                .terminal_area
+                .and_then(|_| self.widgets.terminal_linked_run())
+                .map(|run| format!("c-{run}")),
         }
     }
 

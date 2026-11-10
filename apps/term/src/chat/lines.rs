@@ -428,11 +428,11 @@ pub(super) fn render(
         file_icons: key.icons,
         cwd: cwd.map(str::to_string),
     };
-    if key.focused.is_none() {
+    if key.focused.is_none() && !key.linked {
         let out = render_item_images(item, width, &opts);
         return (out.lines, out.images, out.focus_line);
     }
-    // The prompt being answered gets a bar in the margin.
+    // The prompt being answered, and the item the terminal panel is at, get a bar in the margin.
     let inner = width.saturating_sub(2).max(1);
     let out = render_item_images(item, inner, &opts);
     let lines = out
