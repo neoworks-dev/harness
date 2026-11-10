@@ -1,5 +1,6 @@
-//! A reply opened from the chat as its markdown, in place of the chat: a cursor that moves
-//! with vim's keys, `v` / `V` select, `y` copies.
+//! A reply opened from the chat as its markdown, in place of the chat, or plain text (a check's
+//! log): a cursor that moves with vim's keys, `v` / `V` select, `y` copies, `/` searches and
+//! `n` / `N` go between the matches.
 
 use neo_renderer_ratatui::Palette;
 use neo_renderer_ratatui::syntax::{self, Class, Highlighter};
@@ -64,6 +65,12 @@ pub struct Reader {
     hint: String,
     /// The next draw shows the end (it knows how tall the view is).
     end: bool,
+    /// `/` is being typed: the pattern so far.
+    typing: Option<String>,
+    /// The last search, for `n` / `N` and to mark its matches.
+    pattern: Option<String>,
+    /// Said in the title line until the next key (`no match for x`).
+    message: Option<String>,
 }
 
 impl Reader {
@@ -79,7 +86,7 @@ impl Reader {
             }
             None => lines.iter().map(|l| vec![Class::Plain; l.len()]).collect(),
         };
-        Reader::with(title, lines, classes, "markdown · v/V select · y copy · q close")
+        Reader::with(title, lines, classes, "markdown · / search · v/V select · y copy · q close")
     }
 
     /// Plain text (a log), with `hint` for the keys in the title line.
@@ -99,6 +106,9 @@ impl Reader {
         Reader {
             hint: hint.to_string(),
             end: false,
+            typing: None,
+            pattern: None,
+            message: None,
             title: title.to_string(),
             lines,
             classes,
@@ -124,8 +134,18 @@ impl Reader {
         self.scroll(if down { 3 } else { -3 });
     }
 
+    /// A search is being typed: every key is the search's.
+    pub fn is_typing(&self) -> bool {
+        self.typing.is_some()
+    }
+
     pub fn key(&mut self, key: KeyEvent) -> ReaderAction {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        self.message = None;
+        if self.typing.is_some() {
+            self.search_key(key);
+            return ReaderAction::Redraw;
+        }
         if let Some(p) = self.pending.take() {
             return self.pending_key(p, key);
         }
@@ -181,6 +201,12 @@ impl Reader {
                 self.pending = Some(c);
                 self.count = raw;
             }
+            KeyCode::Char('/') => self.typing = Some(String::new()),
+            KeyCode::Char(c @ ('n' | 'N')) => {
+                if let Some(to) = self.find(c == 'n', n) {
+                    self.go(to, false);
+                }
+            }
             _ => {
                 if let Some((to, _)) = self.motion(key, n, raw > 0) {
                     self.go(to, is_vertical(key.code));
@@ -224,6 +250,112 @@ impl Reader {
             _ => {}
         }
         ReaderAction::Redraw
+    }
+
+    /// A key while `/` is typed: Enter searches from the cursor, Esc gives up.
+    fn search_key(&mut self, key: KeyEvent) {
+        let Some(text) = self.typing.as_mut() else {
+            return;
+        };
+        match key.code {
+            KeyCode::Esc => self.typing = None,
+            KeyCode::Backspace if text.is_empty() => self.typing = None,
+            KeyCode::Backspace => {
+                text.pop();
+            }
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => text.clear(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.typing = None;
+            }
+            KeyCode::Char(c) => text.push(c),
+            KeyCode::Enter => {
+                let text = self.typing.take().unwrap_or_default();
+                if !text.is_empty() {
+                    self.pattern = Some(text);
+                }
+                if let Some(to) = self.find(true, 1) {
+                    self.go(to, false);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The pattern as searched and whether it is exact: smart case, an upper-case letter makes
+    /// it exact.
+    fn needle(&self) -> Option<(Vec<char>, bool)> {
+        let pattern = self.pattern.as_ref().filter(|p| !p.is_empty())?;
+        let exact = pattern.chars().any(char::is_uppercase);
+        let chars = if exact {
+            pattern.chars().collect()
+        } else {
+            pattern.to_lowercase().chars().collect()
+        };
+        Some((chars, exact))
+    }
+
+    /// Where the matches in line `row` start, by char.
+    fn matches_in(&self, row: usize, needle: &[char], exact: bool) -> Vec<usize> {
+        let line: Vec<char> = if exact {
+            self.lines[row].clone()
+        } else {
+            // Lower-casing one char at a time keeps the positions (a char that lower-cases to
+            // more than one keeps its first).
+            self.lines[row]
+                .iter()
+                .map(|c| c.to_lowercase().next().unwrap_or(*c))
+                .collect()
+        };
+        if needle.is_empty() || line.len() < needle.len() {
+            return Vec::new();
+        }
+        (0..=line.len() - needle.len())
+            .filter(|&i| line[i..i + needle.len()] == *needle)
+            .collect()
+    }
+
+    /// The `n`-th match after (`forward`) or before the cursor, round the ends; None (and the
+    /// title says why) when there is none.
+    fn find(&mut self, forward: bool, n: usize) -> Option<Pos> {
+        let Some((needle, exact)) = self.needle() else {
+            self.message = Some("no search yet: / to search".into());
+            return None;
+        };
+        let all: Vec<Pos> = (0..self.lines.len())
+            .flat_map(|r| {
+                self.matches_in(r, &needle, exact)
+                    .into_iter()
+                    .map(move |c| (r, c))
+            })
+            .collect();
+        if all.is_empty() {
+            let pattern = self.pattern.clone().unwrap_or_default();
+            self.message = Some(format!("no match for {pattern}"));
+            return None;
+        }
+        let mut at = self.cur;
+        let mut wrapped = false;
+        for _ in 0..n {
+            let next = if forward {
+                all.iter().find(|&&p| p > at).copied().or_else(|| {
+                    wrapped = true;
+                    all.first().copied()
+                })
+            } else {
+                all.iter().rev().find(|&&p| p < at).copied().or_else(|| {
+                    wrapped = true;
+                    all.last().copied()
+                })
+            };
+            at = next?;
+        }
+        if wrapped {
+            self.message = Some(
+                if forward { "search went past the end, on from the top" } else { "search went past the top, on from the end" }
+                    .into(),
+            );
+        }
+        Some(at)
     }
 
     fn toggle(&mut self, mode: Mode) {
@@ -562,11 +694,27 @@ impl Reader {
             None => Style::new().add_modifier(Modifier::UNDERLINED),
         };
         let cursor = Style::new().add_modifier(Modifier::REVERSED);
+        let found = match crate::chat::mix(p.bg, p.warning, 0.4) {
+            Some(c) => Style::new().bg(c),
+            None => Style::new().add_modifier(Modifier::UNDERLINED | Modifier::BOLD),
+        };
+        let needle = self.needle();
 
-        let mut out = vec![self.title_line(muted)];
+        let mut out = vec![self.title_line(muted, p)];
         let mut row = self.top;
         while out.len() <= self.height && row < self.lines.len() {
             let line = &self.lines[row];
+            // The chars of this line that are part of a match of the search.
+            let marked: Vec<bool> = match &needle {
+                Some((n, exact)) => {
+                    let mut marked = vec![false; line.len()];
+                    for at in self.matches_in(row, n, *exact) {
+                        marked[at..at + n.len()].iter_mut().for_each(|m| *m = true);
+                    }
+                    marked
+                }
+                None => Vec::new(),
+            };
             let mut spans: Vec<Span<'static>> = Vec::new();
             let mut used = 0;
             let push =
@@ -577,6 +725,9 @@ impl Reader {
             let style_at = |col: usize| {
                 let class = self.classes[row].get(col).copied().unwrap_or_default();
                 let mut style = colors[class as usize];
+                if marked.get(col).copied().unwrap_or(false) {
+                    style = style.patch(found);
+                }
                 if self.selected((row, col)) {
                     style = style.patch(selection);
                 }
@@ -613,19 +764,44 @@ impl Reader {
     }
 
     /// `reply · markdown`, the keys, and the mode or where the cursor is on the right.
-    fn title_line(&self, muted: Style) -> Line<'static> {
+    fn title_line(&self, muted: Style, p: &Palette) -> Line<'static> {
         let w = self.width;
+        // The search being typed has the line to itself.
+        if let Some(text) = &self.typing {
+            return crate::util::fit_line(
+                Line::from(vec![
+                    Span::styled("/", Style::new().fg(p.accent)),
+                    Span::raw(text.clone()),
+                    Span::styled(" ", Style::new().add_modifier(Modifier::REVERSED)),
+                    Span::styled("  enter search · esc cancel", muted),
+                ]),
+                w,
+            );
+        }
         let right = match self.mode {
             Mode::Visual => "-- VISUAL --".to_string(),
             Mode::VisualLine => "-- VISUAL LINE --".to_string(),
             Mode::Normal => format!("{}/{}", self.cur.0 + 1, self.lines.len()),
         };
-        let hint = format!("  {}", self.hint);
+        // A word about the last key (no match…) in place of the keys, until the next one.
+        let hint = match &self.message {
+            Some(m) => format!("  {m}"),
+            None if self.pattern.is_some() => format!("  {} · n N next", self.hint),
+            None => format!("  {}", self.hint),
+        };
+        // The keys give way first: the title keeps a little, where the cursor is stays.
+        let keep = width(&self.title).min(12);
+        let hint = crate::util::truncate(&hint, w.saturating_sub(width(&right) + 2 + keep));
         let room = w.saturating_sub(width(&right) + 2 + width(&hint)).max(1);
         let title = truncate_start(&self.title, room);
+        let said = if self.message.is_some() {
+            Style::new().fg(p.warning)
+        } else {
+            muted
+        };
         let mut spans = vec![
             Span::styled(title, Style::new().add_modifier(Modifier::BOLD)),
-            Span::styled(hint, muted),
+            Span::styled(hint, said),
         ];
         let used: usize = spans.iter().map(|s| width(&s.content)).sum();
         if used + 2 + width(&right) <= w {
@@ -664,6 +840,57 @@ mod tests {
 
     fn esc(r: &mut Reader) {
         r.key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    }
+
+    fn enter(r: &mut Reader) {
+        r.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    }
+
+    #[test]
+    fn slash_searches_and_n_and_shift_n_go_between_the_matches_round_the_ends() {
+        let mut r = Reader::plain("log", "ok\nerror: one\nfine\nERROR two\nlast", "");
+        keys(&mut r, "/error");
+        assert!(r.is_typing());
+        // Typed keys are the search's, not motions.
+        assert_eq!(r.cur, (0, 0));
+        enter(&mut r);
+        assert!(!r.is_typing());
+        assert_eq!(r.cur, (1, 0));
+        // No upper-case letter: any case.
+        keys(&mut r, "n");
+        assert_eq!(r.cur, (3, 0));
+        keys(&mut r, "n");
+        assert_eq!(r.cur, (1, 0), "round to the top");
+        assert!(r.message.as_deref().is_some_and(|m| m.contains("from the top")));
+        keys(&mut r, "N");
+        assert_eq!(r.cur, (3, 0), "back round to the end");
+        // An upper-case letter makes it exact; a count jumps that many.
+        keys(&mut r, "gg/ERROR");
+        enter(&mut r);
+        assert_eq!(r.cur, (3, 0));
+        // From the top: the o of `error`, then of `one`, `ERROR` (any case) and `two`.
+        keys(&mut r, "gg/o");
+        enter(&mut r);
+        assert_eq!(r.cur, (1, 3));
+        keys(&mut r, "2n");
+        assert_eq!(r.cur, (3, 3));
+    }
+
+    #[test]
+    fn a_search_with_no_match_says_so_and_esc_gives_up_typing() {
+        let mut r = Reader::plain("log", "alpha\nbeta", "");
+        keys(&mut r, "j/zzz");
+        enter(&mut r);
+        assert_eq!(r.cur, (1, 0), "stays");
+        assert!(r.message.as_deref().is_some_and(|m| m.contains("no match for zzz")));
+        keys(&mut r, "/al");
+        esc(&mut r);
+        assert!(!r.is_typing());
+        assert_eq!(r.pattern.as_deref(), Some("zzz"), "the last search is kept");
+        // n before any search says how to start one.
+        let mut r = Reader::plain("log", "x", "");
+        keys(&mut r, "n");
+        assert!(r.message.is_some());
     }
 
     #[test]

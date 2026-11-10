@@ -738,6 +738,10 @@ fn a_check_opens_its_log_failed_steps_first_or_copies_its_link() {
     let s = screen(&mut g, 100, 20);
     assert!(s.contains("test (ubuntu) · failed steps") && s.contains("FAIL header"), "{s}");
     assert!(!s.contains("2026-10-16T"), "no times: {s}");
+    // An `f` typed into a search is the search's.
+    keys(&mut g, "/fail\n");
+    assert!(screen(&mut g, 100, 20).contains("failed steps"));
+    assert!(!fake.calls().iter().any(|c| c.ends_with("--log")), "the whole log not asked for");
     // `f` is the whole log; `y` copies the line.
     ch(&mut g, 'f');
     settle(&mut g);

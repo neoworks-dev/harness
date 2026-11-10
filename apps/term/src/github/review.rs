@@ -17,7 +17,7 @@ use crate::reader::{Reader, ReaderAction};
 use crate::widgets::DiffView;
 use neo_github::fetch;
 
-const LOG_HINT: &str = "f all/failed · v V select · y copy · q back";
+const LOG_HINT: &str = "/ search · f all/failed · v V select · y copy · q back";
 
 impl Github {
     /// The pull request the detail shows, loaded.
@@ -333,7 +333,8 @@ impl Github {
             return None;
         };
         let log = v.log.as_mut()?;
-        if key.code == KeyCode::Char('f') && key.modifiers.is_empty() {
+        // `f` switches, unless it is typed into a search.
+        if key.code == KeyCode::Char('f') && key.modifiers.is_empty() && !log.reader.is_typing() {
             let (check, failed) = (log.check, log.failed);
             self.show_log(check, !failed);
             return None;
