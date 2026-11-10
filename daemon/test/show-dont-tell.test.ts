@@ -77,7 +77,7 @@ test("/settings without a toggle shows them with their state, and picking one fl
     "Side-by-side diffs · off",
     "Charts as images · off",
     "Fold earlier edits · off",
-    "Messages reach a working agent at once · on",
+    "Messages reach a working agent at once · off",
     "Subagents · both",
     "Always ask before starting agents · off",
     "Your words in the system prompt · none",

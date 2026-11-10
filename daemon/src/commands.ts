@@ -521,7 +521,8 @@ export class Commands {
       {
         id: "steer",
         name: "Messages reach a working agent at once",
-        description: "Off: they wait for the turn to end. On: Claude Code reads them mid-turn",
+        description:
+          "Off: they wait for the turn to end (Alt-Enter still sends at once). On: Claude Code reads them mid-turn",
         ...onOff(
           () => settings.steer(),
           (on) => settings.setSteer(on),
