@@ -1,7 +1,11 @@
-▐Open▌ #41 Defer permission prompts while typing
-defer-prompts → main · neoworks-dev/harness · moritz · ✗ checks fail ·… +248 −46
-▐Open▌ #53 neoui Shape: a filled rect has a dotted outline
-neoworks-dev/harness · neoworks-bot · 2 comments ▐area:ui▌ ▐bug▌
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+▎ ▐Open▌ #41 Defer permission prompts while typing
+▎ defer-prompts → main · neoworks-dev/harness · moritz · ✗ checks fa… +248 −46
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+▎ ▐Open▌ #53 neoui Shape: a filled rect has a dotted outline
+▎ neoworks-dev/harness · neoworks-bot · 2 comments ▐area:ui▌ ▐bug▌
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
 ✓ build                                                                   2m 10s
 ✗ test (ubuntu)                                                           4m 02s
 ◐ lint

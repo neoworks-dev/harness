@@ -15,20 +15,37 @@ Here's your disk usage:
 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
 ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄ ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
   Documents breakdown                      Cache — the cheap reclaim
-  Path         │ Size   │ Share of Do…     .cache
-  ─────────────┼────────┼─────────────     65 GB total, mostly regenerable
-  neoworks     │ 210 GB │ 59%              Cache       │ Size   │ Safe to de…
-  clients      │ 45 GB  │ 13%              ────────────┼────────┼────────────
-  playingwith… │ 19 GB  │ 5%               uv          │ 18 GB  │ Yes
-  curseforge   │ 18 GB  │ 5%               latent      │ 8.1 GB │ Probably
-  personal     │ 16 GB  │ 5%               go-build    │ 7.6 GB │ Yes
-  other (6+ d… │ 47 GB  │ 13%              ms-playwri… │ 3.2 GB │ Yes (re-do…
-                                           huggingface │ 3.2 GB │ Yes (re-do…
-                                           spotify     │ 3.0 GB │ Yes
+  Path              │ Size │ Share of      .cache
+                    │      │ Documents     65 GB total, mostly regenerable
+  ──────────────────┼──────┼──────────     Cache       │ Size   │ Safe to
+  neoworks          │ 210  │ 59%                       │        │ delete
+                    │ GB   │               ────────────┼────────┼────────────
+  ──────────────────┼──────┼──────────     uv          │ 18 GB  │ Yes
+  clients           │ 45   │ 13%           ────────────┼────────┼────────────
+                    │ GB   │               latent      │ 8.1 GB │ Probably
+  ──────────────────┼──────┼──────────     ────────────┼────────┼────────────
+  playingwithclouds │ 19   │ 5%            go-build    │ 7.6 GB │ Yes
+                    │ GB   │               ────────────┼────────┼────────────
+  ──────────────────┼──────┼──────────     ms-playwrig │ 3.2 GB │ Yes
+  curseforge        │ 18   │ 5%            ht          │        │ (re-downloa
+                    │ GB   │                           │        │ d)
+  ──────────────────┼──────┼──────────     ────────────┼────────┼────────────
+  personal          │ 16   │ 5%            huggingface │ 3.2 GB │ Yes
+                    │ GB   │                           │        │ (re-downloa
+  ──────────────────┼──────┼──────────                 │        │ d)
+  other (6+ dirs)   │ 47   │ 13%           ────────────┼────────┼────────────
+                    │ GB   │               spotify     │ 3.0 GB │ Yes
+                                           ────────────┼────────┼────────────
                                            yay         │ 2.9 GB │ Yes
-                                           puppeteer   │ 2.0 GB │ Yes (re-do…
+                                           ────────────┼────────┼────────────
+                                           puppeteer   │ 2.0 GB │ Yes
+                                                       │        │ (re-downloa
+                                                       │        │ d)
+                                           ────────────┼────────┼────────────
                                            zen         │ 1.9 GB │ Partly
+                                           ────────────┼────────┼────────────
                                            deno        │ 1.8 GB │ Yes
+                                           ────────────┼────────┼────────────
                                            rest        │ 13 GB  │
                                            ┃ Note
                                            ┃ Deleting .cache content is safe —

@@ -1013,7 +1013,21 @@ fn diffs_color_additions_and_removals() {
 }
 
 #[test]
-fn tables_cut_the_widest_column_first() {
+fn table_cells_wrap_between_words_and_nothing_is_cut() {
+    let table = r#"{"type":"table","columns":["", "First version", "Fix"],
+        "rows":[["Which keypoints","Only where the body-part labels say so","Every confident keypoint on the person"],
+                ["Face","5 points at full weight","5 points at 0.2 each"]]}"#;
+    let rows = one(table, 50);
+    let text = rows.join("\n");
+    assert!(!text.contains('…'), "{text}");
+    for word in ["Only", "labels", "confident", "person", "weight", "0.2"] {
+        assert!(text.contains(word), "{word} in\n{text}");
+    }
+    assert!(rows.iter().all(|r| r.chars().count() <= 50), "{text}");
+}
+
+#[test]
+fn tables_wrap_the_widest_column_first() {
     let table = r#"{"type":"table","columns":["name","size"],
         "rows":[["a-very-long-file-name.png","1 KB"],["b","2 KB"]]}"#;
     assert_eq!(
@@ -1030,7 +1044,9 @@ fn tables_cut_the_widest_column_first() {
         [
             "name          │ size",
             "──────────────┼─────",
-            "a-very-long-… │ 1 KB",
+            "a-very-long-f │ 1 KB",
+            "ile-name.png  │",
+            "──────────────┼─────",
             "b             │ 2 KB"
         ]
     );

@@ -342,8 +342,8 @@ impl<'a> Cx<'a> {
         out
     }
 
-    /// A grid with a header row. Columns that don't fit are cut (cells end in `…`), the widest
-    /// first, so short columns stay whole.
+    /// A grid with a header row. Columns that don't fit share the room, the widest giving first
+    /// so short columns stay whole, and their cells wrap.
     fn table(&self, v: &pb::TableComponent, w: usize) -> Lines {
         let cols = v
             .rows
@@ -367,36 +367,33 @@ impl<'a> Cx<'a> {
                     .clamp(1, w)
             })
             .collect();
-        fit_columns(&mut widths, w.saturating_sub(3 * (cols - 1)));
+        let mins: Vec<usize> = (0..cols)
+            .map(|c| {
+                v.rows
+                    .iter()
+                    .map(|r| cell(r, c))
+                    .chain([cell(&v.columns, c)])
+                    .map(|s| longest_word(&[Span::raw(s)]))
+                    .max()
+                    .unwrap_or(0)
+            })
+            .collect();
+        fit_columns_whole(&mut widths, &mins, w.saturating_sub(3 * (cols - 1)));
 
-        let border = Style::new().fg(self.p.border);
-        let row_line = |row: &[String], st: Style| {
-            let mut spans: Vec<Span<'static>> = Vec::new();
-            for (c, cw) in widths.iter().enumerate() {
-                if c > 0 {
-                    spans.push(Span::styled(" │ ", border));
-                }
-                let mut txt = truncate(&cell(row, c), *cw);
-                if c + 1 < cols {
-                    txt.push_str(&" ".repeat(cw - width(&txt)));
-                }
-                spans.push(Span::styled(txt, st));
-            }
-            Line::from(spans)
+        let spans = |row: &[String], st: Style| -> Vec<Vec<Span<'static>>> {
+            (0..cols)
+                .map(|c| vec![Span::styled(cell(row, c), st)])
+                .collect()
         };
-        let rule = sline(
-            widths
-                .iter()
-                .map(|cw| "─".repeat(*cw))
-                .collect::<Vec<_>>()
-                .join("─┼─"),
-            border,
+        let head = spans(&v.columns, Style::new().add_modifier(Modifier::BOLD));
+        let rows: Vec<_> = v.rows.iter().map(|r| spans(r, Style::new())).collect();
+        let mut out = grid(
+            &head,
+            &rows,
+            &widths,
+            &vec![false; cols],
+            Style::new().fg(self.p.border),
         );
-        let mut out = vec![
-            row_line(&v.columns, Style::new().add_modifier(Modifier::BOLD)),
-            rule,
-        ];
-        out.extend(v.rows.iter().map(|r| row_line(r, Style::new())));
         clip(&mut out, w);
         out
     }
@@ -473,6 +470,102 @@ pub(crate) fn file_name(src: &str) -> String {
 }
 
 /// Narrows the widest columns until they fit `avail` cells together (each keeps one).
+/// A header row, a rule and the rows, each cell wrapped inside its column of `widths` so that
+/// nothing is cut. A row with a wrapped cell is as tall as its tallest; once any is, a rule
+/// separates the rows too, so it is clear where one ends. `right` columns are right-aligned
+/// (numbers).
+pub(crate) fn grid(
+    head: &[Vec<Span<'static>>],
+    rows: &[Vec<Vec<Span<'static>>>],
+    widths: &[usize],
+    right: &[bool],
+    border: Style,
+) -> Lines {
+    let cols = widths.len();
+    let row_lines = |row: &[Vec<Span<'static>>]| -> Lines {
+        let wrapped: Vec<Lines> = (0..cols)
+            .map(|c| wrap(row.get(c).map_or(&[][..], Vec::as_slice), widths[c]))
+            .collect();
+        let height = wrapped.iter().map(Vec::len).max().unwrap_or(0).max(1);
+        (0..height)
+            .map(|i| {
+                let mut spans: Vec<Span<'static>> = Vec::new();
+                for (c, cw) in widths.iter().enumerate() {
+                    if c > 0 {
+                        spans.push(Span::styled(" │ ", border));
+                    }
+                    let line = wrapped[c]
+                        .get(i)
+                        .map(|l| l.spans.clone())
+                        .unwrap_or_default();
+                    let room = cw.saturating_sub(line_width(&line));
+                    if right.get(c) == Some(&true) {
+                        spans.push(Span::raw(" ".repeat(room)));
+                        spans.extend(line);
+                    } else {
+                        spans.extend(line);
+                        if c + 1 < cols {
+                            spans.push(Span::raw(" ".repeat(room)));
+                        }
+                    }
+                }
+                Line::from(spans)
+            })
+            .collect()
+    };
+    let rule = sline(
+        widths
+            .iter()
+            .map(|cw| "─".repeat(*cw))
+            .collect::<Vec<_>>()
+            .join("─┼─"),
+        border,
+    );
+    let body: Vec<Lines> = rows.iter().map(|r| row_lines(r)).collect();
+    let tall = body.iter().any(|r| r.len() > 1);
+    let mut out = row_lines(head);
+    out.push(rule.clone());
+    for (i, row) in body.into_iter().enumerate() {
+        if tall && i > 0 {
+            out.push(rule.clone());
+        }
+        out.extend(row);
+    }
+    out
+}
+
+/// The width of the longest word of a cell: the least a column can have without breaking one.
+pub(crate) fn longest_word(cell: &[Span<'static>]) -> usize {
+    let text: String = cell.iter().map(|s| s.content.as_ref()).collect();
+    text.split_whitespace().map(width).max().unwrap_or(0)
+}
+
+/// Like [`fit_columns`], but no column goes below its `mins` (the longest word in it): words
+/// stay whole and lines wrap between them. What is left over after the words is shared out
+/// evenly, a column that needs less than its share taking just that, so short cells (`210 GB`)
+/// stay on a line and the long text wraps. Only when even the words don't fit are they cut.
+pub(crate) fn fit_columns_whole(widths: &mut [usize], mins: &[usize], avail: usize) {
+    if widths.iter().sum::<usize>() <= avail {
+        return;
+    }
+    let mins: Vec<usize> = (0..widths.len()).map(|c| mins[c].clamp(1, widths[c])).collect();
+    let words: usize = mins.iter().sum();
+    if words > avail {
+        fit_columns(widths, avail);
+        return;
+    }
+    let need: Vec<usize> = (0..widths.len()).map(|c| widths[c] - mins[c]).collect();
+    let mut order: Vec<usize> = (0..widths.len()).collect();
+    order.sort_by_key(|&c| need[c]);
+    let mut left = avail - words;
+    let n = widths.len();
+    for (k, &c) in order.iter().enumerate() {
+        let give = need[c].min(left / (n - k));
+        widths[c] = mins[c] + give;
+        left -= give;
+    }
+}
+
 pub(crate) fn fit_columns(widths: &mut [usize], avail: usize) {
     let mut total: usize = widths.iter().sum();
     while total > avail {

@@ -7,5 +7,5 @@ Checking:
 ⟦bg:surface|  ⟧⟦bg:surface bold|Path⟧⟦bg:surface| ⟧⟦border bg:surface| │ ⟧⟦bg:surface bold|Size⟧⟦bg:surface|                                                                  ⟧
 ⟦bg:surface|  ⟧⟦border bg:surface|──────┼───────⟧⟦bg:surface|                                                                ⟧
 ⟦bg:surface|  ⟧⟦bg:surface|/home⟧⟦bg:surface|⟧⟦border bg:surface| │ ⟧⟦bg:surface|310 GB⟧⟦bg:surface|                                                                ⟧
-⟦bg:surface|  ⟧⟦bg:surface|/var⟧⟦bg:surface| ⟧⟦border bg:surface| │ ⟧⟦bg:surface|⟧⟦bg:surface|                                                                      ⟧
+⟦bg:surface|  ⟧⟦bg:surface|/var⟧⟦bg:surface| ⟧⟦border bg:surface| │ ⟧⟦bg:surface|                                                                      ⟧
 ⟦surface|▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀⟧

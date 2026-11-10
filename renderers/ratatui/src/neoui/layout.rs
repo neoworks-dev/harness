@@ -155,8 +155,22 @@ impl<'a> Cx<'a> {
             "CommandOutput" => self.ui_command_output(n, w),
             "TestRun" => self.ui_test_run(n, w),
             "StackTrace" => self.ui_stack_trace(n, w),
-            "Issue" => self.ui_issue(n, w),
-            "PullRequest" => self.ui_pull_request(n, w),
+            "Issue" => {
+                let color = match n.str("state") {
+                    Some("closed") => self.p.accent,
+                    _ => self.p.success,
+                };
+                self.github_card(w, color, |s, w| s.ui_issue(n, w))
+            }
+            "PullRequest" => {
+                let color = match n.str("state") {
+                    Some("draft") => self.p.muted,
+                    Some("merged") => self.p.accent,
+                    Some("closed") => self.p.danger,
+                    _ => self.p.success,
+                };
+                self.github_card(w, color, |s, w| s.ui_pull_request(n, w))
+            }
             "Checks" => self.ui_checks(n, w),
             "Timeline" => self.ui_timeline(n, w),
             // An item a model wrote without its list: drawn as a list of one.
@@ -685,6 +699,38 @@ impl<'a> Cx<'a> {
         // The half rows above and below: the lower (upper) half of a cell in the fill.
         let edge = |c: &str| Line::from(Span::styled(c.repeat(w), Style::new().fg(bg)));
         let mut out = Vec::with_capacity(body.len() + 2);
+        out.push(edge("▄"));
+        for line in body {
+            let used = line.width();
+            let mut spans = vec![bar.clone()];
+            spans.extend(line.spans);
+            spans.push(Span::raw(" ".repeat(inner.saturating_sub(used) + 2)));
+            out.push(fill(Line::from(spans), bg));
+        }
+        out.push(edge("▀"));
+        out
+    }
+
+    /// An issue or pull request as a card: a bar in the state's color, padding, the surface
+    /// fill, and half rows above and below, which leave one row between stacked cards. `draw`
+    /// gets the inner width.
+    pub(super) fn github_card(
+        &mut self,
+        w: usize,
+        color: Color,
+        draw: impl FnOnce(&mut Self, usize) -> Lines,
+    ) -> Lines {
+        if w < 8 {
+            return draw(self, w);
+        }
+        let bg = self.card_color();
+        let inner = w - 4;
+        self.ui.cards += 1;
+        let body = draw(self, inner);
+        self.ui.cards -= 1;
+        let bar = Span::styled("▎ ", Style::new().fg(color));
+        let edge = |c: &str| Line::from(Span::styled(c.repeat(w), Style::new().fg(bg)));
+        let mut out = Vec::with_capacity(body.len() + 3);
         out.push(edge("▄"));
         for line in body {
             let used = line.width();

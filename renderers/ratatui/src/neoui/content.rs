@@ -8,7 +8,9 @@ use serde_json::Value;
 
 use super::layout::{Kid, columns, kids_of};
 use super::{N, join, scalar};
-use crate::render::{Cx, Lines, file_name, fit_columns, link, prefixed, tint};
+use crate::render::{
+    Cx, Lines, file_name, fit_columns_whole, grid, link, longest_word, prefixed, tint,
+};
 use crate::text::{clean, line_width, push_text, sline, truncate, truncate_spans, width, wrap};
 use crate::{ImageStatus, Options};
 
@@ -219,39 +221,27 @@ impl<'a> Cx<'a> {
                     .clamp(1, w)
             })
             .collect();
-        fit_columns(&mut widths, w.saturating_sub(3 * (cols - 1)));
-        let border = Style::new().fg(self.p.border);
-        let line = |cells: Vec<(Vec<Span<'static>>, bool)>| {
-            let mut spans: Vec<Span<'static>> = Vec::new();
-            for (c, (cell, _)) in cells.into_iter().enumerate() {
-                if c > 0 {
-                    spans.push(Span::styled(" │ ", border));
-                }
-                let cell = truncate_spans(cell, widths[c]);
-                let room = widths[c] - line_width(&cell);
-                if numeric[c] {
-                    spans.push(Span::raw(" ".repeat(room)));
-                    spans.extend(cell);
-                } else {
-                    spans.extend(cell);
-                    if c + 1 < cols {
-                        spans.push(Span::raw(" ".repeat(room)));
-                    }
-                }
-            }
-            Line::from(spans)
-        };
-        let rule = sline(
-            widths
-                .iter()
-                .map(|cw| "─".repeat(*cw))
-                .collect::<Vec<_>>()
-                .join("─┼─"),
-            border,
-        );
-        let mut out = vec![line(head.into_iter().map(|h| (h, false)).collect()), rule];
-        out.extend(rows.into_iter().map(line));
-        out
+        let mins: Vec<usize> = (0..cols)
+            .map(|c| {
+                rows.iter()
+                    .map(|r| longest_word(&r[c].0))
+                    .chain([longest_word(&head[c])])
+                    .max()
+                    .unwrap_or(0)
+            })
+            .collect();
+        fit_columns_whole(&mut widths, &mins, w.saturating_sub(3 * (cols - 1)));
+        let rows: Vec<Vec<Vec<Span<'static>>>> = rows
+            .into_iter()
+            .map(|r| r.into_iter().map(|(cell, _)| cell).collect())
+            .collect();
+        grid(
+            &head,
+            &rows,
+            &widths,
+            &numeric,
+            Style::new().fg(self.p.border),
+        )
     }
 
     /// `•` or `1.` and the item: a string, or any node.

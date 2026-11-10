@@ -25,32 +25,66 @@ Here's your disk usage:
 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
 ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
   Documents breakdown
-  Path         │ Size   │ Share of Do…
-  ─────────────┼────────┼─────────────
-  neoworks     │ 210 GB │ 59%
-  clients      │ 45 GB  │ 13%
-  playingwith… │ 19 GB  │ 5%
-  curseforge   │ 18 GB  │ 5%
-  personal     │ 16 GB  │ 5%
-  other (6+ d… │ 47 GB  │ 13%
+  Path              │ Size │ Share of
+                    │      │ Documents
+  ──────────────────┼──────┼──────────
+  neoworks          │ 210  │ 59%
+                    │ GB   │
+  ──────────────────┼──────┼──────────
+  clients           │ 45   │ 13%
+                    │ GB   │
+  ──────────────────┼──────┼──────────
+  playingwithclouds │ 19   │ 5%
+                    │ GB   │
+  ──────────────────┼──────┼──────────
+  curseforge        │ 18   │ 5%
+                    │ GB   │
+  ──────────────────┼──────┼──────────
+  personal          │ 16   │ 5%
+                    │ GB   │
+  ──────────────────┼──────┼──────────
+  other (6+ dirs)   │ 47   │ 13%
+                    │ GB   │
 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
 ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
   Cache — the cheap reclaim
   .cache
   65 GB total, mostly regenerable
-  Cache        │ Size   │ Safe to del…
-  ─────────────┼────────┼─────────────
-  uv           │ 18 GB  │ Yes
-  latent       │ 8.1 GB │ Probably
-  go-build     │ 7.6 GB │ Yes
-  ms-playwrig… │ 3.2 GB │ Yes (re-dow…
-  huggingface  │ 3.2 GB │ Yes (re-dow…
-  spotify      │ 3.0 GB │ Yes
-  yay          │ 2.9 GB │ Yes
-  puppeteer    │ 2.0 GB │ Yes (re-dow…
-  zen          │ 1.9 GB │ Partly
-  deno         │ 1.8 GB │ Yes
-  rest         │ 13 GB  │
+  Cache         │ Size │ Safe to
+                │      │ delete
+  ──────────────┼──────┼──────────────
+  uv            │ 18   │ Yes
+                │ GB   │
+  ──────────────┼──────┼──────────────
+  latent        │ 8.1  │ Probably
+                │ GB   │
+  ──────────────┼──────┼──────────────
+  go-build      │ 7.6  │ Yes
+                │ GB   │
+  ──────────────┼──────┼──────────────
+  ms-playwright │ 3.2  │ Yes
+                │ GB   │ (re-download)
+  ──────────────┼──────┼──────────────
+  huggingface   │ 3.2  │ Yes
+                │ GB   │ (re-download)
+  ──────────────┼──────┼──────────────
+  spotify       │ 3.0  │ Yes
+                │ GB   │
+  ──────────────┼──────┼──────────────
+  yay           │ 2.9  │ Yes
+                │ GB   │
+  ──────────────┼──────┼──────────────
+  puppeteer     │ 2.0  │ Yes
+                │ GB   │ (re-download)
+  ──────────────┼──────┼──────────────
+  zen           │ 1.9  │ Partly
+                │ GB   │
+  ──────────────┼──────┼──────────────
+  deno          │ 1.8  │ Yes
+                │ GB   │
+  ──────────────┼──────┼──────────────
+  rest          │ 13   │
+                │ GB   │
   ┃ Note
   ┃ Deleting .cache content is safe —
   ┃ it's rebuilt on demand. Startup

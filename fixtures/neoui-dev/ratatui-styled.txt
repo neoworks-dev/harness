@@ -1,7 +1,11 @@
-⟦#33402D|▐⟧⟦success bg:#33402D|Open⟧⟦#33402D|▌⟧⟦muted| #41⟧⟦bold| Defer permission prompts while typing⟧
-⟦muted|defer-prompts → main · neoworks-dev/harness · moritz · ⟧⟦danger|✗ checks fail⟧⟦muted| ·…⟧ ⟦success|+248⟧ ⟦danger|−46⟧
-⟦#33402D|▐⟧⟦success bg:#33402D|Open⟧⟦#33402D|▌⟧⟦muted| #53⟧⟦bold| neoui Shape: a filled rect has a dotted outline⟧
-⟦muted|neoworks-dev/harness · neoworks-bot · 2 comments⟧ ⟦#2F3238|▐⟧⟦muted bg:#2F3238|area:ui⟧⟦#2F3238|▌⟧ ⟦#2F3238|▐⟧⟦muted bg:#2F3238|bug⟧⟦#2F3238|▌⟧
+⟦surface|▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄⟧
+⟦success bg:surface|▎ ⟧⟦#33402D bg:surface|▐⟧⟦success bg:#33402D|Open⟧⟦#33402D bg:surface|▌⟧⟦muted bg:surface| #41⟧⟦bg:surface bold| Defer permission prompts while typing⟧⟦bg:surface|                              ⟧
+⟦success bg:surface|▎ ⟧⟦muted bg:surface|defer-prompts → main · neoworks-dev/harness · moritz · ⟧⟦danger bg:surface|✗ checks fa…⟧⟦bg:surface| ⟧⟦success bg:surface|+248⟧⟦bg:surface| ⟧⟦danger bg:surface|−46⟧⟦bg:surface|  ⟧
+⟦surface|▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀⟧
+⟦surface|▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄⟧
+⟦success bg:surface|▎ ⟧⟦#33402D bg:surface|▐⟧⟦success bg:#33402D|Open⟧⟦#33402D bg:surface|▌⟧⟦muted bg:surface| #53⟧⟦bg:surface bold| neoui Shape: a filled rect has a dotted outline⟧⟦bg:surface|                    ⟧
+⟦success bg:surface|▎ ⟧⟦muted bg:surface|neoworks-dev/harness · neoworks-bot · 2 comments⟧⟦bg:surface| ⟧⟦#2F3238 bg:surface|▐⟧⟦muted bg:#2F3238|area:ui⟧⟦#2F3238 bg:surface|▌⟧⟦bg:surface| ⟧⟦#2F3238 bg:surface|▐⟧⟦muted bg:#2F3238|bug⟧⟦#2F3238 bg:surface|▌⟧⟦bg:surface|              ⟧
+⟦surface|▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀⟧
 ⟦success|✓ ⟧build                                                                   ⟦muted|2m 10s⟧
 ⟦danger|✗ ⟧⟦danger|test (ubuntu)⟧                                                           ⟦muted|4m 02s⟧
 ⟦accent|◐ ⟧lint
