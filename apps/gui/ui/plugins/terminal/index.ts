@@ -9,7 +9,8 @@ import ToolbarButton from "./ToolbarButton.svelte";
 
 export const terminalPane = {
   name: "terminal",
-  inject: ["slots", "keymap", "commands", "sidepanel"],
+  // daemon: the panel reads the session's items through useCtx.
+  inject: ["slots", "daemon", "keymap", "commands", "sidepanel"],
   apply(ctx: Context) {
     const { slots, keymap, commands, sidepanel } = ctx;
 
