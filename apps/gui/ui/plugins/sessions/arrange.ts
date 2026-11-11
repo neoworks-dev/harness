@@ -8,10 +8,13 @@ import { groupSessions, lastSegment, placeOf, type Place } from "./sessions.ts";
 
 /** Settled sessions listed before "Show more". */
 export const SETTLED_SHOWN = 10;
+/** Sessions of a repository or worktree listed before "N more". */
+export const GROUP_SHOWN = 3;
 
 /** One line of the drawn list. */
 export type Line =
-  | { kind: "label"; key: string; text: string }
+  /** A heading: "Pinned", a repository, or (`sub`) a worktree of the one above. */
+  | { kind: "label"; key: string; text: string; sub?: boolean }
   | {
       kind: "session";
       key: string;
@@ -24,7 +27,8 @@ export type Line =
       field?: Match["field"];
     }
   | { kind: "settled"; key: string; count: number; open: boolean }
-  | { kind: "more"; key: string; count: number };
+  /** The sessions a group (a repository's or worktree's key, or "settled") leaves out. */
+  | { kind: "more"; key: string; count: number; group: string };
 
 export interface Arranged {
   lines: readonly Line[];
@@ -38,6 +42,10 @@ export interface ShowSettled {
   open: boolean;
   /** Past the first `SETTLED_SHOWN`. */
   all: boolean;
+  /** The groups opened past their first `GROUP_SHOWN`. */
+  groups: ReadonlySet<string>;
+  /** Sessions that never fold into "N more": the shown one, one that works or waits. */
+  keep: (info: SessionInfo) => boolean;
 }
 
 function newestFirst(a: SessionInfo, b: SessionInfo): number {
@@ -46,7 +54,8 @@ function newestFirst(a: SessionInfo, b: SessionInfo): number {
 
 /**
  * The list without a search: the pinned sessions (the one pinned last first), the others by
- * project and worktree as `groupSessions` orders them, then "Settled (n)", which lists nothing
+ * project and worktree as `groupSessions` orders them, each under its heading and three of each
+ * until opened, then "Settled (n)", which lists nothing
  * until it is opened, and then ten of its sessions, newest first, and a line for the rest.
  */
 export function arrange(
@@ -78,11 +87,44 @@ export function arrange(
     for (const info of pinned) add(info, false, false);
   }
 
-  const grouped = groupSessions(others, found);
-  for (const start of grouped.groupStarts) groupStarts.push(order.length + start);
-  for (const entry of grouped.entries) {
-    if (entry.kind === "session") add(entry.info, entry.child, false);
+  // Each repository under its name and each worktree under its own, as the terminal draws them:
+  // the first GROUP_SHOWN of a group, then a line for the rest until it is opened. A session
+  // that works, waits to be looked at or is shown never folds; a child goes with its parent.
+  let group = "";
+  let starting = false;
+  let shown = 0;
+  let hidden = 0;
+  let parentHidden = false;
+  const close = (): void => {
+    if (hidden > 0) lines.push({ kind: "more", key: `more ${group}`, count: hidden, group });
+  };
+  for (const entry of groupSessions(others, found).entries) {
+    if (entry.kind !== "session") {
+      close();
+      group = entry.key;
+      starting = true;
+      shown = 0;
+      hidden = 0;
+      lines.push({ kind: "label", key: entry.key, text: entry.name, sub: entry.kind === "group" });
+      continue;
+    }
+    const folds = !settledShown.groups.has(group) && !settledShown.keep(entry.info);
+    if (entry.child ? parentHidden && folds : shown >= GROUP_SHOWN && folds) {
+      if (!entry.child) {
+        hidden += 1;
+        parentHidden = true;
+      }
+      continue;
+    }
+    if (!entry.child) {
+      shown += 1;
+      parentHidden = false;
+    }
+    if (starting) groupStarts.push(order.length);
+    starting = false;
+    add(entry.info, entry.child, false);
   }
+  close();
 
   if (settled.length > 0) {
     lines.push({ kind: "settled", key: "settled", count: settled.length, open: settledShown.open });
@@ -91,7 +133,7 @@ export function arrange(
       const listed = settledShown.all ? settled : settled.slice(0, SETTLED_SHOWN);
       for (const info of listed) add(info, false, true);
       if (listed.length < settled.length) {
-        lines.push({ kind: "more", key: "more", count: settled.length - listed.length });
+        lines.push({ kind: "more", key: "more", count: settled.length - listed.length, group: "settled" });
       }
     }
   }

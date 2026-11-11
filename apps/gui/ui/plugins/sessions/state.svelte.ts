@@ -43,6 +43,15 @@ class Sessions {
   /** "Settled" is unfolded, and shows all its sessions and not the first ten. */
   settledOpen = $state(false);
   settledAll = $state(false);
+  /** The repositories and worktrees opened past their first three sessions. */
+  groupsOpen = $state.raw<ReadonlySet<string>>(new Set());
+
+  /** "N more" of a group: all its sessions, or (pressed again on its heading) the first three. */
+  toggleGroup(group: string): void {
+    const next = new Set(this.groupsOpen);
+    if (!next.delete(group)) next.add(group);
+    this.groupsOpen = next;
+  }
 
   private previous: readonly SessionInfo[] = [];
   private asked = new Set<string>();

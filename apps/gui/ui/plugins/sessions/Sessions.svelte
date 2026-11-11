@@ -56,6 +56,12 @@
       : arrange(visible, sessions.places, sessions.marks, {
           open: sessions.settledOpen,
           all: sessions.settledAll,
+          groups: sessions.groupsOpen,
+          keep: (info) =>
+            info.id === daemon.sessionId ||
+            info.state === "running" ||
+            info.unseen === true ||
+            sessions.finished.has(info.id),
         }),
   );
   const lines = $derived([...arranged.lines]);
@@ -366,7 +372,18 @@
       >
         {#snippet row(line: Line)}
           {#if line.kind === "label"}
-            <Text style={{ height: 28, paddingX: 10, paddingTop: 8, fontSize: 12, fontWeight: "medium", color: p.muted }}>{line.text}</Text>
+            {#if sessions.groupsOpen.has(line.key)}
+              <!-- An opened group's heading folds it again. -->
+              <Button
+                onpress={() => sessions.toggleGroup(line.key)}
+                style={{ height: 28, paddingX: 10, paddingLeft: line.sub ? 22 : 10, paddingTop: 8, radius: p.radius.s, color: p.muted }}
+                hover={{ color: p.fg }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "medium", truncate: true }}>{line.sub ? "↳ " : ""}{line.text} ▾</Text>
+              </Button>
+            {:else}
+              <Text style={{ height: 28, paddingLeft: line.sub ? 22 : 10, paddingRight: 10, paddingTop: 8, fontSize: 12, fontWeight: "medium", color: p.muted, truncate: true }}>{line.sub ? "↳ " : ""}{line.text}</Text>
+            {/if}
           {:else if line.kind === "settled"}
             <SettledHeader
               count={line.count}
@@ -375,7 +392,10 @@
             />
           {:else if line.kind === "more"}
             <Button
-              onpress={() => (sessions.settledAll = true)}
+              onpress={() => {
+                if (line.group === "settled") sessions.settledAll = true;
+                else sessions.toggleGroup(line.group);
+              }}
               style={{ height: 32, paddingX: 10, align: "center", radius: p.radius.s, color: p.muted }}
               hover={{ background: p.side.hover, color: p.fg }}
             >

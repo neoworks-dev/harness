@@ -6,8 +6,10 @@ import {
   matchProjects,
   projectsOf,
   resultLines,
+  GROUP_SHOWN,
   SETTLED_SHOWN,
   type Arranged,
+  type ShowSettled,
 } from "../ui/plugins/sessions/arrange.ts";
 import {
   isPinned,
@@ -300,43 +302,73 @@ function drawn(arranged: Arranged): string[] {
   });
 }
 
+/** How the list is shown: nothing opened, nothing kept from folding, unless said otherwise. */
+function show(open: boolean, all: boolean, more: Partial<ShowSettled> = {}): ShowSettled {
+  return { open, all, groups: new Set(), keep: () => false, ...more };
+}
+
 test("the list puts pinned first and settled last, closed until opened", () => {
   const all = grouped();
   const scratch = session("f", "Scratch", "/w/notes", 40);
   const marks = settle(pin(pin(NO_MARKS, "a", 1), "e", 2), scratch);
-  const closed = arrange(all, {}, marks, { open: false, all: false });
-  // Pinned last first, the rest as they group (b, then c with its child d), settled at the end.
-  expect(drawn(closed)).toEqual(["[Pinned]", "e", "a", "b", "c", "↳d", "[Settled 1 false]"]);
-  expect(closed.order).toEqual(["e", "a", "b", "c", "d"]);
-  expect(closed.groupStarts).toEqual([0, 2, 3]);
-  const open = arrange(all, {}, marks, { open: true, all: false });
-  expect(drawn(open)).toEqual(["[Pinned]", "e", "a", "b", "c", "↳d", "[Settled 1 true]", "~f"]);
-  expect(open.order.at(-1)).toBe("f");
-  // New activity in a settled session puts it back among the rest.
-  const woken = all.map((s) => (s.id === "f" ? { ...s, lastActivity: 99 } : s));
-  expect(drawn(arrange(woken, {}, marks, { open: false, all: false }))).toEqual([
+  const closed = arrange(all, {}, marks, show(false, false));
+  // Pinned last first, the rest under their repository and worktree (b, then c with its child
+  // d), settled at the end.
+  expect(drawn(closed)).toEqual([
     "[Pinned]",
     "e",
     "a",
-    "f",
+    "[site]",
     "b",
+    "[fix-login]",
+    "c",
+    "↳d",
+    "[Settled 1 false]",
+  ]);
+  expect(closed.order).toEqual(["e", "a", "b", "c", "d"]);
+  expect(closed.groupStarts).toEqual([0, 2, 3]);
+  const open = arrange(all, {}, marks, show(true, false));
+  expect(drawn(open).slice(-2)).toEqual(["[Settled 1 true]", "~f"]);
+  expect(open.order.at(-1)).toBe("f");
+  // New activity in a settled session puts it back among the rest.
+  const woken = all.map((s) => (s.id === "f" ? { ...s, lastActivity: 99 } : s));
+  expect(drawn(arrange(woken, {}, marks, show(false, false)))).toEqual([
+    "[Pinned]",
+    "e",
+    "a",
+    "[notes]",
+    "f",
+    "[site]",
+    "b",
+    "[fix-login]",
     "c",
     "↳d",
   ]);
   // Nothing marked is the grouped list as it was.
-  expect(arrange(all, {}, NO_MARKS, { open: false, all: false }).order).toEqual(
-    groupSessions(all, {}).order,
-  );
+  expect(arrange(all, {}, NO_MARKS, show(false, false)).order).toEqual(groupSessions(all, {}).order);
+});
+
+test("a group shows its three newest sessions, then a line for the rest until it is opened", () => {
+  const many = Array.from({ length: 6 }, (_, i) => session(`s${i}`, `S${i}`, "/w/site", 100 + i));
+  // An old one that works stays in sight, and so does a child of a shown session.
+  many.push({ ...session("busy", "Busy", "/w/site", 1), state: "running" });
+  many.push({ ...session("kid", "Kid", "/w/site", 2), parent: "s5" });
+  const folded = drawn(arrange(many, {}, NO_MARKS, show(false, false, { keep: (s) => s.state === "running" })));
+  expect(folded).toEqual(["[site]", "s5", "↳kid", "s4", "s3", "busy", "[more 3]"]);
+  expect(folded.filter((line) => /^s\d$/.test(line))).toHaveLength(GROUP_SHOWN);
+  const opened = arrange(many, {}, NO_MARKS, show(false, false, { groups: new Set(["repo /w/site"]) }));
+  expect(drawn(opened)).not.toContain("[more 3]");
+  expect(opened.order).toHaveLength(8);
 });
 
 test("settled sessions show ten, then the rest on request", () => {
   const many = Array.from({ length: 14 }, (_, i) => session(`s${i}`, `S${i}`, "/w", 100 + i));
   const marks = many.reduce((m, info) => settle(m, info), NO_MARKS);
-  const some = drawn(arrange(many, {}, marks, { open: true, all: false }));
+  const some = drawn(arrange(many, {}, marks, show(true, false)));
   expect(some).toHaveLength(1 + SETTLED_SHOWN + 1);
   expect(some[1]).toBe("~s13");
   expect(some.at(-1)).toBe("[more 4]");
-  const every = drawn(arrange(many, {}, marks, { open: true, all: true }));
+  const every = drawn(arrange(many, {}, marks, show(true, true)));
   expect(every).toHaveLength(1 + 14);
   expect(every.at(-1)).toBe("~s0");
 });
