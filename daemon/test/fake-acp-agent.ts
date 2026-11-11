@@ -562,16 +562,24 @@ async function prompt(params: {
     });
     say(sessionId, "It found them.");
     return { stopReason: "end_turn" };
-  } else if (task === "background subagent") {
+  } else if (task === "background subagent" || task === "background subagent untyped") {
     // Claude Code with an Agent call run in the background: its reply and result (the usage with
-    // the cost) come at once, but the prompt stays open until the subagent is done.
+    // the cost) come at once, but the prompt stays open until the subagent is done. Untyped: the
+    // call names no subagent_type (the default agent); only the adapter's meta says it is Agent.
+    const typed = task === "background subagent";
     const input = {
-      subagent_type: "general-purpose",
+      ...(typed ? { subagent_type: "general-purpose" } : {}),
       description: "Research the cache",
       prompt: "Find out.",
       run_in_background: true,
     };
-    const call = { toolCallId: "t-bg", title: "Agent", kind: "think", rawInput: input };
+    const call = {
+      toolCallId: "t-bg",
+      title: "Agent",
+      kind: "think",
+      rawInput: input,
+      _meta: { claudeCode: { toolName: "Agent" } },
+    };
     update(sessionId, { sessionUpdate: "tool_call", ...call, status: "pending" });
     const child = "sub-bg";
     update(sessionId, {

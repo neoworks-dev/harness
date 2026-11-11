@@ -365,6 +365,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Whether a tool call update is Claude Code's Agent (or older Task) call, which starts a native
+ * subagent: the adapter names the tool in its meta. A subagent_type in the input says so too, but
+ * a call may leave it out (the default agent).
+ */
+function isAgentCall(update: Record<string, unknown>): boolean {
+  const meta =
+    isRecord(update._meta) && isRecord(update._meta.claudeCode) ? update._meta.claudeCode : {};
+  if (meta.toolName === "Agent" || meta.toolName === "Task") return true;
+  return isRecord(update.rawInput) && Boolean(update.rawInput.subagent_type);
+}
+
 function str(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
@@ -1537,7 +1549,7 @@ export class GuestManager {
     // Whether an Agent call runs in the background, for the subagent it starts (its input may
     // arrive with an update of the call).
     const call = str(update.toolCallId);
-    if (call !== undefined && isRecord(update.rawInput) && update.rawInput.subagent_type) {
+    if (call !== undefined && isRecord(update.rawInput) && isAgentCall(update)) {
       guest.backgroundCalls.set(call, update.rawInput.run_in_background === true);
     }
     this.streamUpdate(run, update);

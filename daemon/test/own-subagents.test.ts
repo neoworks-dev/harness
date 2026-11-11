@@ -230,6 +230,17 @@ describe("the agents' own subagents show like delegate's", () => {
     expect(reply(daemon, session)).toContain("It says five minutes.");
   });
 
+  test("an Agent call without a subagent_type is known to run in the background too", async () => {
+    const daemon = await setup();
+    const session = await onFake(daemon);
+    daemon.sessions.input(session, "cli", "background subagent untyped");
+    await daemon.sessions.idle(session);
+    const started = events(daemon, session).find((e) => e.type === "subagent_started");
+    if (started?.type !== "subagent_started") throw new Error("no subagent_started");
+    // Not background, the turn's end would forget it and its work would show in the main chat.
+    expect(started.background).toBe(true);
+  });
+
   test("Codex's (AIR's form): spawned with its prompt, and its failure ends it", async () => {
     const daemon = await setup({ subagents: "silent" });
     const session = await onFake(daemon);
