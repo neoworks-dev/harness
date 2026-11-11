@@ -2,7 +2,8 @@
 // - a Unix socket (mode 0600) for local native clients like the Go CLI;
 // - 127.0.0.1 TCP with a per-start bearer token, for runtimes without Unix-socket WebSockets
 //   (Bun, browsers) and for MCP clients (/mcp, the gateway). Clients find the URL and token in
-//   daemon.json next to the socket (mode 0600).
+//   daemon.json next to the socket (mode 0600). A request from a browser page must come from a
+//   page on this machine (its Origin is a loopback address): see isLoopbackOrigin.
 import { timingSafeEqual } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -59,6 +60,53 @@ function bearer(req: Request): string | null {
   const header = req.headers.get("authorization");
   if (header?.startsWith("Bearer ")) return header.slice("Bearer ".length);
   return null;
+}
+
+/**
+ * Whether a browser page at `origin` is on this machine: http on 127.0.0.1 or localhost, any port
+ * (the GUI's web build is served by its own host on another port). Anything else, and the opaque
+ * origin `null` of a sandboxed frame or a file, is a page that must not reach the daemon.
+ */
+export function isLoopbackOrigin(origin: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  return url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost");
+}
+
+/**
+ * A browser page sends `Origin` on a WebSocket and on cross-origin requests; the token alone
+ * would let any page that learned it in. Clients that are not browsers send none and pass.
+ */
+function allowedOrigin(req: Request): string | null | false {
+  const origin = req.headers.get("origin");
+  if (origin === null) return null;
+  return isLoopbackOrigin(origin) ? origin : false;
+}
+
+/** Lets a loopback page read the answer (and send its Authorization header) across ports. */
+function cors(res: Response, origin: string | null): Response {
+  if (origin === null) return res;
+  res.headers.set("access-control-allow-origin", origin);
+  res.headers.append("vary", "origin");
+  return res;
+}
+
+function preflight(origin: string | null): Response {
+  return cors(
+    new Response(null, {
+      status: 204,
+      headers: {
+        "access-control-allow-methods": "GET, POST",
+        "access-control-allow-headers": "authorization, content-type",
+        "access-control-max-age": "600",
+      },
+    }),
+    origin,
+  );
 }
 
 function websocketHandler(hub: Hub): WebSocketHandler<SocketData> {
@@ -135,6 +183,8 @@ export async function startServer(hub: Hub, options: ServerOptions): Promise<Bus
     idleTimeout: 0, // MCP streams and WebSockets stay open
     async fetch(req, srv) {
       const url = new URL(req.url);
+      const origin = allowedOrigin(req);
+      if (origin === false) return new Response("origin not allowed", { status: 403 });
       if (url.pathname === "/bus") {
         // Browsers can't set headers on WebSockets, so the token may come as a query parameter.
         if (!sameToken(bearer(req) ?? url.searchParams.get("token"), token)) {
@@ -143,10 +193,12 @@ export async function startServer(hub: Hub, options: ServerOptions): Promise<Bus
         return upgrade(req, srv);
       }
       if (url.pathname.startsWith("/assets") && options.assets) {
+        if (req.method === "OPTIONS") return preflight(origin);
         // GET may carry the token as a query parameter so <img src> works in browsers.
         const given = bearer(req) ?? (req.method === "GET" ? url.searchParams.get("token") : null);
-        if (!sameToken(given, token)) return new Response("unauthorized", { status: 401 });
-        return serveAssets(req, url, options.assets);
+        if (!sameToken(given, token))
+          return cors(new Response("unauthorized", { status: 401 }), origin);
+        return cors(await serveAssets(req, url, options.assets), origin);
       }
       if (url.pathname === "/mcp" && options.mcp) {
         if (!sameToken(bearer(req), token)) return new Response("unauthorized", { status: 401 });
