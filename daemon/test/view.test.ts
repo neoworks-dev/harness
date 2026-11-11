@@ -731,6 +731,33 @@ describe("view over the bus", () => {
       payload: { code: "bad_request" },
     });
   });
+
+  test("what a press sends is the registered app's, as its typed input is", async () => {
+    const { daemon, app, owner } = await daemonWithNotes();
+    const session = daemon.focus.current().session;
+    await daemon.connectors.disconnect(owner);
+    await app.close();
+    // Every terminal says "terminal" on the bus; the second registers as terminal-2.
+    const c = connect(daemon);
+    c.send({
+      topic: "app.presence",
+      id: "p",
+      payload: { app: "terminal-2", kind: "app", open: true },
+    });
+    for (let i = 0; i < 100 && !c.received.some((e) => e.topic === "bus.ack"); i++)
+      await Bun.sleep(10);
+    c.send({
+      topic: "ui.action",
+      id: "a",
+      payload: { session, ref: "c-t", action: "notes.add", args: {} },
+    });
+    for (let i = 0; i < 100 && !c.received.some((e) => "id" in e && e.id === "a"); i++)
+      await Bun.sleep(10);
+    await daemon.sessions.idle(session);
+    const input = daemon.store.readTypes(session, ["user_message"]).at(-1)?.event;
+    // So that terminal can take it back out of the queue (sessions.unqueue by app).
+    expect(input).toMatchObject({ type: "user_message", app: "terminal-2" });
+  });
 });
 
 describe("permission requests", () => {

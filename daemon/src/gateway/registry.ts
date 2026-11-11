@@ -171,6 +171,11 @@ export class ConnectorRegistry {
     await Promise.all(owned.map(([app, live]) => this.drop(app, live)));
   }
 
+  /** The apps a bus client registered, in the order it did. */
+  appsOf(owner: object): string[] {
+    return [...this.live].filter(([, live]) => live.owner === owner).map(([app]) => app);
+  }
+
   /** The presence an open connector registered with. */
   presenceOf(app: string): AppPresence | undefined {
     return this.live.get(app)?.presence;

@@ -320,6 +320,17 @@ export class Hub {
     for (const client of this.clients) if (client.name !== undefined) this.send(client, envelope);
   }
 
+  /**
+   * The app a client's action runs as: the one it registered (terminal-2, …), like its typed
+   * input, so a press that queues a message is that app's to take back. Its bus name is the same
+   * for every terminal; it is only the fallback.
+   */
+  private actingApp(client: Client): string {
+    const registered = this.parts.connectors?.appsOf(client)[0];
+    if (registered !== undefined) return registered;
+    return client.name ?? "ui";
+  }
+
   private send(client: Client, envelope: Envelope): void {
     try {
       client.transport.send(JSON.stringify(envelope));
@@ -587,7 +598,7 @@ export class Hub {
         if (!this.sessions.info(msg.payload.session)) {
           throw new NotFoundError(`no session ${msg.payload.session}`);
         }
-        this.settle(client, msg.id, action(msg.payload, client.name ?? "ui"));
+        this.settle(client, msg.id, action(msg.payload, this.actingApp(client)));
         return;
       }
       case "connectors.list":
