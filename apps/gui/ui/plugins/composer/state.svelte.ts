@@ -2,8 +2,9 @@
 // permission or choice card answered in place of the input). The components draw it and the
 // plugin's keys call it, so they agree on what is open.
 import type { Context } from "@neoworks/extension-system";
-import { clipboard, files, invoke, window } from "@neoworks/svelte-gpui";
-import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
+import { clipboard, window } from "@neoworks/svelte-gpui";
+import type { ViewItem, WaitingInput } from "@neoworks-dev/neo-protocol/types";
+import { onAttachments, pasteAttachment, pickAttachments } from "../../kernel/attachments.ts";
 import type { CommandsService } from "../../kernel/services/commands.ts";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
 import {
@@ -30,6 +31,7 @@ import {
   type Prompt,
 } from "./prompt.ts";
 import { appendHistory, loadHistory } from "./history-store.ts";
+import { queueView, redraftImages, redraftText } from "./queue.ts";
 
 /** The services the composer reads and calls, from the plugin that started it. */
 interface Services {
@@ -41,6 +43,7 @@ interface Services {
 
 const NO_ITEMS: readonly ViewItem[] = [];
 const NO_COMMANDS: readonly Command[] = [];
+const NO_WAITING: readonly WaitingInput[] = [];
 const NO_COMMENTS: Context["comments"]["list"] = [];
 
 /** How long "copied" stays in the status line. */
@@ -101,7 +104,15 @@ class Composer {
   /** Serves the services until the returned call stops it. */
   start(services: Services): () => void {
     this.services = services;
-    return () => (this.services = undefined);
+    // Files dropped on the window, or an image pasted into it (a browser tab gets them as events).
+    const stopFiles = onAttachments(
+      (paths) => this.addAttachments(paths),
+      (error) => this.attachFailed(error),
+    );
+    return () => {
+      stopFiles();
+      this.services = undefined;
+    };
   }
 
   /** The comments on code waiting for the next message. */
@@ -190,9 +201,21 @@ class Composer {
 
   /** Picks files to send with the next message. */
   async attach(): Promise<void> {
-    const picked = await files.pickFiles({ multiple: true, prompt: "Attach files" });
-    if (!picked) return;
-    this.attachments = [...new Set([...this.attachments, ...picked])];
+    try {
+      const picked = await pickAttachments();
+      if (picked) this.addAttachments(picked);
+    } catch (error) {
+      this.attachFailed(error);
+    }
+  }
+
+  private addAttachments(paths: readonly string[]): void {
+    this.attachments = [...new Set([...this.attachments, ...paths])];
+  }
+
+  private attachFailed(error: unknown): void {
+    if (this.services)
+      this.services.daemon.error = error instanceof Error ? error.message : String(error);
   }
 
   /**
@@ -200,7 +223,7 @@ class Composer {
    * usual; this only adds the image.
    */
   async pasteImage(): Promise<void> {
-    const path = await invoke("clipboard_image", null).catch(() => null);
+    const path = await pasteAttachment();
     if (path) this.attachments = [...this.attachments, path];
   }
 
@@ -227,6 +250,39 @@ class Composer {
     const session = this.services?.daemon.sessionId;
     if (this.history.push(text) && session !== undefined) void appendHistory(session, text);
     void this.services?.daemon.send(this.withComments(text));
+  }
+
+  // ---- the queue ----
+
+  /** The rows for the messages waiting behind the running turn, oldest first. */
+  queue = $derived(queueView(this.services?.daemon.session?.waiting ?? NO_WAITING));
+  private unqueuing = false;
+
+  /**
+   * Takes the user's queued messages back into the draft (Up in an empty input, or a press on
+   * the queue): their text one per paragraph before what was typed meanwhile, their images
+   * attached. Returns whether there was anything to take back.
+   */
+  async unqueue(): Promise<boolean> {
+    const daemon = this.services?.daemon;
+    if (!daemon || !this.queue.editable || this.unqueuing) return false;
+    this.unqueuing = true;
+    try {
+      const { session, inputs } = await daemon.unqueue();
+      if (inputs.length === 0 || daemon.sessionId !== session) return false;
+      this.text = redraftText(inputs, this.text);
+      this.addAttachments(redraftImages(inputs));
+      this.history.reset();
+      return true;
+    } finally {
+      this.unqueuing = false;
+    }
+  }
+
+  /** Up in an empty input, off the menu and the history: takes the queue back. */
+  get canUnqueue(): boolean {
+    const empty = this.text.trim() === "";
+    return empty && !this.menuVisible && !this.history.browsing && this.queue.editable;
   }
 
   // ---- history ----

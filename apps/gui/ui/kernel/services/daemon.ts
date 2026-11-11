@@ -82,6 +82,10 @@ export class DaemonService extends Service {
   send(text: string, images?: string[]): Promise<void> {
     return neo.send(text, images);
   }
+  /** Takes the user's messages queued behind the running turn back, oldest first. */
+  unqueue(): ReturnType<typeof neo.unqueue> {
+    return neo.unqueue();
+  }
   /**
    * What each harness the session can switch to offers. Asking may start a guest's adapter,
    * unless `known`: then it starts nothing and leaves out what is not known yet.

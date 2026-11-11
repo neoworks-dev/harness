@@ -11,6 +11,7 @@ import type {
   SessionSettingsPayload,
   Theme,
   ViewItem,
+  WaitingInput,
 } from "@neoworks-dev/neo-protocol/types";
 import {
   assetUrl,
@@ -224,6 +225,23 @@ class Neo {
   async send(text: string, images?: string[]): Promise<void> {
     if (this.sessionId === undefined) return;
     await this.guard(this.need().input(this.sessionId, text, { images }));
+  }
+
+  /**
+   * Takes the user's queued inputs of the shown session back, oldest first, to edit them. Empty
+   * when none were left or the request failed (`error` says why).
+   */
+  async unqueue(): Promise<{ session: string; inputs: WaitingInput[] }> {
+    const session = this.sessionId;
+    if (session === undefined) return { session: "", inputs: [] };
+    try {
+      const inputs = await this.need().unqueue(session, this.appId);
+      this.error = undefined;
+      return { session, inputs };
+    } catch (error) {
+      this.error = message(error);
+      return { session, inputs: [] };
+    }
   }
 
   /** Sends a command (`/title`) to a session that may not be the one shown. */

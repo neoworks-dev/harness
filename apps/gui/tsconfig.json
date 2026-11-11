@@ -11,6 +11,7 @@
     "typeRoots": [],
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
+    "customConditions": ["browser"],
     "paths": {
       "@neoworks/svelte-gpui": ["../../../svelte-gpui/runtime/index.ts"],
       "@neoworks/svelte-gpui/ui": ["../../../svelte-gpui/runtime/ui/index.ts"],

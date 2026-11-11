@@ -17,6 +17,7 @@
   import Help from "./Help.svelte";
   import Pickers from "./Pickers.svelte";
   import PromptPanel from "./PromptPanel.svelte";
+  import Queue from "./Queue.svelte";
   import Thumbnail from "./Thumbnail.svelte";
   import { composer, isImage } from "./state.svelte.ts";
 
@@ -90,6 +91,9 @@
         const older = event.key === "ArrowUp";
         if (composer.menuVisible) {
           composer.moveMenu(older ? -1 : 1);
+        } else if (older && plain && composer.canUnqueue) {
+          // Messages queued behind the running turn come back to be edited before the history.
+          void composer.unqueue();
         } else if (!composer.walkHistory(older ? "older" : "newer", columns, event.alt)) {
           return;
         }
@@ -116,6 +120,7 @@
 </script>
 
 <View style={{ paddingTop: 8, paddingBottom: 12 }}>
+  <Queue onback={() => input?.focus()} />
   <View
     style={{
       background: p.surface,
