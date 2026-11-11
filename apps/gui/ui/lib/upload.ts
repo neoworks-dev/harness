@@ -18,10 +18,11 @@ export type Send = (
   init: { method: "POST"; headers: Record<string, string>; body: unknown },
 ) => Promise<Sent>;
 
-/** A file the user gave the page. */
+/** A file the user gave the page (a File is one). */
 export interface Upload {
   name: string;
   type: string;
+  arrayBuffer(): Promise<ArrayBuffer>;
 }
 
 /** Stores `file` with the daemon and returns the path of the stored copy on the daemon's disk. */
@@ -31,7 +32,9 @@ export async function upload(file: Upload, address: DaemonAddress, send: Send): 
   const response = await send(`${address.url.replace(/\/+$/, "")}/assets?${query.toString()}`, {
     method: "POST",
     headers: { authorization: `Bearer ${address.token}` },
-    body: file,
+    // Its bytes, not the File: the page's fetch is svelte-gpui's, through the host, and that
+    // takes no Blob.
+    body: new Uint8Array(await file.arrayBuffer()),
   });
   if (!response.ok) {
     throw new Error(`Could not upload ${file.name}: the daemon said ${response.status}`);

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { upload, uploadAll, type Send } from "../ui/lib/upload.ts";
+import { upload, uploadAll, type Send, type Upload } from "../ui/lib/upload.ts";
 
 interface Call {
   url: string;
@@ -20,12 +20,16 @@ function daemonStoring(calls: Call[], status = 200): Send {
   };
 }
 
+/** A file as a page has it, holding `text`. */
+function file(name: string, type: string, text = "x"): Upload {
+  return { name, type, arrayBuffer: () => Promise.resolve(new TextEncoder().encode(text).buffer) };
+}
+
 const address = { url: "http://127.0.0.1:41234/", token: "tok" };
 
-test("an uploaded file comes back as its path on the daemon's disk", async () => {
+test("an uploaded file goes as its bytes and comes back as its path on the daemon's disk", async () => {
   const calls: Call[] = [];
-  const file = { name: "shot one.png", type: "image/png" };
-  const path = await upload(file, address, daemonStoring(calls));
+  const path = await upload(file("shot one.png", "image/png", "png!"), address, daemonStoring(calls));
   expect(path).toBe("/data/assets/shot one.png");
   const [call] = calls;
   const url = new URL(call?.url ?? "");
@@ -33,21 +37,20 @@ test("an uploaded file comes back as its path on the daemon's disk", async () =>
   expect(url.searchParams.get("name")).toBe("shot one.png");
   expect(url.searchParams.get("mime")).toBe("image/png");
   expect(call?.headers).toEqual({ authorization: "Bearer tok" });
-  expect(call?.body).toBe(file);
+  // Bytes, not a Blob: the page's fetch (svelte-gpui's) takes no Blob.
+  expect(call?.body).toBeInstanceOf(Uint8Array);
+  expect(new TextDecoder().decode(call?.body as Uint8Array)).toBe("png!");
 });
 
 test("a file of unknown type is uploaded without a mime", async () => {
   const calls: Call[] = [];
-  await upload({ name: "notes", type: "" }, address, daemonStoring(calls));
+  await upload(file("notes", ""), address, daemonStoring(calls));
   expect(new URL(calls[0]?.url ?? "").searchParams.has("mime")).toBe(false);
 });
 
 test("several files give their paths in the order they were given", async () => {
   const paths = await uploadAll(
-    [
-      { name: "a.png", type: "image/png" },
-      { name: "b.txt", type: "text/plain" },
-    ],
+    [file("a.png", "image/png"), file("b.txt", "text/plain")],
     address,
     daemonStoring([]),
   );
@@ -55,11 +58,7 @@ test("several files give their paths in the order they were given", async () => 
 });
 
 test("a refused upload names the file and what the daemon said", async () => {
-  const refused = await upload(
-    { name: "a.png", type: "image/png" },
-    address,
-    daemonStoring([], 401),
-  ).then(
+  const refused = await upload(file("a.png", "image/png"), address, daemonStoring([], 401)).then(
     () => "",
     (error: Error) => error.message,
   );
