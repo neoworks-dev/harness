@@ -54,6 +54,7 @@ interface Folder {
 }
 
 const META_KEY = "tool_folders";
+const SEEN_KEY = "tool_folders_seen";
 const MAIN = join(import.meta.dir, "..", "..", "services", "tools", "main.ts");
 
 export interface ToolFoldersOptions {
@@ -131,7 +132,8 @@ export class ToolFolders {
   /**
    * Folder → the files (path in it → hash) whose content the user saw and was fine with: allowed
    * in a write's or edit's diff, or allowed as tools. A tool file all of whose files are among
-   * them runs without asking: the user already said yes to exactly that.
+   * them runs without asking: the user already said yes to exactly that. Kept in the store, so a
+   * restart between the write and the question doesn't ask.
    */
   private readonly seen = new Map<string, Record<string, string>>();
 
@@ -148,6 +150,16 @@ export class ToolFolders {
       }
     } catch {
       // Unreadable: every file asks again.
+    }
+    try {
+      const stored: unknown = JSON.parse(options.store.getMeta(SEEN_KEY) ?? "{}");
+      if (typeof stored === "object" && stored !== null) {
+        for (const [folder, files] of Object.entries(stored)) {
+          if (isStrings(files)) this.seen.set(folder, files);
+        }
+      }
+    } catch {
+      // Unreadable: a write allowed before the restart asks once more.
     }
     // The folders of sessions deleted while the daemon was not running.
     for (const session of this.sessionIds()) {
@@ -304,6 +316,7 @@ export class ToolFolders {
     const files = this.seen.get(folder) ?? {};
     files[relative(folder, path)] = sha256(text);
     this.seen.set(folder, files);
+    this.saveSeen();
   }
 
   /** Whether the user saw the tool file and every other file of its folder as they are now. */
@@ -408,6 +421,7 @@ export class ToolFolders {
       if (prints[path] === undefined || current.includes(path)) seen[path] = hash;
     }
     this.seen.set(folder, seen);
+    this.saveSeen();
   }
 
   /** A session was deleted: its folder, its answers and its service go with it. */
@@ -416,7 +430,7 @@ export class ToolFolders {
     rmSync(folder, { recursive: true, force: true });
     rmSync(this.allowedPath(sessionAppOf(session)), { force: true });
     this.scans.delete(folder);
-    this.seen.delete(folder);
+    if (this.seen.delete(folder)) this.saveSeen();
     if (this.decisions[folder] === undefined) return;
     delete this.decisions[folder];
     this.save();
@@ -430,6 +444,10 @@ export class ToolFolders {
 
   private save(): void {
     this.options.store.setMeta(META_KEY, JSON.stringify(this.decisions));
+  }
+
+  private saveSeen(): void {
+    this.options.store.setMeta(SEEN_KEY, JSON.stringify(Object.fromEntries(this.seen)));
   }
 
   private changed(): void {

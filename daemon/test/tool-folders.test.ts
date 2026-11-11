@@ -245,6 +245,24 @@ describe("allowing a project's files", () => {
     expect(asked).toHaveLength(1);
   });
 
+  test("a write allowed before a restart still needs no question after it", async () => {
+    const { make, sessions, asked } = setup(["allow"]);
+    const dir = project();
+    const folder = folderOf(dir);
+    sessions.set("s", { cwd: dir });
+    const first = make();
+    first.check("s");
+    await settle();
+    first.vouch(join(folder, "b.ts"), "// b");
+
+    const second = make();
+    write(folder, "b.ts", "// b");
+    second.check("s");
+    await settle();
+    expect(asked).toHaveLength(1);
+    expect(allowedFile(second, appOf(dir))).toEqual(fingerprint(folder));
+  });
+
   test("no is kept for that content only", async () => {
     const { make, sessions, asked } = setup(["deny", "deny"]);
     const dir = project();
