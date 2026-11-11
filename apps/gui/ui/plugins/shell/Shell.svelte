@@ -7,6 +7,7 @@
   import { useCtx } from "../../kernel/slots/context.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
   import Column from "../../widgets/Column.svelte";
+  import { chatZoom } from "../transcript/zoom.svelte.ts";
 
   const { daemon } = useCtx();
 
@@ -44,7 +45,8 @@
           </View>
         {:else}
           <Slot name="shell.main" />
-          <Column style={{ paddingBottom: 8 }}>
+          <!-- As wide as the chat's column, which widens with the chat's zoom. -->
+          <Column style={{ paddingBottom: 8 }} room={chatZoom.value}>
             <Slot name="shell.bottom" />
           </Column>
           <View style={{ position: "absolute", top: 12, right: 12 }}>

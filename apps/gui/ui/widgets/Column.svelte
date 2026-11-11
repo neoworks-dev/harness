@@ -15,18 +15,28 @@
   import type { Layout, Style } from "@neoworks/svelte-gpui/ui";
   import { COLUMN } from "./column.ts";
 
-  let { children, style = {}, zoom = 1 }: { children: Snippet; style?: Style; zoom?: number } = $props();
+  interface Props {
+    children: Snippet;
+    style?: Style;
+    zoom?: number;
+    /**
+     * How much wider than 736 the column may be: the zoom by default, so a zoomed column keeps its
+     * characters per line. The input under the chat sets the chat's zoom without zooming itself.
+     */
+    room?: number;
+  }
+
+  let { children, style = {}, zoom = 1, room }: Props = $props();
 
   /** The column's widest, and the room either side of it on a wide window. */
   const MAX_WIDTH = 736;
   const SIDE = 48;
+  const widest = $derived(MAX_WIDTH * (room ?? zoom));
 
   /** The width the column is given; until it is known, the column draws at its widest. */
   let given = $state<number>();
   /** The column on screen: as wide as at the default size, a little wider when zoomed, if there is room. */
-  const shown = $derived(
-    Math.min(MAX_WIDTH * zoom, given === undefined ? MAX_WIDTH * zoom : Math.max(0, given - SIDE * 2)),
-  );
+  const shown = $derived(Math.min(widest, given === undefined ? widest : Math.max(0, given - SIDE * 2)));
   /** The width the children are laid out in, before the zoom. */
   const width = $derived(shown / zoom);
 
