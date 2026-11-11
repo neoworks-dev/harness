@@ -21,7 +21,8 @@
       cwd: daemon.cwd,
       running: daemon.status.running,
       startedAt: daemon.status.turnStartedAt,
-      isOpen: (key) => transcript.expanded || opened.has(`${daemon.sessionId}/${key}`),
+      // A finished turn's work stays in sight, as in the terminal, until its row is pressed.
+      isOpen: (key) => transcript.expanded || !opened.has(`${daemon.sessionId}/${key}`),
     })),
   );
 

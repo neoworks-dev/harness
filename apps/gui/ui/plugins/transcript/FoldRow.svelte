@@ -1,6 +1,6 @@
 <script lang="ts">
-  // "Worked for 3m 43s ›": the header of a finished turn's work, which is hidden until it is
-  // opened. What was opened is kept for the turn while the app runs.
+  // "Worked for 3m 43s ⌄": the header of a finished turn's work, which shows until it is pressed
+  // (and then hides until pressed again). What was closed is kept for the turn while the app runs.
   import { Icon, Text, View } from "@neoworks/svelte-gpui/ui";
   import caretDown from "@phosphor-icons/core/regular/caret-down.svg";
   import caretRight from "@phosphor-icons/core/regular/caret-right.svg";

@@ -35,8 +35,14 @@
   const usable = $derived(isForm(entry.item.component));
   /** Always open: a question to answer, a UI to use. */
   const pinned = $derived(asks || usable);
+  /** An edit with something to show starts open, as in the terminal: what was written stays in sight. A press closes it. */
+  const startsOpen = $derived(entry.kind === "edit" && (entry.files ?? []).some((file) => file.diff !== undefined));
+  const toggled = $derived(opened.has(key));
   const open = $derived(
-    pinned || transcript.expanded || opened.has(key) || (entry.kind === "thought" && transcript.showThoughts),
+    pinned ||
+      transcript.expanded ||
+      (startsOpen ? !toggled : toggled) ||
+      (entry.kind === "thought" && transcript.showThoughts),
   );
   const stub = $derived(asks && transcript.stubbed === entry.id && !transcript.expanded);
   let hover = $state(false);

@@ -84,18 +84,47 @@ test("without turns, items are rows of their own", () => {
   expect(rows([])).toEqual([]);
 });
 
-test("a turn's tool calls merge into one group, broken by a message", () => {
+const read = (id: string, state: ViewItem["state"] = "done"): ViewItem => ({
+  ref: `c-${id}`,
+  kind: "tool",
+  label: `read ${id}.ts`,
+  state,
+  component: { type: "code", code: "x" },
+});
+
+/** Each work row as the kinds of its entries. */
+const work = (list: Row[]): string[][] =>
+  list.flatMap((row) => (row.kind === "work" ? [row.entries.map((entry) => entry.kind)] : []));
+
+test("as in the terminal, three finished calls in a row fold into one; commands and edits stand alone", () => {
+  const open = { isOpen: () => true };
   const list = rows(
-    [user(1), bash("a"), bash("b"), thought("x"), agent("mid"), bash("c"), agent("end")],
-    { running: true },
+    [
+      user(1),
+      read("a"),
+      read("b"),
+      thought("x"),
+      bash("c"),
+      read("d"),
+      read("e"),
+      edit("f", "src/a.ts"),
+      agent("end"),
+    ],
+    open,
   );
-  expect(kinds(list)).toEqual(["item", "work", "message", "work", "message", "working"]);
-  const first = list[1];
-  expect(first?.kind === "work" && first.entries.map((e) => e.kind)).toEqual([
-    "command",
-    "command",
-    "thought",
+  expect(work(list)).toEqual([["read", "read", "thought"], ["command"], ["read"], ["read"], ["edit"]]);
+  // A message breaks a run too.
+  expect(work(rows([user(1), read("a"), read("b"), agent("mid"), read("c"), agent("end")], open))).toEqual([
+    ["read"],
+    ["read"],
+    ["read"],
   ]);
+});
+
+test("a run with a call still going stays open, each on its own", () => {
+  const list = rows([user(1), read("a"), read("b"), read("c", "running")], { running: true });
+  expect(work(list)).toEqual([["read"], ["read"], ["read"]]);
+  expect(kinds(list).at(-1)).toBe("working");
 });
 
 test("a running turn is never folded, and shows its clock", () => {
@@ -121,11 +150,11 @@ test("a finished turn folds its work under one row, closed", () => {
   expect(list[2]).toMatchObject({ kind: "message", final: true });
 });
 
-test("an open fold shows its rows in place, grouped", () => {
+test("an open fold shows its rows in place", () => {
   const list = rows([user(1), bash("a"), bash("b"), agent("mid"), bash("c"), agent("end")], {
     isOpen: (key) => key === "fold:u1",
   });
-  expect(kinds(list)).toEqual(["item", "fold", "work", "message", "work", "message"]);
+  expect(kinds(list)).toEqual(["item", "fold", "work", "work", "message", "work", "message"]);
   expect(list[1]).toMatchObject({ open: true, label: "Worked" });
 });
 

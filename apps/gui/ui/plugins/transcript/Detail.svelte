@@ -5,6 +5,7 @@
   import { Button, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Component from "./Component.svelte";
+  import DiffView from "./DiffView.svelte";
   import { hasButtons } from "./components.ts";
   import { tailLines } from "./format.ts";
   import NeoUi from "./neoui/NeoUi.svelte";
@@ -50,6 +51,7 @@
       <Text style={{ ...mono, color: codeColor(p), truncate: true }}>{path}</Text>
     {/each}
   {:else if entry.kind === "edit"}
+    <!-- What was written, in full as the terminal shows it: each file's line and its diff. -->
     {#each entry.files ?? [] as file}
       <View style={{ direction: "row", align: "center", gap: 8 }}>
         <Text style={{ ...mono, flex: 1, minWidth: 0, truncate: true, color: p.muted }}>{file.path}</Text>
@@ -64,6 +66,9 @@
           </Button>
         {/if}
       </View>
+      {#if file.diff}
+        <DiffView diff={file.diff} />
+      {/if}
     {/each}
   {:else if entry.kind === "plan"}
     {#each entry.plan ?? [] as line}

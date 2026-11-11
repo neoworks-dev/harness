@@ -51,6 +51,14 @@ export interface RowsInput {
   isOpen: (foldKey: string) => boolean;
 }
 
+/**
+ * Work that is never folded in with other work, as in the terminal: what was asked and planned,
+ * an edit (what was written stays in sight) and a command (each says what it was for).
+ */
+const ALONE: ReadonlySet<WorkEntry["kind"]> = new Set(["question", "plan", "edit", "command"]);
+/** Finished calls in a row fold into one row from this many on. */
+export const GROUP_MIN = 3;
+
 const NONE: FileChange[] = [];
 const NO_ENTRIES: WorkEntry[] = [];
 
@@ -113,24 +121,32 @@ function bodyRows(
   const { timeline } = input;
   const rows: Row[] = [];
   let group: WorkEntry[] = [];
-  const flush = (): void => {
-    const first = group[0];
+  const row = (entries: WorkEntry[]): void => {
+    const first = entries[0];
     if (first === undefined) return;
     rows.push({
       kind: "work",
       key: `work:${first.id}`,
-      entries: group,
-      live: group.some((entry) => entry.live),
+      entries,
+      live: entries.some((entry) => entry.live),
     });
+  };
+  // As the terminal does: a run of finished calls folds into one row from GROUP_MIN on; fewer, or
+  // one still going, each show on their own.
+  const flush = (): void => {
+    if (group.length >= GROUP_MIN && !group.some((entry) => entry.live)) row(group);
+    else for (const entry of group) row([entry]);
     group = [];
   };
   const info = turn.user === undefined ? undefined : timeline.turns.get(turn.user.ref);
   parts.forEach((part, index) => {
     if (part.type === "work") {
-      const alone = part.entry.kind === "question" || part.entry.kind === "plan";
-      if (alone) flush();
-      group.push(part.entry);
-      if (alone) flush();
+      if (ALONE.has(part.entry.kind)) {
+        flush();
+        row([part.entry]);
+      } else {
+        group.push(part.entry);
+      }
       return;
     }
     flush();
