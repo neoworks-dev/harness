@@ -9,22 +9,17 @@
   import { clock } from "../../widgets/clock.svelte.ts";
   import { duration } from "../transcript/format.ts";
   import { codeColor } from "../transcript/layout.ts";
-  import { timeline } from "../transcript/timeline.svelte.ts";
-  import { terminalRuns, type TerminalRun } from "./runs.ts";
+  import { terminalData } from "./data.svelte.ts";
+  import type { TerminalRun } from "./runs.ts";
   import { terminal } from "./state.svelte.ts";
 
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
   const mono = { fontFamily: "mono" as const, fontSize: 12, lineHeight: 17 };
 
-  const runs = $derived(
-    terminalRuns({
-      items: daemon.items,
-      timeline: timeline.value,
-      cwd: daemon.cwd,
-      running: daemon.status.running,
-    }),
-  );
+  /** One background command on its own (from the list under the input), while it is there. */
+  const alone = $derived(terminal.view === undefined ? undefined : terminalData.runs.find((run) => run.id === terminal.view));
+  const runs = $derived(alone === undefined ? terminalData.runs : [alone]);
   const anyRunning = $derived(runs.some((run) => run.state === "running"));
   $effect(() => {
     if (anyRunning) return clock.join();
@@ -40,6 +35,11 @@
     list?.scrollToIndex(runs.length - 1, { align: "end" });
   });
 
+  async function stopJob(id: string): Promise<void> {
+    const why = await terminalData.stop(id);
+    if (why !== undefined) daemon.error = `Could not stop it: ${why}`;
+  }
+
   function took(run: TerminalRun): string | undefined {
     if (run.startedAt === undefined) return undefined;
     return duration((run.endedAt ?? clock.now) - run.startedAt);
@@ -49,8 +49,20 @@
 <View style={{ flex: 1, minHeight: 0 }}>
   <View style={{ direction: "row", align: "center", height: 44, paddingLeft: 16, paddingRight: 8, shrink: 0, borderBottomWidth: 1, borderColor: p.border }}>
     <Text style={{ fontWeight: "medium" }}>Terminal</Text>
-    <Text style={{ color: p.muted, marginLeft: 8 }}>{runs.length === 0 ? "" : `${runs.length} command${runs.length === 1 ? "" : "s"}`}</Text>
-    <View style={{ flex: 1 }} />
+    {#if alone}
+      <Text style={{ color: p.muted, marginLeft: 8 }}>one background command</Text>
+      <View style={{ flex: 1 }} />
+      <Button
+        onpress={() => (terminal.view = undefined)}
+        style={{ paddingX: 8, height: 26, radius: p.radius.s, align: "center", justify: "center", fontSize: 12, color: p.muted }}
+        hover={{ background: p.hover, color: p.fg }}
+      >
+        <Text>All commands</Text>
+      </Button>
+    {:else}
+      <Text style={{ color: p.muted, marginLeft: 8 }}>{runs.length === 0 ? "" : `${runs.length} command${runs.length === 1 ? "" : "s"}`}</Text>
+      <View style={{ flex: 1 }} />
+    {/if}
     <Button
       onpress={() => (terminal.shown = false)}
       style={{ size: 28, radius: p.radius.s, align: "center", justify: "center", color: p.muted }}
@@ -88,7 +100,17 @@
             {#if run.state === "failed" && run.exit !== undefined}
               <Text style={{ color: p.danger, shrink: 0 }}>exit {run.exit}</Text>
             {/if}
+            {#if run.job}<Text style={{ color: p.muted, fontSize: 12, shrink: 0 }}>background</Text>{/if}
             {#if time}<Text style={{ color: p.muted, shrink: 0 }}>{time}</Text>{/if}
+            {#if run.job && run.state === "running"}
+              <Button
+                onpress={() => void stopJob(run.id)}
+                style={{ paddingX: 8, height: 22, radius: p.radius.s, align: "center", justify: "center", fontSize: 12, color: p.danger, shrink: 0 }}
+                hover={{ background: p.hover }}
+              >
+                <Text>Stop</Text>
+              </Button>
+            {/if}
           </View>
           <Text pre style={{ ...mono, color: codeColor(p), paddingX: 8 }}><Text style={{ color: p.muted }}>$ </Text>{run.command}</Text>
           {#if run.hidden > 0}

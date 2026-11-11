@@ -3735,11 +3735,19 @@ name = "neo-gui"
 version = "0.3.0"
 dependencies = [
  "neo-github",
+ "neo-jobs",
  "neo-mention",
  "neo-sdk",
  "serde",
  "serde_json",
  "svelte_gpui_host",
+]
+
+[[package]]
+name = "neo-jobs"
+version = "0.3.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -3799,6 +3807,7 @@ version = "0.3.0"
 dependencies = [
  "image",
  "neo-github",
+ "neo-jobs",
  "neo-mention",
  "neo-protocol",
  "neo-renderer-ratatui",

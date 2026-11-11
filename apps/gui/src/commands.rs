@@ -20,6 +20,19 @@ pub fn all() -> Commands {
             let query = args["query"].as_str().unwrap_or("");
             let folders = args["folders"].as_bool().unwrap_or(false);
             Ok::<_, CommandError>(json!(mentions(cwd, query, folders)))
+        })
+        // A background command's output file (neo_jobs): read on from an offset, or its command
+        // stopped. Only `….output` files, never any other path the page names.
+        .command("job_read", |args| {
+            let path = job_path(&args)?;
+            let offset = args["offset"].as_u64().unwrap_or(0);
+            Ok::<_, CommandError>(json!(neo_jobs::read_from(&path, offset)))
+        })
+        .command("job_stop", |args| {
+            let path = job_path(&args)?;
+            neo_jobs::stop(&path)
+                .map(|groups| json!(groups))
+                .map_err(CommandError::from)
         });
     clipboard::register(desktop::register(workspace::register(github::register(
         git::register(commands),
@@ -60,6 +73,16 @@ pub fn daemon_address(path: &Path) -> Result<Value, CommandError> {
     match (info["url"].as_str(), info["token"].as_str()) {
         (Some(url), Some(token)) => Ok(json!({ "url": url, "token": token })),
         _ => Err(format!("{} is not a daemon info file", path.display()).into()),
+    }
+}
+
+/// `args.path` when it is a background command's output file; refused otherwise.
+fn job_path(args: &Value) -> Result<std::path::PathBuf, CommandError> {
+    let path = std::path::PathBuf::from(args["path"].as_str().unwrap_or(""));
+    if neo_jobs::is_output_file(&path) {
+        Ok(path)
+    } else {
+        Err(format!("{} is not a background command's output", path.display()).into())
     }
 }
 

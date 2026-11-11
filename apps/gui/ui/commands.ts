@@ -2,6 +2,7 @@
 // names, arguments and results.
 import type { DaemonAddress } from "@neoworks-dev/neo-sdk";
 import type { Candidate } from "./lib/mention.ts";
+import type { Chunk } from "./plugins/terminal/jobs.ts";
 import type { Detail, Summary } from "./plugins/github/github.ts";
 import type { Place } from "./plugins/sessions/sessions.ts";
 import type { Committed, Editor, Overview } from "./plugins/workspace/workspace.ts";
@@ -44,6 +45,10 @@ declare module "@neoworks/svelte-gpui" {
     git_branch: { args: { cwd: string }; result: string | null };
     /** What an `@query` could be in `cwd` (crates/mention); with `folders`, folders only. */
     mentions: { args: { cwd: string; query: string; folders?: boolean }; result: Candidate[] };
+    /** A background command's output file read on from `offset` (crates/jobs); only `….output` files. */
+    job_read: { args: { path: string; offset: number }; result: Chunk };
+    /** Stops the command writing that output file; how many process groups were signalled. */
+    job_stop: { args: { path: string }; result: number };
     /** Where each directory works (repository and worktree), found from the `.git` files. */
     places: { args: { cwds: string[] }; result: Record<string, Place> };
     /** `git status --porcelain=v2 --branch -z` and the directory's place in the repository; null outside one. */

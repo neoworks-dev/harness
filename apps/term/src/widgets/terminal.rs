@@ -484,17 +484,7 @@ impl TerminalState {
             .and_then(|r| r.job.as_ref())
             .filter(|j| j.exit.is_none())
             .ok_or("it has ended")?;
-        let groups = writers(&job.path)?;
-        if groups.is_empty() {
-            return Err("no process writes its output".into());
-        }
-        for pgid in &groups {
-            std::process::Command::new("kill")
-                .args(["-TERM", "--", &format!("-{pgid}")])
-                .status()
-                .map_err(|e| format!("kill: {e}"))?;
-        }
-        Ok(groups.len())
+        neo_jobs::stop(&job.path)
     }
 
     /// Shows one background command on its own (`Some(id)`), or all commands.
@@ -574,39 +564,6 @@ fn background_output(text: &str) -> Option<PathBuf> {
     let (_, rest) = text.split_once("Output is being written to: ")?;
     let path = rest.split_whitespace().next()?.trim_end_matches('.');
     path.starts_with('/').then(|| PathBuf::from(path))
-}
-
-/// The process groups of the processes whose output (fd 1 or 2) goes to `path`, found in
-/// `/proc`; never this app's own group.
-fn writers(path: &std::path::Path) -> Result<Vec<i64>, String> {
-    let procs = std::fs::read_dir("/proc").map_err(|_| "no /proc to find its process in")?;
-    let own = pgid_of("self");
-    let mut groups = Vec::new();
-    for entry in procs.flatten() {
-        let name = entry.file_name();
-        let Some(pid) = name
-            .to_str()
-            .filter(|n| n.bytes().all(|b| b.is_ascii_digit()))
-        else {
-            continue;
-        };
-        let writes = ["1", "2"].iter().any(|fd| {
-            std::fs::read_link(format!("/proc/{pid}/fd/{fd}")).is_ok_and(|target| target == path)
-        });
-        if let Some(pgid) = pgid_of(pid).filter(|&g| writes && g > 1 && Some(g) != own)
-            && !groups.contains(&pgid)
-        {
-            groups.push(pgid);
-        }
-    }
-    Ok(groups)
-}
-
-/// A process's group, from `/proc/<pid>/stat` (its fifth field, after the name in parens).
-fn pgid_of(pid: &str) -> Option<i64> {
-    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    let (_, rest) = stat.rsplit_once(')')?;
-    rest.split_whitespace().nth(2)?.parse().ok()
 }
 
 /// Which run (its place in `runs`) the top row, row `start` of the rows, is inside when that

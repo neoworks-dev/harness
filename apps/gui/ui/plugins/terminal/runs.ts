@@ -6,6 +6,7 @@ import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { tailLines } from "../transcript/format.ts";
 import type { Timeline } from "../transcript/timeline.ts";
 import { classify } from "../transcript/work.ts";
+import { backgroundOutput, type JobState } from "./jobs.ts";
 
 /** Commands kept, the newest; and lines of output per command, its end. */
 export const RUNS = 50;
@@ -27,6 +28,8 @@ export interface TerminalRun {
   /** When it started and when it was last heard of, in Unix milliseconds. */
   startedAt?: number;
   endedAt?: number;
+  /** Run in the background: the file its output goes to (jobs.ts reads it). */
+  job?: string;
 }
 
 // CSI and OSC sequences (colours, the cursor, titles) and the other two-character escapes.
@@ -80,7 +83,39 @@ export function terminalRuns({ items, timeline, cwd, running }: RunsInput): Term
       run.startedAt = stamp.first;
       if (state !== "running") run.endedAt = stamp.last;
     }
+    const job = backgroundOutput(entry.output ?? "");
+    if (job !== undefined) run.job = job;
     runs.push(run);
   }
   return runs.slice(-RUNS);
+}
+
+/**
+ * The runs with what their background jobs' files said: the output, and whether it still runs.
+ * A job that was stopped is dropped; one not read yet, or whose file is gone, is as its call said.
+ */
+export function withJobs(
+  runs: readonly TerminalRun[],
+  jobs: Readonly<Record<string, JobState>>,
+): TerminalRun[] {
+  const out: TerminalRun[] = [];
+  for (const run of runs) {
+    const job = run.job === undefined ? undefined : jobs[run.id];
+    if (job?.killed) continue;
+    if (job === undefined || job.gone || (!job.seenRunning && job.exit === undefined)) {
+      out.push(run);
+      continue;
+    }
+    const merged: TerminalRun = { ...run, output: job.lines.join("\n"), hidden: 0 };
+    if (job.exit === undefined) {
+      merged.state = "running";
+      delete merged.endedAt;
+    } else {
+      merged.state = job.exit === 0 ? "done" : "failed";
+      merged.exit = job.exit;
+      if (job.endedAt !== undefined) merged.endedAt = job.endedAt;
+    }
+    out.push(merged);
+  }
+  return out;
 }

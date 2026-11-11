@@ -4,6 +4,7 @@ resolver = "3"
 members = [
   "protocol/rust",
   "crates/github",
+  "crates/jobs",
   "crates/mention",
   "sdk-rs",
   "renderers/gpui",
