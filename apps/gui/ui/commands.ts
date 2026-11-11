@@ -1,6 +1,7 @@
 // What the Rust side (apps/gui/src/commands.rs) offers, written down once so `invoke` checks
 // names, arguments and results.
 import type { DaemonAddress } from "@neoworks-dev/neo-sdk";
+import type { Candidate } from "./lib/mention.ts";
 import type { Detail, Summary } from "./plugins/github/github.ts";
 import type { Place } from "./plugins/sessions/sessions.ts";
 import type { Committed, Editor, Overview } from "./plugins/workspace/workspace.ts";
@@ -41,6 +42,8 @@ declare module "@neoworks/svelte-gpui" {
     /** Rejects with the code `NotRunning` when there is no daemon. */
     daemon_address: { args: null; result: DaemonAddress };
     git_branch: { args: { cwd: string }; result: string | null };
+    /** What an `@query` could be in `cwd` (crates/mention); with `folders`, folders only. */
+    mentions: { args: { cwd: string; query: string; folders?: boolean }; result: Candidate[] };
     /** Where each directory works (repository and worktree), found from the `.git` files. */
     places: { args: { cwds: string[] }; result: Record<string, Place> };
     /** `git status --porcelain=v2 --branch -z` and the directory's place in the repository; null outside one. */

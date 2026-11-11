@@ -14,6 +14,12 @@ pub fn all() -> Commands {
         .command("daemon_address", |_| daemon_address(&daemon_info_path()))
         .command("git_branch", |args| {
             Ok::<_, CommandError>(json!(git_branch(args["cwd"].as_str().unwrap_or(""))))
+        })
+        .command("mentions", |args| {
+            let cwd = args["cwd"].as_str().unwrap_or("");
+            let query = args["query"].as_str().unwrap_or("");
+            let folders = args["folders"].as_bool().unwrap_or(false);
+            Ok::<_, CommandError>(json!(mentions(cwd, query, folders)))
         });
     clipboard::register(desktop::register(workspace::register(github::register(
         git::register(commands),
@@ -55,6 +61,23 @@ pub fn daemon_address(path: &Path) -> Result<Value, CommandError> {
         (Some(url), Some(token)) => Ok(json!({ "url": url, "token": token })),
         _ => Err(format!("{} is not a daemon info file", path.display()).into()),
     }
+}
+
+/// The files (or with `folders` the folders) an `@query` could be in a session working in `cwd`:
+/// the directory listed, or everything under it matched loosely (neo_mention). Nothing without a
+/// directory.
+pub fn mentions(cwd: &str, query: &str, folders: bool) -> Vec<neo_mention::Candidate> {
+    static FINDER: std::sync::OnceLock<neo_mention::Finder> = std::sync::OnceLock::new();
+    if cwd.is_empty() {
+        return Vec::new();
+    }
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    FINDER.get_or_init(neo_mention::Finder::default).candidates(
+        Path::new(cwd),
+        home.as_deref(),
+        query,
+        folders,
+    )
 }
 
 /// The checked-out branch in `cwd`, or null outside a repository or on a detached head.

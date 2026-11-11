@@ -2,7 +2,7 @@
   // Where the user types: a rounded card with the input over the session's pickers and the send
   // button, or, once the agent asks a question (a permission or a choice) and the user has paused
   // typing, the panel that answers it.
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import { Button, Icon, Input, Overlay, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
   import arrowUp from "@phosphor-icons/core/bold/arrow-up-bold.svg";
   import stop from "@phosphor-icons/core/fill/stop-fill.svg";
@@ -15,6 +15,8 @@
   import Slot from "../../kernel/slots/Slot.svelte";
   import CommandMenu from "./CommandMenu.svelte";
   import Help from "./Help.svelte";
+  import MentionMenu from "./MentionMenu.svelte";
+  import { mentions } from "./mentions.svelte.ts";
   import Pickers from "./Pickers.svelte";
   import PromptPanel from "./PromptPanel.svelte";
   import Queue from "./Queue.svelte";
@@ -69,7 +71,62 @@
     if (!showPanel && !keyboard.taken) input?.focus();
   });
 
+  /** The input's text and cursor as they are now, for the `@` menu. */
+  function track(): void {
+    const cursor = input?.getSelection()?.start ?? composer.text.length;
+    mentions.track(composer.text, cursor, daemon.cwd);
+  }
+
+  // A draft changed from outside the input (history, a pick, another session) or another directory.
+  $effect(() => {
+    void composer.text;
+    void daemon.cwd;
+    untrack(track);
+  });
+
+  /** Puts the `@` menu's pick in the word's place, the cursor after it. */
+  function pickMention(index?: number): void {
+    const picked = mentions.pick(index);
+    if (picked === undefined) return;
+    composer.text = picked.text;
+    input?.focus();
+    void tick().then(() => {
+      input?.select(picked.cursor, picked.cursor);
+      mentions.track(picked.text, picked.cursor, daemon.cwd);
+    });
+  }
+
+  /** Keys for the `@` menu while it is open; true when one was used. */
+  function mentionKey(event: KeyEvent): boolean {
+    if (!mentions.visible || event.ctrl || event.alt || event.meta) return false;
+    switch (event.key) {
+      case "ArrowUp":
+      case "ArrowDown":
+        mentions.move(event.key === "ArrowUp" ? -1 : 1);
+        break;
+      case "Tab":
+        if (event.shift) return false;
+        pickMention();
+        break;
+      case "Enter":
+        if (event.shift || !mentions.entersPick) return false;
+        pickMention();
+        break;
+      case "Escape":
+        mentions.close();
+        event.stopPropagation();
+        break;
+      default:
+        return false;
+    }
+    event.preventDefault();
+    return true;
+  }
+
   function key(event: KeyEvent): void {
+    if (mentionKey(event)) return;
+    // The cursor moves after the key: where it went decides the `@` word.
+    if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) setTimeout(track, 0);
     // Ctrl-V also attaches an image on the clipboard; the input pastes any text itself.
     if (event.ctrl && !event.alt && event.key.toLowerCase() === "v") void composer.pasteImage();
     const plain = !event.ctrl && !event.alt && !event.meta;
@@ -107,6 +164,7 @@
 
   function typed(): void {
     composer.typed();
+    track();
   }
 
   function layout(box: Layout): void {
@@ -186,6 +244,10 @@
           {#if composer.menuVisible}
             <Overlay side="top" align="start" offset={24} matchWidth>
               <CommandMenu onchosen={() => input?.focus()} />
+            </Overlay>
+          {:else if mentions.visible}
+            <Overlay side="top" align="start" offset={24} matchWidth>
+              <MentionMenu onpick={pickMention} />
             </Overlay>
           {/if}
           {#if composer.helpOpen}
