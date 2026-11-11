@@ -8,6 +8,9 @@
   import { clip } from "../../lib/diff.ts";
   import { blend } from "../../lib/palette.ts";
   import { useCtx } from "../../kernel/slots/context.ts";
+  import { forFile } from "../viewer/highlights.ts";
+  import { fencePath } from "../viewer/syntax.ts";
+  import { kindStyles } from "../viewer/syntax-colors.ts";
   import CopyButton from "./CopyButton.svelte";
 
   interface Props {
@@ -28,7 +31,9 @@
 
   const lines = $derived(code.replace(/\n+$/, "").split("\n"));
   const clipped = $derived(clip(lines, limit ?? CAP));
-  const text = $derived(clipped.shown.join("\n"));
+  /** Highlighted as the viewer does (its syntax.ts) when the block names a language it knows. */
+  const lights = $derived(language ? forFile(fencePath(language), lines) : undefined);
+  const styles = $derived(kindStyles(p.syntax));
   let wrap = $state(false);
 
   const lineStyle = $derived({
@@ -38,6 +43,9 @@
     color: p.fg,
   });
 </script>
+
+<!-- The lines, each run of a highlighted one in its colour. -->
+{#snippet body()}{#each clipped.shown as line, index}{#if index > 0}{"\n"}{/if}{#each lights?.tokens(index) ?? [{ text: line }] as token}<Text style={styles[token.kind ?? "plain"]}>{token.text}</Text>{/each}{/each}{/snippet}
 
 <View style={{ background: p.surface, radius: p.radius.m, marginY: 4, overflow: "hidden" }}>
   {#if fenced}
@@ -55,12 +63,12 @@
   {/if}
   {#if wrap}
     <View style={{ padding: fenced ? [4, 14, 13, 14] : [13, 14] }}>
-      <Text pre style={lineStyle}>{text}</Text>
+      <Text pre style={lineStyle}>{@render body()}</Text>
     </View>
   {:else}
     <Scroll horizontal>
       <View style={{ padding: fenced ? [4, 14, 13, 14] : [13, 14] }}>
-        <Text pre style={{ ...lineStyle, nowrap: true }}>{text}</Text>
+        <Text pre style={{ ...lineStyle, nowrap: true }}>{@render body()}</Text>
       </View>
     </Scroll>
   {/if}

@@ -39,11 +39,23 @@ export async function upload(file: Upload, address: DaemonAddress, send: Send): 
   if (!response.ok) {
     throw new Error(`Could not upload ${file.name}: the daemon said ${response.status}`);
   }
-  const asset = (await response.json()) as { path?: unknown };
+  const asset = (await response.json()) as { path?: unknown; handle?: unknown };
   if (typeof asset.path !== "string") {
     throw new Error(`Could not upload ${file.name}: no path came back`);
   }
+  if (typeof asset.handle === "string") handles.set(asset.path, asset.handle);
   return asset.path;
+}
+
+/**
+ * The `asset://` handle of each path an upload gave back. The path is on the daemon's disk, which a
+ * page can't load; the handle the page can (the daemon serves it), for a preview of the file.
+ */
+const handles = new Map<string, string>();
+
+/** The handle of an uploaded file's path, if this page uploaded it. */
+export function uploadedHandle(path: string): string | undefined {
+  return handles.get(path);
 }
 
 /** `upload` for each file, in order. One that fails fails them all, and none is attached. */

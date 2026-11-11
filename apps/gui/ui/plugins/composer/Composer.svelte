@@ -21,6 +21,7 @@
   import PromptPanel from "./PromptPanel.svelte";
   import Queue from "./Queue.svelte";
   import Thumbnail from "./Thumbnail.svelte";
+  import { chatZoom } from "../transcript/zoom.svelte.ts";
   import { composer, isImage } from "./state.svelte.ts";
 
   const { daemon, keyboard, transcript } = useCtx();
@@ -28,13 +29,16 @@
   const p = $derived(daemon.palette);
   /** The input grows with its text up to this many pixels, then scrolls. */
   const MAX_INPUT_HEIGHT = 200;
-  const LINE_HEIGHT = 22;
+  /** The input's text, larger than the chat's body, and as much larger again as the chat is zoomed. */
+  const FONT_SIZE = 16;
+  const fontSize = $derived(Math.round(FONT_SIZE * chatZoom.value));
+  const LINE_HEIGHT = $derived(Math.round(fontSize * 1.5));
 
   let input: ReturnType<typeof Input> | undefined = $state();
   let scroller: ReturnType<typeof Scroll> | undefined = $state();
   let width = $state(0);
   /** How many characters fit a row, roughly; the input does not say where its cursor is. */
-  const columns = $derived(Math.floor(width / (p.text.body * 0.6)));
+  const columns = $derived(Math.floor(width / (fontSize * 0.6)));
 
   const promptRef = $derived(composer.prompt?.ref);
   const showPanel = $derived(composer.engaged && composer.prompt !== undefined);
@@ -235,7 +239,7 @@
                 multiline
                 rows={2}
                 placeholder="Ask anything, or / for commands"
-                style={{ color: p.fg, lineHeight: LINE_HEIGHT }}
+                style={{ color: p.fg, fontSize, lineHeight: LINE_HEIGHT }}
                 oninput={typed}
                 onkey={key}
               />

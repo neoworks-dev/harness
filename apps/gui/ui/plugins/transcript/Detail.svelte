@@ -67,7 +67,7 @@
         {/if}
       </View>
       {#if file.diff}
-        <DiffView diff={file.diff} />
+        <DiffView diff={file.diff} header={false} />
       {/if}
     {/each}
   {:else if entry.kind === "plan"}

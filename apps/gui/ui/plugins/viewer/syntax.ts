@@ -76,6 +76,26 @@ export function languageOf(path: string): string | undefined {
   return dot < 0 ? undefined : EXTENSIONS[name.slice(dot + 1)];
 }
 
+/** Names a fenced block's language goes by that are not an extension. */
+const FENCE_NAMES: Readonly<Record<string, string>> = {
+  typescript: "ts",
+  javascript: "js",
+  rust: "rs",
+  python: "py",
+  golang: "go",
+  shell: "sh",
+  console: "sh",
+  "c++": "cpp",
+  csharp: "cs",
+  kotlin: "kt",
+};
+
+/** A file name for the language of a fenced block (```rust, ```ts), which `languageOf` reads. */
+export function fencePath(language: string): string {
+  const name = language.trim().toLowerCase();
+  return `code.${FENCE_NAMES[name] ?? name}`;
+}
+
 /** One line, from `state`; a language that is not known comes back as it is. */
 export function scan(language: string, line: string, state = ""): Scanned {
   const scanner = scanners[language];

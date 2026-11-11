@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test";
-import { Highlighter, languageOf, scan, type Token } from "../ui/plugins/viewer/syntax.ts";
+import { fencePath, Highlighter, languageOf, scan, type Token } from "../ui/plugins/viewer/syntax.ts";
+
+test("a fenced block's language is read as the viewer reads a file's", () => {
+  expect(languageOf(fencePath("rust"))).toBe("rust");
+  expect(languageOf(fencePath("TypeScript"))).toBe("ts");
+  expect(languageOf(fencePath("ts"))).toBe("ts");
+  expect(languageOf(fencePath("bash"))).toBe("shell");
+  expect(languageOf(fencePath("klingon"))).toBeUndefined();
+});
 
 /** A line's runs as `kind:text`, the uncoloured ones as the text alone. */
 function runs(language: string, line: string, state = ""): string[] {

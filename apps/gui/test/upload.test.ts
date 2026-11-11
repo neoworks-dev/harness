@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { upload, uploadAll, type Send, type Upload } from "../ui/lib/upload.ts";
+import { upload, uploadAll, uploadedHandle, type Send, type Upload } from "../ui/lib/upload.ts";
 
 interface Call {
   url: string;
@@ -40,6 +40,12 @@ test("an uploaded file goes as its bytes and comes back as its path on the daemo
   // Bytes, not a Blob: the page's fetch (svelte-gpui's) takes no Blob.
   expect(call?.body).toBeInstanceOf(Uint8Array);
   expect(new TextDecoder().decode(call?.body as Uint8Array)).toBe("png!");
+});
+
+test("the handle an upload gave back is kept for the path, for a preview the page can load", async () => {
+  const path = await upload(file("shot.png", "image/png"), address, daemonStoring([]));
+  expect(uploadedHandle(path)).toBe("asset://img-0123456789ab");
+  expect(uploadedHandle("/somewhere/else.png")).toBeUndefined();
 });
 
 test("a file of unknown type is uploaded without a mime", async () => {
