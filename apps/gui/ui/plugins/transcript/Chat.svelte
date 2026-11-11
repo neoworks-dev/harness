@@ -6,8 +6,6 @@
   import { List } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
-  import type { ScrollPosition } from "@neoworks/svelte-gpui/ui";
-  import { openCommands } from "./commands.svelte.ts";
   import { docNav } from "./docnav.svelte.ts";
   import { opened } from "./opened.svelte.ts";
   import { buildRows, splitMessages, type Row } from "./rows.ts";
@@ -63,7 +61,6 @@
   items={rows}
   key={(row: Row) => row.key}
   stickToEnd
-  onscroll={(position: ScrollPosition & { maxY: number }) => (openCommands.following = position.y >= position.maxY - 4)}
   style={{ flex: 1, minHeight: 0 }}
 >
   {#snippet row(row: Row)}

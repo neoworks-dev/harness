@@ -20,7 +20,6 @@ import { TranscriptService } from "./service.ts";
 import "./slots.ts";
 import { transcript } from "./state.svelte.ts";
 import StoppedRow from "./StoppedRow.svelte";
-import { openCommands } from "./commands.svelte.ts";
 import { docNav } from "./docnav.svelte.ts";
 import ThoughtItem from "./ThoughtItem.svelte";
 import { timeline } from "./timeline.svelte.ts";
@@ -37,7 +36,6 @@ export const transcriptPane = {
     const { slots, daemon, keymap, keyboard, commands } = ctx;
     ctx.plugin(TranscriptService);
     timeline.follow(daemon);
-    ctx.effect(() => openCommands.follow(daemon), "open commands");
 
     slots.inject("shell.main", (slot) => {
       slot.add({

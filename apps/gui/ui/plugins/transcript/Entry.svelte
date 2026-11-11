@@ -9,7 +9,6 @@
   import warning from "@phosphor-icons/core/regular/warning-circle.svg";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Spinner from "../../widgets/Spinner.svelte";
-  import { openCommands } from "./commands.svelte.ts";
   import Detail from "./Detail.svelte";
   import { clockTime } from "./format.ts";
   import { iconOf } from "./icons.ts";
@@ -38,12 +37,9 @@
   const pinned = $derived(asks || usable);
   /**
    * Open until pressed: an edit with something to show, as in the terminal (what was written stays
-   * in sight); a command while it runs, and after if it finished while the user was scrolled up.
+   * in sight). A command is one line there, its output only when opened (or Ctrl-O): so here too.
    */
-  const startsOpen = $derived(
-    (entry.kind === "edit" && (entry.files ?? []).some((file) => file.diff !== undefined)) ||
-      (entry.kind === "command" && openCommands.isOpen(entry.id, entry.live)),
-  );
+  const startsOpen = $derived(entry.kind === "edit" && (entry.files ?? []).some((file) => file.diff !== undefined));
   const toggled = $derived(opened.has(key));
   const open = $derived(
     pinned ||
