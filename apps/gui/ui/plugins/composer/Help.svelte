@@ -14,6 +14,7 @@
     ["/", "commands"],
     ["Shift-Tab", "approvals: ask, review, edits, auto"],
     ["Ctrl-O", "full tool results"],
+    ["Ctrl-=, Ctrl--, Ctrl-0", "the chat's text larger, smaller, as it was"],
     ["Ctrl-T", "the agent's thoughts"],
     ["Ctrl-S", "sessions sidebar"],
     ["Ctrl-X", "agents list"],

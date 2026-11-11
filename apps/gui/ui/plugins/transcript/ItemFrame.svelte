@@ -6,6 +6,7 @@
   import { getContext, setContext, type Snippet } from "svelte";
   import Column from "../../widgets/Column.svelte";
   import { FRAMED } from "./layout.ts";
+  import { chatZoom } from "./zoom.svelte.ts";
 
   let { children, gap = 16 }: { children: Snippet; gap?: number } = $props();
 
@@ -16,7 +17,7 @@
 {#if framed}
   {@render children()}
 {:else}
-  <Column style={{ paddingBottom: gap }}>
+  <Column style={{ paddingBottom: gap }} zoom={chatZoom.value}>
     {@render children()}
   </Column>
 {/if}

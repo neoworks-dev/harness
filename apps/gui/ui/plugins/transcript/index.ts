@@ -27,6 +27,7 @@ import ToolItem from "./ToolItem.svelte";
 import UserItem from "./UserItem.svelte";
 import Work from "./Work.svelte";
 import WorkingRow from "./WorkingRow.svelte";
+import { chatZoom } from "./zoom.svelte.ts";
 
 export const transcriptPane = {
   name: "transcript",
@@ -87,6 +88,16 @@ export const transcriptPane = {
       if (docNav.active === undefined) return false;
       docNav.leave();
     }, { priority: 1 });
+
+    // The chat's size: Ctrl-= (or Ctrl-+) larger, Ctrl-- smaller, Ctrl-0 back to the default.
+    void chatZoom.load();
+    const larger = (): void => chatZoom.step(1);
+    const smaller = (): void => chatZoom.step(-1);
+    for (const chord of ["ctrl-=", "ctrl-+", "ctrl-shift-=", "ctrl-shift-+"]) keymap.bind(chord, larger);
+    keymap.bind("ctrl--", smaller);
+    keymap.bind("ctrl-0", () => chatZoom.reset());
+    commands.register({ name: "larger", desc: "the chat's text larger (ctrl-=)", run: larger });
+    commands.register({ name: "smaller", desc: "the chat's text smaller (ctrl--)", run: smaller });
 
     keymap.bind("ctrl-o", toggleExpanded);
     keymap.bind("ctrl-t", toggleThoughts);

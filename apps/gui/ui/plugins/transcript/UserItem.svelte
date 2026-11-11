@@ -28,6 +28,7 @@
   import { componentText, plainLines } from "./components.ts";
   import CopyButton from "./CopyButton.svelte";
   import { clockTime } from "./format.ts";
+  import { chatZoom } from "./zoom.svelte.ts";
   import ItemFrame from "./ItemFrame.svelte";
   import { opened } from "./opened.svelte.ts";
   import { timeline } from "./timeline.svelte.ts";
@@ -72,10 +73,11 @@
 </script>
 
 <ItemFrame gap={4}>
-  <View style={{ gap: 4, paddingTop: 8 }} onresize={(box: Layout) => (column = lastColumn = box.width)} onhover={(h: boolean) => (hover = h)}>
+  <!-- Measured in the window's pixels, used as widths under the chat's zoom: divided by it. -->
+  <View style={{ gap: 4, paddingTop: 8 }} onresize={(box: Layout) => (column = lastColumn = box.width / chatZoom.value)} onhover={(h: boolean) => (hover = h)}>
     {#if longest !== undefined && natural === undefined}
       <View style={{ position: "absolute", top: 0, left: 0, opacity: 0 }}>
-        <Text style={{ nowrap: true }} onlayout={(box: Layout) => remember(box.width)}>{longest}</Text>
+        <Text style={{ nowrap: true }} onlayout={(box: Layout) => remember(box.width / chatZoom.value)}>{longest}</Text>
       </View>
     {/if}
     <View style={{ direction: "row", justify: "end" }}>
