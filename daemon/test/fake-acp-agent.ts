@@ -318,9 +318,10 @@ async function prompt(params: {
       for (const text of steered.splice(0)) say(sessionId, `\nsteered: ${text}`);
     }
     return { stopReason: "end_turn" };
-  } else if (task === "later") {
+  } else if (task === "later" || /^later \d+$/.test(task)) {
     // Like Claude Code once a background command ended: a cycle of its own, after the turn,
-    // that only its result's usage ends.
+    // that only its result's usage ends. `later 500` waits that many milliseconds first.
+    const delay = task === "later" ? 50 : Number(task.slice(6));
     setTimeout(() => {
       say(sessionId, "The build passed.");
       update(sessionId, { sessionUpdate: "usage_update", used: 10, size: 100 });
@@ -330,7 +331,7 @@ async function prompt(params: {
         size: 100,
         cost: { amount: 0.01, currency: "USD" },
       });
-    }, 50);
+    }, delay);
     say(sessionId, "Started the build.");
     return { stopReason: "end_turn" };
   } else if (task === "commands") {

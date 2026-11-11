@@ -919,6 +919,13 @@ export class GuestManager {
       setConfigOption: async (category, value) => {
         guest = await this.configureGuest(guest, category, value);
       },
+      // The conversation is over (/clear, the session moved, was deleted, or the daemon stops):
+      // its adapter stops. Left running, it went on with the old conversation on its own (Claude
+      // Code's idle compaction, an hour later) and showed that in the session.
+      close: async () => {
+        this.live.delete(guest);
+        guest.conn.kill();
+      },
     };
   }
 

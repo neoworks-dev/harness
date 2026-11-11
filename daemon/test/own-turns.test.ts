@@ -40,6 +40,22 @@ async function until(check: () => boolean, what: string): Promise<void> {
   throw new Error(`timed out waiting for ${what}`);
 }
 
+test("a conversation cleared away stops: its agent doesn't go on in the session afterwards", async () => {
+  const { daemon, session } = await setup();
+  daemon.sessions.input(session, "cli", "later 400");
+  await until(
+    () => events(daemon, session).some((e) => e.type === "turn_ended"),
+    "the turn to end",
+  );
+  await daemon.sessions.idle(session);
+  // /clear before the old conversation goes on (Claude Code's idle compaction, an hour on).
+  daemon.sessions.clearContext(session);
+  await Bun.sleep(700);
+  const all = events(daemon, session);
+  expect(all.some((e) => e.type === "user_message" && e.app === "background")).toBe(false);
+  expect(all.some((e) => e.type === "agent_message_chunk" && e.text === "The build passed.")).toBe(false);
+});
+
 test("what the agent does after its turn ended is a turn of its own, over at its result", async () => {
   const { daemon, session } = await setup();
   daemon.sessions.input(session, "cli", "later");
