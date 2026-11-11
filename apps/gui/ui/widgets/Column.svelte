@@ -30,7 +30,9 @@
   });
 </script>
 
-<View style={{ align: "center", ...style }} onlayout={(box: Layout) => (given = box.width)}>
+<!-- onresize, not onlayout: only the width matters, and every chat item has a column, so a move
+     (the chat scrolling, an item above growing) must cost nothing. -->
+<View style={{ align: "center", ...style }} onresize={(box: Layout) => (given = box.width)}>
   <View style={{ width }}>
     {@render children()}
   </View>

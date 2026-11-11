@@ -66,7 +66,7 @@
 </script>
 
 <ItemFrame gap={4}>
-  <View style={{ gap: 4, paddingTop: 8 }} onlayout={(box: Layout) => (column = box.width)} onhover={(h: boolean) => (hover = h)}>
+  <View style={{ gap: 4, paddingTop: 8 }} onresize={(box: Layout) => (column = box.width)} onhover={(h: boolean) => (hover = h)}>
     {#if longest !== undefined && natural === undefined}
       <View style={{ position: "absolute", top: 0, left: 0, opacity: 0 }}>
         <Text style={{ nowrap: true }} onlayout={(box: Layout) => remember(box.width)}>{longest}</Text>
