@@ -33,7 +33,7 @@ import {
   pluginPrompt,
 } from "@neoworks-dev/neo/plugin-commands";
 import { Asker } from "./asker.ts";
-import { ProjectTools } from "./project-tools.ts";
+import { ToolFolders, userToolsDir } from "./tool-folders.ts";
 import { Commands, DAEMON_COMMANDS } from "./commands.ts";
 import { PluginCommands } from "./plugins.ts";
 import { Login } from "./login.ts";
@@ -64,6 +64,8 @@ export interface DaemonOptions {
   /** TCP port on 127.0.0.1; 0 picks a free one. */
   port: number;
   defaultCwd: string;
+  /** The user's own tools folder; default NEO_TOOLS_DIR, else ~/.config/neo/tools. */
+  toolsDir?: string;
   /** Served to every client; the built-in default when absent. */
   theme?: Theme;
   /** Replaces the MCP client used to reach apps; for tests. */
@@ -116,8 +118,8 @@ export interface Daemon {
   actions: ActionRunner;
   commands: Commands;
   settings: Settings;
-  /** The tools projects bring (.neo/tools): which may run, and who sees them. */
-  projectTools: ProjectTools;
+  /** The folders of tool files (the user's, projects', sessions'): which may run, who sees them. */
+  toolFolders: ToolFolders;
   titles: Titles;
   /** The agents a session can run on (harnesses.list). */
   harnesses: Harnesses;
@@ -179,19 +181,20 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   const asker = new Asker((session, event) => {
     store.append(session, event);
   });
-  const projectTools = new ProjectTools({
+  const toolFolders = new ToolFolders({
     store,
     asker,
     agent: agent.name,
     log,
     dataDir: paths.dataDir,
+    userFolder: options.toolsDir ?? userToolsDir(),
     enabled: () => settings.projectTools(),
   });
   // A tool call may have written a tool file: the user is asked about it at once, not next turn.
   store.onAppend((record) => {
     const { event } = record;
     if (event.type === "tool_call_update" && event.status === "completed") {
-      projectTools.check(record.session);
+      toolFolders.check(record.session);
     }
   });
   const permissions = new Permissions({
@@ -222,7 +225,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     },
     cwd: (session) => store.getSession(session)?.cwd ?? options.defaultCwd,
     mcpServers,
-    connectors: (session) => connectors.snapshot((app) => projectTools.visible(app, session)),
+    connectors: (session) => connectors.snapshot((app) => toolFolders.visible(app, session)),
     focus: (session) => focus?.focusOf(session),
     showDontTell,
     settings: (session, guest) => settings.get(session, guest),
@@ -310,8 +313,8 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     defaultCwd: options.defaultCwd,
     resolveAsset: (handle) => assets.resolve(handle),
     log,
-    connectors: (sessionId) => connectors.snapshot((app) => projectTools.visible(app, sessionId)),
-    turnStarted: (sessionId) => projectTools.check(sessionId),
+    connectors: (sessionId) => connectors.snapshot((app) => toolFolders.visible(app, sessionId)),
+    turnStarted: (sessionId) => toolFolders.check(sessionId),
     focus: (sessionId) => focus?.focusOf(sessionId),
     showDontTell,
     mcpServers: (sessionId) => mcpServers(sessionId),
@@ -357,6 +360,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     summaries.forget(session);
     guests.forget(session);
     asker.forget(session);
+    toolFolders.forget(session);
     toldCommands.delete(session);
   });
   // A guest works where it was started: one that moved (/cd) starts its guests over.
@@ -394,7 +398,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   const todos = new Todos(store);
   const gateway = new Gateway(connectors, {
     log,
-    visible: (app, session) => projectTools.visible(app, session),
+    visible: (app, session) => toolFolders.visible(app, session),
     // A subagent changes the list as itself, the session's agent as its harness.
     todos: (session, guest, args) => todosTool(todos, session, guest ?? harnessOf(session), args),
     resolveAsset: (handle) => assets.resolve(handle),
@@ -566,7 +570,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     actions,
     commands,
     settings,
-    projectTools,
+    toolFolders,
     titles,
     harnesses,
     mcp: { servers: stdioServers, reload: reloadMcp },

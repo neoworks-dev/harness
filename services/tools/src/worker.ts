@@ -1,5 +1,10 @@
 // A worker thread that holds one tool file: it imports the file, says what tools it gives, and
 // runs their handlers. A tool that hangs or crashes takes only this thread with it.
+// The file may load only the files of its folder, each with the bytes the service hashed (the
+// ones the user approved): every module goes through the hook below, which reads it once, checks
+// it and hands Bun exactly those bytes. Built-ins (node:*, bun) are not files and are not asked.
+import { relative, sep } from "node:path";
+import { sha256 } from "./approval.ts";
 import { checkTool, isRecord, metaOf, type FromWorker, type ToWorker } from "./spec.ts";
 import type { ToolSpec } from "@neoworks-dev/neo-sdk";
 
@@ -8,11 +13,48 @@ declare const self: {
   onmessage: ((event: { data: ToWorker }) => void) | null;
 };
 
+const LOADERS: Record<string, "ts" | "tsx" | "js" | "jsx" | "json" | "toml"> = {
+  ts: "ts",
+  mts: "ts",
+  tsx: "tsx",
+  js: "js",
+  mjs: "js",
+  cjs: "js",
+  jsx: "jsx",
+  json: "json",
+  toml: "toml",
+};
+
+/** Lets the file load its folder's files as they were hashed, and nothing else. */
+function guard(root: string, files: Record<string, string>): void {
+  Bun.plugin({
+    name: "tool-folder",
+    setup(build) {
+      build.onLoad({ filter: /.*/ }, async ({ path }) => {
+        const rel = relative(root, path);
+        if (rel.startsWith("..") || rel.startsWith(sep) || files[rel] === undefined) {
+          throw new Error(
+            `${path} is outside the tools folder: a tool may import only built-ins and the files of its folder`,
+          );
+        }
+        const bytes = new Uint8Array(await Bun.file(path).arrayBuffer());
+        if (sha256(bytes) !== files[rel]) {
+          throw new Error(`${rel} changed since it was approved`);
+        }
+        const loader = LOADERS[path.slice(path.lastIndexOf(".") + 1)];
+        if (loader === undefined) throw new Error(`${rel}: not code or data a tool can import`);
+        return { contents: new TextDecoder().decode(bytes), loader };
+      });
+    },
+  });
+}
+
 const specs = new Map<string, ToolSpec>();
 
-async function load(path: string): Promise<void> {
+async function load(path: string, root: string, files: Record<string, string>): Promise<void> {
   let mod: unknown;
   try {
+    guard(root, files);
     mod = await import(path);
   } catch (err) {
     self.postMessage({
@@ -54,6 +96,7 @@ async function call(id: number, name: string, args: Record<string, unknown>): Pr
 }
 
 self.onmessage = ({ data }) => {
-  if (data.type === "load") void load(data.path);
+  if (data.type === "ping") self.postMessage({ type: "pong" });
+  else if (data.type === "load") void load(data.path, data.root, data.files);
   else void call(data.id, data.name, data.args);
 };

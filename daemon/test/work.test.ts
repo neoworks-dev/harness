@@ -46,7 +46,7 @@ test("work on the computer reaches neo's new conversations and the apps", async 
   expect((await started(daemon, agent))?.work).toBe("computer");
 });
 
-test("the language servers run for coding only, the agent's own tools for every kind of work", () => {
-  expect(servicesFor("coding").length).toBe(servicesFor("computer").length + 1);
-  expect(servicesFor("computer")).toHaveLength(1);
+test("the language servers run for coding only", () => {
+  expect(servicesFor("coding").length).toBeGreaterThan(0);
+  expect(servicesFor("computer")).toEqual([]);
 });

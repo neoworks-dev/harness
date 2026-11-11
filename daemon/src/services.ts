@@ -14,20 +14,14 @@ const LSP: string[] = [
   join(import.meta.dir, "..", "..", "services", "lsp", "main.ts"),
 ];
 
-const TOOLS: string[] = [
-  process.execPath,
-  "run",
-  join(import.meta.dir, "..", "..", "services", "tools", "main.ts"),
-];
-
 export const DEFAULT_SERVICES: string[][] = [LSP];
 
 /**
- * The services for a kind of work: the tools the agent wrote for itself whatever the work, and
- * the language servers for coding.
+ * The services for a kind of work: the language servers for coding. The tools service runs
+ * whatever the work, one instance per folder (ToolFolders.commands).
  */
 export function servicesFor(work: Work): string[][] {
-  const services: string[][] = [TOOLS];
+  const services: string[][] = [];
   if (work === "coding") services.push(...DEFAULT_SERVICES);
   return services;
 }

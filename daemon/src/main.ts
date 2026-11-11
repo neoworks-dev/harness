@@ -49,8 +49,8 @@ async function main(): Promise<void> {
     const commands: string[][] = [];
     if (process.env.NEO_SERVICES !== "none") {
       commands.push(...servicesFor(daemon.settings.work() ?? "coding"));
-      // The tools of the projects the user allowed.
-      commands.push(...daemon.projectTools.commands());
+      // The tools service: the user's folder, and each project's and session's with a file allowed.
+      commands.push(...daemon.toolFolders.commands());
     }
     return commands;
   };
@@ -65,8 +65,8 @@ async function main(): Promise<void> {
   );
   // What the user does with neo decides which services run.
   daemon.settings.onToggle(() => services.set(wanted()));
-  // And so does what the user allows a project to run.
-  daemon.projectTools.onChange(() => services.set(wanted()));
+  // And so does which tool files the user allows to run.
+  daemon.toolFolders.onChange(() => services.set(wanted()));
 
   let stopping = false;
   const stop = async (signal: string): Promise<void> => {

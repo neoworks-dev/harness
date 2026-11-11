@@ -1,9 +1,11 @@
 // The tool files of a folder, each in a worker thread of its own, so a tool that hangs or
 // crashes costs only its file. A file that fails to load gives no tools and a reason; the others
-// load. A worker is started again after a crash or a timeout, with its module state fresh.
+// load. A call that takes too long fails, and the worker goes on with what it holds (a watcher,
+// a child process): only a worker that stops answering pings (a busy loop) or crashes is ended,
+// and started again with its module state fresh.
 import { join, resolve } from "node:path";
 import type { ToolResult, ToolSpec } from "@neoworks-dev/neo-sdk";
-import { fingerprint } from "./approval.ts";
+import { fingerprint, manifest } from "./approval.ts";
 import type { FromWorker, ToolMeta, ToWorker } from "./spec.ts";
 
 /** What became of one file. */
@@ -20,10 +22,24 @@ export interface Loaded {
   files: FileStatus[];
 }
 
-/** A call that takes longer than this fails and its worker is stopped. */
+/** A call that takes longer than this fails; its worker goes on. */
 export const CALL_TIMEOUT_MS = 60_000;
+/** A worker that has not answered a ping for this long is stuck, and is ended. */
+export const STUCK_MS = 10_000;
 /** A file that has not said what it gives by now is not loading. */
 const LOAD_TIMEOUT_MS = 10_000;
+
+export interface ToolFilesOptions {
+  /** Names the service gives its own tools: a file may not use them. */
+  reserved?: ReadonlySet<string>;
+  timeoutMs?: number;
+  stuckMs?: number;
+  /**
+   * Which files the user allowed, by name and the hash they had (see approval.ts), read at each
+   * reload. Without it every file runs; with it, only the files that are in it as they are now.
+   */
+  approved?: () => Record<string, string>;
+}
 
 interface Pending {
   resolve: (result: string | ToolResult) => void;
@@ -40,12 +56,20 @@ class ToolFile {
   private ready: Promise<void> | undefined;
   private nextId = 0;
   private readonly pending = new Map<number, Pending>();
+  private heartbeat: ReturnType<typeof setInterval> | undefined;
+  private lastPong = 0;
+  private startedAt = 0;
+  private closed = false;
 
   constructor(
     readonly path: string,
+    private readonly root: string,
     /** What the file was when this worker started: a different one is a different file. */
     readonly hash: string,
+    /** The hash of every file of the folder: what the worker may load. */
+    private readonly files: Record<string, string>,
     private readonly timeoutMs: number,
+    private readonly stuckMs: number,
   ) {}
 
   /** Starts a worker and waits until it says what the file gives. */
@@ -53,6 +77,7 @@ class ToolFile {
     if (this.ready) return this.ready;
     const worker = new Worker(new URL("./worker.ts", import.meta.url));
     this.worker = worker;
+    this.startedAt = Date.now();
     const ready = new Promise<void>((done, fail) => {
       const timer = setTimeout(() => {
         this.stop(`took longer than ${LOAD_TIMEOUT_MS / 1000}s to load`);
@@ -61,10 +86,14 @@ class ToolFile {
       worker.onmessage = (event: MessageEvent<FromWorker>): void => {
         const message = event.data;
         switch (message.type) {
+          case "pong":
+            this.lastPong = Date.now();
+            return;
           case "ready":
             clearTimeout(timer);
             this.tools = message.tools;
             this.error = message.problems.length > 0 ? message.problems.join("; ") : undefined;
+            this.watch(worker);
             done();
             return;
           case "failed-load":
@@ -83,20 +112,35 @@ class ToolFile {
       worker.onerror = (event: ErrorEvent): void => {
         clearTimeout(timer);
         const why = `crashed: ${event.message}`;
-        if (this.worker === worker) this.stop(why);
+        if (this.worker === worker) this.revive(why);
         fail(new Error(why));
       };
       worker.addEventListener("close", () => {
         clearTimeout(timer);
-        if (this.worker === worker) this.stop("its worker ended");
+        if (this.worker === worker) this.revive("its worker ended");
         fail(new Error("its worker ended"));
       });
     });
     // A start that failed is asked again by the next call, not remembered.
     ready.catch(() => undefined);
     this.ready = ready;
-    this.post({ type: "load", path: this.path });
+    this.post({ type: "load", path: this.path, root: this.root, files: this.files });
     return ready;
+  }
+
+  /** Pings the loaded worker; one that stops answering is stuck in a loop and is started over. */
+  private watch(worker: Worker): void {
+    clearInterval(this.heartbeat);
+    this.lastPong = Date.now();
+    const every = Math.max(10, Math.floor(this.stuckMs / 4));
+    this.heartbeat = setInterval(() => {
+      if (this.worker !== worker) return;
+      if (Date.now() - this.lastPong > this.stuckMs) {
+        this.revive(`stopped answering for ${this.stuckMs / 1000}s (a busy loop?)`);
+      } else {
+        this.post({ type: "ping" });
+      }
+    }, every);
   }
 
   private post(message: ToWorker): void {
@@ -117,12 +161,24 @@ class ToolFile {
     await this.start();
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
+      // The call fails; the worker, and what it holds, goes on. A late answer is dropped.
       const timer = setTimeout(() => {
-        this.stop(`${name} took longer than ${this.timeoutMs / 1000}s`);
+        this.pending.delete(id);
+        reject(new Error(`${name} took longer than ${this.timeoutMs / 1000}s`));
       }, this.timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       this.post({ type: "call", id, name, args });
     });
+  }
+
+  /**
+   * Ends a worker that crashed or got stuck and, unless it did so right after it started (it
+   * would only do it again), starts a new one at once, so a file that watches something goes on.
+   */
+  private revive(why: string): void {
+    const quick = Date.now() - this.startedAt < this.stuckMs;
+    this.stop(why);
+    if (!this.closed && !quick) void this.start().catch(() => undefined);
   }
 
   /** Ends the worker; every call it still had fails with `why`. The next call starts a new one. */
@@ -130,12 +186,19 @@ class ToolFile {
     const worker = this.worker;
     this.worker = undefined;
     this.ready = undefined;
+    clearInterval(this.heartbeat);
     worker?.terminate();
     for (const [id, call] of this.pending) {
       clearTimeout(call.timer);
       call.reject(new Error(`${why}; the tool's worker was stopped`));
       this.pending.delete(id);
     }
+  }
+
+  /** Ends the worker for good: the file is gone, changed or the service stops. */
+  close(why: string): void {
+    this.closed = true;
+    this.stop(why);
   }
 }
 
@@ -145,14 +208,7 @@ export class ToolFiles {
 
   constructor(
     private readonly dir: string,
-    /** Names the service gives its own tools: a file may not use them. */
-    private readonly reserved: ReadonlySet<string> = new Set(),
-    private readonly timeoutMs = CALL_TIMEOUT_MS,
-    /**
-     * Which files the user allowed, by name and the hash they had (see approval.ts), read at each
-     * reload. Without it every file runs; with it, only the files that are in it as they are now.
-     */
-    private readonly approved?: () => Record<string, string>,
+    private readonly options: ToolFilesOptions = {},
   ) {}
 
   /**
@@ -161,20 +217,21 @@ export class ToolFiles {
    * now, loses it.
    */
   async reload(): Promise<Loaded> {
-    const prints = fingerprint(this.dir);
-    const allowed = this.approved?.();
+    const files = manifest(this.dir);
+    const prints = fingerprint(this.dir, files);
+    const allowed = this.options.approved?.();
     const names = Object.keys(prints);
     const running = names.filter((name) => allowed === undefined || allowed[name] === prints[name]);
     const wanted = new Set(running);
     for (const [name, file] of this.files) {
       if (wanted.has(name)) continue;
-      file.stop("the file is gone, or not allowed as it is");
+      file.close("the file is gone, or not allowed as it is");
       this.files.delete(name);
     }
-    await Promise.all(running.map((name) => this.refresh(name, prints[name] ?? "")));
+    await Promise.all(running.map((name) => this.refresh(name, prints[name] ?? "", files)));
 
     const out: Loaded = { tools: [], files: [] };
-    const taken = new Set(this.reserved);
+    const taken = new Set(this.options.reserved);
     for (const name of names) {
       const file = this.files.get(name);
       if (!file) {
@@ -209,19 +266,26 @@ export class ToolFiles {
     return out;
   }
 
-  private async refresh(name: string, hash: string): Promise<void> {
+  private async refresh(name: string, hash: string, files: Record<string, string>): Promise<void> {
     const path = resolve(join(this.dir, name));
     const before = this.files.get(name);
     if (before && before.hash === hash) return;
-    before?.stop("the file changed");
-    const file = new ToolFile(path, hash, this.timeoutMs);
+    before?.close("the file changed");
+    const file = new ToolFile(
+      path,
+      resolve(this.dir),
+      hash,
+      files,
+      this.options.timeoutMs ?? CALL_TIMEOUT_MS,
+      this.options.stuckMs ?? STUCK_MS,
+    );
     this.files.set(name, file);
     await file.start().catch(() => undefined);
   }
 
   /** Ends every worker. */
   close(): void {
-    for (const file of this.files.values()) file.stop("the service is stopping");
+    for (const file of this.files.values()) file.close("the service is stopping");
     this.files.clear();
   }
 }

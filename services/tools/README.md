@@ -1,47 +1,46 @@
 # tools service
 
-The tools the agent wrote for itself (`kind: service`). Each file in `~/.config/neo/tools/` (`NEO_TOOLS_DIR` to move it) is a tool, or an array of them, loaded when the file is saved and offered to every agent as `tools.<name>`. The daemon starts it for every kind of work (`NEO_SERVICES=none` to skip; it exits when the daemon does); by hand: `bun run services/tools/main.ts`.
+The tools agents write for themselves (`kind: service`). Each file at the top of a tools folder is a tool, or an array of them, loaded when it is saved and offered to every agent that may see the folder as `<app>.<name>`. The daemon runs one instance per folder (`NEO_SERVICES=none` to skip; each exits when the daemon does); by hand, `bun run services/tools/main.ts` runs `~/.config/neo/tools` with every file allowed.
 
-**Two scopes.** The files above are yours, for every project. A project can bring its own in `<project>/.neo/tools/`: the daemon runs another instance for it (`--dir <folder> --app tools-<name>-<hash> --approved <file>`), only for sessions inside that project, and each file only as you allowed it.
+| Folder                          | App                       | Seen by                        |
+| ------------------------------- | ------------------------- | ------------------------------ |
+| `~/.config/neo/tools/`          | `tools`                   | every session                  |
+| `<project>/.neo/tools/`         | `tools-<name>-<4 hex>`    | sessions inside the project    |
+| `<dataDir>/session-tools/<id>/` | `tools-session-<8 chars>` | that session and its subagents |
 
-- **By content.** A file is allowed by a hash of its content and of what it may import: everything under the folder that is not a tool file itself (put helpers in a `lib/` subfolder; `node_modules` is not covered). A new file, or one that changed, asks "Run this project's tools?" with the files listed, a changed one marked; an allowed file that did not change is not asked about again, and a refused one is not asked about again until it changes.
-- **When.** At the start of a session's turn in the project, and after every completed tool call, so a file the agent writes asks at once.
-- **At once.** The daemon writes the hashes of the allowed files to the `--approved` file; the service watches it and the folder, and runs a file only while its hash is there. A file allowed mid-session starts within a moment, one that changed stops (`status` says "changed since the user approved it"), with no restart.
-- **Off.** `/settings project-tools off` (on by default): nothing asks and every project instance stops.
+A session's folder is deleted with the session. `/settings project-tools off` stops the projects' folders.
+
+- **Every file runs only once you allowed it, as it is.** A file is allowed by a hash of its content and of the other files of its folder. A new or changed file asks ("Run your tools?" / "this project's" / "this session's") after the tool call that wrote it, or at the next turn. The daemon writes the hashes you allowed to the `--approved` file; the service watches it and starts or stops a file within a moment.
+- **It may import only built-ins and its folder.** Helpers go in a subfolder (`lib/`). Every module a worker loads is checked against the hash you allowed, so what runs is what you approved. What a tool spawns or reads at call time is not covered.
+- **A worker thread for each file.** A slow call fails after a minute and the worker goes on, keeping its module state (a watcher, a child process). A worker that stops answering pings for 10 s (a busy loop) or crashes is restarted with fresh state. It is not a sandbox.
+- **Reloaded on save** (250 ms after the last change). A file that did not change keeps its worker; the tool list is replaced with a `tools/list_changed`.
+- **One failure per file.** A file that does not load, has no default export or has an invalid tool gives no tools and an entry in `status`. A name already taken, or `status`, is left out. A schema that is not an object's is refused.
 
 ```ts
-// ~/.config/neo/tools/progress.ts
+// a session's folder: follow one deploy
 export default {
-  name: "progress",
-  description: "How far a download is, in percent of its size on disk",
-  inputSchema: { type: "object", properties: { file: { type: "string" } }, required: ["file"] },
-  async handler({ file }) {
-    const percent = Math.min(100, Math.round((Bun.file(String(file)).size / 1_000_000) * 100));
-    return { content: [{ type: "text", text: `${percent}%` }], structuredContent: { percent } };
+  name: "deploy_status",
+  description: "State of a GitHub Actions run and whether it is done. Poll it to follow a deploy.",
+  inputSchema: {
+    type: "object",
+    properties: { repo: { type: "string" }, run: { type: "string" } },
+    required: ["repo", "run"],
+  },
+  async handler({ repo, run }) {
+    const r = await Bun.$`gh run view ${run} -R ${repo} --json status,conclusion`.json();
+    return {
+      content: [{ type: "text", text: r.status }],
+      structuredContent: { done: r.status === "completed" },
+    };
   },
 };
 ```
 
-A neoui doc reads it and follows it, asking every few seconds until the work is done:
+A neoui doc follows it, asking every few seconds while someone has the session open, until the work is done:
 
 ```html
-<Query id="dl" hx-get="tools.progress" hx-vals={{ file: "/tmp/big.iso" }}
-       hx-trigger="load, every 5s" until={dl.percent >= 100} default={{ percent: 0 }}/>
-<Progress value={dl.percent} label="Downloading"/>
+<Query id="d" hx-get="tools-session-1a2b3c4d.deploy_status" hx-vals={{ repo: "o/r", run: "4812" }}
+       hx-trigger="load, every 10s" until={d.done} default={{ done: false }}/>
 ```
 
-| Tool     | Does                                                           |
-| -------- | -------------------------------------------------------------- |
-| `status` | Lists the files, the tools each gave, and why a file gave none |
-| the rest | Whatever the files define                                      |
-
-The `writing-tools` skill tells the agent the format; it loads it with `skills_load` before it writes a file.
-
-How it behaves:
-
-- **One file, one failure.** A file that does not load, has no default export, or has an invalid tool (a name that is not letters, digits and `_`, no description, no schema, no handler) gives no tools and an entry in `status`; the others load. A name already taken by another file, or by `status`, is left out.
-- **A worker thread for each file.** A tool that spins, or throws where nobody catches it, costs its file and nothing else. A call that takes longer than a minute fails and its worker is stopped (`terminate`, which ends a busy loop too); one that crashes its worker fails that call. The next call starts a new worker, so a file's variables last between calls and start over after a stop.
-- **Reloaded on save.** Files are watched (250 ms after the last change). A changed or new file gets a new worker, a file that did not change keeps its worker and its state, a removed one loses it, and the tool list is replaced with a `tools/list_changed` to the gateway.
-- **Approval is the write.** The agent writes the file with its Write tool, which asks the user. A tool then runs with the service's rights, for every agent that can call it, so the file is code the user approved, not something a doc or a subagent can create.
-
-Workers keep a bad tool from hanging or crashing the rest; they are not a sandbox: a worker has the service's filesystem and network. There is no `delete` tool, a file is removed with Bash or by the user.
+The `writing-tools` skill of `tools` tells the agent all of this; `skills_load` fills in the session's own folder.

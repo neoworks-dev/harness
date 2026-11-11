@@ -40,7 +40,8 @@ async function start(
   cleanups.push(() => rmSync(approvals, { recursive: true, force: true }));
   const approved = join(approvals, "tools-demo-1234.json");
   const args: string[] = [];
-  if (project) args.push("--dir", dir, "--app", "tools-demo-1234");
+  if (project) args.push("--dir", dir, "--app", "tools-demo-1234", "--scope", "project");
+  else args.push("--sessions", "/data/session-tools");
   if (project === "gated") {
     writeFileSync(approved, "{}");
     args.push("--approved", approved);
@@ -152,6 +153,32 @@ test("started for a project it is that project's app, on the folder it was given
   expect((await call(daemon, "tools-demo-1234.where")).text).toBe("here");
   // The user's own instance is not this one.
   expect((await call(daemon, "tools.status")).isError).toBe(true);
+  // The skill is the user's instance's, for all the folders.
+  const skill = await daemon.gateway.call("skills_load", {
+    app: "tools-demo-1234",
+    name: "writing-tools",
+  });
+  expect(skill.isError).toBe(true);
+});
+
+test("the skill names the folder of the session that loads it", async () => {
+  const { daemon, dir } = await start();
+  await until("tools.status", async () => {
+    const r = await call(daemon, "tools.status").catch(() => undefined);
+    return r?.isError === false ? r : undefined;
+  });
+  const session = daemon.sessions.create({ cwd: dir }).id;
+  const skill = await daemon.gateway.call(
+    "skills_load",
+    { app: "tools", name: "writing-tools" },
+    undefined,
+    session,
+  );
+  const lines: string[] = [];
+  for (const c of skill.content) if (c.type === "text") lines.push(c.text);
+  const text = lines.join("");
+  expect(text).toContain(`/data/session-tools/${session}/`);
+  expect(text).not.toContain("{session}");
 });
 
 test("with approvals a file runs once the daemon writes its hash, and stops when it changes", async () => {

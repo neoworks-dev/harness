@@ -67,10 +67,14 @@ export function metaOf(spec: ToolSpec): ToolMeta {
 
 /** What goes between a worker and the service. */
 export type ToWorker =
-  | { type: "load"; path: string }
-  | { type: "call"; id: number; name: string; args: Record<string, unknown> };
+  /** `files` is the hash of each file of `root` (approval.ts): the only code it may load. */
+  | { type: "load"; path: string; root: string; files: Record<string, string> }
+  | { type: "call"; id: number; name: string; args: Record<string, unknown> }
+  /** Answered at once by a worker whose thread is free: one that does not is stuck. */
+  | { type: "ping" };
 
 export type FromWorker =
+  | { type: "pong" }
   | { type: "ready"; tools: ToolMeta[]; problems: string[] }
   | { type: "failed-load"; message: string }
   | { type: "result"; id: number; result: unknown }

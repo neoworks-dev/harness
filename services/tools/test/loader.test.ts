@@ -27,8 +27,12 @@ function tempDir(): string {
   return dir;
 }
 
-function filesOf(dir: string, reserved: string[] = [], timeoutMs?: number): ToolFiles {
-  const files = new ToolFiles(dir, new Set(reserved), timeoutMs);
+function filesOf(
+  dir: string,
+  reserved: string[] = [],
+  limits: { timeoutMs?: number; stuckMs?: number } = {},
+): ToolFiles {
+  const files = new ToolFiles(dir, { reserved: new Set(reserved), ...limits });
   open.push(files);
   return files;
 }
@@ -146,21 +150,42 @@ export default {
 });
 
 describe("a tool that misbehaves", () => {
-  test("one that hangs fails after the limit, and the others carry on", async () => {
+  test("a slow call fails after the limit, and its worker goes on with what it holds", async () => {
+    const dir = tempDir();
+    writeFileSync(
+      join(dir, "watch.ts"),
+      `let ticks = 0;
+setInterval(() => ticks++, 10);
+export default [
+  { name: "slow", description: "d", inputSchema: {}, handler: () => new Promise((r) => setTimeout(() => r("late"), 1000)) },
+  { name: "ticks", description: "d", inputSchema: {}, handler: async () => String(ticks) },
+];`,
+    );
+    const { tools } = await filesOf(dir, [], { timeoutMs: 200 }).reload();
+    const before = Number(await byName(tools, "ticks").handler({}));
+    const err = await byName(tools, "slow")
+      .handler({})
+      .catch((e: unknown) => e);
+    expect(String(err)).toContain("took longer than 0.2s");
+    // The same worker: what it started at load still runs.
+    expect(Number(await byName(tools, "ticks").handler({}))).toBeGreaterThan(before);
+  });
+
+  test("one that spins stops answering, is ended, and the others carry on", async () => {
     const dir = tempDir();
     writeFileSync(
       join(dir, "hang.ts"),
       `export default { name: "hang", description: "d", inputSchema: {}, handler: () => { while (true) {} } };`,
     );
     writeFileSync(join(dir, "fine.ts"), tool("fine"));
-    const { tools } = await filesOf(dir, [], 300).reload();
+    const { tools } = await filesOf(dir, [], { stuckMs: 300 }).reload();
     const started = Date.now();
     const err = await byName(tools, "hang")
       .handler({})
       .catch((e: unknown) => e);
-    expect(String(err)).toContain("took longer than 0.3s");
+    expect(String(err)).toContain("stopped answering");
     expect(Date.now() - started).toBeLessThan(3000);
-    // The service was never blocked, and the hung file starts again on its next call.
+    // The service was never blocked.
     expect(await byName(tools, "fine").handler({})).toBe("ok");
   });
 
@@ -223,7 +248,7 @@ describe("files the user allowed", () => {
 export default { name: "talk", description: "d", inputSchema: {}, handler: async () => say() };`,
     );
     const allowed: Record<string, string> = {};
-    const files = new ToolFiles(dir, new Set(), undefined, () => allowed);
+    const files = new ToolFiles(dir, { approved: () => allowed });
     open.push(files);
     return { dir, allowed, files, write };
   }
@@ -277,6 +302,32 @@ export default { name: "talk", description: "d", inputSchema: {}, handler: async
     expect(await byName((await files.reload()).tools, "talk").handler({})).toBe("one");
     writeFileSync(join(dir, "lib", "say.ts"), `export const say = () => "two";`);
     expect(await byName((await files.reload()).tools, "talk").handler({})).toBe("two");
+  });
+});
+
+describe("what a tool file may import", () => {
+  test("built-ins and the files of its folder, nothing outside it", async () => {
+    const root = tempDir();
+    const dir = join(root, "tools");
+    mkdirSync(join(dir, "lib"), { recursive: true });
+    writeFileSync(join(root, "outside.ts"), `export const v = "outside";`);
+    writeFileSync(join(dir, "lib", "in.ts"), `export const v = "in";`);
+    writeFileSync(
+      join(dir, "ok.ts"),
+      `import { v } from "./lib/in.ts";
+import { join } from "node:path";
+export default { name: "ok", description: "d", inputSchema: {}, handler: async () => v + join("a", "b") };`,
+    );
+    // Approving ok.ts says nothing of ../outside.ts, which could change at any time.
+    writeFileSync(
+      join(dir, "out.ts"),
+      `import { v } from "../outside.ts";
+export default { name: "out", description: "d", inputSchema: {}, handler: async () => v };`,
+    );
+    const { tools, files } = await filesOf(dir).reload();
+    expect(await byName(tools, "ok").handler({})).toBe("ina/b");
+    expect(tools.map((t) => t.name)).toEqual(["ok"]);
+    expect(files.find((f) => f.file === "out.ts")?.error).toContain("outside the tools folder");
   });
 });
 

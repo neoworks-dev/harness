@@ -66,6 +66,7 @@ export async function startTestDaemon(
     log: options.log ?? silentLogger,
     port: 0,
     defaultCwd: dir,
+    toolsDir: join(dir, "tools"),
     guests: options.guests,
     neo: options.neo,
     accounts: options.accounts,

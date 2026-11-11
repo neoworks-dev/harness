@@ -261,7 +261,7 @@ export class Gateway {
       case "skills_load":
         if (typeof args.app !== "string") return text("skills_load: app is required", true);
         if (typeof args.name !== "string") return text("skills_load: name is required", true);
-        return this.loadSkill(args.app, args.name);
+        return this.loadSkill(args.app, args.name, session);
       case "todos":
         if (!this.options.todos || session === undefined) {
           return text("There is no shared todo list here.", true);
@@ -399,14 +399,21 @@ export class Gateway {
     return `Invalid arguments for ${connector.app}.${tool.name}: ${errors}. Input schema: ${JSON.stringify(tool.inputSchema)}`;
   }
 
-  /** An open app's skill, its text; an unknown one says which there are. */
-  private loadSkill(app: string, name: string): CallToolResult {
+  /**
+   * An open app's skill, its text; an unknown one says which there are. `{session}` in the text
+   * is the id of the session that loads it (the tools service names the session's folder so).
+   */
+  private loadSkill(app: string, name: string, session?: string): CallToolResult {
     const connector = this.registry.connector(app);
-    if (!connector) return text(`No connector named "${app}". Known: ${this.knownApps()}.`, true);
+    if (!connector || this.hidden(app, session)) {
+      return text(`No connector named "${app}". Known: ${this.knownApps(session)}.`, true);
+    }
     if (!this.registry.isOpen(app)) return text(closedMessage(connector), true);
     const skills = connector.skills ?? [];
     const skill = skills.find((s) => s.name === name);
-    if (skill) return text(skill.text);
+    if (skill) {
+      return text(session === undefined ? skill.text : skill.text.replaceAll("{session}", session));
+    }
     const known = skills.map((s) => s.name).join(", ");
     return text(
       known === ""

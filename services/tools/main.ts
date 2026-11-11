@@ -1,15 +1,15 @@
 // The tools service: the tools the agent wrote for itself. Each file of a tools folder is a tool
-// (or several), loaded when it is saved and offered to the agents as <app>.<name>.
-//   bun run services/tools/main.ts                          the user's: ~/.config/neo/tools, app "tools"
-//   bun run services/tools/main.ts --dir D --app A          a project's, started by the daemon once
-//                                                           the user allowed it (see docs/design.md)
+// (or several), loaded when it is saved and offered to the agents as <app>.<name>. The daemon
+// runs one instance for each folder (see daemon/src/tool-folders.ts and docs/design.md):
+//   --dir D --app A --scope user|project|session --approved F [--sessions S]
+// By hand, with no arguments: ~/.config/neo/tools as app "tools", every file running.
 import { mkdirSync, readFileSync, watch } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { connect, createToolServer, daemonJsonAddress } from "@neoworks-dev/neo-sdk";
 import type { ToolSpec } from "@neoworks-dev/neo-sdk";
 import { neoConfigDir } from "@neoworks-dev/neo/mcp-config";
 import { type Loaded, ToolFiles } from "./src/loader.ts";
-import { writingTools } from "./src/skill.ts";
+import { type Scope, writingTools } from "./src/skill.ts";
 
 const log = (line: string): void => {
   process.stderr.write(`tools: ${line}\n`);
@@ -21,19 +21,21 @@ function option(name: string): string | undefined {
   return at === -1 ? undefined : process.argv[at + 1];
 }
 
-const projectDir = option("dir");
 const app = option("app") ?? "tools";
+const given = option("scope");
+const scope: Scope = given === "project" || given === "session" ? given : "user";
 function toolsDir(): string {
-  if (projectDir !== undefined) return projectDir;
+  const given = option("dir");
+  if (given !== undefined) return given;
   if (process.env.NEO_TOOLS_DIR) return process.env.NEO_TOOLS_DIR;
   return join(neoConfigDir(), "tools");
 }
 const dir = toolsDir();
-// The user's folder is made for them; a project's is theirs to have made.
-if (projectDir === undefined) mkdirSync(dir, { recursive: true });
+// The user's folder is made for them; a project's or a session's is made by whoever writes to it.
+if (scope === "user") mkdirSync(dir, { recursive: true });
 
-// A project's tools run only as the user allowed them: the daemon keeps the hash of each allowed
-// file in this file (see src/approval.ts). Without it every file runs, as in the user's own folder.
+// The files run only as the user allowed them: the daemon keeps the hash of each allowed file in
+// this file (see src/approval.ts). Without it (by hand) every file runs.
 const approvedFile = option("approved");
 let approved: Record<string, string> = {};
 function readApproved(): Record<string, string> {
@@ -53,12 +55,10 @@ function readApproved(): Record<string, string> {
 }
 
 let loaded: Loaded = { tools: [], files: [] };
-const files = new ToolFiles(
-  dir,
-  new Set(["status"]),
-  undefined,
-  approvedFile === undefined ? undefined : readApproved,
-);
+const files = new ToolFiles(dir, {
+  reserved: new Set(["status"]),
+  ...(approvedFile !== undefined && { approved: readApproved }),
+});
 
 const status: ToolSpec = {
   name: "status",
@@ -77,12 +77,20 @@ const status: ToolSpec = {
   },
 };
 
-const scope = projectDir === undefined ? "yours, for every project" : "this project's";
+const whose = {
+  user: "yours, for every session",
+  project: "this project's",
+  session: "this session's",
+}[scope];
+const sessions = option("sessions");
+// One skill for all three folders, from the instance every session sees.
+const skills = [];
+if (scope === "user") skills.push(writingTools(dir, sessions));
 const tools = await createToolServer({
   name: app,
-  instructions: `Tools the agent wrote for itself (${scope}): one file each in ${dir}. Load the writing-tools skill before writing one.`,
+  instructions: `Tools the agent wrote for itself (${whose}): one file each in ${dir}. Load the writing-tools skill of "tools" before writing one.`,
   tools: [status],
-  skills: [writingTools(dir, app, projectDir !== undefined)],
+  skills,
 });
 
 async function reload(): Promise<void> {
@@ -119,8 +127,8 @@ const neo = await connect({
   presence: {
     app,
     kind: "service",
-    title: projectDir === undefined ? "Your tools" : "Project tools",
-    description: `Tools the agent wrote for itself (${scope}): a file in ${dir} is a tool, loaded when it is saved.`,
+    title: { user: "Your tools", project: "Project tools", session: "Session tools" }[scope],
+    description: `Tools the agent wrote for itself (${whose}): a file in ${dir} is a tool, loaded when it is saved.`,
     open: true,
     mcp: tools.endpoint,
     launch: {
