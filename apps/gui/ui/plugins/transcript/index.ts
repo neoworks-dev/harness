@@ -20,6 +20,7 @@ import { TranscriptService } from "./service.ts";
 import "./slots.ts";
 import { transcript } from "./state.svelte.ts";
 import StoppedRow from "./StoppedRow.svelte";
+import { docNav } from "./docnav.svelte.ts";
 import ThoughtItem from "./ThoughtItem.svelte";
 import { timeline } from "./timeline.svelte.ts";
 import ToolItem from "./ToolItem.svelte";
@@ -29,9 +30,9 @@ import WorkingRow from "./WorkingRow.svelte";
 
 export const transcriptPane = {
   name: "transcript",
-  inject: ["slots", "daemon", "keymap", "commands", "viewer"],
+  inject: ["slots", "daemon", "keymap", "keyboard", "commands", "viewer"],
   apply(ctx: Context) {
-    const { slots, daemon, keymap, commands } = ctx;
+    const { slots, daemon, keymap, keyboard, commands } = ctx;
     ctx.plugin(TranscriptService);
     timeline.follow(daemon);
 
@@ -77,6 +78,16 @@ export const transcriptPane = {
     const toggleThoughts = (): void => {
       transcript.showThoughts = !transcript.showThoughts;
     };
+    // Ctrl-P into the latest doc with fields or buttons, after the composer's own Ctrl-P (a
+    // question put aside); Ctrl-N, while in one, to a newer doc and back to the input.
+    keyboard.claim(() => docNav.active !== undefined);
+    keymap.bind("ctrl-p", () => docNav.step(-1), { priority: -1 });
+    keymap.bind("ctrl-n", () => docNav.step(1), { priority: 1 });
+    keymap.bind("escape", () => {
+      if (docNav.active === undefined) return false;
+      docNav.leave();
+    }, { priority: 1 });
+
     keymap.bind("ctrl-o", toggleExpanded);
     keymap.bind("ctrl-t", toggleThoughts);
     commands.register({

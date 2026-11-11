@@ -38,7 +38,10 @@
   function onkey(event: KeyEvent): void {
     const by = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[event.key];
     if (by === undefined) return;
-    choose(pick(options, value, by));
+    const to = pick(options, value, by);
+    // Up or Down past the first or last option goes on through the doc.
+    if (to === value && (event.key === "ArrowUp" || event.key === "ArrowDown")) return;
+    choose(to);
     event.preventDefault();
   }
 </script>

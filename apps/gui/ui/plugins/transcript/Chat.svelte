@@ -6,6 +6,7 @@
   import { List } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
+  import { docNav } from "./docnav.svelte.ts";
   import { opened } from "./opened.svelte.ts";
   import { buildRows, splitMessages, type Row } from "./rows.ts";
   import { transcript } from "./state.svelte.ts";
@@ -24,7 +25,16 @@
     })),
   );
 
-  let list: { scrollToIndex(index: number, options: { align: "end" }): void } | undefined = $state();
+  let list: { scrollToIndex(index: number, options: { align: "end" | "nearest" }): void } | undefined = $state();
+
+  // Ctrl-P finds its docs in these rows.
+  $effect(() =>
+    docNav.attach({
+      session: () => daemon.sessionId,
+      rows: () => rows,
+      reveal: (index) => list?.scrollToIndex(index, { align: "nearest" }),
+    }),
+  );
 
   // `stickToEnd` follows new rows only once the list is at its end, which a session that has
   // just been opened (all its items at once) never is: start such a chat at its end.

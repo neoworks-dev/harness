@@ -20,6 +20,8 @@
     ["Ctrl-R", "GitHub"],
     ["Ctrl-D", "the diff and files"],
     ["Ctrl-N", "new session"],
+    ["Ctrl-P", "into the latest UI with fields or buttons; again for older ones, Ctrl-N newer"],
+    ["In a UI: arrows, Tab", "move through it; Esc back to the input"],
     ["Esc", "close what is open, then cancel the turn"],
     ["Ctrl-C twice", "quit; the session keeps running"],
     ["On a question: Left, Right, Enter, Tab", "choose, answer, add a note (1-9 answers directly)"],

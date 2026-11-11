@@ -48,12 +48,17 @@
   }));
   provideDoc(session);
 
+  /** Keys that move through the doc, and which way. The arrows only when the part didn't use them. */
+  const MOVES: Record<string, 1 | -1> = { ArrowUp: -1, ArrowLeft: -1, ArrowDown: 1, ArrowRight: 1 };
+
   function key(event: KeyEvent): void {
-    if (event.key === "Tab" && !event.ctrl && !event.alt && !event.meta) {
-      if (view.move(ui.root, event.shift ? -1 : 1)) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
+    if (event.ctrl || event.alt || event.meta) return;
+    let by: 1 | -1 | undefined;
+    if (event.key === "Tab") by = event.shift ? -1 : 1;
+    else if (!event.shift && !(event as { defaultPrevented?: boolean }).defaultPrevented) by = MOVES[event.key];
+    if (by !== undefined && view.move(ui.root, by)) {
+      event.preventDefault();
+      event.stopPropagation();
     }
   }
 </script>

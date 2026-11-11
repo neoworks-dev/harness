@@ -16,10 +16,19 @@ export class DocView {
   /** The item a focused checkbox or switch group has its cursor on. */
   cursors = $state<Record<string, number>>({});
   held = $state<Record<string, Held>>({});
-  /** The id of what has the keyboard (a key or a path), or nothing. */
-  focus = $state<string>();
+  private focused = $state<string>();
   /** What can be focused now, by id: set while it is drawn. */
   private handles = new Map<string, () => void>();
+
+  /** The id of what has the keyboard (a key or a path), or nothing. */
+  get focus(): string | undefined {
+    return this.focused;
+  }
+
+  set focus(id: string | undefined) {
+    this.focused = id;
+    if (id === undefined) for (const listener of blurListeners) listener(this);
+  }
 
   tab(path: string): number {
     return this.tabs[path] ?? 0;
@@ -66,6 +75,22 @@ export class DocView {
     const next = neighbour(focusOrder(root, this), this.focus, by, (id) => this.handles.has(id));
     return next !== undefined && this.take(next);
   }
+
+  /** Gives the keyboard to the first thing in drawing order that is drawn; false when none is. */
+  first(root: UiNode | undefined): boolean {
+    if (root === undefined) return false;
+    const next = neighbour(focusOrder(root, this), undefined, 1, (id) => this.handles.has(id));
+    return next !== undefined && this.take(next);
+  }
+}
+
+type BlurListener = (view: DocView) => void;
+const blurListeners = new Set<BlurListener>();
+
+/** Hears every doc whose keyboard focus went (to another part of it, too); returns the call that stops it. */
+export function onDocBlur(listener: BlurListener): () => void {
+  blurListeners.add(listener);
+  return () => blurListeners.delete(listener);
 }
 
 const views = new Map<string, DocView>();

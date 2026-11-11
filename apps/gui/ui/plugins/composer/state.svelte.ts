@@ -380,9 +380,12 @@ class Composer {
     void this.services?.daemon.action(prompt.ref, button.action, args);
   }
 
-  /** Brings back the questions put aside. */
-  reopenPrompts(): void {
+  /** Brings back the questions put aside; false when that brought none back. */
+  reopenPrompts(): boolean {
+    const before = this.prompt?.ref;
     this.dismissed = new Set();
+    const after = this.prompt?.ref;
+    return after !== undefined && after !== before;
   }
 
   // ---- Esc and Ctrl-C ----

@@ -73,6 +73,10 @@
       if (!area || edge === true) {
         if (doc.view.move(doc.rootNode, event.key === "ArrowDown" ? 1 : -1)) event.preventDefault();
       }
+      // Moved already, or the cursor's: not the doc's to move on.
+      event.stopPropagation();
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.stopPropagation();
     }
   }
 </script>

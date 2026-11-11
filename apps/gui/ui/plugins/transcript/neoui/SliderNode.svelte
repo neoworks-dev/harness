@@ -33,8 +33,9 @@
   }
 
   function key_(event: KeyEvent): void {
-    if (event.key === "ArrowLeft" || event.key === "ArrowDown") set(snap(value - step, min, max, step), false);
-    else if (event.key === "ArrowRight" || event.key === "ArrowUp") set(snap(value + step, min, max, step), false);
+    // Up and Down are left to move through the doc.
+    if (event.key === "ArrowLeft") set(snap(value - step, min, max, step), false);
+    else if (event.key === "ArrowRight") set(snap(value + step, min, max, step), false);
     else if (event.key === "Home") set(min, false);
     else if (event.key === "End") set(max, false);
     else return;
