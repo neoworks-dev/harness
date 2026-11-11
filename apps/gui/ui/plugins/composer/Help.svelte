@@ -19,6 +19,7 @@
     ["Ctrl-X", "agents list"],
     ["Ctrl-R", "GitHub"],
     ["Ctrl-D", "the diff and files"],
+    ["Ctrl-`", "the terminal: the agent's commands and their output"],
     ["Ctrl-N", "new session"],
     ["Ctrl-P", "into the latest UI with fields or buttons; again for older ones, Ctrl-N newer"],
     ["In a UI: arrows, Tab", "move through it; Esc back to the input"],
