@@ -6236,6 +6236,7 @@ dependencies = [
 name = "svelte_gpui_host"
 version = "0.0.1"
 dependencies = [
+ "ashpd 0.11.1",
  "futures",
  "gpui",
  "image",

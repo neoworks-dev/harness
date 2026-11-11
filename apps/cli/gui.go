@@ -15,6 +15,38 @@ import (
 // guiBundle is the desktop app's UI bundle relative to the repo root (bun apps/gui/build.mjs).
 var guiBundle = filepath.Join("apps", "gui", "dist", "gui.js")
 
+// webBuild is the same UI built for a browser tab, relative to the repo root (bun apps/gui/build.mjs --web).
+var webBuild = filepath.Join("apps", "gui", "dist", "web")
+
+// guiTarget is what `neo gui` and `neo web` do differently: both start neo-gui on a build of the UI.
+type guiTarget struct {
+	command string
+	// built is a file of the build, relative to the repo root; the build is missing without it.
+	built string
+	// missing says what to run when it is.
+	missing string
+	// argv is neo-gui's command line, given the built file's path.
+	argv func(gui, built string) []string
+}
+
+var (
+	// The window: `neo-gui --bundle gui.js`.
+	desktopTarget = guiTarget{
+		command: "gui",
+		built:   guiBundle,
+		missing: "the desktop app's bundle is missing (%s): run bun apps/gui/build.mjs, or task build",
+		argv:    func(gui, built string) []string { return []string{gui, "--bundle", built} },
+	}
+	// A browser tab: `neo-gui --web dist/web`, which serves the build, opens the browser on it and
+	// stays running as long as the tab needs it.
+	browserTarget = guiTarget{
+		command: "web",
+		built:   filepath.Join(webBuild, "index.html"),
+		missing: "the desktop app's web build is missing (%s): run bun apps/gui/build.mjs --web",
+		argv:    func(gui, built string) []string { return []string{gui, "--web", filepath.Dir(built)} },
+	}
+)
+
 // errGuiMissing means the desktop app isn't built or installed.
 var errGuiMissing = errors.New("neo-gui isn't built: run task build, or use neo attach")
 
@@ -52,7 +84,18 @@ func guiEnviron(base []string, session string, newSession bool, socket string) [
 // runGui is `neo gui`: start the daemon if needed (saying so only then), then open the desktop
 // app on the session asked for and leave it running on its own, so the terminal is free.
 func runGui(ctx context.Context, args []string, e cliEnv) int {
-	fs, socket := commandFlags("gui", e)
+	return launchGui(ctx, args, e, desktopTarget)
+}
+
+// runWeb is `neo web`: the same app for a browser. It starts the daemon if needed, then neo-gui
+// in web mode, which opens the default browser on the page with the daemon's token in the URL
+// fragment (so it reaches no log or referrer) and keeps serving the page, in the background.
+func runWeb(ctx context.Context, args []string, e cliEnv) int {
+	return launchGui(ctx, args, e, browserTarget)
+}
+
+func launchGui(ctx context.Context, args []string, e cliEnv, target guiTarget) int {
+	fs, socket := commandFlags(target.command, e)
 	session := fs.String("session", "", "open this session (id or prefix)")
 	newSession := fs.Bool("new", false, "start a new session in the current directory")
 	positional, err := parseFlags(fs, args)
@@ -60,7 +103,7 @@ func runGui(ctx context.Context, args []string, e cliEnv) int {
 		return 2
 	}
 	if len(positional) > 0 || (*newSession && *session != "") {
-		fmt.Fprint(e.Stderr, "usage: neo gui [--session ID | --new]\n")
+		fmt.Fprintf(e.Stderr, "usage: neo %s [--session ID | --new]\n", target.command)
 		return 2
 	}
 
@@ -85,9 +128,9 @@ func runGui(ctx context.Context, args []string, e cliEnv) int {
 		fmt.Fprintf(e.Stderr, "neo: %v\n", err)
 		return 1
 	}
-	bundle := filepath.Join(root, guiBundle)
-	if st, err := os.Stat(bundle); err != nil || st.IsDir() {
-		fmt.Fprintf(e.Stderr, "neo: the desktop app's bundle is missing (%s): run bun apps/gui/build.mjs, or task build\n", bundle)
+	built := filepath.Join(root, target.built)
+	if st, err := os.Stat(built); err != nil || st.IsDir() {
+		fmt.Fprintf(e.Stderr, "neo: "+target.missing+"\n", built)
 		return 1
 	}
 
@@ -101,7 +144,7 @@ func runGui(ctx context.Context, args []string, e cliEnv) int {
 		fmt.Fprintf(e.Stdout, "daemon started (pid %d, log %s)\n", pid, logPath)
 	}
 
-	argv := []string{gui, "--bundle", bundle}
+	argv := target.argv(gui, built)
 	env := guiEnviron(e.environ(), *session, *newSession, *socket)
 	spawn := e.Spawn
 	if spawn == nil {

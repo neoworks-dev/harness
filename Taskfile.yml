@@ -61,6 +61,12 @@ tasks:
     cmds:
       - bun apps/gui/build.mjs
 
+  gui:web:
+    desc: Bundle the desktop app's Svelte UI for a browser (apps/gui/dist/web), what `neo web` serves
+    summary: Needs svelte-gpui's browser target (`buildWeb`) checked out next to this repo.
+    cmds:
+      - bun apps/gui/build.mjs --web
+
   shell-widget:install:
     desc: Put neo's Agents widget on the neoshell desktop (for this user)
     summary: Needs neoshell checked out next to this repo, with its SDK `bun link`ed (`cd neoshell/sdk && bun link`).

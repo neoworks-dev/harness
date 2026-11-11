@@ -15,6 +15,19 @@ neo gui --new             # a new session in this directory
 
 `neo gui` starts the daemon if it is not running, opens the window and returns: the terminal is free to use. The window's own output goes to `gui.log` in the data directory. `NEO_GUI` names another `neo-gui` binary.
 
+## In a browser
+
+```sh
+task gui:web              # once, and after changing the UI: apps/gui/dist/web
+neo web                   # the same arguments as neo gui
+```
+
+The same UI, from the same code, in a tab of your default browser. `neo web` starts the daemon if needed, then `neo-gui --web`, which opens no window: it serves the web build on a loopback port of its own and runs the same Rust commands as the window (git, GitHub, editors) for the page, over a WebSocket. It opens the browser on `http://127.0.0.1:<port>/#token=…`: the token that lets the page in is in the URL's fragment, which no server log or referrer sees, and the page keeps it for the tab. The page talks to the daemon directly, which accepts browser pages only from loopback addresses.
+
+Closing the tab ends nothing. A daemon restart is followed the way the window follows it: the host reads the daemon's new address. If `neo-gui --web` itself stops, the tab is cut off for good: run `neo web` again.
+
+What differs from the window: files are not paths in a browser, so the paperclip, a dropped file and a pasted image upload the file to the daemon first and attach the stored copy (folders cannot be dropped). Anything that needs a window of the host, such as the folder picker of "add a project", is not available.
+
 ## What you see
 
 - **Sessions** (left, Ctrl-S shows or hides it). Every session, grouped by project and, under it, by worktree (`<repo>/.worktrees/<name>` or any linked worktree). The newest activity is first. Each shows its title, the lines its edits changed (`+12 −3`), the last thing said and how long ago. The session you are in has a bar in the margin; one that finished while you looked elsewhere has a bold title until you open it, and the header counts them (`3 done`). A session that another one delegated to sits under its parent with `↳`. Press a row to open it. A session is named after the start of its first message, which a model then replaces with a short title; the row's menu has **Regenerate title**, and `/title-model` chooses the model (see the [README](../../README.md#session-titles)).

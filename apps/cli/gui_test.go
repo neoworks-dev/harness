@@ -15,7 +15,7 @@ import (
 
 // guiFixture is a repo with the desktop app's bundle, and an executable standing in for neo-gui.
 type guiFixture struct {
-	root, bundle, gui string
+	root, bundle, web, gui string
 }
 
 func newGuiFixture(t *testing.T) guiFixture {
@@ -28,7 +28,14 @@ func newGuiFixture(t *testing.T) guiFixture {
 	if err := os.WriteFile(bundle, []byte("// bundle"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return guiFixture{root: root, bundle: bundle, gui: writeScript(t, "exit 0")}
+	web := filepath.Join(root, "apps", "gui", "dist", "web", "index.html")
+	if err := os.MkdirAll(filepath.Dir(web), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(web, []byte("<html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return guiFixture{root: root, bundle: bundle, web: web, gui: writeScript(t, "exit 0")}
 }
 
 // spawned is what runGui asked to start.
@@ -61,12 +68,70 @@ func guiEnv(t *testing.T, f guiFixture) *upEnv {
 
 func runGuiWith(t *testing.T, u *upEnv, s *spawned, environ []string, args ...string) int {
 	t.Helper()
+	return runCommandWith(t, "gui", u, s, environ, args...)
+}
+
+func runCommandWith(t *testing.T, command string, u *upEnv, s *spawned, environ []string, args ...string) int {
+	t.Helper()
 	u.stdout.Reset()
 	u.stderr.Reset()
 	e := u.cli()
 	e.Spawn = s.spawn
 	e.Environ = func() []string { return environ }
-	return run(context.Background(), append([]string{"gui"}, args...), e)
+	return run(context.Background(), append([]string{command}, args...), e)
+}
+
+func TestWebStartsTheHostOnTheWebBuildWithTheSameSessionChoice(t *testing.T) {
+	f := newGuiFixture(t)
+	s := &spawned{}
+	u := guiEnv(t, f)
+
+	if code := runCommandWith(t, "web", u, s, []string{"A=1", "NEO_GUI_NEW=1"}, "--session", "s_ab"); code != 0 {
+		t.Fatalf("code %d, stderr %q", code, u.stderr.String())
+	}
+	want := []string{f.gui, "--web", filepath.Dir(f.web)}
+	if s.path != f.gui || !slices.Equal(s.argv, want) {
+		t.Errorf("started %q %q, want %q", s.path, s.argv, want)
+	}
+	if !slices.Equal(s.env, []string{"A=1", "NEO_GUI_SESSION=s_ab"}) {
+		t.Errorf("env %q", s.env)
+	}
+}
+
+func TestWebArgumentsAreChecked(t *testing.T) {
+	f := newGuiFixture(t)
+	s := &spawned{}
+	u := guiEnv(t, f)
+	for _, args := range [][]string{{"--new", "--session", "s_a"}, {"s_a"}} {
+		if code := runCommandWith(t, "web", u, s, nil, args...); code != 2 || !strings.Contains(u.stderr.String(), "usage: neo web") {
+			t.Errorf("%q: code %d, stderr %q", args, code, u.stderr.String())
+		}
+	}
+	if s.calls != 0 {
+		t.Errorf("a bad command line started the host %d times", s.calls)
+	}
+	if !strings.Contains(usage, "\n  web ") {
+		t.Error("usage does not list web")
+	}
+}
+
+func TestWebSaysWhenTheWebBuildIsMissingAndStartsNothing(t *testing.T) {
+	f := newGuiFixture(t)
+	s := &spawned{}
+	u := guiEnv(t, f)
+	if err := os.Remove(f.web); err != nil {
+		t.Fatal(err)
+	}
+	if code := runCommandWith(t, "web", u, s, nil); code != 1 || !strings.Contains(u.stderr.String(), "build.mjs --web") {
+		t.Errorf("code %d, stderr %q", code, u.stderr.String())
+	}
+	if s.calls != 0 {
+		t.Error("the host was started")
+	}
+	// The window's own bundle does not stand in for it.
+	if code := runGuiWith(t, u, s, nil); code != 0 {
+		t.Errorf("neo gui: code %d, stderr %q", code, u.stderr.String())
+	}
 }
 
 func TestGuiStartsTheWindowOnTheBundleAndLeavesTheTerminalFree(t *testing.T) {

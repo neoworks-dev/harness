@@ -15,7 +15,9 @@ serde_json = "1"
 neo-github = { path = "../../crates/github" }
 neo-sdk = { path = "../../sdk-rs" }
 # svelte-gpui is checked out next to this repo.
-svelte_gpui_host = { path = "../../../svelte-gpui/host" }
+# TEMPORARY: the web-target worktree has the browser target (`serve`). When that branch is merged,
+# this goes back to "../../../svelte-gpui/host".
+svelte_gpui_host = { path = "../../../svelte-gpui/.worktrees/web-target/host" }
 
 [dev-dependencies]
 neo-github = { path = "../../crates/github", features = ["fixtures"] }

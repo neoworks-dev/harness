@@ -51,6 +51,8 @@ commands:
   gui [--session ID | --new]    open the desktop app (neo-gui) on the agent's
                                 session, a given one, or a new one in this
                                 directory; the terminal stays free
+  web [--session ID | --new]    the same app in the default browser (neo-gui serves
+                                it on a loopback port and opens the page)
   up                            make sure the daemon is running; start it in the
                                 background if not (log: daemon.log in the data dir)
   down                          stop the daemon
@@ -86,6 +88,8 @@ func run(ctx context.Context, args []string, e cliEnv) int {
 	switch cmd {
 	case "gui":
 		return runGui(ctx, args, e)
+	case "web":
+		return runWeb(ctx, args, e)
 	case "up":
 		return runUp(ctx, args, e)
 	case "down":

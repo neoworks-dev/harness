@@ -30,6 +30,7 @@ The UI language, [neoui](docs/neoui.md), and the search engines, [websearch](../
 task build                 # bin/neo, bin/neo-term, bin/neo-gui
 bin/neo                  # in a terminal: starts the daemon if needed, then opens the terminal app (neo-term)
 bin/neo gui              # the desktop app (apps/gui) in its own window, terminal stays free: [--session ID | --new]
+bin/neo web              # the same app in your default browser (needs task gui:web once): [--session ID | --new]
 bin/neo up               # make sure the daemon runs; starts it in the background (log: <data dir>/daemon.log)
 bin/neo down             # stop the daemon (SIGTERM; waits for the socket to close)
 bun run daemon             # alternatively: the daemon in the foreground (Ctrl-C stops it)

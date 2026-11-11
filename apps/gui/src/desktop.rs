@@ -176,7 +176,7 @@ fn open_folder(path: &str) -> Result<(), CommandError> {
 
 /// Opens a web or mail address in the default browser or mail app. Anything else is refused: the
 /// address comes from a model's document.
-fn open_url(url: &str) -> Result<(), CommandError> {
+pub fn open_url(url: &str) -> Result<(), CommandError> {
     let program = if cfg!(target_os = "macos") {
         "open"
     } else if cfg!(windows) {
