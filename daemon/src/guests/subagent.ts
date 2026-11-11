@@ -31,7 +31,7 @@ export interface SubagentOptions {
   requestPermission?: (session: string) => RequestPermission;
   /** What the user chose for neo in this session (model, effort). */
   settings: (session: string) => HarnessSettings;
-  connectors: () => ConnectorSnapshot[];
+  connectors: (session: string) => ConnectorSnapshot[];
   focus: (session: string) => FocusTarget | undefined;
   /** The user's "Show, don't tell." setting, told to each subagent when it changed. */
   showDontTell?: () => ShowDontTellSetting;
@@ -156,7 +156,7 @@ export class NeoSubagents {
     const restore = await this.apply(agentSession, opts);
     if (typeof restore === "string") return { stopReason: "error", error: restore, text: "" };
     const events = agent.told.changes(
-      this.options.connectors(),
+      this.options.connectors(session),
       this.options.focus(session),
       this.options.showDontTell?.(),
     );

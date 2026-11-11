@@ -285,8 +285,14 @@ export class SessionView {
     private readonly only?: string,
     tools?: CallTool,
     apps?: () => AppLibrary,
+    watched?: () => boolean,
   ) {
-    this.docs = new NeoUiDocs((ref) => this.changed(ref), tools, apps);
+    this.docs = new NeoUiDocs((ref) => this.changed(ref), tools, apps, watched);
+  }
+
+  /** The view is dropped: the timers of its neoui docs stop. */
+  dispose(): void {
+    this.docs.dispose();
   }
 
   /** The seq of the last event applied. */

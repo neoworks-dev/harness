@@ -33,6 +33,7 @@ import {
   pluginPrompt,
 } from "@neoworks-dev/neo/plugin-commands";
 import { Asker } from "./asker.ts";
+import { ProjectTools } from "./project-tools.ts";
 import { Commands, DAEMON_COMMANDS } from "./commands.ts";
 import { PluginCommands } from "./plugins.ts";
 import { Login } from "./login.ts";
@@ -115,6 +116,8 @@ export interface Daemon {
   actions: ActionRunner;
   commands: Commands;
   settings: Settings;
+  /** The tools projects bring (.neo/tools): which may run, and who sees them. */
+  projectTools: ProjectTools;
   titles: Titles;
   /** The agents a session can run on (harnesses.list). */
   harnesses: Harnesses;
@@ -176,6 +179,21 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   const asker = new Asker((session, event) => {
     store.append(session, event);
   });
+  const projectTools = new ProjectTools({
+    store,
+    asker,
+    agent: agent.name,
+    log,
+    dataDir: paths.dataDir,
+    enabled: () => settings.projectTools(),
+  });
+  // A tool call may have written a tool file: the user is asked about it at once, not next turn.
+  store.onAppend((record) => {
+    const { event } = record;
+    if (event.type === "tool_call_update" && event.status === "completed") {
+      projectTools.check(record.session);
+    }
+  });
   const permissions = new Permissions({
     asker,
     approvals: (session) => settings.approvals(session),
@@ -204,7 +222,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     },
     cwd: (session) => store.getSession(session)?.cwd ?? options.defaultCwd,
     mcpServers,
-    connectors: () => connectors.snapshot(),
+    connectors: (session) => connectors.snapshot((app) => projectTools.visible(app, session)),
     focus: (session) => focus?.focusOf(session),
     showDontTell,
     settings: (session, guest) => settings.get(session, guest),
@@ -292,7 +310,8 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     defaultCwd: options.defaultCwd,
     resolveAsset: (handle) => assets.resolve(handle),
     log,
-    connectors: () => connectors.snapshot(),
+    connectors: (sessionId) => connectors.snapshot((app) => projectTools.visible(app, sessionId)),
+    turnStarted: (sessionId) => projectTools.check(sessionId),
     focus: (sessionId) => focus?.focusOf(sessionId),
     showDontTell,
     mcpServers: (sessionId) => mcpServers(sessionId),
@@ -375,6 +394,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
   const todos = new Todos(store);
   const gateway = new Gateway(connectors, {
     log,
+    visible: (app, session) => projectTools.visible(app, session),
     // A subagent changes the list as itself, the session's agent as its harness.
     todos: (session, guest, args) => todosTool(todos, session, guest ?? harnessOf(session), args),
     resolveAsset: (handle) => assets.resolve(handle),
@@ -546,6 +566,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     actions,
     commands,
     settings,
+    projectTools,
     titles,
     harnesses,
     mcp: { servers: stdioServers, reload: reloadMcp },

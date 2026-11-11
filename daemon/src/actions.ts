@@ -47,7 +47,7 @@ async function runAppTool(
     status: "in_progress",
     rawInput: args,
   });
-  const result = await gateway.call("tools_call", { name, args });
+  const result = await gateway.call("tools_call", { name, args }, undefined, session);
   const lines: string[] = [];
   for (const c of result.content) if (c.type === "text") lines.push(c.text);
   const text = lines.join("\n");
@@ -88,7 +88,7 @@ export function neoUiTools(parts: Pick<Parts, "store" | "gateway">, session: str
       if (result.isError) throw new Error(result.text);
       return toolData(result);
     }
-    const result = await parts.gateway.call("tools_call", { name, args });
+    const result = await parts.gateway.call("tools_call", { name, args }, undefined, session);
     const lines: string[] = [];
     for (const c of result.content) if (c.type === "text") lines.push(c.text);
     const text = lines.join("\n");

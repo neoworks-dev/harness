@@ -261,6 +261,19 @@ export class Settings {
   }
 
   /**
+   * Whether the tools a project brings (.neo/tools) may run once the user allows them (on until
+   * the user turns it off). Off, none runs and nothing asks.
+   */
+  projectTools(): boolean {
+    return this.store.getMeta(metaKey("daemon", "project_tools")) !== "off";
+  }
+
+  setProjectTools(on: boolean): void {
+    this.store.setMeta(metaKey("daemon", "project_tools"), on ? "on" : "off");
+    this.togglesChanged();
+  }
+
+  /**
    * Whether starting a subagent always asks: not allowed by /approvals auto nor by an earlier
    * "allow for this session" (off until the user turns it on).
    */

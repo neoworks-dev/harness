@@ -10,6 +10,7 @@
     "sdk-ts",
     "renderers/web",
     "services/lsp",
+    "services/tools",
     "apps/gui",
     "apps/shell-widget"
   ],

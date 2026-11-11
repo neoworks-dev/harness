@@ -35,6 +35,12 @@ export interface GatewayOptions {
   models?: (session: string, args: ModelsArgs) => Promise<CallToolResult>;
   /** send_message, wait, and the messages an ACP agent gets with its tool results. */
   messages?: MessageTools;
+  /**
+   * Whether the session may see the connector. False for one that belongs to another project
+   * (its tools are neither found nor callable there); without it every connector is visible.
+   * A call with no session (a bus client's) sees them all.
+   */
+  visible?: (app: string, session: string | undefined) => boolean;
   /** Stores a result a guest gets as text with [result:ref], so views can draw it. */
   recordResult?: (session: string, result: ToolResult) => void;
   /** The file behind an asset:// handle, named in results for guests. */
@@ -178,7 +184,7 @@ export class Gateway {
     switch (name) {
       case "tools_search": {
         if (typeof args.query !== "string") return text("tools_search: query is required", true);
-        const found = this.search(args as unknown as ToolsSearchArgs);
+        const found = this.search(args as unknown as ToolsSearchArgs, session);
         return wantsText === true ? textOnly(found) : found;
       }
       case "tools_call": {
@@ -187,9 +193,11 @@ export class Gateway {
         if (typeof toolArgs === "string") return text(toolArgs, true);
         const call = { name: args.name, args: toolArgs };
         if (wantsText === true && session !== undefined) {
-          return textOnly(this.withRef(session, args.name, await this.callTool(call, signal)));
+          return textOnly(
+            this.withRef(session, args.name, await this.callTool(call, signal, session)),
+          );
         }
-        return this.callTool(call, signal);
+        return this.callTool(call, signal, session);
       }
       case "apps_launch":
         if (typeof args.app !== "string") return text("apps_launch: app is required", true);
@@ -306,14 +314,14 @@ export class Gateway {
     return { ...result, content: [...result.content, { type: "text", text: extra.join("\n") }] };
   }
 
-  private search({ query, app }: ToolsSearchArgs): CallToolResult {
-    const all = this.registry.all();
+  private search({ query, app }: ToolsSearchArgs, session?: string): CallToolResult {
+    const all = this.registry.all().filter(({ connector }) => !this.hidden(connector.app, session));
     if (app !== undefined && !all.some((c) => c.connector.app === app)) {
-      return text(`No connector named "${app}". Known: ${this.knownApps()}.`, true);
+      return text(`No connector named "${app}". Known: ${this.knownApps(session)}.`, true);
     }
     const hits = searchTools(all, query, app);
     if (hits.length === 0) {
-      return text(`No tools match "${query}". Known connectors: ${this.knownApps()}.`);
+      return text(`No tools match "${query}". Known connectors: ${this.knownApps(session)}.`);
     }
     const result = text(formatHits(hits));
     result.structuredContent = {
@@ -332,14 +340,15 @@ export class Gateway {
   private async callTool(
     { name, args = {} }: ToolsCallArgs,
     signal?: AbortSignal,
+    session?: string,
   ): Promise<CallToolResult> {
     const dot = name.indexOf(".");
     const app = dot > 0 ? name.slice(0, dot) : name;
     const toolName = name.slice(dot + 1);
     const connector = this.registry.connector(app);
-    if (dot <= 0 || !connector) {
+    if (dot <= 0 || !connector || this.hidden(app, session)) {
       return text(
-        `Unknown tool "${name}". Tool names look like app.tool; find them with tools_search. Known connectors: ${this.knownApps()}.`,
+        `Unknown tool "${name}". Tool names look like app.tool; find them with tools_search. Known connectors: ${this.knownApps(session)}.`,
         true,
       );
     }
@@ -453,8 +462,13 @@ export class Gateway {
     );
   }
 
-  private knownApps(): string {
-    const all = this.registry.all();
+  /** Whether the session may not see the connector (one that belongs to another project). */
+  private hidden(app: string, session: string | undefined): boolean {
+    return this.options.visible?.(app, session) === false;
+  }
+
+  private knownApps(session?: string): string {
+    const all = this.registry.all().filter(({ connector }) => !this.hidden(connector.app, session));
     if (all.length === 0) return "none";
     return all
       .map(({ connector, open }) => `${connector.app} (${open ? "open" : "closed"})`)

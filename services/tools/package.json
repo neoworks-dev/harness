@@ -1,0 +1,13 @@
+{
+  "name": "@neoworks-dev/neo-tools",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@neoworks-dev/neo": "workspace:*",
+    "@neoworks-dev/neo-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@neoworks-dev/neo-daemon": "workspace:*",
+    "@neoworks/neoui": "link:@neoworks/neoui"
+  }
+}

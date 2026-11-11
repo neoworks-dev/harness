@@ -1,4 +1,4 @@
-// Background services the daemon starts with itself (today: the lsp service), so their tools
+// Background services the daemon starts with itself (the lsp and tools services), so their tools
 // work before any app opens. Each registers like an app over the bus; the daemon only owns the
 // process. NEO_SERVICES=none starts nothing. Services get NEO_DAEMON_PID and exit when that
 // process is gone, so a killed daemon doesn't leave them behind. Which ones run follows what
@@ -14,11 +14,20 @@ const LSP: string[] = [
   join(import.meta.dir, "..", "..", "services", "lsp", "main.ts"),
 ];
 
+const TOOLS: string[] = [
+  process.execPath,
+  "run",
+  join(import.meta.dir, "..", "..", "services", "tools", "main.ts"),
+];
+
 export const DEFAULT_SERVICES: string[][] = [LSP];
 
-/** The services for a kind of work: everything for coding, no language servers otherwise. */
+/**
+ * The services for a kind of work: the tools the agent wrote for itself whatever the work, and
+ * the language servers for coding.
+ */
 export function servicesFor(work: Work): string[][] {
-  const services: string[][] = [];
+  const services: string[][] = [TOOLS];
   if (work === "coding") services.push(...DEFAULT_SERVICES);
   return services;
 }

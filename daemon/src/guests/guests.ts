@@ -134,7 +134,7 @@ export interface GuestManagerOptions {
   cwd: (session: string) => string;
   /** The gateway, with headers that say who calls. */
   mcpServers: (session: string, role: GatewayRole) => McpServer[];
-  connectors: () => ConnectorSnapshot[];
+  connectors: (session: string) => ConnectorSnapshot[];
   focus: (session: string) => FocusTarget | undefined;
   /** The user's "Show, don't tell." setting, told to each adapter when it changed. */
   showDontTell?: () => ShowDontTellSetting;
@@ -1447,7 +1447,7 @@ export class GuestManager {
     if (!command) {
       events.push(
         ...guest.told.changes(
-          this.options.connectors(),
+          this.options.connectors(guest.session),
           this.options.focus(guest.session),
           this.options.showDontTell?.(),
         ),

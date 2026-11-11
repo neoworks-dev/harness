@@ -519,6 +519,20 @@ export class Commands {
         ),
       },
       {
+        id: "project-tools",
+        name: "Run a project's own tools",
+        description:
+          "On: the tool files in a project's .neo/tools run once you allow them, each as it is (changed, they ask again). Off: none runs, nothing asks",
+        ...onOff(
+          () => settings.projectTools(),
+          (on) => settings.setProjectTools(on),
+        ),
+        after: (value) =>
+          value === "on"
+            ? "A project's tools ask the next time its files change or a session works in it."
+            : "The tools projects brought stop now.",
+      },
+      {
         id: "steer",
         name: "Messages reach a working agent at once",
         description:

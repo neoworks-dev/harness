@@ -197,6 +197,35 @@ describe("app templates in neoui", () => {
       items: [{ key: "total", value: "7" }],
     });
   });
+
+  test("a doc that polls asks only while its view is watched, and stops with the view", async () => {
+    let calls = 0;
+    let watched = false;
+    const v = new SessionView(
+      "s",
+      () => ({
+        neoui:
+          '<Card><Query id="p" hx-get="dl.progress" hx-trigger="load, every 1s" default={{ n: 0 }}/><Text>{p.n}</Text></Card>',
+      }),
+      silentLogger,
+      undefined,
+      () => Promise.resolve({ n: ++calls }),
+      undefined,
+      () => watched,
+    );
+    toolEvents({}).forEach((event, i) => v.apply({ session: "s", seq: i + 1, ts: 0, event }));
+    const wait = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 1100));
+    await wait();
+    // Only the ask on load: the ticks found nobody watching.
+    expect(calls).toBe(1);
+    watched = true;
+    await wait();
+    expect(calls).toBeGreaterThan(1);
+    v.dispose();
+    const seen = calls;
+    await wait();
+    expect(calls).toBe(seen);
+  });
 });
 
 describe("using a doc", () => {

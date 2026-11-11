@@ -105,6 +105,17 @@
         "@neoworks-dev/neo-protocol": "workspace:*",
       },
     },
+    "services/tools": {
+      "name": "@neoworks-dev/neo-tools",
+      "dependencies": {
+        "@neoworks-dev/neo": "workspace:*",
+        "@neoworks-dev/neo-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@neoworks-dev/neo-daemon": "workspace:*",
+        "@neoworks/neoui": "link:@neoworks/neoui",
+      },
+    },
   },
   "packages": {
     "@anthropic-ai/sdk": ["@anthropic-ai/sdk@0.129.0", "", { "dependencies": { "json-schema-to-ts": "^3.1.1", "standardwebhooks": "^1.0.0" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-MH7LB20kNpGLUpPTe2OG5XvL/KhX8HUO9XyBaFjgFk6TLS4Xjt0VPIuMKywe7POKKPslX+QxSlVok9e+8kG5Nw=="],
@@ -186,6 +197,8 @@
     "@neoworks-dev/neo-sdk": ["@neoworks-dev/neo-sdk@workspace:sdk-ts"],
 
     "@neoworks-dev/neo-shell-widget": ["@neoworks-dev/neo-shell-widget@workspace:apps/shell-widget"],
+
+    "@neoworks-dev/neo-tools": ["@neoworks-dev/neo-tools@workspace:services/tools"],
 
     "@neoworks/neoshell-sdk": ["@neoworks/neoshell-sdk@link:@neoworks/neoshell-sdk", {}],
 

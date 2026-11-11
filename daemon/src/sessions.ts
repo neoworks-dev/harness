@@ -161,7 +161,7 @@ export interface SessionManagerOptions {
   defaultCwd: string;
   log: Logger;
   /** Open connectors right now; each turn starts by telling the session what changed. */
-  connectors?: () => ConnectorSnapshot[];
+  connectors?: (session: string) => ConnectorSnapshot[];
   /** Where the agent is, if `sessionId` is the current session; announced as focus_changed. */
   focus?: (sessionId: string) => FocusTarget | undefined;
   /** The user's "Show, don't tell." setting; announced as show_dont_tell when it changed. */
@@ -198,6 +198,8 @@ export interface SessionManagerOptions {
   work?: () => Work | undefined;
   /** Called for each new session (it may start on a harness the user chose before). */
   created?: (sessionId: string) => void;
+  /** Called as each turn starts, before the session is told what changed. */
+  turnStarted?: (sessionId: string) => void;
   /**
    * Takes the messages other agents sent the agent of this session (see messages.ts). They
    * reach a running turn as it goes; what is left when it ends, or arrives while the session is
@@ -749,6 +751,7 @@ export class SessionManager {
         harness = now;
         agentSession = await this.agentSession(sessionId, harness);
       }
+      this.options.turnStarted?.(sessionId);
       this.announceConnectors(sessionId, rt);
       const pendingEvents = rt.pending.splice(0);
       // What the turns another harness ran said, for one that wasn't there.
@@ -899,7 +902,7 @@ export class SessionManager {
    * writes; a quick close-and-reopen between two prompts produces nothing.
    */
   private announceConnectors(sessionId: string, rt: Runtime): void {
-    const current = this.options.connectors?.();
+    const current = this.options.connectors?.(sessionId);
     if (!current) return;
     // Appending applies each event to rt.told (see the onAppend hook).
     const focus = this.options.focus?.(sessionId);

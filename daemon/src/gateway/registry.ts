@@ -267,11 +267,11 @@ export class ConnectorRegistry {
     });
   }
 
-  /** Open connectors, as announced to sessions. */
-  snapshot(): ConnectorSnapshot[] {
+  /** Open connectors, as announced to sessions; `visible` leaves out those a session may not see. */
+  snapshot(visible?: (app: string) => boolean): ConnectorSnapshot[] {
     const out: ConnectorSnapshot[] = [];
     for (const { connector, open } of this.all()) {
-      if (!open) continue;
+      if (!open || visible?.(connector.app) === false) continue;
       const { app, kind, v, tools } = connector;
       const snapshot: ConnectorSnapshot = { app, kind, v, tools: tools.map((t) => t.name) };
       const components = callNames(this.library())[app] ?? [];

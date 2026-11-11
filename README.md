@@ -14,6 +14,7 @@ One agent session shared across every app in neo. The design is in [docs/design.
 | `apps/gui/`          | `neo-gui`: desktop app (Svelte on svelte-gpui, native window)                                 | 6     |
 | `crates/github/`     | Read-only GitHub (gh allowlist) for the term and gui apps                                     | 6     |
 | `services/lsp/`      | Language servers as a connector (started by the daemon)                                       | 5     |
+| `services/tools/`    | The tools the agent writes for itself: a file is a tool (started by the daemon)               | 5     |
 | `renderers/`         | web (TS), gpui (Rust), tui (Go), ratatui (Rust)                                               | 4     |
 | `fixtures/`          | View fixtures + renderer snapshot tests                                                       | 4     |
 

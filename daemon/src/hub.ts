@@ -126,6 +126,13 @@ export class Hub {
     private readonly parts: HubParts = {},
   ) {
     const { connectors, focus, views } = parts;
+    if (views) {
+      views.watched = (session, agent) => {
+        const key = viewKey(session, agent);
+        for (const client of this.clients) if (client.views.has(key)) return true;
+        return false;
+      };
+    }
     views?.onPatch((payload) => {
       const key = viewKey(payload.session, payload.agent);
       for (const client of this.clients) {

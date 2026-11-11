@@ -34,7 +34,15 @@ export class NeoUiDocs {
     private readonly changed: (ref: string) => void,
     private readonly tools?: CallTool,
     private readonly apps?: () => AppLibrary,
+    /** Whether someone has the view open: a query that polls only asks while this holds. */
+    private readonly watched?: () => boolean,
   ) {}
+
+  /** Stops the timers of every program: the view is gone. */
+  dispose(): void {
+    for (const program of this.programs.values()) program.dispose();
+    this.programs.clear();
+  }
 
   private static id(ref: string, doc: string): string {
     return `${ref}\0${doc}`;
@@ -58,6 +66,7 @@ export class NeoUiDocs {
         markdown: (text) => parseMarkdown(text),
         ...(this.tools && { callTool: this.tools }),
         ...(this.apps && { apps: this.apps }),
+        ...(this.watched && { watched: this.watched }),
       });
       program.onChange = () => this.changed(ref);
       this.programs.set(id, program);

@@ -9,6 +9,11 @@ import { SessionView, type TemplateLookup } from "./session-view.ts";
 export class ViewManager {
   private readonly views = new Map<string, SessionView>();
   private readonly listeners = new Set<(patch: ViewPatch) => void>();
+  /**
+   * Whether someone has the view open (set by the hub, which knows its clients). A neoui doc
+   * that polls only asks its tool while it holds; unset, every view counts as watched.
+   */
+  watched: ((session: string, agent?: string) => boolean) | undefined;
 
   constructor(
     private readonly store: SessionStore,
@@ -44,6 +49,7 @@ export class ViewManager {
       agent,
       this.tools?.(session),
       this.apps,
+      () => this.watched?.(session, agent) ?? true,
     );
     view.replay(this.store.read(session));
     // Changes outside the event log (a neoui doc answering) go out as patches of their own.
@@ -81,6 +87,7 @@ export class ViewManager {
   forget(session: string): void {
     for (const key of [...this.views.keys()]) {
       if (parseViewKey(key).session === session) {
+        this.views.get(key)?.dispose();
         this.views.delete(key);
       }
     }
