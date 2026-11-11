@@ -1,6 +1,12 @@
 <script lang="ts" module>
   /** The measured width of each message's longest line, by item, while the app runs. */
   const naturalWidths = new Map<string, number>();
+  /**
+   * The chat column's width as the last message measured it. A row built again as it scrolls back
+   * in starts from it: from 0 it would draw without its bubble until its own measure arrives a
+   * frame later, and the list, which had its height, would move everything under it twice.
+   */
+  let lastColumn = 0;
 </script>
 
 <script lang="ts">
@@ -44,7 +50,7 @@
   );
   // A row is built per item (the list is keyed by ref), so the item's ref doesn't change under it.
   let natural = $state<number | undefined>(untrack(() => naturalWidths.get(item.ref)));
-  let column = $state(0);
+  let column = $state(lastColumn);
   /** Keeps the measured width for when the row is built again as it scrolls back in. */
   function remember(measured: number): void {
     naturalWidths.set(item.ref, measured);
@@ -66,7 +72,7 @@
 </script>
 
 <ItemFrame gap={4}>
-  <View style={{ gap: 4, paddingTop: 8 }} onresize={(box: Layout) => (column = box.width)} onhover={(h: boolean) => (hover = h)}>
+  <View style={{ gap: 4, paddingTop: 8 }} onresize={(box: Layout) => (column = lastColumn = box.width)} onhover={(h: boolean) => (hover = h)}>
     {#if longest !== undefined && natural === undefined}
       <View style={{ position: "absolute", top: 0, left: 0, opacity: 0 }}>
         <Text style={{ nowrap: true }} onlayout={(box: Layout) => remember(box.width)}>{longest}</Text>
