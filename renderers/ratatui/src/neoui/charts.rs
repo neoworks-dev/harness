@@ -17,9 +17,16 @@ const UP: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 const ROWS: usize = 6;
 /// Rows of a chart drawn as a picture: the finer drawing takes a little more room.
 const IMAGE_ROWS: usize = 8;
-/// The most cells a bar, a canvas or a stacked bar takes.
+/// The most cells a bar or a stacked bar takes.
 const MAX_BAR: usize = 48;
-const MAX_CANVAS: usize = 60;
+/// A line chart's canvas is wider: its points spread out and its slopes read better. Its height
+/// grows with its width, one row for every [`CELLS_PER_ROW`] cells, from [`ROWS`] to
+/// [`MAX_ROWS`], so a wide chart is not a flat strip.
+const MAX_LINE_CANVAS: usize = 120;
+const CELLS_PER_ROW: usize = 8;
+const MAX_ROWS: usize = 12;
+/// From this many rows up the value axis says the middle value too.
+const MID_LABEL_ROWS: usize = 9;
 
 struct Series {
     name: String,
@@ -414,8 +421,16 @@ impl<'a> Cx<'a> {
         if (hi - lo).abs() < f64::EPSILON {
             hi = lo + 1.0;
         }
-        let axis = width(&number(hi)).max(width(&number(lo)));
-        let cells = w.saturating_sub(axis + 1).clamp(1, MAX_CANVAS);
+        let ends = width(&number(hi)).max(width(&number(lo)));
+        let text_rows = (w.saturating_sub(ends + 1) / CELLS_PER_ROW).clamp(ROWS, MAX_ROWS);
+        let image_rows = text_rows.max(IMAGE_ROWS);
+        let mid = lo + (hi - lo) / 2.0;
+        let axis = if text_rows.max(image_rows) >= MID_LABEL_ROWS {
+            ends.max(width(&number(mid)))
+        } else {
+            ends
+        };
+        let cells = w.saturating_sub(axis + 1).clamp(1, MAX_LINE_CANVAS);
         let gw = cells * 2;
         let at = |i: usize| -> usize {
             if count == 1 {
@@ -433,7 +448,7 @@ impl<'a> Cx<'a> {
                         ChartKind::Line
                     },
                     cols: cells as u16,
-                    rows: IMAGE_ROWS as u16,
+                    rows: image_rows as u16,
                     series: spec_series(&series, &colors),
                     lo,
                     hi,
@@ -443,17 +458,24 @@ impl<'a> Cx<'a> {
                     donut: false,
                     axis: axis_color,
                 };
-                let room = self.reserve_cells(&spec.src(), cells as u16, IMAGE_ROWS as u16);
-                (IMAGE_ROWS, room.into_iter().map(|l| l.spans).collect())
+                let room = self.reserve_cells(&spec.src(), cells as u16, image_rows as u16);
+                (image_rows, room.into_iter().map(|l| l.spans).collect())
             }
-            None => (ROWS, self.braille_plot(&series, area, (lo, hi), cells, &at)),
+            None => (
+                text_rows,
+                self.braille_plot(&series, area, (lo, hi), (cells, text_rows), &at),
+            ),
         };
+        // The middle value too once there is room between the ends, on the row it is drawn in.
+        let mid_row = (rows >= MID_LABEL_ROWS).then(|| (rows * 4 - 1) / 2 / 4);
         let mut out: Lines = Vec::new();
         for (r, row) in plot.into_iter().enumerate() {
             let text = if r == 0 {
                 number(hi)
             } else if r == rows - 1 {
                 number(lo)
+            } else if Some(r) == mid_row {
+                number(mid)
             } else {
                 String::new()
             };
@@ -482,17 +504,17 @@ impl<'a> Cx<'a> {
         Some((colors, rgb(self.p.border)?))
     }
 
-    /// The lines (or areas) on a braille canvas `cells` wide, [`ROWS`] high.
+    /// The lines (or areas) on a braille canvas `cells` wide, `rows` high.
     fn braille_plot(
         &self,
         series: &[Series],
         area: bool,
         (lo, hi): (f64, f64),
-        cells: usize,
+        (cells, rows): (usize, usize),
         at: &dyn Fn(usize) -> usize,
     ) -> Vec<Vec<Span<'static>>> {
-        let (gw, gh) = (cells * 2, ROWS * 4);
-        let mut grid = Braille::new(cells, ROWS);
+        let (gw, gh) = (cells * 2, rows * 4);
+        let mut grid = Braille::new(cells, rows);
         let level = |v: f64| -> usize {
             let t = ((v - lo) / (hi - lo)).clamp(0.0, 1.0);
             gh - 1 - (t * (gh - 1) as f64).round() as usize

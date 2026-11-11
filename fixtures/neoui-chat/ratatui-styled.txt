@@ -3,13 +3,16 @@ The deploy is halfway:
 ⟦success|✓ ⟧Build⟦muted|  2m 10s⟧
 ⟦accent|● ⟧⟦bold|Canary⟧⟦muted|  5% of traffic⟧
 ⟦muted|○ ⟧⟦muted|Rollout⟧
-⟦muted|410 ⟧                 ⟦success|⣀⣀⣀⣀⠤⠤⠤⠔⠒⠒⠒⠊⠉⠉⠉⠉⠉⠒⠒⠒⠒⠒⠒⠒⠤⠤⠤⠤⠤⠤⣀⣀⣀⣀⣀⟧
-⟦muted|    ⟧⟦success|⠒⠒⠒⠒⠒⠒⠒⠊⠉⠉⠉⠉⠉⠉⠉⠉⠉⟧                                   ⟦success|⠉⠉⠉⠉⠉⠒⠒⠒⟧
-⟦muted|    ⟧
-⟦muted|    ⟧
-⟦muted|    ⟧
-⟦muted|117 ⟧⟦accent|⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⡠⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⢄⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⟧
-    ⟦muted|10:00        10:05          10:10         10:15        10:20⟧
+⟦muted|  410 ⟧                          ⟦success|⢀⣀⣀⡠⠤⠤⠔⠒⠒⠊⠉⠉⠉⠑⠒⠒⠒⠒⠤⠤⠤⠤⢄⣀⣀⣀⣀⟧
+⟦muted|      ⟧     ⟦success|⣀⣀⣀⣀⣀⣀⣀⣀⣀⠤⠤⠤⠤⠤⠤⠔⠒⠒⠊⠉⠉⠁⟧                          ⟦success|⠉⠉⠉⠉⠉⠑⠒⠒⠒⠒⠒⠢⠤⠤⠤⠤⠤⢄⣀⣀⣀⟧
+⟦muted|      ⟧⟦success|⠉⠉⠉⠉⠉⟧
+⟦muted|      ⟧
+⟦muted|263.5 ⟧
+⟦muted|      ⟧
+⟦muted|      ⟧
+⟦muted|      ⟧
+⟦muted|  117 ⟧⟦accent|⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⟧
+      ⟦muted|10:00           10:05              10:10             10:15           10:20⟧
 ⟦accent|━ ⟧p50  ⟦success|━ ⟧p99
 ⟦muted|▸ ⟧Canary hosts
 ⟦muted|▾ ⟧⟦bold|Warnings⟧
