@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The messages queued behind the running turn, above the input: one muted row each, the first
+  // The messages queued behind the running turn, on top of the input: one muted row each, the first
   // tagged `queued`. The user's can be taken back (Up in an empty input, or a press on a row); an
   // agent's cannot.
   import { Button, Text, View } from "@neoworks/svelte-gpui/ui";
@@ -20,7 +20,21 @@
 </script>
 
 {#if queue.rows.length > 0}
-  <View style={{ gap: 2, paddingX: 18, paddingBottom: 8 }}>
+  <!-- A tab on the input's top edge: inset from its sides, open at the bottom where it meets it. -->
+  <View
+    style={{
+      gap: 2,
+      marginX: 16,
+      paddingX: 12,
+      paddingY: 6,
+      background: p.raised,
+      borderTopWidth: 1,
+      borderLeftWidth: 1,
+      borderRightWidth: 1,
+      borderColor: p.border,
+      radius: [12, 12, 0, 0],
+    }}
+  >
     {#each queue.rows as row, index (index)}
       {#snippet line()}
         <Text style={{ flex: 1, minWidth: 0, truncate: true, italic: true, color: p.muted }}>{row.label}</Text>

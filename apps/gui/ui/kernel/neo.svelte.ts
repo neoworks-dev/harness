@@ -134,12 +134,15 @@ class Neo {
   async open(id: string): Promise<void> {
     this.movingTo = id;
     this.show(id);
-    await this.need()
-      .moveAgent({ app: this.appId, session: id })
-      .catch((error: unknown) => {
-        this.movingTo = undefined;
-        this.error = message(error);
-      });
+    try {
+      await this.need().moveAgent({ app: this.appId, session: id });
+    } catch (error) {
+      this.error = message(error);
+    } finally {
+      // The daemon sends the focus change before its answer, and none when the agent was already
+      // here (the window opened as home): waiting on past the answer would ignore every later one.
+      if (this.movingTo === id) this.movingTo = undefined;
+    }
   }
 
   /**
