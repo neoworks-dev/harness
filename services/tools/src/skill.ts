@@ -20,7 +20,7 @@ Where it goes decides who sees it:
 - ${dir}/ — yours, every session; app tools.
 - <project>/.neo/tools/ — one project's, sessions inside it; app tools-<directory>-<4 hex>.${sessionLine}
 
-Every file runs only once the user allowed it as it is. Writing or changing one asks them; when they allow it, the app is announced to you a moment later. A change to the file, or to a helper in its folder, asks again.
+Every file runs only once the user allowed it as it is. If they allowed your write or edit of it, that counts; otherwise writing or changing one asks them. Once allowed, the app is announced to you a moment later. A change to the file, or to a helper or package in its folder, asks again unless they allowed that change too.
 
 A file default-exports one tool, or an array:
 
@@ -47,7 +47,7 @@ A file default-exports one tool, or an array:
     };
 
 Rules:
-- A file may import only built-ins (node:*, bun) and files of its own folder. No packages. Put helpers in a subfolder such as lib/: every .ts, .js or .mjs file at the top is loaded as a tool.
+- A file may import built-ins (node:*, bun), files of its own folder, and packages installed in that folder (run bun add in it; nothing from a node_modules above it). Put helpers in a subfolder such as lib/: every .ts, .js or .mjs file at the top is loaded as a tool.
 - Each file runs in a worker thread of its own. Module variables, timers and child processes live between calls. A call that takes over a minute fails, but the worker goes on. A worker that crashes or stops answering (a busy loop) is restarted, with its state fresh.
 - It is not a sandbox: it runs with the user's rights. Keep a tool to one job, with what it needs as arguments; its description says when to use it.
 - Return structuredContent (an object) for what a doc reads, text for what you read. A thrown error is the tool's error.

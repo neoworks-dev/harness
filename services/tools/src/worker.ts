@@ -2,7 +2,8 @@
 // runs their handlers. A tool that hangs or crashes takes only this thread with it.
 // The file may load only the files of its folder, each with the bytes the service hashed (the
 // ones the user approved): every module goes through the hook below, which reads it once, checks
-// it and hands Bun exactly those bytes. Built-ins (node:*, bun) are not files and are not asked.
+// it and hands Bun exactly those bytes. Built-ins (node:*, bun) are not files and are not asked;
+// the packages of the folder's node_modules are covered by its package.json and lockfile.
 import { relative, sep } from "node:path";
 import { sha256 } from "./approval.ts";
 import { checkTool, isRecord, metaOf, type FromWorker, type ToWorker } from "./spec.ts";
@@ -25,16 +26,21 @@ const LOADERS: Record<string, "ts" | "tsx" | "js" | "jsx" | "json" | "toml"> = {
   toml: "toml",
 };
 
-/** Lets the file load its folder's files as they were hashed, and nothing else. */
+/**
+ * Lets the file load its folder's files as they were hashed, and the packages of its own
+ * node_modules, and nothing else. The packages are not hashed one by one: package.json and the
+ * lockfile (which pins each package's integrity) are files of the folder, so `bun add` asks again.
+ */
 function guard(root: string, files: Record<string, string>): void {
+  const packages = `${root}${sep}node_modules${sep}`.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
   Bun.plugin({
     name: "tool-folder",
     setup(build) {
-      build.onLoad({ filter: /.*/ }, async ({ path }) => {
+      build.onLoad({ filter: new RegExp(`^(?!${packages})`) }, async ({ path }) => {
         const rel = relative(root, path);
         if (rel.startsWith("..") || rel.startsWith(sep) || files[rel] === undefined) {
           throw new Error(
-            `${path} is outside the tools folder: a tool may import only built-ins and the files of its folder`,
+            `${path} is outside the tools folder: a tool may import only built-ins, the files of its folder and the packages installed in it`,
           );
         }
         const bytes = new Uint8Array(await Bun.file(path).arrayBuffer());

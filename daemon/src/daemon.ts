@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { findEnvKeys, getProviders } from "@earendil-works/pi-ai/compat";
 import type { Agent, McpServer } from "@neoworks-dev/neo/agent";
 import { type OAuthProvider, oauthProviders } from "@neoworks-dev/neo/auth";
-import type { SessionInfo, SlashCommand, Theme } from "@neoworks-dev/neo-protocol/types";
+import type {
+  DiffContent,
+  SessionInfo,
+  SlashCommand,
+  Theme,
+} from "@neoworks-dev/neo-protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
 import { ActionRunner, neoUiTools } from "./actions.ts";
 import { Todos, todosTool } from "./todos.ts";
@@ -191,9 +196,22 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     enabled: () => settings.projectTools(),
   });
   // A tool call may have written a tool file: the user is asked about it at once, not next turn.
+  // Unless they just allowed that write with the whole file in its diff: that was the question.
+  const diffsAsked = new Map<string, { diffs: DiffContent[]; allow: Set<string> }>();
   store.onAppend((record) => {
     const { event } = record;
-    if (event.type === "tool_call_update" && event.status === "completed") {
+    if (event.type === "permission_request") {
+      const diffs = (event.content ?? []).filter((c): c is DiffContent => c.type === "diff");
+      const allow = event.options.filter((o) => o.kind.startsWith("allow")).map((o) => o.id);
+      if (diffs.length > 0) diffsAsked.set(event.id, { diffs, allow: new Set(allow) });
+    } else if (event.type === "permission_resolved") {
+      const asked = diffsAsked.get(event.id);
+      diffsAsked.delete(event.id);
+      if (asked === undefined || event.option === undefined || !asked.allow.has(event.option)) {
+        return;
+      }
+      for (const diff of asked.diffs) toolFolders.vouch(diff.path, diff.newText);
+    } else if (event.type === "tool_call_update" && event.status === "completed") {
       toolFolders.check(record.session);
     }
   });

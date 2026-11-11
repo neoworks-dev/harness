@@ -181,6 +181,41 @@ describe("allowing a project's files", () => {
     expect(asked.map((a) => a.details)).toEqual(["a.ts, b.ts", "a.ts (changed), b.ts (changed)"]);
   });
 
+  test("content the user allowed in a write's diff runs without asking; anything else asks", async () => {
+    const { make, sessions, asked } = setup(["allow", "allow"]);
+    const dir = project({ "a.ts": "// a", "lib/say.ts": "export const s = 1;" });
+    const folder = folderOf(dir);
+    sessions.set("s", { cwd: dir });
+    const tools = make();
+    tools.check("s");
+    await settle();
+    expect(asked.map((a) => a.details)).toEqual(["a.ts"]);
+
+    // Seen whole and allowed: a new tool file, and a helper that changes every tool's hash.
+    tools.vouch(join(folder, "b.ts"), "// b");
+    write(folder, "b.ts", "// b");
+    tools.vouch(join(folder, "lib", "say.ts"), "export const s = 2;");
+    write(folder, "lib/say.ts", "export const s = 2;");
+    tools.check("s");
+    await settle();
+    expect(asked).toHaveLength(1);
+    expect(allowedFile(tools, appOf(dir))).toEqual(fingerprint(folder));
+
+    // Written with other content than the diff showed: asks.
+    tools.vouch(join(folder, "c.ts"), "// c");
+    write(folder, "c.ts", "// c, then changed");
+    tools.check("s");
+    await settle();
+    expect(asked.map((a) => a.details)).toEqual(["a.ts", "c.ts"]);
+
+    // A helper changed some other way: every tool asks again.
+    write(folder, "lib/say.ts", "export const s = 3;");
+    tools.vouch(join(folder, "a.ts"), "// a");
+    tools.check("s");
+    await settle();
+    expect(asked).toHaveLength(3);
+  });
+
   test("a file that nobody touched since it was allowed is not asked about again", async () => {
     const { make, sessions, asked } = setup(["allow"]);
     const dir = project();
@@ -469,6 +504,52 @@ describe("when a session works in a project", () => {
     });
     await Bun.sleep(30);
     expect(questions(daemon, session)).toHaveLength(1);
+  });
+
+  test("a write the user allowed with the file in its diff is not asked about again", async () => {
+    const { daemon, dir, session } = await opened();
+    const folder = folderOf(dir);
+    daemon.toolFolders.decide(folder, fingerprint(folder), "allow");
+    const writeAsked = (id: string, name: string, text: string, option: string): void => {
+      daemon.store.append(session, {
+        type: "permission_request",
+        id,
+        agent: "neo",
+        title: `Write ${name}?`,
+        kind: "edit",
+        content: [{ type: "diff", path: join(folder, name), newText: text }],
+        options: [
+          { id: "allow", name: "Allow", kind: "allow_once" },
+          { id: "reject", name: "Reject", kind: "reject_once" },
+        ],
+      });
+      daemon.store.append(session, { type: "permission_resolved", id, option });
+      if (option === "allow") write(folder, name, text);
+      daemon.store.append(session, {
+        type: "tool_call_update",
+        toolCallId: id,
+        status: "completed",
+      });
+    };
+
+    writeAsked("w1", "second.ts", "// second", "allow");
+    await Bun.sleep(30);
+    expect(questions(daemon, session).map((q) => q.title)).toEqual(["Write second.ts?"]);
+    expect(daemon.toolFolders.commands().slice(1)).toHaveLength(1);
+
+    // Rejected, then written anyway (by a command): the tool asks.
+    writeAsked("w2", "third.ts", "// third", "reject");
+    write(folder, "third.ts", "// third");
+    daemon.store.append(session, {
+      type: "tool_call_update",
+      toolCallId: "x",
+      status: "completed",
+    });
+    await until(() => questions(daemon, session).length === 3);
+    expect(questions(daemon, session)[2]?.details).toContainEqual({
+      key: "Files",
+      value: "third.ts",
+    });
   });
 
   test("the setting turns it off: no question, no service", async () => {

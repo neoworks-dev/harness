@@ -9,15 +9,22 @@
 // it: by the content it has (a hash, with the files of its folder it may import:
 // services/tools/src/approval.ts). A new or changed file asks, right when it appears (the
 // session's next turn, or the end of any tool call that may have written it), and one that
-// changed since it was allowed stops until it is allowed again. The answers are kept, the hashes
+// changed since it was allowed stops until it is allowed again. Content the user already allowed
+// in a write's or edit's diff doesn't ask a second time (vouch). The answers are kept, the hashes
 // of a folder's allowed files go to a file its instance of the service reads, and that instance's
 // connector is visible only to the sessions the folder is for.
 import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { neoConfigDir } from "@neoworks-dev/neo/mcp-config";
-import { fingerprint, signature, toolFileNames } from "../../services/tools/src/approval.ts";
+import {
+  fingerprint,
+  manifest,
+  sha256,
+  signature,
+  toolFileNames,
+} from "../../services/tools/src/approval.ts";
 import type { Asker } from "./asker.ts";
 import type { Logger } from "./log.ts";
 import type { SessionStore } from "./store.ts";
@@ -29,6 +36,13 @@ interface Verdicts {
 }
 
 type Kind = "user" | "project" | "session";
+
+/** A folder's files (path in it → hash) and its tool files' hashes, as they were last read. */
+interface Scan {
+  signature: string;
+  files: Record<string, string>;
+  prints: Record<string, string>;
+}
 
 /** One folder of tool files, and whom it is for. */
 interface Folder {
@@ -113,7 +127,13 @@ export class ToolFolders {
   private readonly asking = new Set<string>();
   private readonly listeners: (() => void)[] = [];
   /** The hashes of a folder, kept while its files' sizes and times stay the same. */
-  private readonly scans = new Map<string, { signature: string; prints: Record<string, string> }>();
+  private readonly scans = new Map<string, Scan>();
+  /**
+   * Folder → the files (path in it → hash) whose content the user saw and was fine with: allowed
+   * in a write's or edit's diff, or allowed as tools. A tool file all of whose files are among
+   * them runs without asking: the user already said yes to exactly that.
+   */
+  private readonly seen = new Map<string, Record<string, string>>();
 
   constructor(private readonly options: ToolFoldersOptions) {
     try {
@@ -225,7 +245,10 @@ export class ToolFolders {
   check(session: string): void {
     for (const folder of this.foldersOf(session)) {
       if (this.asking.has(folder.folder)) continue;
-      const unanswered = this.unanswered(folder.folder);
+      const all = this.unanswered(folder.folder);
+      const vouched = all.filter(([name]) => this.wasSeen(folder.folder, name));
+      if (vouched.length > 0) this.decide(folder.folder, Object.fromEntries(vouched), "allow");
+      const unanswered = all.filter((file) => !vouched.includes(file));
       if (unanswered.length === 0) continue;
       this.asking.add(folder.folder);
       this.ask(session, folder, unanswered)
@@ -256,14 +279,55 @@ export class ToolFolders {
     return out;
   }
 
-  /** The hashes of the folder's tool files now. */
-  private prints(folder: string): Record<string, string> {
+  /** The folder's files and tool files now. */
+  private scan(folder: string): Scan {
     const now = signature(folder);
     const kept = this.scans.get(folder);
-    if (kept?.signature === now) return kept.prints;
-    const prints = fingerprint(folder);
-    this.scans.set(folder, { signature: now, prints });
-    return prints;
+    if (kept?.signature === now) return kept;
+    const files = manifest(folder);
+    const scan = { signature: now, files, prints: fingerprint(folder, files) };
+    this.scans.set(folder, scan);
+    return scan;
+  }
+
+  private prints(folder: string): Record<string, string> {
+    return this.scan(folder).prints;
+  }
+
+  /**
+   * The user allowed a write or edit that leaves `path` with `text` (its diff showed them the
+   * whole file): if it is in a tools folder, that content needs no other question.
+   */
+  vouch(path: string, text: string): void {
+    const folder = this.folderOf(path);
+    if (folder === undefined) return;
+    const files = this.seen.get(folder) ?? {};
+    files[relative(folder, path)] = sha256(text);
+    this.seen.set(folder, files);
+  }
+
+  /** Whether the user saw the tool file and every other file of its folder as they are now. */
+  private wasSeen(folder: string, name: string): boolean {
+    const seen = this.seen.get(folder);
+    if (seen === undefined) return false;
+    const { files, prints } = this.scan(folder);
+    if (seen[name] !== files[name]) return false;
+    return Object.entries(files).every(
+      ([path, hash]) => prints[path] !== undefined || seen[path] === hash,
+    );
+  }
+
+  /** The tools folder a file is in, if it is in one the daemon knows. */
+  private folderOf(path: string): string | undefined {
+    for (const root of [this.options.userFolder, this.sessionsRoot()]) {
+      if (!path.startsWith(root + sep)) continue;
+      if (root === this.options.userFolder) return root;
+      const session = path.slice(root.length + 1).split(sep)[0];
+      return session === undefined || session === "" ? undefined : join(root, session);
+    }
+    const marker = `${sep}.neo${sep}tools${sep}`;
+    const at = path.lastIndexOf(marker);
+    return at < 0 ? undefined : path.slice(0, at + marker.length - 1);
   }
 
   /** The files nobody said anything of as they are now, with the hash they have. */
@@ -324,9 +388,26 @@ export class ToolFolders {
       delete verdicts.deny[name];
       verdicts[decision][name] = hash;
     }
+    if (decision === "allow") this.remember(folder, files);
     this.save();
     this.writeAllowed(this.describe(folder));
     this.changed();
+  }
+
+  /**
+   * Allowed tool files vouch for themselves and the other files of their folder as they are, so
+   * an approved edit of one of them later is all that changed.
+   */
+  private remember(folder: string, allowed: Record<string, string>): void {
+    const { files, prints } = this.scan(folder);
+    // A tool file's hash covers the rest of the folder: one that still matches says it is as asked.
+    const current = Object.keys(allowed).filter((name) => prints[name] === allowed[name]);
+    if (current.length === 0) return;
+    const seen = this.seen.get(folder) ?? {};
+    for (const [path, hash] of Object.entries(files)) {
+      if (prints[path] === undefined || current.includes(path)) seen[path] = hash;
+    }
+    this.seen.set(folder, seen);
   }
 
   /** A session was deleted: its folder, its answers and its service go with it. */
@@ -335,6 +416,7 @@ export class ToolFolders {
     rmSync(folder, { recursive: true, force: true });
     rmSync(this.allowedPath(sessionAppOf(session)), { force: true });
     this.scans.delete(folder);
+    this.seen.delete(folder);
     if (this.decisions[folder] === undefined) return;
     delete this.decisions[folder];
     this.save();

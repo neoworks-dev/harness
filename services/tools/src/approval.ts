@@ -1,8 +1,9 @@
 // What the tool files of a folder are, as the user approves them. A tool file may import the
 // other files of its folder (a lib/ folder, a JSON file), so those are part of every tool file's
-// content: a change to any of them is a change to all. It may import nothing else (no packages,
-// nothing outside the folder): the worker refuses it, and refuses a file whose bytes are not the
-// ones hashed here, so what runs is what was approved (see worker.ts).
+// content: a change to any of them is a change to all. Besides those it may import only the
+// packages of the folder's node_modules, which package.json and the lockfile (files of the folder)
+// stand for. The worker refuses anything else, and a file whose bytes are not the ones hashed
+// here, so what runs is what was approved (see worker.ts).
 // The daemon decides with these hashes and the service holds to them, so both use this file.
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";

@@ -329,6 +329,32 @@ export default { name: "out", description: "d", inputSchema: {}, handler: async 
     expect(tools.map((t) => t.name)).toEqual(["ok"]);
     expect(files.find((f) => f.file === "out.ts")?.error).toContain("outside the tools folder");
   });
+
+  test("the packages of its own node_modules, not those of a folder above it", async () => {
+    const root = tempDir();
+    const dir = join(root, "tools");
+    const pkg = (base: string, name: string, value: string): void => {
+      const at = join(base, "node_modules", name);
+      mkdirSync(at, { recursive: true });
+      writeFileSync(join(at, "package.json"), JSON.stringify({ name, main: "index.js" }));
+      writeFileSync(join(at, "index.js"), `module.exports = { v: ${JSON.stringify(value)} };`);
+    };
+    pkg(dir, "inside", "in");
+    pkg(root, "above", "above");
+    writeFileSync(
+      join(dir, "ok.ts"),
+      `import { v } from "inside";
+export default { name: "ok", description: "d", inputSchema: {}, handler: async () => v };`,
+    );
+    writeFileSync(
+      join(dir, "up.ts"),
+      `import { v } from "above";
+export default { name: "up", description: "d", inputSchema: {}, handler: async () => v };`,
+    );
+    const { tools, files } = await filesOf(dir).reload();
+    expect(await byName(tools, "ok").handler({})).toBe("in");
+    expect(files.find((f) => f.file === "up.ts")?.error).toContain("outside the tools folder");
+  });
 });
 
 describe("checking a tool", () => {
