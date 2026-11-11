@@ -58,7 +58,7 @@ Following long work (a deploy, a build, a training run, a download):
 
     <Query id="d" hx-get="tools.deploy_status" hx-vals={{ repo: "o/r", run: "4812" }}
            hx-trigger="load, every 10s" until={d.done} default={{ done: false, percent: 0 }}/>
-    <Progress value={d.percent} label="Deploy"/>
+    <Progress value={d.percent / 100} label="Deploy"/>     (a fraction, 0 to 1)
 
   It asks only while the user has the session open, at most once a second, and stops when until holds.
 - Read what the work already writes: a status command (gh run view, kubectl get), a log or metrics file (Keras CSVLogger, a JSON file the script writes), a file's size against the size expected (pass it in).

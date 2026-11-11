@@ -124,14 +124,14 @@ export default {
   program.set(
     `<Stack>
       <Query id="dl" hx-get="tools.progress" hx-trigger="load, every 1s" until={dl.percent >= 100} default={{ percent: 0 }}/>
-      <Progress value={dl.percent}/>
+      <Progress value={dl.percent / 100}/>
     </Stack>`,
     false,
   );
   program.doc();
   await until("a full bar", () => (asked.includes(100) ? true : undefined));
   const bar = JSON.stringify(program.doc().root);
-  expect(bar).toContain('"value":100');
+  expect(bar).toContain('"value":1');
   // until held: no more asks.
   const seen = asked.length;
   await Bun.sleep(1300);
