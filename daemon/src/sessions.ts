@@ -145,9 +145,19 @@ function joinInputs(inputs: QueuedInput[]): QueuedInput {
   return joined;
 }
 
+/**
+ * The apps agents queue input as: messages from other agents (messages.ts), and a delegated
+ * task in its child session (guests/delegate.ts). Everything else is the user's.
+ */
+const AGENT_APPS = new Set([MESSAGES_APP, "delegate"]);
+
+/** Whether the user queued it (from any app), so any app may take it back. */
+const isUsers = (input: QueuedInput): boolean => !input.own && !AGENT_APPS.has(input.app);
+
 function waiting(input: QueuedInput): WaitingInput {
   const out: WaitingInput = { app: input.app, text: input.shown ?? input.text };
   if (input.images) out.images = input.images;
+  if (!isUsers(input)) out.agent = true;
   return out;
 }
 
@@ -468,15 +478,16 @@ export class SessionManager {
   }
 
   /**
-   * Takes the inputs `app` queued behind the running turn back out of the queue, oldest first,
-   * as the user wrote them (to edit them again). Throws NotFoundError for an unknown session.
-   * Those whose text for the agent says more are kept, so the app's next input can bring it back.
+   * Takes the user's inputs queued behind the running turn back out of the queue for `app`,
+   * whichever app sent them, oldest first, as the user wrote them (to edit them again); agents'
+   * messages stay. Throws NotFoundError for an unknown session. Those whose text for the agent
+   * says more are kept, so `app`'s next input can bring it back.
    */
   unqueue(sessionId: string, app: string): WaitingInput[] {
     const rt = this.runtime(sessionId);
-    const taken = rt.queue.filter((input) => input.app === app);
+    const taken = rt.queue.filter(isUsers);
     if (taken.length === 0) return [];
-    rt.queue = rt.queue.filter((input) => input.app !== app);
+    rt.queue = rt.queue.filter((input) => !isUsers(input));
     const hidden = taken.filter((input) => input.shown !== undefined && input.shown !== input.text);
     rt.redrafts.set(app, hidden);
     this.stateChanged(sessionId);

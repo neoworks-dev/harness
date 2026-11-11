@@ -589,7 +589,7 @@
       "additionalProperties": false
     },
     "SessionUnqueue": {
-      "description": "Client → daemon: take back the inputs this app queued behind the running turn, to edit them (Up in an empty editor). Replied to with session.unqueued; inputs a running neo turn already took in stay where they are.",
+      "description": "Client → daemon: take back the user's inputs queued behind the running turn, whichever app sent them, to edit them (Up in an empty editor). Agents' messages stay. Replied to with session.unqueued; inputs a running neo turn already took in stay where they are.",
       "type": "object",
       "properties": {
         "topic": {
@@ -1563,7 +1563,7 @@
         },
         "app": {
           "type": "string",
-          "description": "Only inputs from this app are taken."
+          "description": "The app taking them back: sent again from it, an input keeps what it told the agent beyond its shown text (a neoui press's form values)."
         }
       },
       "required": ["session", "app"],

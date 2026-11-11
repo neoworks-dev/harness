@@ -414,7 +414,7 @@ impl App {
                 }
                 let tag = (i == 0).then(|| {
                     let mut spans = vec![Span::styled("queued", self.styles.accent)];
-                    if self.waiting.iter().any(|w| w.app == self.app_id) {
+                    if self.waiting.iter().any(super::keys::is_users) {
                         spans.push(Span::styled(" · ↑ edits", self.styles.muted));
                     }
                     Line::from(spans)

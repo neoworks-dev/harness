@@ -167,6 +167,7 @@ fn session_changed_updates_or_adds_one_entry_live() {
         app: "gui".into(),
         text: "from the desktop".into(),
         images: None,
+        agent: None,
     }]);
     app.handle_event(Event::SessionChanged(mine));
     assert_eq!(app.waiting.len(), 1);

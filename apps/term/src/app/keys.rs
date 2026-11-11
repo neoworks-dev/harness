@@ -1,5 +1,10 @@
 use super::*;
 
+/// Whether the user queued it, from any app: any app may take it back. An agent's stays.
+pub(super) fn is_users(input: &WaitingInput) -> bool {
+    input.agent != Some(true)
+}
+
 impl App {
     // ---- keys ----
 
@@ -368,9 +373,10 @@ impl App {
         }
     }
 
-    /// Up with messages waiting: asks for this app's back, to edit them (`redraft`).
+    /// Up with messages waiting: asks for the user's back, whichever app sent them, to edit them
+    /// (`redraft`). Agents' messages stay queued.
     pub(super) fn unqueue(&mut self, fx: &mut Vec<Effect>) -> bool {
-        if !self.waiting.iter().any(|w| w.app == self.app_id) {
+        if !self.waiting.iter().any(is_users) {
             return false;
         }
         fx.push(Effect::Unqueue {
@@ -382,8 +388,7 @@ impl App {
     /// The messages taken back out of the queue go into the editor, one per paragraph, before
     /// whatever was typed meanwhile; their images come along.
     pub(super) fn redraft(&mut self, inputs: Vec<WaitingInput>) {
-        let app = self.app_id.clone();
-        self.waiting.retain(|w| w.app != app);
+        self.waiting.retain(|w| !is_users(w));
         if inputs.is_empty() {
             return;
         }

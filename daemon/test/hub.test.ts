@@ -244,7 +244,7 @@ describe("hub", () => {
     expect(store.read(id).at(-1)?.event).toEqual({ type: "turn_ended", stopReason: "cancelled" });
   });
 
-  test("unqueue hands an app its queued inputs back and leaves the others'", async () => {
+  test("unqueue hands any app the user's queued inputs back, and leaves agents' messages", async () => {
     const { hub, agent, sessions } = setup();
     const id = sessions.create({}).id;
     const c = client(hub);
@@ -254,7 +254,14 @@ describe("hub", () => {
     await agent.started(1);
     input("term", "first", ["/a.png"]);
     input("gui", "from the desktop");
+    input("agents", "a subagent's reply");
     input("term", "second");
+    expect(sessions.info(id)?.waiting).toContainEqual({
+      app: "agents",
+      text: "a subagent's reply",
+      agent: true,
+    });
+    // The desktop's, too: whichever app is in front takes back what the user queued.
     c.send({ topic: "session.unqueue", id: "q", payload: { session: id, app: "term" } });
     expect(c.last()).toEqual({
       topic: "session.unqueued",
@@ -262,16 +269,17 @@ describe("hub", () => {
       payload: {
         inputs: [
           { app: "term", text: "first", images: ["/a.png"] },
+          { app: "gui", text: "from the desktop" },
           { app: "term", text: "second" },
         ],
       },
     });
-    expect(sessions.info(id)).toMatchObject({ queued: 1, waiting: [{ app: "gui" }] });
-    c.send({ topic: "session.unqueue", id: "r", payload: { session: id, app: "term" } });
+    expect(sessions.info(id)).toMatchObject({ queued: 1, waiting: [{ app: "agents" }] });
+    c.send({ topic: "session.unqueue", id: "r", payload: { session: id, app: "gui" } });
     expect(c.last()).toEqual({ topic: "session.unqueued", id: "r", payload: { inputs: [] } });
     agent.release();
     await agent.started(2);
-    expect(agent.prompts[1]?.text).toBe("from the desktop");
+    expect(agent.prompts[1]?.text).toBe("a subagent's reply");
     agent.release();
     await sessions.idle(id);
   });

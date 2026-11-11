@@ -191,6 +191,7 @@ fn queued_inputs_are_counted_while_a_turn_runs() {
                     app: "terminal".into(),
                     text: text.into(),
                     images: None,
+                    agent: None,
                 })
                 .to_vec(),
         ),
@@ -267,6 +268,7 @@ fn up_takes_the_queued_messages_back_into_the_editor() {
                 images: text
                     .contains("[image")
                     .then(|| vec!["/tmp/a.png".to_string()]),
+                agent: None,
             })
             .to_vec(),
     });
@@ -283,6 +285,33 @@ fn up_takes_the_queued_messages_back_into_the_editor() {
         &app.handle_key(key(KeyCode::Up))[..],
         [Effect::Unqueue { .. }]
     ));
+}
+
+#[test]
+fn up_takes_back_what_another_app_queued_but_not_an_agents_message() {
+    let mut app = app();
+    app.handle_event(user_message(NOW));
+    let waiting = |from: &str, agent: Option<bool>| WaitingInput {
+        app: from.into(),
+        text: "queued".into(),
+        images: None,
+        agent,
+    };
+    // A subagent's reply waits for the turn: not the user's to take back.
+    app.waiting = vec![waiting("agents", Some(true))];
+    assert!(
+        !app.handle_key(key(KeyCode::Up))
+            .iter()
+            .any(|e| matches!(e, Effect::Unqueue { .. }))
+    );
+    // Sent from the desktop: taken back here all the same.
+    app.waiting = vec![waiting("desktop", None)];
+    assert_eq!(
+        app.handle_key(key(KeyCode::Up)),
+        [Effect::Unqueue {
+            session: "s1".into()
+        }]
+    );
 }
 
 #[test]

@@ -661,7 +661,7 @@ func (v SessionCancel) MarshalJSON() ([]byte, error) {
 	}{"session.cancel", plain(v)})
 }
 
-// SessionUnqueue: Client → daemon: take back the inputs this app queued behind the running turn, to edit them (Up in an empty editor). Replied to with session.unqueued; inputs a running neo turn already took in stay where they are.
+// SessionUnqueue: Client → daemon: take back the user's inputs queued behind the running turn, whichever app sent them, to edit them (Up in an empty editor). Agents' messages stay. Replied to with session.unqueued; inputs a running neo turn already took in stay where they are.
 type SessionUnqueue struct {
 	ID      string               `json:"id"`
 	Payload SessionUnqueueParams `json:"payload"`
@@ -1444,7 +1444,7 @@ type SessionRemoved struct {
 
 type SessionUnqueueParams struct {
 	Session string `json:"session"`
-	// Only inputs from this app are taken.
+	// The app taking them back: sent again from it, an input keeps what it told the agent beyond its shown text (a neoui press's form values).
 	App string `json:"app"`
 }
 
@@ -2226,6 +2226,8 @@ type WaitingInput struct {
 	Text string `json:"text"`
 	// Absolute paths of attached images.
 	Images []string `json:"images,omitempty"`
+	// An agent's message (a send_message, a delegated task), not the user's: no app can take it back. Absent for the user's.
+	Agent *bool `json:"agent,omitempty"`
 }
 
 // ToolResult: A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template.

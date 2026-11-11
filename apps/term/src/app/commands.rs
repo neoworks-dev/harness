@@ -214,6 +214,7 @@ impl App {
                 app: self.app_id.clone(),
                 text: text.clone(),
                 images: (!images.is_empty()).then(|| images.clone()),
+                agent: None,
             });
         }
         fx.push(Effect::Input {

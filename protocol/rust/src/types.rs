@@ -989,7 +989,7 @@ pub struct SessionCancel {
     pub payload: SessionRef,
 }
 
-/// Client → daemon: take back the inputs this app queued behind the running turn, to edit them (Up in an empty editor). Replied to with session.unqueued; inputs a running neo turn already took in stay where they are.
+/// Client → daemon: take back the user's inputs queued behind the running turn, whichever app sent them, to edit them (Up in an empty editor). Agents' messages stay. Replied to with session.unqueued; inputs a running neo turn already took in stay where they are.
 /// Tagged `topic: "session.unqueue"` inside [`Envelope`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionUnqueue {
@@ -1637,7 +1637,7 @@ pub struct SessionRemoved {
 pub struct SessionUnqueueParams {
     #[serde(rename = "session")]
     pub session: String,
-    /// Only inputs from this app are taken.
+    /// The app taking them back: sent again from it, an input keeps what it told the agent beyond its shown text (a neoui press's form values).
     #[serde(rename = "app")]
     pub app: String,
 }
@@ -2684,6 +2684,9 @@ pub struct WaitingInput {
     /// Absolute paths of attached images.
     #[serde(rename = "images", default, skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,
+    /// An agent's message (a send_message, a delegated task), not the user's: no app can take it back. Absent for the user's.
+    #[serde(rename = "agent", default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<bool>,
 }
 
 /// A connector result returned to a guest as text ending in [result:ref]. Views draw a tool call whose text carries the ref with this result and the tool's template.

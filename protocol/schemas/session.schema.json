@@ -658,6 +658,10 @@
           "type": "array",
           "items": { "type": "string" },
           "description": "Absolute paths of attached images."
+        },
+        "agent": {
+          "type": "boolean",
+          "description": "An agent's message (a send_message, a delegated task), not the user's: no app can take it back. Absent for the user's."
         }
       },
       "required": ["app", "text"],
