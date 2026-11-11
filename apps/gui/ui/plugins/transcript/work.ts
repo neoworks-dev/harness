@@ -472,11 +472,16 @@ export function classify(item: ViewItem, context: ClassifyContext): WorkEntry {
       const text = output !== "" ? output : kvOutput(kv);
       const exit = exitOf(item.component, text);
       const shown = stripShell(command.replace(/^`|`$/g, ""));
+      // The header says what the command is for when the agent said so; the command itself is
+      // under it, with its output.
+      const purpose = item.description?.trim() ? oneLine(item.description) : undefined;
+      let heading = purpose ?? oneLine(shown);
+      if (live && purpose === undefined) heading = `Running ${heading}`;
       return {
         ...entry,
         kind,
         command: shown,
-        label: live ? `Running ${oneLine(shown)}` : oneLine(shown),
+        label: heading,
         output: text,
         exit,
       };

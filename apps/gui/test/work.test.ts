@@ -106,6 +106,17 @@ test("a command is its text, without the shell, and its output follows", () => {
   expect(made.exit).toBeUndefined();
 });
 
+test("a command the agent said the purpose of is labelled with it, running or not", () => {
+  const facts = { kind: "execute" as const, tool: "bash", rawInput: { command: "npm ci" } };
+  const said = (state: ViewItem["state"]): ViewItem => ({
+    ...tool("bash: npm ci", code("ok"), state),
+    command: "npm ci",
+    description: "Install the dependencies",
+  });
+  expect(entry(said("done"), facts)).toMatchObject({ label: "Install the dependencies", command: "npm ci" });
+  expect(entry(said("running"), facts, true)).toMatchObject({ label: "Install the dependencies", live: true });
+});
+
 test("a running command says so, and a failed one gives its exit code", () => {
   const running = entry(
     tool("bash: npm test", { type: "stack", children: [] }, "running"),
