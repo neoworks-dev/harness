@@ -8,8 +8,8 @@ import { groupSessions, lastSegment, placeOf, type Place } from "./sessions.ts";
 
 /** Settled sessions listed before "Show more". */
 export const SETTLED_SHOWN = 10;
-/** Sessions of a repository or worktree listed before "N more". */
-export const GROUP_SHOWN = 3;
+/** Idle longer than this, a session folds into its group's "N older" line, as in the terminal. */
+export const STALE_MS = 24 * 3600 * 1000;
 
 /** One line of the drawn list. */
 export type Line =
@@ -27,7 +27,7 @@ export type Line =
       field?: Match["field"];
     }
   | { kind: "settled"; key: string; count: number; open: boolean }
-  /** The sessions a group (a repository's or worktree's key, or "settled") leaves out. */
+  /** The sessions a group leaves out: a repository's or worktree's older ones (by its key), or "settled"'s past ten. */
   | { kind: "more"; key: string; count: number; group: string };
 
 export interface Arranged {
@@ -42,10 +42,12 @@ export interface ShowSettled {
   open: boolean;
   /** Past the first `SETTLED_SHOWN`. */
   all: boolean;
-  /** The groups opened past their first `GROUP_SHOWN`. */
+  /** The groups whose older sessions are shown. */
   groups: ReadonlySet<string>;
-  /** Sessions that never fold into "N more": the shown one, one that works or waits. */
+  /** Sessions that never fold into "N older": the shown one, one that works or waits. */
   keep: (info: SessionInfo) => boolean;
+  /** Now, in Unix milliseconds: what "idle for over a day" counts from. */
+  nowMs: number;
 }
 
 function newestFirst(a: SessionInfo, b: SessionInfo): number {
@@ -54,8 +56,8 @@ function newestFirst(a: SessionInfo, b: SessionInfo): number {
 
 /**
  * The list without a search: the pinned sessions (the one pinned last first), the others by
- * project and worktree as `groupSessions` orders them, each under its heading and three of each
- * until opened, then "Settled (n)", which lists nothing
+ * project and worktree as `groupSessions` orders them, each under its heading with those idle for
+ * over a day folded into "N older" until opened, then "Settled (n)", which lists nothing
  * until it is opened, and then ten of its sessions, newest first, and a line for the rest.
  */
 export function arrange(
@@ -88,11 +90,10 @@ export function arrange(
   }
 
   // Each repository under its name and each worktree under its own, as the terminal draws them:
-  // the first GROUP_SHOWN of a group, then a line for the rest until it is opened. A session
+  // a session idle for over a day folds into the group's "N older" line until it is opened. One
   // that works, waits to be looked at or is shown never folds; a child goes with its parent.
   let group = "";
   let starting = false;
-  let shown = 0;
   let hidden = 0;
   let parentHidden = false;
   const close = (): void => {
@@ -103,23 +104,20 @@ export function arrange(
       close();
       group = entry.key;
       starting = true;
-      shown = 0;
       hidden = 0;
       lines.push({ kind: "label", key: entry.key, text: entry.name, sub: entry.kind === "group" });
       continue;
     }
     const folds = !settledShown.groups.has(group) && !settledShown.keep(entry.info);
-    if (entry.child ? parentHidden && folds : shown >= GROUP_SHOWN && folds) {
+    const stale = settledShown.nowMs - entry.info.lastActivity > STALE_MS;
+    if (entry.child ? parentHidden && folds : stale && folds) {
       if (!entry.child) {
         hidden += 1;
         parentHidden = true;
       }
       continue;
     }
-    if (!entry.child) {
-      shown += 1;
-      parentHidden = false;
-    }
+    if (!entry.child) parentHidden = false;
     if (starting) groupStarts.push(order.length);
     starting = false;
     add(entry.info, entry.child, false);

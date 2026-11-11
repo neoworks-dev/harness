@@ -6,8 +6,8 @@ import {
   matchProjects,
   projectsOf,
   resultLines,
-  GROUP_SHOWN,
   SETTLED_SHOWN,
+  STALE_MS,
   type Arranged,
   type ShowSettled,
 } from "../ui/plugins/sessions/arrange.ts";
@@ -302,9 +302,9 @@ function drawn(arranged: Arranged): string[] {
   });
 }
 
-/** How the list is shown: nothing opened, nothing kept from folding, unless said otherwise. */
+/** How the list is shown: nothing opened, nothing kept from folding, nothing old yet, unless said otherwise. */
 function show(open: boolean, all: boolean, more: Partial<ShowSettled> = {}): ShowSettled {
-  return { open, all, groups: new Set(), keep: () => false, ...more };
+  return { open, all, groups: new Set(), keep: () => false, nowMs: 0, ...more };
 }
 
 test("the list puts pinned first and settled last, closed until opened", () => {
@@ -348,17 +348,24 @@ test("the list puts pinned first and settled last, closed until opened", () => {
   expect(arrange(all, {}, NO_MARKS, show(false, false)).order).toEqual(groupSessions(all, {}).order);
 });
 
-test("a group shows its three newest sessions, then a line for the rest until it is opened", () => {
-  const many = Array.from({ length: 6 }, (_, i) => session(`s${i}`, `S${i}`, "/w/site", 100 + i));
-  // An old one that works stays in sight, and so does a child of a shown session.
-  many.push({ ...session("busy", "Busy", "/w/site", 1), state: "running" });
-  many.push({ ...session("kid", "Kid", "/w/site", 2), parent: "s5" });
-  const folded = drawn(arrange(many, {}, NO_MARKS, show(false, false, { keep: (s) => s.state === "running" })));
-  expect(folded).toEqual(["[site]", "s5", "↳kid", "s4", "s3", "busy", "[more 3]"]);
-  expect(folded.filter((line) => /^s\d$/.test(line))).toHaveLength(GROUP_SHOWN);
-  const opened = arrange(many, {}, NO_MARKS, show(false, false, { groups: new Set(["repo /w/site"]) }));
-  expect(drawn(opened)).not.toContain("[more 3]");
-  expect(opened.order).toHaveLength(8);
+test("as in the terminal, sessions idle for over a day fold into their group's line until it is opened", () => {
+  const now = 10 * STALE_MS;
+  const fresh = (id: string, ago: number): SessionInfo => session(id, id, "/w/site", now - ago);
+  const all = [
+    fresh("new", 1000),
+    fresh("hour", 3600_000),
+    fresh("old", STALE_MS + 1),
+    fresh("older", 3 * STALE_MS),
+    // An old one that works stays in sight, and so does a child of a shown session, though old.
+    { ...fresh("busy", 5 * STALE_MS), state: "running" as const },
+    { ...fresh("kid", 4 * STALE_MS), parent: "new" },
+  ];
+  const keep = (s: SessionInfo): boolean => s.state === "running";
+  const folded = arrange(all, {}, NO_MARKS, show(false, false, { keep, nowMs: now }));
+  expect(drawn(folded)).toEqual(["[site]", "new", "↳kid", "hour", "busy", "[more 2]"]);
+  expect(folded.lines.at(-1)).toMatchObject({ group: "repo /w/site" });
+  const opened = arrange(all, {}, NO_MARKS, show(false, false, { keep, nowMs: now, groups: new Set(["repo /w/site"]) }));
+  expect(opened.order).toHaveLength(6);
 });
 
 test("settled sessions show ten, then the rest on request", () => {

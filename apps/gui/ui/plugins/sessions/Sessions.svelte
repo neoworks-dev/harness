@@ -46,6 +46,8 @@
   const visible = $derived(inProject(daemon.sessions, sessions.places, scope?.repo));
   const searching = $derived(sessions.query.trim() !== "");
   const terms = $derived(termsOf(sessions.query));
+  /** The clock to the minute: what folds as idle is worked out again once a minute, not every tick. */
+  const minute = $derived(Math.floor(clock.now / 60_000) * 60_000);
   const arranged = $derived(
     searching
       ? resultLines(
@@ -62,6 +64,7 @@
             info.state === "running" ||
             info.unseen === true ||
             sessions.finished.has(info.id),
+          nowMs: minute,
         }),
   );
   const lines = $derived([...arranged.lines]);
@@ -399,7 +402,7 @@
               style={{ height: 32, paddingX: 10, align: "center", radius: p.radius.s, color: p.muted }}
               hover={{ background: p.side.hover, color: p.fg }}
             >
-              <Text style={{ fontSize: 12 }}>Show {line.count} more</Text>
+              <Text style={{ fontSize: 12 }}>{line.group === "settled" ? `Show ${line.count} more` : `▸ ${line.count} older`}</Text>
             </Button>
           {:else}
             {@const place = placeOf(line.info.cwd, sessions.places)}
