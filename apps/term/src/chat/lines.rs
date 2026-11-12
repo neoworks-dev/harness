@@ -427,6 +427,8 @@ pub(super) fn render(
         app: app.map(str::to_string),
         file_icons: key.icons,
         cwd: cwd.map(str::to_string),
+        // The chat keeps what it drew: the countdown is the panel's, drawn every second.
+        now_ms: None,
     };
     if key.focused.is_none() && !key.linked {
         let out = render_item_images(item, width, &opts);
@@ -469,6 +471,8 @@ pub struct PanelLook<'a> {
     pub cwd: Option<&'a str>,
     /// The chat shows the card in full (Ctrl-O): the panel's cut says so.
     pub shown_above: bool,
+    /// The wall clock: a deadline on a button counts down.
+    pub now_ms: i64,
 }
 
 /// The prompt as the input area shows it: the item with the n-th button focused and at most
@@ -500,6 +504,7 @@ pub fn panel_lines(
         plain_code: false,
         split_diffs: look.split_diffs,
         open_edits: false,
+        now_ms: Some(look.now_ms),
     };
     let bar = if marker.is_some() { 2 } else { 0 };
     neo_renderer_ratatui::render_item(item, width.saturating_sub(bar).max(1), &opts)

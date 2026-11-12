@@ -377,6 +377,10 @@
         "input": {
           "description": "Pressing it asks for text first, sent along as args.value: a setting that is text.",
           "$ref": "session.schema.json#/$defs/OptionInput"
+        },
+        "deadline": {
+          "type": "integer",
+          "description": "Unix milliseconds: unless another button is pressed first, the daemon picks this one then. Renderers count the time left down on it (No · 2:41)."
         }
       },
       "required": ["type", "label", "action"],

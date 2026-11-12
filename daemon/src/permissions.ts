@@ -5,11 +5,18 @@
 //   review  edits go ahead and are then kept or reverted one by one, the rest asks
 //   ask     everything asks; an edit's diff is shown before anything is written
 // Reads are allowed in every mode. Sensitive files (.env, keys, see sensitive.ts) are the
-// exception: reading one, or running a command that mentions one, asks in every mode.
+// exception: reading one, or running a command that mentions one, asks in every mode. In auto
+// mode nobody may be watching: unanswered for 3 minutes, that question is declined with a note
+// and the agent goes on without the file (see secretTimeout).
 // The question is a permission_request with the content to preview. "Allow for this session"
 // holds per session and kind (per file for sensitive ones), in memory only.
 import type { PermissionAnswer, PermissionAsk, RequestPermission } from "@neoworks-dev/neo/agent";
-import type { DiffContent, PermissionOption, ToolKind } from "@neoworks-dev/neo-protocol/types";
+import type {
+  DiffContent,
+  PermissionOption,
+  PermissionTimeout,
+  ToolKind,
+} from "@neoworks-dev/neo-protocol/types";
 import type { Answer, Asker } from "./asker.ts";
 import { editedTitle, KEEP_OR_REVERT, restore } from "./review.ts";
 import { displayPath, sensitiveInCommand, sensitivePath } from "./sensitive.ts";
@@ -55,6 +62,30 @@ export interface Guard {
   title(session: string, kind: ToolKind, paths: string[]): string;
   /** The user allowed them for the rest of the session. */
   remember(session: string, paths: string[]): void;
+}
+
+/** How long auto mode waits for an answer about a sensitive file before declining. */
+export const SECRET_TIMEOUT_MS = 3 * 60_000;
+
+/**
+ * Auto mode's question about a sensitive file declines itself after SECRET_TIMEOUT_MS: the user
+ * left the session to run on its own. Undefined in other modes, or without a reject option.
+ */
+export function secretTimeout(
+  mode: Approvals | undefined,
+  options: PermissionOption[],
+  now = Date.now(),
+): PermissionTimeout | undefined {
+  if (mode !== "auto") return undefined;
+  const reject =
+    options.find((o) => o.kind === "reject_once") ??
+    options.find((o) => o.kind.startsWith("reject"));
+  if (reject === undefined) return undefined;
+  return {
+    at: now + SECRET_TIMEOUT_MS,
+    option: reject.id,
+    note: "Nobody answered within 3 minutes, so this was declined. Go on without the file, and don't try to read it another way.",
+  };
 }
 
 function answerOf({ option, note }: Answer): PermissionAnswer {
@@ -174,6 +205,8 @@ export class Permissions {
     };
     if (request.toolCallId !== undefined) question.toolCallId = request.toolCallId;
     if (request.kind === "execute") question.content = [{ type: "text", text: request.title }];
+    const timeout = secretTimeout(this.options.approvals(session), OPTIONS);
+    if (timeout !== undefined) question.timeout = timeout;
     const answer = await this.options.asker.askWithNote(session, question, signal);
     if (answer.option === "always") this.guard.remember(session, paths);
     return answerOf(answer);

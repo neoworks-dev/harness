@@ -17,6 +17,8 @@ interface Pending {
   resolve: (answer: Answer) => void;
   /** A choice that stays: acts on a pick made with stay and gives the choice as it is now. */
   stay?: Stay;
+  /** A permission request's timeout, picking its option when nobody answered. */
+  timer?: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -98,6 +100,12 @@ export class Asker {
         },
       };
       if (stay !== undefined && question.type === "choice") pending.stay = stay;
+      // A request with a timeout answers itself when nobody did: its option, its note.
+      if (question.type === "permission_request" && question.timeout !== undefined) {
+        const { at, option, note } = question.timeout;
+        const settle = (): void => this.settle(id, option, undefined, note);
+        pending.timer = setTimeout(settle, Math.max(0, at - Date.now()));
+      }
       this.pending.set(id, pending);
       for (const target of [session, ...mirrors]) {
         this.append(target, { ...question, id } as SessionEvent);
@@ -187,6 +195,7 @@ export class Asker {
     for (const [id, pending] of this.pending) {
       if (pending.session !== session) continue;
       this.pending.delete(id);
+      clearTimeout(pending.timer);
       pending.resolve({});
     }
     this.mirrored.delete(session);
@@ -196,6 +205,7 @@ export class Asker {
     const pending = this.pending.get(id);
     if (!pending) return;
     this.pending.delete(id);
+    clearTimeout(pending.timer);
     const event: SessionEvent =
       pending.kind === "choice" ? { type: "choice_made", id } : { type: "permission_resolved", id };
     if (option !== undefined) event.option = option;

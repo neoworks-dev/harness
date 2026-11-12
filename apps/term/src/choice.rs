@@ -82,6 +82,7 @@ mod tests {
             note: false,
             stays: false,
             input: None,
+            deadline: None,
         }
     }
 

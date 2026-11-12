@@ -54,11 +54,11 @@ mod draw;
 mod draw_input;
 mod draw_status;
 mod events;
-mod setup;
 mod focus;
 mod keys;
 mod layout;
 mod prompts;
+mod setup;
 mod typing;
 
 /// How long a second Ctrl-C quits.
@@ -794,7 +794,12 @@ impl App {
         if self.toasts.tick(now_ms) {
             self.dirty = true;
         }
-        if self.widgets.tick(now_ms) || tick_s && jobs > 0 || jobs != self.jobs_shown {
+        // The prompt being answered counts down to the option picked when nobody answers.
+        let counting = self
+            .active_ref()
+            .is_some_and(|r| self.chat.buttons_of(r).iter().any(|b| b.deadline.is_some()));
+        if self.widgets.tick(now_ms) || tick_s && (jobs > 0 || counting) || jobs != self.jobs_shown
+        {
             self.jobs_shown = jobs;
             self.dirty = true;
         }

@@ -42,7 +42,7 @@ import { BadRequestError } from "../focus.ts";
 import type { ConnectorSnapshot } from "../gateway/registry.ts";
 import type { Logger } from "../log.ts";
 import { NotFoundError } from "../sessions.ts";
-import { type Guard, RUN_TITLE, type Touches } from "../permissions.ts";
+import { type Guard, RUN_TITLE, secretTimeout, type Touches } from "../permissions.ts";
 import type { Approvals, HarnessSettings } from "../settings.ts";
 import { type FocusTarget, type ShowDontTellSetting, ToldState } from "../told.ts";
 import { AcpConnection, AcpError } from "./acp.ts";
@@ -1994,6 +1994,8 @@ export class GuestManager {
     };
     if (sensitive.length > 0 && this.options.guard) {
       request.title = this.options.guard.title(guest.session, touches.kind, sensitive);
+      const timeout = secretTimeout(mode, options);
+      if (timeout !== undefined) request.timeout = timeout;
     }
     if (kind !== undefined) request.kind = kind;
     if (kind === "execute" && touches.command !== undefined) {

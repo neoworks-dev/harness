@@ -782,4 +782,26 @@ describe("permission requests", () => {
       language: "bash",
     });
   });
+
+  test("the option a timeout picks carries its deadline", () => {
+    const { view } = feed([
+      {
+        type: "permission_request",
+        id: "r1",
+        agent: "neo",
+        title: "Read .env?",
+        options: [
+          { id: "allow", name: "Allow", kind: "allow_once" },
+          { id: "reject", name: "Reject", kind: "reject_once" },
+        ],
+        timeout: { at: 1234, option: "reject", note: "n" },
+      },
+    ]);
+    const [item] = view.snapshot().items;
+    if (item?.component.type !== "row") throw new Error("no buttons");
+    const deadlines = item.component.children.map((c) =>
+      c.type === "button" ? c.deadline : "not a button",
+    );
+    expect(deadlines).toEqual([undefined, 1234]);
+  });
 });

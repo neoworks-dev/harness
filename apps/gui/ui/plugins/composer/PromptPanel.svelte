@@ -8,6 +8,8 @@
   import { Button, Input, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent, Layout, ScrollPosition } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
+  import { withTimeLeft } from "../../lib/time-left.ts";
+  import { clock } from "../../widgets/clock.svelte.ts";
   import PromptBody from "./PromptBody.svelte";
   import { scrollToRow } from "./prompt.ts";
   import { composer } from "./state.svelte.ts";
@@ -17,6 +19,12 @@
   const prompt = $derived(composer.prompt);
   const focused = $derived(prompt?.buttons[composer.button]);
   const hasBody = $derived((prompt?.body.length ?? 0) > 0);
+
+  // A question that answers itself counts down on the button it picks.
+  const counting = $derived(prompt?.buttons.some((b) => b.deadline !== undefined) === true);
+  $effect(() => {
+    if (counting) return clock.join();
+  });
 
   let root: ReturnType<typeof View> | undefined = $state();
   let noteInput: ReturnType<typeof Input> | undefined = $state();
@@ -213,7 +221,7 @@
             {#if index < 9}
               <Text style={{ color: chosen ? p.bg : p.muted }}>{index + 1}</Text>
             {/if}
-            <Text style={{ fontWeight: button.current ? 600 : 400 }}>{button.label}{button.current ? " ✓" : ""}</Text>
+            <Text style={{ fontWeight: button.current ? 600 : 400 }}>{withTimeLeft(button.label, button.deadline, clock.now)}{button.current ? " ✓" : ""}</Text>
           </Button>
         {/each}
       </View>

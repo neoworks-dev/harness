@@ -1141,6 +1141,15 @@ export interface PermissionDetail {
   value: string;
 }
 
+/** A permission request that answers itself: unanswered at `at`, `option` is picked, with `note` for the agent. Auto mode's questions about sensitive files, so an unattended session goes on without the file. */
+export interface PermissionTimeout {
+  /** Unix milliseconds. */
+  at: number;
+  /** The id of the option picked then. */
+  option: string;
+  note: string;
+}
+
 export interface PermissionOption {
   id: string;
   name: string;
@@ -1162,6 +1171,7 @@ export interface PermissionRequest {
   /** Labelled facts shown above the content, e.g. a delegation's harness, model, effort and directory. */
   details?: PermissionDetail[];
   options: PermissionOption[];
+  timeout?: PermissionTimeout;
 }
 
 /** The answer to a permission_request: the picked option, or none when the turn was cancelled. */
@@ -1177,7 +1187,7 @@ export interface PermissionResolved {
 
 export type PermissionOptionKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
 
-/** The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "neo", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "neo", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness "neo", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for neo's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session. */
+/** The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "neo", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "neo", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one (in auto mode, declined when nobody answers within 3 minutes). Per session, ask unless set. title_model (harness "neo", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for neo's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session. */
 export interface SettingChanged {
   type: "setting_changed";
   /** neo, claude, codex… */
@@ -1428,6 +1438,8 @@ export interface ButtonComponent {
   stays?: boolean;
   /** Pressing it asks for text first, sent along as args.value: a setting that is text. */
   input?: OptionInput;
+  /** Unix milliseconds: unless another button is pressed first, the daemon picks this one then. Renderers count the time left down on it (No · 2:41). */
+  deadline?: number;
 }
 
 /** TUI: underlined text plus the URL. */

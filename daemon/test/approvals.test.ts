@@ -6,6 +6,8 @@ import type { RequestPermission } from "@neoworks-dev/neo/agent";
 import type { DiffContent, SessionEvent, ViewItem } from "@neoworks-dev/neo-protocol/types";
 
 type Choice = Extract<SessionEvent, { type: "choice" }>;
+import { Asker, type PermissionRequest } from "../src/asker.ts";
+import { SECRET_TIMEOUT_MS } from "../src/permissions.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
 import { FakeAgent } from "./fake-agent.ts";
 
@@ -307,6 +309,66 @@ describe("reads and sensitive files", () => {
     await press(daemon, session, second.id, "allow");
     expect(await home).toEqual({ allowed: true });
     expect(requests(daemon, session)).toHaveLength(2);
+  });
+
+  test("in auto mode the question declines itself after 3 minutes; in the others it waits", async () => {
+    const { daemon, session, agent } = await setup();
+    const ask = await hookOf(daemon, session, agent);
+    let seen = 0;
+    for (const mode of ["ask", "review", "edits", "auto"]) {
+      await daemon.commands.run(session, `/approvals ${mode}`);
+      const before = Date.now();
+      const pending = ask(read(join(daemon.dir, ".env")));
+      const request = await nextRequest(daemon, session, seen++);
+      if (mode === "auto") {
+        expect(request.timeout?.option).toBe("reject");
+        expect(request.timeout?.at).toBeGreaterThanOrEqual(before + SECRET_TIMEOUT_MS);
+        expect(request.timeout?.at).toBeLessThanOrEqual(Date.now() + SECRET_TIMEOUT_MS);
+      } else {
+        expect(request.timeout).toBeUndefined();
+      }
+      await press(daemon, session, request.id, "reject");
+      expect(await pending).toEqual({ allowed: false });
+    }
+  });
+});
+
+describe("a question with a timeout", () => {
+  const question = (at: number): Omit<PermissionRequest, "id"> => ({
+    type: "permission_request",
+    agent: "neo",
+    title: "Read .env?",
+    options: [
+      { id: "allow", name: "Allow", kind: "allow_once" },
+      { id: "reject", name: "Reject", kind: "reject_once" },
+    ],
+    timeout: { at, option: "reject", note: "nobody answered" },
+  });
+
+  test("unanswered, it picks its option with its note, answered by nobody", async () => {
+    const log: SessionEvent[] = [];
+    const asker = new Asker((_, event) => log.push(event));
+    const answer = await asker.askWithNote("s", question(Date.now() + 20));
+    expect(answer).toEqual({ option: "reject", note: "nobody answered" });
+    expect(log.at(-1)).toEqual({
+      type: "permission_resolved",
+      id: log[0]?.type === "permission_request" ? log[0].id : "",
+      option: "reject",
+      note: "nobody answered",
+    });
+    expect(asker.asking("s")).toBe(0);
+  });
+
+  test("answered first, the timeout does nothing", async () => {
+    const log: SessionEvent[] = [];
+    const asker = new Asker((_, event) => log.push(event));
+    const pending = asker.askWithNote("s", question(Date.now() + 20));
+    const request = log[0];
+    if (request?.type !== "permission_request") throw new Error("no request");
+    asker.answer("s", "permission", request.id, "allow", "t");
+    expect(await pending).toEqual({ option: "allow" });
+    await Bun.sleep(40);
+    expect(log.filter((e) => e.type === "permission_resolved")).toHaveLength(1);
   });
 });
 

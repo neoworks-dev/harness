@@ -18,6 +18,7 @@ import {
   TYPING_PAUSE_MS,
   type PromptButton,
 } from "../ui/plugins/composer/prompt.ts";
+import { withTimeLeft } from "../ui/lib/time-left.ts";
 
 const text = (value: string): Component => ({
   type: "text",
@@ -247,4 +248,26 @@ test("the list scrolls just far enough to show the focused row", () => {
   expect(scrollToRow(8, 28, 28, 224)).toBeUndefined();
   // Not laid out yet: nothing to do.
   expect(scrollToRow(8, 28, 0, 0)).toBeUndefined();
+});
+
+test("a button's deadline comes along, and counts down as minutes and seconds", () => {
+  const item: ViewItem = {
+    ref: "p-1",
+    kind: "tool",
+    label: "Read .env?",
+    state: "pending",
+    component: {
+      type: "row",
+      children: [
+        { type: "button", label: "Allow", action: "neo.permit" },
+        { type: "button", label: "Reject", action: "neo.permit", deadline: 180_000 },
+      ],
+    },
+  };
+  const buttons = promptOf(item)?.buttons ?? [];
+  expect(buttons.map((b) => b.deadline)).toEqual([undefined, 180_000]);
+  expect(withTimeLeft("Reject", 180_000, 0)).toBe("Reject · 3:00");
+  expect(withTimeLeft("Reject", 180_000, 19_001)).toBe("Reject · 2:41");
+  expect(withTimeLeft("Reject", 180_000, 200_000)).toBe("Reject · 0:00");
+  expect(withTimeLeft("Allow", undefined, 0)).toBe("Allow");
 });

@@ -9,6 +9,8 @@
   import { fitImage } from "./image.ts";
   import { columnWeights } from "./table.ts";
   import { useCtx } from "../../kernel/slots/context.ts";
+  import { withTimeLeft } from "../../lib/time-left.ts";
+  import { clock } from "../../widgets/clock.svelte.ts";
   import Self from "./Component.svelte";
   import Blocks from "./Blocks.svelte";
   import CodeBlock from "./CodeBlock.svelte";
@@ -41,6 +43,12 @@
   function color(tone: Tone | undefined): string | undefined {
     return tone === undefined ? undefined : toneColor(tone, p);
   }
+
+  // A button the daemon presses at its deadline counts down to it.
+  const counting = $derived(component.type === "button" && component.deadline !== undefined);
+  $effect(() => {
+    if (counting) return clock.join();
+  });
 
   function press(action: string, args: unknown): void {
     // copy:<text> never leaves the window.
@@ -134,7 +142,7 @@
     active={{ background: p.border }}
   >
     {#if component.key}<Text style={{ color: p.accent, fontWeight: "bold" }}>{component.key}</Text>{/if}
-    <Text>{component.label}</Text>
+    <Text>{withTimeLeft(component.label, component.deadline, clock.now)}</Text>
     {#if component.current}<Text style={{ color: p.success }}>✓</Text>{/if}
   </Button>
 {:else if component.type === "neoui"}

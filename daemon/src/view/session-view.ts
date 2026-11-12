@@ -772,14 +772,19 @@ export class SessionView {
       details.push({ type: "kv", items });
     }
     if (answer === undefined) {
-      const buttons: Component[] = request.options.map((option, i) => ({
-        type: "button",
-        label: option.name,
-        action: "neo.permit",
-        args: { id: request.id, option: option.id },
-        key: String(i + 1),
-        note: true,
-      }));
+      const buttons: Component[] = request.options.map((option, i) => {
+        const button: Component = {
+          type: "button",
+          label: option.name,
+          action: "neo.permit",
+          args: { id: request.id, option: option.id },
+          key: String(i + 1),
+          note: true,
+        };
+        // The option picked when nobody answers counts down to it.
+        if (request.timeout?.option === option.id) button.deadline = request.timeout.at;
+        return button;
+      });
       const row: Component = { type: "row", gap: "s", children: buttons };
       // A command to run is shell, highlighted and broken where it is long.
       const language = request.kind === "execute" ? "bash" : undefined;

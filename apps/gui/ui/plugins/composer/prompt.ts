@@ -18,6 +18,8 @@ export interface PromptButton {
   description?: string;
   /** The answer is the agent's to hear: a note for it may go with it (the daemon marks it). */
   note?: boolean;
+  /** Unix ms when the daemon picks it unless another is pressed: shown counting down. */
+  deadline?: number;
 }
 
 export interface Prompt {
@@ -83,9 +85,10 @@ export function splitPrompt(root: Component): { body: Component[]; buttons: Prom
 
   function walk(component: Component, inRow: boolean): void {
     if (component.type === "button") {
-      const { label, action, args, key, current, note } = component;
+      const { label, action, args, key, current, note, deadline } = component;
       const button: PromptButton = { label, action, args, key, current: current === true };
       if (note === true) button.note = true;
+      if (deadline !== undefined) button.deadline = deadline;
       buttons.push(button);
       return;
     }

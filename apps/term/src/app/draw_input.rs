@@ -217,6 +217,7 @@ impl App {
             split_diffs: self.split_diffs,
             cwd: Some(&self.cwd),
             shown_above: self.expanded,
+            now_ms: self.now_ms,
         };
         let compose = |preview: usize| {
             let mut body =

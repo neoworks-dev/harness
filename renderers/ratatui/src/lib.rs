@@ -84,6 +84,9 @@ pub struct Options {
     /// A finished edit (a call with one diff) shows its changes, with a few lines around them,
     /// under its `edit path  +3 −1` line, rather than that line alone.
     pub open_edits: bool,
+    /// The wall clock (unix ms): a button with a deadline shows the time left (`No · 2:41`).
+    /// None: it is drawn without, as where the drawing is kept and not redrawn every second.
+    pub now_ms: Option<i64>,
 }
 
 /// `path` relative to `cwd` when it is inside it, else as it is.
@@ -246,6 +249,8 @@ pub struct ButtonRef {
     pub stays: bool,
     /// Pressing it asks for text first, sent as `args.value` (a setting that is text).
     pub input: Option<pb::OptionInput>,
+    /// Unix ms when the daemon picks it unless another is pressed: drawn counting down.
+    pub deadline: Option<i64>,
 }
 
 impl ButtonRef {
@@ -275,6 +280,7 @@ fn collect(c: &pb::Component, out: &mut Vec<ButtonRef>) {
             note: b.note == Some(true),
             stays: b.stays == Some(true),
             input: b.input.clone(),
+            deadline: b.deadline,
         }),
         pb::Component::CardComponent(v) => v.children.iter().for_each(|c| collect(c, out)),
         pb::Component::RowComponent(v) => {

@@ -916,6 +916,10 @@ describe("/approvals", () => {
       daemon.sessions.input(session, "cli", `/fake readfile ${env}`);
       const request = await answer(daemon, session, "permission_request", "no");
       expect(request).toMatchObject({ agent: "fake", title: "Read .env?", kind: "read" });
+      // Only auto mode's question declines itself, with the guest's reject option.
+      if (request.type !== "permission_request") throw new Error("no request");
+      const reject = request.options.find((o) => o.kind === "reject_once")?.id;
+      expect(request.timeout?.option).toBe(mode === "auto" ? reject : undefined);
       await daemon.sessions.idle(session);
       expect(events(daemon, session).findLast((e) => e.type === "guest_turn")).toMatchObject({
         result: "answer: no",

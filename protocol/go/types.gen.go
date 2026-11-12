@@ -2474,6 +2474,15 @@ type PermissionDetail struct {
 	Value string `json:"value"`
 }
 
+// PermissionTimeout: A permission request that answers itself: unanswered at `at`, `option` is picked, with `note` for the agent. Auto mode's questions about sensitive files, so an unattended session goes on without the file.
+type PermissionTimeout struct {
+	// Unix milliseconds.
+	At int64 `json:"at"`
+	// The id of the option picked then.
+	Option string `json:"option"`
+	Note   string `json:"note"`
+}
+
 type PermissionOption struct {
 	ID   string               `json:"id"`
 	Name string               `json:"name"`
@@ -2494,6 +2503,7 @@ type PermissionRequest struct {
 	// Labelled facts shown above the content, e.g. a delegation's harness, model, effort and directory.
 	Details []PermissionDetail `json:"details,omitempty"`
 	Options []PermissionOption `json:"options"`
+	Timeout *PermissionTimeout `json:"timeout,omitempty"`
 }
 
 func (PermissionRequest) isSessionEvent() {}
@@ -2537,7 +2547,7 @@ const (
 	PermissionOptionKindRejectAlways PermissionOptionKind = "reject_always"
 )
 
-// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "neo", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "neo", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness "neo", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for neo's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session.
+// SettingChanged: The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "neo", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "neo", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one (in auto mode, declined when nobody answers within 3 minutes). Per session, ask unless set. title_model (harness "neo", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for neo's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session.
 type SettingChanged struct {
 	// neo, claude, codex…
 	Harness string      `json:"harness"`
@@ -3119,6 +3129,8 @@ type ButtonComponent struct {
 	Stays *bool `json:"stays,omitempty"`
 	// Pressing it asks for text first, sent along as args.value: a setting that is text.
 	Input *OptionInput `json:"input,omitempty"`
+	// Unix milliseconds: unless another button is pressed first, the daemon picks this one then. Renderers count the time left down on it (No · 2:41).
+	Deadline *int64 `json:"deadline,omitempty"`
 }
 
 func (ButtonComponent) isComponent() {}

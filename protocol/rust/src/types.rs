@@ -2886,6 +2886,19 @@ pub struct PermissionDetail {
     pub value: String,
 }
 
+/// A permission request that answers itself: unanswered at `at`, `option` is picked, with `note` for the agent. Auto mode's questions about sensitive files, so an unattended session goes on without the file.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PermissionTimeout {
+    /// Unix milliseconds.
+    #[serde(rename = "at")]
+    pub at: i64,
+    /// The id of the option picked then.
+    #[serde(rename = "option")]
+    pub option: String,
+    #[serde(rename = "note")]
+    pub note: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PermissionOption {
     #[serde(rename = "id")]
@@ -2924,6 +2937,8 @@ pub struct PermissionRequest {
     pub details: Option<Vec<PermissionDetail>>,
     #[serde(rename = "options")]
     pub options: Vec<PermissionOption>,
+    #[serde(rename = "timeout", default, skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<PermissionTimeout>,
 }
 
 /// The answer to a permission_request: the picked option, or none when the turn was cancelled.
@@ -2954,7 +2969,7 @@ pub enum PermissionOptionKind {
     RejectAlways,
 }
 
-/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "neo", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "neo", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one. Per session, ask unless set. title_model (harness "neo", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for neo's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session.
+/// The user changed a setting for this session. model, effort, mode: a harness's (/model, /effort, /mode; the last one per harness and option wins, and new sessions start with the user's last choice). harness (harness "neo", value neo, claude or codex…): the harness that runs the session's following turns (/harness); the user's last choice is the default for new sessions (logged at creation when it isn't the daemon's own agent). approvals (harness "neo", value ask, review, edits or auto; /approvals cycles them in that order): ask asks before file edits, commands, starting a guest and guests' requests; review writes each edit right away and then asks Keep or Revert for that edit, and asks for the rest; edits writes edits right away (the user can revert them after the turn) and asks for the rest; auto asks for nothing. Reads are allowed in every mode except sensitive files (.env, keys, credentials), which ask in every mode, as do commands that mention one (in auto mode, declined when nobody answers within 3 minutes). Per session, ask unless set. title_model (harness "neo", value "<harness> <model>", "<harness>" for the harness's own default model, or "default" for neo's choice; /title-model): the model that writes session titles. Not per session: the user's last choice applies to every session.
 /// Tagged `type: "setting_changed"` inside [`SessionEvent`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SettingChanged {
@@ -3583,6 +3598,9 @@ pub struct ButtonComponent {
     /// Pressing it asks for text first, sent along as args.value: a setting that is text.
     #[serde(rename = "input", default, skip_serializing_if = "Option::is_none")]
     pub input: Option<OptionInput>,
+    /// Unix milliseconds: unless another button is pressed first, the daemon picks this one then. Renderers count the time left down on it (No · 2:41).
+    #[serde(rename = "deadline", default, skip_serializing_if = "Option::is_none")]
+    pub deadline: Option<i64>,
 }
 
 /// TUI: underlined text plus the URL.

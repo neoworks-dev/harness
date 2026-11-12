@@ -432,8 +432,12 @@ impl<'a> Cx<'a> {
         self.next_button += 1;
         let key = button_key(b, idx);
         let focused = self.o.focused_button == Some(idx);
+        let mut label = one_line(&b.label);
+        if let (Some(deadline), Some(now)) = (b.deadline, self.o.now_ms) {
+            label = format!("{label} · {}", time_left(deadline - now));
+        }
         let mut spans = if self.o.hide_keys {
-            vec![Span::raw(format!("[{}]", one_line(&b.label)))]
+            vec![Span::raw(format!("[{label}]"))]
         } else {
             vec![
                 Span::raw("["),
@@ -441,7 +445,7 @@ impl<'a> Cx<'a> {
                     one_line(&key),
                     Style::new().fg(self.p.accent).add_modifier(Modifier::BOLD),
                 ),
-                Span::raw(format!(" {}]", one_line(&b.label))),
+                Span::raw(format!(" {label}]")),
             ]
         };
         if b.current == Some(true) {
@@ -454,6 +458,12 @@ impl<'a> Cx<'a> {
         }
         Line::from(truncate_spans(spans, w))
     }
+}
+
+/// `2:41`: what is left of `ms`, rounded up to the second, never below 0:00.
+pub(crate) fn time_left(ms: i64) -> String {
+    let s = (ms.max(0) + 999) / 1000;
+    format!("{}:{:02}", s / 60, s % 60)
 }
 
 /// What a card's children get of its width: the gutter takes two cells.
@@ -548,7 +558,9 @@ pub(crate) fn fit_columns_whole(widths: &mut [usize], mins: &[usize], avail: usi
     if widths.iter().sum::<usize>() <= avail {
         return;
     }
-    let mins: Vec<usize> = (0..widths.len()).map(|c| mins[c].clamp(1, widths[c])).collect();
+    let mins: Vec<usize> = (0..widths.len())
+        .map(|c| mins[c].clamp(1, widths[c]))
+        .collect();
     let words: usize = mins.iter().sum();
     if words > avail {
         fit_columns(widths, avail);
@@ -789,4 +801,17 @@ fn around_changes(lines: &[pb::DiffLine], n: usize) -> Vec<pb::DiffLine> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod time_left_tests {
+    use super::time_left;
+
+    #[test]
+    fn rounds_up_to_the_second_and_stops_at_zero() {
+        assert_eq!(time_left(180_000), "3:00");
+        assert_eq!(time_left(160_999), "2:41");
+        assert_eq!(time_left(1), "0:01");
+        assert_eq!(time_left(-5_000), "0:00");
+    }
 }
