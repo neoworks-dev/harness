@@ -47,7 +47,7 @@ import { handoffSummary } from "./handoff.ts";
 import { Permissions } from "./permissions.ts";
 import { Review } from "./review.ts";
 import { UiLint } from "./ui-lint.ts";
-import { Settings } from "./settings.ts";
+import { secretWaitMs, Settings } from "./settings.ts";
 import { SessionSummaries } from "./summaries.ts";
 import { type ConnectUpstream, connectMcp } from "./gateway/upstream.ts";
 import { Hub, PROTOCOL_VERSION } from "./hub.ts";
@@ -220,6 +220,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     approvals: (session) => settings.approvals(session),
     cwd: (session) => store.getSession(session)?.cwd ?? options.defaultCwd,
     fileChanged: (path, session) => hub.fileChanged({ path, app: "agent", session }),
+    secretWait: () => secretWaitMs(settings.secretWait()),
   });
   /** The harness a session runs on: its choice if that still exists, else the daemon's agent. */
   const harnessOf = (session: string): string => {

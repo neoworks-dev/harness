@@ -6,8 +6,9 @@
 //   ask     everything asks; an edit's diff is shown before anything is written
 // Reads are allowed in every mode. Sensitive files (.env, keys, see sensitive.ts) are the
 // exception: reading one, or running a command that mentions one, asks in every mode. In auto
-// mode nobody may be watching: unanswered for 3 minutes, that question is declined with a note
-// and the agent goes on without the file (see secretTimeout).
+// mode nobody may be watching: unanswered for a while (3 minutes unless the user's
+// /settings secret-wait says otherwise), that question is declined with a note and the agent
+// goes on without the file (see secretTimeout).
 // The question is a permission_request with the content to preview. "Allow for this session"
 // holds per session and kind (per file for sensitive ones), in memory only.
 import type { PermissionAnswer, PermissionAsk, RequestPermission } from "@neoworks-dev/neo/agent";
@@ -40,6 +41,11 @@ export interface PermissionsOptions {
   fileChanged: (path: string, session: string) => void;
   /** For tests: the home directory the sensitive paths are under. */
   home?: string;
+  /**
+   * How long auto mode waits on a sensitive file's question, in ms; undefined waits for good.
+   * Absent: SECRET_TIMEOUT_MS.
+   */
+  secretWait?: () => number | undefined;
 }
 
 /** What a request is about, for the sensitive-file check. */
@@ -62,29 +68,35 @@ export interface Guard {
   title(session: string, kind: ToolKind, paths: string[]): string;
   /** The user allowed them for the rest of the session. */
   remember(session: string, paths: string[]): void;
+  /** When the question about them declines itself (see secretTimeout); undefined: never. */
+  timeout(session: string, options: PermissionOption[]): PermissionTimeout | undefined;
 }
 
-/** How long auto mode waits for an answer about a sensitive file before declining. */
+/** How long auto mode waits for an answer about a sensitive file before declining, by default. */
 export const SECRET_TIMEOUT_MS = 3 * 60_000;
 
 /**
- * Auto mode's question about a sensitive file declines itself after SECRET_TIMEOUT_MS: the user
- * left the session to run on its own. Undefined in other modes, or without a reject option.
+ * Auto mode's question about a sensitive file declines itself after `wait` ms: the user left
+ * the session to run on its own. Undefined in other modes, without a wait, or without a reject
+ * option.
  */
 export function secretTimeout(
   mode: Approvals | undefined,
+  wait: number | undefined,
   options: PermissionOption[],
   now = Date.now(),
 ): PermissionTimeout | undefined {
-  if (mode !== "auto") return undefined;
+  if (mode !== "auto" || wait === undefined) return undefined;
   const reject =
     options.find((o) => o.kind === "reject_once") ??
     options.find((o) => o.kind.startsWith("reject"));
   if (reject === undefined) return undefined;
+  const minutes = Math.round(wait / 60_000);
+  const span = minutes === 1 ? "a minute" : `${minutes} minutes`;
   return {
-    at: now + SECRET_TIMEOUT_MS,
+    at: now + wait,
     option: reject.id,
-    note: "Nobody answered within 3 minutes, so this was declined. Go on without the file, and don't try to read it another way.",
+    note: `Nobody answered within ${span}, so this was declined. Go on without the file, and don't try to read it another way.`,
   };
 }
 
@@ -129,6 +141,10 @@ export class Permissions {
     },
     remember: (session, paths) => {
       for (const path of paths) this.allowed.add(this.pathKey(session, path));
+    },
+    timeout: (session, options) => {
+      const wait = this.options.secretWait ? this.options.secretWait() : SECRET_TIMEOUT_MS;
+      return secretTimeout(this.options.approvals(session), wait, options);
     },
   };
 
@@ -205,7 +221,7 @@ export class Permissions {
     };
     if (request.toolCallId !== undefined) question.toolCallId = request.toolCallId;
     if (request.kind === "execute") question.content = [{ type: "text", text: request.title }];
-    const timeout = secretTimeout(this.options.approvals(session), OPTIONS);
+    const timeout = this.guard.timeout(session, OPTIONS);
     if (timeout !== undefined) question.timeout = timeout;
     const answer = await this.options.asker.askWithNote(session, question, signal);
     if (answer.option === "always") this.guard.remember(session, paths);

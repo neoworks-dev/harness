@@ -46,7 +46,9 @@ import {
   parseSafeSearch,
   parseSubagents,
   parseWork,
+  parseSecretWait,
   SAFE_SEARCH,
+  SECRET_WAITS,
   SUBAGENTS,
   type Settings,
   type TitleModel,
@@ -563,6 +565,18 @@ export class Commands {
           (on) => settings.setAlwaysAskForAgents(on),
         ),
         after: () => NEXT_START,
+      },
+      {
+        id: "secret-wait",
+        name: "Wait on secrets in auto mode",
+        description: "Then the question about a sensitive file is declined; off waits for good",
+        values: SECRET_WAITS,
+        get: () => settings.secretWait(),
+        set: (value) => {
+          const wait = parseSecretWait(value);
+          if (wait !== undefined) settings.setSecretWait(wait);
+        },
+        after: () => "From the next question about a sensitive file.",
       },
       {
         id: "system-prompt",

@@ -333,6 +333,27 @@ describe("reads and sensitive files", () => {
   });
 });
 
+test("/settings secret-wait sets how long auto mode waits, or makes it wait for good", async () => {
+  const { daemon, session, agent } = await setup();
+  const ask = await hookOf(daemon, session, agent);
+  await daemon.commands.run(session, "/approvals auto");
+  const env = join(daemon.dir, ".env");
+  let seen = 0;
+  for (const [wait, ms] of [
+    ["10m", 10 * 60_000],
+    ["off", undefined],
+  ] as const) {
+    await daemon.commands.run(session, `/settings secret-wait ${wait}`);
+    const before = Date.now();
+    const pending = ask({ title: `read ${env}`, kind: "read", path: env });
+    const request = await nextRequest(daemon, session, seen++);
+    if (ms === undefined) expect(request.timeout).toBeUndefined();
+    else expect(request.timeout?.at).toBeGreaterThanOrEqual(before + ms);
+    await press(daemon, session, request.id, "reject");
+    await pending;
+  }
+});
+
 describe("a question with a timeout", () => {
   const question = (at: number): Omit<PermissionRequest, "id"> => ({
     type: "permission_request",

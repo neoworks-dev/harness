@@ -57,6 +57,23 @@ export function parseSubagents(value: string): Subagents | undefined {
   return SUBAGENTS.find((kind) => kind === value);
 }
 
+/**
+ * How long auto mode waits for an answer about a sensitive file before declining it; off waits
+ * for good.
+ */
+export type SecretWait = "1m" | "3m" | "10m" | "30m" | "off";
+
+export const SECRET_WAITS: readonly SecretWait[] = ["1m", "3m", "10m", "30m", "off"];
+
+export function parseSecretWait(value: string): SecretWait | undefined {
+  return SECRET_WAITS.find((wait) => wait === value);
+}
+
+/** The wait in milliseconds; undefined for off. */
+export function secretWaitMs(wait: SecretWait): number | undefined {
+  return wait === "off" ? undefined : Number.parseInt(wait, 10) * 60_000;
+}
+
 /** What the user does with neo (see Work in the protocol). */
 export const WORKS: readonly Work[] = ["coding", "computer"];
 
@@ -317,6 +334,16 @@ export class Settings {
 
   setSubagents(value: Subagents): void {
     this.store.setMeta(metaKey("daemon", "subagents"), value);
+  }
+
+  /** How long auto mode waits on a sensitive file's question (3 minutes until the user picks). */
+  secretWait(): SecretWait {
+    const value = this.store.getMeta(metaKey("daemon", "secret_wait"));
+    return (value === undefined ? undefined : parseSecretWait(value)) ?? "3m";
+  }
+
+  setSecretWait(value: SecretWait): void {
+    this.store.setMeta(metaKey("daemon", "secret_wait"), value);
   }
 
   /**

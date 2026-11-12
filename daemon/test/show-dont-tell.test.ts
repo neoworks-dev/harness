@@ -81,6 +81,7 @@ test("/settings without a toggle shows them with their state, and picking one fl
     "Messages reach a working agent at once · off",
     "Subagents · both",
     "Always ask before starting agents · off",
+    "Wait on secrets in auto mode · 3m",
     "Your words in the system prompt · none",
   ]);
 
