@@ -221,6 +221,12 @@ export interface SessionManagerOptions {
    * that can take it (steering), instead of waiting for the next turn. Default: it waits.
    */
   steer?: () => boolean;
+  /**
+   * Whether the session's agent is done for now and its turn only waits, on subagents it
+   * started in the background (see GuestManager.waitingOn). What the user sends then goes into
+   * the turn at once, whatever steer says: it would wait for the subagents otherwise.
+   */
+  waiting?: (sessionId: string) => boolean;
   /** A command the session's agent ran ended in the background: tell it (see Messenger.tell). */
   backgroundEnded?: (sessionId: string, text: string) => void;
 }
@@ -397,8 +403,9 @@ export class SessionManager {
     rt.queue.push(input);
     this.kick(sessionId, rt);
     this.stateChanged(sessionId);
-    // A harness that can be steered gets it in the running turn at once, if the user wants that.
-    if (rt.running && this.steerable(input)) void this.steer(sessionId, rt);
+    // A harness that can be steered gets it in the running turn at once, if the user wants that
+    // or the turn only waits.
+    if (rt.running && this.steerable(sessionId, input)) void this.steer(sessionId, rt);
   }
 
   /**
@@ -413,19 +420,26 @@ export class SessionManager {
     this.stateChanged(sessionId);
   }
 
-  /** Whether the user wants the input in the running turn: the setting says so, or the input. */
-  private steerable(input: QueuedInput): boolean {
-    return input.steer === true || this.options.steer?.() === true;
+  /**
+   * Whether the input goes into the running turn: the setting says so, or the input, or the
+   * turn only waits on background subagents.
+   */
+  private steerable(sessionId: string, input: QueuedInput): boolean {
+    return (
+      input.steer === true ||
+      this.options.steer?.() === true ||
+      this.options.waiting?.(sessionId) === true
+    );
   }
 
   /**
    * Where in the queue the next input for the running turn is: the first steerable one before
    * any command (a command, and what follows it, waits for a turn of its own); -1 for none.
    */
-  private nextSteerable(rt: Runtime): number {
+  private nextSteerable(sessionId: string, rt: Runtime): number {
     for (const [at, input] of rt.queue.entries()) {
       if (isCommand(input) || input.own) return -1;
-      if (this.steerable(input)) return at;
+      if (this.steerable(sessionId, input)) return at;
     }
     return -1;
   }
@@ -456,7 +470,11 @@ export class SessionManager {
     if (rt.steering) return;
     rt.steering = true;
     try {
-      for (let at = this.nextSteerable(rt); at >= 0; at = this.nextSteerable(rt)) {
+      for (
+        let at = this.nextSteerable(sessionId, rt);
+        at >= 0;
+        at = this.nextSteerable(sessionId, rt)
+      ) {
         const active = rt.active;
         if (!active?.steer || rt.cancelling || rt.command) return;
         const [input] = rt.queue.splice(at, 1);
@@ -897,7 +915,11 @@ export class SessionManager {
    */
   private takeInputs(sessionId: string, rt: Runtime): QueuedInput[] {
     const taken: QueuedInput[] = [];
-    for (let at = this.nextSteerable(rt); at >= 0; at = this.nextSteerable(rt)) {
+    for (
+      let at = this.nextSteerable(sessionId, rt);
+      at >= 0;
+      at = this.nextSteerable(sessionId, rt)
+    ) {
       const [input] = rt.queue.splice(at, 1);
       if (!input) break;
       this.store.append(sessionId, userMessage(input));
@@ -996,6 +1018,11 @@ export class SessionManager {
   /** Something in the session's info changed that no event says, such as its title. */
   changed(sessionId: string): void {
     this.stateChanged(sessionId);
+    // The agent is done and only waits on background subagents: what was sent meanwhile goes in.
+    const rt = this.runtimes.get(sessionId);
+    if (rt?.running && rt.queue.length > 0 && this.options.waiting?.(sessionId) === true) {
+      void this.steer(sessionId, rt);
+    }
   }
 
   private stateChanged(sessionId: string): void {

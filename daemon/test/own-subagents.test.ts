@@ -230,6 +230,29 @@ describe("the agents' own subagents show like delegate's", () => {
     expect(reply(daemon, session)).toContain("It says five minutes.");
   });
 
+  test("what the user sends while the turn only waits goes in at once, steer setting off", async () => {
+    const daemon = await setup({ env: { FAKE_ACP_STEERING: "1" } });
+    const session = await onFake(daemon);
+    daemon.sessions.input(session, "cli", "background subagent");
+    await until(
+      () => daemon.sessions.info(session)?.waitingOn !== undefined,
+      "the turn to wait on the subagent",
+    );
+    daemon.sessions.input(session, "cli", "and meanwhile?");
+    // Taken by the running turn while the subagent still works, not queued behind it.
+    await until(
+      () =>
+        events(daemon, session).some(
+          (e) => e.type === "user_message" && e.text === "and meanwhile?",
+        ),
+      "the input to go in",
+    );
+    expect(daemon.sessions.info(session)?.waitingOn).toEqual(["Research the cache"]);
+    expect(events(daemon, session).filter((e) => e.type === "turn_ended")).toHaveLength(0);
+    await daemon.sessions.idle(session);
+    expect(events(daemon, session).filter((e) => e.type === "turn_ended")).toHaveLength(1);
+  });
+
   test("an Agent call without a subagent_type is known to run in the background too", async () => {
     const daemon = await setup();
     const session = await onFake(daemon);

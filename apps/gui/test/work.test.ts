@@ -1,7 +1,13 @@
 import { expect, test } from "bun:test";
 import type { Component, DiffLine, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { blocksText, componentText } from "../ui/plugins/transcript/components.ts";
-import { clockTime, count, duration, tailLines } from "../ui/plugins/transcript/format.ts";
+import {
+  clockTime,
+  count,
+  duration,
+  tailLines,
+  workingLabel,
+} from "../ui/plugins/transcript/format.ts";
 import {
   changedFiles,
   classify,
@@ -113,8 +119,14 @@ test("a command the agent said the purpose of is labelled with it, running or no
     command: "npm ci",
     description: "Install the dependencies",
   });
-  expect(entry(said("done"), facts)).toMatchObject({ label: "Install the dependencies", command: "npm ci" });
-  expect(entry(said("running"), facts, true)).toMatchObject({ label: "Install the dependencies", live: true });
+  expect(entry(said("done"), facts)).toMatchObject({
+    label: "Install the dependencies",
+    command: "npm ci",
+  });
+  expect(entry(said("running"), facts, true)).toMatchObject({
+    label: "Install the dependencies",
+    live: true,
+  });
 });
 
 test("a running command says so, and a failed one gives its exit code", () => {
@@ -428,4 +440,13 @@ test("a turn's changed files add up across its edits, with one diff each", () =>
   ]);
   expect(files[0]?.diff?.lines).toHaveLength(4);
   expect(changedFiles(made(["edit", "a.ts"]))).toEqual([]);
+});
+
+test("the running turn's row names the subagents it only waits on", () => {
+  expect(workingLabel(undefined, "12s")).toBe("Working for 12s");
+  expect(workingLabel([], "12s")).toBe("Working for 12s");
+  const one = workingLabel(["Research the cache"], "12s");
+  expect(one).toContain("Research the cache");
+  expect(one).not.toContain("Working for");
+  expect(workingLabel(["a", "b"])).toContain("2 subagents");
 });

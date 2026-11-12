@@ -9,6 +9,22 @@ export function duration(ms: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
+/**
+ * The running turn's row: `Working for 12s`, or, when the agent is done and the turn only waits
+ * on subagents in the background, what still works and that the reply is done.
+ */
+export function workingLabel(waitingOn: readonly string[] | undefined, elapsed?: string): string {
+  const time = elapsed === undefined ? "" : ` · ${elapsed}`;
+  if (waitingOn !== undefined && waitingOn.length > 0) {
+    const who =
+      waitingOn.length === 1
+        ? `A subagent is still working: ${waitingOn[0]}`
+        : `${waitingOn.length} subagents are still working`;
+    return `${who}${time} · the reply above is done, you can write`;
+  }
+  return elapsed === undefined ? "Working" : `Working for ${elapsed}`;
+}
+
 /** The time of day of a Unix time in milliseconds, as `14:05`, in the local zone. */
 export function clockTime(ts: number): string {
   const date = new Date(ts);

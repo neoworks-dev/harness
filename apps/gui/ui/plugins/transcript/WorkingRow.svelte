@@ -1,9 +1,11 @@
 <script lang="ts">
-  // "Working for 12s" under a running turn, counting by the second.
+  // "Working for 12s" under a running turn, counting by the second. A turn left open only for
+  // subagents in the background (the daemon's waitingOn) says that instead: the reply is done,
+  // and what is sent now goes in at once.
   import { Text, View } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
   import { clock } from "../../widgets/clock.svelte.ts";
-  import { duration } from "./format.ts";
+  import { duration, workingLabel } from "./format.ts";
   import ItemFrame from "./ItemFrame.svelte";
   import { softBorder } from "./layout.ts";
   import type { Row } from "./rows.ts";
@@ -16,9 +18,12 @@
   $effect(() => clock.join());
 
   const label = $derived(
-    row.kind !== "working" || row.startedAt === undefined
-      ? "Working"
-      : `Working for ${duration(clock.now - row.startedAt)}`,
+    workingLabel(
+      daemon.session?.waitingOn,
+      row.kind === "working" && row.startedAt !== undefined
+        ? duration(clock.now - row.startedAt)
+        : undefined,
+    ),
   );
 </script>
 
