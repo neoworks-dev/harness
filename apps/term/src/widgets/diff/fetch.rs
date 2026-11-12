@@ -294,10 +294,21 @@ pub(super) fn load(cwd: &Path, req: &DiffRequest, full: bool) -> Result<String, 
             git(&dir).args(log).arg(&context).arg("--").arg(&name),
             false,
         )?;
-        return if out.trim().is_empty() {
-            Err("no change left: it was changed back".into())
+        if !out.trim().is_empty() {
+            return Ok(out);
+        }
+        // No commit ever touched it: git ignores it, or it was written and removed again. One
+        // that is there shows whole, as a new file does.
+        return if path.is_file() {
+            run(
+                git(&dir)
+                    .args(base)
+                    .args(["--no-index", "--", "/dev/null"])
+                    .arg(&name),
+                true,
+            )
         } else {
-            Ok(out)
+            Err("the file is gone: it was removed after it was written".into())
         };
     }
     let mut paths = vec![req.rel.clone()];

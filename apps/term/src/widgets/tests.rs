@@ -310,6 +310,41 @@ fn wait_until(w: &mut Widgets, what: &str, mut done: impl FnMut(&Widgets) -> boo
 }
 
 #[test]
+fn an_ignored_file_an_agent_wrote_opens_whole() {
+    use files::Mark;
+    if !git_available() {
+        eprintln!("git not found, skipping");
+        return;
+    }
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("neo-term-ign-{}-{nanos}", std::process::id()));
+    std::fs::create_dir_all(dir.join("refs")).unwrap();
+    run(&dir, &["init", "-q"]);
+    std::fs::write(dir.join(".gitignore"), "refs/\n").unwrap();
+    run(&dir, &["add", "."]);
+    run(&dir, &["commit", "-q", "-m", "init"]);
+    std::fs::write(dir.join("refs/notes.md"), "one\ntwo\nthree\n").unwrap();
+
+    let mut w = Widgets::new(dir.clone(), Palette::default());
+    wait_until(&mut w, "the repo", |w| w.branch().is_some());
+    // Git sees no change in it, and no commit ever had it: its whole text, not an error.
+    w.files.touch("refs/notes.md", "agent", true);
+    w.on_file_changed("refs/notes.md");
+    wait_until(&mut w, "the entry", |w| w.files.entries().len() == 1);
+    assert_eq!(w.files.entries()[0].mark, Mark::Committed);
+    w.handle_key(Panel::Files, key(KeyCode::Char('G')));
+    w.handle_key(Panel::Files, key(KeyCode::Enter));
+    wait_until(&mut w, "the file", |w| {
+        w.diff.as_ref().is_some_and(DiffView::is_loaded)
+    });
+    assert_eq!(w.diff.as_ref().unwrap().counts(), (3, 0));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn real_git_end_to_end() {
     if !git_available() {
         eprintln!("git not found, skipping");
