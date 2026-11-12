@@ -6,6 +6,7 @@
   import { List } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
+  import { estimateRow } from "./estimate.ts";
   import { docNav } from "./docnav.svelte.ts";
   import { opened } from "./opened.svelte.ts";
   import { buildRows, splitMessages, type Row } from "./rows.ts";
@@ -53,6 +54,8 @@
   // row heights, so rows overlap (svelte-gpui #31). Until that is fixed, a resize returns the
   // chat to its end.
   const width = $derived(window.size.width);
+  /** Roughly the column's width (Column.svelte: at most 736, 48 at either side), for the guesses. */
+  const column = $derived(Math.min(736, Math.max(width - 96, 200)));
 </script>
 
 {#key width}
@@ -60,6 +63,7 @@
   bind:this={list}
   items={rows}
   key={(row: Row) => row.key}
+  estimatedRowHeight={(row: Row) => estimateRow(row, column)}
   stickToEnd
   style={{ flex: 1, minHeight: 0 }}
 >
