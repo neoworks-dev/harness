@@ -281,12 +281,16 @@ export class SessionStore {
     return r?.seq ?? 0;
   }
 
-  /** Events of the given types, in seq order. */
+  /**
+   * Events of the given types, in seq order. Through the type index by force: left to choose,
+   * SQLite walks the whole session in seq order to save the sort, every event's data and all.
+   */
   readTypes(session: string, types: SessionEvent["type"][]): SessionEventRecord[] {
     const placeholders = types.map(() => "?").join(", ");
     return this.db
       .query<EventDbRow, string[]>(
-        `SELECT session, seq, ts, data FROM events WHERE session = ? AND type IN (${placeholders}) ORDER BY seq`,
+        `SELECT session, seq, ts, data FROM events INDEXED BY events_by_type
+         WHERE session = ? AND type IN (${placeholders}) ORDER BY seq`,
       )
       .all(session, ...types)
       .map(toRecord);
