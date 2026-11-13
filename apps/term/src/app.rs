@@ -65,8 +65,6 @@ mod typing;
 const QUIT_WINDOW_MS: i64 = 1500;
 /// How long a transient message stays.
 const NOTICE_MS: i64 = 4000;
-/// How often a running turn's session info is refreshed (queue length, stuck turns).
-const POLL_MS: i64 = 2000;
 /// Idle this long, a session's prompt cache is gone with Anthropic (5 minutes, 1 hour with long
 /// retention) and OpenAI (5 minutes to an hour); DeepSeek's disk cache may outlast it.
 const CACHE_COLD_MS: i64 = 60 * 60 * 1000;
@@ -186,8 +184,6 @@ pub enum Effect {
     CreateSession {
         cwd: String,
     },
-    /// Ask for the session's info again (queue length, whether it still runs).
-    Refresh,
     /// Answer a `secret.request`: the typed value, or none when cancelled. `Debug` hides it.
     Secret {
         id: String,
@@ -565,7 +561,6 @@ pub struct App {
     context_cleared: bool,
     quit_armed_until: i64,
     now_ms: i64,
-    last_poll_ms: i64,
     last_spin: i64,
     size: (u16, u16),
     sidebar_shown: bool,
@@ -685,7 +680,6 @@ impl App {
             context_cleared: false,
             quit_armed_until: 0,
             now_ms: now,
-            last_poll_ms: now,
             last_spin: 0,
             size: (80, 24),
             sidebar_shown: false,
@@ -831,10 +825,6 @@ impl App {
             if frame != self.last_spin {
                 self.last_spin = frame;
                 self.dirty = true;
-            }
-            if now_ms - self.last_poll_ms >= POLL_MS {
-                self.last_poll_ms = now_ms;
-                fx.push(Effect::Refresh);
             }
         }
         if self.notice.as_ref().is_some_and(|n| n.until <= now_ms) {

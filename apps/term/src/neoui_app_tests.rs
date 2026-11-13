@@ -23,7 +23,6 @@ fn app() -> App {
     });
     app.tick(NOW);
     app.awaiting = None;
-    app.last_poll_ms = NOW;
     app.turn_started_ms = NOW;
     app
 }

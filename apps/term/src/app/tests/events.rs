@@ -204,9 +204,8 @@ fn queued_inputs_are_counted_while_a_turn_runs() {
     }])));
     assert!(fx.is_empty());
     assert!(app.status_lines(100)[1].to_string().contains("3 queued"));
-    // While running the app asks for fresh session info now and then.
-    assert!(app.tick(NOW + 500).is_empty());
-    assert_eq!(app.tick(NOW + 2500), [Effect::Refresh]);
+    // The daemon tells of changes (session.changed): a running turn asks for nothing.
+    assert!(app.tick(NOW + 2500).is_empty());
 }
 
 #[test]

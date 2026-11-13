@@ -339,7 +339,7 @@ fn work(client: &Arc<Client>, app: &str, jobs: &mpsc::Receiver<Job>, msgs: &mpsc
                     fail("switching session failed", err);
                 }
             }
-            Effect::ListSessions | Effect::Refresh => {
+            Effect::ListSessions => {
                 let result = client.list_sessions().map_err(|e| e.to_string());
                 let _ = msgs.send(Msg::Sessions(result));
             }
