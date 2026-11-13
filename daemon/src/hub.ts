@@ -111,9 +111,19 @@ function followedBy(client: Client): Set<string> {
 /** How often a session's overview may update while it streams. */
 const SESSION_CHANGE_MS = 250;
 
+/** A request that holds the daemon up longer than this is logged on its own. */
+const SLOW_REQUEST_MS = 100;
+
+/** Every LOAD_WINDOW_MS the requests that took the most are logged, when they took LOAD_MS. */
+const LOAD_WINDOW_MS = 60_000;
+const LOAD_MS = 1000;
+
 export class Hub {
   private readonly clients = new Set<Client>();
   private readonly pendingChanges = new Map<string, ReturnType<typeof setTimeout>>();
+  /** How many requests of each topic (and client) came in this window, and the time they took. */
+  private readonly load = new Map<string, { count: number; ms: number }>();
+  private readonly loadTimer = setInterval(() => this.reportLoad(), LOAD_WINDOW_MS);
   /** Open secret questions by id. Kept only here: never in the store, never in a log. */
   private readonly secrets = new Map<string, PendingSecret>();
   private secretCount = 0;
@@ -125,6 +135,7 @@ export class Hub {
     private readonly log: Logger,
     private readonly parts: HubParts = {},
   ) {
+    this.loadTimer.unref();
     const { connectors, focus, views } = parts;
     if (views) {
       views.watched = (session, agent) => {
@@ -305,6 +316,20 @@ export class Hub {
   close(): void {
     for (const timer of this.pendingChanges.values()) clearTimeout(timer);
     this.pendingChanges.clear();
+    clearInterval(this.loadTimer);
+  }
+
+  /** Logs the requests that took the most time in the window, if they took long together. */
+  private reportLoad(): void {
+    const entries = [...this.load.entries()].sort((a, b) => b[1].ms - a[1].ms);
+    this.load.clear();
+    const total = entries.reduce((sum, [, { ms }]) => sum + ms, 0);
+    if (total < LOAD_MS) return;
+    const top = entries
+      .slice(0, 5)
+      .map(([key, { count, ms }]) => `${key} ×${count} ${Math.round(ms)}ms`)
+      .join(", ");
+    this.log.warn(`bus requests took ${Math.round(total)}ms in the last minute: ${top}`);
   }
 
   /** Tells every client (except the one it came from) that a file changed. */
@@ -363,6 +388,7 @@ export class Hub {
       this.fail(client, "id" in msg ? msg.id : undefined, "bad_request", "send bus.hello first");
       return;
     }
+    const started = performance.now();
     try {
       this.handle(client, msg);
     } catch (err) {
@@ -373,7 +399,26 @@ export class Hub {
         this.log.error(`handling ${msg.topic}: ${String(err)}`);
         this.fail(client, id, "internal", String(err));
       }
+    } finally {
+      this.measure(client, msg, performance.now() - started);
     }
+  }
+
+  /** Counts the request's time toward the window, and logs it when it held the daemon up. */
+  private measure(client: Client, msg: Envelope, ms: number): void {
+    const key = `${msg.topic} (${client.name ?? "client"})`;
+    const entry = this.load.get(key) ?? { count: 0, ms: 0 };
+    entry.count++;
+    entry.ms += ms;
+    this.load.set(key, entry);
+    if (ms < SLOW_REQUEST_MS) return;
+    const payload: unknown = "payload" in msg ? msg.payload : undefined;
+    const named =
+      typeof payload === "object" && payload !== null && "session" in payload
+        ? payload.session
+        : undefined;
+    const what = typeof named === "string" ? `${key} ${named}` : key;
+    this.log.warn(`slow request: ${what} took ${Math.round(ms)}ms`);
   }
 
   /**
