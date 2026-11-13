@@ -217,7 +217,7 @@ describe("the first message", () => {
 });
 
 describe("/title", () => {
-  test("writes the title again from the conversation, which includes the old title", async () => {
+  test("writes the title again from the user's messages and the old title", async () => {
     const agent = new TitleAgent(['{"title": "Old"}', '{"title": "Footer and header polish"}']);
     const { daemon, session } = await setup({ agent });
     say(daemon, session, "fix the header");
@@ -228,8 +228,9 @@ describe("/title", () => {
     expect(daemon.sessions.info(session)?.title).toBe("Footer and header polish");
     const asked = agent.asked.at(-1);
     expect(asked?.system).toContain('The previous title was "Old"');
-    expect(asked?.prompt).toContain("User: fix the header\nAgent: Done.");
-    expect(asked?.prompt).toContain("User: now the footer too");
+    expect(asked?.prompt).toContain("fix the header");
+    expect(asked?.prompt).toContain("now the footer too");
+    expect(asked?.prompt).not.toContain("Done.");
   });
 
   test("replaces a title the user gave, because the user asked", async () => {

@@ -9,7 +9,6 @@
 // daemon's own agent on the model it is configured with. When a model can't be reached the session
 // keeps the start of its first message.
 import type { GenerateTextParams } from "@neoworks-dev/neo/agent";
-import type { SessionEventRecord } from "@neoworks-dev/neo-protocol/types";
 import { BadRequestError } from "./focus.ts";
 import type { Logger } from "./log.ts";
 import type { Settings, TitleModel } from "./settings.ts";
@@ -30,11 +29,12 @@ const TITLE_CHARS = 60;
 /** How long one model call may take. */
 const TITLE_TIMEOUT_MS = 90_000;
 
-/** How much of a message the model reads. */
-const MESSAGE_CHARS = 4000;
+/** How much of the first message the model reads: its start says what it is about. */
+const MESSAGE_CHARS = 1000;
 
-/** How much of the conversation `/title` shows the model. */
-const CONVERSATION_CHARS = 6000;
+/** How much of the user's messages a new title is written from, and of each one. */
+const CONVERSATION_CHARS = 1500;
+const TURN_CHARS = 300;
 
 const SYSTEM = `You write titles for conversations between a user and a coding agent, so the user can recognise a conversation weeks later.
 Reply with a JSON object and nothing else: {"title": "..."}.
@@ -57,7 +57,7 @@ Rules:
 
 const REGENERATE = `
 This is a new title for a conversation that has one already, because it has moved on or the old one did not fit.
-Read the user's messages first: the subject stays the subject until the user clearly changes what the conversation is about, and a conversation that moves from research to planning to implementation to review has usually not changed subjects. Use the agent's replies only to understand what the user's words refer to.
+You get the user's messages: the subject stays the subject until the user clearly changes what the conversation is about, and a conversation that moves from research to planning to implementation to review has usually not changed subjects.
 Keep the previous title when it is still accurate. Otherwise return a clearly better one, not a paraphrase.`;
 
 /** Titles a model returns when it has nothing to say. */
@@ -209,64 +209,31 @@ export class Titles {
   /** What to ask: the first message, or the conversation so far and the title it has. */
   private prompt(session: string, kind: "first" | "again"): { system: string; prompt: string } {
     const { store } = this.parts;
-    const exchanges = exchangesOf(store.read(session));
+    const messages: string[] = [];
+    for (const { event } of store.readTypes(session, ["user_message"])) {
+      if (event.type === "user_message") messages.push(event.text);
+    }
     if (kind === "first") {
-      const text = exchanges[0]?.user ?? "";
+      const text = messages[0] ?? "";
       return { system: SYSTEM, prompt: `The first message:\n\n${clip(text, MESSAGE_CHARS)}` };
     }
     const previous = store.getSession(session)?.title;
     let system = SYSTEM + REGENERATE;
     if (previous !== undefined) system += `\nThe previous title was ${JSON.stringify(previous)}.`;
-    return {
-      system,
-      prompt: `The conversation:\n\n${fit(exchanges).join("\n\n")}`,
-    };
+    return { system, prompt: `The user's messages:\n\n${fit(messages).join("\n\n")}` };
   }
 }
 
-interface Exchange {
-  user: string;
-  /** The agent's last message in the turn. */
-  reply: string;
-}
-
-/** What the user said and the main agent last answered, turn by turn. */
-function exchangesOf(records: SessionEventRecord[]): Exchange[] {
-  const exchanges: Exchange[] = [];
-  let messages = new Map<string, string>();
-  const close = (): void => {
-    const last = exchanges.at(-1);
-    if (last) last.reply = [...messages.values()].at(-1)?.trim() ?? "";
-    messages = new Map();
-  };
-  for (const { event } of records) {
-    if (event.type === "user_message") {
-      close();
-      exchanges.push({ user: event.text, reply: "" });
-    } else if (event.type === "agent_message_chunk" && event.agent === undefined) {
-      messages.set(event.messageId, (messages.get(event.messageId) ?? "") + event.text);
-    }
-  }
-  close();
-  return exchanges;
-}
-
-/** The exchanges as text, in order: the first, which says what it was about, and the latest that fit. */
-function fit(exchanges: readonly Exchange[]): string[] {
-  const text = (exchange: Exchange): string => {
-    let entry = `User: ${clip(exchange.user, 800)}`;
-    if (exchange.reply !== "") entry += `\nAgent: ${clip(exchange.reply, 400)}`;
-    return entry;
-  };
-  const [first, ...rest] = exchanges;
+/** The messages, in order: the first, which says what it was about, and the latest that fit. */
+function fit(messages: readonly string[]): string[] {
+  const [first, ...rest] = messages.map((text) => clip(text, TURN_CHARS));
   if (first === undefined) return [];
   const latest: string[] = [];
-  let size = text(first).length;
-  for (const exchange of rest.reverse()) {
-    const entry = text(exchange);
-    if (size + entry.length > CONVERSATION_CHARS) break;
-    size += entry.length;
-    latest.unshift(entry);
+  let size = first.length;
+  for (const message of rest.reverse()) {
+    if (size + message.length > CONVERSATION_CHARS) break;
+    size += message.length;
+    latest.unshift(message);
   }
-  return [text(first), ...latest];
+  return [first, ...latest];
 }
