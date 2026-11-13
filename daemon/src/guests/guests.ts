@@ -1050,7 +1050,9 @@ export class GuestManager {
   /**
    * One prompt to the guest's adapter outside any session, for short generated text: a throwaway
    * adapter process and conversation in an empty temporary directory, nothing allowed (a tool
-   * asking is turned down) and nothing logged, ended once the reply is in. Resolves with the
+   * asking is turned down) and nothing logged, ended once the reply is in. The agent runs on
+   * `params.system` alone where it can, without its tools or the user's settings: a title costs
+   * the title's prompt, not a coding agent's context. Resolves with the
    * agent's last message; rejects with a message the user can read.
    */
   async generateText(name: string, params: GenerateTextParams): Promise<string> {
@@ -1084,8 +1086,27 @@ export class GuestManager {
     };
     params.signal?.addEventListener("abort", cancel);
     try {
-      await this.initialize(conn);
-      const created = await conn.request("session/new", { cwd, mcpServers: [] });
+      const { systemPrompt } = await this.initialize(conn);
+      const created = await conn.request("session/new", {
+        cwd,
+        mcpServers: [],
+        // The caller's system prompt in place of the agent's, where it takes one.
+        ...(systemPrompt && {
+          systemPrompt: { mode: "override", content: [{ type: "text", text: params.system }] },
+        }),
+        // Claude Code bare: no tools, none of the user's settings (CLAUDE.md, plugins, hooks,
+        // skills, MCP servers), no second request for a suggested next prompt.
+        _meta: {
+          claudeCode: {
+            options: {
+              tools: [],
+              settingSources: [],
+              strictMcpConfig: true,
+              promptSuggestions: false,
+            },
+          },
+        },
+      });
       acpSession = isRecord(created) ? str(created.sessionId) : undefined;
       if (acpSession === undefined) throw new Error("session/new returned no sessionId");
       if (params.model !== undefined) {
@@ -1100,7 +1121,12 @@ export class GuestManager {
       }
       await conn.request("session/prompt", {
         sessionId: acpSession,
-        prompt: [{ type: "text", text: `${params.system}\n\n${params.prompt}` }],
+        prompt: [
+          {
+            type: "text",
+            text: systemPrompt ? params.prompt : `${params.system}\n\n${params.prompt}`,
+          },
+        ],
       });
       return [...messages.values()].join("").trim();
     } catch (err) {
@@ -1226,7 +1252,7 @@ export class GuestManager {
   private async initialize(
     conn: AcpConnection,
     route?: Route,
-  ): Promise<{ steering: boolean; backgroundTasks: boolean }> {
+  ): Promise<{ steering: boolean; backgroundTasks: boolean; systemPrompt: boolean }> {
     const clientCapabilities: Record<string, unknown> = {
       fs: { readTextFile: false, writeTextFile: false },
       terminal: false,
@@ -1251,7 +1277,16 @@ export class GuestManager {
       const entry = meta?.[key];
       return isRecord(entry) && entry.supported === true;
     };
-    return { steering: supported("steering"), backgroundTasks: supported("backgroundTasks") };
+    // ACP's `systemPrompt` on session/new, in the mode that replaces the agent's own.
+    const capabilities = isRecord(hello) ? hello.agentCapabilities : undefined;
+    const session = isRecord(capabilities) ? capabilities.sessionCapabilities : undefined;
+    const prompt = isRecord(session) ? session.systemPrompt : undefined;
+    const systemPrompt = isRecord(prompt) && isRecord(prompt.mode) && "override" in prompt.mode;
+    return {
+      steering: supported("steering"),
+      backgroundTasks: supported("backgroundTasks"),
+      systemPrompt,
+    };
   }
 
   /**

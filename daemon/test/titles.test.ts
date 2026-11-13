@@ -325,12 +325,13 @@ describe("the title model", () => {
     expect(daemon.titles.current().model).toEqual({ harness: "fake", model: "small" });
   });
 
-  test("a guest writes the title on the model chosen, in an adapter of its own", async () => {
+  test("a guest writes the title on the model chosen, in a bare adapter of its own", async () => {
     const { daemon, session } = await setup({ guests: { fake: FAKE } });
     await daemon.commands.run(session, "/title-model fake large");
     say(daemon, session, "fix the header\ntitle Header fix");
-    // The adapter reports the model it was set to; nothing of this is in the session's log.
-    await until(daemon, session, (i) => i.title === "Header fix (large)");
+    // The adapter reports the model it was set to and that it ran on the title's system prompt
+    // alone, without tools or the user's settings; nothing of this is in the session's log.
+    await until(daemon, session, (i) => i.title === "Header fix (large, bare)");
     const events = daemon.store.read(session).map((r) => r.event.type);
     expect(events).not.toContain("agent_message_chunk");
     expect(events).not.toContain("harness_message");

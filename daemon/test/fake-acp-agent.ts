@@ -15,8 +15,9 @@
 //                 instructions, the disallowed tools, the ask rules, the settings)
 //   prompts       reports what the system prompt and the tools came to (see below)
 //   neocall <tool> <json>  calls one of neo's tools through the gateway and replies its result
-//   title <t>     replies {"title": "<t>"} (plus " (<model>)" once a model was set): a title
-//                 generateText asked for (the prompt's last line)
+//   title <t>     replies {"title": "<t>"}, plus in parentheses the model once one was set and
+//                 "bare" when session/new replaced the system prompt and turned off the tools and
+//                 settings: a title generateText asked for (the prompt's last line)
 //   started       reports how the conversation began: "new" or "resume" (resuming a session id
 //                 that starts with "gone" fails, like an adapter that lost the conversation)
 //   neotool <t> asks for permission to use neo's own MCP tool <t> (titled
@@ -63,6 +64,8 @@ let instructions: unknown;
 /** How the instructions end, the system prompt in place of the adapter's own, Codex's. */
 let instructionsEnd: unknown;
 let systemPrompt: unknown;
+/** Whether session/new replaced the system prompt and turned off the tools and settings. */
+let bare = false;
 let disallowed: unknown;
 /** The ask and allow rules of the settings Claude Code's adapter was given. */
 let ask: unknown;
@@ -511,8 +514,9 @@ async function prompt(params: {
     return { stopReason: "end_turn" };
   } else if (task.startsWith("title ")) {
     // What generateText asks: the reply is a title (with the model it was asked on, if one was set).
+    const notes = [config.model, bare && "bare"].filter((n) => typeof n === "string");
     let title = task.slice(6);
-    if (typeof config.model === "string") title += ` (${config.model})`;
+    if (notes.length > 0) title += ` (${notes.join(", ")})`;
     say(sessionId, JSON.stringify({ title }));
     return { stopReason: "end_turn" };
   } else if (task === "started") {
@@ -684,7 +688,10 @@ async function handle(message: Record<string, unknown>): Promise<void> {
       initialize = params;
       result = {
         protocolVersion: 1,
-        agentCapabilities: { mcpCapabilities: { http: true } },
+        agentCapabilities: {
+          mcpCapabilities: { http: true },
+          sessionCapabilities: { systemPrompt: { mode: { override: {} } } },
+        },
         // As claude-agent-acp with _session/background_tasks (and steering) would.
         _meta: {
           backgroundTasks: { supported: true },
@@ -705,6 +712,8 @@ async function handle(message: Record<string, unknown>): Promise<void> {
         systemPrompt?: string;
         claudeCode?: {
           options?: {
+            tools?: unknown;
+            settingSources?: unknown;
             disallowedTools?: string[];
             settings?: { permissions?: { ask?: string[]; allow?: string[] } };
           };
@@ -713,6 +722,10 @@ async function handle(message: Record<string, unknown>): Promise<void> {
       instructions = meta.jetbrains?.air?.customInstructions?.slice(0, 40);
       instructionsEnd = meta.jetbrains?.air?.customInstructions?.slice(-20);
       systemPrompt = meta.systemPrompt;
+      const options = meta.claudeCode?.options;
+      const empty = (value: unknown): boolean => Array.isArray(value) && value.length === 0;
+      const prompt = params.systemPrompt as { mode?: string } | undefined;
+      bare = prompt?.mode === "override" && empty(options?.tools) && empty(options?.settingSources);
       disallowed = meta.claudeCode?.options?.disallowedTools;
       ask = meta.claudeCode?.options?.settings?.permissions?.ask;
       allow = meta.claudeCode?.options?.settings?.permissions?.allow;
