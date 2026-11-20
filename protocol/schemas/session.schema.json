@@ -118,6 +118,12 @@
         },
         {
           "$ref": "#/$defs/ContextCleared"
+        },
+        {
+          "$ref": "#/$defs/SurfaceOpened"
+        },
+        {
+          "$ref": "#/$defs/SurfaceClosed"
         }
       ],
       "discriminator": {
@@ -735,6 +741,46 @@
         }
       },
       "required": ["type", "paths"],
+      "additionalProperties": false
+    },
+    "SurfaceOpened": {
+      "description": "A surface opened, or the open one of that name replaced (an update): a neoui program of the session that stays, drawn in a fixed place of the client instead of in the chat. Views keep the open surfaces apart from the chat's items (ViewSnapshot.surfaces, ViewItem.place). Not a context event: the agent doesn't see it.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "surface_opened"
+        },
+        "name": {
+          "type": "string",
+          "description": "Names the surface in the session: another surface_opened of this name replaces it, surface_closed closes it."
+        },
+        "place": {
+          "$ref": "view.schema.json#/$defs/SurfacePlace"
+        },
+        "source": {
+          "type": "string",
+          "description": "The neoui program."
+        },
+        "title": {
+          "type": "string",
+          "description": "What clients call it, in a header or a tab; the name when absent."
+        }
+      },
+      "required": ["type", "name", "place", "source"],
+      "additionalProperties": false
+    },
+    "SurfaceClosed": {
+      "description": "The surface of this name closed. Not a context event: the agent doesn't see it.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "surface_closed"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "name"],
       "additionalProperties": false
     },
     "ContextCleared": {

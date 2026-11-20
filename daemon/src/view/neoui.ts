@@ -85,4 +85,14 @@ export class NeoUiDocs {
   program(ref: string, doc: string): Program | undefined {
     return this.programs.get(NeoUiDocs.id(ref, doc));
   }
+
+  /** Stops and forgets the programs of item `ref` (a surface that closed). */
+  drop(ref: string): void {
+    const prefix = `${ref}\0`;
+    for (const [id, program] of this.programs) {
+      if (!id.startsWith(prefix)) continue;
+      program.dispose();
+      this.programs.delete(id);
+    }
+  }
 }

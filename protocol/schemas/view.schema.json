@@ -753,10 +753,19 @@
         },
         "component": {
           "$ref": "#/$defs/Component"
+        },
+        "place": {
+          "$ref": "#/$defs/SurfacePlace",
+          "description": "Set on a surface (ref s-<name>, a neoui component; the session's surface_opened): it is not a chat item but drawn in this place of the client. A snapshot lists surfaces in ViewSnapshot.surfaces; a set op with it updates or adds one, a remove op with its ref closes it."
         }
       },
       "required": ["ref", "kind", "component"],
       "additionalProperties": false
+    },
+    "SurfacePlace": {
+      "description": "Where a surface is drawn: bottom, a bar over the input; side, a panel beside the chat; page, the chat's place.",
+      "type": "string",
+      "enum": ["bottom", "side", "page"]
     },
     "ItemKind": {
       "type": "string",
@@ -869,6 +878,13 @@
           "type": "integer",
           "minimum": 1,
           "description": "How many items come ahead of these, left out because view.subscribe asked for a tail; view.page has them. Absent when none are."
+        },
+        "surfaces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ViewItem"
+          },
+          "description": "The open surfaces (each with place), in the order they opened; never cut by a tail. Absent when none are."
         }
       },
       "required": ["session", "seq", "items"],

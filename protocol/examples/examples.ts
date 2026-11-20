@@ -527,6 +527,31 @@ export const examples: Record<string, Envelope> = {
       event: { type: "context_cleared" },
     },
   },
+  "event-surface-opened": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 14,
+      ts: 1760565601300,
+      event: {
+        type: "surface_opened",
+        name: "training",
+        place: "bottom",
+        title: "Training",
+        source:
+          '<Query id="run" hx-get="train.status" hx-trigger="load, every 2s" default={{ step: 0, steps: 1 }}/>\n<Progress value={run.step / run.steps} label="training"/>',
+      },
+    },
+  },
+  "event-surface-closed": {
+    topic: "session.events",
+    payload: {
+      session,
+      seq: 15,
+      ts: 1760565601400,
+      event: { type: "surface_closed", name: "training" },
+    },
+  },
   "event-setting-changed": {
     topic: "session.events",
     payload: {

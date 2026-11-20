@@ -44,6 +44,14 @@ Every harness has the same channel, the gateway, so none has its own copy of the
 - **Apps** may register a template that is neoui instead of component JSON: `templates: {"<tool>": {"neoui": "<markup>"}}` in `app.presence`. The tool's `structuredContent` is given to the program as the value `data` (`program.provide({ data })`), so the template reads `{data.total}` and `<For each={data.rows} …>`; it is not text appended to the program. The result is a `NeoUiComponent` (`{type: "neoui", ui: UiDoc}`). A template that fails to produce a root falls back to the generic card, as JSON templates do.
 - **App components** are programs too: `components: {"<Name>": {description, params, neoui}}` in `app.presence`. The agent writes `<app.Name …/>` in its own program (or an app in a template), and the daemon runs the component's body in its place (see **App components** below).
 
+## Surfaces
+
+A surface is a neoui program of a session that stays: not in a message but in a fixed place of the client, `bottom` (a bar over the input), `side` (a panel beside the chat) or `page` (the chat's place). A training run's live status, a page of variables to change while it runs, a panel a plugin brings.
+
+- **Log.** `surface_opened {name, place, source, title?}` opens one, or replaces the open one of that name (an update); `surface_closed {name}` closes it. Neither is a context event. Being in the log, surfaces survive restarts and replays.
+- **View.** The session view keeps them apart from the chat's items: each is a `ViewItem` with ref `s-<name>`, kind `tool`, the title (or name) as `label`, a `place`, and a `neoui` component. `ViewSnapshot.surfaces` lists them in the order they opened, never cut by a `tail`. Patches use the usual ops: `set` with an item that has a `place` adds or updates a surface (never `appended`), `remove` with its ref closes it. A per-agent view has none.
+- **Programs.** A surface's doc runs like a message's: `neoui.input` and `neoui.press` reach it by its ref, a `<Query>` polls only while the view is watched, an answer patches it, and closing it stops its timers.
+
 ## The wire format
 
 ```jsonc

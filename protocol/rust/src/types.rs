@@ -1831,6 +1831,8 @@ pub enum SessionEvent {
     CommandsAvailable(CommandsAvailable),
     Todos(Todos),
     ContextCleared(ContextCleared),
+    SurfaceOpened(SurfaceOpened),
+    SurfaceClosed(SurfaceClosed),
     /// A variant this version doesn't know; re-serializes unchanged.
     Unknown(serde_json::Value),
 }
@@ -1943,6 +1945,14 @@ impl Serialize for SessionEvent {
                 "context_cleared",
                 serde_json::to_value(v).map_err(S::Error::custom)?,
             ),
+            SessionEvent::SurfaceOpened(v) => (
+                "surface_opened",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
+            SessionEvent::SurfaceClosed(v) => (
+                "surface_closed",
+                serde_json::to_value(v).map_err(S::Error::custom)?,
+            ),
             SessionEvent::Unknown(v) => return v.serialize(serializer),
         };
         with_tag("type", tag, value).serialize(serializer)
@@ -2043,6 +2053,12 @@ impl<'de> Deserialize<'de> for SessionEvent {
                 .map_err(D::Error::custom),
             "context_cleared" => serde_json::from_value(value)
                 .map(SessionEvent::ContextCleared)
+                .map_err(D::Error::custom),
+            "surface_opened" => serde_json::from_value(value)
+                .map(SessionEvent::SurfaceOpened)
+                .map_err(D::Error::custom),
+            "surface_closed" => serde_json::from_value(value)
+                .map(SessionEvent::SurfaceClosed)
                 .map_err(D::Error::custom),
             _ => Ok(SessionEvent::Unknown(value)),
         }
@@ -2220,6 +2236,18 @@ impl From<Todos> for SessionEvent {
 impl From<ContextCleared> for SessionEvent {
     fn from(v: ContextCleared) -> Self {
         SessionEvent::ContextCleared(v)
+    }
+}
+
+impl From<SurfaceOpened> for SessionEvent {
+    fn from(v: SurfaceOpened) -> Self {
+        SessionEvent::SurfaceOpened(v)
+    }
+}
+
+impl From<SurfaceClosed> for SessionEvent {
+    fn from(v: SurfaceClosed) -> Self {
+        SessionEvent::SurfaceClosed(v)
     }
 }
 
@@ -2728,6 +2756,31 @@ pub struct EditsReverted {
     /// Files left alone because they changed again after the turn's edits.
     #[serde(rename = "skipped", default, skip_serializing_if = "Option::is_none")]
     pub skipped: Option<Vec<String>>,
+}
+
+/// A surface opened, or the open one of that name replaced (an update): a neoui program of the session that stays, drawn in a fixed place of the client instead of in the chat. Views keep the open surfaces apart from the chat's items (ViewSnapshot.surfaces, ViewItem.place). Not a context event: the agent doesn't see it.
+/// Tagged `type: "surface_opened"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SurfaceOpened {
+    /// Names the surface in the session: another surface_opened of this name replaces it, surface_closed closes it.
+    #[serde(rename = "name")]
+    pub name: String,
+    #[serde(rename = "place")]
+    pub place: SurfacePlace,
+    /// The neoui program.
+    #[serde(rename = "source")]
+    pub source: String,
+    /// What clients call it, in a header or a tab; the name when absent.
+    #[serde(rename = "title", default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+}
+
+/// The surface of this name closed. Not a context event: the agent doesn't see it.
+/// Tagged `type: "surface_closed"` inside [`SessionEvent`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SurfaceClosed {
+    #[serde(rename = "name")]
+    pub name: String,
 }
 
 /// The user cleared the agent's context (/clear): the session goes on, with its log, todos and settings, but its agents start a new conversation. Each harness rebuilds its context from the events after the last one only; usage and cost still count the whole session. Not a context event: the agent doesn't see it.
@@ -3932,6 +3985,20 @@ pub struct ViewItem {
     pub description: Option<String>,
     #[serde(rename = "component")]
     pub component: Component,
+    /// Set on a surface (ref s-<name>, a neoui component; the session's surface_opened): it is not a chat item but drawn in this place of the client. A snapshot lists surfaces in ViewSnapshot.surfaces; a set op with it updates or adds one, a remove op with its ref closes it.
+    #[serde(rename = "place", default, skip_serializing_if = "Option::is_none")]
+    pub place: Option<SurfacePlace>,
+}
+
+/// Where a surface is drawn: bottom, a bar over the input; side, a panel beside the chat; page, the chat's place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SurfacePlace {
+    #[serde(rename = "bottom")]
+    Bottom,
+    #[serde(rename = "side")]
+    Side,
+    #[serde(rename = "page")]
+    Page,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -4073,6 +4140,9 @@ pub struct ViewSnapshot {
     /// How many items come ahead of these, left out because view.subscribe asked for a tail; view.page has them. Absent when none are.
     #[serde(rename = "before", default, skip_serializing_if = "Option::is_none")]
     pub before: Option<i64>,
+    /// The open surfaces (each with place), in the order they opened; never cut by a tail. Absent when none are.
+    #[serde(rename = "surfaces", default, skip_serializing_if = "Option::is_none")]
+    pub surfaces: Option<Vec<ViewItem>>,
 }
 
 /// Items of a view ahead of the ones a client has, oldest first.

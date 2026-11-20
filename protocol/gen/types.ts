@@ -774,7 +774,9 @@ export type SessionEvent =
   | AgentMessage
   | CommandsAvailable
   | Todos
-  | ContextCleared;
+  | ContextCleared
+  | SurfaceOpened
+  | SurfaceClosed;
 
 export type SessionEventTag = SessionEvent["type"];
 
@@ -1039,6 +1041,24 @@ export interface EditsReverted {
   paths: string[];
   /** Files left alone because they changed again after the turn's edits. */
   skipped?: string[];
+}
+
+/** A surface opened, or the open one of that name replaced (an update): a neoui program of the session that stays, drawn in a fixed place of the client instead of in the chat. Views keep the open surfaces apart from the chat's items (ViewSnapshot.surfaces, ViewItem.place). Not a context event: the agent doesn't see it. */
+export interface SurfaceOpened {
+  type: "surface_opened";
+  /** Names the surface in the session: another surface_opened of this name replaces it, surface_closed closes it. */
+  name: string;
+  place: SurfacePlace;
+  /** The neoui program. */
+  source: string;
+  /** What clients call it, in a header or a tab; the name when absent. */
+  title?: string;
+}
+
+/** The surface of this name closed. Not a context event: the agent doesn't see it. */
+export interface SurfaceClosed {
+  type: "surface_closed";
+  name: string;
 }
 
 /** The user cleared the agent's context (/clear): the session goes on, with its log, todos and settings, but its agents start a new conversation. Each harness rebuilds its context from the events after the last one only; usage and cost still count the whole session. Not a context event: the agent doesn't see it. */
@@ -1580,7 +1600,12 @@ export interface ViewItem {
   /** With command: what the agent said the command is for. Renderers may show it in the command's place once the command has run. */
   description?: string;
   component: Component;
+  /** Set on a surface (ref s-<name>, a neoui component; the session's surface_opened): it is not a chat item but drawn in this place of the client. A snapshot lists surfaces in ViewSnapshot.surfaces; a set op with it updates or adds one, a remove op with its ref closes it. */
+  place?: SurfacePlace;
 }
+
+/** Where a surface is drawn: bottom, a bar over the input; side, a panel beside the chat; page, the chat's place. */
+export type SurfacePlace = "bottom" | "side" | "page";
 
 export type ItemKind = "user" | "agent" | "thought" | "tool" | "notice";
 
@@ -1622,6 +1647,8 @@ export interface ViewSnapshot {
   items: ViewItem[];
   /** How many items come ahead of these, left out because view.subscribe asked for a tail; view.page has them. Absent when none are. */
   before?: number;
+  /** The open surfaces (each with place), in the order they opened; never cut by a tail. Absent when none are. */
+  surfaces?: ViewItem[];
 }
 
 /** Items of a view ahead of the ones a client has, oldest first. */

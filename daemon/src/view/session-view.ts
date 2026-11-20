@@ -10,6 +10,7 @@ import type {
   SessionEvent,
   SessionEventRecord,
   Span,
+  SurfaceOpened,
   ToolCallContent,
   ToolCallStatus,
   ToolKind,
@@ -27,6 +28,11 @@ import { resolveTemplate, TemplateError } from "./template.ts";
 
 /** Finds the template registered for a tool (app.tool), if any. */
 export type TemplateLookup = (tool: string) => unknown;
+
+/** The ref of the surface `name`: what patches and ui.action address it by. */
+export function surfaceRef(name: string): string {
+  return `s-${name}`;
+}
 
 interface Stream {
   ref: string;
@@ -256,6 +262,10 @@ export class SessionView {
   /** The calls that sent an agent a message and wait for its answer, by that agent's label. */
   private readonly asked = new Map<string, Call>();
   private readonly docs: NeoUiDocs;
+  /** The open surfaces as drawn, by ref (`s-<name>`), in the order they opened. */
+  private readonly surfaces = new Map<string, ViewItem>();
+  /** What opened each surface: its program and place, to draw it again. */
+  private readonly surfaceSources = new Map<string, SurfaceOpened>();
   /** The line of app news that is last in the chat, and what it says per app. */
   private appNews: { ref: string; parts: Map<string, string> } | undefined;
   private seq = 0;
@@ -313,6 +323,8 @@ export class SessionView {
     };
     if (start > 0) snapshot.before = start;
     if (this.only !== undefined) snapshot.agent = this.only;
+    if (this.surfaces.size > 0)
+      snapshot.surfaces = [...this.surfaces.values()].map((item) => structuredClone(item));
     return snapshot;
   }
 
@@ -386,7 +398,9 @@ export class SessionView {
     const ops = this.opsFor(record.event, record.seq);
     for (const op of ops) {
       // A client holding only the latest items tells a new one from one it left out by this.
-      if (op.op === "set" && !this.index.has(op.item.ref)) op.appended = true;
+      if (op.op === "set" && op.item.place === undefined && !this.index.has(op.item.ref)) {
+        op.appended = true;
+      }
       this.applyOp(op);
     }
     return ops;
@@ -497,6 +511,17 @@ export class SessionView {
         return [this.notice(`n${seq}`, event.text, event.tone ?? "muted")];
       case "context_cleared":
         return [this.notice(`n${seq}`, "context cleared: the agent starts over from here")];
+      case "surface_opened": {
+        const ref = surfaceRef(event.name);
+        this.surfaceSources.set(ref, event);
+        return [{ op: "set", item: this.surfaceItem(event) }];
+      }
+      case "surface_closed": {
+        const ref = surfaceRef(event.name);
+        if (!this.surfaceSources.delete(ref)) return [];
+        this.docs.drop(ref);
+        return [{ op: "remove", ref }];
+      }
       case "turn_ended": {
         // A call the turn never heard the end of (it was interrupted, the harness gave no
         // result) is over with it, but a background subagent's, which runs on past the turn.
@@ -1103,6 +1128,19 @@ export class SessionView {
     return { type: "stack", gap: "s", children };
   }
 
+  /** A surface as an item: its program drawn, in its place, apart from the chat. */
+  private surfaceItem(event: SurfaceOpened): ViewItem {
+    const ref = surfaceRef(event.name);
+    const ui = this.docs.doc(ref, "0", event.source, false);
+    return {
+      ref,
+      kind: "tool",
+      label: event.title ?? event.name,
+      place: event.place,
+      component: { type: "neoui", ui },
+    };
+  }
+
   /** Doc `doc` of item `ref`, running: where typed values and $variables live. */
   program(ref: string, doc: string): Program | undefined {
     // Its message may not be parsed yet, and its docs not running.
@@ -1112,6 +1150,15 @@ export class SessionView {
 
   /** A neoui doc of item `ref` changed (a value was typed, a query answered): send the item again. */
   changed(ref: string): void {
+    const surface = this.surfaceSources.get(ref);
+    if (surface !== undefined) {
+      const item = this.surfaceItem(surface);
+      if (JSON.stringify(item) === JSON.stringify(this.surfaces.get(ref))) return;
+      const op: ViewOp = { op: "set", item };
+      this.applyOp(op);
+      this.onOps?.([op]);
+      return;
+    }
     const at = this.index.get(ref);
     const current = at === undefined ? undefined : this.items[at];
     if (!current) return;
@@ -1134,6 +1181,12 @@ export class SessionView {
   }
 
   private applyOp(op: ViewOp): void {
+    // Surfaces are kept apart from the chat's items.
+    if (op.op === "set" && op.item.place !== undefined) {
+      this.surfaces.set(op.item.ref, op.item);
+      return;
+    }
+    if (op.op === "remove" && this.surfaces.delete(op.ref)) return;
     switch (op.op) {
       case "set": {
         const at = this.index.get(op.item.ref);

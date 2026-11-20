@@ -1,0 +1,15 @@
+{
+  "topic": "session.events",
+  "payload": {
+    "session": "s_7k2m9q4x1c",
+    "seq": 14,
+    "ts": 1760565601300,
+    "event": {
+      "type": "surface_opened",
+      "name": "training",
+      "place": "bottom",
+      "title": "Training",
+      "source": "<Query id=\"run\" hx-get=\"train.status\" hx-trigger=\"load, every 2s\" default={{ step: 0, steps: 1 }}/>\n<Progress value={run.step / run.steps} label=\"training\"/>"
+    }
+  }
+}

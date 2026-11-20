@@ -63,6 +63,8 @@ describe("protocol examples", () => {
       commands_available: true,
       todos: true,
       context_cleared: true,
+      surface_opened: true,
+      surface_closed: true,
     };
     expect([...seen].sort()).toEqual(Object.keys(all).sort());
   });

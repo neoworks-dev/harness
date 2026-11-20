@@ -1543,7 +1543,7 @@ type SessionEventRecord struct {
 }
 
 // SessionEvent: Everything that happens in a session. Views must ignore types they don't know.
-// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, ShowDontTell, Notice, SubagentStarted, SubagentEnded, AgentMessage, CommandsAvailable, Todos, ContextCleared, UnknownSessionEvent.
+// Value is one of: UserMessage, AgentMessageChunk, AgentThoughtChunk, ToolCall, ToolCallUpdate, TurnEnded, AppConnected, AppDisconnected, FocusChanged, HarnessMessage, ToolResult, GuestTurn, PermissionRequest, PermissionResolved, SettingChanged, Choice, ChoiceMade, Plan, Usage, EditsReverted, UserNote, ShowDontTell, Notice, SubagentStarted, SubagentEnded, AgentMessage, CommandsAvailable, Todos, ContextCleared, SurfaceOpened, SurfaceClosed, UnknownSessionEvent.
 type SessionEvent struct {
 	Value SessionEventVariant
 }
@@ -1756,6 +1756,18 @@ func (u *SessionEvent) UnmarshalJSON(data []byte) error {
 		u.Value = v
 	case "context_cleared":
 		var v ContextCleared
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "surface_opened":
+		var v SurfaceOpened
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		u.Value = v
+	case "surface_closed":
+		var v SurfaceClosed
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
@@ -2287,6 +2299,44 @@ func (v EditsReverted) MarshalJSON() ([]byte, error) {
 		Tag string `json:"type"`
 		plain
 	}{"edits_reverted", plain(v)})
+}
+
+// SurfaceOpened: A surface opened, or the open one of that name replaced (an update): a neoui program of the session that stays, drawn in a fixed place of the client instead of in the chat. Views keep the open surfaces apart from the chat's items (ViewSnapshot.surfaces, ViewItem.place). Not a context event: the agent doesn't see it.
+type SurfaceOpened struct {
+	// Names the surface in the session: another surface_opened of this name replaces it, surface_closed closes it.
+	Name  string       `json:"name"`
+	Place SurfacePlace `json:"place"`
+	// The neoui program.
+	Source string `json:"source"`
+	// What clients call it, in a header or a tab; the name when absent.
+	Title *string `json:"title,omitempty"`
+}
+
+func (SurfaceOpened) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v SurfaceOpened) MarshalJSON() ([]byte, error) {
+	type plain SurfaceOpened
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"surface_opened", plain(v)})
+}
+
+// SurfaceClosed: The surface of this name closed. Not a context event: the agent doesn't see it.
+type SurfaceClosed struct {
+	Name string `json:"name"`
+}
+
+func (SurfaceClosed) isSessionEvent() {}
+
+// MarshalJSON adds the "type" tag.
+func (v SurfaceClosed) MarshalJSON() ([]byte, error) {
+	type plain SurfaceClosed
+	return json.Marshal(struct {
+		Tag string `json:"type"`
+		plain
+	}{"surface_closed", plain(v)})
 }
 
 // ContextCleared: The user cleared the agent's context (/clear): the session goes on, with its log, todos and settings, but its agents start a new conversation. Each harness rebuilds its context from the events after the last one only; usage and cost still count the whole session. Not a context event: the agent doesn't see it.
@@ -3473,7 +3523,18 @@ type ViewItem struct {
 	// With command: what the agent said the command is for. Renderers may show it in the command's place once the command has run.
 	Description *string   `json:"description,omitempty"`
 	Component   Component `json:"component"`
+	// Set on a surface (ref s-<name>, a neoui component; the session's surface_opened): it is not a chat item but drawn in this place of the client. A snapshot lists surfaces in ViewSnapshot.surfaces; a set op with it updates or adds one, a remove op with its ref closes it.
+	Place *SurfacePlace `json:"place,omitempty"`
 }
+
+// SurfacePlace: Where a surface is drawn: bottom, a bar over the input; side, a panel beside the chat; page, the chat's place.
+type SurfacePlace string
+
+const (
+	SurfacePlaceBottom SurfacePlace = "bottom"
+	SurfacePlaceSide   SurfacePlace = "side"
+	SurfacePlacePage   SurfacePlace = "page"
+)
 
 type ItemKind string
 
@@ -3624,6 +3685,8 @@ type ViewSnapshot struct {
 	Items []ViewItem `json:"items"`
 	// How many items come ahead of these, left out because view.subscribe asked for a tail; view.page has them. Absent when none are.
 	Before *int64 `json:"before,omitempty"`
+	// The open surfaces (each with place), in the order they opened; never cut by a tail. Absent when none are.
+	Surfaces []ViewItem `json:"surfaces,omitempty"`
 }
 
 // ViewPage: Items of a view ahead of the ones a client has, oldest first.
