@@ -5,13 +5,15 @@ import type { SessionInfo } from "@neoworks-dev/neo-protocol/types";
 import { untrack } from "svelte";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
 import * as host from "../../kernel/host/git.ts";
+import { target } from "../../kernel/target.ts";
 import { loadMarks, saveMarks } from "./marks-store.ts";
 import { mergeMarks, NO_MARKS, pin, settle, unpin, unsettle, type Marks } from "./marks.ts";
 import { finishedAfter, runningSinceAfter, type Place } from "./sessions.ts";
 
 class Sessions {
   /** Ctrl-S: the sidebar is shown. */
-  open = $state(true);
+  /** Shown; a column beside another session's starts without it (Ctrl-S shows it). */
+  open = $state(!target.column);
   /** F6: the sidebar has the keyboard (arrows move, Enter opens, Esc gives it back). */
   focused = $state(false);
   /**

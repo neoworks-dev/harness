@@ -4,4 +4,5 @@
 import "@neoworks/svelte-gpui";
 import "./web/target.ts";
 import "./web/attachments.ts";
+import "./web/columns/index.ts";
 import "./main.ts";

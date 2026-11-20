@@ -33,6 +33,8 @@
   import { jumpGroup, lastSegment, notableBranch, placeOf, statusOf, step } from "./sessions.ts";
   import GroupHeader from "./GroupHeader.svelte";
   import caretRight from "@phosphor-icons/core/bold/caret-right-bold.svg";
+  import columnsIcon from "@phosphor-icons/core/regular/columns.svg";
+  import { target } from "../../kernel/target.ts";
   import { sessions } from "./state.svelte.ts";
 
   /** Rows a PgUp / PgDn moves. */
@@ -272,6 +274,15 @@
         icon: sparkle,
         onselect: () => void daemon.sendTo(info.info.id, "/title"),
       },
+      ...(target.openBeside === undefined
+        ? []
+        : [
+            {
+              label: "Open in a new column",
+              icon: columnsIcon,
+              onselect: () => target.openBeside?.(info.info.id),
+            },
+          ]),
       {
         label: "New session in this folder",
         icon: newSession,

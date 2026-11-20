@@ -26,6 +26,8 @@ The same UI, from the same code, in a tab of your default browser. `neo web` sta
 
 Closing the tab ends nothing. A daemon restart is followed the way the window follows it: the host reads the daemon's new address. If `neo-gui --web` itself stops, the tab is cut off for good: run `neo web` again.
 
+**Several sessions side by side.** A session row's right-press menu has **Open in a new column**: the session opens beside the one shown, as the whole app (its chat, input, status line and panels) in a column of its own with a bar to close it, up to four, kept for the tab across reloads. A column has no sidebar of its own (Ctrl-S shows it), and its "Open in a new column" adds to the tab's columns. A column only shows its session: the agent stays where you work until you act in it. The window has no columns yet.
+
 What differs from the window: files are not paths in a browser, so the paperclip, a dropped file and a pasted image upload the file to the daemon first and attach the stored copy (folders cannot be dropped). Anything that needs a window of the host, such as the folder picker of "add a project", is not available.
 
 ## What you see

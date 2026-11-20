@@ -24,6 +24,7 @@ import {
 } from "@neoworks-dev/neo-sdk";
 import * as host from "./host/git.ts";
 import { assetHandleOf } from "../lib/asset-path.ts";
+import { target } from "./target.ts";
 import { paletteOf } from "../lib/palette.ts";
 import { chooseSession, pickAppId } from "../lib/startup.ts";
 import {
@@ -121,10 +122,13 @@ class Neo {
       this.sessions = sessions;
       const focus = await client.focus.waitFor(3000).catch(() => undefined);
       this.focus = focus;
-      const args = { session: startup.session ?? undefined, new: startup.new };
+      // A column of a browser tab names its session in the address.
+      const args = { session: target.session ?? startup.session ?? undefined, new: startup.new };
       const choice = chooseSession(sessions, focus, startup.cwd, args);
       if ("error" in choice) throw new Error(choice.error);
       if ("new" in choice) await this.newSession(startup.cwd);
+      // A column only shows its session: the agent stays where the user works.
+      else if (target.column) this.show(choice.existing);
       else await this.open(choice.existing);
     } catch (error) {
       this.error = message(error);
