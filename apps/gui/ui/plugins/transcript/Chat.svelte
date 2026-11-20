@@ -4,7 +4,8 @@
   // as the agent writes.
   import { untrack } from "svelte";
   import { window } from "@neoworks/svelte-gpui";
-  import { List, View } from "@neoworks/svelte-gpui/ui";
+  import { Button, Icon, List, View } from "@neoworks/svelte-gpui/ui";
+  import arrowDown from "@phosphor-icons/core/regular/arrow-down.svg";
   import type { Layout, WheelEvent } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
   import { lastAtOrBefore, Offsets } from "../../lib/offsets.ts";
@@ -19,6 +20,7 @@
   import { timeline } from "./timeline.svelte.ts";
 
   const { daemon } = useCtx();
+  const p = $derived(daemon.palette);
 
   const rows = $derived(
     splitMessages(buildRows({
@@ -49,6 +51,11 @@
   // and again once they are back at the end. Each change of the rows goes to the end, and once
   // more after the new rows are measured.
   const follow = new Follow();
+  /** Scrolled up from the end: the button back to it shows. `follow` itself is not reactive. */
+  let away = $state(false);
+  const noticeFollow = (): void => {
+    away = !follow.following;
+  };
   let started: string | undefined;
   $effect(() => {
     const session = daemon.sessionId;
@@ -58,6 +65,7 @@
     if (started !== start) {
       started = start;
       follow.reset();
+      untrack(noticeFollow);
     }
     if (!follow.following) return;
     list?.scrollToIndex(count - 1, { align: "end" });
@@ -80,6 +88,7 @@
   let told: string | undefined;
   function scrolled(position: { y: number; maxY: number }): void {
     follow.scrolled(position.y, position.maxY, Date.now());
+    noticeFollow();
     let ref: string | "end" | undefined = "end";
     if (!follow.following) {
       const keys = rows.map((row) => row.key);
@@ -96,15 +105,27 @@
     if (ask === undefined || ask.seq === asked) return;
     asked = ask.seq;
     if (ask.ref === "end") {
-      follow.reset();
-      untrack(() => list?.scrollToIndex(rows.length - 1, { align: "end" }));
+      untrack(toEnd);
       return;
     }
     const index = rowIds.findIndex((ids) => ids.includes(ask.ref));
     if (index < 0) return;
     follow.following = false;
+    untrack(noticeFollow);
     untrack(() => list?.scrollToIndex(index, { align: "center" }));
   });
+
+  /** Back to the end of the chat, following it again; the terminal panel goes to its end too. */
+  function toEnd(): void {
+    follow.reset();
+    noticeFollow();
+    list?.scrollToIndex(rows.length - 1, { align: "end" });
+    requestAnimationFrame(() => list?.scrollToIndex(rows.length - 1, { align: "end" }));
+  }
+
+  /** The chat's width, to centre the button back to the end over it. */
+  let chatWidth = $state(0);
+  const END_BUTTON = 36;
 
   // The list is built anew when the window's width changes: a List that is resized keeps stale
   // row heights, so rows overlap (svelte-gpui #31). Until that is fixed, a resize returns the
@@ -117,8 +138,14 @@
 {#key width}
 <View
   style={{ flex: 1, minHeight: 0 }}
-  onresize={(box: Layout) => (viewport = box.height)}
-  onwheel={(event: WheelEvent) => follow.touched(Date.now(), event.dy)}
+  onresize={(box: Layout) => {
+    viewport = box.height;
+    chatWidth = box.width;
+  }}
+  onwheel={(event: WheelEvent) => {
+    follow.touched(Date.now(), event.dy);
+    noticeFollow();
+  }}
 >
 <List
   bind:this={list}
@@ -135,5 +162,30 @@
     </View>
   {/snippet}
 </List>
+{#if away && rows.length > 0}
+  <!-- Scrolled up: a button just above the input back to the end. -->
+  <Button
+    onpress={() => {
+      toEnd();
+      scrollSync.fromChat("end");
+    }}
+    style={{
+      position: "absolute",
+      bottom: 12,
+      left: Math.max(0, (chatWidth - END_BUTTON) / 2),
+      size: END_BUTTON,
+      radius: END_BUTTON / 2,
+      align: "center",
+      justify: "center",
+      background: p.raised,
+      borderWidth: 1,
+      borderColor: p.border,
+      color: p.fg,
+    }}
+    hover={{ background: p.hover }}
+  >
+    <Icon svg={arrowDown} size={16} />
+  </Button>
+{/if}
 </View>
 {/key}
