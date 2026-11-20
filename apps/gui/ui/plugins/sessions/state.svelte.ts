@@ -7,7 +7,7 @@ import type { DaemonService } from "../../kernel/services/daemon.ts";
 import * as host from "../../kernel/host/git.ts";
 import { target } from "../../kernel/target.ts";
 import { loadMarks, saveMarks } from "./marks-store.ts";
-import { mergeMarks, NO_MARKS, pin, settle, unpin, unsettle, type Marks } from "./marks.ts";
+import { mergeMarks, NO_MARKS, pin, toggleSettled, unpin, type Marks } from "./marks.ts";
 import { finishedAfter, runningSinceAfter, type Place } from "./sessions.ts";
 
 class Sessions {
@@ -93,9 +93,9 @@ class Sessions {
     this.mark(pinned ? unpin(this.marks, info.id) : pin(this.marks, info.id, Date.now()));
   }
 
-  /** Settles a session, or brings a settled one back. */
+  /** Settles a session and its subagents' sessions, or brings them back. */
   toggleSettle(info: SessionInfo, settled: boolean): void {
-    this.mark(settled ? unsettle(this.marks, info.id) : settle(this.marks, info));
+    this.mark(toggleSettled(this.marks, info, this.previous, settled));
   }
 
   private mark(next: Marks): void {

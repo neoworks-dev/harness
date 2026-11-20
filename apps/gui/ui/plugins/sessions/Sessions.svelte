@@ -20,6 +20,7 @@
   import sparkle from "@phosphor-icons/core/regular/sparkle.svg";
   import undoIcon from "@phosphor-icons/core/regular/arrow-counter-clockwise.svg";
   import { arrange, inProject, projectsOf, resultLines, type Line } from "./arrange.ts";
+  import { basis, refreeze, withLive, type Frozen } from "./freeze.ts";
   import HeaderButton from "./HeaderButton.svelte";
   import { icons } from "./icons.svelte.ts";
   import { isPinned } from "./marks.ts";
@@ -52,6 +53,20 @@
   const terms = $derived(termsOf(sessions.query));
   /** The clock to the minute: what folds as idle is worked out again once a minute, not every tick. */
   const minute = $derived(Math.floor(clock.now / 60_000) * 60_000);
+  /**
+   * What the order is worked out from: the sessions as they were when one was last added, or at
+   * most REARRANGE_MS ago (freeze.ts), so working sessions do not reshuffle the list.
+   */
+  let frozen = $state.raw<Frozen>();
+  $effect(() => {
+    const live = daemon.sessions;
+    const now = minute;
+    untrack(() => {
+      const next = refreeze(frozen, live, Math.max(now, Date.now()));
+      if (next !== frozen) frozen = next;
+    });
+  });
+  const ordered = $derived(frozen === undefined ? visible : basis(frozen, visible));
   const arranged = $derived(
     searching
       ? resultLines(
@@ -59,7 +74,7 @@
             lastSegment(placeOf(info.cwd, sessions.places).repo),
           ),
         )
-      : arrange(visible, sessions.places, sessions.marks, {
+      : withLive(arrange(ordered, sessions.places, sessions.marks, {
           open: sessions.settledOpen,
           all: sessions.settledAll,
           groups: sessions.groupsOpen,
@@ -70,7 +85,7 @@
             sessions.finished.has(info.id),
           nowMs: minute,
           shown: daemon.sessionId,
-        }),
+        }), visible),
   );
   const lines = $derived([...arranged.lines]);
 

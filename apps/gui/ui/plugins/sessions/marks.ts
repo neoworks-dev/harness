@@ -51,6 +51,34 @@ export function unsettle(marks: Marks, id: string): Marks {
   return { pinned: marks.pinned, settled: without(marks.settled, id) };
 }
 
+/** A session and every session delegated to from it, or from those, in `all`. */
+export function familyOf(info: SessionInfo, all: readonly SessionInfo[]): SessionInfo[] {
+  const out = [info];
+  const seen = new Set([info.id]);
+  for (let at = 0; at < out.length; at += 1) {
+    for (const other of all) {
+      if (other.parent === out[at]!.id && !seen.has(other.id)) {
+        seen.add(other.id);
+        out.push(other);
+      }
+    }
+  }
+  return out;
+}
+
+/** Settles a session with its subagents' sessions, or (`settled`) brings them all back. */
+export function toggleSettled(
+  marks: Marks,
+  info: SessionInfo,
+  all: readonly SessionInfo[],
+  settled: boolean,
+): Marks {
+  return familyOf(info, all).reduce(
+    (next, member) => (settled ? unsettle(next, member.id) : settle(next, member)),
+    marks,
+  );
+}
+
 /** Both sets of marks, `over` winning where they mark the same session. */
 export function mergeMarks(base: Marks, over: Marks): Marks {
   const pinned = { ...base.pinned, ...over.pinned };
