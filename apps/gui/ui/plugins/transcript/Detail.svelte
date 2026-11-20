@@ -10,7 +10,7 @@
   import { hasButtons } from "./components.ts";
   import { tailLines } from "./format.ts";
   import NeoUi from "./neoui/NeoUi.svelte";
-  import { codeColor, DETAIL_INDENT, PREVIEW_LINES } from "./layout.ts";
+  import { codeColor, DETAIL_INDENT, EDIT_LINES, PREVIEW_LINES } from "./layout.ts";
   import { transcript } from "./state.svelte.ts";
   import type { WorkEntry } from "./work.ts";
 
@@ -68,7 +68,7 @@
         {/if}
       </View>
       {#if file.diff}
-        <DiffView diff={file.diff} header={false} />
+        <DiffView diff={file.diff} header={false} limit={transcript.expanded ? undefined : EDIT_LINES} />
       {/if}
     {/each}
   {:else if entry.kind === "plan"}

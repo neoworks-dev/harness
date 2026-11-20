@@ -1,9 +1,13 @@
 <script lang="ts">
-  // What a question is about, compact: details, a few lines of a diff or code, text. A diff opens
-  // in the viewer beside the chat.
+  // What a question is about: details, a diff or code drawn as the chat draws them (coloured, with
+  // line numbers) and all of it, since what is to be approved has to be readable (the panel
+  // scrolls), and text. A diff also opens in the viewer beside the chat.
   import { Button, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { Component } from "@neoworks-dev/neo-protocol/types";
   import { useCtx } from "../../kernel/slots/context.ts";
+  import { diffStats } from "../../lib/diff.ts";
+  import CodeBlock from "../transcript/CodeBlock.svelte";
+  import DiffView from "../transcript/DiffView.svelte";
   import { plainText, previewLines } from "./prompt.ts";
 
   interface Props {
@@ -15,7 +19,8 @@
   const { daemon, viewer } = useCtx();
 
   const p = $derived(daemon.palette);
-  const PREVIEW = 8;
+  /** Lines of text shown; diffs and code are shown whole (up to their own caps). */
+  const TEXT_LINES = 40;
 </script>
 
 <View style={{ gap: p.space.s }}>
@@ -28,44 +33,25 @@
         </View>
       {/each}
     {:else if component.type === "diff"}
-      {@const changed = component.lines.filter((line) => line.kind === "add" || line.kind === "remove")}
-      {@const shown = changed.slice(0, PREVIEW)}
+      {@const stats = diffStats(component.lines)}
       <View style={{ direction: "row", gap: p.space.m, align: "center" }}>
         <Text style={{ color: p.muted, flex: 1, minWidth: 0, truncate: true }}>
-          {component.path ?? "diff"} · +{changed.filter((line) => line.kind === "add").length} −{changed.filter(
-            (line) => line.kind === "remove",
-          ).length}
+          {component.path ?? "diff"} · <Text style={{ color: p.success }}>+{stats.added}</Text>
+          <Text style={{ color: p.danger }}>{" "}−{stats.removed}</Text>
         </Text>
         <Button
           onpress={() => viewer.showDiff(component)}
           style={{ paddingX: p.space.m, paddingY: 2, radius: 5, background: p.surface, borderWidth: 1, borderColor: p.border }}
           hover={{ borderColor: p.accent }}
         >
-          <Text style={{ color: p.accent }}>open in the viewer</Text>
+          <Text style={{ color: p.accent }}>Open in the viewer</Text>
         </Button>
       </View>
-      <View style={{ background: p.surface, radius: 6, padding: p.space.m }}>
-        {#each shown as line}
-          <Text style={{ fontFamily: "mono", fontSize: p.text.code, color: line.kind === "add" ? p.success : p.danger, nowrap: true, truncate: true }}>
-            {line.kind === "add" ? "+" : "−"} {line.text}
-          </Text>
-        {/each}
-        {#if changed.length > shown.length}
-          <Text style={{ color: p.muted }}>… {changed.length - shown.length} more changed lines</Text>
-        {/if}
-      </View>
+      <DiffView diff={component} header={false} />
     {:else if component.type === "code"}
-      {@const preview = previewLines(component.code, PREVIEW)}
-      <View style={{ background: p.surface, radius: 6, padding: p.space.m }}>
-        {#each preview.lines as line}
-          <Text style={{ fontFamily: "mono", fontSize: p.text.code, nowrap: true, truncate: true }}>{line === "" ? " " : line}</Text>
-        {/each}
-        {#if preview.more > 0}
-          <Text style={{ color: p.muted }}>… {preview.more} more lines</Text>
-        {/if}
-      </View>
+      <CodeBlock code={component.code} language={component.language} />
     {:else if component.type === "text"}
-      {@const preview = previewLines(plainText(component.blocks), PREVIEW)}
+      {@const preview = previewLines(plainText(component.blocks), TEXT_LINES)}
       <View>
         {#each preview.lines as line}
           <Text style={{ color: component.tone === "muted" ? p.muted : p.fg }}>{line === "" ? " " : line}</Text>

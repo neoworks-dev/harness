@@ -6,8 +6,11 @@ import type { ViewItem } from "@neoworks-dev/neo-protocol/types";
 class Transcript {
   /** Ctrl-O: tool results and cards in full. */
   expanded = $state(false);
-  /** Ctrl-T: the agent's thoughts, open in the chat; in another agent's chat, shown at all. */
-  showThoughts = $state(false);
+  /**
+   * The agent's thoughts, as text in the chat (Ctrl-T hides them to one-line rows); in another
+   * agent's chat, shown at all.
+   */
+  showThoughts = $state(true);
   /**
    * The ref of the item (a permission or choice card) a pane answers in place of the transcript;
    * the item shows a one-line stub for it.

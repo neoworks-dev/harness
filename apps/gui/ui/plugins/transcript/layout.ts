@@ -13,6 +13,9 @@ export const DETAIL_INDENT = GUTTER + 6;
 /** Lines of a diff or code a question shows before its buttons (Ctrl-O shows all). */
 export const PREVIEW_LINES = 12;
 
+/** Lines of an edit's or a written file's diff a work row shows (Ctrl-O, or pressing it, shows all). */
+export const EDIT_LINES = 20;
+
 /** The rules under the "Working for" and "Worked for" rows: the border at 60%. */
 export function softBorder(p: Palette): string {
   return blend(p.bg, p.border, 60);

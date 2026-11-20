@@ -53,11 +53,14 @@ export interface RowsInput {
 
 /**
  * Work that is never folded in with other work, as in the terminal: what was asked and planned,
- * an edit (what was written stays in sight) and a command (each says what it was for).
+ * an edit (what was written stays in sight), a command (each says what it was for) and a thought
+ * (the agent's reasoning between calls, read in the flow of the turn).
  */
-const ALONE: ReadonlySet<WorkEntry["kind"]> = new Set(["question", "plan", "edit", "command"]);
+const ALONE: ReadonlySet<WorkEntry["kind"]> = new Set(["question", "plan", "edit", "command", "thought"]);
 /** Finished calls in a row fold into one row from this many on. */
 export const GROUP_MIN = 3;
+/** Reads alone fold sooner, into "Read 2 files": a file the agent looked at says little on its own. */
+export const READS_MIN = 2;
 
 const NONE: FileChange[] = [];
 const NO_ENTRIES: WorkEntry[] = [];
@@ -134,7 +137,8 @@ function bodyRows(
   // As the terminal does: a run of finished calls folds into one row from GROUP_MIN on; fewer, or
   // one still going, each show on their own.
   const flush = (): void => {
-    if (group.length >= GROUP_MIN && !group.some((entry) => entry.live)) row(group);
+    const min = group.every((entry) => entry.kind === "read") ? READS_MIN : GROUP_MIN;
+    if (group.length >= min && !group.some((entry) => entry.live)) row(group);
     else for (const entry of group) row([entry]);
     group = [];
   };

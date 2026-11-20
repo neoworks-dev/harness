@@ -96,7 +96,7 @@ const read = (id: string, state: ViewItem["state"] = "done"): ViewItem => ({
 const work = (list: Row[]): string[][] =>
   list.flatMap((row) => (row.kind === "work" ? [row.entries.map((entry) => entry.kind)] : []));
 
-test("as in the terminal, three finished calls in a row fold into one; commands and edits stand alone", () => {
+test("finished calls in a row fold into one, reads from two; commands, edits and thoughts stand alone", () => {
   const open = { isOpen: () => true };
   const list = rows(
     [
@@ -106,17 +106,25 @@ test("as in the terminal, three finished calls in a row fold into one; commands 
       thought("x"),
       bash("c"),
       read("d"),
-      read("e"),
       edit("f", "src/a.ts"),
+      read("g"),
+      read("h"),
+      read("i"),
       agent("end"),
     ],
     open,
   );
-  expect(work(list)).toEqual([["read", "read", "thought"], ["command"], ["read"], ["read"], ["edit"]]);
+  expect(work(list)).toEqual([
+    ["read", "read"],
+    ["thought"],
+    ["command"],
+    ["read"],
+    ["edit"],
+    ["read", "read", "read"],
+  ]);
   // A message breaks a run too.
   expect(work(rows([user(1), read("a"), read("b"), agent("mid"), read("c"), agent("end")], open))).toEqual([
-    ["read"],
-    ["read"],
+    ["read", "read"],
     ["read"],
   ]);
 });

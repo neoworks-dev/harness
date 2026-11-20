@@ -9,6 +9,7 @@
   import warning from "@phosphor-icons/core/regular/warning-circle.svg";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Spinner from "../../widgets/Spinner.svelte";
+  import Component from "./Component.svelte";
   import Detail from "./Detail.svelte";
   import { clockTime } from "./format.ts";
   import { iconOf } from "./icons.ts";
@@ -61,6 +62,12 @@
   const exit = $derived(entry.kind === "command" && entry.exit !== undefined && entry.exit !== 0 ? entry.exit : undefined);
 </script>
 
+{#if entry.kind === "thought" && transcript.showThoughts}
+  <!-- A thought, shown (Ctrl-T hides them): the text itself, muted, in the flow of the turn. -->
+  <View style={{ paddingLeft: GUTTER + 8, paddingY: 2, color: p.muted, fontSize: 14, italic: true }}>
+    <Component component={entry.item.component} ref={entry.item.ref} />
+  </View>
+{:else}
 <View>
   <View
     onpress={pinned ? undefined : () => opened.toggle(key)}
@@ -109,3 +116,4 @@
     <Detail {entry} />
   {/if}
 </View>
+{/if}

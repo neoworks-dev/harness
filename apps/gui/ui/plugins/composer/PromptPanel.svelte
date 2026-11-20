@@ -5,6 +5,7 @@
   // with the answer, Esc puts the question aside. A choice with more than 9 options is a filter
   // field and a scrolling list instead: typing narrows the list (digits too), Up/Down move over
   // the matches, Enter answers, Esc clears the filter first.
+  import { window } from "@neoworks/svelte-gpui";
   import { Button, Input, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent, Layout, ScrollPosition } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
@@ -122,7 +123,8 @@
     <Text style={{ fontWeight: 600, truncate: true }}>{prompt.title || "The agent asks"}</Text>
 
     {#if hasBody}
-      <Scroll style={{ maxHeight: 180 }}>
+      <!-- What is to be approved gets room: up to half the window, scrolling past that. -->
+      <Scroll style={{ maxHeight: Math.max(180, Math.round(window.size.height * 0.5)) }}>
         <PromptBody components={prompt.body} />
       </Scroll>
     {/if}
