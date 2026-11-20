@@ -5,6 +5,8 @@
 import type { Context } from "@neoworks/extension-system";
 import "../shell/slots.ts";
 import MaxPane from "./MaxPane.svelte";
+import { permit } from "./permit.svelte.ts";
+import PermitPane from "./PermitPane.svelte";
 import { ViewerService } from "./service.ts";
 import SidePane from "./SidePane.svelte";
 import { viewer } from "./state.svelte.ts";
@@ -24,8 +26,12 @@ export const viewerPane = {
       slot.add({ component: SidePane, order: -10 });
     });
     slots.inject("shell.main", (slot) => {
+      // An edit waiting for its answer comes before everything else in the chat's place.
+      slot.add({ component: PermitPane, order: 1, select: () => permit.current !== undefined });
       slot.add({ component: MaxPane, order: 5, select: () => viewer.shown && viewer.maximized });
     });
+    permit.follow(daemon);
+    keyboard.claim(() => permit.current !== undefined);
     slots.inject("shell.toolbar", (slot) => {
       slot.add({ component: ToolbarButton, order: 15 });
     });
@@ -36,7 +42,9 @@ export const viewerPane = {
     keyboard.claim(() => viewer.editing || viewer.reviewing);
 
     // Ctrl-E: the latest turn's changed files, one after another, each whole in the chat's place.
+    // Edits put aside with Esc come back first.
     keymap.bind("ctrl-e", () => {
+      if (permit.bringBack()) return;
       if (!viewer.reviewTurn(0)) daemon.error = "The latest turn changed no files.";
     });
 
