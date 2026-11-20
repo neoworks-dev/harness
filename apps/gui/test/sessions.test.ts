@@ -101,8 +101,13 @@ test("sessions group by repository and worktree, newest group first", () => {
 test("the cluster with the latest activity leads and worktrees follow their repo", () => {
   const names = (sessions: SessionInfo[]): string[] =>
     outline(groupSessions(sessions, {}).entries).filter((line) => !line.startsWith("    "));
+  // All idle, so recency alone decides.
   const withScratch = (last: number): SessionInfo[] =>
-    grouped().map((s) => (s.id === "f" ? { ...s, lastActivity: last } : s));
+    grouped().map((s) => ({
+      ...s,
+      state: "idle" as const,
+      lastActivity: s.id === "f" ? last : s.lastActivity,
+    }));
   // The notes directory is quiet; the site repo has the newest session in a worktree.
   expect(names(withScratch(5))).toEqual(["site", "  ⎇ fix-login", "  ⎇ dark", "notes"]);
   // A newer session in the notes directory moves its cluster up.
@@ -110,6 +115,16 @@ test("the cluster with the latest activity leads and worktrees follow their repo
   // Within a repo, the worktree with the newest activity comes first.
   const darkNewest = withScratch(5).map((s) => (s.id === "e" ? { ...s, lastActivity: 200 } : s));
   expect(names(darkNewest)).toEqual(["site", "  ⎇ dark", "  ⎇ fix-login", "notes"]);
+});
+
+test("active sessions and their groups stay on top, however old", () => {
+  const busy = { ...session("x", "Long build", "/w/old", 1), state: "running" as const };
+  const asking = { ...session("y", "Needs an answer", "/w/site", 2), asking: 1 };
+  const { entries } = groupSessions(
+    [session("n", "Newest", "/w/site", 90), asking, busy, session("m", "Mid", "/w/mid", 50)],
+    {},
+  );
+  expect(outline(entries)).toEqual(["site", "    y", "    n", "old", "    x", "mid", "    m"]);
 });
 
 test("a child of a session elsewhere is marked but stays in its own group", () => {
@@ -341,19 +356,19 @@ test("the list puts pinned first and settled last, closed until opened", () => {
   const open = arrange(all, {}, marks, show(true, false));
   expect(drawn(open).slice(-2)).toEqual(["[Settled 1 true]", "~f"]);
   expect(open.order.at(-1)).toBe("f");
-  // New activity in a settled session puts it back among the rest.
+  // New activity in a settled session puts it back among the rest, below the site's running one.
   const woken = all.map((s) => (s.id === "f" ? { ...s, lastActivity: 99 } : s));
   expect(drawn(arrange(woken, {}, marks, show(false, false)))).toEqual([
     "[Pinned]",
     "e",
     "a",
-    "[notes]",
-    "f",
     "[site]",
     "b",
     "[fix-login]",
     "c",
     "↳d",
+    "[notes]",
+    "f",
   ]);
   // Nothing marked is the grouped list as it was.
   expect(arrange(all, {}, NO_MARKS, show(false, false)).order).toEqual(groupSessions(all, {}).order);
@@ -373,7 +388,7 @@ test("as in the terminal, sessions idle for over a day fold into their group's l
   ];
   const keep = (s: SessionInfo): boolean => s.state === "running";
   const folded = arrange(all, {}, NO_MARKS, show(false, false, { keep, nowMs: now }));
-  expect(drawn(folded)).toEqual(["[site]", "new", "↳kid", "hour", "busy", "[more 2]"]);
+  expect(drawn(folded)).toEqual(["[site]", "busy", "new", "↳kid", "hour", "[more 2]"]);
   expect(folded.lines.at(-1)).toMatchObject({ group: "repo /w/site" });
   const opened = arrange(all, {}, NO_MARKS, show(false, false, { keep, nowMs: now, groups: new Set(["repo /w/site"]) }));
   expect(opened.order).toHaveLength(6);

@@ -60,8 +60,26 @@ function compareText(a: string, b: string): number {
   return a < b ? -1 : 1;
 }
 
+/** Working, or waiting on the user's answer: kept at the top of the list. */
+export function isActive(info: SessionInfo): boolean {
+  return info.state === "running" || (info.asking ?? 0) > 0;
+}
+
+/** Active sessions first, then the most recent. */
 function newestFirst(a: SessionInfo, b: SessionInfo): number {
-  return b.lastActivity - a.lastActivity || compareText(a.id, b.id);
+  return (
+    Number(isActive(b)) - Number(isActive(a)) ||
+    b.lastActivity - a.lastActivity ||
+    compareText(a.id, b.id)
+  );
+}
+
+/** Groups with an active session first, then the most recent. */
+function liveFirst(
+  a: { active: boolean; latest: number },
+  b: { active: boolean; latest: number },
+): number {
+  return Number(b.active) - Number(a.active) || b.latest - a.latest;
 }
 
 /** A group's sessions in drawn order: each right after its parent (as a child), the others by recency. */
@@ -80,13 +98,15 @@ function family(group: readonly SessionInfo[]): { info: SessionInfo; child: bool
 interface Cluster {
   repo: string;
   latest: number;
+  active: boolean;
   main: SessionInfo[];
-  worktrees: Map<string, { latest: number; sessions: SessionInfo[] }>;
+  worktrees: Map<string, { latest: number; active: boolean; sessions: SessionInfo[] }>;
 }
 
 /**
  * Groups the sessions: repositories by their latest activity, in each the main checkout and then
- * its worktrees by theirs, in each the sessions by theirs with children after their parent.
+ * its worktrees by theirs, in each the sessions by theirs with children after their parent. A
+ * group with an active session (`isActive`) comes before the others, the active ones first in it.
  */
 export function groupSessions(
   sessions: readonly SessionInfo[],
@@ -97,16 +117,22 @@ export function groupSessions(
     const place = placeOf(info.cwd, found);
     let cluster = clusters.get(place.repo);
     if (!cluster) {
-      cluster = { repo: place.repo, latest: 0, main: [], worktrees: new Map() };
+      cluster = { repo: place.repo, latest: 0, active: false, main: [], worktrees: new Map() };
       clusters.set(place.repo, cluster);
     }
     cluster.latest = Math.max(cluster.latest, info.lastActivity);
+    cluster.active ||= isActive(info);
     if (place.worktree === undefined) {
       cluster.main.push(info);
       continue;
     }
-    const tree = cluster.worktrees.get(place.worktree) ?? { latest: 0, sessions: [] };
+    const tree = cluster.worktrees.get(place.worktree) ?? {
+      latest: 0,
+      active: false,
+      sessions: [],
+    };
     tree.latest = Math.max(tree.latest, info.lastActivity);
+    tree.active ||= isActive(info);
     tree.sessions.push(info);
     cluster.worktrees.set(place.worktree, tree);
   }
@@ -123,7 +149,7 @@ export function groupSessions(
     }
   };
   const ordered = [...clusters.values()].sort(
-    (a, b) => b.latest - a.latest || compareText(a.repo, b.repo),
+    (a, b) => liveFirst(a, b) || compareText(a.repo, b.repo),
   );
   for (const cluster of ordered) {
     entries.push({
@@ -134,7 +160,7 @@ export function groupSessions(
     });
     put(cluster.main);
     const trees = [...cluster.worktrees.entries()].sort(
-      (a, b) => b[1].latest - a[1].latest || compareText(a[0], b[0]),
+      (a, b) => liveFirst(a[1], b[1]) || compareText(a[0], b[0]),
     );
     for (const [name, tree] of trees) {
       entries.push({ kind: "group", key: `tree ${cluster.repo} ${name}`, name });
