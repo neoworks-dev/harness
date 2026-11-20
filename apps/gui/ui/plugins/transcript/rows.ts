@@ -5,6 +5,7 @@
 // and the last reply comes with the files the turn changed. Plain functions, tested without a
 // window.
 import type { Block, ViewItem } from "@neoworks-dev/neo-protocol/types";
+import { imagesOf } from "./components.ts";
 import { duration } from "./format.ts";
 import type { Timeline } from "./timeline.ts";
 import { changedFiles, classify, isPlanCall, type FileChange, type WorkEntry } from "./work.ts";
@@ -145,7 +146,9 @@ function bodyRows(
   const info = turn.user === undefined ? undefined : timeline.turns.get(turn.user.ref);
   parts.forEach((part, index) => {
     if (part.type === "work") {
-      if (ALONE.has(part.entry.kind)) {
+      // A read that brought a picture back shows the picture: it stands alone too.
+      const picture = part.entry.kind === "read" && imagesOf(part.item.component).length > 0;
+      if (ALONE.has(part.entry.kind) || picture) {
         flush();
         row([part.entry]);
       } else {

@@ -18,6 +18,20 @@ export function hasButtons(component: Component): boolean {
   }
 }
 
+/** The pictures in a component, in order: what a read of an image file brought back. */
+export function imagesOf(component: Component): Extract<Component, { type: "image" }>[] {
+  switch (component.type) {
+    case "image":
+      return [component];
+    case "card":
+    case "row":
+    case "stack":
+      return component.children.flatMap(imagesOf);
+    default:
+      return [];
+  }
+}
+
 /** Whether the component is a neoui doc with a field or a button to use. */
 export function isForm(component: Component): boolean {
   return component.type === "neoui" && isInteractive(component.ui.root);

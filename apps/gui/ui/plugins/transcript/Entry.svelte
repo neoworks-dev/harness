@@ -16,7 +16,7 @@
   import { GUTTER } from "./layout.ts";
   import { opened } from "./opened.svelte.ts";
   import { transcript } from "./state.svelte.ts";
-  import { hasButtons, isForm } from "./components.ts";
+  import { hasButtons, imagesOf, isForm } from "./components.ts";
   import type { WorkEntry } from "./work.ts";
 
   interface Props {
@@ -40,7 +40,10 @@
    * Open until pressed: an edit with something to show, as in the terminal (what was written stays
    * in sight). A command is one line there, its output only when opened (or Ctrl-O): so here too.
    */
-  const startsOpen = $derived(entry.kind === "edit" && (entry.files ?? []).some((file) => file.diff !== undefined));
+  const startsOpen = $derived(
+    (entry.kind === "edit" && (entry.files ?? []).some((file) => file.diff !== undefined)) ||
+      (entry.kind === "read" && imagesOf(entry.item.component).length > 0),
+  );
   const toggled = $derived(opened.has(key));
   const open = $derived(
     pinned ||

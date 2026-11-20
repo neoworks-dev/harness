@@ -129,6 +129,16 @@ test("finished calls in a row fold into one, reads from two; commands, edits and
   ]);
 });
 
+test("a read that brought a picture back stands alone, so the picture shows", () => {
+  const picture: ViewItem = {
+    ...read("p"),
+    label: "read shot.png",
+    component: { type: "image", src: "asset://img-0006dd1d7373" },
+  };
+  const list = rows([user(1), read("a"), picture, read("b"), read("c"), agent("end")], { isOpen: () => true });
+  expect(work(list).map((entries) => entries.length)).toEqual([1, 1, 2]);
+});
+
 test("a run with a call still going stays open, each on its own", () => {
   const list = rows([user(1), read("a"), read("b"), read("c", "running")], { running: true });
   expect(work(list)).toEqual([["read"], ["read"], ["read"]]);
