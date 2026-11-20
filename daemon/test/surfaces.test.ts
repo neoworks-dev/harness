@@ -7,10 +7,11 @@ import type {
   ViewItem,
   ViewPatch,
 } from "@neoworks-dev/neo-protocol/types";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { silentLogger } from "../src/log.ts";
 import { parseSurfaceFile } from "../src/surfaces.ts";
+import { mistakesIn } from "../src/ui-lint.ts";
 import { startTestDaemon } from "../src/testing.ts";
 import { SessionView } from "../src/view/session-view.ts";
 
@@ -285,4 +286,17 @@ describe("surface files", () => {
       { ref: "s-clock", place: "bottom" },
     ]);
   });
+});
+
+test("the training example's surface files have no mistakes", () => {
+  const dir = join(import.meta.dir, "../../examples/training/surfaces");
+  for (const name of ["training", "training-vars"]) {
+    const file = parseSurfaceFile(
+      readFileSync(join(dir, `${name}.neoui`), "utf8"),
+      name,
+      "training",
+    );
+    expect(file).toBeDefined();
+    expect(mistakesIn(`\`\`\`neoui\n${file?.source}\n\`\`\``)).toEqual([]);
+  }
 });

@@ -1,0 +1,5 @@
+{
+  "name": "training",
+  "version": "0.1.0",
+  "description": "A training run's live status in a bar over the input, and a page to change its variables while it runs"
+}

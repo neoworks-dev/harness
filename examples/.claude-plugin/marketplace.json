@@ -1,0 +1,11 @@
+{
+  "name": "neo-examples",
+  "description": "Plugins that show what neo can do; add with /plugin marketplace add <path to examples>",
+  "plugins": [
+    {
+      "name": "training",
+      "source": "./training",
+      "description": "A training run's live status in a bar over the input, and a page to change its variables while it runs: surfaces fed by an MCP server"
+    }
+  ]
+}

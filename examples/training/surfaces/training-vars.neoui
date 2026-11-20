@@ -1,0 +1,32 @@
+---
+title: Training variables
+place: page
+description: the loss over the run, and its learning rate, pause and stop to change while it runs
+---
+<Card title="Training">
+  <Query id="run" hx-get="mcp-training.status" hx-trigger="load, every 2s" default={{ state: "idle", epoch: 0, epochs: 0, loss: 0, losses: [], labels: [], lr: 0, eta: "", w: 0, b: 0 }}/>
+  <Stack direction="row" gap="m">
+    <Metric label="Epoch" value={`${run.epoch}/${run.epochs}`}/>
+    <Metric label="Loss" value={fmt(run.loss, 4)}/>
+    <Metric label="Learning rate" value={run.lr}/>
+    <Metric label="Left" value={run.eta || "–"}/>
+  </Stack>
+  <LineChart labels={run.labels}>
+    <Series name="loss" values={run.losses}/>
+  </LineChart>
+  <Text tone="muted">The model so far: y = {run.w}·x + {run.b} (the data is y = 3x + 2).</Text>
+  <Form name="vars">
+    <FormControl label="Learning rate" hint="The run reads it every few steps">
+      <Slider name="lr" min={0.005} max={0.3} step={0.005} value={0.05}/>
+    </FormControl>
+    <FormControl label="Epochs" hint="For the next run">
+      <Slider name="epochs" min={1} max={30} step={1} value={8}/>
+    </FormControl>
+    <Switch name="paused" label="Paused"/>
+    <Buttons>
+      <Button variant="primary" hx-post="mcp-training.set" hx-include="lr, paused">Apply</Button>
+      <Button hx-post="mcp-training.start" hx-include="lr, epochs">Start a run</Button>
+      <Button variant="danger" hx-post="mcp-training.set" hx-vals={{ stop: true }}>Stop</Button>
+    </Buttons>
+  </Form>
+</Card>

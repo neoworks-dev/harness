@@ -1,0 +1,24 @@
+---
+title: Training
+place: bottom
+description: the training run's progress and loss, live, with pause and start
+---
+<Stack gap="s">
+  <Query id="run" hx-get="mcp-training.status" hx-trigger="load, every 2s" default={{ state: "idle", epoch: 0, epochs: 0, progress: 0, loss: 0, losses: [], lr: 0, eta: "" }}/>
+  <Stack direction="row" gap="m" align="center">
+    <Tag tone={run.state == "running" ? "success" : run.state == "stopped" ? "danger" : "muted"}>{run.state}</Tag>
+    <Text>epoch {run.epoch}/{run.epochs}</Text>
+    <Progress value={run.progress} label={`${round(run.progress * 100)}%`}/>
+    <Sparkline values={run.losses} label={`loss ${fmt(run.loss, 4)}`}/>
+    <Text tone="muted">lr {run.lr} · eta {run.eta}</Text>
+    <If when={run.state == "running"}>
+      <Button hx-post="mcp-training.set" hx-vals={{ paused: true }}>Pause</Button>
+    </If>
+    <If when={run.state == "paused"}>
+      <Button hx-post="mcp-training.set" hx-vals={{ paused: false }}>Resume</Button>
+    </If>
+    <If when={run.state != "running" && run.state != "paused"}>
+      <Button variant="primary" hx-post="mcp-training.start">Start a run</Button>
+    </If>
+  </Stack>
+</Stack>
