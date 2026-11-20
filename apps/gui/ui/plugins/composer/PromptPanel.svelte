@@ -29,6 +29,7 @@
 
   let root: ReturnType<typeof View> | undefined = $state();
   let noteInput: ReturnType<typeof Input> | undefined = $state();
+  let entryInput: ReturnType<typeof Input> | undefined = $state();
   let filterInput: ReturnType<typeof Input> | undefined = $state();
   let scroller: ReturnType<typeof Scroll> | undefined = $state();
   let viewport = $state(0);
@@ -41,7 +42,8 @@
   // The keys go to the panel; when the note field opens they go there, and back after it. A
   // filtered choice keeps them in its filter field.
   $effect(() => {
-    if (composer.note !== undefined) noteInput?.focus();
+    if (composer.entry !== undefined) entryInput?.focus();
+    else if (composer.note !== undefined) noteInput?.focus();
     else if (composer.filtering) filterInput?.focus();
     else root?.focus();
   });
@@ -229,7 +231,19 @@
       </View>
     {/if}
 
-    {#if composer.note !== undefined}
+    {#if composer.entry !== undefined}
+      <!-- The option asks for text: Enter answers with it, Esc goes back to the options. -->
+      <View style={{ direction: "row", gap: p.space.m, align: "center" }}>
+        <Text style={{ color: p.accent, shrink: 0 }}>{focused?.label ?? ""}</Text>
+        <Input
+          bind:this={entryInput}
+          bind:value={composer.entry}
+          placeholder={focused?.description ?? "Enter answers with it, Esc goes back"}
+          style={{ flex: 1, minWidth: 0, color: p.fg }}
+          onkey={noteKey}
+        />
+      </View>
+    {:else if composer.note !== undefined}
       <View style={{ direction: "row", gap: p.space.m, align: "center" }}>
         <Text style={{ color: p.accent }}>note</Text>
         <Input

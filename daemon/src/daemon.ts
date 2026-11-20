@@ -156,6 +156,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     apps: () => connectors.componentsOf(),
     // Defined further down; only called once the daemon runs.
     notice: (session, text, tone) => notice(session, text, tone),
+    asker: () => asker,
   });
   /** Reads the MCP configuration and makes it the servers that run; one read at a time. */
   let mcpLoading: Promise<void> = Promise.resolve();
@@ -499,6 +500,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
             announceCommands(session);
           },
           cwd: (session) => store.getSession(session)?.cwd ?? options.defaultCwd,
+          asker,
         });
   const commands = new Commands({
     plugins: pluginCommand,

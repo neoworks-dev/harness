@@ -9,7 +9,13 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { AppComponents } from "@neoworks/neoui";
 import { neoConfigDir } from "@neoworks-dev/neo/mcp-config";
 import { enabledPlugins } from "@neoworks-dev/neo/plugins";
-import type { SurfaceOpened, SurfacePlace } from "@neoworks-dev/neo-protocol/types";
+import type {
+  Choice,
+  ChoiceOption,
+  SurfaceOpened,
+  SurfacePlace,
+} from "@neoworks-dev/neo-protocol/types";
+import type { Asker } from "./asker.ts";
 import type { SessionStore } from "./store.ts";
 import { mistakesIn, mistakesNote } from "./ui-lint.ts";
 
@@ -133,6 +139,36 @@ export interface SurfacesOptions {
   apps?: () => AppComponents;
   /** Tells the user something in the session's log. */
   notice: (session: string, text: string, tone?: "muted" | "danger") => void;
+  /** Asks the user: `/surface` alone is a menu that stays open. Without, it lists. */
+  asker?: () => Pick<Asker, "ask" | "update"> | undefined;
+}
+
+/**
+ * The `/surface` menu: each surface file (open or not) and each open surface the agent wrote;
+ * picking one opens or closes it.
+ */
+export function surfaceMenu(
+  files: readonly SurfaceFile[],
+  open: readonly SurfaceOpened[],
+  note?: string,
+): Omit<Choice, "id"> {
+  const isOpen = new Set(open.map((s) => s.name));
+  const options: ChoiceOption[] = files.map((file) => ({
+    id: file.name,
+    name: `${file.title ?? file.name} · ${isOpen.has(file.name) ? "open" : "closed"}`,
+    description: `${isOpen.has(file.name) ? "close it" : "open it"} · ${file.place}${file.description ? ` · ${file.description}` : ""}`,
+  }));
+  for (const surface of open) {
+    if (files.some((f) => f.name === surface.name)) continue;
+    options.push({
+      id: surface.name,
+      name: `${surface.title ?? surface.name} · open`,
+      description: `close it · ${surface.place} · written in this session`,
+    });
+  }
+  let title = options.length > 0 ? "Surfaces" : "No surfaces: none are open, and no files";
+  if (note !== undefined) title += ` · ${note}`;
+  return { type: "choice", title, options, stays: true };
 }
 
 type Opened = { ok: true; event: SurfaceOpened; updated: boolean } | { ok: false; error: string };
@@ -254,7 +290,10 @@ export class Surfaces {
   command(session: string, args: string[]): Promise<void> {
     const [first, second] = args;
     const { notice } = this.options;
-    if (first === undefined) {
+    const asker = this.options.asker?.();
+    if (first === undefined && asker !== undefined) {
+      void this.menu(session, asker);
+    } else if (first === undefined || first === "list") {
       notice(session, this.listText(session));
     } else if (first === "close") {
       if (second === undefined) notice(session, "/surface close <name>", "danger");
@@ -270,6 +309,28 @@ export class Surfaces {
       }
     }
     return Promise.resolve();
+  }
+
+  /** Opens the file `name`, or closes the surface of that name when it is open; how it went. */
+  private toggle(session: string, name: string): string {
+    if (openSurfaces(this.options.store, session).some((s) => s.name === name)) {
+      this.close(session, name);
+      return `closed ${name}`;
+    }
+    const file = this.files().find((f) => f.name === name);
+    if (file === undefined) return `no surface ${name}`;
+    const opened = this.open(session, file.name, file.source, file.place, file.title);
+    return opened.ok ? `opened ${name}` : `${name}: it has mistakes`;
+  }
+
+  /** `/surface` alone: a menu that stays open, a pick opening or closing a surface. */
+  private async menu(session: string, asker: Pick<Asker, "ask" | "update">): Promise<void> {
+    const show = (note?: string): Omit<Choice, "id"> =>
+      surfaceMenu(this.files(), openSurfaces(this.options.store, session), note);
+    const picked = await asker.ask(session, show(), undefined, (option) =>
+      show(this.toggle(session, option)),
+    );
+    if (picked !== undefined) this.toggle(session, picked);
   }
 
   private listText(session: string): string {

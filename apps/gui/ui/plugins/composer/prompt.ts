@@ -20,6 +20,10 @@ export interface PromptButton {
   note?: boolean;
   /** Unix ms when the daemon picks it unless another is pressed: shown counting down. */
   deadline?: number;
+  /** A menu that stays open (`/settings`, `/plugin`): pressed with `stay`, it is drawn again. */
+  stays?: boolean;
+  /** Pressing it asks for text first, which goes with the answer as `value`. */
+  input?: { value?: string; multiline?: boolean };
 }
 
 export interface Prompt {
@@ -85,10 +89,12 @@ export function splitPrompt(root: Component): { body: Component[]; buttons: Prom
 
   function walk(component: Component, inRow: boolean): void {
     if (component.type === "button") {
-      const { label, action, args, key, current, note, deadline } = component;
+      const { label, action, args, key, current, note, deadline, stays, input } = component;
       const button: PromptButton = { label, action, args, key, current: current === true };
       if (note === true) button.note = true;
       if (deadline !== undefined) button.deadline = deadline;
+      if (stays === true) button.stays = true;
+      if (input !== undefined) button.input = input;
       buttons.push(button);
       return;
     }
@@ -243,6 +249,24 @@ export function argsWithNote(button: PromptButton, note: string): unknown {
   const text = note.trim();
   if (text === "" || typeof button.args !== "object" || button.args === null) return button.args;
   return { ...button.args, note: text };
+}
+
+/**
+ * What a press sends: the button's args, with the note typed for it, the text it asked for
+ * (`value`), and `stay` for a menu that stays open.
+ */
+export function answerArgs(
+  button: PromptButton,
+  note: string | undefined,
+  value: string | undefined,
+): unknown {
+  const args = note === undefined ? button.args : argsWithNote(button, note);
+  if (typeof args !== "object" || args === null) return args;
+  return {
+    ...args,
+    ...(value !== undefined ? { value } : {}),
+    ...(button.stays === true ? { stay: true } : {}),
+  };
 }
 
 /**

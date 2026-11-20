@@ -10,7 +10,7 @@ import type {
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { silentLogger } from "../src/log.ts";
-import { parseSurfaceFile } from "../src/surfaces.ts";
+import { parseSurfaceFile, surfaceMenu } from "../src/surfaces.ts";
 import { mistakesIn } from "../src/ui-lint.ts";
 import { startTestDaemon } from "../src/testing.ts";
 import { SessionView } from "../src/view/session-view.ts";
@@ -264,7 +264,7 @@ describe("surface files", () => {
     expect(daemon.views.get(session).snapshot().surfaces).toMatchObject([
       { ref: "s-knobs", place: "page", label: "Knobs" },
     ]);
-    await input("/surface");
+    await input("/surface list");
     expect(notices().at(-1)).toContain("- knobs (page): Knobs");
     expect(notices().at(-1)).toContain("- clock (bottom, user)");
     await input("/surface broken");
@@ -311,4 +311,25 @@ test("a surface's close button (neo.surface.close on its ref) closes it", async 
   await expect(
     daemon.actions.run({ session, ref: "s-bar", action: "neo.surface.close" }, "test"),
   ).rejects.toThrow("no surface bar is open");
+});
+
+test("the /surface menu lists the files and the agent's surfaces; a pick opens or closes one", () => {
+  const files = [
+    {
+      name: "run",
+      place: "bottom" as const,
+      title: "Run",
+      always: false,
+      source: "<Text>a</Text>",
+      from: "user",
+    },
+  ];
+  const menu = surfaceMenu(files, [opened("mine", "<Text>b</Text>", "side")]);
+  expect(menu.stays).toBe(true);
+  expect(menu.options.map((o) => [o.id, o.name])).toEqual([
+    ["run", "Run · closed"],
+    ["mine", "mine · open"],
+  ]);
+  const openNow = surfaceMenu(files, [opened("run", "<Text>a</Text>")]);
+  expect(openNow.options[0]?.name).toBe("Run · open");
 });

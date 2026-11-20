@@ -18,7 +18,7 @@ import {
 import { History, walksHistory } from "./history.ts";
 import {
   activePrompt,
-  argsWithNote,
+  answerArgs,
   copyText,
   focusAfterFilter,
   isLongChoice,
@@ -76,6 +76,8 @@ class Composer {
   filter = $state("");
   /** The note being typed for the focused button's answer; undefined while there is none. */
   note = $state<string>();
+  /** The text the focused option asks for before it answers (`input`); undefined while none does. */
+  entry = $state<string>();
 
   /** The oldest open question that was not put aside. */
   prompt = $derived(activePrompt(this.items, this.dismissed));
@@ -383,9 +385,17 @@ class Composer {
       this.say("copied", COPIED_NOTICE_MS);
       return;
     }
-    const args = this.note === undefined ? button.args : argsWithNote(button, this.note);
+    // An option that asks for text opens its field first; Enter there answers with it.
+    if (button.input !== undefined && this.entry === undefined) {
+      this.button = index;
+      this.entry = button.input.value ?? "";
+      return;
+    }
+    const args = answerArgs(button, this.note, this.entry);
     this.note = undefined;
-    this.dismissed = new Set([...this.dismissed, prompt.ref]);
+    this.entry = undefined;
+    // A menu that stays open is drawn again as it is now; anything else is answered.
+    if (button.stays !== true) this.dismissed = new Set([...this.dismissed, prompt.ref]);
     void this.services?.daemon.action(prompt.ref, button.action, args);
   }
 
@@ -403,6 +413,7 @@ class Composer {
   escape(): boolean {
     if (this.helpOpen) this.helpOpen = false;
     else if (this.menuVisible) this.menuClosedFor = this.text;
+    else if (this.entry !== undefined) this.entry = undefined;
     else if (this.note !== undefined) this.note = undefined;
     else if (this.engaged && this.filtering && this.filter !== "") this.setFilter("");
     else if (this.prompt) this.dismissed = new Set([...this.dismissed, this.prompt.ref]);

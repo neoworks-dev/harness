@@ -2,7 +2,9 @@
 // harness's (neo/src/plugin-install.ts); this reads the command line and tells the user, in
 // the session's log, what happened and what needs a new session.
 //
-//   /plugin                                   what is installed, and the marketplaces
+//   /plugin                                   a menu: the plugins (enable, disable, uninstall),
+//                                             what to install, the marketplaces (plugin-menu.ts)
+//   /plugin list                              what is installed, and the marketplaces
 //   /plugin marketplace add <owner/repo|url|path>, marketplace remove|update [name], marketplace list
 //   /plugin install <name>@<marketplace>      (the marketplace may be left out when one has it)
 //   /plugin uninstall|enable|disable <name>[@<marketplace>]
@@ -22,7 +24,10 @@ import {
   updateMarketplaces,
 } from "@neoworks-dev/neo/plugin-install";
 import { enabledPlugins, readInstalled } from "@neoworks-dev/neo/plugins";
+import type { Choice } from "@neoworks-dev/neo-protocol/types";
+import type { Asker } from "./asker.ts";
 import { BadRequestError } from "./focus.ts";
+import { type MenuData, type MenuView, menuChoice, menuStep } from "./plugin-menu.ts";
 
 const USAGE =
   "usage: /plugin [list] | marketplace add|remove|update|list … | install|uninstall|enable|disable <name>@<marketplace> | search [text]";
@@ -39,6 +44,8 @@ export interface PluginCommandParts {
   changed: (session: string) => Promise<void>;
   /** The directory sessions work in, for a relative path given to `marketplace add`. */
   cwd: (session: string) => string;
+  /** Asks the user: `/plugin` alone is a menu that stays open. Without, it lists. */
+  asker?: Pick<Asker, "ask" | "update">;
 }
 
 function plural(count: number, one: string, many = `${one}s`): string {
@@ -63,11 +70,15 @@ export class PluginCommands {
   /** One command at a time: they all write installed.json. */
   private queue: Promise<unknown> = Promise.resolve();
 
-  /** Runs `/plugin <args>`. Failures the user can act on are rejected as bad requests. */
+  /** Runs `/plugin <args>`; alone, the menu. Failures the user can act on are rejected as bad requests. */
   run(session: string, args: string[]): Promise<void> {
     const { dir } = this.parts;
     if (dir === undefined) {
       return Promise.reject(new BadRequestError("this daemon has no plugins directory"));
+    }
+    if (args.length === 0 && this.parts.asker !== undefined) {
+      void this.menu(session, dir, this.parts.asker);
+      return Promise.resolve();
     }
     const work = async (): Promise<void> => {
       try {
@@ -120,6 +131,80 @@ export class PluginCommands {
         return this.search(session, dir, rest.join(" "));
       default:
         throw new BadRequestError(USAGE);
+    }
+  }
+
+  /** What the menu shows, read now. */
+  private async menuData(dir: string): Promise<MenuData> {
+    const on = new Set(enabledPlugins(dir).map((plugin) => plugin.id));
+    const installed = Object.entries(readInstalled(dir).plugins)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, plugin]) => ({
+        id,
+        enabled: on.has(id),
+        ...(plugin.version && plugin.version !== "unknown" ? { version: plugin.version } : {}),
+      }));
+    const markets: MenuData["markets"] = [];
+    for (const record of Object.values(readMarketplaces(dir).marketplaces)) {
+      try {
+        markets.push({ name: record.name, plugins: (await marketplaceEntries(record)).length });
+      } catch {
+        markets.push({ name: record.name });
+      }
+    }
+    let available: MenuData["available"] = [];
+    try {
+      const have = new Set(installed.map((p) => p.id));
+      available = (await searchPlugins(dir, "")).filter((p) => !have.has(p.id));
+    } catch {
+      // No marketplaces, or one that can't be read: nothing to offer.
+    }
+    return { installed, markets, available };
+  }
+
+  /**
+   * `/plugin` alone: a menu that stays open. A pick moves between its screens or runs the
+   * `/plugin` command it stands for, the menu saying so meanwhile and drawn again after.
+   */
+  private async menu(
+    session: string,
+    dir: string,
+    asker: Pick<Asker, "ask" | "update">,
+  ): Promise<void> {
+    let view: MenuView = { kind: "top" };
+    let data = await this.menuData(dir);
+    let busy: string | undefined;
+    let note: string | undefined;
+    const show = (): Omit<Choice, "id"> => menuChoice(view, data, busy, note);
+    const pick = (option: string, id: string, value?: string): Omit<Choice, "id"> => {
+      if (busy !== undefined) return show();
+      const step = menuStep(view, data, option, value);
+      note = undefined;
+      if (step.kind === "view") view = step.view;
+      if (step.kind === "run") {
+        busy = step.busy;
+        void this.run(session, step.args)
+          .then(
+            () => {
+              view = step.then;
+              return "done";
+            },
+            (err: unknown) => (err instanceof Error ? err.message : String(err)),
+          )
+          .then(async (said) => {
+            data = await this.menuData(dir);
+            busy = undefined;
+            note = said;
+            asker.update(id, show());
+          });
+      }
+      return show();
+    };
+    // Every pick comes with stay; one without (an answer that ends the menu) is still done.
+    const picked = await asker.ask(session, show(), undefined, pick);
+    if (picked !== undefined) {
+      const step = menuStep(view, data, picked);
+      if (step.kind === "run") await this.run(session, step.args).catch(() => undefined);
     }
   }
 

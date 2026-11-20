@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { Component, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import {
   activePrompt,
+  answerArgs,
   argsWithNote,
   copyText,
   focusAfterFilter,
@@ -277,4 +278,25 @@ test("a button's deadline comes along, and counts down as minutes and seconds", 
   expect(withTimeLeft("Reject", 180_000, 19_001)).toBe("Reject · 2:41");
   expect(withTimeLeft("Reject", 180_000, 200_000)).toBe("Reject · 0:00");
   expect(withTimeLeft("Allow", undefined, 0)).toBe("Allow");
+});
+
+test("a press sends the note, the text asked for, and stay for a menu that stays open", () => {
+  const button = {
+    label: "Add",
+    action: "neo.choose",
+    args: { id: "c", option: "add" },
+    current: false,
+    stays: true,
+    input: {},
+  };
+  expect(answerArgs(button, undefined, "/w/examples")).toEqual({
+    id: "c",
+    option: "add",
+    value: "/w/examples",
+    stay: true,
+  });
+  expect(answerArgs({ ...button, stays: undefined }, undefined, undefined)).toEqual({
+    id: "c",
+    option: "add",
+  });
 });

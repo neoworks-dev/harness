@@ -60,7 +60,7 @@ function type(daemon: TestDaemon, session: string, text: string): void {
 
 test("/plugin adds a marketplace, installs, lists, disables and removes", async () => {
   const { daemon, session } = await setup();
-  await daemon.commands.run(session, "/plugin");
+  await daemon.commands.run(session, "/plugin list");
   expect(notices(daemon, session).at(-1)).toContain("No plugins installed.");
   expect(notices(daemon, session).at(-1)).toContain("/plugin marketplace add");
 
@@ -88,7 +88,7 @@ test("/plugin adds a marketplace, installs, lists, disables and removes", async 
   expect(listing).toContain("mini-official (4 plugins)");
 
   await daemon.commands.run(session, "/plugin disable frontend-design");
-  await daemon.commands.run(session, "/plugin");
+  await daemon.commands.run(session, "/plugin list");
   expect(notices(daemon, session).at(-1)).toContain("frontend-design@mini-official (disabled)");
   await daemon.commands.run(session, "/plugin enable frontend-design");
   await daemon.commands.run(session, "/plugin uninstall frontend-design");
@@ -190,4 +190,52 @@ test("a session on another harness gets /commands as typed", async () => {
   const message = events(daemon, other).find((event) => event.type === "user_message");
   expect(message).toMatchObject({ text: "/commit now" });
   expect(message && "shown" in message).toBe(false);
+});
+
+test("/plugin alone is a menu that stays: add a marketplace, install from it, disable", async () => {
+  const { daemon, session } = await setup();
+  await daemon.commands.run(session, "/plugin");
+  const latest = () => {
+    const choices = events(daemon, session).filter((e) => e.type === "choice");
+    const last = choices.at(-1);
+    if (last?.type !== "choice") throw new Error("no menu");
+    return last;
+  };
+  // The menu comes once its data is read.
+  for (let i = 0; i < 50 && !events(daemon, session).some((e) => e.type === "choice"); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  const id = latest().id;
+  const choose = (option: string, value?: string) =>
+    daemon.actions.run(
+      {
+        session,
+        ref: `q-${id}`,
+        action: "neo.choose",
+        args: { id, option, stay: true, ...(value === undefined ? {} : { value }) },
+      },
+      "test",
+    );
+  const settled = async (done: (title: string) => boolean): Promise<void> => {
+    for (let i = 0; i < 100 && !done(latest().title); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  };
+  expect(latest().options.map((o) => o.id)).toEqual(["install", "add"]);
+
+  await choose("add", MARKETPLACE);
+  await settled((title) => title.includes("done"));
+  // Added: on to what it offers.
+  expect(latest().title).toContain("Install a plugin");
+  expect(latest().options.map((o) => o.id)).toContain("get:frontend-design@mini-official");
+
+  await choose("get:frontend-design@mini-official");
+  await settled((title) => title.startsWith("Plugins") && title.includes("done"));
+  expect(latest().options.map((o) => o.name)).toContain("frontend-design@mini-official · enabled");
+
+  await choose("plugin:frontend-design@mini-official");
+  await choose("toggle");
+  await settled((title) => title.includes("done"));
+  await choose("back");
+  expect(latest().options.map((o) => o.name)).toContain("frontend-design@mini-official · disabled");
 });
