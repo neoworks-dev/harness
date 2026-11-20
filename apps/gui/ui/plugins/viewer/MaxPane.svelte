@@ -124,7 +124,7 @@
     bind:this={keys}
     focusable
     onkey={key}
-    ondown={() => (viewer.typing = false)}
+    onpress={() => (viewer.typing = false)}
     style={{ flex: 1, minHeight: 0 }}
   >
     <Panel />

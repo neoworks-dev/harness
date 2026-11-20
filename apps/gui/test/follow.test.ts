@@ -22,11 +22,10 @@ test("the user scrolling up lets go, reaching the end takes hold again", () => {
   expect(follow.following).toBe(true);
 });
 
-test("dragging the scrollbar up lets go: a press, then the list moves up", () => {
+test("dragging the scrollbar up lets go: the list moves up, the content as tall as before", () => {
   const follow = new Follow();
   follow.scrolled(1000, 1000, 0);
-  follow.touched(100);
-  follow.scrolled(600, 1000, 300);
+  follow.scrolled(600, 1000, 5000);
   expect(follow.following).toBe(false);
 });
 

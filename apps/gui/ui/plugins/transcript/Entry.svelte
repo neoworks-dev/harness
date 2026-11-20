@@ -66,9 +66,10 @@
 </script>
 
 {#if entry.kind === "thought" && transcript.showThoughts}
-  <!-- A thought, shown (Ctrl-T hides them): the text itself, muted, in the flow of the turn. -->
-  <View style={{ paddingLeft: GUTTER + 8, paddingY: 2, color: p.muted, fontSize: 14, italic: true }}>
-    <Component component={entry.item.component} ref={entry.item.ref} />
+  <!-- A thought, shown (Ctrl-T hides them): the text itself, as the agent's prose reads, in the flow of the turn. -->
+  <View style={{ paddingLeft: GUTTER + 8, paddingY: 2, color: p.fg }}>
+    <!-- The daemon marks a thought's text muted; shown here, it reads like the rest. -->
+    <Component component={entry.item.component.type === "text" ? { ...entry.item.component, tone: undefined } : entry.item.component} ref={entry.item.ref} />
   </View>
 {:else}
 <View>

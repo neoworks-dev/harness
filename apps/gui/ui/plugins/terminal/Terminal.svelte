@@ -133,7 +133,6 @@
     <View
       style={{ flex: 1, minHeight: 0 }}
       onwheel={(event: WheelEvent) => follow.touched(Date.now(), event.dy)}
-      ondown={() => follow.touched(Date.now())}
     >
     <List
       bind:this={list}

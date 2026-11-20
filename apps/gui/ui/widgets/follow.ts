@@ -14,28 +14,35 @@ const INPUT_MS = 600;
 export class Follow {
   following = true;
   private lastY = 0;
+  private lastMaxY = 0;
   private inputAt = Number.NEGATIVE_INFINITY;
 
-  /** The user turned the wheel over the list or pressed it (its scrollbar). An upward turn lets go at once. */
+  /** The user turned the wheel over the list. An upward turn lets go at once. */
   touched(now: number, dy = 0): void {
     this.inputAt = now;
     if (dy < 0) this.following = false;
   }
 
   /**
-   * A scroll report. Back at the end it follows again; moved up right after the user's input it
-   * lets go. Content that shrinks moves `y` up too, but to the end, so that still follows.
+   * A scroll report. Back at the end it follows again. Moved up, it lets go when the user did it:
+   * right after their wheel, or with the content as tall as before (the scrollbar dragged); a
+   * reflow changes how tall the content is. Content that shrinks moves `y` up too, but to the
+   * end, so that still follows.
    */
   scrolled(y: number, maxY: number, now: number): void {
+    const moved = y < this.lastY - 1;
+    const sameContent = Math.abs(maxY - this.lastMaxY) < 1;
     if (maxY - y <= NEAR_END) this.following = true;
-    else if (y < this.lastY - 1 && now - this.inputAt <= INPUT_MS) this.following = false;
+    else if (moved && (now - this.inputAt <= INPUT_MS || sameContent)) this.following = false;
     this.lastY = y;
+    this.lastMaxY = maxY;
   }
 
   /** Another session or a fresh start: follow again. */
   reset(): void {
     this.following = true;
     this.lastY = 0;
+    this.lastMaxY = 0;
     this.inputAt = Number.NEGATIVE_INFINITY;
   }
 }
