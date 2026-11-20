@@ -55,6 +55,15 @@ test("only the session's own agent's usage is shown", () => {
   expect(status.usage?.contextUsed).toBe(10);
 });
 
+test("a cost reported once stays until a newer one", () => {
+  const status = fold(
+    { type: "usage", contextUsed: 10, cost: 1.5 },
+    { type: "usage", contextUsed: 20 },
+  );
+  expect(status.usage?.contextUsed).toBe(20);
+  expect(status.usage?.cost).toBe(1.5);
+});
+
 test("approvals cycle ask, review, edits, auto", () => {
   expect(nextApprovals("ask")).toBe("review");
   expect(nextApprovals("auto")).toBe("ask");

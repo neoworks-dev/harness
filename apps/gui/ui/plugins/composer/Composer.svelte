@@ -49,7 +49,7 @@
     untrack(() => void composer.switchSession(session));
   });
 
-  // A question takes the input's place once the user has paused typing.
+  // A question takes the input's place once there is no draft and the user has paused typing.
   $effect(() => {
     const wait = composer.syncEngaged();
     if (wait === undefined) return;
@@ -198,9 +198,14 @@
       </View>
     {:else}
       {#if composer.waiting && composer.prompt}
-        <Text style={{ color: p.muted, truncate: true, paddingX: 16, paddingTop: 12 }}>
-          {composer.prompt.title || "A question"} is waiting. Stop typing to answer it, Esc puts it aside.
-        </Text>
+        <View
+          onpress={() => composer.answerWaiting()}
+          hover={{ color: p.fg }}
+          style={{ direction: "row", gap: 6, paddingX: 16, paddingTop: 12, color: p.muted, cursor: "pointer" }}
+        >
+          <Text style={{ color: p.accent, shrink: 0 }}>{composer.prompt.title || "A question"} is waiting.</Text>
+          <Text style={{ truncate: true, minWidth: 0 }}>Press here to answer it now, or send or clear your message. Esc puts it aside.</Text>
+        </View>
       {/if}
       {#if composer.attachments.length > 0 || composer.comments.length > 0}
         <View style={{ direction: "row", wrap: true, gap: 6, paddingX: 14, paddingTop: 12 }}>

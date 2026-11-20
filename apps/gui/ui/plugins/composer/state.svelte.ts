@@ -309,17 +309,27 @@ class Composer {
 
   // ---- the question panel ----
 
-  /** Settles `engaged` once the pause in typing is over; returns how long to wait, if more. */
+  /**
+   * Settles `engaged` once the draft is gone and the pause in typing is over; returns how long to
+   * wait, if more. A draft waits for the user, not for a timer.
+   */
   syncEngaged(): number | undefined {
+    const drafting = this.text.trim() !== "";
     const engaged = promptEngaged({
       hasPrompt: this.prompt !== undefined,
       engaged: this.engaged,
+      drafting,
       now: Date.now(),
       typedAt: this.typedAt,
     });
     if (engaged !== this.engaged) this.engaged = engaged;
-    if (this.prompt === undefined || engaged) return undefined;
+    if (this.prompt === undefined || engaged || drafting) return undefined;
     return Math.max(0, TYPING_PAUSE_MS - (Date.now() - this.typedAt));
+  }
+
+  /** The user asked for the waiting question (pressed its notice): it takes the input's place now. */
+  answerWaiting(): void {
+    if (this.prompt !== undefined) this.engaged = true;
   }
 
   /** A new question starts on its current (else its first) button. */

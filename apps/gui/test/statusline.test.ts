@@ -38,31 +38,16 @@ test("cost in dollars", () => {
   expect(formatCost(undefined)).toBeUndefined();
 });
 
-test("an idle session shows branch, harness, the harness's settings and approvals", () => {
+test("an idle session shows its branch and mode, not what the input's pickers show", () => {
   const status: SessionStatus = {
     ...initialStatus(),
     harness: "claude",
     approvals: "auto",
-    settings: { claude: { model: "sonnet", effort: "high" }, neo: { model: "other" } },
+    settings: { claude: { model: "sonnet", effort: "high", mode: "plan" } },
   };
   const segments = statusSegments({ ...idle, status });
-  expect(segments.map((s) => s.text)).toEqual(["main", "claude", "sonnet", "high", "auto"]);
-  expect(segments.at(-1)?.tone).toBe("danger");
-});
-
-test("the model shows under the name the harness gives it", () => {
-  const status: SessionStatus = {
-    ...initialStatus(),
-    harness: "claude",
-    settings: { claude: { model: "haiku" } },
-  };
-  expect(statusSegments({ ...idle, status, model: "Haiku 5.5" }).map((s) => s.text)).toEqual([
-    "main",
-    "claude",
-    "Haiku 5.5",
-    "ask",
-  ]);
-  expect(statusSegments({ ...idle, status }).map((s) => s.text)).toContain("haiku");
+  expect(segments.map((s) => s.text)).toEqual(["main", "Plan"]);
+  expect(segments[0]?.icon).toBe("branch");
 });
 
 test("a running turn shows elapsed time, the queue, usage and a lost connection", () => {
@@ -81,13 +66,11 @@ test("a running turn shows elapsed time, the queue, usage and a lost connection"
     now: 66_000,
   });
   expect(segments.map((s) => s.text)).toEqual([
-    "neo",
-    "ask",
-    "working 1m 05s",
-    "2 queued",
-    "95% context",
+    "Working 1m 05s",
+    "Queued 2",
+    "Context 95%",
     "$0.50",
-    "reconnecting",
+    "Reconnecting",
   ]);
-  expect(segments.find((s) => s.text === "95% context")?.tone).toBe("danger");
+  expect(segments.find((s) => s.text === "Context 95%")?.tone).toBe("danger");
 });

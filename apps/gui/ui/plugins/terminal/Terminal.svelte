@@ -9,6 +9,7 @@
   import { clock } from "../../widgets/clock.svelte.ts";
   import { duration } from "../transcript/format.ts";
   import Command from "../../widgets/Command.svelte";
+  import { Follow } from "../../widgets/follow.ts";
   import { terminalData } from "./data.svelte.ts";
   import type { TerminalRun } from "./runs.ts";
   import { terminal } from "./state.svelte.ts";
@@ -26,13 +27,26 @@
   });
 
   let list: { scrollToIndex(index: number, options: { align: "end" }): void } | undefined = $state();
-  // Opened (or another session): start at the newest command.
+  // Follows the newest command and its output until the user scrolls up, and again once they are
+  // back at the end (widgets/follow.ts says why `stickToEnd` alone does not). Another session
+  // starts at its newest command.
+  const follow = new Follow();
   let started: string | undefined;
   $effect(() => {
     const session = daemon.sessionId;
-    if (session === undefined || runs.length === 0 || started === session) return;
-    started = session;
-    list?.scrollToIndex(runs.length - 1, { align: "end" });
+    const count = runs.length;
+    void runs.at(-1)?.output;
+    if (session === undefined || count === 0) return;
+    if (started !== session) {
+      started = session;
+      follow.reset();
+    }
+    if (!follow.following) return;
+    list?.scrollToIndex(count - 1, { align: "end" });
+    const frame = requestAnimationFrame(() => {
+      if (follow.following) list?.scrollToIndex(runs.length - 1, { align: "end" });
+    });
+    return () => cancelAnimationFrame(frame);
   });
 
   async function stopJob(id: string): Promise<void> {
@@ -81,6 +95,7 @@
       items={runs}
       key={(run: TerminalRun) => run.id}
       stickToEnd
+      onscroll={(position: { y: number; maxY: number }) => follow.scrolled(position.y, position.maxY)}
       style={{ flex: 1, minHeight: 0 }}
     >
       {#snippet row(run: TerminalRun)}

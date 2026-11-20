@@ -147,11 +147,18 @@ test("a note goes along in the args of answers the daemon marks for one", () => 
 });
 
 test("a prompt waits for a pause in typing, then stays", () => {
-  const base = { hasPrompt: true, engaged: false, typedAt: 1000 };
+  const base = { hasPrompt: true, engaged: false, drafting: false, typedAt: 1000 };
   expect(promptEngaged({ ...base, now: 1000 + TYPING_PAUSE_MS - 1 })).toBe(false);
   expect(promptEngaged({ ...base, now: 1000 + TYPING_PAUSE_MS })).toBe(true);
   expect(promptEngaged({ ...base, engaged: true, now: 1001 })).toBe(true);
   expect(promptEngaged({ ...base, hasPrompt: false, engaged: true, now: 9999 })).toBe(false);
+});
+
+test("a prompt waits as long as a message is half written", () => {
+  const drafting = { hasPrompt: true, engaged: false, drafting: true, typedAt: 1000 };
+  expect(promptEngaged({ ...drafting, now: 1000 + 60 * TYPING_PAUSE_MS })).toBe(false);
+  // Asked for (engaged), it shows over the draft.
+  expect(promptEngaged({ ...drafting, engaged: true, now: 1001 })).toBe(true);
 });
 
 test("text blocks flatten to lines", () => {

@@ -2,10 +2,10 @@
   // One line under the input: branch, harness and its settings, approvals mode, turn state and
   // usage. Other plugins add messages after it (the `statusline.right` slot); a lost connection
   // and the last error show here too.
-  import { Text, View } from "@neoworks/svelte-gpui/ui";
+  import { Icon, Text, View } from "@neoworks/svelte-gpui/ui";
+  import branchIcon from "@phosphor-icons/core/regular/git-branch.svg";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
-  import { currentSettings } from "../../lib/status.ts";
   import { statusSegments, type Tone } from "./segments.ts";
 
   const { daemon } = useCtx();
@@ -22,12 +22,10 @@
     return () => clearInterval(timer);
   });
 
-  const model = $derived(currentSettings(daemon.status).model);
   const segments = $derived(
     statusSegments({
       branch: daemon.branch,
       status: daemon.status,
-      model: model === undefined ? undefined : daemon.label("model", model),
       queued: daemon.session?.queued ?? 0,
       connection: daemon.connection,
       now,
@@ -40,12 +38,15 @@
 </script>
 
 <View style={{ direction: "row", gap: p.space.l, paddingX: p.space.l, paddingY: p.space.s, align: "center" }}>
-  <Text style={{ flex: 1, minWidth: 0, truncate: true, fontSize: p.text.body - 1 }}>
+  <View style={{ direction: "row", align: "center", flex: 1, minWidth: 0, fontSize: p.text.body - 1 }}>
     {#each segments as segment, index}
-      {#if index > 0}<Text pre style={{ color: p.muted }}>{" · "}</Text>{/if}
-      <Text style={{ color: colour(segment.tone) }}>{segment.text}</Text>
+      {#if index > 0}<Text pre style={{ color: p.muted, shrink: 0 }}>{" · "}</Text>{/if}
+      {#if segment.icon === "branch"}
+        <View style={{ color: colour(segment.tone), marginRight: 4, shrink: 0 }}><Icon svg={branchIcon} size={13} /></View>
+      {/if}
+      <Text style={{ color: colour(segment.tone), truncate: true, minWidth: 0 }}>{segment.text}</Text>
     {/each}
-  </Text>
+  </View>
   <Slot name="statusline.right" />
   {#if daemon.error}
     <Text style={{ color: p.danger, maxWidth: "50%", truncate: true }}>{daemon.error}</Text>

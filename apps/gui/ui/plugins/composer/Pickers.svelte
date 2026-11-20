@@ -9,6 +9,7 @@
   import brain from "@phosphor-icons/core/regular/brain.svg";
   import { useCtx } from "../../kernel/slots/context.ts";
   import { currentSettings } from "../../lib/status.ts";
+  import { approvalsTone } from "../statusline/segments.ts";
   import ModelPicker from "./ModelPicker.svelte";
   import { optionOf, settings as offered } from "./settings.svelte.ts";
   import PickerMenu, { type Choice } from "./PickerMenu.svelte";
@@ -36,6 +37,8 @@
     (reasoning?.values ?? []).map((value) => ({ value: value.value, label: value.name, description: value.description })),
   );
   const approvals = $derived(approvalsChoice(status.approvals));
+  /** Full access is red and the modes that write without asking accent, as the status line had them. */
+  const tone = $derived(approvalsTone(status.approvals));
 
   /** The menu entry of an approvals mode; Supervised for one this list doesn't know. */
   function approvalsChoice(mode: string): Choice {
@@ -75,6 +78,7 @@
     current={status.approvals}
     onselect={(mode) => run(`/approvals ${mode}`)}
     width={340}
+    color={tone === "muted" ? undefined : p[tone]}
   >
     {#snippet icon()}<Icon svg={approvals.icon ?? lock} size={16} />{/snippet}
   </PickerMenu>

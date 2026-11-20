@@ -30,9 +30,11 @@
     onopen?: () => void;
     /** Shown in place of the choices when there are none. */
     empty?: string;
+    /** The picker's colour while it is not hovered; muted when absent. */
+    color?: string;
   }
 
-  let { label, choices, current, onselect, title, icon, width = 260, onopen, empty }: Props = $props();
+  let { label, choices, current, onselect, title, icon, width = 260, onopen, empty, color }: Props = $props();
 
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
@@ -60,7 +62,7 @@
   }}
 >
   {#snippet trigger({ toggle })}
-    <Picker {label} onpress={toggle} {icon} />
+    <Picker {label} onpress={toggle} {icon} {color} />
   {/snippet}
   {#snippet children({ close })}
     {#if title}

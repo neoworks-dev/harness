@@ -77,7 +77,9 @@ export function applyEvent(status: SessionStatus, record: SessionEventRecord): S
       return { ...status, cleared: true };
     case "usage":
       if (event.agent !== undefined) return status;
-      return { ...status, usage: event };
+      // A harness reports some numbers only now and then (Claude Code its cost): what an update
+      // leaves out is as the last one said.
+      return { ...status, usage: { ...status.usage, ...event } };
     case "setting_changed": {
       const { harness, option, value } = event;
       if (harness === "daemon") {

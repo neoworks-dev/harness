@@ -6,7 +6,13 @@
   import caret from "@phosphor-icons/core/regular/caret-down.svg";
   import { useCtx } from "../../kernel/slots/context.ts";
 
-  let { label, onpress, icon }: { label: string; onpress: () => void; icon?: Snippet } = $props();
+  let {
+    label,
+    onpress,
+    icon,
+    color,
+  }: { label: string; onpress: () => void; icon?: Snippet; /** Muted when absent. */ color?: string } =
+    $props();
 
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
@@ -14,8 +20,8 @@
 
 <Button
   {onpress}
-  style={{ height: 28, paddingX: 10, gap: 6, align: "center", radius: p.radius.s, color: p.muted }}
-  hover={{ background: p.hover, color: p.fg }}
+  style={{ height: 28, paddingX: 10, gap: 6, align: "center", radius: p.radius.s, color: color ?? p.muted }}
+  hover={{ background: p.hover, color: color ?? p.fg }}
 >
   {@render icon?.()}
   <Text style={{ fontWeight: "medium" }}>{label}</Text>

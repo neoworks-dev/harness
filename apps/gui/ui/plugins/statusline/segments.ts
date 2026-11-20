@@ -9,6 +9,13 @@ export type Tone = "fg" | "muted" | "accent" | "danger" | "success";
 export interface Segment {
   text: string;
   tone: Tone;
+  /** Drawn before the text. */
+  icon?: "branch";
+}
+
+/** The text with its first letter a capital: "Working 7s", "Plan". */
+export function capitalized(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /** ask = muted, review and edits = accent, auto = danger (nothing asks first). */
@@ -44,42 +51,41 @@ export function formatCost(cost: number | undefined): string | undefined {
 
 export interface StatusInput {
   branch: string | null;
-  /** What to show for the chosen model, `Haiku 5.5` for the `haiku` it holds; it as chosen if absent. */
-  model?: string;
   status: SessionStatus;
   queued: number;
   connection: ConnectionState | "starting";
   now: number;
 }
 
-/** The status line's runs, left to right, each followed by a separator when more come. */
+/**
+ * The status line's runs, left to right, each followed by a separator when more come. The harness,
+ * model, reasoning level and approvals are the input's pickers, so they are not repeated here.
+ */
 export function statusSegments(input: StatusInput): Segment[] {
   const { status } = input;
   const settings = currentSettings(status);
   const segments: Segment[] = [];
   const add = (text: string | null | undefined, tone: Tone = "muted"): void => {
-    if (text !== null && text !== undefined && text !== "") segments.push({ text, tone });
+    if (text !== null && text !== undefined && text !== "") {
+      segments.push({ text: capitalized(text), tone });
+    }
   };
 
-  add(input.branch);
-  add(status.harness);
-  add(input.model ?? settings.model);
-  add(settings.effort);
+  if (input.branch) segments.push({ text: input.branch, tone: "muted", icon: "branch" });
   add(settings.mode);
-  add(status.approvals, approvalsTone(status.approvals));
 
   if (status.running) {
-    let text = "working";
+    let text = "Working";
     if (status.turnStartedAt !== undefined) {
       text += ` ${formatElapsed(input.now - status.turnStartedAt)}`;
     }
     add(text, "accent");
   }
-  if (input.queued > 0) add(`${input.queued} queued`, "accent");
+  if (input.queued > 0) add(`Queued ${input.queued}`, "accent");
   const percent = contextPercent(status.usage);
-  if (percent !== undefined) add(`${percent}% context`, percent >= 90 ? "danger" : "muted");
+  if (percent !== undefined) add(`Context ${percent}%`, percent >= 90 ? "danger" : "muted");
   add(formatCost(status.usage?.cost));
-  if (cacheCold(status, input.now)) add("cache expired", "accent");
+  if (cacheCold(status, input.now)) add("Cache expired", "accent");
   if (input.connection !== "open" && input.connection !== "starting")
     add(input.connection, "danger");
   return segments;

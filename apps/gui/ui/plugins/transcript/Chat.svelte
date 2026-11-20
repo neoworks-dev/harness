@@ -5,6 +5,7 @@
   import { window } from "@neoworks/svelte-gpui";
   import { List } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
+  import { Follow } from "../../widgets/follow.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
   import { estimateRow } from "./estimate.ts";
   import { docNav } from "./docnav.svelte.ts";
@@ -38,16 +39,28 @@
     }),
   );
 
-  // `stickToEnd` follows new rows only once the list is at its end, which a session that has
-  // just been opened (all its items at once) never is: start such a chat at its end.
+  // `stickToEnd` follows new rows only once the list is at its end, which a session that has just
+  // been opened (all its items at once) often is not, its rows taller than guessed: it would never
+  // follow. `follow` decides by what the user did instead: the chat follows until they scroll up,
+  // and again once they are back at the end. Each change of the rows goes to the end, and once
+  // more after the new rows are measured.
+  const follow = new Follow();
   let started: string | undefined;
   $effect(() => {
     const session = daemon.sessionId;
     const count = rows.length;
     const start = `${session}@${width}`;
-    if (session === undefined || count === 0 || started === start) return;
-    started = start;
+    if (session === undefined || count === 0) return;
+    if (started !== start) {
+      started = start;
+      follow.reset();
+    }
+    if (!follow.following) return;
     list?.scrollToIndex(count - 1, { align: "end" });
+    const frame = requestAnimationFrame(() => {
+      if (follow.following) list?.scrollToIndex(rows.length - 1, { align: "end" });
+    });
+    return () => cancelAnimationFrame(frame);
   });
 
   // The list is built anew when the window's width changes: a List that is resized keeps stale
@@ -65,6 +78,7 @@
   key={(row: Row) => row.key}
   estimatedRowHeight={(row: Row) => estimateRow(row, column)}
   stickToEnd
+  onscroll={(position: { y: number; maxY: number }) => follow.scrolled(position.y, position.maxY)}
   style={{ flex: 1, minHeight: 0 }}
 >
   {#snippet row(row: Row)}

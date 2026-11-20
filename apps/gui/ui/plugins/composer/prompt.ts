@@ -246,18 +246,21 @@ export function argsWithNote(button: PromptButton, note: string): unknown {
 }
 
 /**
- * Whether the prompt has taken the input's place. It waits for a pause in typing (so a card
- * appearing mid-sentence does not swallow keystrokes), but once shown it stays until answered or
- * dismissed.
+ * Whether the prompt has taken the input's place. It waits while the user has a message half
+ * written (`drafting`), until it is sent or emptied or the user asks for the question, and for a
+ * pause in typing after that (so a card appearing mid-sentence does not swallow keystrokes); once
+ * shown it stays until answered or dismissed.
  */
 export function promptEngaged(state: {
   hasPrompt: boolean;
   engaged: boolean;
+  drafting: boolean;
   now: number;
   typedAt: number;
 }): boolean {
   if (!state.hasPrompt) return false;
-  return state.engaged || state.now - state.typedAt >= TYPING_PAUSE_MS;
+  if (state.engaged) return true;
+  return !state.drafting && state.now - state.typedAt >= TYPING_PAUSE_MS;
 }
 
 /** The first lines of a diff, code or text body for the compact panel. */
