@@ -12,6 +12,8 @@ import AppTag from "./AppTag.svelte";
 import Chat from "./Chat.svelte";
 import FallbackItem from "./FallbackItem.svelte";
 import FoldRow from "./FoldRow.svelte";
+import Gallery from "./Gallery.svelte";
+import { gallery } from "./gallery.svelte.ts";
 import ItemRow from "./ItemRow.svelte";
 import MessageRow from "./MessageRow.svelte";
 import NoticeItem from "./NoticeItem.svelte";
@@ -72,6 +74,20 @@ export const transcriptPane = {
     slots.inject("chat.item.header", (slot) => {
       slot.add({ component: AppTag });
     });
+
+    // A picture clicked in the chat, over the whole window: ← → step through the chat's
+    // pictures, Esc closes. While it is open the input does not get the keys.
+    slots.inject("shell.overlay", (slot) => {
+      slot.add({ component: Gallery });
+    });
+    keyboard.claim(() => gallery.isOpen);
+    const whileOpen = (run: () => void) => () => {
+      if (!gallery.isOpen) return false;
+      run();
+    };
+    keymap.bind("escape", whileOpen(() => gallery.close()), { priority: 2 });
+    keymap.bind("arrowleft", whileOpen(() => gallery.step(-1)), { priority: 2 });
+    keymap.bind("arrowright", whileOpen(() => gallery.step(1)), { priority: 2 });
 
     const toggleExpanded = (): void => {
       transcript.expanded = !transcript.expanded;

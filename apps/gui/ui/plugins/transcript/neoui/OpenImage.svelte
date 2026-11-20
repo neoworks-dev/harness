@@ -2,8 +2,9 @@
   // A picture of a neoui doc in a box of a fixed size (the list measures a row once: a picture
   // that changed it after loading would overlap the next). A web image is downloaded by the daemon
   // into its asset store and read from there; until then, and when that fails, the box says so.
-  import { Image, Text, View } from "@neoworks/svelte-gpui/ui";
+  import { Button, Image, Text, View } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../../kernel/slots/context.ts";
+  import { gallery } from "../gallery.svelte.ts";
   import { downloaded, pictureName, sourceOf } from "./image.ts";
 
   interface Props {
@@ -61,12 +62,15 @@
 </script>
 
 {#if url !== undefined && failure === undefined}
-  <Image
-    src={url}
-    {fit}
-    style={{ width, height, radius: radius ?? p.radius.s, background: p.raised }}
-    onerror={() => (failure = "could not be loaded")}
-  />
+  <!-- A click opens it over the window. -->
+  <Button onpress={() => url !== undefined && gallery.open([{ src: url, name }], 0)} style={{ width, height }}>
+    <Image
+      src={url}
+      {fit}
+      style={{ width, height, radius: radius ?? p.radius.s, background: p.raised }}
+      onerror={() => (failure = "could not be loaded")}
+    />
+  </Button>
 {:else}
   <View style={{ width, height, align: "center", justify: "center", paddingX: p.space.m, background: p.raised, radius: radius ?? p.radius.s }}>
     <Text style={{ color: p.muted, fontSize: 12, textAlign: "center", maxLines: 3 }}>
