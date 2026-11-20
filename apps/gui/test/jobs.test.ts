@@ -16,7 +16,9 @@ test("a background command's result names its output file", () => {
   const said = `Command running in background with ID: b1. Output is being written to: ${PATH}.`;
   expect(backgroundOutput(said)).toBe(PATH);
   expect(backgroundOutput("Output is being written to: /x.output")).toBeUndefined();
-  expect(backgroundOutput("running in background. Output is being written to: rel.output")).toBeUndefined();
+  expect(
+    backgroundOutput("running in background. Output is being written to: rel.output"),
+  ).toBeUndefined();
 });
 
 test("the file is read on as it grows, a line not ended waits, and its last line says how it ended", () => {
@@ -36,21 +38,52 @@ test("the file is read on as it grows, a line not ended waits, and its last line
 });
 
 test("one found ended at its first read was replayed, and isn't listed", () => {
-  const job = applyChunk(newJob(PATH, 0), { text: "done\n[exited with code 0]\n", offset: 26, missing: false }, 10);
+  const job = applyChunk(
+    newJob(PATH, 0),
+    { text: "done\n[exited with code 0]\n", offset: 26, missing: false },
+    10,
+  );
   expect(job.exit).toBe(0);
   expect(isListed(job, 10)).toBe(false);
 });
 
 test("a run in the background takes its output and state from its file", () => {
-  const base: TerminalRun = { id: "c-1", command: "npm run dev", output: "", hidden: 0, state: "done", job: PATH, endedAt: 50 };
+  const base: TerminalRun = {
+    id: "c-1",
+    command: "npm run dev",
+    output: "",
+    hidden: 0,
+    state: "done",
+    job: PATH,
+    endedAt: 50,
+  };
   const plain: TerminalRun = { id: "c-2", command: "ls", output: "a", hidden: 0, state: "done" };
-  const running = applyChunk(newJob(PATH, 0), { text: "listening\n", offset: 10, missing: false }, 10);
+  const running = applyChunk(
+    newJob(PATH, 0),
+    { text: "listening\n", offset: 10, missing: false },
+    10,
+  );
   expect(withJobs([base, plain], { "c-1": running })).toEqual([
-    { id: "c-1", command: "npm run dev", output: "listening", hidden: 0, state: "running", job: PATH },
+    {
+      id: "c-1",
+      command: "npm run dev",
+      output: "listening",
+      hidden: 0,
+      state: "running",
+      job: PATH,
+    },
     plain,
   ]);
-  const ended = applyChunk(running, { text: "[exited with code 1]\n", offset: 31, missing: false }, 99);
-  expect(withJobs([base], { "c-1": ended })[0]).toMatchObject({ state: "failed", exit: 1, endedAt: 99 });
+  const ended = applyChunk(
+    running,
+    { text: "[exited with code 1]\n", offset: 31, missing: false },
+    99,
+  );
+  expect(withJobs([base], { "c-1": ended })[0]).toMatchObject({
+    state: "failed",
+    exit: 1,
+    endedAt: 99,
+  });
   const killed = applyChunk(running, { text: "[killed]\n", offset: 19, missing: false }, 99);
   expect(withJobs([base], { "c-1": killed })).toEqual([]);
   // Not read yet: as the call said.
@@ -58,10 +91,22 @@ test("a run in the background takes its output and state from its file", () => {
 });
 
 test("a stopped one is dropped, and a missing file is waited for a while, then gone", () => {
-  const killed = applyChunk(newJob(PATH, 0), { text: "x\n[killed]\n", offset: 11, missing: false }, 10);
+  const killed = applyChunk(
+    newJob(PATH, 0),
+    { text: "x\n[killed]\n", offset: 11, missing: false },
+    10,
+  );
   expect(killed.killed).toBe(true);
   expect(isListed(killed, 10)).toBe(false);
   const waiting = applyChunk(newJob(PATH, 0), { text: "", offset: 0, missing: true }, 5000);
   expect(waiting.gone).toBe(false);
   expect(applyChunk(waiting, { text: "", offset: 0, missing: true }, 10_001).gone).toBe(true);
+});
+
+test("a job seen late keeps its command's start, and a missing file is waited for from when it was seen", () => {
+  // Opened ten minutes into the command.
+  const late = newJob(PATH, 600_000, 0);
+  expect(late.startedAt).toBe(0);
+  expect(applyChunk(late, { text: "", offset: 0, missing: true }, 605_000).gone).toBe(false);
+  expect(applyChunk(late, { text: "", offset: 0, missing: true }, 610_001).gone).toBe(true);
 });

@@ -18,8 +18,10 @@ export interface JobState {
   partial: string;
   /** The last `OUTPUT_LINES` lines, colour codes taken out. */
   lines: readonly string[];
-  /** When it was first seen (ms); when it ended, and how. */
+  /** When its command started (ms), as the session's events say; when it ended, and how. */
   startedAt: number;
+  /** When this window first saw it (ms): how long a missing file is waited for counts from here. */
+  seenAt: number;
   endedAt?: number;
   exit?: number;
   /** Read while still running: one replayed with the session's history is found ended at once. */
@@ -43,8 +45,19 @@ export function backgroundOutput(text: string): string | undefined {
   return path?.startsWith("/") ? path : undefined;
 }
 
-export function newJob(path: string, nowMs: number): JobState {
-  return { path, offset: 0, partial: "", lines: [], startedAt: nowMs, seenRunning: false, gone: false, killed: false };
+/** A job first seen at `nowMs`, whose command started at `startedAt` (a session opened late sees it running for a while). */
+export function newJob(path: string, nowMs: number, startedAt = nowMs): JobState {
+  return {
+    path,
+    offset: 0,
+    partial: "",
+    lines: [],
+    startedAt,
+    seenAt: nowMs,
+    seenRunning: false,
+    gone: false,
+    killed: false,
+  };
 }
 
 /** Whether the job may still write: it is read again. */
@@ -61,7 +74,7 @@ function exitCode(line: string): number | undefined {
 /** The job after a read of its file at `nowMs`. */
 export function applyChunk(job: JobState, chunk: Chunk, nowMs: number): JobState {
   if (chunk.missing) {
-    const gone = job.offset > 0 || nowMs - job.startedAt > MISSING_MS;
+    const gone = job.offset > 0 || nowMs - job.seenAt > MISSING_MS;
     return gone ? { ...job, gone } : job;
   }
   const partial = job.partial + chunk.text;

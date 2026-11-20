@@ -60,7 +60,9 @@ class TerminalData {
     }
     const now = Date.now();
     for (const run of base) {
-      if (run.job !== undefined && jobs[run.id]?.path !== run.job) jobs = { ...jobs, [run.id]: newJob(run.job, now) };
+      if (run.job !== undefined && jobs[run.id]?.path !== run.job) {
+        jobs = { ...jobs, [run.id]: newJob(run.job, now, run.startedAt ?? now) };
+      }
     }
     this.base = base;
     if (jobs !== this.jobs) this.jobs = jobs;
