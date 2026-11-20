@@ -1,8 +1,9 @@
 // The chat and the terminal panel keep each other in step. Scrolling the chat up brings the
 // terminal to the newest command at or above the chat's last row, and back at the chat's end the
 // terminal follows its end again; scrolling the terminal brings that command's row into view in
-// the chat. Each side asks the other here; a scroll it was asked for is not passed back, so the
-// two never chase each other.
+// the chat, and back at the terminal's end the chat goes to its end too. The command the two are
+// lined up on (`linked`) is marked in both. Each side asks the other here; a scroll it was asked
+// for is not passed back, so the two never chase each other.
 
 /** How long after a scroll it was asked for a side's own scroll reports are its echo. */
 const ECHO_MS = 400;
@@ -10,8 +11,10 @@ const ECHO_MS = 400;
 class ScrollSync {
   /** The terminal is asked to show this command (its item's ref), or its end. */
   terminal = $state.raw<{ ref: string | "end"; seq: number }>();
-  /** The chat is asked to show the row of this command. */
-  chat = $state.raw<{ ref: string; seq: number }>();
+  /** The chat is asked to show the row of this command, or its end. */
+  chat = $state.raw<{ ref: string | "end"; seq: number }>();
+  /** The command both show, marked in each; none while they are at their ends. */
+  linked = $state<string>();
   private seq = 0;
   private quiet = { chat: 0, terminal: 0 };
 
@@ -19,13 +22,15 @@ class ScrollSync {
   fromChat(ref: string | "end"): void {
     if (Date.now() < this.quiet.chat) return;
     this.quiet.terminal = Date.now() + ECHO_MS;
+    this.linked = ref === "end" ? undefined : ref;
     this.terminal = { ref, seq: (this.seq += 1) };
   }
 
-  /** The terminal's user scrolled: the chat shows `ref`'s row. */
-  fromTerminal(ref: string): void {
+  /** The terminal's user scrolled: the chat shows `ref`'s row, or its end. */
+  fromTerminal(ref: string | "end"): void {
     if (Date.now() < this.quiet.terminal) return;
     this.quiet.chat = Date.now() + ECHO_MS;
+    this.linked = ref === "end" ? undefined : ref;
     this.chat = { ref, seq: (this.seq += 1) };
   }
 }

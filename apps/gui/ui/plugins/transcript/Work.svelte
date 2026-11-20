@@ -7,6 +7,7 @@
   import caretDown from "@phosphor-icons/core/regular/caret-down.svg";
   import caretRight from "@phosphor-icons/core/regular/caret-right.svg";
   import { useCtx } from "../../kernel/slots/context.ts";
+  import { scrollSync } from "../../lib/scroll-sync.svelte.ts";
   import Spinner from "../../widgets/Spinner.svelte";
   import Entry from "./Entry.svelte";
   import { iconOf } from "./icons.ts";
@@ -30,11 +31,18 @@
   const key = $derived(`${daemon.sessionId}/group:${it?.key}`);
   const open = $derived(transcript.expanded || opened.has(key));
   const failed = $derived(it?.entries.some((entry) => entry.failed));
+  const linked = $derived(
+    scrollSync.linked !== undefined && (it?.entries.some((entry) => entry.id === scrollSync.linked) ?? false),
+  );
 </script>
 
 {#if it}
 
 <ItemFrame gap={only?.kind === "question" ? 16 : 6}>
+  {#if linked}
+    <!-- The command the terminal panel is lined up on. -->
+    <View style={{ position: "absolute", left: -10, top: 2, bottom: 2, width: 2, radius: 1, background: p.accent }} />
+  {/if}
   {#if only}
     <Entry entry={only} />
   {:else}

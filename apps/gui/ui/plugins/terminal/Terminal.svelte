@@ -61,8 +61,14 @@
   let told: string | undefined;
   function scrolled(position: { y: number; maxY: number }): void {
     follow.scrolled(position.y, position.maxY, Date.now());
-    if (follow.following || alone !== undefined) {
+    if (alone !== undefined) {
       told = undefined;
+      return;
+    }
+    if (follow.following) {
+      // Back at the end after being scrolled up: the chat goes to its end too.
+      if (told !== undefined && told !== "end") scrollSync.fromTerminal("end");
+      told = "end";
       return;
     }
     const index = offsets.indexAt(position.y + 1, runs.map((run) => run.id), () => ESTIMATE);
@@ -148,6 +154,10 @@
           onresize={(box: Layout) => offsets.set(run.id, box.height)}
           style={{ paddingX: 12, paddingTop: 10, paddingBottom: 4, gap: 6 }}
         >
+          {#if run.id === scrollSync.linked}
+            <!-- The command the chat is lined up on. -->
+            <View style={{ position: "absolute", left: 4, top: 10, bottom: 4, width: 2, radius: 1, background: p.accent }} />
+          {/if}
           <View style={{ direction: "row", align: "center", gap: 8, paddingX: 8, paddingY: 4, radius: p.radius.s, background: p.surface }}>
             {#if run.state === "running"}
               <View style={{ color: p.accent }}><Spinner /></View>

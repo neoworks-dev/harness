@@ -95,6 +95,11 @@
     const ask = scrollSync.chat;
     if (ask === undefined || ask.seq === asked) return;
     asked = ask.seq;
+    if (ask.ref === "end") {
+      follow.reset();
+      untrack(() => list?.scrollToIndex(rows.length - 1, { align: "end" }));
+      return;
+    }
     const index = rowIds.findIndex((ids) => ids.includes(ask.ref));
     if (index < 0) return;
     follow.following = false;
