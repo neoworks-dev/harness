@@ -323,31 +323,29 @@ test("the list puts pinned first and settled last, closed until opened", () => {
   const scratch = session("f", "Scratch", "/w/notes", 40);
   const marks = settle(pin(pin(NO_MARKS, "a", 1), "e", 2), scratch);
   const closed = arrange(all, {}, marks, show(false, false));
-  // Pinned last first, the running c on its own, the rest under their repository and worktree,
-  // settled at the end. c's subagent d is done, so it is gone.
+  // The running c on its own at the top, pinned last first, the rest under their repository and
+  // worktree, settled at the end. c's subagent d is done, so it is gone.
   expect(drawn(closed)).toEqual([
+    "c",
     "[Pinned]",
     "e",
     "a",
-    "[Active]",
-    "c",
     "[site]",
     "b",
     "[Settled 1 false]",
   ]);
-  expect(closed.order).toEqual(["e", "a", "c", "b"]);
-  expect(closed.groupStarts).toEqual([0, 2, 3]);
+  expect(closed.order).toEqual(["c", "e", "a", "b"]);
+  expect(closed.groupStarts).toEqual([0, 1, 3]);
   const open = arrange(all, {}, marks, show(true, false));
   expect(drawn(open).slice(-2)).toEqual(["[Settled 1 true]", "~f"]);
   expect(open.order.at(-1)).toBe("f");
   // New activity in a settled session puts it back among the rest.
   const woken = all.map((s) => (s.id === "f" ? { ...s, lastActivity: 99 } : s));
   expect(drawn(arrange(woken, {}, marks, show(false, false)))).toEqual([
+    "c",
     "[Pinned]",
     "e",
     "a",
-    "[Active]",
-    "c",
     "[notes]",
     "f",
     "[site]",
@@ -360,7 +358,7 @@ test("the list puts pinned first and settled last, closed until opened", () => {
   );
 });
 
-test("active sessions sit in their own section, ordered by creation, subagents after their parent", () => {
+test("active sessions lead the list on their own, ordered by creation, subagents after their parent", () => {
   const at = (id: string, created: number, activity: number, more: Partial<SessionInfo> = {}) => ({
     ...session(id, id, "/w/site", activity),
     createdAt: created,
@@ -382,7 +380,7 @@ test("active sessions sit in their own section, ordered by creation, subagents a
         show(false, false),
       ),
     );
-  expect(list(5)).toEqual(["[Active]", "new", "old", "↳sub", "ask", "[site]", "idle"]);
+  expect(list(5)).toEqual(["new", "old", "↳sub", "ask", "[site]", "idle"]);
   // Activity in a working session moves nothing.
   expect(list(500)).toEqual(list(5));
 });
@@ -411,7 +409,7 @@ test("as in the terminal, sessions idle for over a day fold into their group's l
   ];
   const keep = (s: SessionInfo): boolean => s.state === "running";
   const folded = arrange(all, {}, NO_MARKS, show(false, false, { keep, nowMs: now, shown: "kid" }));
-  expect(drawn(folded)).toEqual(["[Active]", "busy", "[site]", "new", "↳kid", "hour", "[more 2]"]);
+  expect(drawn(folded)).toEqual(["busy", "[site]", "new", "↳kid", "hour", "[more 2]"]);
   expect(folded.lines.at(-1)).toMatchObject({ group: "repo /w/site" });
   const opened = arrange(all, {}, NO_MARKS, show(false, false, { keep, nowMs: now, shown: "kid", groups: new Set(["repo /w/site"]) }));
   expect(opened.order).toHaveLength(6);

@@ -66,8 +66,9 @@ function newestFirst(a: SessionInfo, b: SessionInfo): number {
 }
 
 /**
- * The list without a search: the pinned sessions (the one pinned last first), then the active
- * ones (`isActive`, the one started last first, each subagent after its parent), the others by
+ * The list without a search: the active sessions on their own, without a heading (`isActive`,
+ * the one created last first, each subagent after its parent), then the pinned ones (the one
+ * pinned last first), the others by
  * project and worktree as `groupSessions` orders them, each under its heading with those idle for
  * over a day folded into "N older" until opened, then "Settled (n)", which lists nothing
  * until it is opened, and then ten of its sessions, newest first, and a line for the rest.
@@ -109,16 +110,16 @@ export function arrange(
     lines.push({ kind: "session", key: info.id, info, child, slim, mixed });
   };
 
+  // The active sessions lead, on their own: no heading, under no project.
+  if (active.length > 0) {
+    groupStarts.push(order.length);
+    for (const { info, child } of family(active)) add(info, child, false, true);
+  }
+
   if (pinned.length > 0) {
     lines.push({ kind: "label", key: "pinned", text: "Pinned" });
     groupStarts.push(order.length);
     for (const info of pinned) add(info, false, false, true);
-  }
-
-  if (active.length > 0) {
-    lines.push({ kind: "label", key: "active", text: "Active" });
-    groupStarts.push(order.length);
-    for (const { info, child } of family(active)) add(info, child, false, true);
   }
 
   // Each repository under its name and each worktree under its own, as the terminal draws them:
