@@ -274,6 +274,21 @@ test("a question is a row of its own and splits a group", () => {
   expect(kinds(list)).toEqual(["item", "work", "work", "work", "working"]);
 });
 
+test("an allowed permission is dropped, a denied one stays", () => {
+  const answered = (ref: string, state: ViewItem["state"]): ViewItem => ({
+    ref,
+    kind: "tool",
+    label: "rm",
+    state,
+    component: text(state === "done" ? "Yes" : "No"),
+  });
+  const list = rows([user(1), answered("p-1", "done"), answered("p-2", "failed")], {
+    running: true,
+  });
+  const ids = list.flatMap((row) => (row.kind === "work" ? row.entries.map((e) => e.id) : []));
+  expect(ids).toEqual(["p-2"]);
+});
+
 test("the last thought of a running turn is still being written", () => {
   const list = rows([user(1), thought("x")], { running: true });
   const work = list[1];

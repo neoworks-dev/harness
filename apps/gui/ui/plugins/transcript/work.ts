@@ -271,6 +271,14 @@ export function isQuestion(item: ViewItem): boolean {
   return item.ref.startsWith("p-") || item.ref.startsWith("q-") || hasButtons(item.component);
 }
 
+/**
+ * A permission request that was allowed: the call it asked about runs and has a row of its own,
+ * so the answer would only say "yes" twice. A denied one stays, it says why the call failed.
+ */
+export function isAllowedPermission(item: ViewItem): boolean {
+  return item.kind === "tool" && item.ref.startsWith("p-") && item.state === "done";
+}
+
 /** The agent's todo list as an item (the daemon keeps one per agent). */
 export function isPlanItem(item: ViewItem): boolean {
   return item.kind === "tool" && (item.ref === "plan" || item.ref.startsWith("plan-"));

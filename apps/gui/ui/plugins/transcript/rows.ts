@@ -8,7 +8,14 @@ import type { Block, ViewItem } from "@neoworks-dev/neo-protocol/types";
 import { imagesOf } from "./components.ts";
 import { duration } from "./format.ts";
 import type { Timeline } from "./timeline.ts";
-import { changedFiles, classify, isPlanCall, type FileChange, type WorkEntry } from "./work.ts";
+import {
+  changedFiles,
+  classify,
+  isAllowedPermission,
+  isPlanCall,
+  type FileChange,
+  type WorkEntry,
+} from "./work.ts";
 
 export type Row =
   /** An item drawn by `chat.item`: the user's message, a notice. */
@@ -101,7 +108,7 @@ function partsOf(turn: Turn, active: boolean, input: RowsInput): Part[] {
     else if (item.kind === "notice") parts.push({ type: "notice", item });
     else if (item.kind === "tool" || item.kind === "thought") {
       const facts = timeline.facts.get(item.ref);
-      if (isPlanCall(item, facts)) return;
+      if (isPlanCall(item, facts) || isAllowedPermission(item)) return;
       const writing = active && index === turn.body.length - 1;
       const at = timeline.stamps.get(item.ref)?.first;
       parts.push({
