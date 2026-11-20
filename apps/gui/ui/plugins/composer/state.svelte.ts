@@ -2,7 +2,7 @@
 // permission or choice card answered in place of the input). The components draw it and the
 // plugin's keys call it, so they agree on what is open.
 import type { Context } from "@neoworks/extension-system";
-import { clipboard, window } from "@neoworks/svelte-gpui";
+import { clipboard } from "@neoworks/svelte-gpui";
 import type { ViewItem, WaitingInput } from "@neoworks-dev/neo-protocol/types";
 import { onAttachments, pasteAttachment, pickAttachments } from "../../kernel/attachments.ts";
 import type { CommandsService } from "../../kernel/services/commands.ts";
@@ -49,9 +49,6 @@ const NO_COMMENTS: Context["comments"]["list"] = [];
 /** How long "copied" stays in the status line. */
 const COPIED_NOTICE_MS = 1500;
 
-/** How long a second Ctrl-C quits. */
-const QUIT_WINDOW_MS = 2000;
-
 class Composer {
   private services = $state.raw<Services>();
   /** The draft in the input. Kept while a question has the input's place. */
@@ -64,7 +61,7 @@ class Composer {
   /** The text the menu was closed (Esc) for; typing more opens it again. */
   menuClosedFor = $state<string>();
   helpOpen = $state(false);
-  /** A short message for the status line, such as "press ctrl-c again to quit". */
+  /** A short message for the status line, such as "copied". */
   notice = $state<string>();
 
   /** Questions put aside with Esc; they stay in the chat. */
@@ -98,7 +95,6 @@ class Composer {
   /** The commands the menu lists, if it is open. */
   commands = $derived(this.listCommands());
 
-  private quitArmedUntil = 0;
   private noticeTimer?: ReturnType<typeof setTimeout>;
 
   /** Serves the services until the returned call stops it. */
@@ -412,24 +408,6 @@ class Composer {
     else if (this.prompt) this.dismissed = new Set([...this.dismissed, this.prompt.ref]);
     else return false;
     return true;
-  }
-
-  /** Ctrl-C: the first press asks for a second, which quits. */
-  ctrlC(): void {
-    const now = Date.now();
-    if (now < this.quitArmedUntil) {
-      window.close();
-      return;
-    }
-    this.quitArmedUntil = now + QUIT_WINDOW_MS;
-    this.say("press ctrl-c again to quit", QUIT_WINDOW_MS);
-  }
-
-  /** Any other key disarms the quit. */
-  otherKey(): void {
-    if (this.quitArmedUntil === 0) return;
-    this.quitArmedUntil = 0;
-    if (this.notice?.startsWith("press ctrl-c")) this.notice = undefined;
   }
 
   private say(text: string, ms: number): void {

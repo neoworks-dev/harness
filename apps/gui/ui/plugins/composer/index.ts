@@ -1,10 +1,9 @@
 // The input under the conversation: a draft with history and a `/` menu, the panel that answers
-// the agent's questions, `/help`, and the keys around them (Esc, Ctrl-C, Ctrl-P, Shift-Tab). It
+// the agent's questions, `/help`, and the keys around them (Esc, Ctrl-P, Shift-Tab). It
 // declares `composer.left` and `composer.right` in the row of the input, and fills the status
 // line's `statusline.right` with its short messages.
 import type { Context } from "@neoworks/extension-system";
 import { window } from "@neoworks/svelte-gpui";
-import { chord } from "../../kernel/keymap.ts";
 import "../shell/slots.ts";
 import "../statusline/slots.ts";
 import Composer from "./Composer.svelte";
@@ -30,17 +29,7 @@ export const composerPane = {
       slot.add({ component: Notice });
     });
 
-    // Ctrl-C is left to the input too, so copying a selection still works; any other key
-    // disarms a first Ctrl-C.
-    keymap.observe((event) => {
-      if (!/^ctrl-(shift-)?c$/.test(chord(event) ?? "")) composer.otherKey();
-    });
-    for (const copy of ["ctrl-c", "ctrl-shift-c"]) {
-      keymap.bind(copy, () => {
-        composer.ctrlC();
-        return false;
-      });
-    }
+    // Ctrl-C only copies, as in any window: it never closes this one (/quit does).
 
     keymap.bind("shift-tab", () => void daemon.cycleApprovals());
     keymap.bind("escape", (event) => {
