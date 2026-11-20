@@ -244,6 +244,7 @@ fn enter_opens_the_transcript_of_the_selected_subagent_and_esc_closes_it() {
     ]))
     .unwrap();
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        surfaces: None,
         before: None,
         agent: Some("neo".into()),
         session: "s1".into(),
@@ -290,6 +291,7 @@ fn a_transcript_scrolls_through_its_lines() {
         })
         .collect();
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        surfaces: None,
         before: None,
         agent: Some("neo".into()),
         session: "s1".into(),
@@ -314,6 +316,7 @@ fn a_transcript_scrolls_through_its_lines() {
     // Views of other agents or sessions don't land here.
     let before = screen_text(&mut app, 100, 24);
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        surfaces: None,
         before: None,
         agent: Some("claude".into()),
         session: "s1".into(),
@@ -601,6 +604,7 @@ fn a_command_running_a_while_offers_ctrl_b_and_ctrl_b_sends_it_to_the_background
                "rawInput": {"command": "make all", "description": "Build the site"}}),
     ));
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        surfaces: None,
         before: None,
         agent: None,
         session: "s1".into(),

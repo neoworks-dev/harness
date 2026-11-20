@@ -18,6 +18,8 @@
 //   /login [provider | key [provider]]        add an API key or an account (login.ts)
 //   /logout [provider], /accounts             remove a login; list what is logged in
 //   /plugin …                                 marketplaces and plugins (plugins.ts)
+//   /surface [name | close name]              open a surface file, close a surface; none: list
+//                                             them (surfaces.ts)
 // The harness defaults to the one the session runs on. Nothing is chosen for the user.
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -34,6 +36,7 @@ import { actionFor, mcpChoice, parseMcpStatus } from "./mcp-picker.ts";
 import type { Logger } from "./log.ts";
 import type { Login } from "./login.ts";
 import type { PluginCommands } from "./plugins.ts";
+import type { Surfaces } from "./surfaces.ts";
 import { NotFoundError, type SessionManager } from "./sessions.ts";
 import {
   APPROVALS,
@@ -79,6 +82,7 @@ export const DAEMON_COMMANDS: readonly string[] = [
   "logout",
   "accounts",
   "plugin",
+  "surface",
 ];
 
 /** How long a harness gets to tell its options before the picker shows it without them. */
@@ -96,6 +100,8 @@ export interface CommandParts {
   login: Login;
   /** /plugin; absent: the command doesn't exist. */
   plugins?: PluginCommands | undefined;
+  /** /surface; absent: the command doesn't exist. */
+  surfaces?: Pick<Surfaces, "command"> | undefined;
   log: Logger;
   /** Tells the user something in the session's log. */
   notice: (session: string, text: string, tone?: "muted" | "danger") => void;
@@ -185,6 +191,8 @@ export class Commands {
     if (name === "logout") return this.parts.login.logout(session, args);
     if (name === "accounts") return this.parts.login.accounts(session);
     if (name === "plugin" && this.parts.plugins) return this.parts.plugins.run(session, args);
+    if (name === "surface" && this.parts.surfaces)
+      return this.parts.surfaces.command(session, args);
     if (name === "mcp" && args.length === 0) {
       const harness = this.parts.sessions.harness(session);
       if (this.parts.guests.has(harness)) return this.mcp(session, harness);

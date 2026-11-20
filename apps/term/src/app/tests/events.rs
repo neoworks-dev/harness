@@ -58,6 +58,7 @@ fn events_of_other_sessions_are_ignored() {
     ));
     assert!(!app.running());
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        surfaces: None,
         before: None,
         agent: None,
         session: "other".into(),
@@ -367,6 +368,7 @@ fn clear_starts_a_fresh_view_when_the_new_session_becomes_current() {
     // Old events are ignored, new ones shown.
     show(&mut app, vec![]);
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        surfaces: None,
         before: None,
         agent: None,
         session: "s2".into(),

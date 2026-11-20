@@ -88,6 +88,7 @@ fn image_item(r: &str, src: &str) -> ViewItem {
 
 fn snapshot(items: Vec<ViewItem>) -> ViewSnapshot {
     ViewSnapshot {
+        surfaces: None,
         before: None,
         agent: None,
         session: "s".into(),

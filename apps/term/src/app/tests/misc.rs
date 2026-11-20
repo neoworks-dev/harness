@@ -113,6 +113,7 @@ fn a_background_command_ending_gets_one_card() {
 fn a_chat_opened_with_its_latest_items_pages_in_older_ones() {
     let mut app = app();
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        surfaces: None,
         before: Some(2),
         agent: None,
         session: "s1".into(),

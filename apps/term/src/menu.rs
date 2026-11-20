@@ -98,6 +98,11 @@ pub const COMMANDS: &[Command] = &[
         "[install|enable|…]",
         "plugins for neo: list, search, install, uninstall, enable, disable, marketplace add",
     ),
+    daemon(
+        "surface",
+        "[name|close name]",
+        "open a surface (a bar, panel or page), close one, or list them",
+    ),
     local("sessions", "switch to another session"),
     local(
         "sidebar",

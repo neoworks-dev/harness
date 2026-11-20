@@ -55,6 +55,11 @@ export const COMMANDS: readonly Command[] = [
     "[install|enable|…]",
     "plugins for neo: list, search, install, uninstall, enable, disable, marketplace add",
   ),
+  daemon(
+    "surface",
+    "[name|close name]",
+    "open a surface (a bar, panel or page), close one, or list them",
+  ),
 ];
 
 /** Whether the text is a command being typed: a slash, and no space or newline yet. */

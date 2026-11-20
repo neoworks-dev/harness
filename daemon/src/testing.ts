@@ -67,6 +67,7 @@ export async function startTestDaemon(
     port: 0,
     defaultCwd: dir,
     toolsDir: join(dir, "tools"),
+    surfacesDir: join(dir, "surfaces"),
     guests: options.guests,
     neo: options.neo,
     accounts: options.accounts,

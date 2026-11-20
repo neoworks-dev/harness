@@ -26,6 +26,7 @@ pub fn prompt(r: &str, state: &str, labels: &[&str]) -> ViewItem {
 
 fn snapshot(items: Vec<ViewItem>) -> ViewSnapshot {
     ViewSnapshot {
+        surfaces: None,
         before: None,
         agent: None,
         session: "s".into(),

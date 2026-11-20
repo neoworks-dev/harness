@@ -7,7 +7,10 @@ import type {
   ViewItem,
   ViewPatch,
 } from "@neoworks-dev/neo-protocol/types";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { silentLogger } from "../src/log.ts";
+import { parseSurfaceFile } from "../src/surfaces.ts";
 import { startTestDaemon } from "../src/testing.ts";
 import { SessionView } from "../src/view/session-view.ts";
 
@@ -185,7 +188,7 @@ describe("the ui_surface tool", () => {
     // The update keeps the title and place it had.
     expect(surfaces[0]).toMatchObject({ ref: "s-run", label: "Run", place: "bottom" });
     expect(JSON.stringify(surfaces[0])).toContain("0.6");
-    expect(said(await call({ action: "list" }))).toBe("- run (bottom): Run");
+    expect(said(await call({ action: "list" }))).toBe("Open:\n- run (bottom): Run");
 
     expect(said(await call({ action: "close", name: "run" }))).toBe("Closed run.");
     expect(daemon.views.get(session).snapshot().surfaces).toBeUndefined();
@@ -210,5 +213,76 @@ describe("the ui_surface tool", () => {
     ).toBe(true);
     expect((await call({ action: "close", name: "x" })).isError).toBe(true);
     expect(daemon.store.readTypes(session, ["surface_opened"])).toHaveLength(0);
+  });
+});
+
+describe("surface files", () => {
+  test("a file's frontmatter names it and its place; without one, the file's name and the bottom", () => {
+    expect(
+      parseSurfaceFile(
+        "---\nname: run\nplace: side\ntitle: Run\nopen: always\n---\n<Text>a</Text>\n",
+        "f",
+        "user",
+      ),
+    ).toEqual({
+      name: "run",
+      place: "side",
+      title: "Run",
+      always: true,
+      source: "<Text>a</Text>",
+      from: "user",
+    });
+    expect(parseSurfaceFile("<Text>a</Text>", "bar", "user")).toMatchObject({
+      name: "bar",
+      place: "bottom",
+      always: false,
+    });
+    expect(parseSurfaceFile("---\nplace: top\n---\n<Text>a</Text>", "bar", "user")).toBeUndefined();
+    expect(parseSurfaceFile("---\nname: x\n---\n", "bar", "user")).toBeUndefined();
+  });
+
+  test("/surface opens a file, lists, closes; the agent opens one by name; `open: always` opens with a session", async () => {
+    const daemon = await startTestDaemon();
+    cleanups.push(() => daemon.stop());
+    const dir = join(daemon.dir, "surfaces");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "knobs.neoui"),
+      '---\nplace: page\ntitle: Knobs\n---\n<Slider name="lr" min={0} max={1} value={0.5}/>',
+    );
+    writeFileSync(join(dir, "clock.neoui"), "---\nopen: always\n---\n<Text>tick</Text>");
+    writeFileSync(join(dir, "broken.neoui"), "<Nope/>");
+    const session = daemon.focus.current().session;
+    const input = (text: string) => daemon.commands.run(session, text);
+    const notices = () =>
+      daemon.store
+        .readTypes(session, ["notice"])
+        .map((r) => (r.event.type === "notice" ? r.event.text : ""));
+
+    await input("/surface knobs");
+    expect(daemon.views.get(session).snapshot().surfaces).toMatchObject([
+      { ref: "s-knobs", place: "page", label: "Knobs" },
+    ]);
+    await input("/surface");
+    expect(notices().at(-1)).toContain("- knobs (page): Knobs");
+    expect(notices().at(-1)).toContain("- clock (bottom, user)");
+    await input("/surface broken");
+    expect(notices().at(-1)).toContain("mistakes");
+    await input("/surface close knobs");
+    expect(daemon.views.get(session).snapshot().surfaces).toBeUndefined();
+
+    const opened = await daemon.gateway.call(
+      "ui_surface",
+      { action: "open", name: "knobs" },
+      undefined,
+      { session },
+    );
+    expect(opened.isError).toBeUndefined();
+    expect(daemon.views.get(session).snapshot().surfaces?.[0]).toMatchObject({ place: "page" });
+
+    const fresh = daemon.sessions.create({}).id;
+    expect(daemon.views.get(fresh).snapshot().surfaces).toMatchObject([
+      { ref: "s-clock", place: "bottom" },
+    ]);
   });
 });

@@ -12,7 +12,7 @@ import type {
 } from "@neoworks-dev/neo-protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
 import { ActionRunner, neoUiTools } from "./actions.ts";
-import { surfaceTool } from "./surfaces.ts";
+import { Surfaces, userSurfacesDir } from "./surfaces.ts";
 import { Todos, todosTool } from "./todos.ts";
 import { AssetStore } from "./assets.ts";
 import { FocusManager } from "./focus.ts";
@@ -72,6 +72,8 @@ export interface DaemonOptions {
   defaultCwd: string;
   /** The user's own tools folder; default NEO_TOOLS_DIR, else ~/.config/neo/tools. */
   toolsDir?: string;
+  /** The user's surface files; default NEO_SURFACES_DIR, else ~/.config/neo/surfaces. */
+  surfacesDir?: string;
   /** Served to every client; the built-in default when absent. */
   theme?: Theme;
   /** Replaces the MCP client used to reach apps; for tests. */
@@ -146,6 +148,15 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     log,
   );
   const stdioServers = new McpServers(connectors, log, options.mcp?.servers);
+  // Surfaces (surfaces.ts): the ui_surface tool, /surface, and the files that open with a session.
+  const surfaces = new Surfaces({
+    store,
+    dir: options.surfacesDir ?? userSurfacesDir(),
+    plugins: options.plugins,
+    apps: () => connectors.componentsOf(),
+    // Defined further down; only called once the daemon runs.
+    notice: (session, text, tone) => notice(session, text, tone),
+  });
   /** Reads the MCP configuration and makes it the servers that run; one read at a time. */
   let mcpLoading: Promise<void> = Promise.resolve();
   const reloadMcp = (): Promise<void> => {
@@ -351,6 +362,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     work: () => settings.work(),
     created: (sessionId) => {
       settings.inheritHarness(sessionId, (name) => name === agent.name || guests.has(name));
+      surfaces.openAlways(sessionId);
       // A new directory may bring its own .mcp.json.
       if (projectMcpAllowed(options.mcp?.configFile)) void reloadMcp();
       announceCommands(sessionId);
@@ -422,7 +434,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     visible: (app, session) => toolFolders.visible(app, session),
     // A subagent changes the list as itself, the session's agent as its harness.
     todos: (session, guest, args) => todosTool(todos, session, guest ?? harnessOf(session), args),
-    surfaces: (session, args) => surfaceTool(store, session, args, connectors.componentsOf()),
+    surfaces: (session, args) => surfaces.tool(session, args),
     resolveAsset: (handle) => assets.resolve(handle),
     recordResult: (session, result) => {
       store.append(session, result);
@@ -489,6 +501,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
         });
   const commands = new Commands({
     plugins: pluginCommand,
+    surfaces,
     sessions,
     guests,
     settings,

@@ -122,6 +122,7 @@ fn user(r: &str, text: &str) -> ViewItem {
 
 fn show(app: &mut App, items: Vec<ViewItem>) {
     app.handle_event(Event::ViewSnapshot(ViewSnapshot {
+        surfaces: None,
         before: None,
         agent: None,
         session: "s1".into(),
