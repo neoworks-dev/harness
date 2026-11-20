@@ -30,9 +30,15 @@ export const viewerPane = {
       slot.add({ component: ToolbarButton, order: 15 });
     });
 
-    // It takes the side panel's place while it is open, and the keyboard while a comment is written.
+    // It takes the side panel's place while it is open, and the keyboard while a comment is written
+    // or a file in the conversation's place is reviewed with the keys (MaxPane).
     sidepanel.cover(() => viewer.shown && !viewer.maximized);
-    keyboard.claim(() => viewer.editing);
+    keyboard.claim(() => viewer.editing || viewer.reviewing);
+
+    // Ctrl-E: the latest turn's changed files, one after another, each whole in the chat's place.
+    keymap.bind("ctrl-e", () => {
+      if (!viewer.reviewTurn(0)) daemon.error = "The latest turn changed no files.";
+    });
 
     // Esc puts a selection away before it does anything else.
     keymap.bind("escape", () => {

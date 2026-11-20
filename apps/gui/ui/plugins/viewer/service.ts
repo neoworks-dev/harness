@@ -47,7 +47,7 @@ export class ViewerService extends Service {
 
   /** Opens a file whole in the conversation's place, the lines `diff` added marked; Esc goes back. */
   openInPlace(path: string, diff?: DiffComponent): void {
-    viewer.openInPlace(path, diff);
+    viewer.openInPlace(path, diff?.lines);
   }
 
   toggle(): void {

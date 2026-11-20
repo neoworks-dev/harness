@@ -15,6 +15,18 @@ export interface CodeComment {
   /** `code` is a diff (it has marks), not plain lines. */
   diff: boolean;
   text: string;
+  /** What the user wants of the lines, as in a pull request review; a remark when absent. */
+  kind?: CommentKind;
+}
+
+/** A remark on the lines, a question about them, or a request to rewrite them. */
+export type CommentKind = "comment" | "question" | "rewrite";
+
+/** The kind as the user picks it: "Comment", "Ask", "Rewrite". */
+export function kindLabel(kind: CommentKind | undefined): string {
+  if (kind === "question") return "Ask";
+  if (kind === "rewrite") return "Rewrite";
+  return "Comment";
 }
 
 /** `src/a.ts:L12-L14`, or `src/a.ts:L12` for one line. */
@@ -65,7 +77,10 @@ export function formatComment(comment: CodeComment): string {
   if (diff) where += ' (a diff: "+" added, "-" removed)';
   const fence = fenceFor(comment.code);
   const info = diff ? "diff" : language(path);
-  return [`${where}:`, `${fence}${info}`, ...comment.code, fence, comment.text.trim()].join("\n");
+  let said = comment.text.trim();
+  if (comment.kind === "question") said = `A question about these lines (answer it, change nothing): ${said}`;
+  if (comment.kind === "rewrite") said = `Rewrite these lines: ${said}`;
+  return [`${where}:`, `${fence}${info}`, ...comment.code, fence, said].join("\n");
 }
 
 /** The message to send: what the user typed, then every comment as a block. */

@@ -7,10 +7,12 @@ import { untrack } from "svelte";
 import { Folded } from "../../kernel/folded.svelte.ts";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
 import type { GitService } from "../../kernel/services/git.ts";
-import type { DiffComponent } from "@neoworks-dev/neo-protocol/types";
+import type { DiffComponent, DiffLine } from "@neoworks-dev/neo-protocol/types";
+import type { CommentKind } from "../../lib/comments.ts";
 import { diffStats, gutterWidth } from "../../lib/diff.ts";
 import { parseStatus, relFromPrefix, relativize } from "../../lib/git-status.ts";
 import { addedLines } from "./changed.ts";
+import { cursorAt, nextChange as nextChangeAt, stepCursor, stepFile } from "./review.ts";
 import { parseUnified, type FileDiff } from "../../lib/unified.ts";
 import { splitLines } from "./linediff.ts";
 import { quoteDiff, quoteFile, select, span, type Quote, type Selection } from "./selection.ts";
@@ -124,8 +126,21 @@ class Viewer {
   inPlace = $state(false);
   /** Per file opened from an edit, the lines (1-based) the edit wrote, marked in its tab. */
   changed = $state.raw<Readonly<Record<string, ReadonlySet<number>>>>({});
-  /** The line a file tab should bring into view: a new `seq` asks again. */
-  jump = $state.raw<{ path: string; line: number; seq: number }>();
+  /** The line a file tab should bring into view (`nearest`: only as far as it takes): a new `seq` asks again. */
+  jump = $state.raw<{ path: string; line: number; seq: number; nearest?: boolean }>();
+  /** The keys' place in a file opened in place: a line, or a run of them (shift). */
+  cursor = $state.raw<Selection>();
+  /** What the comment being written is: a remark, a question, a request to rewrite. */
+  kind = $state<CommentKind>("comment");
+  /** Which of the latest turn's files `reviewTurn` is on. */
+  private reviewAt = 0;
+  /** Tab gave the keyboard back to the input while a file is open in place; a press on it takes it again. */
+  typing = $state(false);
+
+  /** A file is open in place and its keys review it: not while a comment is written or the input types. */
+  get reviewing(): boolean {
+    return this.shown && this.inPlace && !this.typing && !this.editing;
+  }
   /** The file at the top of the diff (or the one pressed in the tree, while its header is in view). */
   current = $state<string>();
   /** The file the tree was pressed on, until the diff scrolls it out of view. */
@@ -280,20 +295,67 @@ class Viewer {
   }
 
   /**
-   * Opens a file whole in the conversation's place (Esc goes back), the lines `diff` added marked,
-   * and scrolled to the first of them.
+   * Opens a file whole in the conversation's place (Esc goes back), the lines its diff (`lines`)
+   * added marked, and scrolled to the first of them. The keys review it (MaxPane): the cursor
+   * starts there too.
    */
-  openInPlace(path: string, diff?: DiffComponent): void {
+  openInPlace(path: string, lines?: readonly DiffLine[]): void {
     const rel = relativize(this.services?.daemon.cwd ?? "", path);
-    if (diff !== undefined) {
-      const added = addedLines(diff.lines);
+    let first: number | undefined;
+    if (lines !== undefined) {
+      const added = addedLines(lines);
       this.changed = { ...this.changed, [rel]: new Set(added) };
-      const first = added[0] ?? diff.lines.find((line) => line.new !== undefined)?.new;
+      first = added[0] ?? lines.find((line) => line.new !== undefined)?.new;
       if (first !== undefined) this.jump = { path: rel, line: first, seq: (this.revealSeq += 1) };
     }
+    this.cursor = cursorAt(fileView(rel), Math.max(0, (first ?? 1) - 1));
     this.openFile(rel);
     this.maximized = true;
     this.inPlace = true;
+    this.typing = false;
+  }
+
+  /**
+   * Ctrl-E, `]` and `[`: the latest turn's changed files one after another, each whole in the
+   * conversation's place. `step` 0 opens the first; false when there is no file that way.
+   */
+  reviewTurn(step: 0 | 1 | -1): boolean {
+    const files = turnDiffs(turnEdits(this.turn));
+    const at = step === 0 ? 0 : stepFile(files.length, this.reviewAt, step);
+    const file = at === undefined ? undefined : files[at];
+    if (file === undefined) return false;
+    this.reviewAt = at!;
+    this.openInPlace(file.path, file.lines);
+    return true;
+  }
+
+  /** The cursor `delta` lines on in the file in place (`extend`: stretched); its line is brought into view. */
+  moveCursor(delta: number, extend: boolean): void {
+    const tab = this.tab;
+    if (tab.kind !== "file") return;
+    const text = this.texts[tab.path];
+    const total = text?.status === "ready" ? text.lines.length : 0;
+    const cursor = stepCursor(this.cursor, fileView(tab.path), total, delta, extend);
+    this.cursor = cursor;
+    this.jump = { path: tab.path, line: cursor.head + 1, seq: (this.revealSeq += 1), nearest: true };
+  }
+
+  /** `n` / `N`: the cursor to the next (or previous) run of lines the edit wrote. */
+  nextChange(direction: 1 | -1): void {
+    const tab = this.tab;
+    if (tab.kind !== "file") return;
+    const changed = this.changed[tab.path];
+    const from = this.cursor?.view === fileView(tab.path) ? this.cursor.head : -1;
+    const to = changed === undefined ? undefined : nextChangeAt(changed, from, direction);
+    if (to === undefined) return;
+    this.moveCursor(to - from, false);
+  }
+
+  /** `c`, `?`, `r`: a comment, question or rewrite on the lines under the cursor; its editor opens. */
+  startComment(kind: CommentKind): void {
+    if (this.cursor === undefined || this.cursor.view !== fileView(this.tab.kind === "file" ? this.tab.path : "")) return;
+    this.kind = kind;
+    this.selection = this.cursor;
   }
 
   /** Opens a file of the session's directory in a tab. */
@@ -487,11 +549,14 @@ class Viewer {
   /** Pressing a line number: selects the line, or with shift stretches the selection to it. */
   press(view: string, index: number, extend: boolean): void {
     this.selection = select(this.selection, view, index, extend);
+    // The keys go on from there.
+    if (view.startsWith("file:")) this.cursor = this.selection;
   }
 
   clearSelection(): void {
     this.selection = undefined;
     this.draft = "";
+    this.kind = "comment";
   }
 
   /** Where the selected lines are, as a comment names them; undefined when they are gone. */
@@ -513,7 +578,7 @@ class Viewer {
     const text = this.draft.trim();
     const quote = this.place;
     if (text === "" || quote === undefined) return;
-    this.services?.comments.add({ ...quote, text });
+    this.services?.comments.add({ ...quote, text, kind: this.kind });
     this.clearSelection();
   }
 }

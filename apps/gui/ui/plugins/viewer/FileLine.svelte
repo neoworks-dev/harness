@@ -28,6 +28,8 @@
   const colors = $derived(viewerColors(p));
   const view = $derived(fileView(path));
   const on = $derived(isSelected(viewer.selection, view, index));
+  /** Under the keys' cursor, while they review the file (MaxPane). */
+  const cursor = $derived(viewer.inPlace && !on && isSelected(viewer.cursor, view, index));
   const marked = $derived(comments.marked(path, "new", index + 1));
 </script>
 
@@ -36,9 +38,12 @@
     direction: "row",
     minHeight: LINE_HEIGHT,
     height: viewer.wrap ? undefined : LINE_HEIGHT,
-    background: on ? colors.selected : added ? colors.add : "transparent",
+    background: on || cursor ? colors.selected : added ? colors.add : "transparent",
   }}
 >
+  {#if cursor}
+    <View style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 2, background: p.accent }} />
+  {/if}
   <View
     onpress={(event) => viewer.press(view, index, event.shift)}
     style={{

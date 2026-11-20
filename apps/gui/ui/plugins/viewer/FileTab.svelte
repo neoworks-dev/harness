@@ -68,7 +68,13 @@
     const jump = viewer.jump;
     if (jump === undefined || jump.path !== path || jump.seq === jumped || base.length === 0) return;
     jumped = jump.seq;
-    untrack(() => setTimeout(() => list?.scrollToIndex(Math.max(0, jump.line - 1 - 5)), 0));
+    // The cursor moving: only as far as it takes. Opened at a change: a few lines above it.
+    untrack(() =>
+      setTimeout(() => {
+        if (jump.nearest) list?.scrollToIndex(jump.line - 1, { align: "nearest" });
+        else list?.scrollToIndex(Math.max(0, jump.line - 1 - 5));
+      }, 0),
+    );
   });
 
   const digits = $derived(text?.status === "ready" ? String(text.lines.length).length : 1);

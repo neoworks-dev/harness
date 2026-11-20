@@ -11,7 +11,7 @@
   import xIcon from "@phosphor-icons/core/regular/x.svg";
   import type { KeyEvent, Layout } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
-  import { preview, rangeLabel } from "../../lib/comments.ts";
+  import { kindLabel, preview, rangeLabel } from "../../lib/comments.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
   import CommandMenu from "./CommandMenu.svelte";
   import Help from "./Help.svelte";
@@ -226,7 +226,7 @@
             <View style={{ direction: "row", align: "center", gap: 6, paddingLeft: 8, paddingRight: 4, height: 26, maxWidth: "100%", radius: p.radius.s, background: p.raised }}>
               <Icon svg={chatText} size={13} />
               <Text style={{ fontSize: 12, minWidth: 0, shrink: 1, truncate: true }}>
-                {rangeLabel(comment)}<Text style={{ color: p.muted }}>{"  "}{preview(comment.text, 40)}</Text>
+                {#if comment.kind && comment.kind !== "comment"}<Text style={{ color: p.accent }}>{kindLabel(comment.kind)}{" "}</Text>{/if}{rangeLabel(comment)}<Text style={{ color: p.muted }}>{"  "}{preview(comment.text, 40)}</Text>
               </Text>
               <Button onpress={() => composer.uncomment(comment.id)} style={{ size: 18, align: "center", justify: "center", radius: 4, color: p.muted }} hover={{ color: p.fg, background: p.hover }}>
                 <Icon svg={xIcon} size={12} />
