@@ -15,6 +15,7 @@ import { sessionsSidebar } from "./sessions/index.ts";
 import { shell } from "./shell/index.ts";
 import { sidePanel } from "./sidepanel/index.ts";
 import { statusLine } from "./statusline/index.ts";
+import { surfacesPane } from "./surfaces/index.ts";
 import { terminalPane } from "./terminal/index.ts";
 import { todosPanel } from "./todos/index.ts";
 import { transcriptPane } from "./transcript/index.ts";
@@ -34,6 +35,7 @@ export const plugins: Plugin[] = [
   agentViewPane,
   agentsList,
   sidePanel,
+  surfacesPane,
   terminalPane,
   todosPanel,
   planPanel,

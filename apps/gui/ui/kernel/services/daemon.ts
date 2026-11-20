@@ -59,6 +59,10 @@ export class DaemonService extends Service {
   get items(): Store["items"] {
     return neo.items;
   }
+  /** The shown session's open surfaces (neoui drawn in a bar, a panel or a page). */
+  get surfaces(): Store["surfaces"] {
+    return neo.surfaces;
+  }
   get status(): Store["status"] {
     return neo.status;
   }

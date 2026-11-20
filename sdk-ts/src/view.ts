@@ -26,7 +26,9 @@ export type ViewChange =
       path: number[];
       /** The text component's blocks from this index on were replaced. */
       from: number;
-    };
+    }
+  /** A surface opened or changed (`item`), or closed (no `item`): `surfaces` has the rest. */
+  | { type: "surface"; ref: string; item?: ViewItem };
 
 /** Whether `component` holds other components (a card, row or stack). */
 export function hasChildren(
@@ -87,6 +89,7 @@ export class ViewState {
   /** The seq the state is current as of (0 for state built from bare items). */
   seq = 0;
   private current: ViewItem[];
+  private open: ViewItem[] = [];
 
   constructor(items: ViewItem[] = []) {
     this.current = [...items];
@@ -95,6 +98,14 @@ export class ViewState {
   /** The items in display order. A change replaces an item object; it never edits one. */
   get items(): readonly ViewItem[] {
     return this.current;
+  }
+
+  /**
+   * The open surfaces, in the order they opened: neoui programs drawn in their `place` (a bar,
+   * a panel, a page), not in the chat. A change replaces the array.
+   */
+  get surfaces(): readonly ViewItem[] {
+    return this.open;
   }
 
   /** The item with this ref, if there is one. */
@@ -108,14 +119,16 @@ export class ViewState {
     this.agent = snapshot.agent;
     this.seq = snapshot.seq;
     this.current = [...snapshot.items];
+    this.open = [...(snapshot.surfaces ?? [])];
   }
 
-  /** Replaces the items and forgets the session, agent and seq. */
+  /** Replaces the items and forgets the session, agent, seq and surfaces. */
   reset(items: ViewItem[] = []): void {
     this.session = undefined;
     this.agent = undefined;
     this.seq = 0;
     this.current = [...items];
+    this.open = [];
   }
 
   /**
@@ -144,6 +157,17 @@ export class ViewState {
   }
 
   private applyOp(op: ViewOp): ViewChange | undefined {
+    // Surfaces are kept apart from the chat's items.
+    if (op.op === "set" && op.item.place !== undefined) {
+      const at = this.open.findIndex((item) => item.ref === op.item.ref);
+      this.open =
+        at < 0 ? [...this.open, op.item] : this.open.map((item, i) => (i === at ? op.item : item));
+      return { type: "surface", ref: op.item.ref, item: op.item };
+    }
+    if (op.op === "remove" && this.open.some((item) => item.ref === op.ref)) {
+      this.open = this.open.filter((item) => item.ref !== op.ref);
+      return { type: "surface", ref: op.ref };
+    }
     switch (op.op) {
       case "set": {
         const index = this.indexOf(op.item.ref);

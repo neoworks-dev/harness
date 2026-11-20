@@ -38,6 +38,27 @@ function nested(): ViewItem {
 }
 
 describe("ViewState", () => {
+  test("surfaces are kept apart from the items: from the snapshot, set with a place, removed", () => {
+    const bar: ViewItem = { ...agent("s-bar"), kind: "tool", place: "bottom" };
+    const state = new ViewState();
+    state.applySnapshot({ session: "s1", seq: 1, items: [agent("a")], surfaces: [bar] });
+    expect(state.surfaces.map((i) => i.ref)).toEqual(["s-bar"]);
+    const page: ViewItem = { ...bar, ref: "s-page", place: "page" };
+    const changes = state.applyPatch(
+      patch(
+        2,
+        { op: "set", item: page },
+        { op: "set", item: { ...bar, label: "Bar" } },
+        { op: "remove", ref: "s-page" },
+      ),
+    );
+    expect(changes.map((c) => c.type)).toEqual(["surface", "surface", "surface"]);
+    expect(state.items.map((i) => i.ref)).toEqual(["a"]);
+    expect(state.surfaces).toEqual([{ ...bar, label: "Bar" }]);
+    state.reset();
+    expect(state.surfaces).toEqual([]);
+  });
+
   test("a snapshot replaces everything", () => {
     const state = new ViewState([agent("old")]);
     state.applySnapshot({ session: "s1", seq: 4, items: [agent("a"), agent("b")] });
@@ -51,7 +72,12 @@ describe("ViewState", () => {
     const changes = state.applyPatch(
       patch(2, { op: "set", item: agent("c") }, { op: "set", item: agent("a", para("new")) }),
     );
-    expect(changes.map((c) => [c.type, c.type === "removed" ? c.ref : c.item.ref])).toEqual([
+    expect(
+      changes.map((c) => [
+        c.type,
+        c.type === "removed" || c.type === "surface" ? c.ref : c.item.ref,
+      ]),
+    ).toEqual([
       ["added", "c"],
       ["replaced", "a"],
     ]);

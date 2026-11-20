@@ -71,6 +71,8 @@ class Neo {
   cwd = $state("");
   /** Its chat, as the daemon resolved it. Replaced (never mutated) on every change. */
   items = $state.raw<readonly ViewItem[]>([]);
+  /** Its open surfaces: neoui programs drawn in their place (a bar, a panel, a page), not in the chat. */
+  surfaces = $state.raw<readonly ViewItem[]>([]);
   status = $state.raw<SessionStatus>(initialStatus());
   /** The git branch checked out in `cwd`, if any. */
   branch = $state<string | null>(null);
@@ -174,6 +176,7 @@ class Neo {
     this.cwd = this.sessions.find((session) => session.id === id)?.cwd ?? this.cwd;
     this.view.reset();
     this.items = [];
+    this.surfaces = [];
     this.status = initialStatus();
     this.offered = [];
     this.askOffered();
@@ -185,13 +188,20 @@ class Neo {
     const showItems = (): void => {
       if (replay === undefined) this.items = [...this.view.items];
     };
+    // Surfaces do not wait for the replay: the chat's rows are what depend on it.
+    const showSurfaces = (): void => {
+      if (this.surfaces !== this.view.surfaces) this.surfaces = this.view.surfaces;
+    };
     const stopView = client.subscribeView(id, {
       onSnapshot: (snapshot) => {
         this.view.applySnapshot(snapshot);
         showItems();
+        showSurfaces();
       },
       onPatch: (patch) => {
-        if (this.view.applyPatch(patch).length > 0) showItems();
+        const changes = this.view.applyPatch(patch);
+        if (changes.some((change) => change.type === "surface")) showSurfaces();
+        if (changes.some((change) => change.type !== "surface")) showItems();
       },
     });
     const apply = (record: SessionEventRecord): void => {
