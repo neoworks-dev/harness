@@ -137,11 +137,8 @@
     list?.scrollToIndex(index, { align: "nearest" });
   }
 
-  // The shown session stays in view.
-  $effect(() => {
-    const id = daemon.sessionId;
-    if (id !== undefined && arranged.order.includes(id)) untrack(() => reveal(id));
-  });
+  // Nothing scrolls the list but the user: the keys moving the selection (`moveTo`), the wheel.
+  // Following the shown session, or the list changing under it, would throw away where they were.
 
   function moveTo(id: string | undefined): void {
     if (id === undefined) return;
