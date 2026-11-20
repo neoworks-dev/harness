@@ -36,8 +36,13 @@ export const viewerPane = {
 
     // Esc puts a selection away before it does anything else.
     keymap.bind("escape", () => {
-      if (viewer.selection === undefined) return false;
-      viewer.clearSelection();
+      if (viewer.selection !== undefined) {
+        viewer.clearSelection();
+        return;
+      }
+      // A file opened from the chat: back to the conversation.
+      if (!viewer.inPlace) return false;
+      viewer.close();
     });
 
     const toggle = (): void => viewer.toggle();

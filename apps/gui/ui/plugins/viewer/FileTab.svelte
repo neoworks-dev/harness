@@ -59,6 +59,18 @@
     });
   });
 
+  /** The lines an edit opened from the chat wrote (viewer.openInPlace), marked. */
+  const changed = $derived(viewer.changed[path]);
+
+  // Opened from an edit: to its first changed line, with a few lines above it, once the text is read.
+  let jumped = 0;
+  $effect(() => {
+    const jump = viewer.jump;
+    if (jump === undefined || jump.path !== path || jump.seq === jumped || base.length === 0) return;
+    jumped = jump.seq;
+    untrack(() => setTimeout(() => list?.scrollToIndex(Math.max(0, jump.line - 1 - 5)), 0));
+  });
+
   const digits = $derived(text?.status === "ready" ? String(text.lines.length).length : 1);
   /** How many characters of code fit a row, for guessing how tall a wrapped line is. */
   const chars = $derived(
@@ -124,6 +136,7 @@
             text={entry.text}
             width={numberWidth(digits)}
             tokens={light?.tokens(entry.index)}
+            added={changed?.has(entry.index + 1) ?? false}
           />
         {:else}
           <CommentEditor />

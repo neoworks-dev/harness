@@ -31,7 +31,7 @@
   /** A row's menu opens under it, as wide as the card allows. */
   const STRETCH = { alignSelf: "stretch" } as const;
 
-  const { daemon } = useCtx();
+  const { daemon, viewer } = useCtx();
 
   const p = $derived(daemon.palette);
   const cwd = $derived(daemon.cwd);
@@ -40,7 +40,8 @@
   const dirty = $derived(overview?.dirty ?? false);
   const primary = $derived(overview ? primaryAction(overview) : undefined);
   const counts = $derived(workspace.counts);
-  const shown = $derived(!workspace.hidden && window.size.width >= MIN_WINDOW_WIDTH);
+  // A file opened in the chat's place has the whole card: this one would sit on its code.
+  const shown = $derived(!workspace.hidden && !viewer.inPlace && window.size.width >= MIN_WINDOW_WIDTH);
 
   const placeItems = $derived<MenuItem[]>([
     { label: "Copy path", icon: copy, onselect: () => void workspace.copy(cwd, "the path") },

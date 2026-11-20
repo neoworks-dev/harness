@@ -1,7 +1,8 @@
 <script lang="ts">
   // The files a turn changed, on a card under its last reply: how many and how much, a button for
   // the diff of all of them in the viewer, and a row per file (its type's icon, its path, its changes) that
-  // opens that file's diff. The files are listed flat, the directory muted in front of the name.
+  // opens that file whole in the chat's place, what the turn wrote marked. The files are listed
+  // flat, the directory muted in front of the name.
   import { Button, Icon, Text, View } from "@neoworks/svelte-gpui/ui";
   import gitDiff from "@phosphor-icons/core/regular/git-diff.svg";
   import { useCtx } from "../../kernel/slots/context.ts";
@@ -25,11 +26,11 @@
     return { dir: path.slice(0, at + 1), name: path.slice(at + 1) };
   }
 
-  function open(file?: FileChange): void {
-    const shown = file === undefined ? files : [file];
+  /** Every file's diff in the viewer. */
+  function open(): void {
     const diffs: FileDiff[] = [];
-    for (const f of shown) if (f.diff !== undefined) diffs.push({ path: f.path, lines: f.diff.lines });
-    if (diffs.length > 0 && diffs.length === shown.length) viewer.showPatch(count(shown.length, "changed file"), diffs);
+    for (const f of files) if (f.diff !== undefined) diffs.push({ path: f.path, lines: f.diff.lines });
+    if (diffs.length > 0 && diffs.length === files.length) viewer.showPatch(count(files.length, "changed file"), diffs);
   }
 </script>
 
@@ -51,7 +52,7 @@
     {#each files as file (file.path)}
       {@const where = parts(file.path)}
       <View
-        onpress={() => open(file)}
+        onpress={() => viewer.openInPlace(file.path, file.diff)}
         hover={{ background: p.hover }}
         style={{ direction: "row", align: "center", gap: 8, paddingX: 8, paddingY: 6, radius: p.radius.s, cursor: "pointer" }}
       >

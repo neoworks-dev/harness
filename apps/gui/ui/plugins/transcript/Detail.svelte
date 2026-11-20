@@ -7,7 +7,7 @@
   import Command from "../../widgets/Command.svelte";
   import Component from "./Component.svelte";
   import DiffView from "./DiffView.svelte";
-  import { hasButtons } from "./components.ts";
+  import { hasButtons, imagesOf } from "./components.ts";
   import { tailLines } from "./format.ts";
   import NeoUi from "./neoui/NeoUi.svelte";
   import { codeColor, DETAIL_INDENT, EDIT_LINES, PREVIEW_LINES } from "./layout.ts";
@@ -51,6 +51,10 @@
     {#each entry.paths ?? [] as path}
       <Text style={{ ...mono, color: codeColor(p), truncate: true }}>{path}</Text>
     {/each}
+    <!-- A picture the agent read: the picture itself. -->
+    {#each imagesOf(entry.item.component) as image}
+      <Component component={image} ref={entry.item.ref} />
+    {/each}
   {:else if entry.kind === "edit"}
     <!-- What was written, in full as the terminal shows it: each file's line and its diff. -->
     {#each entry.files ?? [] as file}
@@ -59,11 +63,11 @@
         {#if file.diff}
           <Text style={mono}><Text style={{ color: p.success }}>+{file.added}</Text>{" "}<Text style={{ color: p.danger }}>−{file.removed}</Text></Text>
           <Button
-            onpress={() => file.diff && viewer.showDiff(file.diff)}
+            onpress={() => viewer.openInPlace(file.path, file.diff)}
             style={{ paddingX: 8, paddingY: 2, radius: 6, borderWidth: 1, borderColor: p.border, fontSize: 12, color: p.fg }}
             hover={{ background: p.hover }}
           >
-            <Text>Open diff</Text>
+            <Text>Open file</Text>
           </Button>
         {/if}
       </View>

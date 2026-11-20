@@ -10,6 +10,7 @@ import type { GitService } from "../../kernel/services/git.ts";
 import type { DiffComponent } from "@neoworks-dev/neo-protocol/types";
 import { diffStats, gutterWidth } from "../../lib/diff.ts";
 import { parseStatus, relFromPrefix, relativize } from "../../lib/git-status.ts";
+import { addedLines } from "./changed.ts";
 import { parseUnified, type FileDiff } from "../../lib/unified.ts";
 import { splitLines } from "./linediff.ts";
 import { quoteDiff, quoteFile, select, span, type Quote, type Selection } from "./selection.ts";
@@ -119,6 +120,12 @@ class Viewer {
   draft = $state("");
   /** The file the diff tab should bring into view: a new `seq` asks again. */
   reveal = $state.raw<{ path: string; seq: number }>();
+  /** A file opened from the chat (`openInPlace`): it has the conversation's place, Esc goes back. */
+  inPlace = $state(false);
+  /** Per file opened from an edit, the lines (1-based) the edit wrote, marked in its tab. */
+  changed = $state.raw<Readonly<Record<string, ReadonlySet<number>>>>({});
+  /** The line a file tab should bring into view: a new `seq` asks again. */
+  jump = $state.raw<{ path: string; line: number; seq: number }>();
   /** The file at the top of the diff (or the one pressed in the tree, while its header is in view). */
   current = $state<string>();
   /** The file the tree was pressed on, until the diff scrolls it out of view. */
@@ -247,6 +254,7 @@ class Viewer {
   close(): void {
     this.shown = false;
     this.maximized = false;
+    this.inPlace = false;
   }
 
   /** Opens the diff of the directory's uncommitted changes, with `path` brought into view. */
@@ -269,6 +277,23 @@ class Viewer {
   showDiff(diff: DiffComponent): void {
     const path = relativize(this.services?.daemon.cwd ?? "", diff.path ?? "diff");
     this.showPatch(path, [{ path, lines: diff.lines }]);
+  }
+
+  /**
+   * Opens a file whole in the conversation's place (Esc goes back), the lines `diff` added marked,
+   * and scrolled to the first of them.
+   */
+  openInPlace(path: string, diff?: DiffComponent): void {
+    const rel = relativize(this.services?.daemon.cwd ?? "", path);
+    if (diff !== undefined) {
+      const added = addedLines(diff.lines);
+      this.changed = { ...this.changed, [rel]: new Set(added) };
+      const first = added[0] ?? diff.lines.find((line) => line.new !== undefined)?.new;
+      if (first !== undefined) this.jump = { path: rel, line: first, seq: (this.revealSeq += 1) };
+    }
+    this.openFile(rel);
+    this.maximized = true;
+    this.inPlace = true;
   }
 
   /** Opens a file of the session's directory in a tab. */

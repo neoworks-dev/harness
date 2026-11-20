@@ -17,9 +17,11 @@
     /** The width of the numbers' column. */
     width: number;
     tokens?: Token[];
+    /** Written by the edit the file was opened from: tinted as an added line. */
+    added?: boolean;
   }
 
-  let { path, index, text, width, tokens }: Props = $props();
+  let { path, index, text, width, tokens, added = false }: Props = $props();
 
   const { daemon, comments } = useCtx();
   const p = $derived(daemon.palette);
@@ -34,12 +36,16 @@
     direction: "row",
     minHeight: LINE_HEIGHT,
     height: viewer.wrap ? undefined : LINE_HEIGHT,
-    background: on ? colors.selected : "transparent",
+    background: on ? colors.selected : added ? colors.add : "transparent",
   }}
 >
   <View
     onpress={(event) => viewer.press(view, index, event.shift)}
-    style={{ shrink: 0, background: on ? colors.selectedNumbers : colors.numbers, cursor: "pointer" }}
+    style={{
+      shrink: 0,
+      background: on ? colors.selectedNumbers : added ? colors.addNumbers : colors.numbers,
+      cursor: "pointer",
+    }}
   >
     <Text
       style={{ width, textAlign: "right", paddingRight: 8, fontFamily: "mono", fontSize: 12, lineHeight: LINE_HEIGHT, color: p.muted }}

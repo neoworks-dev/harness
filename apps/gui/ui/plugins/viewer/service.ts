@@ -20,6 +20,11 @@ export class ViewerService extends Service {
     return viewer.shown;
   }
 
+  /** Whether a file opened from the chat has the conversation's place. */
+  get inPlace(): boolean {
+    return viewer.shown && viewer.inPlace;
+  }
+
   /** Opens the diff of the session's uncommitted changes, with `path` brought into view. */
   showChanges(path?: string): void {
     viewer.showChanges(path);
@@ -38,6 +43,11 @@ export class ViewerService extends Service {
   /** Opens a file of the session's directory in a tab. */
   openFile(path: string): void {
     viewer.openFile(path);
+  }
+
+  /** Opens a file whole in the conversation's place, the lines `diff` added marked; Esc goes back. */
+  openInPlace(path: string, diff?: DiffComponent): void {
+    viewer.openInPlace(path, diff);
   }
 
   toggle(): void {
