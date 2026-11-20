@@ -4,7 +4,14 @@
 import type { SessionInfo } from "@neoworks-dev/neo-protocol/types";
 import { isPinned, isSettled, type Marks } from "./marks.ts";
 import type { Match } from "./search.ts";
-import { groupSessions, lastSegment, placeOf, type Place } from "./sessions.ts";
+import {
+  family,
+  groupSessions,
+  isActive,
+  lastSegment,
+  placeOf,
+  type Place,
+} from "./sessions.ts";
 
 /** Settled sessions listed before "Show more". */
 export const SETTLED_SHOWN = 10;
@@ -50,6 +57,8 @@ export interface ShowSettled {
   keep: (info: SessionInfo) => boolean;
   /** Now, in Unix milliseconds: what "idle for over a day" counts from. */
   nowMs: number;
+  /** The session the window shows: a finished subagent stays listed while it is the one. */
+  shown?: string;
 }
 
 function newestFirst(a: SessionInfo, b: SessionInfo): number {
@@ -57,24 +66,39 @@ function newestFirst(a: SessionInfo, b: SessionInfo): number {
 }
 
 /**
- * The list without a search: the pinned sessions (the one pinned last first), the others by
+ * The list without a search: the pinned sessions (the one pinned last first), then the active
+ * ones (`isActive`, the one started last first, each subagent after its parent), the others by
  * project and worktree as `groupSessions` orders them, each under its heading with those idle for
  * over a day folded into "N older" until opened, then "Settled (n)", which lists nothing
  * until it is opened, and then ten of its sessions, newest first, and a line for the rest.
+ * A subagent (a session with a `parent`) whose work is done leaves the list, as in the terminal,
+ * unless it is pinned or shown.
  */
 export function arrange(
-  sessions: readonly SessionInfo[],
+  all: readonly SessionInfo[],
   found: Readonly<Record<string, Place>>,
   marks: Marks,
   settledShown: ShowSettled,
 ): Arranged {
+  const sessions = all.filter(
+    (info) =>
+      info.parent === undefined ||
+      isActive(info) ||
+      isPinned(marks, info.id) ||
+      info.id === settledShown.shown,
+  );
   const pinned = sessions
     .filter((info) => isPinned(marks, info.id))
     .sort((a, b) => (marks.pinned[b.id] ?? 0) - (marks.pinned[a.id] ?? 0));
+  // By when each was created, not by its activity: a working session's activity changes all the
+  // time, and the section would reshuffle with it.
+  const active = sessions
+    .filter((info) => !isPinned(marks, info.id) && isActive(info))
+    .sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? -1 : 1));
   const settled = sessions
-    .filter((info) => !isPinned(marks, info.id) && isSettled(marks, info))
+    .filter((info) => !isPinned(marks, info.id) && !isActive(info) && isSettled(marks, info))
     .sort(newestFirst);
-  const apart = new Set([...pinned, ...settled].map((info) => info.id));
+  const apart = new Set([...pinned, ...active, ...settled].map((info) => info.id));
   const others = sessions.filter((info) => !apart.has(info.id));
 
   const lines: Line[] = [];
@@ -89,6 +113,12 @@ export function arrange(
     lines.push({ kind: "label", key: "pinned", text: "Pinned" });
     groupStarts.push(order.length);
     for (const info of pinned) add(info, false, false, true);
+  }
+
+  if (active.length > 0) {
+    lines.push({ kind: "label", key: "active", text: "Active" });
+    groupStarts.push(order.length);
+    for (const { info, child } of family(active)) add(info, child, false, true);
   }
 
   // Each repository under its name and each worktree under its own, as the terminal draws them:

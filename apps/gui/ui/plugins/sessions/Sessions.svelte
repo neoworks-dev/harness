@@ -69,6 +69,7 @@
             info.unseen === true ||
             sessions.finished.has(info.id),
           nowMs: minute,
+          shown: daemon.sessionId,
         }),
   );
   const lines = $derived([...arranged.lines]);
