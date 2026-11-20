@@ -18,9 +18,28 @@ export interface Summary {
 }
 
 export interface Comment {
+  /** The number in its link, which reactions go on. */
+  id?: number;
   author: string;
   atMs: number;
   body: string;
+  reactions?: Reaction[];
+}
+
+/** A reaction as GitHub counts it: `content` is REST's word (`+1`, `heart`). */
+export interface Reaction {
+  content: string;
+  count: number;
+  /** The user gave it. */
+  mine: boolean;
+}
+
+/** A label of the repository with the color GitHub gives it. */
+export interface RepoLabel {
+  name: string;
+  /** 0xRRGGBB. */
+  rgb: number;
+  description: string;
 }
 
 export interface Review {
@@ -65,6 +84,20 @@ export interface Detail {
   createdMs: number;
   updatedMs: number;
   comments: Comment[];
+  reactions?: Reaction[];
+  /** Why a closed issue was closed: COMPLETED, NOT_PLANNED, DUPLICATE. */
+  stateReason?: string;
+  assignees?: string[];
+  milestone?: string;
+  /** The issue type (Bug, Feature, Task). */
+  issueType?: string;
+  projects?: string[];
+  /** Pull requests: who is asked to review. */
+  reviewers?: string[];
+  /** The parent issue's number, 0 for none. */
+  parent?: number;
+  blockedBy?: number[];
+  blocking?: number[];
   // Pull requests only from here on.
   reviews: Review[];
   reviewComments: ReviewComment[];
@@ -75,6 +108,46 @@ export interface Detail {
   decision: string;
   additions: number;
   deletions: number;
+}
+
+/**
+ * A label drawn on a dark background as github.com draws it there: its color faint behind, a
+ * thin border of it, and its text in it, lightened when the color is too dark to read.
+ */
+export function labelLook(rgb: number): { background: string; border: string; color: string } {
+  const r = (rgb >> 16) & 0xff;
+  const g = (rgb >> 8) & 0xff;
+  const b = rgb & 0xff;
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  const lift = (c: number): number => Math.round(c + (255 - c) * (luminance < 0.6 ? 0.45 : 0.1));
+  return {
+    background: `rgba(${r}, ${g}, ${b}, 0.18)`,
+    border: `rgba(${r}, ${g}, ${b}, 0.45)`,
+    color: `rgb(${lift(r)}, ${lift(g)}, ${lift(b)})`,
+  };
+}
+
+/** The state as github.com's pill says it: Open, Closed, Merged, Draft; "Closed as not planned". */
+export function stateWord(detail: Pick<Detail, "state" | "stateReason">): string {
+  if (detail.state === "closed" && detail.stateReason?.toUpperCase() === "NOT_PLANNED") return "Not planned";
+  if (detail.state === "closed" && detail.stateReason?.toUpperCase() === "DUPLICATE") return "Duplicate";
+  return detail.state.charAt(0).toUpperCase() + detail.state.slice(1);
+}
+
+/** REST's reaction words and how they look. */
+export const REACTIONS: readonly { content: string; emoji: string }[] = [
+  { content: "+1", emoji: "👍" },
+  { content: "-1", emoji: "👎" },
+  { content: "laugh", emoji: "😄" },
+  { content: "hooray", emoji: "🎉" },
+  { content: "confused", emoji: "😕" },
+  { content: "heart", emoji: "❤️" },
+  { content: "rocket", emoji: "🚀" },
+  { content: "eyes", emoji: "👀" },
+];
+
+export function emojiOf(content: string): string {
+  return REACTIONS.find((reaction) => reaction.content === content)?.emoji ?? content;
 }
 
 /** What `gh` failures are called, so the view can say what to do. */
@@ -107,6 +180,9 @@ export interface TimelineEntry {
   /** "review approved", "on src/a.ts:12", or empty for a plain comment. */
   what: string;
   body: string;
+  /** A plain comment's id and reactions, which can be reacted to. */
+  id?: number;
+  reactions?: Reaction[];
 }
 
 /** Comments, reviews and line comments in time order. Reviews without words are left out. */

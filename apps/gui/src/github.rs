@@ -1,11 +1,12 @@
 //! The GitHub view's data: issues and pull requests of the session's repository, read through
-//! `neo-github`, whose `gh` runner refuses anything that could write.
+//! `neo-github`, and the few writes a button in the view asks for (a comment, closing and
+//! reopening, a reaction), which go through its allowlist as the terminal app's do.
 
 use std::path::Path;
 
 use neo_github::fetch;
 use neo_github::format;
-use neo_github::gh::{Gh, GhCli, GhError};
+use neo_github::gh::{CloseReason, Gh, GhCli, GhError, ReactOn};
 use neo_github::model::Kind;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -64,6 +65,90 @@ pub fn detail(gh: &dyn Gh, kind: Kind, args: &Value) -> Result<Value, CommandErr
     json_of(&detail)
 }
 
+/// The repository's labels with their colors, so the view draws a label as GitHub does.
+pub fn labels(gh: &dyn Gh, args: &Value) -> Result<Value, CommandError> {
+    let cwd = text(args, "cwd")?;
+    let repo = text(args, "repo")?;
+    json_of(&fetch::labels(gh, Path::new(cwd), repo).map_err(failure)?)
+}
+
+fn kind_of(args: &Value) -> Result<Kind, CommandError> {
+    match text(args, "kind")? {
+        "issue" => Ok(Kind::Issue),
+        "pr" => Ok(Kind::Pr),
+        other => Err(CommandError::new(format!("unknown kind {other}"))),
+    }
+}
+
+// Writes: each one thing the user pressed a button for, done as the user `gh` is logged in as,
+// through the crate's allowlist (`neo_github::gh::is_allowed_write`), as the terminal app does.
+
+/// Adds the user's comment to an issue or pull request.
+pub fn comment(gh: &dyn Gh, args: &Value) -> Result<Value, CommandError> {
+    let body = text(args, "body")?;
+    if body.trim().is_empty() {
+        return Err(CommandError::new("the comment is empty"));
+    }
+    fetch::comment(
+        gh,
+        Path::new(text(args, "cwd")?),
+        kind_of(args)?,
+        text(args, "repo")?,
+        number(args)?,
+        body,
+    )
+    .map_err(failure)?;
+    Ok(Value::Null)
+}
+
+/// Closes an issue (`reason`: `completed` or `not planned`) or a pull request.
+pub fn close(gh: &dyn Gh, args: &Value) -> Result<Value, CommandError> {
+    let reason = match args["reason"].as_str().unwrap_or("completed") {
+        "not planned" => CloseReason::NotPlanned,
+        _ => CloseReason::Completed,
+    };
+    fetch::close(
+        gh,
+        Path::new(text(args, "cwd")?),
+        kind_of(args)?,
+        text(args, "repo")?,
+        number(args)?,
+        reason,
+    )
+    .map_err(failure)?;
+    Ok(Value::Null)
+}
+
+pub fn reopen(gh: &dyn Gh, args: &Value) -> Result<Value, CommandError> {
+    fetch::reopen(
+        gh,
+        Path::new(text(args, "cwd")?),
+        kind_of(args)?,
+        text(args, "repo")?,
+        number(args)?,
+    )
+    .map_err(failure)?;
+    Ok(Value::Null)
+}
+
+/// Gives a reaction (`content`: `+1`, `heart`…) to the item, or with `comment` to one of its
+/// comments, or takes it back: true when given.
+pub fn react(gh: &dyn Gh, args: &Value) -> Result<Value, CommandError> {
+    let on = match args["comment"].as_u64() {
+        Some(id) => ReactOn::Comment(id),
+        None => ReactOn::Item(number(args)?),
+    };
+    let given = fetch::toggle_reaction(
+        gh,
+        Path::new(text(args, "cwd")?),
+        text(args, "repo")?,
+        on,
+        text(args, "content")?,
+    )
+    .map_err(failure)?;
+    Ok(json!(given))
+}
+
 /// A pull request's unified diff.
 pub fn pr_diff(gh: &dyn Gh, args: &Value) -> Result<Value, CommandError> {
     let cwd = text(args, "cwd")?;
@@ -94,6 +179,11 @@ pub fn register(commands: Commands) -> Commands {
             send_text(&GhCli, Kind::Issue, &args)
         })
         .command("gh_pr_text", |args| send_text(&GhCli, Kind::Pr, &args))
+        .command("gh_labels", |args| labels(&GhCli, &args))
+        .command("gh_comment", |args| comment(&GhCli, &args))
+        .command("gh_close", |args| close(&GhCli, &args))
+        .command("gh_reopen", |args| reopen(&GhCli, &args))
+        .command("gh_react", |args| react(&GhCli, &args))
 }
 
 #[cfg(test)]
@@ -166,6 +256,48 @@ mod tests {
         fn run(&self, _cwd: &Path, _args: &[String]) -> Result<String, GhError> {
             Err(self.0.clone())
         }
+    }
+
+    /// Takes the writes it is given (each must be one the allowlist knows) and their input.
+    #[derive(Default)]
+    struct Writes(std::sync::Mutex<Vec<(String, Option<String>)>>);
+
+    impl Gh for Writes {
+        fn run(&self, _cwd: &Path, _args: &[String]) -> Result<String, GhError> {
+            Err(GhError::NotRepo)
+        }
+        fn write(
+            &self,
+            _cwd: &Path,
+            args: &[String],
+            input: Option<&str>,
+        ) -> Result<String, GhError> {
+            assert!(neo_github::gh::is_allowed_write(args), "{args:?}");
+            self.0
+                .lock()
+                .unwrap()
+                .push((args.join(" "), input.map(String::from)));
+            Ok(String::new())
+        }
+    }
+
+    #[test]
+    fn the_view_s_buttons_write_through_the_allowlist() {
+        let gh = Writes::default();
+        let at = json!({ "cwd": "/w", "repo": "acme/site", "kind": "issue", "number": 12 });
+        comment(&gh, &json!({ "cwd": "/w", "repo": "acme/site", "kind": "issue", "number": 12, "body": "Looks good" })).unwrap();
+        close(&gh, &json!({ "cwd": "/w", "repo": "acme/site", "kind": "issue", "number": 12, "reason": "not planned" })).unwrap();
+        reopen(&gh, &at).unwrap();
+        let writes = gh.0.lock().unwrap();
+        assert_eq!(writes[0].1.as_deref(), Some("Looks good"));
+        assert!(writes[1].0.contains("close 12") && writes[1].0.contains("not planned"));
+        assert!(writes[2].0.contains("reopen 12"));
+        // An empty comment is never sent.
+        drop(writes);
+        let empty =
+            json!({ "cwd": "/w", "repo": "acme/site", "kind": "pr", "number": 31, "body": "  " });
+        assert!(comment(&gh, &empty).is_err());
+        assert_eq!(gh.0.lock().unwrap().len(), 3);
     }
 
     #[test]

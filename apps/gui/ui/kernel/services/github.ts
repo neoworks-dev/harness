@@ -1,5 +1,5 @@
-// The `github` service: the host's GitHub commands. They only read; the app never writes to
-// GitHub. The view's own state is in plugins/github.
+// The `github` service: the host's GitHub commands. Reads, and a comment, closing, reopening and
+// reactions when the user presses for them. The view's own state is in plugins/github.
 import { Service, type Context } from "@neoworks/extension-system";
 import * as host from "../host/github.ts";
 
@@ -22,4 +22,9 @@ export class GithubService extends Service {
   prDiff = host.prDiff;
   issueText = host.issueText;
   prText = host.prText;
+  labels = host.labels;
+  comment = host.comment;
+  close = host.close;
+  reopen = host.reopen;
+  react = host.react;
 }

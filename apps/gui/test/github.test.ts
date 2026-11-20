@@ -1,14 +1,44 @@
 import { expect, test } from "bun:test";
 import {
   checkCounts,
+  emojiOf,
   explain,
+  labelLook,
   readable,
   rowFacts,
   shortAge,
+  stateWord,
   timeline,
   type Detail,
   type Summary,
 } from "../ui/plugins/github/github.ts";
+import { blocksOf } from "../ui/plugins/github/markdown.ts";
+
+test("a label is drawn in its own color, lightened when too dark to read", () => {
+  const red = labelLook(0xd73a4a);
+  expect(red.background).toBe("rgba(215, 58, 74, 0.18)");
+  const dark = labelLook(0x0e1a40);
+  const light = labelLook(0xfbca04);
+  // A dark label's text is lifted well above its own color; a light one's barely.
+  expect(dark.color).not.toBe("rgb(14, 26, 64)");
+  expect(Number(/rgb\((\d+)/.exec(dark.color)?.[1])).toBeGreaterThan(100);
+  expect(Number(/rgb\((\d+)/.exec(light.color)?.[1])).toBeLessThan(255);
+});
+
+test("the state pill says why a closed issue was closed", () => {
+  expect(stateWord({ state: "open" })).toBe("Open");
+  expect(stateWord({ state: "merged" })).toBe("Merged");
+  expect(stateWord({ state: "closed", stateReason: "COMPLETED" })).toBe("Closed");
+  expect(stateWord({ state: "closed", stateReason: "NOT_PLANNED" })).toBe("Not planned");
+  expect(emojiOf("heart")).toBe("❤️");
+  expect(emojiOf("unknown")).toBe("unknown");
+});
+
+test("an issue's markdown becomes the chat's blocks, its template comments left out", () => {
+  const blocks = blocksOf("<!-- template -->\n**Category:** x\n\n## Description\n\n```\ncode\n```");
+  expect(blocks.map((block) => block.type)).toEqual(["paragraph", "heading", "code_block"]);
+  expect(blocksOf("<!-- only a template -->")).toEqual([]);
+});
 
 const NOW = 1_792_162_800_000;
 

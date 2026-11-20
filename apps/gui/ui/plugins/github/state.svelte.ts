@@ -1,12 +1,13 @@
 // The GitHub view's state: the repository `gh` finds for the session's directory, the lists of
 // issues and pull requests (per filter) and the details opened, each loaded once and kept until
-// the directory changes; `reload` asks again. Everything is a read through the host's
-// `gh_*` commands. Nothing here can write to GitHub.
+// the directory changes; `reload` asks again. Reads go through the host's `gh_*` commands; the
+// few writes (a comment, closing, reopening, a reaction) only when the user presses for one.
 import type { Context } from "@neoworks/extension-system";
 import { untrack } from "svelte";
 import type { DaemonService } from "../../kernel/services/daemon.ts";
 import type { GithubService } from "../../kernel/services/github.ts";
 import { parseUnified } from "../../lib/unified.ts";
+import type { GhWriteArgs } from "../../commands.ts";
 import { explain, type Detail, type Kind, type Summary } from "./github.ts";
 
 /** The services the view reads and calls, from the plugin that started it. */
@@ -89,6 +90,7 @@ class GitHub {
     this.diffs = {};
     this.open = undefined;
     this.selected = 0;
+    this.labelColors = {};
   }
 
   get repo(): Loaded<string> | undefined {
@@ -209,6 +211,66 @@ class GitHub {
     } catch (error) {
       this.need.daemon.error = failure(error).message;
     }
+  }
+
+  // ---- labels and writes ----
+
+  /** The repository's labels by name, with their colors; asked once per directory. */
+  labelColors = $state.raw<Readonly<Record<string, number>>>({});
+  private labelsAsked = "";
+
+  /** Asks for the label colors of the repository, once. */
+  ensureLabels(): void {
+    const repo = this.repoState;
+    if (repo?.status !== "ready" || this.labelsAsked === this.cwd) return;
+    this.labelsAsked = this.cwd;
+    const cwd = this.cwd;
+    void this.need.host
+      .labels({ cwd, repo: repo.value })
+      .then((labels) => {
+        if (cwd === this.cwd) this.labelColors = Object.fromEntries(labels.map((label) => [label.name, label.rgb]));
+      })
+      .catch(() => undefined);
+  }
+
+  /** A write in progress, by what it is: the view greys its button. */
+  writing = $state<string>();
+
+  /** Runs one write the user pressed for, then reads the item again. */
+  private async write(what: string, kind: Kind, number: number, run: (args: GhWriteArgs) => Promise<unknown>): Promise<boolean> {
+    const repo = this.repoState;
+    if (repo?.status !== "ready" || this.writing !== undefined) return false;
+    this.writing = what;
+    try {
+      await run({ cwd: this.cwd, repo: repo.value, kind, number });
+      await this.loadDetail(repo.value, kind, number);
+      return true;
+    } catch (error) {
+      this.need.daemon.error = failure(error).message;
+      return false;
+    } finally {
+      this.writing = undefined;
+    }
+  }
+
+  /** Adds the user's comment; true once it is on GitHub. */
+  comment(kind: Kind, number: number, body: string): Promise<boolean> {
+    return this.write("comment", kind, number, (args) => this.need.host.comment({ ...args, body }));
+  }
+
+  close(kind: Kind, number: number, reason: "completed" | "not planned" = "completed"): Promise<boolean> {
+    return this.write("close", kind, number, (args) => this.need.host.close({ ...args, reason }));
+  }
+
+  reopen(kind: Kind, number: number): Promise<boolean> {
+    return this.write("reopen", kind, number, (args) => this.need.host.reopen(args));
+  }
+
+  /** Gives a reaction to the item, or with `comment` to one of its comments, or takes it back. */
+  react(kind: Kind, number: number, content: string, comment?: number): Promise<boolean> {
+    return this.write(`react ${comment ?? "item"} ${content}`, kind, number, ({ cwd, repo }) =>
+      this.need.host.react(comment === undefined ? { cwd, repo, number, content } : { cwd, repo, number, content, comment }),
+    );
   }
 
   /** A pull request's diff beside the chat, a section for each file. */

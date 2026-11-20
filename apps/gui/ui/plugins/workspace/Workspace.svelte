@@ -23,6 +23,7 @@
   import { WIDTH, textOf } from "./look.ts";
   import Row from "./Row.svelte";
   import Split from "./Split.svelte";
+  import { github } from "../github/state.svelte.ts";
   import { workspace } from "./state.svelte.ts";
   import { folderName, primaryAction } from "./workspace.ts";
 
@@ -40,8 +41,11 @@
   const dirty = $derived(overview?.dirty ?? false);
   const primary = $derived(overview ? primaryAction(overview) : undefined);
   const counts = $derived(workspace.counts);
-  // A file opened in the chat's place has the whole card: this one would sit on its code.
-  const shown = $derived(!workspace.hidden && !viewer.inPlace && window.size.width >= MIN_WINDOW_WIDTH);
+  // A file opened in the chat's place, or the GitHub view, has the whole card: this one would sit
+  // on its code or its buttons.
+  const shown = $derived(
+    !workspace.hidden && !viewer.inPlace && !github.shown && window.size.width >= MIN_WINDOW_WIDTH,
+  );
 
   const placeItems = $derived<MenuItem[]>([
     { label: "Copy path", icon: copy, onselect: () => void workspace.copy(cwd, "the path") },

@@ -3,7 +3,7 @@
 import type { DaemonAddress } from "@neoworks-dev/neo-sdk";
 import type { Candidate } from "./lib/mention.ts";
 import type { Chunk } from "./plugins/terminal/jobs.ts";
-import type { Detail, Summary } from "./plugins/github/github.ts";
+import type { Detail, RepoLabel, Summary } from "./plugins/github/github.ts";
 import type { Place } from "./plugins/sessions/sessions.ts";
 import type { Committed, Editor, Overview } from "./plugins/workspace/workspace.ts";
 
@@ -35,6 +35,11 @@ export interface GhItemArgs {
   cwd: string;
   repo: string;
   number: number;
+}
+
+/** An item to write to: which kind it is decides `gh issue` or `gh pr`. */
+export interface GhWriteArgs extends GhItemArgs {
+  kind: "issue" | "pr";
 }
 
 declare module "@neoworks/svelte-gpui" {
@@ -95,5 +100,13 @@ declare module "@neoworks/svelte-gpui" {
     /** What "send to the model" puts into the session. */
     gh_issue_text: { args: GhItemArgs; result: string };
     gh_pr_text: { args: GhItemArgs; result: string };
+    /** The repository's labels with their colors (`rgb` as 0xRRGGBB). */
+    gh_labels: { args: { cwd: string; repo: string }; result: RepoLabel[] };
+    // Writes, each one button the user pressed, through the crate's allowlist.
+    gh_comment: { args: GhWriteArgs & { body: string }; result: null };
+    gh_close: { args: GhWriteArgs & { reason?: "completed" | "not planned" }; result: null };
+    gh_reopen: { args: GhWriteArgs; result: null };
+    /** True when the reaction was given, false when it was taken back. */
+    gh_react: { args: GhItemArgs & { content: string; comment?: number }; result: boolean };
   }
 }

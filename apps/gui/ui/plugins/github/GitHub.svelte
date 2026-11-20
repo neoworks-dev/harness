@@ -33,6 +33,7 @@
   let search: ReturnType<typeof Input> | undefined = $state();
   let list: ReturnType<typeof List<Summary>> | undefined = $state();
   let scroller: ReturnType<typeof Scroll> | undefined = $state();
+  let detailView: ReturnType<typeof GitHubDetail> | undefined = $state();
   let scrollY = $state(0);
   let scrollMax = $state(0);
   let typed = $state(github.query);
@@ -180,6 +181,9 @@
       case "d":
         if (open.kind === "pr") void github.showDiff(open.number);
         return true;
+      case "c":
+        detailView?.focusComment();
+        return true;
       case "Escape":
       case "Backspace":
         github.back();
@@ -304,7 +308,14 @@
     {:else if opened.status === "failed"}
       {@render message(opened.message, p.danger)}
     {:else}
-      <GitHubDetail detail={opened.value} nowMs={clock.now} onscroll={track} bind:scroller />
+      <GitHubDetail
+        bind:this={detailView}
+        detail={opened.value}
+        nowMs={clock.now}
+        onscroll={track}
+        bind:scroller
+        onleave={() => keys?.focus()}
+      />
     {/if}
   {:else if github.list === undefined || github.list.status === "loading"}
     {@render message("loading…", p.muted)}
@@ -334,7 +345,7 @@
   <View style={{ paddingX: p.space.l, paddingY: p.space.s, borderTopWidth: 1, borderColor: p.border }}>
     <Text style={{ color: p.muted, truncate: true }}>
       {github.open
-        ? `esc back · s send to the model${github.open.kind === "pr" ? " · d diff" : ""} · r reload · q close`
+        ? `esc back · c comment · s send to the model${github.open.kind === "pr" ? " · d diff" : ""} · r reload · q close`
         : "tab switch · ↑/↓ enter open · / search · o open/all · s send to the model · r reload · esc close"}
     </Text>
   </View>
