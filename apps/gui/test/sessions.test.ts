@@ -33,6 +33,7 @@ import {
   groupSessions,
   jumpGroup,
   lastSegment,
+  notableBranch,
   placeOf,
   previewOf,
   runningSinceAfter,
@@ -156,8 +157,18 @@ test("keys skip headers and jump between groups", () => {
   expect(jumpGroup(g, "b", -1)).toBe("b");
 });
 
+test("a row names its branch only when the branch says something", () => {
+  expect(notableBranch("main", { repo: "/r" })).toBeUndefined();
+  expect(notableBranch("master", { repo: "/r" })).toBeUndefined();
+  expect(notableBranch(null, { repo: "/r" })).toBeUndefined();
+  expect(notableBranch("feat/x", { repo: "/r" })).toBe("feat/x");
+  // A worktree's heading names it already; another branch checked out there still shows.
+  expect(notableBranch("feat-x", { repo: "/r", worktree: "feat-x" })).toBeUndefined();
+  expect(notableBranch("other", { repo: "/r", worktree: "feat-x" })).toBe("other");
+});
+
 test("titles, previews, ages and changed lines read short", () => {
-  expect(sessionTitle(session("cafe0123456", "", "/w", 1))).toBe("session cafe0123");
+  expect(sessionTitle(session("cafe0123456", "", "/w", 1))).toBe("New Session");
   expect(sessionTitle(session("a", "  Fix   the\nlogin ", "/w", 1))).toBe("Fix the login");
   expect(previewOf({ ...session("a", "", "/w", 1), preview: "Done.\n I changed  it" })).toBe(
     "Done. I changed it",

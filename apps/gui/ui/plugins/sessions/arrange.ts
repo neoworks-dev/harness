@@ -13,8 +13,8 @@ export const STALE_MS = 24 * 3600 * 1000;
 
 /** One line of the drawn list. */
 export type Line =
-  /** A heading: "Pinned", a repository, or (`sub`) a worktree of the one above. */
-  | { kind: "label"; key: string; text: string; sub?: boolean }
+  /** A heading: "Pinned", a repository (`repo`), or (`sub`) a worktree of the one above. */
+  | { kind: "label"; key: string; text: string; sub?: boolean; repo?: string }
   | {
       kind: "session";
       key: string;
@@ -23,6 +23,8 @@ export type Line =
       child: boolean;
       /** A settled session: a slim row. */
       slim: boolean;
+      /** Among sessions of other projects (pinned, settled, a search), not under its project's heading. */
+      mixed: boolean;
       /** What a search found it by. */
       field?: Match["field"];
     }
@@ -78,15 +80,15 @@ export function arrange(
   const lines: Line[] = [];
   const order: string[] = [];
   const groupStarts: number[] = [];
-  const add = (info: SessionInfo, child: boolean, slim: boolean): void => {
+  const add = (info: SessionInfo, child: boolean, slim: boolean, mixed = slim): void => {
     order.push(info.id);
-    lines.push({ kind: "session", key: info.id, info, child, slim });
+    lines.push({ kind: "session", key: info.id, info, child, slim, mixed });
   };
 
   if (pinned.length > 0) {
     lines.push({ kind: "label", key: "pinned", text: "Pinned" });
     groupStarts.push(order.length);
-    for (const info of pinned) add(info, false, false);
+    for (const info of pinned) add(info, false, false, true);
   }
 
   // Each repository under its name and each worktree under its own, as the terminal draws them:
@@ -105,7 +107,11 @@ export function arrange(
       group = entry.key;
       starting = true;
       hidden = 0;
-      lines.push({ kind: "label", key: entry.key, text: entry.name, sub: entry.kind === "group" });
+      lines.push(
+        entry.kind === "cluster"
+          ? { kind: "label", key: entry.key, text: entry.name, repo: entry.repo }
+          : { kind: "label", key: entry.key, text: entry.name, sub: true },
+      );
       continue;
     }
     const folds = !settledShown.groups.has(group) && !settledShown.keep(entry.info);
@@ -146,6 +152,7 @@ export function resultLines(matches: readonly Match[]): Arranged {
     info,
     child: false,
     slim: false,
+    mixed: true,
     field,
   }));
   return {

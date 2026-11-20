@@ -1,9 +1,11 @@
 <script lang="ts">
-  // One session in the sidebar, as a small card: its project's icon and name and, in place of how
-  // long ago it was active, what it is doing (working for so long, done) or "Settle" while the
-  // pointer is on it, then its title, then its branch, the lines it changed and the harness it
-  // runs on. The shown session sits on a raised card; one that another session delegated to is
-  // indented. In a search the words found are picked out, and a match in the last message shows it.
+  // One session in the sidebar, in two lines. The first is its title and, at the end, how long ago
+  // it was active or what it is doing (working for so long, done), or "Settle" while the pointer is
+  // on it. The second is muted: a branch worth naming, the last thing said, the lines it changed and
+  // the mark of the harness it runs on. Under a project's heading the project is not repeated; where
+  // projects mix (pinned, a search) its icon leads the title and its name the second line. The shown
+  // session sits on a raised card with a bar in the margin; one that another session delegated to
+  // is indented. In a search the words found are picked out.
   import { Icon, Text, View } from "@neoworks/svelte-gpui/ui";
   import type { PointerEvent } from "@neoworks/svelte-gpui/ui";
   import branchIcon from "@phosphor-icons/core/regular/git-branch.svg";
@@ -26,7 +28,9 @@
     project: string;
     /** The repository's favicon: null when it has none, undefined until looked up. */
     icon: string | null | undefined;
-    /** The branch checked out where the session works. */
+    /** Rows of other projects are around it (pinned, a search): it names its own. */
+    showProject: boolean;
+    /** A branch worth naming (`notableBranch`). */
     branch: string | undefined;
     /** Delegated to by another session. */
     child: boolean;
@@ -50,6 +54,7 @@
     info,
     project,
     icon,
+    showProject,
     branch,
     child,
     current,
@@ -67,14 +72,18 @@
   const p = $derived(daemon.palette);
   const changed = $derived(changedLines(info));
   const done = $derived(status.kind === "done");
+  const untitled = $derived(!info.title?.trim());
+  const preview = $derived(previewOf(info));
   let hovered = $state(false);
   const titleStyle = $derived({
     flex: 1,
     minWidth: 0,
     truncate: true,
     fontWeight: "medium" as const,
-    color: current || done ? "#f1f3f7" : "rgba(241, 243, 247, 0.9)",
+    italic: untitled,
+    color: untitled ? p.muted : current || done ? "#f1f3f7" : "rgba(241, 243, 247, 0.86)",
   });
+  const small = { fontSize: 12 };
 </script>
 
 <View
@@ -84,72 +93,69 @@
   buttons={["right"]}
   hover={{ background: current ? p.side.active : p.side.hover }}
   style={{
-    height: 78,
-    marginLeft: child ? p.space.l : 0,
-    marginBottom: 1,
-    paddingX: 10,
-    paddingY: 8,
+    marginLeft: child ? 14 : 0,
+    marginBottom: 2,
+    paddingLeft: 10,
+    paddingRight: 8,
+    paddingY: 7,
+    gap: 3,
     radius: p.radius.s,
+    borderLeftWidth: 2,
+    borderColor: current ? p.accent : "transparent",
     background: current ? p.side.active : selected ? p.side.hover : "transparent",
     cursor: "pointer",
   }}
 >
   <View style={{ direction: "row", align: "center", gap: 6, height: 20 }}>
-    <ProjectIcon name={project} src={icon} />
-    <Highlight
-      text={project}
-      {terms}
-      style={{ flex: 1, minWidth: 0, truncate: true, color: p.muted, fontSize: 12, fontWeight: "medium" }}
-    />
+    {#if child}<Text style={{ ...small, color: p.muted }}>↳</Text>{/if}
+    {#if showProject}<ProjectIcon name={project} src={icon} size={14} />{/if}
+    <Highlight text={field === "title" ? around(sessionTitle(info), terms, 18) : sessionTitle(info)} {terms} style={titleStyle} />
+    {#if pin && !showProject}
+      <View style={{ color: p.muted }}><Icon svg={pinned} size={11} /></View>
+    {/if}
     {#if hovered}
       <RowAction svg={check} label="Settle" onpress={onsettle} />
     {:else if status.kind === "working"}
-      <View style={{ direction: "row", align: "center", gap: 4, color: p.info, fontSize: 12 }}>
+      <View style={{ direction: "row", align: "center", gap: 4, color: p.info }}>
         <Spinner />
-        <Text style={{ fontSize: 12 }}
-          >Working{#if status.since !== undefined}{" "}{elapsed(status.since, nowMs)}{/if}</Text
-        >
+        <Text style={small}>{status.since !== undefined ? elapsed(status.since, nowMs) : "Working"}</Text>
       </View>
     {:else if status.kind === "done"}
       <View style={{ direction: "row", align: "center", gap: 4, color: p.success }}>
-        <Text style={{ fontSize: 12 }}>Done</Text>
-        <Icon svg={checkCircle} size={14} />
+        <Text style={small}>Done</Text>
+        <Icon svg={checkCircle} size={13} />
       </View>
     {:else}
-      <Text style={{ color: p.muted, fontSize: 12 }}>{age(info.lastActivity, nowMs)}</Text>
+      <Text style={{ ...small, color: p.muted }}>{age(info.lastActivity, nowMs)}</Text>
     {/if}
   </View>
-  <View style={{ direction: "row", align: "center", gap: 6, marginTop: 4 }}>
-    <Highlight text={field === "title" ? around(sessionTitle(info), terms, 18) : sessionTitle(info)} {terms} style={titleStyle} />
-    {#if pin}
-      <View style={{ color: p.muted }}><Icon svg={pinned} size={12} /></View>
+  <View style={{ direction: "row", align: "center", gap: 6, height: 16, color: p.muted }}>
+    {#if showProject}
+      <Highlight text={project} {terms} style={{ ...small, shrink: 0, maxWidth: 96, truncate: true, color: p.muted }} />
     {/if}
-  </View>
-  <View style={{ direction: "row", align: "center", gap: 6, marginTop: 2, color: "rgba(163, 163, 163, 0.4)" }}>
+    {#if branch}
+      <View style={{ direction: "row", align: "center", gap: 3, shrink: 0, maxWidth: 110 }}>
+        <Icon svg={branchIcon} size={11} />
+        <Text style={{ ...small, truncate: true }}>{branch}</Text>
+      </View>
+    {/if}
     {#if field === "preview"}
-      <Highlight
-        text={around(previewOf(info), terms)}
-        {terms}
-        style={{ flex: 1, minWidth: 0, truncate: true, fontSize: 12, color: p.muted }}
-      />
-    {:else if branch}
-      <Icon svg={branchIcon} size={12} />
-      <Text style={{ flex: 1, minWidth: 0, truncate: true, fontSize: 12 }}>{branch}</Text>
+      <Highlight text={around(preview, terms)} {terms} style={{ ...small, flex: 1, minWidth: 0, truncate: true, color: p.muted }} />
     {:else}
-      <View style={{ flex: 1 }} />
+      <Text style={{ ...small, flex: 1, minWidth: 0, truncate: true, color: "rgba(163, 163, 163, 0.55)" }}>{preview}</Text>
     {/if}
     {#if info.queued > 0}
-      <Text style={{ color: p.accent, fontSize: 12 }}>{info.queued} queued</Text>
+      <Text style={{ ...small, color: p.accent, shrink: 0 }}>{info.queued} queued</Text>
     {/if}
     {#if changed.added > 0 || changed.removed > 0}
-      <Text style={{ fontSize: 12, fontFamily: "mono" }}>
+      <Text style={{ ...small, fontFamily: "mono", shrink: 0 }}>
         {#if changed.added > 0}<Text style={{ color: "#00d492" }}>+{changed.added}</Text>{/if}
         {#if changed.added > 0 && changed.removed > 0}{" "}{/if}
         {#if changed.removed > 0}<Text style={{ color: "#ff6467" }}>−{changed.removed}</Text>{/if}
       </Text>
     {/if}
     {#if info.harness}
-      <View style={{ color: p.muted }}><HarnessIcon harness={info.harness} /></View>
+      <View style={{ opacity: 0.6, shrink: 0 }}><HarnessIcon harness={info.harness} size={12} mono /></View>
     {/if}
   </View>
 </View>

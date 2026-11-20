@@ -42,7 +42,7 @@ export function placeOf(cwd: string, found: Readonly<Record<string, Place>>): Pl
 
 /** One line-group of the drawn list. */
 export type Entry =
-  | { kind: "cluster"; key: string; name: string }
+  | { kind: "cluster"; key: string; name: string; repo: string }
   | { kind: "group"; key: string; name: string }
   | { kind: "session"; key: string; info: SessionInfo; child: boolean };
 
@@ -126,7 +126,12 @@ export function groupSessions(
     (a, b) => b.latest - a.latest || compareText(a.repo, b.repo),
   );
   for (const cluster of ordered) {
-    entries.push({ kind: "cluster", key: `repo ${cluster.repo}`, name: lastSegment(cluster.repo) });
+    entries.push({
+      kind: "cluster",
+      key: `repo ${cluster.repo}`,
+      name: lastSegment(cluster.repo),
+      repo: cluster.repo,
+    });
     put(cluster.main);
     const trees = [...cluster.worktrees.entries()].sort(
       (a, b) => b[1].latest - a[1].latest || compareText(a[0], b[0]),
@@ -139,11 +144,21 @@ export function groupSessions(
   return { entries, order, groupStarts };
 }
 
-/** The session's title on one line, else "session " and the start of its id. */
+/** The session's title on one line, else "New Session" (a title comes with the first message). */
 export function sessionTitle(info: SessionInfo): string {
   const title = info.title?.trim();
   if (title) return title.split(/\s+/).join(" ");
-  return `session ${info.id.slice(0, 8)}`;
+  return "New Session";
+}
+
+/**
+ * The branch a row shows: not the default one (main, master), which most sessions are on and so
+ * says nothing, nor a worktree's, which its group's heading already names.
+ */
+export function notableBranch(branch: string | null | undefined, place: Place): string | undefined {
+  if (branch == null || branch === "main" || branch === "master") return undefined;
+  if (place.worktree !== undefined && branch === place.worktree) return undefined;
+  return branch;
 }
 
 /** The latest thing said, on one line. */

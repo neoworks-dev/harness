@@ -4,6 +4,7 @@
   // of a tool, a thought as written. Output is mono and muted in a box that scrolls past its cap.
   import { Button, Scroll, Text, View } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
+  import Command from "../../widgets/Command.svelte";
   import Component from "./Component.svelte";
   import DiffView from "./DiffView.svelte";
   import { hasButtons } from "./components.ts";
@@ -40,7 +41,7 @@
 
 <View style={{ paddingLeft: DETAIL_INDENT, paddingY: 4, gap: 6 }}>
   {#if entry.kind === "command"}
-    <Text pre style={{ ...mono, lineHeight: 17, color: codeColor(p) }}>{entry.command}</Text>
+    <Command command={entry.command ?? ""} width={88} />
     {#if output.text.trim() !== ""}
       {@render block(output.text, 320, p.muted, output.hidden)}
     {:else}

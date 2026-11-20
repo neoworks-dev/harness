@@ -41,6 +41,24 @@ export interface SessionStatus {
   settings: Record<string, HarnessSettings>;
   /** The session's own agent; guests and subagents report their own. */
   usage?: Usage;
+  /** When the last turn ended (ms): the provider's prompt cache counts from there. */
+  lastTurnAt?: number;
+  /** The context was cleared (/clear) since the last turn: there is no cache to go cold. */
+  cleared?: boolean;
+}
+
+/** Idle this long, a session's prompt cache is gone with Anthropic (5 minutes, an hour with long
+ * retention) and OpenAI (5 minutes to an hour), as the terminal app counts it. */
+export const CACHE_COLD_MS = 60 * 60 * 1000;
+
+/** Whether the next turn starts without the provider's prompt cache: the last ended over an hour ago. */
+export function cacheCold(status: SessionStatus, now: number): boolean {
+  return (
+    !status.running &&
+    !status.cleared &&
+    status.lastTurnAt !== undefined &&
+    now - status.lastTurnAt > CACHE_COLD_MS
+  );
 }
 
 export function initialStatus(): SessionStatus {
@@ -52,9 +70,11 @@ export function applyEvent(status: SessionStatus, record: SessionEventRecord): S
   const { event } = record;
   switch (event.type) {
     case "user_message":
-      return { ...status, running: true, turnStartedAt: record.ts };
+      return { ...status, running: true, turnStartedAt: record.ts, cleared: false };
     case "turn_ended":
-      return { ...status, running: false, turnStartedAt: undefined };
+      return { ...status, running: false, turnStartedAt: undefined, lastTurnAt: record.ts };
+    case "context_cleared":
+      return { ...status, cleared: true };
     case "usage":
       if (event.agent !== undefined) return status;
       return { ...status, usage: event };

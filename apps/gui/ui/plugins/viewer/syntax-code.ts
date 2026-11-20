@@ -244,7 +244,7 @@ const python = codeScanner({
   decorators: true,
 });
 
-const shell = codeScanner({
+const shellWords = codeScanner({
   keywords:
     "if then else elif fi for while until do done case esac in function select return exit break continue export local readonly declare unset set shift source alias eval exec echo cd test trap read printf",
   line: "#",
@@ -252,6 +252,48 @@ const shell = codeScanner({
   variables: true,
   caps: false,
 });
+
+/** Keywords after which a command starts. */
+const SHELL_LEADS = new Set(["if", "then", "else", "elif", "do", "while", "until", "time", "!", "{"]);
+/** In the uncoloured text of a line: blanks or a redirect, an operator, a flag, a word. */
+const SHELL_PLAIN = /(\s+|[<>]+&?|&>>?)|(&&|\|\||;;|\|&|[|;&(){}])|(--?[A-Za-z0-9][\w-]*)|([^\s|;&(){}<>]+)/y;
+
+/**
+ * Shell as the generic scanner reads it, and what it leaves plain picked out the way a command is
+ * read: the command each list, pipeline or `$(…)` starts with, its flags and the operators between.
+ * A line after one that ends in `\` goes on with the command's arguments; any other starts anew.
+ */
+const shell: Scanner = (line, state) => {
+  const out = new Runs();
+  let command = state !== "\\";
+  for (const token of shellWords(line, "").tokens) {
+    if (token.kind !== undefined) {
+      out.add(token.text, token.kind);
+      if (token.kind === "keyword") command = SHELL_LEADS.has(token.text);
+      else if (token.kind !== "comment") command = token.text === "$(";
+      continue;
+    }
+    let at = 0;
+    while (at < token.text.length) {
+      SHELL_PLAIN.lastIndex = at;
+      const match = SHELL_PLAIN.exec(token.text);
+      if (match === null) break;
+      const [text, blank, operator, flag] = match;
+      at += text.length;
+      if (blank !== undefined) out.add(text);
+      else if (operator !== undefined) {
+        out.add(text, "keyword");
+        command = operator !== ")" && operator !== "}";
+      } else if (flag !== undefined && !command) out.add(text, "attr");
+      else if (command && /^[\w.-]+=/.test(text)) out.add(text, "property");
+      else {
+        out.add(text, command ? "function" : undefined);
+        command = false;
+      }
+    }
+  }
+  return { tokens: out.tokens, state: line.endsWith("\\") ? "\\" : "" };
+};
 
 const c = codeScanner({
   keywords:

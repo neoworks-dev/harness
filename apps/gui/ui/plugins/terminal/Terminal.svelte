@@ -8,7 +8,7 @@
   import Spinner from "../../widgets/Spinner.svelte";
   import { clock } from "../../widgets/clock.svelte.ts";
   import { duration } from "../transcript/format.ts";
-  import { codeColor } from "../transcript/layout.ts";
+  import Command from "../../widgets/Command.svelte";
   import { terminalData } from "./data.svelte.ts";
   import type { TerminalRun } from "./runs.ts";
   import { terminal } from "./state.svelte.ts";
@@ -112,7 +112,7 @@
               </Button>
             {/if}
           </View>
-          <Text pre style={{ ...mono, color: codeColor(p), paddingX: 8 }}><Text style={{ color: p.muted }}>$ </Text>{run.command}</Text>
+          <Command command={run.command} width={56} style={{ paddingX: 8 }} />
           {#if run.hidden > 0}
             <Text style={{ ...mono, color: p.muted, paddingX: 8 }}>… {run.hidden} earlier lines</Text>
           {/if}

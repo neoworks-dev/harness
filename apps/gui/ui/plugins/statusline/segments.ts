@@ -2,7 +2,7 @@
 // tone to a colour). Plain functions, so they are tested without a window.
 import type { ConnectionState } from "@neoworks-dev/neo-sdk";
 import type { Usage } from "@neoworks-dev/neo-protocol/types";
-import { currentSettings, type Approvals, type SessionStatus } from "../../lib/status.ts";
+import { cacheCold, currentSettings, type Approvals, type SessionStatus } from "../../lib/status.ts";
 
 export type Tone = "fg" | "muted" | "accent" | "danger" | "success";
 
@@ -79,6 +79,7 @@ export function statusSegments(input: StatusInput): Segment[] {
   const percent = contextPercent(status.usage);
   if (percent !== undefined) add(`${percent}% context`, percent >= 90 ? "danger" : "muted");
   add(formatCost(status.usage?.cost));
+  if (cacheCold(status, input.now)) add("cache expired", "accent");
   if (input.connection !== "open" && input.connection !== "starting")
     add(input.connection, "danger");
   return segments;

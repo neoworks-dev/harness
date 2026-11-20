@@ -189,9 +189,15 @@ test("Python: decorators, triple quotes and comments", () => {
 test("shell: variables, strings and keywords", () => {
   expect(runs("shell", 'if [ -z "$target" ]; then echo "usage: $0" >&2; fi # end')).toEqual([
     "keyword:if",
-    " [ -z ",
+    " ",
+    "function:[",
+    " ",
+    "attr:-z",
+    " ",
     'string:"$target"',
-    " ]; ",
+    " ]",
+    "keyword:;",
+    " ",
     "keyword:then",
     " ",
     "keyword:echo",
@@ -199,12 +205,43 @@ test("shell: variables, strings and keywords", () => {
     'string:"usage: $0"',
     " >&",
     "number:2",
-    "; ",
+    "keyword:;",
+    " ",
     "keyword:fi",
     " ",
     "comment:# end",
   ]);
-  expect(runs("shell", "x=$HOME/bin")).toEqual(["x=", "property:$HOME", "/bin"]);
+  expect(runs("shell", "x=$HOME/bin")).toEqual(["property:x=$HOME", "/bin"]);
+});
+
+test("shell: each command of a list, pipeline or $(…) and its flags", () => {
+  expect(runs("shell", "cd ~/x && grep -rn a src | head; f=$(git log --oneline)")).toEqual([
+    "keyword:cd",
+    " ~/x ",
+    "keyword:&&",
+    " ",
+    "function:grep",
+    " ",
+    "attr:-rn",
+    " a src ",
+    "keyword:|",
+    " ",
+    "function:head",
+    "keyword:;",
+    " ",
+    "property:f=$(",
+    "function:git",
+    " log ",
+    "attr:--oneline",
+    "keyword:)",
+  ]);
+  // A line after a `\` goes on with the arguments.
+  expect(all("shell", ["make \\", "  build -j4"])).toEqual([
+    "function:make",
+    " \\",
+    "  build ",
+    "attr:-j4",
+  ]);
 });
 
 test("JSON: keys are not values", () => {

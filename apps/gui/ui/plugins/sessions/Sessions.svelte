@@ -7,7 +7,7 @@
   // Enter opens, Esc gives the keyboard back.
   import { untrack } from "svelte";
   import { clipboard, files } from "@neoworks/svelte-gpui";
-  import { Button, ContextMenu, Text, View, List } from "@neoworks/svelte-gpui/ui";
+  import { Button, ContextMenu, Icon, Text, View, List } from "@neoworks/svelte-gpui/ui";
   import type { KeyEvent, MenuItem, PointerEvent } from "@neoworks/svelte-gpui/ui";
   import { clock } from "../../widgets/clock.svelte.ts";
   import { useCtx } from "../../kernel/slots/context.ts";
@@ -30,12 +30,14 @@
   import SessionRow from "./SessionRow.svelte";
   import SettledHeader from "./SettledHeader.svelte";
   import SlimRow from "./SlimRow.svelte";
-  import { jumpGroup, lastSegment, placeOf, statusOf, step } from "./sessions.ts";
+  import { jumpGroup, lastSegment, notableBranch, placeOf, statusOf, step } from "./sessions.ts";
+  import GroupHeader from "./GroupHeader.svelte";
+  import caretRight from "@phosphor-icons/core/bold/caret-right-bold.svg";
   import { sessions } from "./state.svelte.ts";
 
   /** Rows a PgUp / PgDn moves. */
   const PAGE = 5;
-  const WIDTH = 256;
+  const WIDTH = 284;
 
   const { daemon } = useCtx();
 
@@ -375,18 +377,16 @@
       >
         {#snippet row(line: Line)}
           {#if line.kind === "label"}
-            {#if sessions.groupsOpen.has(line.key)}
-              <!-- An opened group's heading folds it again. -->
-              <Button
-                onpress={() => sessions.toggleGroup(line.key)}
-                style={{ height: 28, paddingX: 10, paddingLeft: line.sub ? 22 : 10, paddingTop: 8, radius: p.radius.s, color: p.muted }}
-                hover={{ color: p.fg }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: "medium", truncate: true }}>{line.sub ? "↳ " : ""}{line.text} ▾</Text>
-              </Button>
-            {:else}
-              <Text style={{ height: 28, paddingLeft: line.sub ? 22 : 10, paddingRight: 10, paddingTop: 8, fontSize: 12, fontWeight: "medium", color: p.muted, truncate: true }}>{line.sub ? "↳ " : ""}{line.text}</Text>
-            {/if}
+            {@const repo = line.repo}
+            <GroupHeader
+              text={line.text}
+              sub={line.sub}
+              {repo}
+              icon={repo === undefined ? undefined : icons.byRepo[repo]}
+              open={sessions.groupsOpen.has(line.key)}
+              onfold={() => sessions.toggleGroup(line.key)}
+              onnew={repo === undefined ? undefined : () => void daemon.newSession(repo)}
+            />
           {:else if line.kind === "settled"}
             <SettledHeader
               count={line.count}
@@ -399,10 +399,13 @@
                 if (line.group === "settled") sessions.settledAll = true;
                 else sessions.toggleGroup(line.group);
               }}
-              style={{ height: 32, paddingX: 10, align: "center", radius: p.radius.s, color: p.muted }}
+              style={{ direction: "row", gap: 6, height: 26, paddingX: 12, align: "center", radius: p.radius.s, color: p.muted }}
               hover={{ background: p.side.hover, color: p.fg }}
             >
-              <Text style={{ fontSize: 12 }}>{line.group === "settled" ? `Show ${line.count} more` : `▸ ${line.count} older`}</Text>
+              {#if line.group !== "settled"}<Icon svg={caretRight} size={10} />{/if}
+              <Text style={{ fontSize: 12 }}
+                >{line.group === "settled" ? `Show ${line.count} more` : `${line.count} older ${line.count === 1 ? "session" : "sessions"}`}</Text
+              >
             </Button>
           {:else}
             {@const place = placeOf(line.info.cwd, sessions.places)}
@@ -423,7 +426,10 @@
                 info={line.info}
                 project={lastSegment(place.repo)}
                 icon={icons.byRepo[place.repo]}
-                branch={sessions.branches[line.info.cwd] ?? place.worktree}
+                showProject={line.mixed}
+                branch={line.mixed
+                  ? notableBranch(sessions.branches[line.info.cwd] ?? place.worktree, { repo: place.repo })
+                  : notableBranch(sessions.branches[line.info.cwd], place)}
                 child={line.child}
                 current={line.key === daemon.sessionId}
                 status={statusOf(line.info, sessions.finished.has(line.key), sessions.runningSince)}

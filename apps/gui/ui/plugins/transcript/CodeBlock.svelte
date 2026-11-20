@@ -9,7 +9,8 @@
   import { blend } from "../../lib/palette.ts";
   import { useCtx } from "../../kernel/slots/context.ts";
   import { forFile } from "../viewer/highlights.ts";
-  import { fencePath } from "../viewer/syntax.ts";
+  import { reflowCommand } from "../../lib/shell.ts";
+  import { fencePath, languageOf } from "../viewer/syntax.ts";
   import { kindStyles } from "../viewer/syntax-colors.ts";
   import CopyButton from "./CopyButton.svelte";
 
@@ -24,12 +25,17 @@
 
   /** The most lines drawn, however much the result holds. */
   const CAP = 400;
+  /** Characters a line of shell takes before it breaks. */
+  const SHELL_WIDTH = 88;
 
   let { code, limit, language, fenced = false }: Props = $props();
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
 
-  const lines = $derived(code.replace(/\n+$/, "").split("\n"));
+  /** Shell, whose long lines break after their `&&`, `||`, `;` and `|` as the terminal's do. */
+  const shell = $derived(languageOf(fencePath(language ?? "")) === "shell");
+  const text = $derived(code.replace(/\n+$/, ""));
+  const lines = $derived((shell ? reflowCommand(text, SHELL_WIDTH) : text).split("\n"));
   const clipped = $derived(clip(lines, limit ?? CAP));
   /** Highlighted as the viewer does (its syntax.ts) when the block names a language it knows. */
   const lights = $derived(language ? forFile(fencePath(language), lines) : undefined);
@@ -58,7 +64,7 @@
       >
         <Icon svg={wrapIcon} size={14} />
       </Button>
-      <CopyButton text={code.replace(/\n+$/, "")} />
+      <CopyButton {text} />
     </View>
   {/if}
   {#if wrap}

@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import type { HarnessSettings, SessionEvent } from "@neoworks-dev/neo-protocol/types";
 import {
   applyEvent,
+  CACHE_COLD_MS,
+  cacheCold,
   currentSettings,
   initialStatus,
   nextApprovals,
@@ -88,4 +90,25 @@ test("a value the harness does not list shows as it is", () => {
   expect(optionLabel(offered, "codex", "model", "haiku")).toBe("haiku");
   expect(optionLabel(offered, "unknown", "model", "haiku")).toBe("haiku");
   expect(optionLabel([], "claude", "model", "haiku")).toBe("haiku");
+});
+
+test("the prompt cache goes cold an hour after the last turn, not after a /clear", () => {
+  const ended = fold(
+    { type: "user_message", text: "hi", app: "desktop" },
+    { type: "turn_ended", stopReason: "end_turn" },
+  );
+  const at = ended.lastTurnAt ?? 0;
+  expect(cacheCold(ended, at + CACHE_COLD_MS - 1)).toBe(false);
+  expect(cacheCold(ended, at + CACHE_COLD_MS + 1)).toBe(true);
+  expect(cacheCold(initialStatus(), Date.now())).toBe(false);
+  const cleared = applyEvent(ended, { session: "s", seq: ++seq, ts: at, event: { type: "context_cleared" } });
+  expect(cacheCold(cleared, at + 2 * CACHE_COLD_MS)).toBe(false);
+  const again = applyEvent(cleared, {
+    session: "s",
+    seq: ++seq,
+    ts: at,
+    event: { type: "user_message", text: "back", app: "desktop" },
+  });
+  expect(again.cleared).toBe(false);
+  expect(cacheCold(again, at + 2 * CACHE_COLD_MS)).toBe(false);
 });

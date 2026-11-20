@@ -12,12 +12,13 @@
 
   const p = $derived(daemon.palette);
 
-  // Ticks once a second while a turn runs, for its elapsed time.
+  // Ticks once a second while a turn runs, for its elapsed time; once a minute otherwise, for when
+  // the prompt cache goes cold.
   let now = $state(Date.now());
   $effect(() => {
-    if (!daemon.status.running) return;
+    const every = daemon.status.running ? 1000 : 60_000;
     now = Date.now();
-    const timer = setInterval(() => (now = Date.now()), 1000);
+    const timer = setInterval(() => (now = Date.now()), every);
     return () => clearInterval(timer);
   });
 
