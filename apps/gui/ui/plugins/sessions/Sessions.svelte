@@ -375,12 +375,13 @@
         key={(line: Line) => line.key}
         style={{ flex: 1, minHeight: 0, paddingX: 8 }}
       >
-        {#snippet row(line: Line)}
+        {#snippet row(line: Line, index: number)}
           {#if line.kind === "label"}
             {@const repo = line.repo}
             <GroupHeader
               text={line.text}
               sub={line.sub}
+              first={index === 0}
               {repo}
               icon={repo === undefined ? undefined : icons.byRepo[repo]}
               open={sessions.groupsOpen.has(line.key)}

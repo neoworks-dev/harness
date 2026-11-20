@@ -24,14 +24,20 @@
     onfold?: () => void;
     /** A new session in the project. */
     onnew?: () => void;
+    /** The list's first line: no rule above it. */
+    first?: boolean;
   }
 
-  let { text, sub = false, repo, icon, open = false, onfold, onnew }: Props = $props();
+  let { text, sub = false, repo, icon, open = false, onfold, onnew, first = false }: Props = $props();
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
   let hovered = $state(false);
 </script>
 
+{#if !sub && !first}
+  <!-- A rule between projects, so each group reads as one. -->
+  <View style={{ height: 1, marginTop: 12, marginX: 8, background: p.side.border }} />
+{/if}
 <View
   onpress={open ? onfold : undefined}
   onhover={(over) => (hovered = over)}
