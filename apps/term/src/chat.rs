@@ -389,6 +389,15 @@ impl Chat {
         self.state.items.iter().rev().find(|i| i.r#ref == r)
     }
 
+    /// The session's open surfaces, in the order they opened (`crate::surfaces`).
+    pub fn surfaces(&self) -> &[ViewItem] {
+        &self.state.surfaces
+    }
+
+    pub fn surface(&self, r: &str) -> Option<&ViewItem> {
+        self.state.surfaces.iter().find(|s| s.r#ref == r)
+    }
+
     /// The edit a prompt asks about: its first diff that names a file.
     pub fn diff_of(&self, r: &str) -> Option<&DiffComponent> {
         lines::first_diff(&self.item(r)?.component)

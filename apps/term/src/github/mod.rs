@@ -22,8 +22,8 @@
 
 mod complete;
 mod doc;
-mod md;
 mod edit;
+mod md;
 mod pr;
 mod review;
 mod view;
@@ -441,7 +441,10 @@ impl Github {
 
     /// The colors of the repository's labels, by name.
     fn label_colors(&self) -> view::Colors {
-        self.labels.iter().map(|l| (l.name.clone(), l.rgb)).collect()
+        self.labels
+            .iter()
+            .map(|l| (l.name.clone(), l.rgb))
+            .collect()
     }
 
     /// What the search being typed suggests.
@@ -475,7 +478,9 @@ impl Github {
             .details
             .get(&(kind, number))
             .and_then(|d| d.detail.as_ref())
-            .filter(|d| !d.reactions.is_empty() || d.comments.iter().any(|c| !c.reactions.is_empty()))
+            .filter(|d| {
+                !d.reactions.is_empty() || d.comments.iter().any(|c| !c.reactions.is_empty())
+            })
             .cloned()
         else {
             return;
@@ -483,7 +488,12 @@ impl Github {
         let updated = detail.updated_ms;
         self.mine_asked += 1;
         self.spawn(move |gh, cwd| {
-            Msg::Mine(kind, number, updated, fetch::my_reactions(gh, cwd, &repo, &detail))
+            Msg::Mine(
+                kind,
+                number,
+                updated,
+                fetch::my_reactions(gh, cwd, &repo, &detail),
+            )
         });
     }
 
@@ -889,7 +899,11 @@ impl Github {
             (KeyCode::End | KeyCode::Char('G'), _) => v.focus_at(usize::MAX, false),
             (KeyCode::Enter, _) if !inside => v.enter(),
             (KeyCode::Tab | KeyCode::Char('c'), _) => {
-                if self.details.get(&(kind, number)).is_some_and(|d| d.detail.is_some()) {
+                if self
+                    .details
+                    .get(&(kind, number))
+                    .is_some_and(|d| d.detail.is_some())
+                {
                     self.writing = Some(write::Writing::Comment);
                 }
             }
@@ -1023,7 +1037,9 @@ impl DetailView {
         let half = (self.rows / 2).max(1);
         if down {
             if b.end > self.scroll + self.rows {
-                self.scroll = (self.scroll + half).min(b.end - self.rows).min(self.max_scroll());
+                self.scroll = (self.scroll + half)
+                    .min(b.end - self.rows)
+                    .min(self.max_scroll());
             } else if i + 1 < self.blocks().len() {
                 self.focus_at(i + 1, true);
             }

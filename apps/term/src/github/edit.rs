@@ -174,7 +174,10 @@ impl Github {
             'P' => self.start(What::Projects),
             'R' => self.start(What::Link),
             'S' => {
-                let title = self.shown_detail().map(|d| d.title.clone()).unwrap_or_default();
+                let title = self
+                    .shown_detail()
+                    .map(|d| d.title.clone())
+                    .unwrap_or_default();
                 self.writing = Some(Writing::Input(Input {
                     prompt: "Title".into(),
                     text: title,
@@ -563,7 +566,10 @@ impl Github {
                     self.apply(kind, number, c, "parent removed");
                 } else {
                     self.writing = Some(Writing::Input(Input {
-                        prompt: format!("{} #", LINKS.iter().find(|l| l.0 == link).map_or("", |l| l.1)),
+                        prompt: format!(
+                            "{} #",
+                            LINKS.iter().find(|l| l.0 == link).map_or("", |l| l.1)
+                        ),
                         text: String::new(),
                         then: Then::Link(link),
                     }));
@@ -706,7 +712,10 @@ impl Github {
                     used += size;
                 }
                 lines.push(row(keys));
-                Panel { lines, cursor: None }
+                Panel {
+                    lines,
+                    cursor: None,
+                }
             }
             Writing::Loading(_) => Panel {
                 lines: vec![row(vec![Span::styled("loading…  esc cancel", st.muted)])],
@@ -728,10 +737,8 @@ impl Github {
                 ])];
                 for (n, &i) in shown.iter().enumerate().skip(top).take(room) {
                     let item = &p.items[i];
-                    let mut spans = vec![Span::styled(
-                        if n == p.at { "› " } else { "  " },
-                        st.accent,
-                    )];
+                    let mut spans =
+                        vec![Span::styled(if n == p.at { "› " } else { "  " }, st.accent)];
                     if p.multi {
                         spans.push(Span::raw(if item.on { "[x] " } else { "[ ] " }));
                     } else if item.on {
@@ -749,19 +756,20 @@ impl Github {
                 if shown.is_empty() {
                     lines.push(row(vec![Span::styled("nothing matches", st.muted)]));
                 }
-                Panel { lines, cursor: None }
+                Panel {
+                    lines,
+                    cursor: None,
+                }
             }
             Writing::Input(input) => {
                 let shown = format!("{}: ", input.prompt);
                 let col = 1 + crate::util::width(&shown) + crate::util::width(&input.text);
                 Panel {
-                    lines: vec![
-                        row(vec![
-                            Span::styled(shown, bold),
-                            Span::raw(input.text.clone()),
-                            Span::styled("   enter apply · esc cancel", st.muted),
-                        ]),
-                    ],
+                    lines: vec![row(vec![
+                        Span::styled(shown, bold),
+                        Span::raw(input.text.clone()),
+                        Span::styled("   enter apply · esc cancel", st.muted),
+                    ])],
                     cursor: Some((0, col)),
                 }
             }

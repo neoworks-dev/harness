@@ -441,7 +441,7 @@ impl App {
 
     /// The focus targets of an item's neoui docs, as drawn with their visual state.
     pub(super) fn form_targets(&self, r: &str) -> Vec<UiTarget> {
-        let Some(item) = self.chat.item(r) else {
+        let Some(item) = self.chat.item(r).or_else(|| self.chat.surface(r)) else {
             return Vec::new();
         };
         let opts = Options {

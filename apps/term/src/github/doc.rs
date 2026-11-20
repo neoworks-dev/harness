@@ -270,7 +270,11 @@ pub(super) fn build(d: &Detail, w: usize, now_ms: i64, st: &Styles, with: &With)
     let start = out.len();
     if d.body.trim().is_empty() {
         out.push(Line::from(Span::styled("no description", st.muted)));
-        out.extend(block(reactions_line(&d.reactions, st).into_iter().collect(), w, st));
+        out.extend(block(
+            reactions_line(&d.reactions, st).into_iter().collect(),
+            w,
+            st,
+        ));
     } else {
         let mut lines = body(&d.body, inner, 0, st);
         lines.extend(reactions_line(&d.reactions, st));
@@ -412,7 +416,12 @@ fn pr_sections(
     let shown = d.reviews.iter().filter(|r| shown_review(r)).count();
     if shown > 0 {
         out.push(heading(&format!("Reviews ({shown})"), w, st));
-        for (i, r) in d.reviews.iter().enumerate().filter(|(_, r)| shown_review(r)) {
+        for (i, r) in d
+            .reviews
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| shown_review(r))
+        {
             let start = out.len();
             let (word, style) = match r.state.as_str() {
                 "APPROVED" => ("approved", st.success),

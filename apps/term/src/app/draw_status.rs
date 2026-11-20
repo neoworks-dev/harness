@@ -151,7 +151,10 @@ impl App {
                 tone(self.styles.info.add_modifier(Modifier::BOLD)),
             ),
             Span::styled(
-                format!("· {} · the reply above is done ", crate::status::duration(secs)),
+                format!(
+                    "· {} · the reply above is done ",
+                    crate::status::duration(secs)
+                ),
                 tone(self.styles.muted),
             ),
         ]);

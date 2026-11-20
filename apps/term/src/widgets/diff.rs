@@ -531,7 +531,11 @@ impl DiffView {
             self.aligned = Aligned::default();
         }
         self.uni_w = lines.iter().map(|l| width(&l.text)).max().unwrap_or(0);
-        let path = self.req.as_ref().map(|r| r.rel.as_str()).or(self.lang.as_deref());
+        let path = self
+            .req
+            .as_ref()
+            .map(|r| r.rel.as_str())
+            .or(self.lang.as_deref());
         let (grammar, uni, split) = steps(path, &lines, &self.aligned);
         self.lit_uni = Lazy::start(grammar, uni);
         self.lit_split = Lazy::start(grammar, split);
@@ -651,7 +655,9 @@ impl DiffView {
 
     /// `f` asked for the whole file, once.
     pub(crate) fn take_full_ask(&mut self) -> bool {
-        self.remote.as_mut().is_some_and(|r| std::mem::take(&mut r.asked))
+        self.remote
+            .as_mut()
+            .is_some_and(|r| std::mem::take(&mut r.asked))
     }
 
     /// The whole file with the changes in it (a diff with all its lines as context), shown at

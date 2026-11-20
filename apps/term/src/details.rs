@@ -59,7 +59,11 @@ fn heading(name: &str, w: usize, styles: &Styles) -> Line<'static> {
 
 /// `1 tool`, `3 tools`.
 fn count(n: usize, what: &str) -> String {
-    if n == 1 { format!("1 {what}") } else { format!("{n} {what}s") }
+    if n == 1 {
+        format!("1 {what}")
+    } else {
+        format!("{n} {what}s")
+    }
 }
 
 /// An app the daemon knows: running or not, by its title, with what it brings when it runs and
@@ -158,13 +162,21 @@ fn block(d: &Details, w: usize, styles: &Styles, rows: &mut AppRows) -> Vec<Line
         .iter()
         .filter(|c| c.kind == ConnectorKind::App)
         .collect();
-    apps.sort_by(|a, b| b.connected.cmp(&a.connected).then_with(|| a.app.cmp(&b.app)));
+    apps.sort_by(|a, b| {
+        b.connected
+            .cmp(&a.connected)
+            .then_with(|| a.app.cmp(&b.app))
+    });
     if !apps.is_empty() {
         out.push(heading("Apps", w, styles));
         let first = out.len();
         let more = apps.len().saturating_sub(APPS_SHOWN);
         // One more is shown rather than a row that hides just it.
-        let shown = if d.apps_open || more <= 1 { apps.len() } else { APPS_SHOWN };
+        let shown = if d.apps_open || more <= 1 {
+            apps.len()
+        } else {
+            APPS_SHOWN
+        };
         for c in &apps[..shown] {
             out.push(app_line(c, styles));
         }

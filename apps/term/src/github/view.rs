@@ -11,10 +11,10 @@ use super::doc::{self, state_style};
 use super::gh::GhError;
 use super::model::{Kind, State, Summary, short_age};
 use super::{Doc, Github, Mode, Repo, visual, write};
-use crate::style::Styles;
-use crate::util::{fit_line, split_line, truncate, width};
 use crate::chat::Placement;
 use crate::images::Images;
+use crate::style::Styles;
+use crate::util::{fit_line, split_line, truncate, width};
 use crate::widgets::DiffView;
 
 /// Where an avatar is drawn in a suggestion row, and how many cells wide: a cell is about
@@ -82,10 +82,7 @@ pub(super) fn draw(
     // Where the pictures of people go: (row, column, address).
     let mut avatars: Vec<(usize, u16, String)> = Vec::new();
     if cursor {
-        for (i, (row, avatar)) in dropdown(g, w, st, images.is_some())
-            .into_iter()
-            .enumerate()
-        {
+        for (i, (row, avatar)) in dropdown(g, w, st, images.is_some()).into_iter().enumerate() {
             if let Some(slot) = lines.get_mut(head_h + i) {
                 *slot = row;
                 avatars.extend(avatar.map(|url| (head_h + i, AVATAR_X, url)));
@@ -135,7 +132,10 @@ pub(super) fn draw(
     }
     if let Some((row, col)) = panel.cursor {
         let x = col.min(w.saturating_sub(1)) as u16;
-        frame.set_cursor_position(Position::new(area.x + x, area.y + (head_h + above + row) as u16));
+        frame.set_cursor_position(Position::new(
+            area.x + x,
+            area.y + (head_h + above + row) as u16,
+        ));
     }
 }
 
@@ -337,7 +337,11 @@ pub(super) fn chip_style(rgb: Option<u32>, st: &Styles) -> Style {
     };
     let (r, g, b) = ((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8);
     let luma = (u32::from(r) * 299 + u32::from(g) * 587 + u32::from(b) * 114) / 1000;
-    let fg = if luma > 140 { Color::Black } else { Color::White };
+    let fg = if luma > 140 {
+        Color::Black
+    } else {
+        Color::White
+    };
     Style::new().fg(fg).bg(Color::Rgb(r, g, b))
 }
 
@@ -394,10 +398,7 @@ fn dropdown(
                 Look::Word => spans.push(Span::styled(c.shown.clone(), row)),
             }
             if !c.note.is_empty() {
-                spans.push(Span::styled(
-                    format!("  {}", c.note),
-                    row.patch(st.muted),
-                ));
+                spans.push(Span::styled(format!("  {}", c.note), row.patch(st.muted)));
             }
             let mut line = fit_line(Line::from(spans), w);
             let used = line.width();
@@ -638,7 +639,13 @@ fn footer(g: &Github, w: usize, st: &Styles) -> Line<'static> {
     }
     if g.typing.is_some() {
         return hints(
-            &["enter search", "tab complete", "↑↓ choose", "esc cancel", "ctrl-u clear"],
+            &[
+                "enter search",
+                "tab complete",
+                "↑↓ choose",
+                "esc cancel",
+                "ctrl-u clear",
+            ],
             w,
             st,
         );
@@ -648,7 +655,12 @@ fn footer(g: &Github, w: usize, st: &Styles) -> Line<'static> {
     }
     if matches!(g.writing, Some(write::Writing::Comment)) {
         return hints(
-            &["ctrl-s post", "enter new line", "tab back to reading", "ctrl-d discard"],
+            &[
+                "ctrl-s post",
+                "enter new line",
+                "tab back to reading",
+                "ctrl-d discard",
+            ],
             w,
             st,
         );
@@ -673,15 +685,30 @@ fn footer(g: &Github, w: usize, st: &Styles) -> Line<'static> {
             st,
         ),
         // Selecting: what to do with it.
-        Mode::Detail(v) if v.cur.as_ref().is_some_and(|c| c.visual()) => {
-            hints(&["a add to message", "v V o select", "esc leave visual"], w, st)
-        }
+        Mode::Detail(v) if v.cur.as_ref().is_some_and(|c| c.visual()) => hints(
+            &["a add to message", "v V o select", "esc leave visual"],
+            w,
+            st,
+        ),
         Mode::Detail(v) if v.row.is_some() => {
-            let open = if v.focus == doc::Part::Checks { "enter log" } else { "enter diff" };
-            hints(&[open, "j k choose", "esc leave", "a attach", "q close"], w, st)
+            let open = if v.focus == doc::Part::Checks {
+                "enter log"
+            } else {
+                "enter diff"
+            };
+            hints(
+                &[open, "j k choose", "esc leave", "a attach", "q close"],
+                w,
+                st,
+            )
         }
         Mode::Detail(v) if v.cur.is_some() => hints(
-            &["v V select", "hjkl w b e move", "tab write", "esc leave the block"],
+            &[
+                "v V select",
+                "hjkl w b e move",
+                "tab write",
+                "esc leave the block",
+            ],
             w,
             st,
         ),
@@ -714,7 +741,11 @@ fn footer(g: &Github, w: usize, st: &Styles) -> Line<'static> {
                 parts.push("enter select");
             }
             parts.push("j k move");
-            parts.push(if g.draft.is_empty() { "tab write" } else { "tab write (draft)" });
+            parts.push(if g.draft.is_empty() {
+                "tab write"
+            } else {
+                "tab write (draft)"
+            });
             parts.extend(["a attach", "s send", "esc back", "q close"]);
             hints(&parts, w, st)
         }

@@ -100,7 +100,9 @@ fn start_tokens(harness: &HarnessInfo, tools: ToolsChoice) -> Expect {
     let found = harness.tools.iter().find(|t| t.id == tools);
     match found.and_then(|t| t.start_tokens) {
         Some(n) => Expect::Fact(format!("{} tokens before your first message", tokens(n))),
-        None => Expect::Fact("Tokens before your first message: known after your first chat".into()),
+        None => {
+            Expect::Fact("Tokens before your first message: known after your first chat".into())
+        }
     }
 }
 
@@ -173,7 +175,11 @@ pub fn steps(harnesses: &[HarnessInfo]) -> Vec<Step> {
                 let mut expect = vec![harness_about(h), start_tokens(h, current)];
                 expect.extend(signed_in(h));
                 let choice = Choice::new(&h.title, &format!("/harness {}", h.name), expect);
-                if pick == Some(i) { choice.recommended() } else { choice }
+                if pick == Some(i) {
+                    choice.recommended()
+                } else {
+                    choice
+                }
             })
             .collect();
         steps.push(Step::new(
@@ -192,12 +198,16 @@ pub fn steps(harnesses: &[HarnessInfo]) -> Vec<Step> {
                 .and_then(|x| x.start_tokens)
         };
         // The one that starts smaller, when both are known; else its own.
-        let neo_smaller = matches!((size(ToolsChoice::Own), size(ToolsChoice::Neo)), (Some(a), Some(b)) if b < a);
+        let neo_smaller =
+            matches!((size(ToolsChoice::Own), size(ToolsChoice::Neo)), (Some(a), Some(b)) if b < a);
         let mut own_choice = Choice::new(
             "Its own",
             &format!("/settings {}-tools own", h.name),
             vec![
-                yes(&format!("{}'s Read, Edit and Write, as it was trained on them", h.title)),
+                yes(&format!(
+                    "{}'s Read, Edit and Write, as it was trained on them",
+                    h.title
+                )),
                 yes("Its edits come to you as diffs to approve"),
                 own,
             ],
@@ -466,13 +476,7 @@ impl Onboarding {
             })
             .collect();
         let h = (lines.len() as u16).min(area.height);
-        frame.render_widget(
-            Paragraph::new(lines),
-            Rect {
-                height: h,
-                ..area
-            },
-        );
+        frame.render_widget(Paragraph::new(lines), Rect { height: h, ..area });
         area.y + h + 1
     }
 }
@@ -505,7 +509,11 @@ fn choice_lines(
     w: usize,
     styles: &Styles,
 ) -> Vec<Line<'static>> {
-    let edge = if selected { styles.accent } else { styles.border };
+    let edge = if selected {
+        styles.accent
+    } else {
+        styles.border
+    };
     let name = if selected {
         styles.accent.add_modifier(Modifier::BOLD)
     } else {
@@ -594,7 +602,11 @@ fn draw_choices(frame: &mut Frame, area: Rect, step: &Step, picked: usize, style
         if rect.bottom() > area.bottom() {
             break;
         }
-        let edge = if i == picked { styles.accent } else { styles.border };
+        let edge = if i == picked {
+            styles.accent
+        } else {
+            styles.border
+        };
         let block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -636,7 +648,10 @@ mod tests {
     fn the_steps_are_the_daemons_agents_that_are_installed() {
         // Neo alone: nothing to pick between, no tools or subagents to ask about.
         assert_eq!(steps(&harnesses(json!([neo(true)]))).len(), 2);
-        assert_eq!(steps(&harnesses(json!([neo(true), claude(false)]))).len(), 2);
+        assert_eq!(
+            steps(&harnesses(json!([neo(true), claude(false)]))).len(),
+            2
+        );
         let both = steps(&harnesses(json!([neo(true), claude(true)])));
         let titles: Vec<&str> = both.iter().map(|s| s.title.as_str()).collect();
         assert_eq!(

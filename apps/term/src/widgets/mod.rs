@@ -87,8 +87,8 @@ use ratatui::widgets::Paragraph;
 
 pub(crate) use ansi::{Sgr, parse_line, plain};
 pub(crate) use diff::Comment as DiffComment;
-pub(crate) use diff::{DiffView, Remark};
 use diff::{Comment, DiffRequest};
+pub(crate) use diff::{DiffView, Remark};
 use files::{FileKey, FilesState};
 use git::Runner;
 use plan::PlanState;

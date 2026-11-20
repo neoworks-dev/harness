@@ -32,7 +32,14 @@ pub struct Candidate {
 
 /// Qualifiers worth offering, with whether they take people.
 const KEYS: &[&str] = &[
-    "label:", "assignee:", "author:", "mentions:", "involves:", "is:", "no:", "sort:",
+    "label:",
+    "assignee:",
+    "author:",
+    "mentions:",
+    "involves:",
+    "is:",
+    "no:",
+    "sort:",
 ];
 
 const PEOPLE_KEYS: &[&str] = &["assignee", "author", "mentions", "involves", "commenter"];
@@ -215,14 +222,20 @@ mod tests {
     fn a_quoted_value_may_hold_spaces() {
         let labels = [label("needs info")];
         let s = suggest("x label:\"needs i", Kind::Issue, &labels, &[]);
-        assert_eq!(accept("x label:\"needs i", &s[0]), "x label:\"needs info\" ");
+        assert_eq!(
+            accept("x label:\"needs i", &s[0]),
+            "x label:\"needs info\" "
+        );
     }
 
     #[test]
     fn people_start_with_me_and_keep_a_minus() {
         let people = [person("moritz"), person("neoworks-bot")];
         let s = suggest("assignee:", Kind::Issue, &[], &people);
-        assert_eq!(inserts(&s), ["assignee:@me", "assignee:moritz", "assignee:neoworks-bot"]);
+        assert_eq!(
+            inserts(&s),
+            ["assignee:@me", "assignee:moritz", "assignee:neoworks-bot"]
+        );
         let s = suggest("-assignee:mo", Kind::Issue, &[], &people);
         assert_eq!(inserts(&s), ["-assignee:moritz"]);
     }

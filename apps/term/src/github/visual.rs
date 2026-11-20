@@ -63,7 +63,11 @@ impl Cursor {
 
     /// The text changed (a reload, another width): the cursor stays where it can.
     pub fn set_lines(&mut self, lines: Vec<Vec<char>>) {
-        self.lines = if lines.is_empty() { vec![Vec::new()] } else { lines };
+        self.lines = if lines.is_empty() {
+            vec![Vec::new()]
+        } else {
+            lines
+        };
         self.clamp();
         if let Some(a) = &mut self.anchor {
             a.0 = a.0.min(self.lines.len() - 1);
@@ -413,7 +417,10 @@ mod tests {
     fn visual_line_takes_whole_lines_and_o_swaps_the_ends() {
         let mut c = cursor();
         press(&mut c, "Vj");
-        assert_eq!(added(press(&mut c, "a")), "The quick brown fox\njumps over the lazy dog.");
+        assert_eq!(
+            added(press(&mut c, "a")),
+            "The quick brown fox\njumps over the lazy dog."
+        );
         let mut c = cursor();
         press(&mut c, "jvlo");
         press(&mut c, "k");

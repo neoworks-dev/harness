@@ -25,6 +25,7 @@ pub mod secret;
 pub mod sessions;
 pub mod status;
 pub mod style;
+pub mod surfaces;
 pub mod theme;
 pub mod toast;
 pub mod util;

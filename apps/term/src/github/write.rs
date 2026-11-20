@@ -96,7 +96,9 @@ fn editor_panel(
     let top = (cursor_row + 1).saturating_sub(room);
     let mut lines = vec![row(title)];
     for r in rows.iter().skip(top).take(room) {
-        lines.push(row(vec![Span::raw(editor.text()[r.start..r.end].to_string())]));
+        lines.push(row(vec![Span::raw(
+            editor.text()[r.start..r.end].to_string(),
+        )]));
     }
     Panel {
         cursor: Some((1 + cursor_row - top, 1 + cursor_col)),
@@ -155,7 +157,8 @@ impl Github {
     /// Whether a key may act on the block in focus. When it acts somewhere else, the footer
     /// says where and the key does nothing.
     pub(super) fn in_scope(&mut self, key: KeyEvent) -> bool {
-        if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::ALT)
+        if key.modifiers.contains(KeyModifiers::CONTROL)
+            || key.modifiers.contains(KeyModifiers::ALT)
         {
             return true;
         }
@@ -182,13 +185,16 @@ impl Github {
     fn picked_author(&self) -> String {
         match self.picked() {
             Some(c) => format!("{}'s comment", c.author),
-            None => self.shown().map_or(String::new(), |d| format!("#{}", d.number)),
+            None => self
+                .shown()
+                .map_or(String::new(), |d| format!("#{}", d.number)),
         }
     }
 
     /// The keys of the detail that write or pick; true when it was one of them.
     pub(super) fn write_hotkey(&mut self, key: KeyEvent) -> bool {
-        if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::ALT)
+        if key.modifiers.contains(KeyModifiers::CONTROL)
+            || key.modifiers.contains(KeyModifiers::ALT)
         {
             return false;
         }
@@ -362,7 +368,9 @@ impl Github {
                     _ => self.writing = Some(Writing::Close { dup: None }),
                 }
             }
-            Writing::Close { dup: Some(mut typed) } => {
+            Writing::Close {
+                dup: Some(mut typed),
+            } => {
                 let Some((kind, number)) = self.target() else {
                     return;
                 };
@@ -402,7 +410,9 @@ impl Github {
                                 BodyOf::Item => self.send(
                                     "description saved",
                                     "could not save the description",
-                                    move |gh, cwd| fetch::edit_body(gh, cwd, kind, &repo, number, &text),
+                                    move |gh, cwd| {
+                                        fetch::edit_body(gh, cwd, kind, &repo, number, &text)
+                                    },
                                 ),
                                 BodyOf::Comment(id) => self.send(
                                     "comment saved",
@@ -471,7 +481,12 @@ impl Github {
         // Giving the same reaction again takes it back.
         self.send_text("could not react", move |gh, cwd| {
             fetch::toggle_reaction(gh, cwd, &repo, on, rest).map(|given| {
-                if given { "reacted" } else { "reaction taken back" }.to_string()
+                if given {
+                    "reacted"
+                } else {
+                    "reaction taken back"
+                }
+                .to_string()
             })
         });
     }
@@ -491,7 +506,9 @@ impl Github {
         &mut self,
         done: &str,
         failed: &str,
-        job: impl FnOnce(&dyn super::Gh, &std::path::Path) -> Result<(), super::GhError> + Send + 'static,
+        job: impl FnOnce(&dyn super::Gh, &std::path::Path) -> Result<(), super::GhError>
+        + Send
+        + 'static,
     ) {
         let done = done.to_string();
         self.send_text(failed, move |gh, cwd| job(gh, cwd).map(|()| done));
@@ -501,7 +518,9 @@ impl Github {
     fn send_text(
         &mut self,
         failed: &str,
-        job: impl FnOnce(&dyn super::Gh, &std::path::Path) -> Result<String, super::GhError> + Send + 'static,
+        job: impl FnOnce(&dyn super::Gh, &std::path::Path) -> Result<String, super::GhError>
+        + Send
+        + 'static,
     ) {
         self.sending = true;
         self.info = Some("sending…".into());
@@ -564,7 +583,11 @@ impl Github {
         let rows = self.draft.rows();
         let room = BOX_ROWS.min(h.saturating_sub(1)).max(1);
         let (cursor_row, cursor_col) = self.draft.cursor_pos();
-        let top = if typing { (cursor_row + 1).saturating_sub(room) } else { 0 };
+        let top = if typing {
+            (cursor_row + 1).saturating_sub(room)
+        } else {
+            0
+        };
         let mark = if typing { st.accent } else { st.muted };
         let text = if typing { Style::new() } else { st.muted };
         let mut lines = Vec::new();
@@ -623,7 +646,10 @@ impl Github {
             }
         }
         // Reading or typing a comment: the input.
-        let Some(writing) = self.writing.as_ref().filter(|w| !matches!(w, Writing::Comment))
+        let Some(writing) = self
+            .writing
+            .as_ref()
+            .filter(|w| !matches!(w, Writing::Comment))
         else {
             return self.input(w, h, st);
         };
@@ -673,7 +699,14 @@ impl Github {
                         Span::raw(format!(" {what}")),
                     ]
                 };
-                let mut options = key("1", if kind == Kind::Issue { "completed" } else { "close" });
+                let mut options = key(
+                    "1",
+                    if kind == Kind::Issue {
+                        "completed"
+                    } else {
+                        "close"
+                    },
+                );
                 if kind == Kind::Issue {
                     options.push(Span::raw("   "));
                     options.extend(key("2", "not planned"));
@@ -681,9 +714,16 @@ impl Github {
                     options.extend(key("3", "duplicate"));
                 }
                 options.push(Span::styled("   esc cancel", st.muted));
-                let noun = if kind == Kind::Issue { "Close issue" } else { "Close pull request" };
+                let noun = if kind == Kind::Issue {
+                    "Close issue"
+                } else {
+                    "Close pull request"
+                };
                 Panel {
-                    lines: vec![row(vec![Span::styled(format!("{noun} #{number} as"), bold)]), row(options)],
+                    lines: vec![
+                        row(vec![Span::styled(format!("{noun} #{number} as"), bold)]),
+                        row(options),
+                    ],
                     cursor: None,
                 }
             }
@@ -692,7 +732,10 @@ impl Github {
                 let col = 1 + width(&shown);
                 Panel {
                     lines: vec![
-                        row(vec![Span::styled(format!("Close #{number} as a duplicate"), bold)]),
+                        row(vec![Span::styled(
+                            format!("Close #{number} as a duplicate"),
+                            bold,
+                        )]),
                         row(vec![
                             Span::raw(shown),
                             Span::styled("   enter close · esc back", st.muted),
@@ -738,7 +781,13 @@ fn quote(text: &str) -> String {
     let mut out: String = text
         .trim_end()
         .lines()
-        .map(|l| if l.is_empty() { ">".to_string() } else { format!("> {l}") })
+        .map(|l| {
+            if l.is_empty() {
+                ">".to_string()
+            } else {
+                format!("> {l}")
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n");
     out.push_str("\n\n");

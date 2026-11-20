@@ -86,7 +86,12 @@ impl Reader {
             }
             None => lines.iter().map(|l| vec![Class::Plain; l.len()]).collect(),
         };
-        Reader::with(title, lines, classes, "markdown · / search · v/V select · y copy · q close")
+        Reader::with(
+            title,
+            lines,
+            classes,
+            "markdown · / search · v/V select · y copy · q close",
+        )
     }
 
     /// Plain text (a log), with `hint` for the keys in the title line.
@@ -351,8 +356,12 @@ impl Reader {
         }
         if wrapped {
             self.message = Some(
-                if forward { "search went past the end, on from the top" } else { "search went past the top, on from the end" }
-                    .into(),
+                if forward {
+                    "search went past the end, on from the top"
+                } else {
+                    "search went past the top, on from the end"
+                }
+                .into(),
             );
         }
         Some(at)
@@ -861,7 +870,11 @@ mod tests {
         assert_eq!(r.cur, (3, 0));
         keys(&mut r, "n");
         assert_eq!(r.cur, (1, 0), "round to the top");
-        assert!(r.message.as_deref().is_some_and(|m| m.contains("from the top")));
+        assert!(
+            r.message
+                .as_deref()
+                .is_some_and(|m| m.contains("from the top"))
+        );
         keys(&mut r, "N");
         assert_eq!(r.cur, (3, 0), "back round to the end");
         // An upper-case letter makes it exact; a count jumps that many.
@@ -882,7 +895,11 @@ mod tests {
         keys(&mut r, "j/zzz");
         enter(&mut r);
         assert_eq!(r.cur, (1, 0), "stays");
-        assert!(r.message.as_deref().is_some_and(|m| m.contains("no match for zzz")));
+        assert!(
+            r.message
+                .as_deref()
+                .is_some_and(|m| m.contains("no match for zzz"))
+        );
         keys(&mut r, "/al");
         esc(&mut r);
         assert!(!r.is_typing());

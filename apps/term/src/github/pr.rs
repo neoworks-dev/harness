@@ -139,7 +139,10 @@ pub(super) fn remarks(comments: &[ReviewComment], path: &str, now_ms: i64) -> Ve
 
 /// How many review comments are on `path`.
 pub(super) fn remark_count(comments: &[ReviewComment], path: &str) -> usize {
-    comments.iter().filter(|c| c.path == path && c.line.is_some()).count()
+    comments
+        .iter()
+        .filter(|c| c.path == path && c.line.is_some())
+        .count()
 }
 
 /// The checks in the order the detail lists them: failed, pending, passed, skipped; by name
@@ -248,7 +251,10 @@ mod tests {
         );
         // Only removing: the hunk comes after its line.
         let section = "--- a/f\n+++ b/f\n@@ -2,1 +1,0 @@\n-gone\n";
-        assert_eq!(expand(section, "kept\nlast\n"), "--- a/f\n+++ b/f\n@@ -1,3 +1,2 @@\n kept\n-gone\n last\n");
+        assert_eq!(
+            expand(section, "kept\nlast\n"),
+            "--- a/f\n+++ b/f\n@@ -1,3 +1,2 @@\n kept\n-gone\n last\n"
+        );
     }
 
     #[test]
@@ -268,7 +274,10 @@ mod tests {
         let d = parse_detail(Kind::Pr, PR_31).unwrap();
         let order = check_order(&d.checks);
         let names: Vec<&str> = order.iter().map(|&i| d.checks[i].name.as_str()).collect();
-        assert_eq!(names, ["test (ubuntu)", "test (macos)", "ci/deploy", "lint", "docs"]);
+        assert_eq!(
+            names,
+            ["test (ubuntu)", "test (macos)", "ci/deploy", "lint", "docs"]
+        );
         assert_eq!(took(&d.checks[order[0]]), "3m 20s");
         assert_eq!(took(&d.checks[order[1]]), "");
     }

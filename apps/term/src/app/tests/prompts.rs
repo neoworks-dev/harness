@@ -73,10 +73,7 @@ fn a_prompt_arriving_while_idle_takes_the_editors_place_at_once() {
     assert!(app.prompt.engaged);
     let placeholder = app.placeholder();
     let text = screen_text(&mut app, 70, 14);
-    assert!(
-        !text.contains(&placeholder),
-        "the editor is hidden: {text}"
-    );
+    assert!(!text.contains(&placeholder), "the editor is hidden: {text}");
     // Typed characters go nowhere; the digits answer.
     assert!(app.handle_key(key(KeyCode::Char('x'))).is_empty());
     assert_eq!(app.editor_text(), "");
@@ -323,10 +320,17 @@ fn the_placeholder_follows_what_the_session_is_doing_and_keeps_to_one_wording() 
     let mut app = app();
     let fresh = app.placeholder();
     assert!(fresh.ends_with("· / for commands"), "{fresh}");
-    assert_eq!(app.placeholder(), fresh, "it does not change while the session is open");
+    assert_eq!(
+        app.placeholder(),
+        fresh,
+        "it does not change while the session is open"
+    );
     show(&mut app, vec![item("a1", "agent", "hello")]);
     let after = app.placeholder();
-    assert!(["What's next?", "Anything to change?"].contains(&after.as_str()), "{after}");
+    assert!(
+        ["What's next?", "Anything to change?"].contains(&after.as_str()),
+        "{after}"
+    );
     app.running = true;
     assert_eq!(app.placeholder(), "Queue a message · alt-enter sends now");
 }

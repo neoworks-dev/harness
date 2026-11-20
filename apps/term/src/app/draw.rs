@@ -37,6 +37,7 @@ impl App {
                 self.focus = None;
             }
             Some(Focus::Chat) if !self.chat.has_picks() => self.focus = None,
+            Some(Focus::Surfaces) if self.focused_surface().is_none() => self.focus = None,
             _ => {}
         }
         self.sync_prompt();
@@ -79,6 +80,12 @@ impl App {
             r.draw(frame, areas.chat, &self.palette);
         } else {
             match self.overlay {
+                // A page surface has the chat's place.
+                Overlay::None if self.pages.shown.is_some() => {
+                    let r = self.pages.shown.clone().unwrap_or_default();
+                    let lines = self.page_lines(&r, areas.chat.width);
+                    frame.render_widget(Paragraph::new(lines), areas.chat);
+                }
                 Overlay::None => self.draw_chat(frame, areas.chat),
                 Overlay::Help => self.draw_help(frame, areas.chat),
                 Overlay::Switcher => self.draw_switcher(frame, areas.chat),
@@ -90,6 +97,9 @@ impl App {
                 Overlay::Setup => self.draw_chat(frame, areas.chat),
             }
             menus = true;
+        }
+        if areas.surfaces.height > 0 {
+            frame.render_widget(Paragraph::new(areas.surface_lines.clone()), areas.surfaces);
         }
         self.review_shown =
             areas.review.height > 0 && self.widgets.draw_review(frame, areas.review);

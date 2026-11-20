@@ -7,6 +7,7 @@ impl App {
     /// either end.
     pub(super) fn cycle_focus(&mut self, delta: isize) {
         let order = [
+            (self.focused_surface().is_some(), Focus::Surfaces),
             (self.chat.has_picks(), Focus::Chat),
             (self.sessions_shown, Focus::Sessions),
             // The side column top to bottom.
@@ -58,8 +59,91 @@ impl App {
             Some(Focus::Sessions) => self.sessions.focus(&self.session),
             // The latest file or reply, unless one is picked already.
             Some(Focus::Chat) => self.chat.move_pick(0),
+            // The page shown, else the first of the strip.
+            Some(Focus::Surfaces) => {
+                self.surface_at = 0;
+                self.enter_surface();
+            }
             _ => {}
         }
+    }
+
+    /// The surface that has (or would get) the keys: the page shown, else the strip's entry
+    /// at `surface_at`, and whether that entry is the line of a page not shown.
+    pub(super) fn focused_surface(&self) -> Option<(String, bool)> {
+        if let Some(page) = &self.pages.shown {
+            return Some((page.clone(), false));
+        }
+        let entries = surface::strip(self.chat.surfaces(), None);
+        let entry = entries.get(self.surface_at.min(entries.len().saturating_sub(1)))?;
+        Some((
+            entry.item().r#ref.clone(),
+            matches!(entry, surface::Entry::Page(_)),
+        ))
+    }
+
+    /// The focused surface's first field takes the keys.
+    fn enter_surface(&mut self) {
+        if let Some((r, false)) = self.focused_surface() {
+            let targets = self.form_targets(&r);
+            self.forms.enter(&r, &targets, self.now_ms);
+        }
+    }
+
+    /// Keys while a surface has them: its fields and buttons as in the chat; Ctrl-N / Ctrl-P go
+    /// to the strip's next or previous surface, Enter on a page's line shows it, Esc gives the
+    /// keys back.
+    pub(super) fn surface_key(&mut self, key: KeyEvent, fx: &mut Vec<Effect>) {
+        let Some((r, page_line)) = self.focused_surface() else {
+            self.focus = None;
+            return;
+        };
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        if ctrl && matches!(key.code, KeyCode::Char('n' | 'p')) && self.pages.shown.is_none() {
+            let n = surface::strip(self.chat.surfaces(), None).len().max(1);
+            let by = if key.code == KeyCode::Char('n') {
+                1
+            } else {
+                n - 1
+            };
+            self.forms.blur(&r, self.now_ms);
+            self.surface_at = (self.surface_at.min(n - 1) + by) % n;
+            self.enter_surface();
+            return;
+        }
+        if page_line {
+            match key.code {
+                KeyCode::Enter => {
+                    self.pages.shown = Some(r);
+                    self.enter_surface();
+                }
+                KeyCode::Esc => self.focus = None,
+                _ => {}
+            }
+            return;
+        }
+        let targets = self.form_targets(&r);
+        let out = self.forms.key(&r, &targets, key, self.now_ms);
+        if !out.taken {
+            if key.code == KeyCode::Esc {
+                self.focus = None;
+            }
+            return;
+        }
+        let leave = out.leave;
+        self.apply_outcome(
+            &r,
+            Outcome {
+                leave: false,
+                ..out
+            },
+            fx,
+        );
+        if leave {
+            self.forms.blur(&r, self.now_ms);
+            self.focus = None;
+        }
+        self.send_due(fx);
     }
 
     /// `/files`: the files panel gets the keys.
@@ -293,6 +377,9 @@ impl App {
             }
             self.prompt.dismissed.push(r);
             self.prompt.selected = None;
+        } else if self.pages.shown.is_some() {
+            // A page surface gives the chat its place back.
+            self.pages.shown = None;
         } else if self.running {
             fx.push(Effect::Cancel {
                 session: self.session.clone(),

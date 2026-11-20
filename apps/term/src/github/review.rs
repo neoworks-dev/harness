@@ -13,7 +13,7 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::model::{Detail, Kind};
-use super::{Github, GhError, Log, Mode, Msg, Outgoing, Part, pr};
+use super::{GhError, Github, Log, Mode, Msg, Outgoing, Part, pr};
 use crate::reader::{Reader, ReaderAction};
 use crate::widgets::{DiffComment, DiffView};
 use neo_github::fetch;
@@ -89,7 +89,12 @@ impl Github {
             return String::new();
         };
         let path = d.files.get(i).map_or("", |f| f.path.as_str());
-        format!("#{} {path}  {}/{}  [ ] files", d.number, i + 1, d.files.len())
+        format!(
+            "#{} {path}  {}/{}  [ ] files",
+            d.number,
+            i + 1,
+            d.files.len()
+        )
     }
 
     /// File `i`'s part of `diff`, with its review comments.
@@ -101,7 +106,9 @@ impl Github {
         let path = &d.files[i].path;
         let Some((_, section)) = pr::split_diff(diff).into_iter().find(|(p, _)| p == path) else {
             let mut view = DiffView::loading(&title);
-            view.finish(Err("no diff for this file: binary, or too big for GitHub to show".into()));
+            view.finish(Err(
+                "no diff for this file: binary, or too big for GitHub to show".into(),
+            ));
             return view;
         };
         let mut view = DiffView::from_file_text(&title, path, &section)
@@ -276,7 +283,9 @@ impl Github {
             return;
         }
         let remarks = match self.pull() {
-            Some(d) if i < d.files.len() => pr::remarks(&d.review_comments, &d.files[i].path, self.now_ms),
+            Some(d) if i < d.files.len() => {
+                pr::remarks(&d.review_comments, &d.files[i].path, self.now_ms)
+            }
             _ => return,
         };
         if let Mode::Detail(v) = &mut self.mode
@@ -342,13 +351,15 @@ impl Github {
             return;
         };
         if let Ok(text) = &result {
-            self.whole_files.insert((sha.to_string(), path.to_string()), text.clone());
+            self.whole_files
+                .insert((sha.to_string(), path.to_string()), text.clone());
         }
         let Mode::Detail(v) = &self.mode else {
             return;
         };
         let shown = v.number == number
-            && v.file.is_some_and(|i| self.pull().is_some_and(|d| d.files[i].path == path));
+            && v.file
+                .is_some_and(|i| self.pull().is_some_and(|d| d.files[i].path == path));
         if !shown {
             return;
         }
@@ -378,7 +389,10 @@ impl Github {
                 self.note = Some(format!("{} has no log or link", check.name));
                 return None;
             }
-            self.info = Some(format!("{} has no log here: its link is copied", check.name));
+            self.info = Some(format!(
+                "{} has no log here: its link is copied",
+                check.name
+            ));
             return Some(Outgoing::Copy(check.url));
         }
         self.show_log(i, true);
@@ -464,7 +478,10 @@ impl Github {
 }
 
 fn log_title(name: &str, failed: bool) -> String {
-    format!("{name} · {}", if failed { "failed steps" } else { "all steps" })
+    format!(
+        "{name} · {}",
+        if failed { "failed steps" } else { "all steps" }
+    )
 }
 
 fn log_reader(title: &str, text: &str, failed: bool) -> Reader {

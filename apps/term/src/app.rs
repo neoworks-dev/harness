@@ -42,6 +42,7 @@ use crate::secret::{self, Secret, SecretValue};
 use crate::sessions::{Look, SIDEBAR_WIDTH, Sessions, SessionsAction, sidebar_width};
 use crate::status::{Approvals, HarnessSettings, ModelNames, Status, record_setting};
 use crate::style::{Styles, plain_palette};
+use crate::surfaces::{self as surface, Pages};
 use crate::theme::{Prefs, Theme};
 use crate::toast::{self, Toasts};
 use crate::util::{fit_line, relative_time, shorten_home, split_line, truncate, width};
@@ -274,6 +275,8 @@ enum Focus {
     Agents,
     /// The background commands under the prompt bar (and the subagents).
     Jobs,
+    /// A surface's fields and buttons: the page shown, else one of the strip over the input.
+    Surfaces,
 }
 
 /// A pane Alt-. / Alt-, resize.
@@ -510,6 +513,10 @@ pub struct App {
     prompt: PromptState,
     /// The visual state of the neoui docs in the chat and the values on their way out.
     forms: Forms,
+    /// Which page surface has the chat's place (`crate::surfaces`).
+    pages: Pages,
+    /// The surface of the strip over the input that has the keys while `Focus::Surfaces` does.
+    surface_at: usize,
     /// The note typed for the focused button's answer (Tab on a card).
     note: Option<Note>,
     /// A setting's text is being written in the editor.
@@ -650,6 +657,8 @@ impl App {
             sessions_wanted: false,
             prompt: PromptState::default(),
             forms: Forms::default(),
+            pages: Pages::default(),
+            surface_at: 0,
             note: None,
             setting_input: None,
             secret: None,
@@ -993,6 +1002,10 @@ struct Areas {
     agents: Rect,
     /// The background commands under the subagents.
     jobs: Rect,
+    /// Over the working line, under the chat: the surfaces of the strip (bars and panels).
+    surfaces: Rect,
+    /// Their lines, as tall as they are up to a third of the chat's rows (cut at the bottom).
+    surface_lines: Vec<Line<'static>>,
     side: Option<Rect>,
     /// Whether the side column holds the terminal panel, under its other panels.
     terminal: bool,
@@ -1014,3 +1027,7 @@ mod secret_app_tests;
 #[cfg(test)]
 #[path = "neoui_app_tests.rs"]
 mod neoui_app_tests;
+
+#[cfg(test)]
+#[path = "surfaces_app_tests.rs"]
+mod surfaces_app_tests;

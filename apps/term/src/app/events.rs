@@ -64,6 +64,7 @@ impl App {
                     match (&snapshot.agent, self.transcript.as_mut()) {
                         (None, _) => {
                             self.chat.apply_snapshot(snapshot);
+                            self.pages.sync(&self.session, self.chat.surfaces());
                             self.refresh_forms();
                             self.sync_prompt();
                         }
@@ -79,6 +80,7 @@ impl App {
                     match (&patch.agent, self.transcript.as_mut()) {
                         (None, _) => {
                             self.chat.apply_patch(patch);
+                            self.pages.sync(&self.session, self.chat.surfaces());
                             self.refresh_forms();
                             self.sync_prompt();
                         }

@@ -12,6 +12,9 @@ pub struct ViewState {
     /// How many items come ahead of `items`, left out of a tail snapshot; [`ViewState::prepend`]
     /// takes them in as they are paged.
     pub before: i64,
+    /// The open surfaces, in the order they opened: neoui programs drawn in their `place` (a
+    /// bar, a panel, a page), not in the chat. Never in `items`.
+    pub surfaces: Vec<ViewItem>,
 }
 
 impl ViewState {
@@ -21,6 +24,7 @@ impl ViewState {
             seq: snapshot.seq,
             items: snapshot.items,
             before: snapshot.before.unwrap_or(0),
+            surfaces: snapshot.surfaces.unwrap_or_default(),
         }
     }
 
@@ -54,6 +58,20 @@ impl ViewState {
         let mut touched = Vec::new();
         for op in patch.ops {
             match op {
+                // A surface is kept apart from the chat's items.
+                ViewOp::SetViewOp(set) if set.item.place.is_some() => {
+                    let item = set.item;
+                    let r = item.r#ref.clone();
+                    match self.surfaces.iter_mut().find(|s| s.r#ref == r) {
+                        Some(existing) => *existing = item,
+                        None => self.surfaces.push(item),
+                    }
+                    touched.push(r);
+                }
+                ViewOp::RemoveViewOp(op) if self.surfaces.iter().any(|s| s.r#ref == op.r#ref) => {
+                    self.surfaces.retain(|s| s.r#ref != op.r#ref);
+                    touched.push(op.r#ref);
+                }
                 ViewOp::SetViewOp(set) => {
                     let item = set.item;
                     let r = item.r#ref.clone();
@@ -199,6 +217,32 @@ mod tests {
         view.prepend(page);
         assert_eq!(refs(&view), ["old", "a", "b", "new"]);
         assert_eq!(view.before, 1);
+    }
+
+    #[test]
+    fn surfaces_are_kept_apart_from_the_items() {
+        let mut view = state();
+        let surface = |place: &str, label: &str| {
+            json!({"ref": "s-bar", "kind": "tool", "place": place, "label": label,
+                   "component": {"type": "text", "blocks": []}})
+        };
+        let touched = view.apply_patch(patch(json!([
+            {"op": "set", "item": surface("bottom", "one")},
+            {"op": "set", "item": surface("side", "two")}
+        ])));
+        assert_eq!(touched, ["s-bar", "s-bar"]);
+        assert_eq!(view.items.len(), 2);
+        assert_eq!(view.surfaces.len(), 1);
+        assert_eq!(view.surfaces[0].label.as_deref(), Some("two"));
+        view.apply_patch(patch(json!([{"op": "remove", "ref": "s-bar"}])));
+        assert!(view.surfaces.is_empty());
+        assert_eq!(view.items.len(), 2);
+        let snapshot: ViewSnapshot = serde_json::from_value(json!({
+            "session": "s", "seq": 3, "items": [], "surfaces": [surface("page", "p")]
+        }))
+        .unwrap();
+        view.apply_snapshot(snapshot);
+        assert_eq!(view.surfaces.len(), 1);
     }
 
     #[test]

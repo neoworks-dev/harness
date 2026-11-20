@@ -818,7 +818,8 @@ fn header(run: &Run, look: &Look, pin: bool, linked: bool) -> Vec<Line<'static>>
     };
     if linked {
         for line in &mut lines {
-            line.spans.insert(0, Span::styled("▎ ", Style::new().fg(p.accent)));
+            line.spans
+                .insert(0, Span::styled("▎ ", Style::new().fg(p.accent)));
         }
     }
     if let Some(bg) = look.band {

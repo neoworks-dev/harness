@@ -200,9 +200,9 @@ impl App {
     pub fn handle_mouse(&mut self, mouse: MouseEvent) -> Vec<Effect> {
         let mut fx = Vec::new();
         if let MouseEventKind::Down(MouseButton::Left) = mouse.kind
-            && self
-                .apps_toggle_at
-                .is_some_and(|a| a.contains(ratatui::layout::Position::new(mouse.column, mouse.row)))
+            && self.apps_toggle_at.is_some_and(|a| {
+                a.contains(ratatui::layout::Position::new(mouse.column, mouse.row))
+            })
         {
             self.toggle_apps();
             return fx;
@@ -431,6 +431,10 @@ impl App {
 
     pub(super) fn panel_key(&mut self, focus: Focus, key: KeyEvent, fx: &mut Vec<Effect>) {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // A surface's Tab moves between its fields; Esc gives the keys back.
+        if focus == Focus::Surfaces && !(ctrl && matches!(key.code, KeyCode::Char('c' | 'g'))) {
+            return self.surface_key(key, fx);
+        }
         match key.code {
             KeyCode::Tab => self.cycle_focus(1),
             // Back a pane; from the first, back to the editor (where Shift-Tab is approvals').
@@ -475,6 +479,7 @@ impl App {
                 Focus::Agents => self.agents_key(key, fx),
                 Focus::Jobs => self.jobs_key(key),
                 Focus::Chat => self.chat_pick_key(key, fx),
+                Focus::Surfaces => self.surface_key(key, fx),
             },
         }
     }

@@ -170,6 +170,14 @@ impl App {
             _ => 0,
         };
         let below = gap + review_h;
+        // The surfaces' strip, over the working line: as tall as it is, up to a third of the
+        // chat's rows.
+        let surface_lines = self.strip_lines(main.width);
+        let strip_room = chat_h.saturating_sub(below + work_h + work_gap) / 3;
+        let strip_h = u16::try_from(surface_lines.len())
+            .unwrap_or(u16::MAX)
+            .min(strip_room);
+        let below = below + strip_h;
         let inset = |r: Rect| {
             if self.styles.fills() {
                 Rect {
@@ -184,7 +192,9 @@ impl App {
         Areas {
             chat: at(0, chat_h - below - work_h - work_gap),
             work: at(chat_h - below - work_h, work_h),
-            review: at(chat_h - below, review_h),
+            surfaces: at(chat_h - below, strip_h),
+            surface_lines,
+            review: at(chat_h - below + strip_h, review_h),
             rule: at(chat_h, rule_h),
             hint: inset(at(top, hint_h)),
             waiting: inset(at(top + hint_h, waiting_h)),
@@ -206,6 +216,55 @@ impl App {
             terminal,
             left,
         }
+    }
+
+    /// The strip of surfaces over the input, `width` wide: each bar and panel under its title
+    /// (accented while it has the keys), and a line for each page not shown.
+    pub(super) fn strip_lines(&self, width: u16) -> Vec<Line<'static>> {
+        let focused = (self.focus == Some(Focus::Surfaces) && self.pages.shown.is_none())
+            .then_some(self.surface_at);
+        let mut out = Vec::new();
+        let entries = surface::strip(self.chat.surfaces(), self.pages.shown.as_deref());
+        for (i, entry) in entries.into_iter().enumerate() {
+            let style = if focused == Some(i) {
+                self.styles.accent
+            } else {
+                self.styles.muted
+            };
+            match entry {
+                surface::Entry::Surface(s) => out.extend(surface::lines(
+                    s,
+                    width,
+                    self.palette,
+                    self.forms.doc_states(&s.r#ref),
+                    style,
+                )),
+                surface::Entry::Page(p) => out.push(surface::page_line(p, style)),
+            }
+        }
+        out
+    }
+
+    /// The page shown in the chat's place, `width` wide: a line back to the chat, then the page.
+    pub(super) fn page_lines(&self, r: &str, width: u16) -> Vec<Line<'static>> {
+        let Some(page) = self.chat.surface(r) else {
+            return Vec::new();
+        };
+        let mut out = vec![
+            Line::from(Span::styled(
+                "Esc back to the chat · Tab to its fields",
+                self.styles.muted,
+            )),
+            Line::default(),
+        ];
+        out.extend(surface::lines(
+            page,
+            width,
+            self.palette,
+            self.forms.doc_states(r),
+            self.styles.accent,
+        ));
+        out
     }
 
     /// Rows the subagents list takes of a pane `total` rows tall: none when the pane is small.

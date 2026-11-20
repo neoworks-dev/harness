@@ -96,7 +96,10 @@ impl Gh for Fake {
     }
 
     fn write(&self, _cwd: &Path, args: &[String], input: Option<&str>) -> Result<String, GhError> {
-        assert!(super::gh::is_allowed_write(args), "not an allowed write: {args:?}");
+        assert!(
+            super::gh::is_allowed_write(args),
+            "not an allowed write: {args:?}"
+        );
         self.writes
             .lock()
             .unwrap()
@@ -181,7 +184,9 @@ fn opened(fake: &Arc<Fake>) -> Github {
 fn screen(g: &mut Github, w: u16, h: u16) -> String {
     let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
     let st = styles();
-    terminal.draw(|f| g.draw(f, f.area(), NOW, &st, None)).unwrap();
+    terminal
+        .draw(|f| g.draw(f, f.area(), NOW, &st, None))
+        .unwrap();
     let buf = terminal.backend().buffer();
     (0..h)
         .map(|y| {
@@ -238,7 +243,11 @@ fn opening_loads_the_repository_then_the_issues() {
     settle(&mut g);
     let calls = fake.calls();
     assert!(calls[0].starts_with("repo view"));
-    assert!(calls.iter().any(|c| c.starts_with("issue list -R acme/site")));
+    assert!(
+        calls
+            .iter()
+            .any(|c| c.starts_with("issue list -R acme/site"))
+    );
     // The labels (their colors) and the people (the search) come beside the list.
     assert!(calls.iter().any(|c| c.contains("acme/site/labels")));
     assert!(calls.iter().any(|c| c.contains("acme/site/assignees")));
@@ -596,7 +605,9 @@ fn the_wheel_scrolls_and_the_focus_stays_in_view() {
     }
     assert!(top(&g) > 0);
     assert_ne!(focus(&g), doc::Part::Head, "the header left the view");
-    let Mode::Detail(v) = &g.mode else { unreachable!() };
+    let Mode::Detail(v) = &g.mode else {
+        unreachable!()
+    };
     let b = v.block().unwrap();
     assert!(b.end > v.scroll && b.start < v.scroll + v.rows);
     for _ in 0..10 {
@@ -626,10 +637,16 @@ fn keys_only_act_on_the_block_they_belong_to() {
     press(&mut g, KeyCode::Esc);
     // The footer offers what the block takes.
     let shown = screen(&mut g, 200, 24);
-    assert!(shown.contains("E edit") && !shown.contains("x close"), "{shown}");
+    assert!(
+        shown.contains("E edit") && !shown.contains("x close"),
+        "{shown}"
+    );
     ch(&mut g, 'k');
     let shown = screen(&mut g, 200, 24);
-    assert!(shown.contains("x close") && !shown.contains("E edit"), "{shown}");
+    assert!(
+        shown.contains("x close") && !shown.contains("E edit"),
+        "{shown}"
+    );
     assert!(fake.writes().is_empty());
 }
 
@@ -672,13 +689,22 @@ fn the_pull_request_diff_opens_a_file_at_a_time() {
     // The first file, only it, with its review comments on their lines.
     let s = screen(&mut g, 100, 30);
     assert!(s.contains("src/header.css  1/2"), "{s}");
-    assert!(s.contains("scrollbar-gutter: stable") && !s.contains("margin: 0"), "{s}");
-    assert!(s.contains("Use a variable here.") && s.contains("↳ bob"), "{s}");
+    assert!(
+        s.contains("scrollbar-gutter: stable") && !s.contains("margin: 0"),
+        "{s}"
+    );
+    assert!(
+        s.contains("Use a variable here.") && s.contains("↳ bob"),
+        "{s}"
+    );
     assert!(s.contains("Why not fixed?"), "on the removed line: {s}");
     // `]` is the next file, `[` back; past the ends they stay.
     ch(&mut g, ']');
     let s = screen(&mut g, 100, 30);
-    assert!(s.contains("src/layout.css  2/2") && s.contains("margin: 0"), "{s}");
+    assert!(
+        s.contains("src/layout.css  2/2") && s.contains("margin: 0"),
+        "{s}"
+    );
     ch(&mut g, ']');
     assert!(screen(&mut g, 100, 30).contains("2/2"));
     ch(&mut g, '[');
@@ -722,9 +748,17 @@ fn a_file_is_picked_from_the_files_and_f_shows_it_whole() {
     ch(&mut g, 'f');
     settle(&mut g);
     let calls = fake.calls();
-    assert!(calls.iter().any(|c| c.contains("contents/src/header.css?ref=abc123")), "{calls:?}");
+    assert!(
+        calls
+            .iter()
+            .any(|c| c.contains("contents/src/header.css?ref=abc123")),
+        "{calls:?}"
+    );
     let s = screen(&mut g, 100, 30);
-    assert!(s.contains("scrollbar-gutter: stable") && s.contains("Use a variable here."), "{s}");
+    assert!(
+        s.contains("scrollbar-gutter: stable") && s.contains("Use a variable here."),
+        "{s}"
+    );
     ch(&mut g, 'f');
     ch(&mut g, 'f');
     assert_eq!(fake.count("contents/"), 1, "kept");
@@ -752,12 +786,18 @@ fn a_comment_written_in_a_files_diff_is_posted_as_a_review_comment() {
     let writes = fake.writes();
     assert_eq!(writes.len(), 1, "{writes:?}");
     let (args, json) = writes[0].split_once(" <<< ").unwrap();
-    assert_eq!(args, "api -X POST repos/acme/site/pulls/31/comments --input -");
+    assert_eq!(
+        args,
+        "api -X POST repos/acme/site/pulls/31/comments --input -"
+    );
     let v: serde_json::Value = serde_json::from_str(json).unwrap();
     assert_eq!(v["body"], "nit");
     assert_eq!(v["path"], "src/header.css");
     assert_eq!(v["commit_id"], "abc123");
-    assert_eq!((v["line"].as_u64(), v["side"].as_str()), (Some(1), Some("RIGHT")));
+    assert_eq!(
+        (v["line"].as_u64(), v["side"].as_str()),
+        (Some(1), Some("RIGHT"))
+    );
     assert!(v["start_line"].is_null());
     // It is GitHub's now: not the view's own, and the pull request was fetched again.
     assert_eq!(own_comments(&g), 0);
@@ -779,7 +819,10 @@ fn a_review_comment_that_could_not_be_posted_is_back_on_its_lines() {
     settle(&mut g);
     let json = fake.writes()[0].split_once(" <<< ").unwrap().1.to_string();
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-    assert_eq!((v["start_line"].as_u64(), v["line"].as_u64()), (Some(2), Some(3)));
+    assert_eq!(
+        (v["start_line"].as_u64(), v["line"].as_u64()),
+        (Some(2), Some(3))
+    );
     assert_eq!(own_comments(&g), 1, "kept to try again");
     assert!(screen(&mut g, 100, 30).contains("line not in the diff"));
 }
@@ -821,14 +864,24 @@ fn a_check_opens_its_log_failed_steps_first_or_copies_its_link() {
     // The failed one is first: Enter picks it, Enter opens its log.
     keys(&mut g, "\n\n");
     settle(&mut g);
-    assert!(fake.calls().iter().any(|c| c == "run view --job 7001 -R acme/site --log-failed"));
+    assert!(
+        fake.calls()
+            .iter()
+            .any(|c| c == "run view --job 7001 -R acme/site --log-failed")
+    );
     let s = screen(&mut g, 100, 20);
-    assert!(s.contains("test (ubuntu) · failed steps") && s.contains("FAIL header"), "{s}");
+    assert!(
+        s.contains("test (ubuntu) · failed steps") && s.contains("FAIL header"),
+        "{s}"
+    );
     assert!(!s.contains("2026-10-16T"), "no times: {s}");
     // An `f` typed into a search is the search's.
     keys(&mut g, "/fail\n");
     assert!(screen(&mut g, 100, 20).contains("failed steps"));
-    assert!(!fake.calls().iter().any(|c| c.ends_with("--log")), "the whole log not asked for");
+    assert!(
+        !fake.calls().iter().any(|c| c.ends_with("--log")),
+        "the whole log not asked for"
+    );
     // `f` is the whole log; `y` copies the line.
     ch(&mut g, 'f');
     settle(&mut g);
@@ -1228,8 +1281,15 @@ fn the_detail_leaves_room_for_the_avatars_of_its_people_when_pictures_are_drawn(
     options.pictures = true;
     let with = doc::build(&detail, 60, NOW, &st, &options);
     let avatars = with.avatars;
-    assert_eq!(with.lines.len(), plain.lines.len(), "the room is in the lines, not more of them");
-    let comments = with.blocks.iter().filter(|b| matches!(b.part, doc::Part::Comment(_)));
+    assert_eq!(
+        with.lines.len(),
+        plain.lines.len(),
+        "the room is in the lines, not more of them"
+    );
+    let comments = with
+        .blocks
+        .iter()
+        .filter(|b| matches!(b.part, doc::Part::Comment(_)));
     assert_eq!(comments.count(), detail.comments.len());
     // The creator first, then each commenter, each on a line of its own.
     assert_eq!(avatars.len(), 1 + detail.comments.len());
@@ -1282,7 +1342,10 @@ fn a_comment_is_typed_in_a_box_and_posted_with_ctrl_s() {
     press(&mut g, KeyCode::Enter);
     type_str(&mut g, "second");
     let shown = screen(&mut g, 70, 24);
-    assert!(shown.contains("ctrl-s post") && shown.contains("second"), "{shown}");
+    assert!(
+        shown.contains("ctrl-s post") && shown.contains("second"),
+        "{shown}"
+    );
     ctrl(&mut g, 's');
     settle(&mut g);
     assert_eq!(
@@ -1344,7 +1407,11 @@ fn goto_text(g: &mut Github, text: &str) {
         .iter()
         .position(|l| l.spans.iter().any(|s| s.content.contains(text)))
         .unwrap_or_else(|| panic!("{text:?} on screen"));
-    let b = *doc.blocks.iter().find(|b| row >= b.start && row < b.end).expect("in a block");
+    let b = *doc
+        .blocks
+        .iter()
+        .find(|b| row >= b.start && row < b.end)
+        .expect("in a block");
     if v.focus != b.part || v.cur.is_none() {
         v.focus = b.part;
         v.enter();
@@ -1398,7 +1465,10 @@ fn esc_leaves_visual_mode_then_the_block_then_the_detail_and_ctrl_d_discards_a_d
     press(&mut g, KeyCode::Esc);
     assert!(inside(&g), "only out of visual mode");
     press(&mut g, KeyCode::Esc);
-    assert!(!inside(&g) && matches!(g.mode, Mode::Detail(_)), "out of the block");
+    assert!(
+        !inside(&g) && matches!(g.mode, Mode::Detail(_)),
+        "out of the block"
+    );
     // A draft stays until it is posted or thrown away.
     ch(&mut g, 'c');
     type_str(&mut g, "half");
@@ -1553,11 +1623,15 @@ fn the_users_own_reactions_are_found_and_marked() {
         ("api user", Ok(r#"{"login":"me"}"#)),
         (
             "issues/12/reactions?per_page=100",
-            Ok(r#"[{"id":1,"user":{"login":"bob"},"content":"heart"},{"id":2,"user":{"login":"me"},"content":"heart"}]"#),
+            Ok(
+                r#"[{"id":1,"user":{"login":"bob"},"content":"heart"},{"id":2,"user":{"login":"me"},"content":"heart"}]"#,
+            ),
         ),
         (
             "comments/501/reactions?per_page=100",
-            Ok(r#"[{"id":3,"user":{"login":"me"},"content":"eyes"},{"id":4,"user":{"login":"bob"},"content":"+1"}]"#),
+            Ok(
+                r#"[{"id":3,"user":{"login":"me"},"content":"eyes"},{"id":4,"user":{"login":"bob"},"content":"+1"}]"#,
+            ),
         ),
     ]);
     let g = opened_issue(&fake);
@@ -1569,7 +1643,10 @@ fn the_users_own_reactions_are_found_and_marked() {
         detail.reactions
     );
     let comment = &detail.comments[0].reactions;
-    let mine: Vec<(&str, bool)> = comment.iter().map(|r| (r.content.as_str(), r.mine)).collect();
+    let mine: Vec<(&str, bool)> = comment
+        .iter()
+        .map(|r| (r.content.as_str(), r.mine))
+        .collect();
     assert_eq!(mine, [("THUMBS_UP", false), ("EYES", true)]);
     // An item nobody reacted to costs no extra asks.
     let quiet = Fake::acme();
@@ -1597,16 +1674,33 @@ fn editable() -> Arc<Fake> {
         ("repo view", Ok(REPO)),
         ("issue list", Ok(ISSUES)),
         ("issue view 12", Ok(ISSUE_SETUP)),
-        ("repos/acme/site/labels", Ok(r#"[{"name":"bug","color":"d73a4a"},{"name":"docs","color":"0075ca"}]"#)),
-        ("assignees", Ok(r#"[{"login":"alice","avatar_url":""},{"login":"bob","avatar_url":""}]"#)),
+        (
+            "repos/acme/site/labels",
+            Ok(r#"[{"name":"bug","color":"d73a4a"},{"name":"docs","color":"0075ca"}]"#),
+        ),
+        (
+            "assignees",
+            Ok(r#"[{"login":"alice","avatar_url":""},{"login":"bob","avatar_url":""}]"#),
+        ),
         ("orgs/acme/issue-fields", Ok(ORG_FIELDS)),
-        ("orgs/acme/issue-types", Ok(r#"[{"name":"Bug"},{"name":"Feature"}]"#)),
-        ("repos/acme/site/milestones", Ok(r#"[{"title":"v1"},{"title":"v2"}]"#)),
+        (
+            "orgs/acme/issue-types",
+            Ok(r#"[{"name":"Bug"},{"name":"Feature"}]"#),
+        ),
+        (
+            "repos/acme/site/milestones",
+            Ok(r#"[{"title":"v1"},{"title":"v2"}]"#),
+        ),
         (
             "issue-field-values",
-            Ok(r#"[{"issue_field_name":"Priority","single_select_option":{"name":"Low"},"value":2}]"#),
+            Ok(
+                r#"[{"issue_field_name":"Priority","single_select_option":{"name":"Low"},"value":2}]"#,
+            ),
         ),
-        ("project list", Ok(r#"{"projects":[{"title":"Roadmap"},{"title":"Ideas"}]}"#)),
+        (
+            "project list",
+            Ok(r#"{"projects":[{"title":"Roadmap"},{"title":"Ideas"}]}"#),
+        ),
     ])
 }
 
@@ -1624,7 +1718,15 @@ fn the_detail_says_what_is_set_on_the_issue() {
     let fake = editable();
     let mut g = opened_issue(&fake);
     let shown = screen(&mut g, 140, 24);
-    for part in ["assigned to bob", "milestone v1", "type Bug", "Priority Low", "projects Roadmap", "parent #3", "blocked by #4"] {
+    for part in [
+        "assigned to bob",
+        "milestone v1",
+        "type Bug",
+        "Priority Low",
+        "projects Roadmap",
+        "parent #3",
+        "blocked by #4",
+    ] {
         assert!(shown.contains(part), "{part}\n{shown}");
     }
 }
@@ -1638,19 +1740,28 @@ fn you_or_someone_is_assigned_from_a_list_that_toggles() {
     assert!(screen(&mut g, 80, 24).contains("@me (yourself)"));
     keys(&mut g, " \n");
     settle(&mut g);
-    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --add-assignee @me"]);
+    assert_eq!(
+        fake.writes(),
+        ["issue edit 12 -R acme/site --add-assignee @me"]
+    );
     // Filter by typing, toggle, and take bob (already on) off.
     let fake = editable();
     let mut g = opened_issue(&fake);
     keys(&mut g, "Aalice ");
     keys(&mut g, "\n");
     settle(&mut g);
-    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --add-assignee alice"]);
+    assert_eq!(
+        fake.writes(),
+        ["issue edit 12 -R acme/site --add-assignee alice"]
+    );
     let fake = editable();
     let mut g = opened_issue(&fake);
     keys(&mut g, "Abob \n");
     settle(&mut g);
-    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --remove-assignee bob"]);
+    assert_eq!(
+        fake.writes(),
+        ["issue edit 12 -R acme/site --remove-assignee bob"]
+    );
     // Nothing toggled is no write.
     let fake = editable();
     let mut g = opened_issue(&fake);
@@ -1666,13 +1777,19 @@ fn labels_toggle_in_their_own_colors() {
     keys(&mut g, "Ldocs ");
     keys(&mut g, "\n");
     settle(&mut g);
-    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --add-label docs"]);
+    assert_eq!(
+        fake.writes(),
+        ["issue edit 12 -R acme/site --add-label docs"]
+    );
     let fake = editable();
     let mut g = opened_issue(&fake);
     settle(&mut g);
     keys(&mut g, "Lbug \n");
     settle(&mut g);
-    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --remove-label bug"]);
+    assert_eq!(
+        fake.writes(),
+        ["issue edit 12 -R acme/site --remove-label bug"]
+    );
 }
 
 #[test]
@@ -1706,7 +1823,9 @@ fn an_issue_field_is_set_from_its_options_or_a_typed_value() {
     settle(&mut g);
     assert_eq!(
         fake.writes(),
-        ["api -X POST repos/acme/site/issues/12/issue-field-values --input - <<< {\"issue_field_values\":[{\"field_id\":11,\"value\":\"High\"}]}"]
+        [
+            "api -X POST repos/acme/site/issues/12/issue-field-values --input - <<< {\"issue_field_values\":[{\"field_id\":11,\"value\":\"High\"}]}"
+        ]
     );
     // A field that is not a single select takes what is typed.
     let fake = editable();
@@ -1716,7 +1835,10 @@ fn an_issue_field_is_set_from_its_options_or_a_typed_value() {
     keys(&mut g, "Target\n");
     keys(&mut g, "2026-12-01\n");
     settle(&mut g);
-    assert!(fake.writes()[0].ends_with("{\"issue_field_values\":[{\"field_id\":12,\"value\":\"2026-12-01\"}]}"));
+    assert!(
+        fake.writes()[0]
+            .ends_with("{\"issue_field_values\":[{\"field_id\":12,\"value\":\"2026-12-01\"}]}")
+    );
 }
 
 #[test]
@@ -1735,12 +1857,18 @@ fn relations_take_the_number_of_another_issue() {
     press(&mut g, KeyCode::Backspace);
     keys(&mut g, "9\n");
     settle(&mut g);
-    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --add-blocked-by 9"]);
+    assert_eq!(
+        fake.writes(),
+        ["issue edit 12 -R acme/site --add-blocked-by 9"]
+    );
     let fake = editable();
     let mut g = opened_issue(&fake);
     keys(&mut g, "RRemove the parent\n");
     settle(&mut g);
-    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --remove-parent"]);
+    assert_eq!(
+        fake.writes(),
+        ["issue edit 12 -R acme/site --remove-parent"]
+    );
 }
 
 #[test]
@@ -1751,7 +1879,10 @@ fn projects_come_from_gh_and_a_failure_says_how_to_fix_it() {
     settle(&mut g);
     keys(&mut g, "Ideas \n");
     settle(&mut g);
-    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --add-project Ideas"]);
+    assert_eq!(
+        fake.writes(),
+        ["issue edit 12 -R acme/site --add-project Ideas"]
+    );
     // Without the project scope.
     let fake = Fake::new(&[
         ("repo view", Ok(REPO)),
@@ -1759,12 +1890,22 @@ fn projects_come_from_gh_and_a_failure_says_how_to_fix_it() {
         ("issue view 12", Ok(ISSUE_SETUP)),
         ("labels", Ok("[]")),
         ("assignees", Ok("[]")),
-        ("project list", Err(GhError::Other("missing required scopes [read:project]".into()))),
+        (
+            "project list",
+            Err(GhError::Other(
+                "missing required scopes [read:project]".into(),
+            )),
+        ),
     ]);
     let mut g = opened_issue(&fake);
     keys(&mut g, "P");
     settle(&mut g);
-    assert!(g.note.as_deref().unwrap_or("").contains("gh auth refresh -s project"));
+    assert!(
+        g.note
+            .as_deref()
+            .unwrap_or("")
+            .contains("gh auth refresh -s project")
+    );
     assert!(g.writing.is_none());
 }
 
@@ -1774,7 +1915,10 @@ fn m_shows_the_keys_that_edit() {
     let mut g = opened_issue(&fake);
     keys(&mut g, "m");
     let shown = screen(&mut g, 100, 24);
-    assert!(shown.contains("assignees") && shown.contains("relations"), "{shown}");
+    assert!(
+        shown.contains("assignees") && shown.contains("relations"),
+        "{shown}"
+    );
     keys(&mut g, "A");
     assert!(matches!(g.writing, Some(write::Writing::Pick(_))));
 }
@@ -1786,14 +1930,19 @@ fn the_description_is_edited_in_a_box_that_starts_with_its_text() {
     screen(&mut g, 70, 24);
     ch(&mut g, 'j');
     ch(&mut g, 'E');
-    assert_eq!(g.body_edit.text(), "Opening the menu shifts the header.\nSecond line.");
+    assert_eq!(
+        g.body_edit.text(),
+        "Opening the menu shifts the header.\nSecond line."
+    );
     assert!(screen(&mut g, 70, 24).contains("Edit the description of #12"));
     type_str(&mut g, " More.");
     ctrl(&mut g, 's');
     settle(&mut g);
     assert_eq!(
         fake.writes(),
-        ["issue edit 12 -R acme/site --body-file - <<< Opening the menu shifts the header.\nSecond line. More."]
+        [
+            "issue edit 12 -R acme/site --body-file - <<< Opening the menu shifts the header.\nSecond line. More."
+        ]
     );
     // Esc drops the changes.
     let fake = with_links();
@@ -1818,7 +1967,9 @@ fn the_comment_in_focus_is_edited_by_its_number() {
     settle(&mut g);
     assert_eq!(
         fake.writes(),
-        ["api -X PATCH repos/acme/site/issues/comments/501 --input - <<< {\"body\":\"I can reproduce this.!\"}"]
+        [
+            "api -X PATCH repos/acme/site/issues/comments/501 --input - <<< {\"body\":\"I can reproduce this.!\"}"
+        ]
     );
     assert!(screen(&mut g, 70, 24).contains("comment saved"));
 }
@@ -1835,7 +1986,10 @@ fn the_title_is_a_line_that_starts_with_the_old_one() {
     type_str(&mut g, "flickers");
     press(&mut g, KeyCode::Enter);
     settle(&mut g);
-    assert_eq!(fake.writes(), ["issue edit 12 -R acme/site --title Header flickers"]);
+    assert_eq!(
+        fake.writes(),
+        ["issue edit 12 -R acme/site --title Header flickers"]
+    );
     // The same title, or none, is not a write.
     let fake = with_links();
     let mut g = opened_issue(&fake);

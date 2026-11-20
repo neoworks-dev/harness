@@ -172,7 +172,10 @@ impl DiffView {
 
     /// The path the view shows, as the prompt names it.
     pub(crate) fn rel(&self) -> Option<&str> {
-        self.req.as_ref().map(|r| r.rel.as_str()).or(self.lang.as_deref())
+        self.req
+            .as_ref()
+            .map(|r| r.rel.as_str())
+            .or(self.lang.as_deref())
     }
 
     /// A comment back on its lines (one that could not be posted), to be tried again.
@@ -250,7 +253,11 @@ impl DiffView {
             };
             let (_, muted) = colors;
             for r in &self.remarks {
-                put(r.line, r.old, block(&r.head, &r.text, width, false, (muted, muted)));
+                put(
+                    r.line,
+                    r.old,
+                    block(&r.head, &r.text, width, false, (muted, muted)),
+                );
             }
             for (i, c) in self.comments.iter().enumerate() {
                 if Some(i) != editing {
