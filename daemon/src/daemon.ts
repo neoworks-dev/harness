@@ -12,6 +12,7 @@ import type {
 } from "@neoworks-dev/neo-protocol/types";
 import defaultTheme from "../../protocol/themes/default.json";
 import { ActionRunner, neoUiTools } from "./actions.ts";
+import { surfaceTool } from "./surfaces.ts";
 import { Todos, todosTool } from "./todos.ts";
 import { AssetStore } from "./assets.ts";
 import { FocusManager } from "./focus.ts";
@@ -421,6 +422,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     visible: (app, session) => toolFolders.visible(app, session),
     // A subagent changes the list as itself, the session's agent as its harness.
     todos: (session, guest, args) => todosTool(todos, session, guest ?? harnessOf(session), args),
+    surfaces: (session, args) => surfaceTool(store, session, args, connectors.componentsOf()),
     resolveAsset: (handle) => assets.resolve(handle),
     recordResult: (session, result) => {
       store.append(session, result);

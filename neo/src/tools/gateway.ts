@@ -29,6 +29,7 @@ const LABELS: Record<CoreToolName, string> = {
   wait: "Wait",
   todos: "Todos",
   ui_library: "UI library",
+  ui_surface: "Surface",
   skills_load: "Load skill",
 };
 

@@ -421,6 +421,7 @@ test("the system prompt and tools are sent unchanged on every request", async ()
       "wait",
       "todos",
       "ui_library",
+      "ui_surface",
       "skills_load",
     ],
   });

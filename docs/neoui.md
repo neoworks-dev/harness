@@ -50,6 +50,7 @@ A surface is a neoui program of a session that stays: not in a message but in a 
 
 - **Log.** `surface_opened {name, place, source, title?}` opens one, or replaces the open one of that name (an update); `surface_closed {name}` closes it. Neither is a context event. Being in the log, surfaces survive restarts and replays.
 - **View.** The session view keeps them apart from the chat's items: each is a `ViewItem` with ref `s-<name>`, kind `tool`, the title (or name) as `label`, a `place`, and a `neoui` component. `ViewSnapshot.surfaces` lists them in the order they opened, never cut by a `tail`. Patches use the usual ops: `set` with an item that has a `place` adds or updates a surface (never `appended`), `remove` with its ref closes it. A per-agent view has none.
+- **The agent** opens them with `ui_surface` (a gateway core tool, every harness has it): `open {name, source, place?, title?}` opens one or updates it (an update keeps the place and title it had unless given), `close {name}`, `list`. A program with mistakes is refused with them (`ui-lint`'s check), so the user never sees a broken one; a name is a lower-case slug (`training-status`).
 - **Programs.** A surface's doc runs like a message's: `neoui.input` and `neoui.press` reach it by its ref, a `<Query>` polls only while the view is watched, an answer patches it, and closing it stops its timers.
 
 ## The wire format

@@ -155,3 +155,60 @@ describe("using a surface", () => {
     expect(JSON.stringify(sent)).toContain('{\\"lr\\":\\"0.01\\"}');
   });
 });
+
+describe("the ui_surface tool", () => {
+  const said = (result: { content: { type: string; text?: string }[] }): string =>
+    result.content.map((part) => part.text ?? "").join("\n");
+
+  test("open, update, list and close, through the gateway; the view follows", async () => {
+    const daemon = await startTestDaemon();
+    cleanups.push(() => daemon.stop());
+    const session = daemon.focus.current().session;
+    const call = (args: Record<string, unknown>) =>
+      daemon.gateway.call("ui_surface", args, undefined, { session });
+
+    const first = await call({
+      action: "open",
+      name: "run",
+      source: '<Progress value={0.2} label="run"/>',
+      title: "Run",
+    });
+    expect(said(first)).toBe("Opened run (bottom).");
+    const updated = await call({
+      action: "open",
+      name: "run",
+      source: '<Progress value={0.6} label="run"/>',
+    });
+    expect(said(updated)).toBe("Updated run (bottom).");
+    const surfaces = daemon.views.get(session).snapshot().surfaces ?? [];
+    expect(surfaces).toHaveLength(1);
+    // The update keeps the title and place it had.
+    expect(surfaces[0]).toMatchObject({ ref: "s-run", label: "Run", place: "bottom" });
+    expect(JSON.stringify(surfaces[0])).toContain("0.6");
+    expect(said(await call({ action: "list" }))).toBe("- run (bottom): Run");
+
+    expect(said(await call({ action: "close", name: "run" }))).toBe("Closed run.");
+    expect(daemon.views.get(session).snapshot().surfaces).toBeUndefined();
+    expect(said(await call({}))).toBe("No surfaces are open.");
+  });
+
+  test("a program with mistakes, a bad name or place is refused, and nothing opens", async () => {
+    const daemon = await startTestDaemon();
+    cleanups.push(() => daemon.stop());
+    const session = daemon.focus.current().session;
+    const call = (args: Record<string, unknown>) =>
+      daemon.gateway.call("ui_surface", args, undefined, { session });
+
+    const wrong = await call({ action: "open", name: "x", source: "<Progres value={1}/>" });
+    expect(wrong.isError).toBe(true);
+    expect(said(wrong)).toContain("Progress");
+    expect(
+      (await call({ action: "open", name: "Bad Name", source: "<Text>a</Text>" })).isError,
+    ).toBe(true);
+    expect(
+      (await call({ action: "open", name: "x", source: "<Text>a</Text>", place: "top" })).isError,
+    ).toBe(true);
+    expect((await call({ action: "close", name: "x" })).isError).toBe(true);
+    expect(daemon.store.readTypes(session, ["surface_opened"])).toHaveLength(0);
+  });
+});

@@ -1,5 +1,5 @@
 // The connector-facing core tools (tools_search, tools_call, apps_launch, apps_focus, delegate,
-// models, send_message, wait, todos, ui_library, skills_load),
+// models, send_message, wait, todos, ui_library, ui_surface, skills_load),
 // shared by the harness (native definitions) and the MCP gateway (which implements them).
 import data from "../core-tools.json";
 
@@ -20,6 +20,7 @@ export type CoreToolName =
   | "wait"
   | "todos"
   | "ui_library"
+  | "ui_surface"
   | "skills_load";
 
 export interface ToolsSearchArgs {
@@ -88,6 +89,7 @@ export function isCoreToolName(name: string): name is CoreToolName {
     "wait",
     "todos",
     "ui_library",
+    "ui_surface",
     "skills_load",
   ].includes(name);
 }

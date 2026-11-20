@@ -45,6 +45,8 @@ export interface GatewayOptions {
   recordResult?: (session: string, result: ToolResult) => void;
   /** The file behind an asset:// handle, named in results for guests. */
   resolveAsset?: (handle: string) => string | undefined;
+  /** The session's surfaces (the ui_surface tool). */
+  surfaces?: (session: string, args: Record<string, unknown>) => CallToolResult;
   /** The session's shared todo list (the todos tool); `guest` names a subagent. */
   todos?: (
     session: string,
@@ -258,6 +260,11 @@ export class Gateway {
         if (names !== undefined && names.length > 0) return text(uiLookupText(all, open, names));
         return text(uiLibraryText(all, open));
       }
+      case "ui_surface":
+        if (!this.options.surfaces || session === undefined) {
+          return text("Surfaces can't be opened here.", true);
+        }
+        return this.options.surfaces(session, args);
       case "skills_load":
         if (typeof args.app !== "string") return text("skills_load: app is required", true);
         if (typeof args.name !== "string") return text("skills_load: name is required", true);

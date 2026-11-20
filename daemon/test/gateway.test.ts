@@ -625,6 +625,7 @@ describe("over real MCP", () => {
       "wait",
       "todos",
       "ui_library",
+      "ui_surface",
       "skills_load",
     ]);
     const found = await client.callTool({ name: "tools_search", arguments: { query: "hello" } });

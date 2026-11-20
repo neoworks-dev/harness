@@ -206,6 +206,38 @@
       }
     },
     {
+      "name": "ui_surface",
+      "description": "Open, update or close a surface: neoui that stays, outside the chat, in a bar over the input (bottom), a panel beside the chat (side) or the chat's place (page). For what lasts or follows live data: a run's progress polled with <Query hx-trigger=\"every 2s\">, controls whose buttons call tools, a dashboard. open with a name and the program's source (the same name again updates it), close with the name, list what is open. A program with mistakes is refused with them. Read ui_library first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["open", "close", "list"],
+            "description": "Default list."
+          },
+          "name": {
+            "type": "string",
+            "description": "For open and close: the surface's name, lower case with -, like training-status."
+          },
+          "source": {
+            "type": "string",
+            "description": "For open: the neoui program (what goes in a ```neoui block)."
+          },
+          "place": {
+            "type": "string",
+            "enum": ["bottom", "side", "page"],
+            "description": "For open: where it is drawn. Default bottom, or where it already is."
+          },
+          "title": {
+            "type": "string",
+            "description": "For open: what the user sees it called; the name when absent."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "skills_load",
       "description": "Load one of an app's skills: its instructions for a kind of work in it, as the app announced them (skills=…). Load one before you start the work it covers.",
       "inputSchema": {
