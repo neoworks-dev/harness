@@ -300,3 +300,15 @@ test("the training example's surface files have no mistakes", () => {
     expect(mistakesIn(`\`\`\`neoui\n${file?.source}\n\`\`\``)).toEqual([]);
   }
 });
+
+test("a surface's close button (neo.surface.close on its ref) closes it", async () => {
+  const daemon = await startTestDaemon();
+  cleanups.push(() => daemon.stop());
+  const session = daemon.focus.current().session;
+  daemon.store.append(session, opened("bar", "<Text>a</Text>"));
+  await daemon.actions.run({ session, ref: "s-bar", action: "neo.surface.close" }, "test");
+  expect(daemon.views.get(session).snapshot().surfaces).toBeUndefined();
+  await expect(
+    daemon.actions.run({ session, ref: "s-bar", action: "neo.surface.close" }, "test"),
+  ).rejects.toThrow("no surface bar is open");
+});

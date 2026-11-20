@@ -4,6 +4,7 @@
   import squares from "@phosphor-icons/core/regular/squares-four.svg";
   import Card from "../../widgets/Card.svelte";
   import { useCtx } from "../../kernel/slots/context.ts";
+  import CloseButton from "./CloseButton.svelte";
   import SurfaceView from "./SurfaceView.svelte";
   import { inPlace, titleOf } from "./surfaces.ts";
 
@@ -13,6 +14,7 @@
 
 {#each panels as panel (panel.ref)}
   <Card title={titleOf(panel)} icon={squares}>
+    {#snippet end()}<CloseButton surface={panel} />{/snippet}
     <Scroll style={{ minHeight: 0, shrink: 1 }}>
       <SurfaceView surface={panel} own />
     </Scroll>

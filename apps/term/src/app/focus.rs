@@ -99,6 +99,18 @@ impl App {
             return;
         };
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // Ctrl-D: the close button every surface has. The daemon closes it, for every client.
+        if ctrl && key.code == KeyCode::Char('d') {
+            self.forms.blur(&r, self.now_ms);
+            fx.push(Effect::Action {
+                session: self.session.clone(),
+                item: r,
+                action: "neo.surface.close".into(),
+                args: None,
+            });
+            self.focus = None;
+            return;
+        }
         if ctrl && matches!(key.code, KeyCode::Char('n' | 'p')) && self.pages.shown.is_none() {
             let n = surface::strip(self.chat.surfaces(), None).len().max(1);
             let by = if key.code == KeyCode::Char('n') {

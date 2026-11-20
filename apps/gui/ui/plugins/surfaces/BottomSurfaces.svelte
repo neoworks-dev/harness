@@ -4,6 +4,7 @@
   import { Button, Icon, Text, View } from "@neoworks/svelte-gpui/ui";
   import arrowsOut from "@phosphor-icons/core/regular/arrows-out-simple.svg";
   import { useCtx } from "../../kernel/slots/context.ts";
+  import CloseButton from "./CloseButton.svelte";
   import { surfaces } from "./state.svelte.ts";
   import SurfaceView from "./SurfaceView.svelte";
   import { inPlace, titleOf } from "./surfaces.ts";
@@ -18,7 +19,10 @@
   <View style={{ gap: 6, paddingBottom: 8 }}>
     {#each bars as bar (bar.ref)}
       <View style={{ gap: 4, paddingX: 12, paddingY: 8, radius: p.radius.m, background: p.surface, borderWidth: 1, borderColor: p.border }}>
-        <Text style={{ fontSize: 11, color: p.muted, fontWeight: "medium" }}>{titleOf(bar)}</Text>
+        <View style={{ direction: "row", align: "center", gap: 6 }}>
+          <Text style={{ flex: 1, minWidth: 0, truncate: true, fontSize: 11, color: p.muted, fontWeight: "medium" }}>{titleOf(bar)}</Text>
+          <CloseButton surface={bar} />
+        </View>
         <SurfaceView surface={bar} />
       </View>
     {/each}

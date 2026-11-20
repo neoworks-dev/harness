@@ -6,6 +6,7 @@
   import { useCtx } from "../../kernel/slots/context.ts";
   import Column from "../../widgets/Column.svelte";
   import { surfaces } from "./state.svelte.ts";
+  import CloseButton from "./CloseButton.svelte";
   import SurfaceView from "./SurfaceView.svelte";
   import { titleOf } from "./surfaces.ts";
 
@@ -26,6 +27,7 @@
         <Text>Back to the chat</Text>
       </Button>
       <Text style={{ flex: 1, minWidth: 0, truncate: true, fontWeight: "medium" }}>{titleOf(page)}</Text>
+      <CloseButton surface={page} size={26} />
     </View>
     <Scroll style={{ flex: 1, minHeight: 0 }}>
       <Column style={{ paddingY: 16 }}>

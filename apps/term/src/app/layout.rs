@@ -232,13 +232,25 @@ impl App {
                 self.styles.muted
             };
             match entry {
-                surface::Entry::Surface(s) => out.extend(surface::lines(
-                    s,
-                    width,
-                    self.palette,
-                    self.forms.doc_states(&s.r#ref),
-                    style,
-                )),
+                surface::Entry::Surface(s) => {
+                    let mut lines = surface::lines(
+                        s,
+                        width,
+                        self.palette,
+                        self.forms.doc_states(&s.r#ref),
+                        style,
+                    );
+                    // The focused one says how it closes, on its title's line.
+                    if focused == Some(i)
+                        && let Some(title) = lines.first_mut()
+                    {
+                        title.spans.push(Span::styled(
+                            "  ctrl-d closes · ctrl-n next",
+                            self.styles.muted,
+                        ));
+                    }
+                    out.extend(lines);
+                }
                 surface::Entry::Page(p) => out.push(surface::page_line(p, style)),
             }
         }
@@ -252,7 +264,7 @@ impl App {
         };
         let mut out = vec![
             Line::from(Span::styled(
-                "Esc back to the chat · Tab to its fields",
+                "Esc back to the chat · Tab to its fields · Ctrl-D closes it",
                 self.styles.muted,
             )),
             Line::default(),

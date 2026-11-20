@@ -160,3 +160,30 @@ fn a_surface_s_button_is_pressed_from_the_keys_and_sent_with_its_ref() {
         Effect::Action { item, action, .. } if item == "s-knobs" && action == "neoui.press"
     )));
 }
+
+#[test]
+fn ctrl_d_closes_the_focused_surface_through_the_daemon() {
+    let mut app = app();
+    show(
+        &mut app,
+        vec![surface(
+            "run",
+            "bottom",
+            "Training",
+            node("Header", json!({"title": "epoch 3"})),
+        )],
+    );
+    text(&mut app);
+    app.handle_key(key(KeyCode::Tab));
+    assert_eq!(app.focus, Some(Focus::Surfaces));
+    assert!(text(&mut app).contains("ctrl-d closes"));
+    let effects = app.handle_key(KeyEvent {
+        modifiers: KeyModifiers::CONTROL,
+        ..key(KeyCode::Char('d'))
+    });
+    assert!(effects.iter().any(|e| matches!(
+        e,
+        Effect::Action { item, action, .. } if item == "s-run" && action == "neo.surface.close"
+    )));
+    assert_eq!(app.focus, None);
+}

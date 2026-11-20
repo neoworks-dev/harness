@@ -10,6 +10,7 @@ import type { ConnectorRegistry } from "./gateway/registry.ts";
 import type { Asker } from "./asker.ts";
 import type { SessionManager } from "./sessions.ts";
 import type { SessionStore } from "./store.ts";
+import type { Surfaces } from "./surfaces.ts";
 import type { ViewManager } from "./view/views.ts";
 import { parseTodoArgs, type Todos } from "./todos.ts";
 
@@ -24,6 +25,8 @@ export interface Parts {
   cancelAgent?: (session: string, id: string) => boolean;
   /** The shared todo list the user changes from an app (neo.todos {action, text?, id?}). */
   todos?: Todos;
+  /** The session's surfaces: their close button (neo.surface.close on the surface's ref). */
+  surfaces?: Pick<Surfaces, "close">;
 }
 
 /**
@@ -168,6 +171,16 @@ export class ActionRunner {
     }
     if (action === "neoui.input" || action === "neoui.press") {
       await this.neoUi(session, ref, action, args, from);
+      return;
+    }
+    if (action === "neo.surface.close") {
+      // The close button every client gives a surface: its ref is s-<name>.
+      if (!ref.startsWith("s-") || !this.parts.surfaces) {
+        throw new BadRequestError("neo.surface.close is for a surface (ref s-<name>)");
+      }
+      if (!this.parts.surfaces.close(session, ref.slice(2))) {
+        throw new BadRequestError(`no surface ${ref.slice(2)} is open`);
+      }
       return;
     }
     if (action === "neo.cancel_agent") {

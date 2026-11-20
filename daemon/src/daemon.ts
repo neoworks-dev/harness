@@ -469,6 +469,7 @@ export async function createDaemon(options: DaemonOptions): Promise<Daemon> {
     asker,
     cancelAgent: (session, id) => delegate.cancel(session, id) || guests.cancelNative(session, id),
     todos,
+    surfaces,
   });
   const notice = (session: string, text: string, tone?: "muted" | "danger"): void => {
     store.append(
