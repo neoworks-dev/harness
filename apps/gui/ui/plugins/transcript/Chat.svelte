@@ -2,9 +2,13 @@
   // The session's chat: its items as rows (rows.ts: a finished turn's work folded, tool calls
   // grouped), each drawn by the renderer registered for its kind (`chat.row`), following the end
   // as the agent writes.
+  import { untrack } from "svelte";
   import { window } from "@neoworks/svelte-gpui";
-  import { List } from "@neoworks/svelte-gpui/ui";
+  import { List, View } from "@neoworks/svelte-gpui/ui";
+  import type { Layout, WheelEvent } from "@neoworks/svelte-gpui/ui";
   import { useCtx } from "../../kernel/slots/context.ts";
+  import { lastAtOrBefore, Offsets } from "../../lib/offsets.ts";
+  import { scrollSync } from "../../lib/scroll-sync.svelte.ts";
   import { Follow } from "../../widgets/follow.ts";
   import Slot from "../../kernel/slots/Slot.svelte";
   import { estimateRow } from "./estimate.ts";
@@ -28,7 +32,7 @@
     })),
   );
 
-  let list: { scrollToIndex(index: number, options: { align: "end" | "nearest" }): void } | undefined = $state();
+  let list: { scrollToIndex(index: number, options: { align: "end" | "nearest" | "center" }): void } | undefined = $state();
 
   // Ctrl-P finds its docs in these rows.
   $effect(() =>
@@ -63,6 +67,40 @@
     return () => cancelAnimationFrame(frame);
   });
 
+  // In step with the terminal panel (lib/scroll-sync): scrolled up, the terminal shows the newest
+  // command at or above the chat's last row; back at the end, its end. Asked by the terminal, the
+  // chat brings that command's row into view.
+  const offsets = new Offsets();
+  let viewport = 0;
+  /** The ids of each row's work, to find a command's row and the commands above a place. */
+  const rowIds = $derived(rows.map((row) => (row.kind === "work" ? row.entries.map((entry) => entry.id) : [])));
+  const commands = $derived(
+    new Set(rows.flatMap((row) => (row.kind === "work" ? row.entries.filter((e) => e.kind === "command").map((e) => e.id) : []))),
+  );
+  let told: string | undefined;
+  function scrolled(position: { y: number; maxY: number }): void {
+    follow.scrolled(position.y, position.maxY, Date.now());
+    let ref: string | "end" | undefined = "end";
+    if (!follow.following) {
+      const keys = rows.map((row) => row.key);
+      const bottom = offsets.indexAt(position.y + viewport - 1, keys, (index) => estimateRow(rows[index]!, column));
+      ref = lastAtOrBefore(bottom, rowIds, (id) => commands.has(id));
+    }
+    if (ref === undefined || ref === told) return;
+    told = ref;
+    scrollSync.fromChat(ref);
+  }
+  let asked = 0;
+  $effect(() => {
+    const ask = scrollSync.chat;
+    if (ask === undefined || ask.seq === asked) return;
+    asked = ask.seq;
+    const index = rowIds.findIndex((ids) => ids.includes(ask.ref));
+    if (index < 0) return;
+    follow.following = false;
+    untrack(() => list?.scrollToIndex(index, { align: "center" }));
+  });
+
   // The list is built anew when the window's width changes: a List that is resized keeps stale
   // row heights, so rows overlap (svelte-gpui #31). Until that is fixed, a resize returns the
   // chat to its end.
@@ -72,17 +110,26 @@
 </script>
 
 {#key width}
+<View
+  style={{ flex: 1, minHeight: 0 }}
+  onresize={(box: Layout) => (viewport = box.height)}
+  onwheel={(event: WheelEvent) => follow.touched(Date.now(), event.dy)}
+  ondown={() => follow.touched(Date.now())}
+>
 <List
   bind:this={list}
   items={rows}
   key={(row: Row) => row.key}
   estimatedRowHeight={(row: Row) => estimateRow(row, column)}
   stickToEnd
-  onscroll={(position: { y: number; maxY: number }) => follow.scrolled(position.y, position.maxY)}
+  onscroll={scrolled}
   style={{ flex: 1, minHeight: 0 }}
 >
   {#snippet row(row: Row)}
-    <Slot name="chat.row" key={row.kind} props={{ row }} />
+    <View onresize={(box: Layout) => offsets.set(row.key, box.height)}>
+      <Slot name="chat.row" key={row.kind} props={{ row }} />
+    </View>
   {/snippet}
 </List>
+</View>
 {/key}

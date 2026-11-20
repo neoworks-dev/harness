@@ -2,7 +2,11 @@
   // The commands the agent and its guests ran, in a panel beside the conversation: each a header
   // (how it stands, what it is for, how it ended and how long it took), the command, and its output
   // as it comes, mono. Follows the newest output while it is scrolled to the end.
+  import { untrack } from "svelte";
   import { Button, Icon, List, Text, View } from "@neoworks/svelte-gpui/ui";
+  import type { Layout, WheelEvent } from "@neoworks/svelte-gpui/ui";
+  import { Offsets } from "../../lib/offsets.ts";
+  import { scrollSync } from "../../lib/scroll-sync.svelte.ts";
   import xIcon from "@phosphor-icons/core/regular/x.svg";
   import { useCtx } from "../../kernel/slots/context.ts";
   import Spinner from "../../widgets/Spinner.svelte";
@@ -49,6 +53,42 @@
     return () => cancelAnimationFrame(frame);
   });
 
+  // In step with the chat (lib/scroll-sync): scrolled up, the chat shows the command at the top of
+  // the panel; asked by the chat, the panel shows a command (at its bottom) or its end.
+  /** What List counts a row not drawn yet as. */
+  const ESTIMATE = 40;
+  const offsets = new Offsets();
+  let told: string | undefined;
+  function scrolled(position: { y: number; maxY: number }): void {
+    follow.scrolled(position.y, position.maxY, Date.now());
+    if (follow.following || alone !== undefined) {
+      told = undefined;
+      return;
+    }
+    const index = offsets.indexAt(position.y + 1, runs.map((run) => run.id), () => ESTIMATE);
+    const ref = runs[index]?.id;
+    if (ref === undefined || ref === told) return;
+    told = ref;
+    scrollSync.fromTerminal(ref);
+  }
+  let asked = 0;
+  $effect(() => {
+    const ask = scrollSync.terminal;
+    if (ask === undefined || ask.seq === asked || alone !== undefined) return;
+    asked = ask.seq;
+    untrack(() => {
+      if (ask.ref === "end") {
+        follow.reset();
+        list?.scrollToIndex(runs.length - 1, { align: "end" });
+        return;
+      }
+      const index = runs.findIndex((run) => run.id === ask.ref);
+      if (index < 0) return;
+      follow.following = false;
+      list?.scrollToIndex(index, { align: "end" });
+    });
+  });
+
   async function stopJob(id: string): Promise<void> {
     const why = await terminalData.stop(id);
     if (why !== undefined) daemon.error = `Could not stop it: ${why}`;
@@ -90,17 +130,25 @@
       <Text style={{ color: p.muted, textAlign: "center" }}>No commands yet. They show here once the agent runs one.</Text>
     </View>
   {:else}
+    <View
+      style={{ flex: 1, minHeight: 0 }}
+      onwheel={(event: WheelEvent) => follow.touched(Date.now(), event.dy)}
+      ondown={() => follow.touched(Date.now())}
+    >
     <List
       bind:this={list}
       items={runs}
       key={(run: TerminalRun) => run.id}
       stickToEnd
-      onscroll={(position: { y: number; maxY: number }) => follow.scrolled(position.y, position.maxY)}
+      onscroll={scrolled}
       style={{ flex: 1, minHeight: 0 }}
     >
       {#snippet row(run: TerminalRun)}
         {@const time = took(run)}
-        <View style={{ paddingX: 12, paddingTop: 10, paddingBottom: 4, gap: 6 }}>
+        <View
+          onresize={(box: Layout) => offsets.set(run.id, box.height)}
+          style={{ paddingX: 12, paddingTop: 10, paddingBottom: 4, gap: 6 }}
+        >
           <View style={{ direction: "row", align: "center", gap: 8, paddingX: 8, paddingY: 4, radius: p.radius.s, background: p.surface }}>
             {#if run.state === "running"}
               <View style={{ color: p.accent }}><Spinner /></View>
@@ -141,5 +189,6 @@
         </View>
       {/snippet}
     </List>
+    </View>
   {/if}
 </View>
