@@ -406,6 +406,23 @@ function planEntries(value: unknown): PlanEntry[] {
 }
 
 /**
+ * A raw tool output with the base64 bytes of its pictures left out (`data: ""`), its shape kept:
+ * Anthropic's `{type: "image", source: {type: "base64", data}}` and MCP's `{type: "image", data}`.
+ */
+export function withoutImageData(raw: unknown): unknown {
+  if (Array.isArray(raw)) return raw.map(withoutImageData);
+  if (!isRecord(raw)) return raw;
+  if (raw.type === "image") {
+    if (typeof raw.data === "string") return { ...raw, data: "" };
+    if (isRecord(raw.source) && typeof raw.source.data === "string") {
+      return { ...raw, source: { ...raw.source, data: "" } };
+    }
+    return raw;
+  }
+  return Object.fromEntries(Object.entries(raw).map(([key, value]) => [key, withoutImageData(value)]));
+}
+
+/**
  * ACP usage_update: context tokens used / window size, and the session's cost when in USD.
  * `agent` is the guest's name; the session's own agent has none.
  */
@@ -1953,7 +1970,12 @@ export class GuestManager {
       if (update.rawInput !== undefined) out.rawInput = update.rawInput;
       if (status !== undefined && STATUSES.has(status)) out.status = status as ToolCallStatus;
       if (content !== undefined) out.content = content;
-      if (update.rawOutput !== undefined) out.rawOutput = update.rawOutput;
+      if (update.rawOutput !== undefined) {
+        // A picture is in the asset store once the content has it: its base64 copy in the raw
+        // output would be kept in every event log and sent to every client that opens the session.
+        const pictured = content?.some((item) => item.type === "image") === true;
+        out.rawOutput = pictured ? withoutImageData(update.rawOutput) : update.rawOutput;
+      }
       if (Object.keys(out).length > 2) run.emit(out);
     }
   }

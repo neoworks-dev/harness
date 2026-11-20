@@ -12,6 +12,7 @@ import {
   mcpResultText,
   storedConversation,
   withNotebookEdit,
+  withoutImageData,
 } from "../src/guests/guests.ts";
 import { GUEST_PROMPT, MAIN_PROMPT } from "../src/guests/prompt.ts";
 import { startTestDaemon, type TestDaemon } from "../src/testing.ts";
@@ -516,6 +517,20 @@ describe("adapter shapes", () => {
     };
     expect(mcpResultText(raw)).toEqual([{ type: "text", text: "Hello, Ada!\n[result:3a6548d4]" }]);
     expect(mcpResultText("plain")).toBeUndefined();
+  });
+
+  test("a raw output keeps its pictures' shape without their bytes", () => {
+    const raw = [
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo" } },
+      { type: "text", text: "kept" },
+      { content: [{ type: "image", data: "R0lGOD", mimeType: "image/gif" }] },
+    ];
+    expect(withoutImageData(raw)).toEqual([
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "" } },
+      { type: "text", text: "kept" },
+      { content: [{ type: "image", data: "", mimeType: "image/gif" }] },
+    ]);
+    expect(withoutImageData("plain")).toBe("plain");
   });
 });
 
