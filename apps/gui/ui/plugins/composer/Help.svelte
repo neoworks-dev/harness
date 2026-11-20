@@ -9,7 +9,8 @@
 
   const KEYS: readonly (readonly [string, string])[] = [
     ["Enter", "send"],
-    ["Alt-Enter, Shift-Enter", "new line"],
+    ["Shift-Enter", "new line"],
+    ["Alt-Enter, Ctrl-Enter", "into the running turn at once"],
     ["Up, Down", "earlier inputs (Alt-Up/Down also inside longer text)"],
     ["/", "commands"],
     ["Shift-Tab", "approvals: ask, review, edits, auto"],

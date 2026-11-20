@@ -145,8 +145,11 @@ class Composer {
 
   // ---- sending ----
 
-  /** Enter: the highlighted command when the menu is open, else the draft. */
-  submit(): void {
+  /**
+   * Enter: the highlighted command when the menu is open, else the draft. Alt-Enter or Ctrl-Enter
+   * (`steer`) sends it into the running turn at once instead of after it, as the terminal does.
+   */
+  submit(steer = false): void {
     if (this.menuVisible) {
       const command = this.commands[Math.min(this.selected, this.commands.length - 1)];
       if (command) this.choose(command);
@@ -156,12 +159,12 @@ class Composer {
     if (text === "" && this.attachments.length === 0 && this.comments.length === 0) return;
     this.text = "";
     if (this.attachments.length > 0) {
-      this.sendWithAttachments(text);
+      this.sendWithAttachments(text, steer);
       return;
     }
     const command = text.startsWith("/") ? lookup(text, this.menuEntries) : undefined;
     if (command?.run) command.run();
-    else this.send(text);
+    else this.send(text, steer);
   }
 
   /** Takes a comment back: the chip's button. */
@@ -184,7 +187,7 @@ class Composer {
     }
     this.text = "";
     if (command.run) command.run();
-    else this.send(`/${command.name}`);
+    else this.send(`/${command.name}`, false);
   }
 
   /** Tab: puts the highlighted command into the input with a space for arguments. */
@@ -232,7 +235,7 @@ class Composer {
   }
 
   /** Images go along as images; other files are named in the text for the agent to read. */
-  private sendWithAttachments(text: string): void {
+  private sendWithAttachments(text: string, steer: boolean): void {
     const { images, others } = splitAttachments(this.attachments);
     this.attachments = [];
     const named = others.map((path) => `@${path}`).join("\n");
@@ -241,15 +244,15 @@ class Composer {
       const session = this.services?.daemon.sessionId;
       if (this.history.push(text) && session !== undefined) void appendHistory(session, text);
     }
-    void this.services?.daemon.send(this.withComments(full), images);
+    void this.services?.daemon.send(this.withComments(full), images, steer);
   }
 
-  private send(text: string): void {
+  private send(text: string, steer: boolean): void {
     // Sending ends the typing: a question it brings (/model's choice) takes over at once.
     this.typedAt = 0;
     const session = this.services?.daemon.sessionId;
     if (this.history.push(text) && session !== undefined) void appendHistory(session, text);
-    void this.services?.daemon.send(this.withComments(text));
+    void this.services?.daemon.send(this.withComments(text), undefined, steer);
   }
 
   // ---- the queue ----

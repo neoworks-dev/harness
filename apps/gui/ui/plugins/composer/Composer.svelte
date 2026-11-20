@@ -136,10 +136,11 @@
     const plain = !event.ctrl && !event.alt && !event.meta;
     switch (event.key) {
       case "Enter":
-        // Alt-Enter and Shift-Enter are left to the input, which breaks the line.
-        if (event.alt || event.shift) return;
+        // Shift-Enter is left to the input, which breaks the line. Alt-Enter and Ctrl-Enter send
+        // into the running turn at once, as the terminal's do.
+        if (event.shift) return;
         event.preventDefault();
-        composer.submit();
+        composer.submit(event.alt || event.ctrl);
         break;
       case "Tab":
         if (event.shift || !composer.menuVisible) return;

@@ -67,6 +67,8 @@ export interface InputOptions {
   app?: string;
   /** Absolute paths of images to attach. */
   images?: string[];
+  /** Into the running turn at once, whatever the session's steer setting says (Alt-Enter). */
+  steer?: boolean;
 }
 
 /**
@@ -262,6 +264,7 @@ export class Client {
   async input(session: string, text: string, options: InputOptions = {}): Promise<void> {
     const payload: SessionInput = { session, app: options.app ?? this.defaultApp(), text };
     if (options.images && options.images.length > 0) payload.images = options.images;
+    if (options.steer) payload.steer = true;
     await this.connection.request("session.input", payload);
   }
 

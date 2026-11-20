@@ -78,9 +78,12 @@ export class DaemonService extends Service {
   sendTo(session: string, text: string): Promise<void> {
     return neo.sendTo(session, text);
   }
-  /** Sends what the user typed, commands included, with the paths of attached images. */
-  send(text: string, images?: string[]): Promise<void> {
-    return neo.send(text, images);
+  /**
+   * Sends what the user typed, commands included, with the paths of attached images; `steer`
+   * into the running turn at once.
+   */
+  send(text: string, images?: string[], steer = false): Promise<void> {
+    return neo.send(text, images, steer);
   }
   /** Takes the user's messages queued behind the running turn back, oldest first. */
   unqueue(): ReturnType<typeof neo.unqueue> {

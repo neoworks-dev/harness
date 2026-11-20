@@ -225,10 +225,13 @@ class Neo {
     await this.open(session.id);
   }
 
-  /** Sends what the user typed, commands (`/model …`) included. */
-  async send(text: string, images?: string[]): Promise<void> {
+  /**
+   * Sends what the user typed, commands (`/model …`) included; `steer` puts it into the running
+   * turn at once (Alt-Enter), whatever the session's steer setting says.
+   */
+  async send(text: string, images?: string[], steer = false): Promise<void> {
     if (this.sessionId === undefined) return;
-    await this.guard(this.need().input(this.sessionId, text, { images }));
+    await this.guard(this.need().input(this.sessionId, text, { images, steer }));
   }
 
   /**
