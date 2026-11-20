@@ -14,11 +14,11 @@
   const { daemon } = useCtx();
   const p = $derived(daemon.palette);
   const name = $derived(path.slice(path.lastIndexOf("/") + 1));
-  /** A file a browser tab uploaded loads from the daemon by its handle; the window reads the path. */
-  const src = $derived.by(() => {
-    const handle = uploadedHandle(path);
-    return (handle === undefined ? undefined : daemon.assetSrc(handle)) ?? path;
-  });
+  /**
+   * A file a browser tab uploaded loads from the daemon by its handle (or by its stored path, which
+   * names the handle); the window reads any other path.
+   */
+  const src = $derived(daemon.assetSrc(uploadedHandle(path) ?? path) ?? path);
   let failed = $state(false);
 
   $effect(() => {

@@ -23,6 +23,7 @@ import {
   type Unsubscribe,
 } from "@neoworks-dev/neo-sdk";
 import * as host from "./host/git.ts";
+import { assetHandleOf } from "../lib/asset-path.ts";
 import { paletteOf } from "../lib/palette.ts";
 import { chooseSession, pickAppId } from "../lib/startup.ts";
 import {
@@ -375,11 +376,14 @@ class Neo {
   private daemonAddress?: DaemonAddress;
 
   /**
-   * The URL the window can load an `asset://` handle from, or undefined for any other source.
-   * It contains the daemon's token: hand it to an `Image` only, never log or show it.
+   * The URL the window can load an `asset://` handle, or a path into the asset store (an
+   * attachment's stored copy), from; undefined for any other source. A browser tab cannot read
+   * the path itself. It contains the daemon's token: hand it to an `Image` only, never log or
+   * show it.
    */
   assetSrc(src: string): string | undefined {
-    return this.daemonAddress === undefined ? undefined : assetUrl(this.daemonAddress, src);
+    if (this.daemonAddress === undefined) return undefined;
+    return assetUrl(this.daemonAddress, assetHandleOf(src));
   }
 }
 
