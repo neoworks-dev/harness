@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The background commands over the input, as term lists them: one row each while it runs (and a
+  // The background commands under the input, with the agents, as term lists them: one row each while it runs (and a
   // few seconds after it ends), with its last line of output and how long it has run. Pressing a
   // row shows it on its own in the terminal panel; its × stops it.
   import { Button, Icon, Text, View } from "@neoworks/svelte-gpui/ui";
@@ -36,7 +36,7 @@
 </script>
 
 {#if listed.length > 0}
-  <View style={{ gap: 2, marginX: 16, marginBottom: 6 }}>
+  <View style={{ gap: 2, marginX: 16, marginTop: 6 }}>
     {#each listed.slice(0, MAX_ROWS) as { run, job } (run.id)}
       {@const last = lastLine(job)}
       <View

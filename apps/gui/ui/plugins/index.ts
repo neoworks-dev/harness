@@ -16,6 +16,7 @@ import { shell } from "./shell/index.ts";
 import { sidePanel } from "./sidepanel/index.ts";
 import { statusLine } from "./statusline/index.ts";
 import { terminalPane } from "./terminal/index.ts";
+import { todosPanel } from "./todos/index.ts";
 import { transcriptPane } from "./transcript/index.ts";
 import { workspaceCard } from "./workspace/index.ts";
 import { viewerPane } from "./viewer/index.ts";
@@ -34,6 +35,7 @@ export const plugins: Plugin[] = [
   agentsList,
   sidePanel,
   terminalPane,
+  todosPanel,
   planPanel,
   filesPanel,
   workspaceCard,
