@@ -103,8 +103,12 @@ const NEUTRAL = {
   raised: "#222225",
 };
 
-/** A sky blue that does not follow the theme's accent: what is running. */
-const INFO = "#38bdf8";
+/**
+ * The accent, and what is running: the foreground's white, not a hue. The window marks the
+ * selected, the focused and the primary in white; colour is left to success, danger and code.
+ */
+const ACCENT = NEUTRAL.fg;
+const INFO = NEUTRAL.fg;
 
 /** The sessions column, a shade darker than the window. */
 const SIDE = {
@@ -140,6 +144,7 @@ export function paletteOf(theme: Theme = DEFAULT_THEME): Palette {
   return {
     ...colors,
     ...NEUTRAL,
+    accent: ACCENT,
     info: INFO,
     band: NEUTRAL.raised,
     side: SIDE,

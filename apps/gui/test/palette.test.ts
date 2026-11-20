@@ -11,11 +11,13 @@ test("blend mixes one colour into another", () => {
   expect(blend("red", "#ffffff", 50)).toBe("red");
 });
 
-test("the window keeps its own greys and takes the accent from the theme", () => {
+test("the window keeps its own greys, and its accent is their white, not the theme's hue", () => {
   const custom = {
     ...DEFAULT_THEME,
     colors: { ...DEFAULT_THEME.colors, bg: "#ffffff", accent: "#ff0000" },
   };
   expect(paletteOf(custom).bg).toBe(paletteOf().bg);
-  expect(paletteOf(custom).accent).toBe("#ff0000");
+  expect(paletteOf(custom).accent).toBe(paletteOf().fg);
+  // Code still takes the theme's hue for its functions.
+  expect(paletteOf(custom).syntax.function).toBe("#ff0000");
 });

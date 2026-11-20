@@ -296,7 +296,7 @@
               align: "center",
               justify: "center",
               background: p.accent,
-              color: "#ffffff",
+              color: p.bg,
               opacity: composer.text.trim() === "" && composer.attachments.length === 0 && composer.comments.length === 0 ? 0.64 : 1,
             }}
             hover={{ opacity: 0.9 }}

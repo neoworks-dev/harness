@@ -239,7 +239,7 @@
         <Button
           onpress={() => void permit.answer(true)}
           disabled={permit.busy}
-          style={{ ...button, background: p.accent, color: "#ffffff" }}
+          style={{ ...button, background: p.accent, color: p.bg }}
           hover={{ opacity: 0.9 }}
         >
           <Text style={{ fontSize: 13 }}>{options.accept.name} <Text style={{ opacity: 0.7 }}>⏎</Text></Text>
@@ -303,7 +303,7 @@
                   <Button onpress={() => permit.cancelComment()} style={{ paddingX: 10, height: 24, radius: 6, align: "center", color: p.muted }} hover={{ background: p.hover, color: p.fg }}>
                     <Text style={{ fontSize: 12 }}>Cancel</Text>
                   </Button>
-                  <Button onpress={() => permit.saveComment()} style={{ paddingX: 10, height: 24, radius: 6, align: "center", background: p.accent, color: "#ffffff" }} hover={{ opacity: 0.9 }}>
+                  <Button onpress={() => permit.saveComment()} style={{ paddingX: 10, height: 24, radius: 6, align: "center", background: p.accent, color: p.bg }} hover={{ opacity: 0.9 }}>
                     <Text style={{ fontSize: 12 }}>Comment</Text>
                   </Button>
                 </View>

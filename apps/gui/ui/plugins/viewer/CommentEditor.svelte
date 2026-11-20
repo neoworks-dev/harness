@@ -61,9 +61,9 @@
             radius: 5,
             align: "center",
             background: viewer.kind === kind ? p.accent : "transparent",
-            color: viewer.kind === kind ? "#ffffff" : p.muted,
+            color: viewer.kind === kind ? p.bg : p.muted,
           }}
-          hover={{ color: viewer.kind === kind ? "#ffffff" : p.fg }}
+          hover={{ color: viewer.kind === kind ? p.bg : p.fg }}
         >
           <Text style={{ fontSize: 11 }}>{kindLabel(kind)} <Text style={{ opacity: 0.6 }}>^{index + 1}</Text></Text>
         </Button>
@@ -92,7 +92,7 @@
       <Button
         onpress={() => viewer.submit()}
         disabled={empty}
-        style={{ paddingX: 10, height: 24, radius: 6, align: "center", background: p.accent, color: "#ffffff" }}
+        style={{ paddingX: 10, height: 24, radius: 6, align: "center", background: p.accent, color: p.bg }}
         hover={{ opacity: 0.9 }}
         disabledStyle={{ opacity: 0.5 }}
       >

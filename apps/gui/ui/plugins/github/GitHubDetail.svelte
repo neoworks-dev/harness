@@ -99,7 +99,7 @@
     {#each given ?? [] as reaction (reaction.content)}
       <Button
         onpress={() => void github.react(detail.kind, detail.number, reaction.content, comment)}
-        style={{ direction: "row", gap: 4, paddingX: 8, height: 24, radius: 12, align: "center", borderWidth: 1, borderColor: reaction.mine ? p.accent : p.border, background: reaction.mine ? "rgba(99, 140, 255, 0.15)" : "transparent" }}
+        style={{ direction: "row", gap: 4, paddingX: 8, height: 24, radius: 12, align: "center", borderWidth: 1, borderColor: reaction.mine ? p.accent : p.border, background: reaction.mine ? "rgba(255, 255, 255, 0.1)" : "transparent" }}
         hover={{ borderColor: p.accent }}
       >
         <Text style={{ fontSize: 12 }}>{emojiOf(reaction.content)} {reaction.count}</Text>
@@ -218,7 +218,7 @@
       </Text>
       <Button
         onpress={() => void github.send(detail.kind, detail.number)}
-        style={{ paddingX: 12, height: 30, radius: 6, align: "center", background: p.accent, color: "#ffffff", shrink: 0 }}
+        style={{ paddingX: 12, height: 30, radius: 6, align: "center", background: p.accent, color: p.bg, shrink: 0 }}
         hover={{ opacity: 0.85 }}
       >
         <Text style={{ fontWeight: "medium" }}>Send to the model</Text>
