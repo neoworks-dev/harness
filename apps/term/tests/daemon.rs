@@ -163,7 +163,9 @@ impl Ui {
     /// A fresh daemon has no answer to what neo is for: the first start walks through the
     /// settings; leaving it keeps coding.
     fn answer_setup(&mut self) {
-        self.until("the first start's walkthrough", |s| s.contains("Welcome to Neo"));
+        self.until("the first start's walkthrough", |s| {
+            s.contains("Welcome to Neo")
+        });
         self.key(KeyCode::Esc);
         self.until("the question gone", |s| !s.contains("Welcome to Neo"));
     }
@@ -244,7 +246,10 @@ fn chat_with_the_echo_agent_from_the_terminal_app() {
             && side.contains("[app_connected]")
     });
     assert!(screen.contains("Sessions · "), "{screen}");
-    assert!(screen.contains("· ◆ Neo"), "the session's harness: {screen}");
+    assert!(
+        screen.contains("· ◆ Neo"),
+        "the session's harness: {screen}"
+    );
 
     // Approvals: shift-tab goes through the daemon (ask, review, edits, auto, ask) and the mode
     // comes back as a setting event.
